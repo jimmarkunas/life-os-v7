@@ -4,6 +4,7 @@ Input: EXPLAIN_COMPANY (comma separated substrings of a company name or source i
 by status and reason code, plus one line per still-open job: a six-character hash of its id (never a title,
 company or link), status, Fit score, reason codes and source kind. Writes nothing.
 """
+
 import hashlib
 import os
 
@@ -25,9 +26,23 @@ def summarize(rows):
         key = f"{status}: {public_code(why or stop)}"
         by_reason[key] = by_reason.get(key, 0) + 1
         if status not in DONE and len(open_jobs) < MAX_OPEN:
-            open_jobs.append({"h": short(job_id), "status": status, "fit": score, "why": public_code(why), "stop": public_code(stop),
-                              "via": ((source or "").split(":")[0] or "unknown")[:20]})
-    return {"matched": len(rows), "by_status": by_status, "by_reason": by_reason, "open": open_jobs, "open_total": sum(n for s, n in by_status.items() if s not in DONE)}
+            open_jobs.append(
+                {
+                    "h": short(job_id),
+                    "status": status,
+                    "fit": score,
+                    "why": public_code(why),
+                    "stop": public_code(stop),
+                    "via": ((source or "").split(":")[0] or "unknown")[:20],
+                }
+            )
+    return {
+        "matched": len(rows),
+        "by_status": by_status,
+        "by_reason": by_reason,
+        "open": open_jobs,
+        "open_total": sum(n for s, n in by_status.items() if s not in DONE),
+    }
 
 
 def run(limit, live, environ=os.environ):
@@ -39,7 +54,10 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT j.id, j.status, COALESCE(j.source, ''), f.score, f.admission_reason, j.unresolved_reason FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-                           " WHERE (" + where + ") ORDER BY j.id LIMIT 5000", tuple(p for like in likes for p in (like, like)))
+            cursor.execute(
+                "SELECT j.id, j.status, COALESCE(j.source, ''), f.score, f.admission_reason, j.unresolved_reason FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id"
+                " WHERE (" + where + ") ORDER BY j.id LIMIT 5000",
+                tuple(p for like in likes for p in (like, like)),
+            )
             rows = [tuple(r) for r in cursor.fetchall()]
     return summarize(rows)

@@ -9,6 +9,7 @@ it back. Any failure keeps the stored row; a dry run (the default) skips the wri
 counts, never page content. The reader returns the block only when the stored hash matches its recomputed hash; an
 unreadable store raises ProfileError and the Fit stage then does nothing.
 """
+
 from hashlib import sha256
 import json
 import os
@@ -76,15 +77,16 @@ def parse(text):
     for row in block.get("capabilities") or []:
         if not str(row.get("id") or "").startswith(ID_PREFIX):
             raise SyncError("SYNC_CAPABILITY_ID")
-    block = {"capabilities": list(block.get("capabilities") or []),
-             "functions": [{**row, "owner": OWNER} for row in block.get("functions") or []]}
+    block = {
+        "capabilities": list(block.get("capabilities") or []),
+        "functions": [{**row, "owner": OWNER} for row in block.get("functions") or []],
+    }
     with fixed((ValueError, TypeError, KeyError, ProfileError), SyncError, "SYNC_BLOCK_INVALID"):
         Profile({"years": 1, **block})
     return block
 
 
 class Store:
-
     def read(self):
         with store.connect() as connection, connection.cursor() as cursor:
             try:
@@ -101,8 +103,10 @@ class Store:
         with store.connect() as connection:
             store.ensure_schema(connection)
             with connection.cursor() as cursor:
-                cursor.execute("REPLACE INTO v7_fit_profile_sync (id, content_hash, block, synced_at) VALUES (%s, %s, %s, UTC_TIMESTAMP())",
-                               (ROW_ID, digest, json.dumps(block, sort_keys=True, separators=(",", ":"))))
+                cursor.execute(
+                    "REPLACE INTO v7_fit_profile_sync (id, content_hash, block, synced_at) VALUES (%s, %s, %s, UTC_TIMESTAMP())",
+                    (ROW_ID, digest, json.dumps(block, sort_keys=True, separators=(",", ":"))),
+                )
             connection.commit()
 
 

@@ -8,6 +8,7 @@
   UNSCORABLE, never 0.
 Fit never sees location, work mode, pay, visa, provider score or freshness; exclusions are a separate gate.
 """
+
 from dataclasses import dataclass, field
 from fractions import Fraction
 import re
@@ -15,10 +16,20 @@ import re
 from lifeos.jobs.fit import GO_THRESHOLD, exclusions, extract, lexicon
 from lifeos.jobs.fit.profile import VALUE, norm
 
-BUDGET = {"role": Fraction(29), "functional": Fraction(29), "technical": Fraction(21), "delivery": Fraction(14),
-          "advantage": Fraction(7)}
-NAMES = {"role": "Role/Seniority", "functional": "Functional", "technical": "Technical/Platform",
-         "delivery": "Delivery complexity", "advantage": "Competitive advantage"}
+BUDGET = {
+    "role": Fraction(29),
+    "functional": Fraction(29),
+    "technical": Fraction(21),
+    "delivery": Fraction(14),
+    "advantage": Fraction(7),
+}
+NAMES = {
+    "role": "Role/Seniority",
+    "functional": "Functional",
+    "technical": "Technical/Platform",
+    "delivery": "Delivery complexity",
+    "advantage": "Competitive advantage",
+}
 TITLE_SHARE = Fraction(29, 4)
 EVIDENCE = {k: Fraction(v).limit_denominator(20) for k, v in VALUE.items()}
 MIN_TEXT = 300
@@ -65,7 +76,7 @@ def _half_up(x):
 
 def _short(text, n=70):
     text = " ".join(text.split())
-    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
+    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
 
 def _inflated(unit, year):
@@ -74,7 +85,9 @@ def _inflated(unit, year):
         return True
     for m in extract._YEARS.finditer(unit.text):
         years = int(m.group(1))
-        if years >= 15 or any(f" {t} " in text and years > year - first + 1 for t, first in lexicon.TECH_FIRST_YEAR.items()):
+        if years >= 15 or any(
+            f" {t} " in text and years > year - first + 1 for t, first in lexicon.TECH_FIRST_YEAR.items()
+        ):
             return True
     return False
 
@@ -116,16 +129,31 @@ def _requirements(units, profile, year, semantic=None, changes=None):
     found = {}
     for term, optional in extract.platform_hits(units):
         row = profile.capability(norm(term))
-        found.setdefault(row["id"] if row else term, Req("technical", term, row["class"] if row else "unsupported",
-                                                         Fraction(1, 2) if optional else Fraction(1), row["label"] if row else "", anchor=bool(row)))
+        found.setdefault(
+            row["id"] if row else term,
+            Req(
+                "technical",
+                term,
+                row["class"] if row else "unsupported",
+                Fraction(1, 2) if optional else Fraction(1),
+                row["label"] if row else "",
+                anchor=bool(row),
+            ),
+        )
     body = [u for u in units if u.section in ("required", "preferred", "duty")]
     for cap in profile.capabilities:
-        if cap["bucket"] == "platform" and cap["id"] not in found and any(rx.search(u.norm) for u in body for rx in cap["rx"]):
+        if (
+            cap["bucket"] == "platform"
+            and cap["id"] not in found
+            and any(rx.search(u.norm) for u in body for rx in cap["rx"])
+        ):
             found[cap["id"]] = Req("technical", cap["label"], cap["class"], Fraction(1), cap["label"], anchor=True)
     for name, optional in extract.candidates(units, _PLATFORM_KEYS):
         row = profile.capability(norm(name))
-        found.setdefault(row["id"] if row else norm(name).strip(),
-                         Req("technical", name, row["class"] if row else "unsupported", Fraction(1, 2) if optional else Fraction(1)))
+        found.setdefault(
+            row["id"] if row else norm(name).strip(),
+            Req("technical", name, row["class"] if row else "unsupported", Fraction(1, 2) if optional else Fraction(1)),
+        )
     platform = list(found.values())
     for r in platform[6:] if len(platform) > 12 else []:
         r.weight = min(r.weight, Fraction(1, 2))
@@ -135,7 +163,9 @@ def _requirements(units, profile, year, semantic=None, changes=None):
             continue
         stated = extract.gated(u)
         if u.section == "duty":
-            stated = bool(_best(profile, u.norm) or _ROLE.search(u.text) or _TECH.search(u.text) or _DELIVERY.search(u.text))
+            stated = bool(
+                _best(profile, u.norm) or _ROLE.search(u.text) or _TECH.search(u.text) or _DELIVERY.search(u.text)
+            )
         if not stated:
             continue
         if sum(1 for _, rx in extract._PLATFORM_RX if rx.search(u.norm)):
@@ -180,7 +210,11 @@ _FAMILY_RX = [re.compile(p, re.I) for p in lexicon.HARD_FAMILY_PATTERNS]
 def _family(title, units, profile):
     terms = list(lexicon.HARD_FAMILY)
     extra = profile.hard_family
-    hit = lambda text: any(t in text.lower() for t in terms) or any(rx.search(text) for rx in _FAMILY_RX) or any(rx.search(norm(text)) for rx in extra)
+    hit = lambda text: (
+        any(t in text.lower() for t in terms)
+        or any(rx.search(text) for rx in _FAMILY_RX)
+        or any(rx.search(norm(text)) for rx in extra)
+    )
     if hit(title or ""):
         return True
     body = [u for u in units if u.section in ("required", "duty")]
@@ -188,7 +222,10 @@ def _family(title, units, profile):
     return hits >= 3 and hits / max(len(body), 1) >= FAMILY_SHARE
 
 
-JUNIOR = re.compile(r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice|junior|graduate|entry[- ]level|early careers?)\b", re.I)
+JUNIOR = re.compile(
+    r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice|junior|graduate|entry[- ]level|early careers?)\b",
+    re.I,
+)
 SENIOR = re.compile(r"\b(?:director|vice president|vp|head|principal|manager)\b", re.I)
 JUNIOR_CAP = 55
 # Fit cannot exceed the Functional area's attainment by more than this: generic years / team size / scale cannot make
@@ -228,9 +265,14 @@ def calculate(reqs, title_cls, bonus=False, capped=False):
     contributions = {d: v * scale for d, v in earned.items() if v or d == "role" or any(r.dim == d for r in reqs)}
     uncapped = sum(earned.values()) * scale
     total = min(Fraction(100), uncapped + (3 if bonus else 0))
-    attain = {d: earned[d] / (BUDGET[d] if d != "role" else BUDGET[d]) * 100 for d in BUDGET
-              if any(r.dim == d for r in reqs) or d == "role"}
-    return Calc(applicable, contributions, uncapped, capped, _half_up(min(total, Fraction(40)) if capped else total), attain)
+    attain = {
+        d: earned[d] / (BUDGET[d] if d != "role" else BUDGET[d]) * 100
+        for d in BUDGET
+        if any(r.dim == d for r in reqs) or d == "role"
+    }
+    return Calc(
+        applicable, contributions, uncapped, capped, _half_up(min(total, Fraction(40)) if capped else total), attain
+    )
 
 
 def _arithmetic(reqs, title_cls, bonus, capped):
@@ -252,25 +294,46 @@ def evaluate(title, company, text, profile, today, semantic=None):
     capped = _family(title, units, profile)
     reqs = _requirements(units, profile, today.year) if len(text) >= MIN_TEXT else []
     if not reqs:
-        why = "Description too short to score." if len(text) < MIN_TEXT else "No requirement was recognised in the description."
+        why = (
+            "Description too short to score."
+            if len(text) < MIN_TEXT
+            else "No requirement was recognised in the description."
+        )
         line = "[--] Unscorable" + (f" | Excluded: {gate['reason']}" if gate else "")
-        return Result(None, "No-Go" if gate else "Unscorable", line, why, exclusion=gate["id"] if gate else None, soft=soft, capped=capped)
+        return Result(
+            None,
+            "No-Go" if gate else "Unscorable",
+            line,
+            why,
+            exclusion=gate["id"] if gate else None,
+            soft=soft,
+            capped=capped,
+        )
     title_cls, title_strength = _title(title, profile)
     bonus = title_cls == "direct" and any(rx.search(norm(title)) for rx in profile.specialization)
     score, buckets = _arithmetic(reqs, title_cls, bonus, capped)
     anchored = title_cls != "unsupported" or any(r.anchor for r in reqs)
     junior = bool(JUNIOR.search(title or "")) and not SENIOR.search(title or "")
     if score > UNANCHORED_CAP and not anchored:
-        score, capped_note = UNANCHORED_CAP, f"Capped at {UNANCHORED_CAP}: nothing in the title or requirements matches your functions or capabilities."
+        score, capped_note = (
+            UNANCHORED_CAP,
+            f"Capped at {UNANCHORED_CAP}: nothing in the title or requirements matches your functions or capabilities.",
+        )
     elif score > JUNIOR_CAP and junior:
-        score, capped_note = JUNIOR_CAP, f"Capped at {JUNIOR_CAP}: an analyst-level title is below this profile's level."
+        score, capped_note = (
+            JUNIOR_CAP,
+            f"Capped at {JUNIOR_CAP}: an analyst-level title is below this profile's level.",
+        )
     else:
         capped_note = None
     result_pre = score
     functional = buckets.get("functional")
     if functional is not None and score > functional + FUNCTIONAL_MARGIN:
         score = functional + FUNCTIONAL_MARGIN
-        capped_note = capped_note or f"Capped at {score}: the job's own function matches only {functional}% of what it asks (generic seniority and scale cannot make up for it)."
+        capped_note = (
+            capped_note
+            or f"Capped at {score}: the job's own function matches only {functional}% of what it asks (generic seniority and scale cannot make up for it)."
+        )
     decision = "No-Go" if gate or score < GO_THRESHOLD else "Go"
     weakest = min(buckets, key=buckets.get)
     if gate:
@@ -285,10 +348,19 @@ def evaluate(title, company, text, profile, today, semantic=None):
         why = f"Meets the {GO_THRESHOLD}% bar."
     flat = ([Req("role", _short(title), title_cls, Fraction(1), title_strength)] if title_strength else []) + reqs
     confident = len(reqs) >= 8 and len(text) >= 1200 and len([d for d in buckets if d != "role"]) >= 2
-    result = Result(score, decision, _line(score, decision, flat, gate), why, exclusion=gate["id"] if gate else None,
-                    confidence="high" if confident else "low", capped=capped,
-                    buckets={NAMES[d]: v for d, v in buckets.items()},
-                    items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80], soft=soft, pre_functional=result_pre)
+    result = Result(
+        score,
+        decision,
+        _line(score, decision, flat, gate),
+        why,
+        exclusion=gate["id"] if gate else None,
+        confidence="high" if confident else "low",
+        capped=capped,
+        buckets={NAMES[d]: v for d, v in buckets.items()},
+        items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80],
+        soft=soft,
+        pre_functional=result_pre,
+    )
     if semantic is not None:
         changes = []
         shadow_reqs = _requirements(units, profile, today.year, semantic, changes)

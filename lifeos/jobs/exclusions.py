@@ -2,6 +2,7 @@
 
 Splits the status by stored reason, Fit band and source; no title, link, company or text is printed.
 """
+
 import re
 
 from lifeos.jobs import store
@@ -29,12 +30,26 @@ def word(text):
 
 
 def tally(rows):
-    out = {"total": 0, "by_reason": {}, "by_band": {}, "by_admission": {}, "by_exclusion": {}, "by_band_and_reason": {}, "by_source": {}, "high_score": {}}
+    out = {
+        "total": 0,
+        "by_reason": {},
+        "by_band": {},
+        "by_admission": {},
+        "by_exclusion": {},
+        "by_band_and_reason": {},
+        "by_source": {},
+        "high_score": {},
+    }
     for source, reason, score, admission, admission_reason, exclusion in rows:
         out["total"] += 1
         b, r = band(score), word(reason)
-        for table, key in ((out["by_reason"], r), (out["by_band"], b), (out["by_admission"], f"{word(admission)}/{public_reason(admission_reason)}"),
-                           (out["by_exclusion"], word(exclusion)), (out["by_band_and_reason"], f"{b}/{r}")):
+        for table, key in (
+            (out["by_reason"], r),
+            (out["by_band"], b),
+            (out["by_admission"], f"{word(admission)}/{public_reason(admission_reason)}"),
+            (out["by_exclusion"], word(exclusion)),
+            (out["by_band_and_reason"], f"{b}/{r}"),
+        ):
             table[key] = table.get(key, 0) + 1
         out["by_source"][source] = out["by_source"].get(source, 0) + 1
         if score is not None and score >= FIT_FLOOR:
@@ -47,8 +62,10 @@ def tally(rows):
 
 def run(limit, live, connect=store.connect):
     with connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT j.source, j.unresolved_reason, f.score, f.admission, f.admission_reason, f.exclusion FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
-                       "WHERE j.source LIKE 'web:su-%%' AND j.status='EXCLUDED_FIT'")
+        cursor.execute(
+            "SELECT j.source, j.unresolved_reason, f.score, f.admission, f.admission_reason, f.exclusion FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
+            "WHERE j.source LIKE 'web:su-%%' AND j.status='EXCLUDED_FIT'"
+        )
         report = tally(cursor.fetchall())
         cursor.execute("SELECT status, COUNT(*) FROM v7_jobs WHERE source LIKE 'web:su-%%' GROUP BY status")
         report["status_totals"] = {s: n for s, n in cursor.fetchall()}
@@ -75,9 +92,22 @@ def review(limit, live, connect=store.connect, client=None):
     """
     from lifeos.jobs import private_report
     from lifeos.platform.notion_client import Client
+
     with connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT j.company, j.title, j.location_text, COALESCE(j.final_apply_url, j.source_url), f.score, f.admission_reason, f.exclusion, j.unresolved_reason FROM v7_jobs j "
-                       "JOIN v7_job_fit f ON f.job_id = j.id WHERE j.source LIKE 'web:su-%%' AND j.status='EXCLUDED_FIT' AND f.score >= %s", (FIT_FLOOR,))
+        cursor.execute(
+            "SELECT j.company, j.title, j.location_text, COALESCE(j.final_apply_url, j.source_url), f.score, f.admission_reason, f.exclusion, j.unresolved_reason FROM v7_jobs j "
+            "JOIN v7_job_fit f ON f.job_id = j.id WHERE j.source LIKE 'web:su-%%' AND j.status='EXCLUDED_FIT' AND f.score >= %s",
+            (FIT_FLOOR,),
+        )
         rows = [line.split("\t") for line in review_rows(cursor.fetchall())]
     header = ["company", "title", "location", "link", "fit", "rule", "stored reason"]
-    return private_report.publish(client or Client(), "LIFE-121: Scale-Up jobs removed by exclusion rules", header, rows, live, links=(3,), key="scale-up-exclusions-review", connect=connect)
+    return private_report.publish(
+        client or Client(),
+        "LIFE-121: Scale-Up jobs removed by exclusion rules",
+        header,
+        rows,
+        live,
+        links=(3,),
+        key="scale-up-exclusions-review",
+        connect=connect,
+    )

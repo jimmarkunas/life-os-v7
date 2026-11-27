@@ -1,4 +1,5 @@
 """Read-only diagnostic: which alerts are open and why. Counts only; writes nothing."""
+
 # Prints: open alert keys (source names only); per source the new jobs in the last 24 hours against the 14-day
 # baseline; the jobs stuck_jobs counts, by status; link and Notion page presence; Fit admission and stop reason code;
 # and the page-body shape publish would send. With ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) it returns
@@ -24,8 +25,11 @@ def stuck(cursor, now):
     URL leaves the store.
     """
     cutoff = now - dt.timedelta(hours=alerts.QUIET_HOURS)
-    cursor.execute("SELECT j.status, j.final_apply_url IS NOT NULL, j.notion_page_id IS NOT NULL, COALESCE(f.admission, 'none'), j.unresolved_reason, COUNT(*), MIN(j.updated_at)"
-                   " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status IN ('READY','RESOLVED') AND j.updated_at < %s GROUP BY 1, 2, 3, 4, 5", (cutoff,))
+    cursor.execute(
+        "SELECT j.status, j.final_apply_url IS NOT NULL, j.notion_page_id IS NOT NULL, COALESCE(f.admission, 'none'), j.unresolved_reason, COUNT(*), MIN(j.updated_at)"
+        " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status IN ('READY','RESOLVED') AND j.updated_at < %s GROUP BY 1, 2, 3, 4, 5",
+        (cutoff,),
+    )
     out = {}
     for status, link, page, admission, reason, count, oldest in cursor.fetchall():
         key = f"{status}|link={int(bool(link))}|page={int(bool(page))}|fit={admission}|{funnel.reason_code(reason)}"
@@ -43,7 +47,19 @@ def body_shape(blocks):
     units (Notion's 2000 limit may count either), characters Notion can refuse, and whether a block is empty.
     children[2] is reported on its own: it is the one a refusal names.
     """
-    out = {"blocks": len(blocks), "over_2000_chars": 0, "over_2000_units": 0, "empty": 0, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0, "max_chars": 0, "max_units": 0, "child2": None}
+    out = {
+        "blocks": len(blocks),
+        "over_2000_chars": 0,
+        "over_2000_units": 0,
+        "empty": 0,
+        "control": 0,
+        "nul": 0,
+        "surrogate": 0,
+        "private_use": 0,
+        "max_chars": 0,
+        "max_units": 0,
+        "child2": None,
+    }
     for index, block in enumerate(blocks):
         kind = block["type"]
         items = block[kind]["rich_text"]
@@ -62,14 +78,27 @@ def body_shape(blocks):
         out["private_use"] += private
         out["max_chars"], out["max_units"] = max(out["max_chars"], chars), max(out["max_units"], units)
         if index == 2:
-            out["child2"] = {"type": kind, "items": len(items), "chars": chars, "units": units, "empty": not joined.strip(), "control": control, "nul": nul, "surrogate": surrogate, "private_use": private}
+            out["child2"] = {
+                "type": kind,
+                "items": len(items),
+                "chars": chars,
+                "units": units,
+                "empty": not joined.strip(),
+                "control": control,
+                "nul": nul,
+                "surrogate": surrogate,
+                "private_use": private,
+            }
     return out
 
 
 def publish_bodies(cursor):
-    from lifeos.jobs import publish                                                  # noqa: PLC0415
-    cursor.execute("SELECT d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id"
-                   " LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY j.first_seen LIMIT 5")
+    from lifeos.jobs import publish  # noqa: PLC0415
+
+    cursor.execute(
+        "SELECT d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id"
+        " LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY j.first_seen LIMIT 5"
+    )
     out = []
     for summary, resp, req, qual, full in cursor.fetchall():
         desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
@@ -92,21 +121,58 @@ def trace(message_ref, now=None):
     """
     if not MESSAGE_REF.fullmatch(message_ref):
         raise store.StoreError("ALERT_STATE_MESSAGE_REF_INVALID")
-    with fixed(Exception, store.StoreError, "ALERT_STATE_QUERY_FAILED", keep=store.StoreError), store.connect() as connection, connection.cursor() as cursor:
-        rows = _select(cursor, "SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
-                       " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id", (message_ref,))
+    with (
+        fixed(Exception, store.StoreError, "ALERT_STATE_QUERY_FAILED", keep=store.StoreError),
+        store.connect() as connection,
+        connection.cursor() as cursor,
+    ):
+        rows = _select(
+            cursor,
+            "SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
+            " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id",
+            (message_ref,),
+        )
     vacancies, blockers = [], {}
     for n, (source, linked, status, reason, page, verified) in enumerate(rows, 1):
         status = status if isinstance(status, str) else None
-        why = ("unlinked" if not linked else "malformed" if status is None else "in_flight" if status in IN_FLIGHT else "hold" if status == "HOLD"
-               else "unverified" if status == "PUBLISHED" and not verified else None if status in TERMINAL or status.startswith("EXCLUDED_") else "other")
+        why = (
+            "unlinked"
+            if not linked
+            else "malformed"
+            if status is None
+            else "in_flight"
+            if status in IN_FLIGHT
+            else "hold"
+            if status == "HOLD"
+            else "unverified"
+            if status == "PUBLISHED" and not verified
+            else None
+            if status in TERMINAL or status.startswith("EXCLUDED_")
+            else "other"
+        )
         if why:
             blockers[why] = blockers.get(why, 0) + 1
         code = funnel.reason_code(reason if isinstance(reason, str) else None).replace(" ", "_")
-        vacancies.append({"n": n, "source": source if source in SOURCES else "other", "status": status if status in KNOWN_STATUSES else "other" if status else "none", "reason": code if code in REASONS else "other",
-                          "outcome": why or "terminal", "ledger_page": bool(page), "verified": bool(verified)})
-    return {"observed_at": (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "message_trace": {"associations": len(rows), "vacancies": vacancies, "terminal": len(rows) - sum(blockers.values()), "blockers": dict(sorted(blockers.items()))}}
+        vacancies.append(
+            {
+                "n": n,
+                "source": source if source in SOURCES else "other",
+                "status": status if status in KNOWN_STATUSES else "other" if status else "none",
+                "reason": code if code in REASONS else "other",
+                "outcome": why or "terminal",
+                "ledger_page": bool(page),
+                "verified": bool(verified),
+            }
+        )
+    return {
+        "observed_at": (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "message_trace": {
+            "associations": len(rows),
+            "vacancies": vacancies,
+            "terminal": len(rows) - sum(blockers.values()),
+            "blockers": dict(sorted(blockers.items())),
+        },
+    }
 
 
 def run(limit, live):
@@ -120,12 +186,29 @@ def run(limit, live):
         window = now - dt.timedelta(hours=alerts.STOP_WINDOW_HOURS)
         start = window - dt.timedelta(days=alerts.STOP_BASELINE_DAYS)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT source, SUM(first_seen > %s), SUM(first_seen <= %s), MAX(first_seen) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source",
-                           (window, window, start))
-            sources = {name: {"last24h": int(recent or 0), "per_day": round(int(base or 0) / alerts.STOP_BASELINE_DAYS, 1), "latest": str(latest)}
-                       for name, recent, base, latest in cursor.fetchall()}
+            cursor.execute(
+                "SELECT source, SUM(first_seen > %s), SUM(first_seen <= %s), MAX(first_seen) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source",
+                (window, window, start),
+            )
+            sources = {
+                name: {
+                    "last24h": int(recent or 0),
+                    "per_day": round(int(base or 0) / alerts.STOP_BASELINE_DAYS, 1),
+                    "latest": str(latest),
+                }
+                for name, recent, base, latest in cursor.fetchall()
+            }
             stuck_rows = stuck(cursor, now)
             bodies = publish_bodies(cursor)
-    return {"open_alerts": {key: {"severity": value["severity"], "last_notified": str(value["last_notified"])} for key, value in sorted(open_alerts.items())},
-            "published_24h": counts["published_24h"], "stuck_jobs": counts["stuck_jobs"], "sources_failing": counts["sources_failing"],
-            "stuck": stuck_rows, "publish_bodies": bodies, "sources": dict(sorted(sources.items()))}
+    return {
+        "open_alerts": {
+            key: {"severity": value["severity"], "last_notified": str(value["last_notified"])}
+            for key, value in sorted(open_alerts.items())
+        },
+        "published_24h": counts["published_24h"],
+        "stuck_jobs": counts["stuck_jobs"],
+        "sources_failing": counts["sources_failing"],
+        "stuck": stuck_rows,
+        "publish_bodies": bodies,
+        "sources": dict(sorted(sources.items())),
+    }

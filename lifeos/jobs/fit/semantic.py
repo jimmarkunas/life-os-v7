@@ -4,6 +4,7 @@ It only ranks how close a requirement line is to a profile capability's phrases;
 capability. Below LOW it is no match (stays Unsupported); between LOW and HIGH it is one evidence step weaker. Any
 failure to load the model turns the layer off and scoring is unchanged.
 """
+
 import os
 
 HIGH = 0.82
@@ -17,7 +18,6 @@ def _dot(a, b):
 
 
 class Matcher:
-
     def __init__(self, profile, embed):
         self.embed, self.phrases, self.rows = embed, [], []
         for row in [*profile.capabilities, *profile.functions]:
@@ -28,7 +28,8 @@ class Matcher:
         self.vectors = embed(self.phrases) if self.phrases else []
         self._np = None
         try:
-            import numpy                             # noqa: PLC0415 - optional speed-up, present with the model runtime
+            import numpy  # noqa: PLC0415 - optional speed-up, present with the model runtime
+
             self._np = numpy
             self.vectors = numpy.asarray(self.vectors, dtype="float32")
         except ImportError:
@@ -61,8 +62,9 @@ class Matcher:
 def load_embedder(environ=os.environ):
     """The local embedding function, or None when the model cannot be loaded (layer off, scoring unchanged)."""
     try:
-        from fastembed import TextEmbedding              # noqa: PLC0415 - optional dependency (requirements-fit.txt)
+        from fastembed import TextEmbedding  # noqa: PLC0415 - optional dependency (requirements-fit.txt)
+
         model = TextEmbedding(MODEL, cache_dir=environ.get("FASTEMBED_CACHE") or None)
-    except Exception:                                     # noqa: BLE001 - any failure means "off", never a crash
+    except Exception:  # noqa: BLE001 - any failure means "off", never a crash
         return None
     return lambda texts: [list(map(float, v)) for v in model.embed(list(texts))]

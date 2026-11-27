@@ -2,6 +2,7 @@
 
 Input: read(url). Output: dict(title, html, posted) | {"closed": True} | None.
 """
+
 import html as htmllib
 import json
 import re
@@ -30,8 +31,12 @@ def _fetch(url, **kwargs):
 def _get_json(url):
     page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, headers={"Accept": "application/json"})
     if page.status == 403:
-        page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2,
-                      headers={"Accept": "application/json", "User-Agent": "lifeos-jobs/0.1"})
+        page = _fetch(
+            url,
+            timeout=limits.ATS_TIMEOUT_SECONDS,
+            max_hops=2,
+            headers={"Accept": "application/json", "User-Agent": "lifeos-jobs/0.1"},
+        )
     if page.status in (404, 410):
         raise Gone
     if page.status != 200:
@@ -55,7 +60,7 @@ def workday_cxs_url(url):
     if segs and LOCALE.match(segs[0]):
         segs = segs[1:]
     if "apply" in segs:
-        segs = segs[:segs.index("apply")]
+        segs = segs[: segs.index("apply")]
     if len(segs) < 3 or segs[1] != "job":
         return None
     return f"https://{host}/wday/cxs/{host.split('.')[0]}/{segs[0]}/{'/'.join(segs[1:])}"
@@ -65,7 +70,7 @@ def parse_workday(text):
     """A CXS answer (raw JSON, or JSON wrapped in page markup by a browser fetch) -> dict(title, html, posted) | None."""
     start, end = (text or "").find("{"), (text or "").rfind("}")
     try:
-        data = json.loads(text[start:end + 1])
+        data = json.loads(text[start : end + 1])
     except ValueError:
         return None
     info = data.get("jobPostingInfo") if isinstance(data, dict) else None
@@ -101,15 +106,19 @@ def bamboohr(parts):
         return None
     data = _get_json(f"https://{parts.hostname}/careers/{segs[1]}/detail")
     opening = ((data or {}).get("result") or {}).get("jobOpening") if isinstance(data, dict) else None
-    return _job(opening.get("jobOpeningName"), opening.get("description"), opening.get("datePosted")) if opening else None
+    return (
+        _job(opening.get("jobOpeningName"), opening.get("description"), opening.get("datePosted")) if opening else None
+    )
 
 
 def oraclecloud(parts):
     match = re.search(r"/job/(\d+)", parts.path)
     if not match:
         return None
-    url = (f"https://{parts.hostname}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails"
-           f"?onlyData=true&q=Id={match.group(1)}")
+    url = (
+        f"https://{parts.hostname}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails"
+        f"?onlyData=true&q=Id={match.group(1)}"
+    )
     data = _get_json(url)
     if not isinstance(data, dict):
         return None
@@ -117,8 +126,11 @@ def oraclecloud(parts):
     if not items:
         return {"closed": True}
     item = items[0]
-    body = "\n\n".join(item.get(k) for k in ("ExternalDescriptionStr", "ExternalResponsibilitiesStr",
-                                              "ExternalQualificationsStr") if item.get(k))
+    body = "\n\n".join(
+        item.get(k)
+        for k in ("ExternalDescriptionStr", "ExternalResponsibilitiesStr", "ExternalQualificationsStr")
+        if item.get(k)
+    )
     return _job(item.get("Title"), body, item.get("ExternalPostedStartDate"))
 
 
@@ -129,19 +141,30 @@ def paylocity(parts):
     page = _fetch(f"https://{parts.hostname}{parts.path}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
     if page.status in (404, 410) or "JobNotFound" in page.final_url:
         return {"closed": True}
-    match = re.search(r'<script type="application/ld\+json">\s*(.*?)\s*</script>', page.html, re.S) if page.status == 200 else None
+    match = (
+        re.search(r'<script type="application/ld\+json">\s*(.*?)\s*</script>', page.html, re.S)
+        if page.status == 200
+        else None
+    )
     if not match:
         return None
     try:
         posting = json.loads(match.group(1))
     except ValueError:
         return None
-    return _job(posting.get("title"), htmllib.unescape(posting.get("description") or ""), None) if isinstance(posting, dict) else None
+    return (
+        _job(posting.get("title"), htmllib.unescape(posting.get("description") or ""), None)
+        if isinstance(posting, dict)
+        else None
+    )
 
 
 def ukg(parts):
-    page = _fetch(f"https://{parts.hostname}{parts.path}" + (f"?{parts.query}" if parts.query else ""),
-                 timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
+    page = _fetch(
+        f"https://{parts.hostname}{parts.path}" + (f"?{parts.query}" if parts.query else ""),
+        timeout=limits.ATS_TIMEOUT_SECONDS,
+        max_hops=3,
+    )
     if page.status in (404, 410):
         return {"closed": True}
     match = re.search(r'"Description":"((?:[^"\\]|\\.)*)"', page.html) if page.status == 200 else None
@@ -161,9 +184,10 @@ def smartrecruiters(parts):
     data = _get_json(f"https://api.smartrecruiters.com/v1/companies/{quote(segs[0])}/postings/{match.group(1)}")
     if not isinstance(data, dict):
         return None
-    sections = ((data.get("jobAd") or {}).get("sections") or {})
-    body = "\n\n".join((sections.get(k) or {}).get("text") or "" for k in
-                        ("jobDescription", "qualifications", "additionalInformation"))
+    sections = (data.get("jobAd") or {}).get("sections") or {}
+    body = "\n\n".join(
+        (sections.get(k) or {}).get("text") or "" for k in ("jobDescription", "qualifications", "additionalInformation")
+    )
     return _job(data.get("name"), body, data.get("releasedDate"))
 
 
@@ -192,13 +216,24 @@ def ashby(parts):
 
 
 def shopify(parts):
-    match = re.search(r"^/careers/[^/]+_([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", parts.path, re.I)
+    match = re.search(
+        r"^/careers/[^/]+_([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", parts.path, re.I
+    )
     return _ashby_single("shopify", match.group(1)) if match else None
 
 
-READERS = (("myworkdayjobs.com", workday), ("apply.workable.com", workable), ("bamboohr.com", bamboohr),
-           ("oraclecloud.com", oraclecloud), ("recruiting.paylocity.com", paylocity), ("ultipro.com", ukg), ("ukg.com", ukg),
-           ("smartrecruiters.com", smartrecruiters), ("ashbyhq.com", ashby), ("shopify.com", shopify))
+READERS = (
+    ("myworkdayjobs.com", workday),
+    ("apply.workable.com", workable),
+    ("bamboohr.com", bamboohr),
+    ("oraclecloud.com", oraclecloud),
+    ("recruiting.paylocity.com", paylocity),
+    ("ultipro.com", ukg),
+    ("ukg.com", ukg),
+    ("smartrecruiters.com", smartrecruiters),
+    ("ashbyhq.com", ashby),
+    ("shopify.com", shopify),
+)
 
 
 def _shape(path):
@@ -231,7 +266,7 @@ def read(url):
                 result = reader(parts)
             except Gone:
                 return {"closed": True}
-            except Exception:                    # noqa: BLE001 - a reader must never take the stage down
+            except Exception:  # noqa: BLE001 - a reader must never take the stage down
                 result = None
             if result is None:
                 key = f"{suffix}:http_{_last['status']}:{_shape(parts.path)}"

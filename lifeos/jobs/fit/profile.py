@@ -11,11 +11,12 @@ Shape (JSON, held in the FIT_PROFILE_JSON secret):
    "baseline": true}
 `committed` capabilities are the user's corrections: they are always Direct, whatever `class` says.
 """
+
 from hashlib import sha256
 import json
 import re
 
-from lifeos.platform.names import norm          # noqa: F401 - one normalizer, shared with Interview OS
+from lifeos.platform.names import norm  # noqa: F401 - one normalizer, shared with Interview OS
 
 VALUE = {"direct": 1.0, "adjacent": 0.75, "method": 0.6, "unsupported": 0.0}
 RANK = {"unsupported": 0, "method": 1, "adjacent": 2, "direct": 3}
@@ -46,14 +47,27 @@ class Profile:
             cls = "direct" if row.get("committed") else row.get("class")
             if cls not in VALUE or not row.get("terms"):
                 raise ProfileError(f"capability {row.get('id')!r}: needs a valid class and terms")
-            self.capabilities.append({"id": row.get("id") or row["terms"][0], "label": row.get("label") or row["terms"][0],
-                                      "class": cls, "bucket": row.get("bucket") or "platform",
-                                      "rx": [term_regex(t) for t in row["terms"]], "terms": row["terms"]})
+            self.capabilities.append(
+                {
+                    "id": row.get("id") or row["terms"][0],
+                    "label": row.get("label") or row["terms"][0],
+                    "class": cls,
+                    "bucket": row.get("bucket") or "platform",
+                    "rx": [term_regex(t) for t in row["terms"]],
+                    "terms": row["terms"],
+                }
+            )
         for row in data.get("functions") or []:
             if row.get("class") not in VALUE or not row.get("terms"):
                 raise ProfileError("function: needs a valid class and terms")
-            self.functions.append({"class": row["class"], "label": row["terms"][0], "terms": row["terms"],
-                                   "rx": [term_regex(t) for t in row["terms"]]})
+            self.functions.append(
+                {
+                    "class": row["class"],
+                    "label": row["terms"][0],
+                    "terms": row["terms"],
+                    "rx": [term_regex(t) for t in row["terms"]],
+                }
+            )
         for row in self.exclusions:
             if not (row.get("terms") or row.get("patterns")):
                 raise ProfileError("exclusion: needs terms or patterns")
@@ -63,7 +77,9 @@ class Profile:
     def _best(rows, text):
         found = None
         for row in rows:
-            if any(rx.search(text) for rx in row["rx"]) and (found is None or RANK[row["class"]] > RANK[found["class"]]):
+            if any(rx.search(text) for rx in row["rx"]) and (
+                found is None or RANK[row["class"]] > RANK[found["class"]]
+            ):
                 found = row
         return found
 

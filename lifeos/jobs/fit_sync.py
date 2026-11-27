@@ -9,11 +9,13 @@ from lifeos.jobs import lanes, ledger, meta, store
 from lifeos.platform import notion_text
 from lifeos.platform.notion_client import NotionError, rich_text
 
-PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admission_reason, f.work_mode, f.lane, f.eligible,"
-        " j.lane, j.location_text, j.salary_text, j.route_evidence, d.full_text, j.title FROM v7_jobs j"
-        " JOIN v7_job_fit f ON f.job_id=j.id LEFT JOIN v7_job_descriptions d ON d.job_id=j.id"
-        " WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.score IS NOT NULL"
-        " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at OR j.meta_v IS NULL OR j.meta_v < %s) ORDER BY f.scored_at DESC, j.id LIMIT %s")
+PICK = (
+    "SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admission_reason, f.work_mode, f.lane, f.eligible,"
+    " j.lane, j.location_text, j.salary_text, j.route_evidence, d.full_text, j.title FROM v7_jobs j"
+    " JOIN v7_job_fit f ON f.job_id=j.id LEFT JOIN v7_job_descriptions d ON d.job_id=j.id"
+    " WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.score IS NOT NULL"
+    " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at OR j.meta_v IS NULL OR j.meta_v < %s) ORDER BY f.scored_at DESC, j.id LIMIT %s"
+)
 ROLE_PAGES, ROLE_BATCH = 5, 25
 
 
@@ -21,8 +23,11 @@ _now = store.now
 
 
 def properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta=None, title=None):
-    props = {"LIFE OS Fit": {"number": score}, "Why It Fits": {"rich_text": rich_text(line or "")},
-             "Fit Authority": {"select": {"name": "Authoritative"}}}
+    props = {
+        "LIFE OS Fit": {"number": score},
+        "Why It Fits": {"rich_text": rich_text(line or "")},
+        "Fit Authority": {"select": {"name": "Authoritative"}},
+    }
     if title:
         props["Role"] = {"rich_text": rich_text(title)}
     if gated and admission in lanes.ADMISSION_LABEL:
@@ -30,19 +35,32 @@ def properties(score, line, admission, reason, work_mode, lane, eligible, gated,
         props["Review Reason"] = {"rich_text": rich_text(reason if admission == lanes.REVIEW and reason else "")}
         if lane:
             props["Visible Lane"] = {"select": {"name": meta.VISIBLE_LANE_LABEL.get(lane, lane)}}
-        names = [n for n in (eligible or "").split(",") if n] or ([lanes.lane_for(row_meta["lane"])] if row_meta else [])
+        names = [n for n in (eligible or "").split(",") if n] or (
+            [lanes.lane_for(row_meta["lane"])] if row_meta else []
+        )
         if names:
             props["Eligible Lanes"] = {"multi_select": [{"name": n} for n in names]}
     if work_mode in ("remote", "hybrid", "onsite", "unknown"):
         props["Work Mode"] = {"select": {"name": work_mode.capitalize()}}
     if row_meta:
-        props.update(meta.properties(row_meta["location"], row_meta["salary"], row_meta["text"], row_meta["route"], eligible, lane or row_meta["lane"]))
+        props.update(
+            meta.properties(
+                row_meta["location"],
+                row_meta["salary"],
+                row_meta["text"],
+                row_meta["route"],
+                eligible,
+                lane or row_meta["lane"],
+            )
+        )
     return props
 
 
 def _mark_synced(job_id):
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute("UPDATE v7_jobs SET fit_synced_at=%s, meta_v=%s WHERE id=%s", (_now(), meta.META_VERSION, job_id))
+        cursor.execute(
+            "UPDATE v7_jobs SET fit_synced_at=%s, meta_v=%s WHERE id=%s", (_now(), meta.META_VERSION, job_id)
+        )
 
 
 def _plain(page_id):
@@ -59,7 +77,11 @@ def _empty_roles(client, counts):
     """
     found, cursor = {}, None
     for _ in range(ROLE_PAGES):
-        body = {"page_size": 100, "filter": {"property": "Role", "rich_text": {"is_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
+        body = {
+            "page_size": 100,
+            "filter": {"property": "Role", "rich_text": {"is_empty": True}},
+            **({"start_cursor": cursor} if cursor else {}),
+        }
         try:
             answer = client.call("POST", f"/data_sources/{client.source}/query", body)
         except NotionError:
@@ -82,7 +104,15 @@ def backfill_roles(client, live, limit=ROLE_BATCH):
     matched to v7_jobs by page id or Stable Job Key, so no stored flag stands in for a write. Writes the Role
     property only. Counts say why an empty page was left: no job row, no title, or not a job page.
     """
-    counts = {"role_empty": 0, "role_due": 0, "role_filled": 0, "role_failed": 0, "role_no_row": 0, "role_no_title": 0, "role_not_job": 0}
+    counts = {
+        "role_empty": 0,
+        "role_due": 0,
+        "role_filled": 0,
+        "role_failed": 0,
+        "role_no_row": 0,
+        "role_no_title": 0,
+        "role_not_job": 0,
+    }
     empty = _empty_roles(client, counts)
     if not empty:
         return counts
@@ -91,9 +121,12 @@ def backfill_roles(client, live, limit=ROLE_BATCH):
     keys = {key: page_id for page_id, key in empty.items() if key}
     counts["role_not_job"] = len([1 for key in empty.values() if not key])
     with store.connect() as connection, connection.cursor() as cursor_:
-        marks = lambda n: ", ".join(["%s"] * n)                               # noqa: E731
+        marks = lambda n: ", ".join(["%s"] * n)  # noqa: E731
         ids = list(empty) + [_plain(page_id) for page_id in empty]
-        cursor_.execute(f"SELECT notion_page_id, dedupe_key, title FROM v7_jobs WHERE notion_page_id IN ({marks(len(ids))}) OR dedupe_key IN ({marks(len(keys) or 1)})", (*ids, *(keys or ("",))))
+        cursor_.execute(
+            f"SELECT notion_page_id, dedupe_key, title FROM v7_jobs WHERE notion_page_id IN ({marks(len(ids))}) OR dedupe_key IN ({marks(len(keys) or 1)})",
+            (*ids, *(keys or ("",))),
+        )
         rows = cursor_.fetchall()
     titles, seen = {}, set()
     for page_id, key, title in rows:
@@ -129,10 +162,34 @@ def run(client, live, gated=False, limit=150):
     counts["due"] = len(rows)
     if not live:
         return counts
-    for job_id, page_id, score, line, admission, reason, work_mode, lane, eligible, job_lane, location, salary, route, text, title in rows:
+    for (
+        job_id,
+        page_id,
+        score,
+        line,
+        admission,
+        reason,
+        work_mode,
+        lane,
+        eligible,
+        job_lane,
+        location,
+        salary,
+        route,
+        text,
+        title,
+    ) in rows:
         row_meta = {"lane": job_lane, "location": location, "salary": salary, "route": route, "text": text}
         try:
-            client.call("PATCH", f"/pages/{page_id}", {"properties": properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta, title)})
+            client.call(
+                "PATCH",
+                f"/pages/{page_id}",
+                {
+                    "properties": properties(
+                        score, line, admission, reason, work_mode, lane, eligible, gated, row_meta, title
+                    )
+                },
+            )
         except NotionError as error:
             state = ledger.page_state(client, page_id)
             if state == "gone":
