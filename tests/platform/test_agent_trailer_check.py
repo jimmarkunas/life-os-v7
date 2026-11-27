@@ -11,8 +11,8 @@ OK = "[LIFE-1] x\n\nCo-Authored-By: Someone\nAgent: MC01"
 EVENT = {"pull_request": {"number": 7, "body": "text\n\nAgent: OC"}}
 
 
-def go(body, commits, name="pull_request", raises=False):
-    event = {"pull_request": {"number": 7, "body": body}}
+def go(body, commits, name="pull_request", raises=False, created="2026-12-01T00:00:00Z"):
+    event = {"pull_request": {"number": 7, "body": body, "created_at": created}}
 
     def fetch(*_):
         if raises:
@@ -47,6 +47,11 @@ class Trailer(unittest.TestCase):
     def test_a_trailer_among_other_trailers_counts(self):
         message = "x\n\nCo-Authored-By: A\nAgent: OC\nSigned-off-by: B"
         self.assertEqual(go("Agent: OC", [("c" * 40, message)])[0], 0)
+
+    def test_a_pull_request_opened_before_the_rule_began_is_never_checked(self):
+        code, text = go("none", [("a" * 40, "none")], created="2026-11-27T22:00:00Z")
+        self.assertEqual((code, "before the rule began" in text), (0, True))
+        self.assertEqual(go("none", [("a" * 40, "none")], created="2026-11-28T00:00:00Z")[0], 1)  # from the cutoff on
 
     def test_only_a_pull_request_event_is_checked(self):
         self.assertEqual(go("none", [("a" * 40, "none")], name="merge_group")[0], 0)

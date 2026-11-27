@@ -4,7 +4,7 @@ Jim, Nov 27 2026 (LIFE-1096). MC01, OC and Codex work in the same repository at 
 
 ## Agent trailer
 
-Every commit and every pull request description carries one line `Agent: MC01`, `Agent: OC` or `Agent: Codex` (a human-made pull request may use `Agent: Jim`). Put it last in the commit message, after any `Co-Authored-By` line. The pull request also carries the label `agent:mc01`, `agent:oc` or `agent:codex` (`gh pr create --label agent:mc01`). The check `tools/agent_trailer_check.py` runs in the required `unit-tests` job and fails a pull request that has a commit or a description without the trailer. It never reads or writes secrets and does not run on the merge queue.
+Every commit and every pull request description carries one line `Agent: MC01`, `Agent: OC` or `Agent: Codex` (a human-made pull request may use `Agent: Jim`). Put it last in the commit message, after any `Co-Authored-By` line. The pull request also carries the label `agent:mc01`, `agent:oc` or `agent:codex` (`gh pr create --label agent:mc01`). The check `tools/agent_trailer_check.py` runs in the required `unit-tests` job and fails a pull request that has a commit or a description without the trailer. It never reads or writes secrets and does not run on the merge queue. It applies to pull requests opened from Nov 27 2026, 6:00 PM CT; a pull request opened earlier is never checked, so work in flight is not held up.
 
 ## One Production Contract editor at a time
 

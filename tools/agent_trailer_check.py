@@ -13,6 +13,8 @@ import re
 import sys
 import urllib.request
 
+# Pull requests opened before this moment (Nov 27 2026, 6:00 PM CT) are never checked, so work already in flight is not held up.
+FROM = "2026-11-28T00:00:00Z"
 TRAILER = re.compile(r"^Agent: (MC01|OC|Codex|Jim)[ \t]*$", re.MULTILINE)
 NAMES = "MC01, OC, Codex or Jim"
 
@@ -43,6 +45,9 @@ def run(event_name, event, repo, token, fetch=fetch_commits, out=sys.stdout):
         out.write("agent trailer: skipped (not a pull request event)\n")
         return 0
     pull = event["pull_request"]
+    if str(pull.get("created_at") or "") < FROM:  # ISO times in one format sort as text; a missing time is checked
+        out.write("agent trailer: skipped (pull request opened before the rule began)\n")
+        return 0
     try:
         commits = fetch(repo, pull["number"], token)
     except Exception:  # noqa: BLE001
