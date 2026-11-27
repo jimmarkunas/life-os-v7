@@ -260,15 +260,25 @@ def dispatch(mcp, client, args):
         child = f"{args['ticket']}/{name}"
         child_task = _inspect_task(mcp, child)
         if not child_task:
-            mcp.call("start_work", {"task_id": child, "parent_task_id": args["ticket"], "agent_id": mcp.agent_id,
-                                     "kind": "orchestrator", "title": f"Dispatch {args['ticket']} to {name}", "expected_files": []})
+            try:
+                mcp.call("start_work", {"task_id": child, "parent_task_id": args["ticket"], "agent_id": mcp.agent_id,
+                                         "kind": "orchestrator", "title": f"Dispatch {args['ticket']} to {name}", "expected_files": []})
+            except Refuse as error:
+                if error.reason == "concord_refused":
+                    raise Refuse("child_start_failed") from None
+                raise
             child_task = _inspect_task(mcp, child)
         version = _version(child_task)
         if not version or _task_owner(child_task) != mcp.agent_id:
             raise Refuse("handoff_unavailable")
-        offer = mcp.call("transfer_work", {"action": "offer", "task_id": child, "to_agent_id": target_id,
-                                           "expected_version": version, "what_changed": _clip(args["text"], 4000),
-                                           "reason": f"Dispatch from {client} for {args['ticket']}"})
+        try:
+            offer = mcp.call("transfer_work", {"action": "offer", "task_id": child, "to_agent_id": target_id,
+                                               "expected_version": version, "what_changed": _clip(args["text"], 4000),
+                                               "reason": f"Dispatch from {client} for {args['ticket']}"})
+        except Refuse as error:
+            if error.reason == "concord_refused":
+                raise Refuse("handoff_offer_failed") from None
+            raise
         handoff = _find(offer, ("handoffId", "handoff_id"))
         if handoff is None:
             raise Refuse("handoff_unavailable")
