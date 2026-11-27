@@ -1,37 +1,31 @@
 """Jobs on HOLD for a week are excluded (EXCLUDED_UNRESOLVED), so the newsletter mail that holds them open can close.
 
-HOLD means retries ran out. After HOLD_DAYS the job becomes EXCLUDED_UNRESOLVED: terminal, never published, never
-retried. A worthwhile HOLD job gets ONE more try through the normal path from day 6; one still HOLD, NEW or RESOLVED
-RECOVERY_HOURS after its try is excluded as `unresolved_after_recovery`, so the latest exclusion is day 7. Counts
+HOLD means retries ran out. After HOLD_DAYS the job becomes EXCLUDED_UNRESOLVED (terminal). A worthwhile HOLD job gets
+one more try from day 6; one still unresolved RECOVERY_HOURS later is excluded as `unresolved_after_recovery`. Counts
 only.
 """
-# Nothing retries a HOLD job, so a newsletter mail would never close without this: it closes only when every job has
-# an outcome.
 from datetime import datetime, timedelta
 
 from lifeos.jobs import lanes, store
 from lifeos.platform import limits
 
 HOLD_DAYS = 7
-RECOVER_DAYS = 6  # a hold is recovered from day 6 ...
-# ... for this long, then the job has this long to leave NEW / RESOLVED: 6 days + 12 h + 12 h = seven days
+RECOVER_DAYS = 6
 RECOVERY_HOURS = 12
 RECOVER_PER_RUN = 25
 EXCLUDED = "EXCLUDED_UNRESOLVED"
 REASON = "hold_expired"
 FAILED_RECOVERY = "unresolved_after_recovery"
-# the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
+# the sources a resolve stage reads
 RESOLVED_BY = ("jobright", "linkedin-alerts", "linkedin-search", "dice")
 # a retired source's NEW or HOLD jobs end EXCLUDED_UNRESOLVED with this reason
 RETIRED = {"lensa": "source_retired_lensa"}
-# no resolve stage reads Open Jobs
 RETIRED["web:openjobs"] = "source_retired_openjobs"
 
 
 def worthwhile(lane, posted, first_seen, reason, now):
     if str(reason or "").startswith(("closed", "dup")):
         return False
-    # still inside its lane's admission age; an unknown lane is not worthwhile (fail closed)
     policy = lanes.POLICIES.get(lanes.lane_for(lane))
     return bool(policy) and (now.date() - (posted or first_seen.date())).days <= policy.max_age_days
 
@@ -48,7 +42,7 @@ def recover(cursor, now, live):
                        (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
         if cursor.rowcount:
             done.append((job_id, key))
-    if done:  # read-back: the same jobs in the state written
+    if done:  # read-back
         cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status=CASE WHEN final_apply_url IS NULL THEN 'NEW' ELSE 'RESOLVED' END AND unresolved_reason='recovery_retry' "
                        "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
         if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
@@ -56,18 +50,15 @@ def recover(cursor, now, live):
     return len(picked), len(done)
 
 
-RELEASE_AT = datetime(2026, 10, 26, 0, 5)  # UTC; holds older than this are released by release()
-# UTC; before this, a hold no reader can help (wrong link, refused page) goes at once
-EARLY_AT = datetime(2026, 10, 25, 23, 25)
-# wait for the TinyFish Fetch day cap to reset; retried earlier they would fail again
+RELEASE_AT = datetime(2026, 10, 26, 0, 5)  # UTC
+EARLY_AT = datetime(2026, 10, 25, 23, 25)  # UTC
 NEEDS_READER = ("jd_thin", "description_empty", "description_empty_tf")
 
 
 def release(cursor, now, live):
-    """One-off: every worthwhile job on HOLD before RELEASE_AT gets its recovery retry now instead of on day 6, once each.
-    One that fails again is excluded as `unresolved_after_recovery`.
+    """Give worthwhile jobs on HOLD before RELEASE_AT their recovery retry now, once each. -> (candidates, released).
 
-    An employer-board job (web:*) with no final link goes back to RESOLVED on its own page. -> (candidates, released).
+    An employer-board job (web:*) with no final link goes back to RESOLVED on its own page.
     """
     if now < EARLY_AT:
         return 0, 0
@@ -83,7 +74,7 @@ def release(cursor, now, live):
                        (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
         if cursor.rowcount:
             done.append((job_id, key))
-    if done:  # read-back: out of HOLD with the reason, time and counters written
+    if done:  # read-back
         cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status IN ('NEW', 'RESOLVED') AND unresolved_reason='recovery_retry' "
                        "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
         if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
@@ -91,18 +82,17 @@ def release(cursor, now, live):
     return len(picked), len(done)
 
 
-MISMATCH_AT = datetime(2026, 10, 31, 10, 0)  # a link_mismatch hold from before this time gets its one retry now
+MISMATCH_AT = datetime(2026, 10, 31, 10, 0)  # holds for link_mismatch before this get one retry
 LINKEDIN_VIEW = "https://www.linkedin.com/jobs/view/"
 
 
 def mismatch_release(cursor, now, live):
-    """One-off: every worthwhile job held for link_mismatch before MISMATCH_AT gets its recovery retry now, once each.
+    """Give worthwhile jobs held for link_mismatch before MISMATCH_AT one recovery retry. -> (candidates, released).
 
-    A LinkedIn row takes its own LinkedIn posting as an aggregator link and Enrich reads it next; any other row a
-    resolve stage reads goes back to NEW with one attempt left. A row another job already holds, or that nothing can
-    retry, stays for the seven-day rule. -> (candidates, released).
+    A LinkedIn row takes its own LinkedIn posting as an aggregator link; another row a resolve stage
+    reads goes back to NEW.
     """
-    from lifeos.jobs.resolve.aggregators import li_apply                     # noqa: PLC0415 - as enrich imports it
+    from lifeos.jobs.resolve.aggregators import li_apply                     # noqa: PLC0415
     cursor.execute("SELECT id, lane, posted_date, first_seen, source, source_url, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL "
                    "AND unresolved_reason='link_mismatch' AND updated_at < %s ORDER BY updated_at, id", (MISMATCH_AT,))
     picked = []
@@ -140,8 +130,8 @@ DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (st
 
 
 def run(limit, live, now=None):
-    from lifeos.jobs.retention import _now                                  # noqa: PLC0415 - one clock for the jobs stages
-    # the DATETIME columns keep whole seconds, so the read-back compares the stored value
+    from lifeos.jobs.retention import _now                                  # noqa: PLC0415
+    # DATETIME keeps whole seconds
     now = (now or _now()).replace(microsecond=0)
     due_at = (now - timedelta(days=HOLD_DAYS), now - timedelta(hours=RECOVERY_HOURS))
     with store.connect() as connection:

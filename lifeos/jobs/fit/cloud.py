@@ -1,17 +1,11 @@
 """The switchable cloud-Fit shadow: V7_CLOUD_FIT = off (default; unset or unknown) | shadow | canary | on (refused).
 
-shadow and canary ask Oracle's `fit1` verb (lifeos.jobs.fit.edge) for at most one judgment a tick. shadow stores
-the answer privately in the `cloud_*` columns of the job's v7_job_fit row and changes nothing visible. canary
-stores it as DEGRADED / CANARY_PROMOTION_FAILED, then the Fit stage's `promote` makes that job's accepted score
-its visible Fit; if promotion does not happen that failure stays (static score visible, run DEGRADED). Input: the
-Oracle-held profile brief named by V7_CLOUD_FIT_PROFILE_REF; without it nothing is sent. Failures are fixed codes
-shown as `cloud_fit=DEGRADED(<code>)`. Counts only in the log.
+shadow and canary ask Oracle's `fit1` verb (lifeos.jobs.fit.edge) for at most one judgment a tick. shadow stores the
+answer in the `cloud_*` columns of v7_job_fit and changes nothing visible; canary also promotes the accepted score to
+the visible Fit. Input: the brief named by V7_CLOUD_FIT_PROFILE_REF (without it nothing is sent). Failures are fixed
+codes shown as `cloud_fit=DEGRADED(<code>)`. Counts only in the log.
 """
-# Candidates are READY / RESOLVED jobs on a public employer / ATS posting (`public_posting`) that the precision audit
-# would keep (`audit_problem`), with no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and
-# `cloud_status IS NULL`. Up to SCAN are examined a run; one that cannot be sent is recorded SKIPPED at no network
-# cost, so an unsendable backlog never uses up the run's one call. A failure not about the one job is asked again on a
-# later tick.
+# Candidates: READY / RESOLVED public-posting jobs with no Ledger page, ADMIT or REVIEW, unexcluded, never asked.
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as wait_for
 from datetime import datetime
 import os
@@ -28,8 +22,7 @@ MODES = ("off", "shadow", "canary", "on")
 MAX_PER_RUN = 1
 SCAN = 25
 PUBLIC_SOURCES = ("ats_api", "ats_list", "jsonld", "next_data", "page_text")
-# The tick's Fit stage budget. Oracle's worst case is ~110 s, so one call (connect 15 s + READ_WAIT) fits and a second
-# never could.
+# the Fit stage budget: one call (connect 15 s + READ_WAIT) fits, a second never could
 STAGE_BUDGET = 240
 READ_WAIT = 150
 CALL_SECONDS = 15 + READ_WAIT
@@ -115,9 +108,7 @@ def parallel(environ):
 
 
 def public_posting(url, source):
-    """The final Apply URL is on an employer ATS (classify.ATS), or the web pass read the job off the employer's own
-    board. Dice, LinkedIn, aggregators, unknown newsletter hosts and URL-less jobs are refused.
-    """
+    """True when the Apply URL is on an employer ATS or the job was read off the employer's own board."""
     if not url:
         return False
     kind = classify.apply_kind(url)
@@ -125,18 +116,14 @@ def public_posting(url, source):
 
 
 def audit_problem(url, text, link_proof, source, company, title):
-    """The precision audit's verdict (lifeos.jobs.audit.judge) as an upper-case fixed code such as
-    AUDIT_URL_LISTING_URL, or None; such a row would be demoted, so no call is spent on it.
-    """
+    """The precision audit's verdict as a fixed code, or None; a flagged row gets no call."""
     watched = (source or "").startswith("web:titlewatch:") or lanes.on_keep_list(company, title)
     why = audit.judge(url, text, link_proof == "title", watched)
     return why.upper() if why else None
 
 
 def remaining(elapsed, budget=STAGE_BUDGET):
-    """Seconds this Fit stage may still run: the tick's own alarm when set, never more than `budget` from the stage's
-    start. Read without disturbing the alarm.
-    """
+    """Seconds the stage may still run: the tick's alarm when set, at most `budget` from the start."""
     own = budget - elapsed
     alarm = signal.getitimer(signal.ITIMER_REAL)[0]
     return min(own, alarm) if alarm > 0 else own
@@ -147,14 +134,12 @@ _now = store.now
 
 def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic, promote=None, batch=None, ledger_check=None):
     """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded,
-    cloud_promoted and the receipts' token sums. Called by the Fit stage after its static write (at most one call)
-    or by the backlog stage with `batch` ({"calls": n, "budget": seconds}; it never reads V7_CLOUD_FIT).
+    cloud_promoted and token sums.
 
-    Every asked job is first CLAIMED (one conditional write with this run's token) so two workers never ask the
-    same job, and its result is written right after its call. A refusal before any model call (BUSY, REFUSED_*)
-    releases the claim and stops the run; any other failure is recorded on the row, so a call that may have run is
-    never repeated. A batch may keep up to V7_CLOUD_FIT_PARALLEL calls in flight: only the calls run at once;
-    claims, writes, promotions and counts stay on this thread.
+    Called by the Fit stage (at most one call) or the backlog stage with `batch` ({"calls": n, "budget": seconds}).
+    Each asked job is first CLAIMED so two workers never ask the same job. A refusal before any model call releases
+    the claim and stops the run; any other failure is recorded on the row, so a call that may have run is never
+    repeated. Claims, writes, promotions and counts stay on this thread.
     """
     counts = {"cloud_fit": "backlog" if batch else mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0, "cloud_skip_reasons": {},
               "cloud_promoted": 0, "cloud_failed": 0, "cloud_claim_lost": 0, **{k: 0 for k in USAGE_SUMS}, "cloud_usage_unavailable": 0}
@@ -217,9 +202,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     state = {"lanes": parallel(environ) if batch else 1, "stop": False}
 
     def settle(job_id, sent, fingerprint, call):
-        """One sent call's outcome (the answer, or its EdgeError): recorded, counted and promoted on the run's own
-        thread. Sets state["stop"] when no further call may be sent.
-        """
+        """Record, count and promote one call's outcome; sets state["stop"] when no further call may be sent."""
         try:
             got = call()
         except edge.EdgeError as error:
@@ -353,12 +336,9 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
 
 
 def usage_ok(u):
-    """The receipt's counts are usable only when input, output and total are non-negative integers that add up
-    EXACTLY under one of the two conventions providers use:
-      cache inside input:  total = input + output, with cached (when present) <= input;
-      cache outside input: total = input + cached + cache writes + output (writes: an integer, or omitted = 0).
-    Cached and reasoning counts may be omitted or "unavailable"; any other present value must be an integer. Never
-    estimated.
+    """True when input, output and total are non-negative integers that add up (cache inside or outside input).
+
+    Cached and reasoning counts may be omitted or "unavailable"; any other value must be an integer.
     """
     if not isinstance(u, dict) or not all(type(u.get(k)) is int and u[k] >= 0 for k in ("input_tokens", "output_tokens", "total_tokens")):
         return False
@@ -377,11 +357,7 @@ def usage_ok(u):
 
 
 def quota_summary(readings):
-    """The meter readings this run's calls were admitted on (oldest first) -> per window the first and last used
-    percent, its reset in Central time, and an ESTIMATE from the rises between readings: percent per call and
-    calls left before the stop. A window that did not move is below the meter's 1 % resolution: an upper bound per
-    call, never "0 %". A fall is a reset and starts a new segment.
-    """
+    """Meter readings (oldest first) -> per window used percent, reset in Central time and a per-call estimate."""
     readings = [r for r in readings if r]
     if not readings:
         return None

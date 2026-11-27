@@ -1,9 +1,8 @@
 """Enrich stage: read the FINAL page of RESOLVED rows for description, posting date, liveness and match.
 
-Description source order: ATS API (Greenhouse, Lever) -> schema.org JobPosting JSON-LD -> readable page text.
-Outcomes: READY | CLOSED | EXCLUDED_STALE (older than the job's lane policy allows) | back to NEW (page does not
-match the job: a wrong link is never published) | pending with a fixed reason when the page cannot be read. Plain
-HTTP only. Counts only.
+Description order: ATS API (Greenhouse, Lever) -> JobPosting JSON-LD -> page text. Outcomes: READY | CLOSED |
+EXCLUDED_STALE | back to NEW (page does not match the job) | pending with a fixed reason. Plain HTTP only. Counts
+only.
 """
 from datetime import date, datetime, timedelta, timezone
 import html as htmllib
@@ -94,9 +93,6 @@ def board_of(source):
 
 
 def board_job_url(board, url):
-    """The board's own job URL for a job listed on that board but linked to the employer's site (often a JavaScript
-    careers page that reads as jd_thin).
-    """
     kind, slug = board
     if kind == "greenhouse":
         ident = re.search(r"[?&](?:gh_jid|token)=(\d+)", url or "") or re.search(r"/(\d{6,})(?:[/?#]|$)", urlsplit(url or "").path + "/")
@@ -114,9 +110,8 @@ def _title_words_in(want, html):
 
 
 def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
-    """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an
-    ambiguous link shape on provenance, so the page must prove identity by title. board: (kind, slug) of the ATS
-    board it was listed on.
+    """Facts for one final URL, with fixed outcome codes; proof='unproven' means the page must prove identity by
+    title.
     """
     problem = quality.link_problem(url)
     strict = bool(problem) and proof == "unproven" and problem in quality.AMBIGUOUS
@@ -219,9 +214,8 @@ def _as_date(value):
 
 
 def accepted_date(old, old_source, new, new_source="employer"):
-    """-> (posting date, source) to store. No date keeps what is stored; a weaker source never replaces a stronger
-    one; between equal sources the EARLIEST date wins, so a repost cannot make an old job look new. Never invents
-    a date.
+    """-> (posting date, source) to store: a weaker source never replaces a stronger; between equal sources the
+    earliest wins.
     """
     old_source = old_source or ("employer" if old else None)
     if new is None:
@@ -240,9 +234,6 @@ BOARD_HOST_COMPANY = r"(^| )(com|io|net|org|co|wd[0-9]+|myworkdayjobs)( |$)"
 
 
 def save_description(cursor, job_id, result, now=None):
-    """The one writer of a job's stored description (v7_job_descriptions). The Fit stage re-scores a job whose stored
-    fingerprint no longer matches its score, so this write tells Fit a posting changed.
-    """
     d = result["description"]
     cursor.execute(
         "INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements,"
@@ -310,9 +301,8 @@ def _first_party_over_age(now):
 
 
 def relink_first_party(cursor, now=None):
-    """A first-party career-page job (source web:*) has no resolver: its link IS its own page. When an audit or
-    Enrich bounced it back to NEW or HOLD, put it back to RESOLVED with its own URL if that passes the link test.
-    A mismatch counts resolve_attempts; a HOLD is retried at most once a day. Returns the number requeued.
+    """Put a first-party job (source web:*) bounced to NEW or HOLD back to RESOLVED with its own URL when it passes
+    the link test. -> count.
     """
     now = now or _now()
     cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND (resolve_attempts < %s OR status='HOLD') AND "
@@ -374,9 +364,7 @@ def mismatch_report(results, urls, source_of, previous):
 
 
 def run(limit, live, drain=False):
-    """drain: the backlog pass at the end of a tick. It never spends the TinyFish Fetch day cap, and a page that
-    would need that fallback is left as it is for the hourly pass.
-    """
+    """drain: the backlog pass; it never spends the TinyFish Fetch day cap."""
     relinked = 0
     with store.connect() as connection:
         store.ensure_schema(connection)
@@ -398,13 +386,13 @@ def run(limit, live, drain=False):
         url = quality.canonical_job_url(url)
         target = url
         if kind == "easy_apply" or "linkedin.com" in (urlsplit(url).hostname or ""):
-            from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
+            from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - the public guest page carries the JD
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         try:
             result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id), lanes.first_party_source(source_of.get(job_id)),
                                board_of(source_of.get(job_id)))
-        except Exception as error:                                   # noqa: BLE001 - one unreadable page must never stop the rest of the batch (D83)
+        except Exception as error:                                   # noqa: BLE001 - one unreadable page never stops the batch
             result = {"outcome": "blocked", "reason": "read_" + type(error).__name__.lower()[:30]}
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
             result["reason"] = TRIED_REASON
@@ -435,11 +423,10 @@ def run(limit, live, drain=False):
 
 
 def linkedin_page(results, source_of, page_of):
-    """A LinkedIn row whose employer link failed the title match takes its own LinkedIn posting, flagged
-    `aggregator`, and Enrich proves that page next (going back to NEW would let the resolver find the same link
-    until HOLD). A row already on LinkedIn goes back to NEW. -> the number switched.
+    """A LinkedIn row whose employer link failed the title match takes its own LinkedIn posting for Enrich to prove
+    next. -> count.
     """
-    from lifeos.jobs.resolve.aggregators import li_apply                    # noqa: PLC0415 - as run() imports it
+    from lifeos.jobs.resolve.aggregators import li_apply                    # noqa: PLC0415
     switched = 0
     for job_id, result in results:
         own = page_of.get(job_id) or ""
@@ -467,9 +454,8 @@ def _swap(results, counts, i, result):
 
 
 def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_ids=()):
-    """Rendered-fetch fallback: ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS
-    API gave no usable page. Reads evidence only and never changes final_apply_url. Counted against the daily cap
-    BEFORE sending.
+    """One TinyFish Fetch of an already-resolved final URL when plain HTTP and the ATS API gave no usable page;
+    counted against the daily cap first.
     """
     titles = {job_id: (url, title) for job_id, url, title, _, _ in rows}
     tried = {job_id for job_id, _, _, _, prev in rows if prev == TRIED_REASON}
