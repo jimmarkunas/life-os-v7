@@ -34,6 +34,9 @@ class Wireframe(unittest.TestCase):
                     "bulleted_list_item",
                     "paragraph",
                     "bulleted_list_item",
+                    "paragraph",
+                    "bulleted_list_item",
+                    "toggle",
                     "toggle",
                     "paragraph",
                 ],
@@ -52,9 +55,11 @@ class Wireframe(unittest.TestCase):
                 for c in columns
             ]
             self.assertEqual(
-                numbers, [[("3", None), ("1", "red")], [("2", "red"), ("1", None)]]
+                numbers, [[("3", None), ("1", "red")], [("2", "red"), ("3", None)]]
             )  # Blocked and Overdue red above 0
-            self.assertEqual(columns[1]["children"][1]["children"][1]["rich"][1][0], "\n1 auto-closed · 0 by hand")
+            self.assertEqual(
+                columns[1]["children"][1]["children"][1]["rich"][1][0], "\n1 by hand · 1 auto · 1 before tracking"
+            )
             self.assertEqual(
                 specs[3]["children"][0]["rich"][0][0], f"{project}-11"
             )  # Sub-tasks nest under their parent
@@ -62,7 +67,8 @@ class Wireframe(unittest.TestCase):
                 specs[-1]["rich"][0][0],
                 f"Next sprints: {project} W49 2026 · {project} W50 2026 · {project} W51 2026 · {project} W52 2026",
             )
-            self.assertEqual(specs[-2]["rich"][0][0], "Done this week — 1")
+            self.assertEqual(specs[-3]["rich"][0][0], "Done this week — 3")
+            self.assertEqual(specs[-2]["rich"][0][0], "Cancelled this week (not delivered) — 1")
 
     def test_zero_counts_are_not_red_and_empty_sections_say_nothing(self):
         empty = {

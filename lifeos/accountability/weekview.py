@@ -12,6 +12,7 @@ from lifeos.platform import ct_stamp
 
 OPEN_SHOWN, DONE_SHOWN = 10, 8
 AUTO = "auto-closed"
+KIND_TEXT = {"delivered_manual": "by hand", "delivered_auto": AUTO, "unknown": "before tracking"}
 GRAY, RED = "gray", "red"
 CHI = ZoneInfo("America/Chicago")
 
@@ -86,10 +87,13 @@ def spec(week, today, site, project, now):
         week["overdue"],
         week["done"],
     )
+    scheduled, cancelled = week.get("overdue_scheduled") or [], week.get("cancelled") or []
     sub_count = sum(len(rows) for rows in subtasks.values())
     clock = ct_stamp.when(now)
     refreshed = clock.split(" · ", 1)[1]
-    auto = sum(1 for row in done if AUTO in (row.get("labels") or []))
+    kinds = [row.get("kind") for row in done]
+    auto, unknown = kinds.count("delivered_auto"), kinds.count("unknown")
+    by_hand = len(done) - auto - unknown
     title = f"{sprint_name(project, monday)} · {_day(monday)} – {_day(sunday)} ({clock})"
     tiles = node(
         "column_list",
@@ -100,7 +104,14 @@ def spec(week, today, site, project, now):
                 [],
                 [
                     _tile("📋", len(open_rows), "Sprint commitments", f"+ {sub_count} sub-tasks"),
-                    _tile("📅", len(overdue), "Overdue backlog", f"{project} · {refreshed}", True),
+                    _tile(
+                        "📅",
+                        len(overdue),
+                        "Overdue backlog",
+                        f"{project} · {refreshed}"
+                        + (f" · + {len(scheduled)} overdue in a future sprint" if scheduled else ""),
+                        True,
+                    ),
                 ],
             ),
             node(
@@ -108,7 +119,12 @@ def spec(week, today, site, project, now):
                 [],
                 [
                     _tile("⛔", len(blocked), "Blocked outside sprint", f"{project} · {refreshed}", True),
-                    _tile("✅", len(done), "Done this week", f"{auto} auto-closed · {len(done) - auto} by hand"),
+                    _tile(
+                        "✅",
+                        len(done),
+                        "Done this week",
+                        f"{by_hand} by hand · {auto} auto · {unknown} before tracking",
+                    ),
                 ],
             ),
         ],
@@ -135,10 +151,17 @@ def spec(week, today, site, project, now):
     done_url = read.jql_url(
         site, "issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done"
     )
+    scheduled_items = [
+        _bullet(_line(row, site, tail=[r(f" · {row['sprint']} · "), r(_due(row["due"]), None, False, RED)]))
+        for row in scheduled[:OPEN_SHOWN]
+    ] + [_more(len(scheduled), OPEN_SHOWN, outside_url)]
     done_items = [
-        _bullet(_line(row, site, tail=[r(" · " + AUTO)] if AUTO in (row.get("labels") or []) else []))
+        _bullet(_line(row, site, tail=[r(" · " + KIND_TEXT.get(row.get("kind"), "by hand"))]))
         for row in done[:DONE_SHOWN]
     ] + [_more(len(done), DONE_SHOWN, done_url)]
+    cancelled_body = [_bullet(_line(row, site)) for row in cancelled[:DONE_SHOWN]] + [
+        _more(len(cancelled), DONE_SHOWN, done_url)
+    ]
     done_body = [i for i in done_items if i is not None] or [node("paragraph", [r("Nothing.", None, False, GRAY)])]
     nxt = " · ".join(sprint_name(project, monday + timedelta(days=7 * n)) for n in range(1, 5))
     return (
@@ -146,10 +169,20 @@ def spec(week, today, site, project, now):
         + _section("Sprint commitments", len(open_rows), commitments)
         + _section("Blocked outside sprint", len(blocked), blocked_items)
         + _section("Overdue backlog", len(overdue), overdue_items)
-        + [
-            node("toggle", [r(f"Done this week — {len(done)}")], done_body),
-            node("paragraph", [r(f"Next sprints: {nxt}", None, False, GRAY)]),
-        ]
+        + (_section("Overdue in a future sprint", len(scheduled), scheduled_items) if scheduled else [])
+        + [node("toggle", [r(f"Done this week — {len(done)}")], done_body)]
+        + (
+            [
+                node(
+                    "toggle",
+                    [r(f"Cancelled this week (not delivered) — {len(cancelled)}")],
+                    [i for i in cancelled_body if i is not None],
+                )
+            ]
+            if cancelled
+            else []
+        )
+        + [node("paragraph", [r(f"Next sprints: {nxt}", None, False, GRAY)])]
     )
 
 
@@ -183,7 +216,13 @@ def _fixture(project):
         "subtasks_elsewhere": 0,
         "blocked": [row(f"{p}-21", "Blocked"), row(f"{p}-22", "Blocked")],
         "overdue": [row(f"{p}-20", "To Do", "2026-11-20")],
-        "done": [row(f"{p}-30", "Done", None, [AUTO])],
+        "overdue_scheduled": [{**row(f"{p}-23", "To Do", "2026-11-24"), "sprint": f"{p} W50 2026"}],
+        "done": [
+            {**row(f"{p}-30", "Done", None, [AUTO]), "kind": "delivered_auto"},
+            {**row(f"{p}-31", "Done"), "kind": "delivered_manual"},
+            {**row(f"{p}-32", "Done"), "kind": "unknown"},
+        ],
+        "cancelled": [{**row(f"{p}-33", "Done", None, ["superseded"]), "kind": "cancelled"}],
         "jql": f"project = {p}",
         "outside_jql": f"project = {p} AND sprint is EMPTY",
     }

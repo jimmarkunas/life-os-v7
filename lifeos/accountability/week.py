@@ -4,8 +4,19 @@ With V3_WEEK_VIEW exactly "on" (fail closed), BOTH boards get the sprint view as
 (lifeos.accountability.weekview); otherwise the plain weekly view."""
 
 import os
+from datetime import datetime
 
 from lifeos.accountability import common, read, region, render, switches, weekview
+
+
+def _since(environ=None):
+    """When manual/automatic closure tracking began (MEJ_AUTOMATION_SINCE, an ISO time with a zone), else None."""
+    raw = str((os.environ if environ is None else environ).get("MEJ_AUTOMATION_SINCE") or "").strip()
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00")) if raw else None
+    except ValueError:
+        return None
+    return moment if moment is not None and moment.tzinfo is not None else None
 
 
 def _build(client, block_id, person, project, jira, now, live, site, notion):
@@ -22,7 +33,7 @@ def _build(client, block_id, person, project, jira, now, live, site, notion):
 
 def _build_v3(client, block_id, person, project, jira, now, live, site, notion):
     today = now.date()
-    week = read.week(jira, project, today, v3_week_view=True)
+    week = read.week(jira, project, today, v3_week_view=True, since=_since())
     _, lines = render.week_view(week, today, site)
     stamp = render.stamp(now)
     out = region.write_tree(client, block_id, stamp, weekview.spec(week, today, site, project, now), live)
