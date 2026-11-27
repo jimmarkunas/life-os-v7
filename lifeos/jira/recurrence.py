@@ -10,7 +10,9 @@ from lifeos.platform.jira import JiraError
 from . import reconcile as rc
 from .boards import owned
 
-SERIES_FIELDS = "summary,description,assignee,priority,labels,parent,issuelinks,sprint,status,duedate,subtasks,issuetype"
+SERIES_FIELDS = (
+    "summary,description,assignee,priority,labels,parent,issuelinks,sprint,status,duedate,subtasks,issuetype"
+)
 CLOSURE_FIELDS = "labels,status,statuscategorychangedate,resolutiondate"
 NO_SPRINT = -1
 
@@ -23,7 +25,9 @@ def jobs(issues, next_id, configured=()):
     by_key = {i["key"]: i for i in issues}
     todo = []
     for root in plan["create"]:
-        members = [by_key[k] for k in found[root]["keys"] if ((rc._field(by_key[k], "sprint") or {}).get("id")) != marker]
+        members = [
+            by_key[k] for k in found[root]["keys"] if ((rc._field(by_key[k], "sprint") or {}).get("id")) != marker
+        ]
         latest = max(members, key=lambda m: rc.order(m["key"]))
         todo.append((root, latest["key"], rc.clone_fields(latest, 7)))
     return plan, todo
@@ -59,7 +63,10 @@ def for_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=
         for key, drift in plan["sync"]:
             writers.need("sync_fields")(key, drift)
             done["synced"] += 1
-        again, more = jobs(client.board_issues(board_id, "labels = recurring", SERIES_FIELDS), _next_sprint(client, project, board_id, now, tz, keys))
+        again, more = jobs(
+            client.board_issues(board_id, "labels = recurring", SERIES_FIELDS),
+            _next_sprint(client, project, board_id, now, tz, keys),
+        )
         if not more and not again["sync"]:
             return {**done, "series_stopped": plan["stopped"]}
         if attempt == 0 and sleep:
@@ -70,9 +77,10 @@ def for_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=
 
 
 def closures(client, board_id, since):
-    """-> this week's closure counts: closures_total, plus closures_manual and closures_automatic once `since` is set.
-    """
-    issues = client.board_issues(board_id, "statusCategory = Done AND statusCategoryChangedDate >= startOfWeek()", CLOSURE_FIELDS)
+    """-> this week's closure counts: closures_total, plus closures_manual and closures_automatic once `since` is set."""
+    issues = client.board_issues(
+        board_id, "statusCategory = Done AND statusCategoryChangedDate >= startOfWeek()", CLOSURE_FIELDS
+    )
     counts = rc.closure_counts(issues, since)
     out = {"closures_total": counts["total"]}
     if counts["split"]:
@@ -87,6 +95,7 @@ def extra(environ):
         out = for_board(client, project, board_id, now, tz, writers, live, keys, sleep)
         out.update(closures(client, board_id, since))
         return out
+
     return hook
 
 
@@ -97,7 +106,10 @@ def summary(total, live):
     counts = total.get("future_by_board") or {}
     if counts:
         target = total.get("future_target", 8)
-        line += " · future sprints " + ", ".join(f"{name} {count}" + (f" (over {target})" if count > target else "") for name, count in sorted(counts.items()))
+        line += " · future sprints " + ", ".join(
+            f"{name} {count}" + (f" (over {target})" if count > target else "")
+            for name, count in sorted(counts.items())
+        )
     if "closures_total" in total:
         line += f" · closed this week {total['closures_total']}"
         if "closures_automatic" in total:

@@ -1,4 +1,5 @@
 """Every issue a JQL matches, read through Jira's enhanced search API (token paging, bounded). Read only. Errors are fixed codes."""
+
 from lifeos.platform.jira import JiraError
 
 PAGE = 100

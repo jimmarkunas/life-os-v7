@@ -4,6 +4,7 @@ Shown number: the typed override if filled; else the stored number of a finished
 engine writes a finished week once (Source = Engine); the sheet week open at load (OPEN_AT_LOAD) is finalized once it
 ends unless overridden.
 """
+
 from datetime import date
 from urllib.parse import quote
 
@@ -13,9 +14,19 @@ from lifeos.platform import readback
 from lifeos.platform.notion_client import NotionError, rich_text
 
 JIM_SOURCE_TITLE = "Jim — MegIBOW weekly"
-OVERRIDE = {"Outreach": "Outreach override", "Scheduled": "Scheduled override", "Networking Calls": "Networking override", "Recruiter Calls": "Recruiter override",
-            "Company Calls": "Company override"}
-FIELDS = {"Week Start": "date", "Source": "select", **{a: "number" for a in C.ACTIVITIES}, **{o: "number" for o in OVERRIDE.values()}}
+OVERRIDE = {
+    "Outreach": "Outreach override",
+    "Scheduled": "Scheduled override",
+    "Networking Calls": "Networking override",
+    "Recruiter Calls": "Recruiter override",
+    "Company Calls": "Company override",
+}
+FIELDS = {
+    "Week Start": "date",
+    "Source": "select",
+    **{a: "number" for a in C.ACTIVITIES},
+    **{o: "number" for o in OVERRIDE.values()},
+}
 OPEN_AT_LOAD = date(2026, 11, 9)
 
 
@@ -44,7 +55,9 @@ def read(client, source_id):
         for row in page.get("results") or []:
             p = row.get("properties") or {}
             try:
-                week = monday(date.fromisoformat((((p.get("Week Start") or {}).get("date") or {}).get("start") or "")[:10]))
+                week = monday(
+                    date.fromisoformat((((p.get("Week Start") or {}).get("date") or {}).get("start") or "")[:10])
+                )
                 stored = {a: _number(p.get(a)) for a in C.ACTIVITIES}
                 over = {a: _number(p.get(o)) for a, o in OVERRIDE.items()}
             except ValueError:
@@ -55,8 +68,17 @@ def read(client, source_id):
                 ignored += 1
                 if stamp <= edited[week]:
                     continue
-            weeks[week], edited[week] = {"stored": None if all(n is None for n in stored.values()) else {a: n or 0 for a, n in stored.items()}, "over": over,
-                                         "source": ((p.get("Source") or {}).get("select") or {}).get("name") or "", "id": row.get("id")}, stamp
+            weeks[week], edited[week] = (
+                {
+                    "stored": None
+                    if all(n is None for n in stored.values())
+                    else {a: n or 0 for a, n in stored.items()},
+                    "over": over,
+                    "source": ((p.get("Source") or {}).get("select") or {}).get("name") or "",
+                    "id": row.get("id"),
+                },
+                stamp,
+            )
         if not page.get("has_more"):
             return weeks, ignored
         cursor = page.get("next_cursor")
@@ -68,7 +90,10 @@ def shown(week, current, row, engine):
     base = engine if week == current or row is None or row["stored"] is None else row["stored"]
     if base is None and all(n is None for n in over.values()):
         return None, frozenset()
-    return ({a: over[a] if over.get(a) is not None else (base or {}).get(a, 0) for a in C.ACTIVITIES}, frozenset(a for a in C.ACTIVITIES if over.get(a) is not None))
+    return (
+        {a: over[a] if over.get(a) is not None else (base or {}).get(a, 0) for a in C.ACTIVITIES},
+        frozenset(a for a in C.ACTIVITIES if over.get(a) is not None),
+    )
 
 
 def project(proj, rows):
@@ -88,8 +113,12 @@ def project(proj, rows):
 
 
 def _props(week, counts, source):
-    return {"Week": {"title": rich_text(f"Week of {week.strftime('%b')} {week.day}")}, "Week Start": {"date": {"start": week.isoformat()}}, "Source": {"select": {"name": source}},
-            **{a: {"number": counts[a]} for a in C.ACTIVITIES}}
+    return {
+        "Week": {"title": rich_text(f"Week of {week.strftime('%b')} {week.day}")},
+        "Week Start": {"date": {"start": week.isoformat()}},
+        "Source": {"select": {"name": source}},
+        **{a: {"number": counts[a]} for a in C.ACTIVITIES},
+    }
 
 
 def close(client, source_id, rows, proj, live):
@@ -104,15 +133,28 @@ def close(client, source_id, rows, proj, live):
         if w >= proj["current"] or engine is None:
             continue
         if row is None:
-            client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(w, engine, "Engine")})
+            client.call_once(
+                "POST",
+                "/pages",
+                {
+                    "parent": {"type": "data_source_id", "data_source_id": source_id},
+                    "properties": _props(w, engine, "Engine"),
+                },
+            )
             out["created"] += 1
             wanted[w] = engine
         elif w == OPEN_AT_LOAD and row["source"] == "Sheet" and all(n is None for n in row["over"].values()):
-            client.update_page_properties(row["id"], {**{a: {"number": engine[a]} for a in C.ACTIVITIES}, "Source": {"select": {"name": "Engine"}}})
+            client.update_page_properties(
+                row["id"],
+                {**{a: {"number": engine[a]} for a in C.ACTIVITIES}, "Source": {"select": {"name": "Engine"}}},
+            )
             out["finalized"] += 1
             wanted[w] = engine
     if wanted:
-        ok, _ = readback.confirmed(lambda: read(client, source_id)[0], lambda after: all((after.get(w) or {}).get("stored") == c for w, c in wanted.items()))
+        ok, _ = readback.confirmed(
+            lambda: read(client, source_id)[0],
+            lambda after: all((after.get(w) or {}).get("stored") == c for w, c in wanted.items()),
+        )
         if not ok:
             raise WeeklyError("MEGIBOW_WEEKLY_VERIFY_FAILED")
     return out

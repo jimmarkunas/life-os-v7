@@ -1,4 +1,5 @@
 """Read-only Jira execution snapshot per board, kept in the private database for the report. Output: counts only; keys, summaries and sprint names are private."""
+
 import os
 import time
 from datetime import datetime
@@ -17,20 +18,34 @@ SECTIONS = ("current_tasks", "next_tasks", "overdue", "blocked", "triage", "done
 def compact(issue):
     fields = issue.get("fields") or {}
     status = fields.get("status") or {}
-    return {"key": issue.get("key"), "summary": fields.get("summary") or "", "status": status.get("name") or "Unknown",
-            "category": (status.get("statusCategory") or {}).get("key") or "",
-            "type": (fields.get("issuetype") or {}).get("name") or "Unknown",
-            "priority": (fields.get("priority") or {}).get("name") or "Unspecified", "due": fields.get("duedate"),
-            "parent": (fields.get("parent") or {}).get("key"),
-            "parent_summary": ((fields.get("parent") or {}).get("fields") or {}).get("summary") or "",
-            "parent_type": (((fields.get("parent") or {}).get("fields") or {}).get("issuetype") or {}).get("name") or "",
-            "project": ((fields.get("project") or {}).get("key")) or str(issue.get("key") or "").rsplit("-", 1)[0],
-            "assignee": (fields.get("assignee") or {}).get("displayName")}
+    return {
+        "key": issue.get("key"),
+        "summary": fields.get("summary") or "",
+        "status": status.get("name") or "Unknown",
+        "category": (status.get("statusCategory") or {}).get("key") or "",
+        "type": (fields.get("issuetype") or {}).get("name") or "Unknown",
+        "priority": (fields.get("priority") or {}).get("name") or "Unspecified",
+        "due": fields.get("duedate"),
+        "parent": (fields.get("parent") or {}).get("key"),
+        "parent_summary": ((fields.get("parent") or {}).get("fields") or {}).get("summary") or "",
+        "parent_type": (((fields.get("parent") or {}).get("fields") or {}).get("issuetype") or {}).get("name") or "",
+        "project": ((fields.get("project") or {}).get("key")) or str(issue.get("key") or "").rsplit("-", 1)[0],
+        "assignee": (fields.get("assignee") or {}).get("displayName"),
+    }
 
 
 def _summary(sprint):
-    return None if not sprint else {"id": sprint.get("id"), "name": sprint.get("name"), "state": sprint.get("state"),
-                                    "start": sprint.get("startDate"), "end": sprint.get("endDate")}
+    return (
+        None
+        if not sprint
+        else {
+            "id": sprint.get("id"),
+            "name": sprint.get("name"),
+            "state": sprint.get("state"),
+            "start": sprint.get("startDate"),
+            "end": sprint.get("endDate"),
+        }
+    )
 
 
 def _by_start(sprints):
@@ -38,16 +53,26 @@ def _by_start(sprints):
 
 
 def gtv_work(client, board_id, epic):
-    tasks = [compact(i) for i in client.board_issues(board_id, f"parent = {epic} AND statusCategory != Done ORDER BY Rank ASC", FIELDS)]
+    tasks = [
+        compact(i)
+        for i in client.board_issues(board_id, f"parent = {epic} AND statusCategory != Done ORDER BY Rank ASC", FIELDS)
+    ]
     keys = [t["key"] for t in tasks]
     subs = []
     for start in range(0, len(keys), 50):
-        chunk = ",".join(keys[start:start + 50])
-        subs += [compact(i) for i in client.board_issues(board_id, f"parent in ({chunk}) AND statusCategory != Done ORDER BY Rank ASC", FIELDS)]
+        chunk = ",".join(keys[start : start + 50])
+        subs += [
+            compact(i)
+            for i in client.board_issues(
+                board_id, f"parent in ({chunk}) AND statusCategory != Done ORDER BY Rank ASC", FIELDS
+            )
+        ]
     return tasks + subs
 
 
-def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_epic=None, mej_task_focus=False, v3_week_view=False):
+def project_snapshot(
+    client, project, board_id, triage_all, now, keys=(), gtv_epic=None, mej_task_focus=False, v3_week_view=False
+):
     board = client.board(board_id)
     if str(board.get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
@@ -65,7 +90,11 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_ep
     # OFF BY DEFAULT: every project keeps the standard snapshot semantics. Only the explicit `mej_task_focus=True`
     # argument makes MEJ count Tasks/Stories/Bugs with Sub-tasks reachable from their parents; `v3_week_view=True`
     # gives every project the same standard-work view, so JFM and MEJ show the same weekly commitments.
-    work_type = "issuetype != Epic AND issuetype != Sub-task" if (project == "MEJ" and mej_task_focus) or v3_week_view else "issuetype != Epic"
+    work_type = (
+        "issuetype != Epic AND issuetype != Sub-task"
+        if (project == "MEJ" and mej_task_focus) or v3_week_view
+        else "issuetype != Epic"
+    )
 
     def tasks(sprint):
         if not sprint or sprint.get("id") is None:
@@ -75,29 +104,51 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_ep
     triage_type = work_type if triage_all else "issuetype = Task"
     gtv = gtv_work(client, board_id, gtv_epic) if gtv_epic and gtv_epic.split("-")[0] == project else None
     done = issues(f"{work_type} AND sprint = {active[0]['id']} AND statusCategory = Done") if active else []
-    return {"schema": SCHEMA_V, "project": project, "taken_at": now.isoformat(), "timezone": LOCAL_TZ,
-            "board": {"id": board_id, "name": board.get("name")},
-            "current_sprint": _summary(current), "next_sprint": _summary(following),
-            "current_tasks": tasks(current), "next_tasks": tasks(following),
-            "overdue": issues(f'project = {project} AND {work_type} AND statusCategory != Done AND duedate < "{today}"'),
-            "blocked": issues(f"project = {project} AND {work_type} AND status = blocked"),
-            "triage": issues(f"project = {project} AND sprint is EMPTY AND {triage_type} AND statusCategory != Done"),
-            "done": done, "gtv": gtv}
+    return {
+        "schema": SCHEMA_V,
+        "project": project,
+        "taken_at": now.isoformat(),
+        "timezone": LOCAL_TZ,
+        "board": {"id": board_id, "name": board.get("name")},
+        "current_sprint": _summary(current),
+        "next_sprint": _summary(following),
+        "current_tasks": tasks(current),
+        "next_tasks": tasks(following),
+        "overdue": issues(f'project = {project} AND {work_type} AND statusCategory != Done AND duedate < "{today}"'),
+        "blocked": issues(f"project = {project} AND {work_type} AND status = blocked"),
+        "triage": issues(f"project = {project} AND sprint is EMPTY AND {triage_type} AND statusCategory != Done"),
+        "done": done,
+        "gtv": gtv,
+    }
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     from lifeos.platform.jira import Jira
+
     configured = boards(environ)
     client = client or Jira.from_env(environ)
     now = now or datetime.now(ZoneInfo(LOCAL_TZ))
-    total = {"projects": len(configured), "ok": 0, "failed": 0, "saved": 0, "current": 0, "next": 0, "overdue": 0,
-             "blocked": 0, "triage": 0, "done": 0, "why": {}}
+    total = {
+        "projects": len(configured),
+        "ok": 0,
+        "failed": 0,
+        "saved": 0,
+        "current": 0,
+        "next": 0,
+        "overdue": 0,
+        "blocked": 0,
+        "triage": 0,
+        "done": 0,
+        "why": {},
+    }
     built = []
     seen = {section: set() for section in SECTIONS}
     keys = [entry[0] for entry in configured]
     for position, (project, board_id, triage_all, _) in enumerate(configured, 1):
         try:
-            snap = project_snapshot(client, project, board_id, triage_all, now, keys, (environ.get("JIRA_GTV_EPIC") or "").strip() or None)
+            snap = project_snapshot(
+                client, project, board_id, triage_all, now, keys, (environ.get("JIRA_GTV_EPIC") or "").strip() or None
+            )
         except JiraError as error:
             total["failed"] += 1
             code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"
@@ -108,8 +159,14 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             snap[section] = [i for i in snap[section] if i["key"] not in seen[section]]
             seen[section].update(i["key"] for i in snap[section])
         built.append(snap)
-        for key, field in (("current", "current_tasks"), ("next", "next_tasks"), ("overdue", "overdue"),
-                           ("blocked", "blocked"), ("triage", "triage"), ("done", "done")):
+        for key, field in (
+            ("current", "current_tasks"),
+            ("next", "next_tasks"),
+            ("overdue", "overdue"),
+            ("blocked", "blocked"),
+            ("triage", "triage"),
+            ("done", "done"),
+        ):
             total[key] += len(snap[field])
     if live and built:
         with (connect or __import__("lifeos.platform.db", fromlist=["connect"]).connect)() as connection:
@@ -118,7 +175,9 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
                 store.save(connection, snap)
                 total["saved"] += 1
     if total["failed"]:
-        raise JiraError(f"JIRA_SNAPSHOT_FAILED:{total['failed']}of{total['projects']}:" + ",".join(sorted(total["why"])))
+        raise JiraError(
+            f"JIRA_SNAPSHOT_FAILED:{total['failed']}of{total['projects']}:" + ",".join(sorted(total["why"]))
+        )
     return total
 
 
@@ -126,19 +185,30 @@ def probe(limit, live, environ=os.environ, client=None):
     """Read-only layout check, counts only: per board, its active and future sprint counts and, per active sprint, how
     many issues each project has in it."""
     from lifeos.platform.jira import Jira
+
     configured = boards(environ)
     client = client or Jira.from_env(environ)
     out = {"boards": len(configured), "layout": {}}
     for position, (project, board_id, _, _) in enumerate(configured, 1):
-        entry = {"scrum": int(str(client.board(board_id).get("type", "")).lower() == "scrum"),
-                 "active": 0, "future": len(client.sprints(board_id, "future")), "sprints": []}
+        entry = {
+            "scrum": int(str(client.board(board_id).get("type", "")).lower() == "scrum"),
+            "active": 0,
+            "future": len(client.sprints(board_id, "future")),
+            "sprints": [],
+        }
         active = client.sprints(board_id, "active")
         entry["active"] = len(active)
         for sprint in active:
-            counts = {str(i): len(client.sprint_issues(int(sprint["id"]), f"project = {key}", "summary"))
-                      for i, (key, _, _, _) in enumerate(configured, 1)}
+            counts = {
+                str(i): len(client.sprint_issues(int(sprint["id"]), f"project = {key}", "summary"))
+                for i, (key, _, _, _) in enumerate(configured, 1)
+            }
             name = str(sprint.get("name") or "")
-            entry["sprints"].append({"issues_by_project": counts,
-                                     "name_has_key": [i for i, (key, _, _, _) in enumerate(configured, 1) if name.startswith(key)]})
+            entry["sprints"].append(
+                {
+                    "issues_by_project": counts,
+                    "name_has_key": [i for i, (key, _, _, _) in enumerate(configured, 1) if name.startswith(key)],
+                }
+            )
         out["layout"][str(position)] = entry
     return out

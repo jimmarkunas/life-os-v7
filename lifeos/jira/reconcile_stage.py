@@ -21,9 +21,11 @@ from . import reconcile, recurrence, store, writers
 KEY = "reconcile"
 ALERT_KEY = "jira_reconcile_failed"
 RECON_ROW = "_recon"
-SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_jira_rollover (
+SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS v7_jira_rollover (
         k VARCHAR(16) NOT NULL PRIMARY KEY, last_ok DATETIME NOT NULL, alert_open TINYINT NOT NULL DEFAULT 0, last_notified DATETIME NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+)
 SUMMARY_SCHEMA = 1
 
 
@@ -44,12 +46,13 @@ class DbState:
 
     def set(self, day):
         with self.connection.cursor() as cursor:
-            cursor.execute("INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,0,NULL) ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok)",
-                           (KEY, datetime(day.year, day.month, day.day)))
+            cursor.execute(
+                "INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,0,NULL) ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok)",
+                (KEY, datetime(day.year, day.month, day.day)),
+            )
 
     def notified(self, name, day, once=False):
-        """True when `name` was already pushed today (or ever, with `once`); the row is keyed by a hash of the name.
-        """
+        """True when `name` was already pushed today (or ever, with `once`); the row is keyed by a hash of the name."""
         row_key = "rc" + hashlib.sha1(name.encode()).hexdigest()[:12]
         with self.connection.cursor() as cursor:
             cursor.execute("SELECT last_notified FROM v7_jira_rollover WHERE k=%s", (row_key,))
@@ -58,8 +61,10 @@ class DbState:
 
     def mark(self, row_key, now):
         with self.connection.cursor() as cursor:
-            cursor.execute("INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,1,%s) ON DUPLICATE KEY UPDATE last_notified=VALUES(last_notified), alert_open=1",
-                           (row_key, now.replace(tzinfo=None), now.replace(tzinfo=None)))
+            cursor.execute(
+                "INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,1,%s) ON DUPLICATE KEY UPDATE last_notified=VALUES(last_notified), alert_open=1",
+                (row_key, now.replace(tzinfo=None), now.replace(tzinfo=None)),
+            )
 
 
 def make_alert(state, environ, now, push=alerts.push):
@@ -79,15 +84,29 @@ def make_alert(state, environ, now, push=alerts.push):
         except Exception:  # noqa: BLE001
             return False
         return False
+
     return alert
 
 
 def save_summary(connection, now, line, ok):
     store.ensure_schema(connection)
-    store._STORE.save(connection, RECON_ROW, {"schema": SUMMARY_SCHEMA, "taken_at": now.isoformat(), "line": line, "ok": ok})
+    store._STORE.save(
+        connection, RECON_ROW, {"schema": SUMMARY_SCHEMA, "taken_at": now.isoformat(), "line": line, "ok": ok}
+    )
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, connect=None, writers_=None, sleep=time.sleep, push=alerts.push, after=None):
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    client=None,
+    now=None,
+    connect=None,
+    writers_=None,
+    sleep=time.sleep,
+    push=alerts.push,
+    after=None,
+):
     if not reconcile.enabled(environ):
         return {"enabled": 0}
     tz = ZoneInfo(reconcile.TZ)
@@ -100,9 +119,25 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, wr
 
         def notify(subject, details):
             alert(subject, details)
+
         try:
-            manual_force = str(environ.get("GITHUB_EVENT_NAME") or "") == "workflow_dispatch" and str(environ.get("JIRA_RECONCILE_FORCE") or "").strip().lower() == "true"
-            total = reconcile.run(limit, live, environ=environ, client=client, now=now, writers=chosen, state=state, alert=notify, sleep=sleep, extra=recurrence.extra(environ), force=manual_force)
+            manual_force = (
+                str(environ.get("GITHUB_EVENT_NAME") or "") == "workflow_dispatch"
+                and str(environ.get("JIRA_RECONCILE_FORCE") or "").strip().lower() == "true"
+            )
+            total = reconcile.run(
+                limit,
+                live,
+                environ=environ,
+                client=client,
+                now=now,
+                writers=chosen,
+                state=state,
+                alert=notify,
+                sleep=sleep,
+                extra=recurrence.extra(environ),
+                force=manual_force,
+            )
         except JiraError as error:
             if live:
                 save_summary(connection, now, f"Jira sprints: DEGRADED · {str(error)[:120]}", False)

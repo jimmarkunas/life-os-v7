@@ -2,6 +2,7 @@
 
 Bridged Google copies are skipped; a listing that cannot be proven complete raises.
 """
+
 from datetime import datetime, timezone
 from email.utils import getaddresses
 import re
@@ -11,7 +12,7 @@ from lifeos.platform.outlook import OutlookError
 
 BRIDGE_MARKER = "v7_src"
 SENT_FIELDS = "id,sentDateTime,toRecipients,ccRecipients,subject,bodyPreview,isDraft,internetMessageHeaders"
-EVENT_FIELDS = ("id,iCalUId,subject,bodyPreview,start,end,isAllDay,isCancelled,responseStatus,attendees,isOrganizer,createdDateTime,type,seriesMasterId")
+EVENT_FIELDS = "id,iCalUId,subject,bodyPreview,start,end,isAllDay,isCancelled,responseStatus,attendees,isOrganizer,createdDateTime,type,seriesMasterId"
 GMAIL_LIMIT = 1500
 
 
@@ -45,8 +46,17 @@ def gmail_sent(gmail, start, end):
     out = []
     for message_id in gmail.list_ids_complete(query, GMAIL_LIMIT):
         r = gmail.sent_record(message_id)
-        out.append({"id": "g:" + r["id"], "sent_at": r["sent_at"], "to": addresses(r["to"]), "cc": addresses(r["cc"]), "subject": r["subject"], "snippet": r["snippet"],
-                    "bulk": r["bulk"]})
+        out.append(
+            {
+                "id": "g:" + r["id"],
+                "sent_at": r["sent_at"],
+                "to": addresses(r["to"]),
+                "cc": addresses(r["cc"]),
+                "subject": r["subject"],
+                "snippet": r["snippet"],
+                "bulk": r["bulk"],
+            }
+        )
     return out, gmail.profile_address()
 
 
@@ -59,11 +69,28 @@ def outlook_sent(client, account, start, end):
         sent = _when(m.get("sentDateTime"))
         if sent is None or not (start <= sent < end):
             continue
-        headers = {h.get("name", "").lower(): h.get("value", "") for h in m.get("internetMessageHeaders") or [] if isinstance(h, dict)}
-        bulk = bool(headers.get("list-id") or headers.get("list-unsubscribe")) or headers.get("precedence", "").lower() in ("bulk", "list", "junk") or headers.get("auto-submitted", "no").lower() not in ("", "no")
+        headers = {
+            h.get("name", "").lower(): h.get("value", "")
+            for h in m.get("internetMessageHeaders") or []
+            if isinstance(h, dict)
+        }
+        bulk = (
+            bool(headers.get("list-id") or headers.get("list-unsubscribe"))
+            or headers.get("precedence", "").lower() in ("bulk", "list", "junk")
+            or headers.get("auto-submitted", "no").lower() not in ("", "no")
+        )
         pick = lambda key, m=m: [((r.get("emailAddress") or {}).get("address") or "").lower() for r in m.get(key) or []]
-        out.append({"id": f"o:{account}:{m['id']}", "sent_at": sent, "to": pick("toRecipients"), "cc": pick("ccRecipients"), "subject": m.get("subject") or "",
-                    "snippet": m.get("bodyPreview") or "", "bulk": bulk})
+        out.append(
+            {
+                "id": f"o:{account}:{m['id']}",
+                "sent_at": sent,
+                "to": pick("toRecipients"),
+                "cc": pick("ccRecipients"),
+                "subject": m.get("subject") or "",
+                "snippet": m.get("bodyPreview") or "",
+                "bulk": bulk,
+            }
+        )
     return out, own
 
 
@@ -84,9 +111,22 @@ def gcal_events(gcal, start, end):
             elif not a.get("resource"):
                 attendees.append({"email": (a.get("email") or "").lower(), "response": a.get("responseStatus") or ""})
         uid = e.get("iCalUID") or e.get("id")
-        out.append({"uid": uid, "occ": f"{uid}@{iso(begin)}", "created": _when(e.get("created")), "start": begin, "end": finish, "title": e.get("summary") or "",
-                    "preview": e.get("description") or "", "cancelled": e.get("status") == "cancelled", "all_day": "date" in s and "dateTime" not in s,
-                    "my_response": mine, "attendees": attendees, "bridged": False})
+        out.append(
+            {
+                "uid": uid,
+                "occ": f"{uid}@{iso(begin)}",
+                "created": _when(e.get("created")),
+                "start": begin,
+                "end": finish,
+                "title": e.get("summary") or "",
+                "preview": e.get("description") or "",
+                "cancelled": e.get("status") == "cancelled",
+                "all_day": "date" in s and "dateTime" not in s,
+                "my_response": mine,
+                "attendees": attendees,
+                "bridged": False,
+            }
+        )
     return out, own
 
 
@@ -99,9 +139,34 @@ def outlook_events(client, start, end):
             continue
         uid = e.get("iCalUId") or e.get("id")
         status = ((e.get("responseStatus") or {}).get("response") or "").lower()
-        mine = "organizer" if e.get("isOrganizer") else {"accepted": "accepted", "declined": "declined", "tentativelyaccepted": "tentative"}.get(status, "needsAction")
-        attendees = [{"email": ((a.get("emailAddress") or {}).get("address") or "").lower(), "response": ((a.get("status") or {}).get("response") or "").lower()} for a in e.get("attendees") or []]
-        out.append({"uid": uid, "occ": f"{uid}@{iso(begin)}", "created": _when(e.get("createdDateTime")), "start": begin, "end": finish, "title": e.get("subject") or "",
-                    "preview": e.get("bodyPreview") or "", "cancelled": bool(e.get("isCancelled")), "all_day": bool(e.get("isAllDay")), "my_response": mine, "attendees": attendees,
-                    "bridged": False})
+        mine = (
+            "organizer"
+            if e.get("isOrganizer")
+            else {"accepted": "accepted", "declined": "declined", "tentativelyaccepted": "tentative"}.get(
+                status, "needsAction"
+            )
+        )
+        attendees = [
+            {
+                "email": ((a.get("emailAddress") or {}).get("address") or "").lower(),
+                "response": ((a.get("status") or {}).get("response") or "").lower(),
+            }
+            for a in e.get("attendees") or []
+        ]
+        out.append(
+            {
+                "uid": uid,
+                "occ": f"{uid}@{iso(begin)}",
+                "created": _when(e.get("createdDateTime")),
+                "start": begin,
+                "end": finish,
+                "title": e.get("subject") or "",
+                "preview": e.get("bodyPreview") or "",
+                "cancelled": bool(e.get("isCancelled")),
+                "all_day": bool(e.get("isAllDay")),
+                "my_response": mine,
+                "attendees": attendees,
+                "bridged": False,
+            }
+        )
     return out, own

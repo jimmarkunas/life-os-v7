@@ -3,6 +3,7 @@
 A V3 callout is a heading, stamp line, one 7 x 10 table, note lines, then `Summary for Claude: <page>`. Any other
 shape writes nothing (MEGIBOW_V3_* codes).
 """
+
 from datetime import date
 from statistics import median
 import re
@@ -50,7 +51,10 @@ def _flat(parts):
 
 
 def _cells(row):
-    return [report_region.plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
+    return [
+        report_region.plain({"type": "x", "x": {"rich_text": cell}})
+        for cell in (row.get("table_row") or {}).get("cells") or []
+    ]
 
 
 def _get_block(client, block_id):
@@ -77,11 +81,21 @@ def locate(client, block_id):
         raise V3Error("MEGIBOW_V3_BLOCK_NOT_FOUND")
     kids = report_region.children(client, block_id, V3Error)
     tables = [i for i, b in enumerate(kids) if b.get("type") == "table"]
-    if (len(kids) < 4 or kids[0].get("type") not in ("heading_2", "heading_3") or kids[1].get("type") != "paragraph" or len(tables) != 1 or tables[0] != 2
-            or (kids[2].get("table") or {}).get("table_width") != COLS):
+    if (
+        len(kids) < 4
+        or kids[0].get("type") not in ("heading_2", "heading_3")
+        or kids[1].get("type") != "paragraph"
+        or len(tables) != 1
+        or tables[0] != 2
+        or (kids[2].get("table") or {}).get("table_width") != COLS
+    ):
         raise V3Error("MEGIBOW_V3_BLOCK_SHAPE")
     last = kids[-1]
-    mention = [p for p in (last.get("paragraph") or {}).get("rich_text") or [] if p.get("type") == "mention" and (p.get("mention") or {}).get("type") == "page"]
+    mention = [
+        p
+        for p in (last.get("paragraph") or {}).get("rich_text") or []
+        if p.get("type") == "mention" and (p.get("mention") or {}).get("type") == "page"
+    ]
     if last.get("type") != "paragraph" or not _text(last).lower().startswith(SUMMARY) or len(mention) != 1:
         raise V3Error("MEGIBOW_V3_BLOCK_SHAPE")
     rows = report_region.children(client, kids[2]["id"], V3Error)
@@ -91,8 +105,19 @@ def locate(client, block_id):
     if kids[3].get("type") == "paragraph" and _text(kids[3]).lower().startswith(DASH_NOTE):
         anchor = 3
     after = kids[anchor + 1] if anchor + 1 < len(kids) - 1 else None
-    notes = after if after is not None and after.get("type") == "paragraph" and not _text(after).lower().startswith(PHONE) else None
-    return {"stamp": kids[1], "table": kids[2], "rows": rows, "notes": notes, "anchor": kids[anchor]["id"], "summary": mention[0]["mention"]["page"]["id"]}
+    notes = (
+        after
+        if after is not None and after.get("type") == "paragraph" and not _text(after).lower().startswith(PHONE)
+        else None
+    )
+    return {
+        "stamp": kids[1],
+        "table": kids[2],
+        "rows": rows,
+        "notes": notes,
+        "anchor": kids[anchor]["id"],
+        "summary": mention[0]["mention"]["page"]["id"],
+    }
 
 
 def write(client, block_id, stamp, table_rows, notes, live):
@@ -104,26 +129,49 @@ def write(client, block_id, stamp, table_rows, notes, live):
     changed = [(r["id"], want) for r, want in zip(found["rows"], table_rows or [], strict=False) if _cells(r) != want]
     stamp_changed = _text(found["stamp"]) != stamp
     notes_changed = notes is not None and (found["notes"] is None or _text(found["notes"]) != _flat(notes).strip())
-    out = {"rows_written": 0, "stamp_written": False, "notes_written": False, "rows_changed": len(changed), "summary_page": found["summary"], "verified": True}
+    out = {
+        "rows_written": 0,
+        "stamp_written": False,
+        "notes_written": False,
+        "rows_changed": len(changed),
+        "summary_page": found["summary"],
+        "verified": True,
+    }
     if not live or not (changed or stamp_changed or notes_changed):
         return out
     for row_id, want in changed:
-        client.call_once("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}}] for c in want]}})
+        client.call_once(
+            "PATCH",
+            f"/blocks/{quote(row_id, safe='')}",
+            {"table_row": {"cells": [[{"type": "text", "text": {"content": c}}] for c in want]}},
+        )
         out["rows_written"] += 1
     if stamp_changed:
-        client.call_once("PATCH", f"/blocks/{quote(found['stamp']['id'], safe='')}", {"paragraph": {"rich_text": _rich([(stamp, None)], "gray")}})
+        client.call_once(
+            "PATCH",
+            f"/blocks/{quote(found['stamp']['id'], safe='')}",
+            {"paragraph": {"rich_text": _rich([(stamp, None)], "gray")}},
+        )
         out["stamp_written"] = True
     if notes_changed:
         body = {"paragraph": {"rich_text": _rich(notes)}}
         if found["notes"] is not None:
             client.call_once("PATCH", f"/blocks/{quote(found['notes']['id'], safe='')}", body)
         else:
-            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "paragraph", **body}], "after": found["anchor"]})
+            client.call_once(
+                "PATCH",
+                f"/blocks/{quote(block_id, safe='')}/children",
+                {"children": [{"object": "block", "type": "paragraph", **body}], "after": found["anchor"]},
+            )
         out["notes_written"] = True
 
     def matches(after):
-        return (_text(after["stamp"]) == stamp and (table_rows is None or [_cells(r) for r in after["rows"]] == table_rows)
-                and (notes is None or (after["notes"] is not None and _text(after["notes"]) == _flat(notes).strip())))
+        return (
+            _text(after["stamp"]) == stamp
+            and (table_rows is None or [_cells(r) for r in after["rows"]] == table_rows)
+            and (notes is None or (after["notes"] is not None and _text(after["notes"]) == _flat(notes).strip()))
+        )
+
     ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
     if not ok:
         raise V3Error("MEGIBOW_V3_VERIFY_FAILED")
@@ -138,8 +186,13 @@ def write_summary(client, page_id, text, live):
         raise V3Error("MEGIBOW_V3_SUMMARY_SHAPE")
     if _text(kids[0]) == text.strip() or not live:
         return False
-    client.call_once("PATCH", f"/blocks/{quote(kids[0]['id'], safe='')}", {"paragraph": {"rich_text": _rich([(text, None)])}})
-    ok, _ = readback.confirmed(lambda: report_region.children(client, page_id, V3Error), lambda after: len(after) == 1 and _text(after[0]) == text.strip())
+    client.call_once(
+        "PATCH", f"/blocks/{quote(kids[0]['id'], safe='')}", {"paragraph": {"rich_text": _rich([(text, None)])}}
+    )
+    ok, _ = readback.confirmed(
+        lambda: report_region.children(client, page_id, V3Error),
+        lambda after: len(after) == 1 and _text(after[0]) == text.strip(),
+    )
     if not ok:
         raise V3Error("MEGIBOW_V3_VERIFY_FAILED")
     return True
@@ -153,17 +206,35 @@ def table(weeks, counts, cumulative, typed=None):
     typed = typed or {}
     rows = [["Activity"] + [f"{w.strftime('%b')} {w.day}" for w in weeks] + ["Cumulative"]]
     for activity, label in zip(C.ACTIVITIES, LABELS, strict=True):
-        rows.append([label] + [_cell(counts[w][activity] if counts[w] else None) + ("*" if activity in typed.get(w, ()) else "") for w in weeks]
-                    + [_cell(cumulative[activity] if cumulative else None)])
-    rows.append(["Total"] + [_cell(P.total(counts[w]) if counts[w] else None) for w in weeks] + [_cell(P.total(cumulative) if cumulative else None)])
+        rows.append(
+            [label]
+            + [
+                _cell(counts[w][activity] if counts[w] else None) + ("*" if activity in typed.get(w, ()) else "")
+                for w in weeks
+            ]
+            + [_cell(cumulative[activity] if cumulative else None)]
+        )
+    rows.append(
+        ["Total"]
+        + [_cell(P.total(counts[w]) if counts[w] else None) for w in weeks]
+        + [_cell(P.total(cumulative) if cumulative else None)]
+    )
     return rows
 
 
 def summary(who, stamp, weeks, counts, cumulative, notes):
     def line(c):
         return DASH if not c else "/".join(str(c[a]) for a in C.ACTIVITIES) + f" = {P.total(c)}"
-    lines = [f"Megibow ({who}) · {stamp}", "Each week: Outreach/Scheduled/Networking/Recruiter/Company = Total; a dash is a week with no entry."]
-    lines += [f"Week of {w.strftime('%b')} {w.day}: {line(counts[w])}" for w in weeks] + [f"Cumulative: {line(cumulative)}"] + list(notes)
+
+    lines = [
+        f"Megibow ({who}) · {stamp}",
+        "Each week: Outreach/Scheduled/Networking/Recruiter/Company = Total; a dash is a week with no entry.",
+    ]
+    lines += (
+        [f"Week of {w.strftime('%b')} {w.day}: {line(counts[w])}" for w in weeks]
+        + [f"Cumulative: {line(cumulative)}"]
+        + list(notes)
+    )
     while len("\n".join(lines)) > SUMMARY_MAX and len(lines) > len(weeks) + 3:
         lines.pop()
     return "\n".join(lines)[:SUMMARY_MAX]
@@ -180,8 +251,14 @@ def _title(obj):
 
 def find(client, title, kind):
     """The one page or data source titled exactly `title` (none or several: MEGIBOW_V3_TARGET_NOT_FOUND)."""
-    found = notion_pages.search_all(client, title, kind, V3Error, incomplete="MEGIBOW_V3_TARGET_NOT_FOUND", capped="MEGIBOW_V3_TARGET_NOT_FOUND")
-    hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == title and not r.get("in_trash") and not r.get("archived")]
+    found = notion_pages.search_all(
+        client, title, kind, V3Error, incomplete="MEGIBOW_V3_TARGET_NOT_FOUND", capped="MEGIBOW_V3_TARGET_NOT_FOUND"
+    )
+    hits = [
+        r["id"]
+        for r in found
+        if isinstance(r, dict) and _title(r).strip() == title and not r.get("in_trash") and not r.get("archived")
+    ]
     if len(hits) != 1:
         raise V3Error("MEGIBOW_V3_TARGET_NOT_FOUND")
     return hits[0]
@@ -268,9 +345,16 @@ def matt_warnings(proj, now):
     med_calls = median([W.calls(c) for c in baseline]) if baseline else 0
     if trend and med_out >= 3 and weekday >= 2 and current[C.OUTREACH] < 0.6 * med_out * elapsed / 5:
         out.append(W.OUTREACH_DROP)
-    if trend and med_calls >= 2 and ((weekday >= 5 and W.calls(current) < 0.5 * med_calls) or (weekday == 4 and W.calls(current) == 0 and med_calls >= 3)):
+    if (
+        trend
+        and med_calls >= 2
+        and (
+            (weekday >= 5 and W.calls(current) < 0.5 * med_calls)
+            or (weekday == 4 and W.calls(current) == 0 and med_calls >= 3)
+        )
+    ):
         out.append(W.CONVERSATION_DROP)
-    return out[:W.MAX], False
+    return out[: W.MAX], False
 
 
 def history_link(client, who):

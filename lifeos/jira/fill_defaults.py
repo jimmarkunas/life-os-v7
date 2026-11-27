@@ -1,4 +1,5 @@
 """Fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is never changed."""
+
 # Rules, in order: (1) Parent: keep it; else a Bug goes under BUGS_EPIC; else `action-inbox` goes to INBOX_EPIC and a
 # title "Stability n/7" to STABILITY_EPIC; else the container epic "LIFE one-off tasks" (found by its title alone,
 # created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS. (3) Fix Version:
@@ -94,11 +95,29 @@ def ensure_container(jira, epics, live):
     if key or not live:
         return key or "(new container)"
     try:
-        made = jira.post("/rest/api/3/issue", {"fields": {"project": {"key": "LIFE"}, "issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE,
-                                                       "components": [{"name": DEFAULT_COMPONENT}], "fixVersions": [{"name": f"{DEFAULT_COMPONENT} 1.0.0"}]}})
+        made = jira.post(
+            "/rest/api/3/issue",
+            {
+                "fields": {
+                    "project": {"key": "LIFE"},
+                    "issuetype": {"name": "Epic"},
+                    "summary": CONTAINER_TITLE,
+                    "components": [{"name": DEFAULT_COMPONENT}],
+                    "fixVersions": [{"name": f"{DEFAULT_COMPONENT} 1.0.0"}],
+                }
+            },
+        )
     except JiraError:
         raise FillFailed("JIRA_FILL_FAILED") from None
-    epics[made["key"]] = {"key": made["key"], "fields": {"issuetype": {"name": "Epic"}, "summary": CONTAINER_TITLE, "labels": [], "components": [{"name": DEFAULT_COMPONENT}]}}
+    epics[made["key"]] = {
+        "key": made["key"],
+        "fields": {
+            "issuetype": {"name": "Epic"},
+            "summary": CONTAINER_TITLE,
+            "labels": [],
+            "components": [{"name": DEFAULT_COMPONENT}],
+        },
+    }
     return made["key"]
 
 
@@ -113,8 +132,21 @@ def write(jira, key, changes, comment):
     try:
         jira.request("PUT", f"/rest/api/3/issue/{key}", payload=body, retry=True)
         if comment:
-            text = "[sweep] set " + ", ".join(LABEL_OF[f] for f in ("parent", "components", "fixVersions") if f in changes) + " by rule"
-            jira.post(f"/rest/api/3/issue/{key}/comment", {"body": {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]}})
+            text = (
+                "[sweep] set "
+                + ", ".join(LABEL_OF[f] for f in ("parent", "components", "fixVersions") if f in changes)
+                + " by rule"
+            )
+            jira.post(
+                f"/rest/api/3/issue/{key}/comment",
+                {
+                    "body": {
+                        "type": "doc",
+                        "version": 1,
+                        "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}],
+                    }
+                },
+            )
     except JiraError:
         raise FillFailed("JIRA_FILL_FAILED") from None
 
@@ -182,14 +214,18 @@ def create_issue(jira, summary, issuetype, parent, description="", labels=()):
         key = str(parent or "").strip()
         if not key:
             raise ParentRequired("JIRA_PARENT_REQUIRED")
-        found = (jira.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS}).get("fields") or {})
+        found = jira.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS}).get("fields") or {}
         if not is_epic(found):
             raise ParentRequired("JIRA_PARENT_NOT_AN_EPIC")
         component = (names(found.get("components")) or [DEFAULT_COMPONENT])[0]
         fields["parent"] = {"key": key}
     fields["components"], fields["fixVersions"] = [{"name": component}], [{"name": f"{component} 1.0.0"}]
     if description:
-        fields["description"] = {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": description}]}]}
+        fields["description"] = {
+            "type": "doc",
+            "version": 1,
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": description}]}],
+        }
     return jira.post("/rest/api/3/issue", {"fields": fields})["key"]
 
 
@@ -213,7 +249,17 @@ def main(argv):
     return 0
 
 
-__all__ = ["FillFailed", "ParentRequired", "create_issue", "plan", "fill_key", "fill_many", "run", "backfill", "plan_file"]
+__all__ = [
+    "FillFailed",
+    "ParentRequired",
+    "create_issue",
+    "plan",
+    "fill_key",
+    "fill_many",
+    "run",
+    "backfill",
+    "plan_file",
+]
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

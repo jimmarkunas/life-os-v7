@@ -4,6 +4,7 @@ A child also needs: never in Agent Go before, a Done-when line, a complete Jim m
 label; at most RELEASE_LIMIT per run. `gate` returns the fixed refusal reasons shared with promote and readiness. Dry
 run unless live.
 """
+
 import os
 import re
 
@@ -38,7 +39,7 @@ def has_done_when(description):
         if DONE_WHEN.search(line):
             if ROW.search(line.split(":", 1)[-1]) and ":" in line:
                 return True
-            return any(ROW.search(later) for later in lines[index + 1:index + 12])
+            return any(ROW.search(later) for later in lines[index + 1 : index + 12])
     return False
 
 
@@ -64,7 +65,9 @@ def checkbox_lines(node, out=None):
             out.append("# " + flat())
         elif kind == "paragraph":
             out.append(flat())
-        elif kind == "listItem" and not any(isinstance(c, dict) and c.get("type") in ("bulletList", "orderedList", "taskList") for c in inner):
+        elif kind == "listItem" and not any(
+            isinstance(c, dict) and c.get("type") in ("bulletList", "orderedList", "taskList") for c in inner
+        ):
             out.append("- " + flat())
         else:
             checkbox_lines(inner, out)
@@ -83,7 +86,7 @@ def jim_first(description):
             continue
         inline = line.split(":", 1)[1] if ":" in line else ""
         out = []
-        for item in [inline] + rows[index + 1:]:
+        for item in [inline] + rows[index + 1 :]:
             item = item.replace("\\", "").strip()
             bare = item.strip("*").strip()
             if not bare or DONE_ITEM.match(bare) or NONE_ITEM.match(bare):
@@ -131,7 +134,11 @@ def epic_reason(fields):
 
 
 def gate(fields):
-    return label_reason(fields.get("labels")) or epic_reason(fields) or (None if blockers_done(fields.get("issuelinks")) else "blocked_by_open")
+    return (
+        label_reason(fields.get("labels"))
+        or epic_reason(fields)
+        or (None if blockers_done(fields.get("issuelinks")) else "blocked_by_open")
+    )
 
 
 def candidates(jira):
@@ -139,7 +146,11 @@ def candidates(jira):
     if not epics:
         return [], []
     keys = ",".join(epics)
-    return epics, search(jira, f'parent in ({keys}) AND status = "To Do" AND status was not "Agent Go" AND issuetype != Epic ORDER BY Rank ASC', FIELDS)
+    return epics, search(
+        jira,
+        f'parent in ({keys}) AND status = "To Do" AND status was not "Agent Go" AND issuetype != Epic ORDER BY Rank ASC',
+        FIELDS,
+    )
 
 
 def eligible(issue):
@@ -162,7 +173,21 @@ def eligible(issue):
 
 def release(jira, key, epic):
     jira.post(f"/rest/api/3/issue/{key}/transitions", {"transition": {"id": AGENT_GO}})
-    body = {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": f"[agent-v7] Released to Agent Go by the auto-release rule: epic {epic} is approved (label {EPIC_LABEL}), the Done-when line is present and every blocker is Done."}]}]}
+    body = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"[agent-v7] Released to Agent Go by the auto-release rule: epic {epic} is approved (label {EPIC_LABEL}), the Done-when line is present and every blocker is Done.",
+                    }
+                ],
+            }
+        ],
+    }
     jira.post(f"/rest/api/3/issue/{key}/comment", {"body": body})
 
 

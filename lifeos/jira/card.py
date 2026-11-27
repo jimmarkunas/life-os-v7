@@ -4,6 +4,7 @@ Tickets under the Global Talent Visa epic (JIRA_GTV_EPIC) are excluded; their ow
 filled in place. A snapshot older than STALE_HOURS changes only the status line, to STALE. Output: counts and fixed
 codes only.
 """
+
 import os
 import re
 from datetime import date, datetime, timedelta
@@ -38,7 +39,7 @@ def _blocked(issue):
 
 def quarter_end(today):
     month = ((today.month - 1) // 3 + 1) * 3
-    return (date(today.year + (month == 12), month % 12 + 1, 1) - timedelta(days=1))
+    return date(today.year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
 
 
 def visa_keys(snap, epic):
@@ -62,7 +63,13 @@ def buckets(snap, today, epic=None):
     parents = {i["parent"] for i in open_items if i.get("parent")}
     leaves = [i for i in open_items if i["key"] not in parents]
     last = quarter_end(today).isoformat()
-    out = {"overdue": [], "blocked": [], "today": [], "this_week": [], "done": [i for i in snap["done"] if not _visa(i, gtv)]}
+    out = {
+        "overdue": [],
+        "blocked": [],
+        "today": [],
+        "this_week": [],
+        "done": [i for i in snap["done"] if not _visa(i, gtv)],
+    }
     for issue in leaves:
         due = _day(issue.get("due"))
         if _blocked(issue):
@@ -82,7 +89,12 @@ def buckets(snap, today, epic=None):
 
 def week_count(items):
     """The This Week count: children of one non-epic parent count once."""
-    return len({("parent", i["parent"]) if i.get("parent") and i.get("parent_type") != "Epic" else ("leaf", i["key"]) for i in items})
+    return len(
+        {
+            ("parent", i["parent"]) if i.get("parent") and i.get("parent_type") != "Epic" else ("leaf", i["key"])
+            for i in items
+        }
+    )
 
 
 def _text(content, url=None, bold=False):
@@ -121,8 +133,11 @@ def _rows(issues, site, **line):
     for issue in issues:
         parent = issue.get("parent")
         if parent and parent not in groups:
-            groups[parent] = {"summary": issue.get("parent_summary") or parent, "kids": [],
-                              "label": "Epic \u00b7 " if issue.get("parent_type") == "Epic" else ""}
+            groups[parent] = {
+                "summary": issue.get("parent_summary") or parent,
+                "kids": [],
+                "label": "Epic \u00b7 " if issue.get("parent_type") == "Epic" else "",
+            }
             rows.append(("group", parent))
         if parent:
             groups[parent]["kids"].append(issue)
@@ -134,8 +149,18 @@ def _rows(issues, site, **line):
             out.append(_bullet(_line(value, site, **line)))
         else:
             group = groups[value]
-            out.append(_bullet([_text(f"{group['label']}{value} — {group['summary']}", f"{site}/browse/{value}" if site else None, bold=True)],
-                               [_bullet(_line(kid, site, **line)) for kid in group["kids"]]))
+            out.append(
+                _bullet(
+                    [
+                        _text(
+                            f"{group['label']}{value} — {group['summary']}",
+                            f"{site}/browse/{value}" if site else None,
+                            bold=True,
+                        )
+                    ],
+                    [_bullet(_line(kid, site, **line)) for kid in group["kids"]],
+                )
+            )
     return out
 
 
@@ -197,17 +222,35 @@ def render(snaps, today, now, site, epic=None):
         if len(snaps) > 1:
             body.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": [_text(snap["project"])]}})
         sprint = (snap.get("current_sprint") or {}).get("name") or "no active sprint"
-        body.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [_text(
-            f"{sprint} \u00b7 {len(b['overdue'])} Overdue \u00b7 {len(b['blocked'])} Blocked \u00b7 {len(b['today'])} Today \u00b7 {week} This Week \u00b7 {len(b['done'])} Done", bold=True)]}})
+        body.append(
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        _text(
+                            f"{sprint} \u00b7 {len(b['overdue'])} Overdue \u00b7 {len(b['blocked'])} Blocked \u00b7 {len(b['today'])} Today \u00b7 {week} This Week \u00b7 {len(b['done'])} Done",
+                            bold=True,
+                        )
+                    ]
+                },
+            }
+        )
         body.append(_heading(f"Overdue \u2014 {len(b['overdue'])}"))
         body += _rows(b["overdue"], site) or _none()
         body.append(_heading(f"Blocked \u2014 {len(b['blocked'])}"))
         body += _rows(b["blocked"], site, show_status=False, tag_blocked=False) or _none()
         flag = " \u00b7 RE-PRIORITIZE" if len(b["today"]) > TODAY_CAPACITY else ""
-        body.append(_heading(f"Today \u2014 {len(b['today'])} \u00b7 Capacity {len(b['today'])}/{TODAY_CAPACITY}{flag}"))
+        body.append(
+            _heading(f"Today \u2014 {len(b['today'])} \u00b7 Capacity {len(b['today'])}/{TODAY_CAPACITY}{flag}")
+        )
         body += _rows(b["today"], site) or _none()
-        body.append(_toggle(f"Done \u2014 {len(b['done'])}", [_bullet(_line(i, site, show_due=False, show_status=False)) for i in b["done"]]
-                            or _none()))
+        body.append(
+            _toggle(
+                f"Done \u2014 {len(b['done'])}",
+                [_bullet(_line(i, site, show_due=False, show_status=False)) for i in b["done"]] or _none(),
+            )
+        )
     return body, counts
 
 
@@ -227,7 +270,7 @@ def append_tree(client, parent_id, blocks):
     """Append blocks under parent; deeper subtrees go in a second call (two nesting levels per request). One attempt
     per POST: a retry could duplicate rows."""
     for start in range(0, len(blocks), 100):
-        chunk = blocks[start:start + 100]
+        chunk = blocks[start : start + 100]
         deep = [b for b in chunk if _depth(b) > 2]
         payload = [(_strip(b)[0] if b in deep else b) for b in chunk]
         results = client.call_once("PATCH", f"/blocks/{parent_id}/children", {"children": payload}).get("results") or []
@@ -241,7 +284,9 @@ def append_tree(client, parent_id, blocks):
 def children(client, block_id):
     out, cursor = [], None
     for _ in range(50):
-        page = client.call("GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else ""))
+        page = client.call(
+            "GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else "")
+        )
         out += page.get("results") or []
         if not page.get("has_more"):
             return out
@@ -251,7 +296,9 @@ def children(client, block_id):
 
 def _plain(block):
     inner = block.get(block.get("type")) or {}
-    return "".join((r.get("plain_text") or (r.get("text") or {}).get("content") or "") for r in inner.get("rich_text") or [])
+    return "".join(
+        (r.get("plain_text") or (r.get("text") or {}).get("content") or "") for r in inner.get("rich_text") or []
+    )
 
 
 def _owned(kids):
@@ -279,7 +326,12 @@ def card_projects(environ):
 
 
 def _client(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 GTV_TITLE = "Global Talent Visa"
@@ -318,9 +370,18 @@ def write_gtv(client, block_id, snaps, live, site, context_url):
 
 def reconcile_line(recon, now):
     """The reconcile workload's Daily Report line, or DEGRADED without a good summary from the last 36 hours."""
-    if recon and recon.get("ok") and recon.get("line") and now - datetime.fromisoformat(recon["taken_at"]) <= timedelta(hours=36):
+    if (
+        recon
+        and recon.get("ok")
+        and recon.get("line")
+        and now - datetime.fromisoformat(recon["taken_at"]) <= timedelta(hours=36)
+    ):
         return recon["line"]
-    return "Jira sprints: DEGRADED \u00b7 " + ((recon or {}).get("line", "").replace("Jira sprints: DEGRADED \u00b7 ", "") if recon and not recon.get("ok") else "no good run in the last 36 hours")
+    return "Jira sprints: DEGRADED \u00b7 " + (
+        (recon or {}).get("line", "").replace("Jira sprints: DEGRADED \u00b7 ", "")
+        if recon and not recon.get("ok")
+        else "no good run in the last 36 hours"
+    )
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gtv_client=None):
@@ -346,21 +407,43 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gt
     heading_block = existing[0]
     if stale:
         if len(existing) < 2 or not _plain(heading_block).strip().startswith(CARD_TITLE + " ("):
-            raise CardError("JIRA_CARD_STALE_NO_BASELINE")          # V7 has not written this card yet: nothing of ours to mark, the old card is left untouched
+            raise CardError(
+                "JIRA_CARD_STALE_NO_BASELINE"
+            )  # V7 has not written this card yet: nothing of ours to mark, the old card is left untouched
         if live:
-            client.call("PATCH", f"/blocks/{heading_block['id']}", {"heading_4": {"rich_text": rich_text(heading_text(now, taken))}})
+            client.call(
+                "PATCH",
+                f"/blocks/{heading_block['id']}",
+                {"heading_4": {"rich_text": rich_text(heading_text(now, taken))}},
+            )
             result["written"] = 1
         return result
     site, epic = site_url(environ), (environ.get("JIRA_GTV_EPIC") or "").strip() or None
     body, counts = render(snaps, now.date(), now, site, epic)
     if reconcile.enabled(environ):
-        body.insert(0, {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [_text(reconcile_line(recon, now), bold=False)]}})
+        body.insert(
+            0,
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [_text(reconcile_line(recon, now), bold=False)]},
+            },
+        )
         result["reconcile_line"] = 1
     result.update({k: v for k, v in counts.items()}, blocks=len(body))
     gtv_block, gtv_error = (environ.get("GTV_CARD_BLOCK_ID") or "").strip(), None
     if gtv_block:
         try:
-            result.update(write_gtv(gtv_client or raw, report_region.clean_id(gtv_block), snaps, live, site, (environ.get("JIRA_GTV_CONTEXT_URL") or "").strip() or None))
+            result.update(
+                write_gtv(
+                    gtv_client or raw,
+                    report_region.clean_id(gtv_block),
+                    snaps,
+                    live,
+                    site,
+                    (environ.get("JIRA_GTV_CONTEXT_URL") or "").strip() or None,
+                )
+            )
         except CardError as error:
             gtv_error = error
     if not live:
@@ -379,7 +462,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, gt
     heading = heading_text(now)
     client.call("PATCH", f"/blocks/{heading_block['id']}", {"heading_4": {"rich_text": rich_text(heading)}})
     after = children(client, block_id)
-    if not _owned(after) or len(after) != 1 + len(body) or after[0].get("id") != heading_block["id"] or _plain(after[0]).strip() != heading:
+    if (
+        not _owned(after)
+        or len(after) != 1 + len(body)
+        or after[0].get("id") != heading_block["id"]
+        or _plain(after[0]).strip() != heading
+    ):
         raise CardError("JIRA_CARD_VERIFY_FAILED")
     result["written"] = 1
     if gtv_error:

@@ -2,6 +2,7 @@
 
 Counts only: no names, no addresses.
 """
+
 # These numbers, not V7's reading of the mailbox: a recruiter who phoned the mobile leaves no mail or calendar trace,
 # so the sheet is the history.
 # The weeks are already inside the Legacy totals seeded in the Notion block (Outreach 20, Scheduled 13, Networking Calls 11, Recruiter Calls 36, Company Calls 15 = 95).
