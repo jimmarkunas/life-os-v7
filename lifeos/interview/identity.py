@@ -1,4 +1,5 @@
 """Fail-closed identity decisions with platform-owned normalization."""
+
 from datetime import date
 from lifeos.platform.names import core, norm, same_company, same_role, split_title
 from .models import Ownership, Resolution, State
@@ -14,13 +15,23 @@ def valid_date(value):
 
 def scheduling_pending(query):
     source = query.source.strip() if isinstance(query.source, str) else ""
-    return query.interview_date is None and query.ordinal == 1 and type(query.ordinal) is int and source.startswith("https://")
+    return (
+        query.interview_date is None
+        and query.ordinal == 1
+        and type(query.ordinal) is int
+        and source.startswith("https://")
+    )
 
 
 def resolve_parent(query, scan):
     if not scan.complete:
         return Resolution(State.BLOCKED, "pipeline_incomplete")
-    if not isinstance(query.company, str) or not isinstance(query.role, str) or not query.company.strip() or not query.role.strip():
+    if (
+        not isinstance(query.company, str)
+        or not isinstance(query.role, str)
+        or not query.company.strip()
+        or not query.role.strip()
+    ):
         return Resolution(State.BLOCKED, "identity_invalid")
     matches = []
     for parent in scan.items:
@@ -37,7 +48,11 @@ def resolve_parent(query, scan):
             matches.append(parent)
     if len(matches) > 1:
         return Resolution(State.BLOCKED, "parent_ambiguous")
-    return Resolution(State.MATCH, "parent_match", matches[0].page_id) if matches else Resolution(State.NOT_FOUND, "parent_not_found")
+    return (
+        Resolution(State.MATCH, "parent_match", matches[0].page_id)
+        if matches
+        else Resolution(State.NOT_FOUND, "parent_not_found")
+    )
 
 
 def resolve_child(parent, query, scan, explicit=None):
@@ -57,7 +72,7 @@ def resolve_child(parent, query, scan, explicit=None):
     else:
         if any(c.identity_valid is False for c in candidates):
             return Resolution(State.BLOCKED, "round_identity_incomplete")
-        numbered = [c for c in candidates if c.ordinal != 0]          # A pre-screen (ordinal 0) is never Round 1.
+        numbered = [c for c in candidates if c.ordinal != 0]  # A pre-screen (ordinal 0) is never Round 1.
         if scheduling_pending(query):
             # Interview 1 is the same child whether or not a time exists yet; unnumbered rounds are not guessed.
             if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in numbered):
@@ -85,7 +100,11 @@ def resolve_child(parent, query, scan, explicit=None):
         candidates = [c for c in candidates if c.ordinal == query.ordinal]
     if len(candidates) > 1:
         return Resolution(State.BLOCKED, "child_ambiguous")
-    return Resolution(State.MATCH, "child_match", candidates[0].page_id) if candidates else Resolution(State.NOT_FOUND, "child_not_found")
+    return (
+        Resolution(State.MATCH, "child_match", candidates[0].page_id)
+        if candidates
+        else Resolution(State.NOT_FOUND, "child_not_found")
+    )
 
 
 def creation_eligibility(target, parent, ownership, child, scan, query):

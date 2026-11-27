@@ -4,6 +4,7 @@ Same private endpoint as the Cloud Fit `fit1` verb (TCP 47341 over the tailnet).
 `gran1 <len>\\n` + a JSON body with `op` and a fresh `nonce`; the reply is `gran1 <len>\\n` + JSON with `ok`,
 `code` and the echoed `nonce`. Ops: sync, list, show, purge. Callers get fixed codes only; the transcript JSON goes
 only to the contract check and the private Notion page."""
+
 import json
 import secrets
 import socket
@@ -14,10 +15,19 @@ from lifeos.platform.fixed_code import fixed
 
 PORT = 47341
 MAX_REQUEST = 4096
-MAX_REPLY = 26_000_000              # Transcript limit is 25,000,000 bytes, plus the envelope.
+MAX_REPLY = 26_000_000  # Transcript limit is 25,000,000 bytes, plus the envelope.
 WAIT = 180
 OPS = ("sync", "list", "show", "purge")
-CODES = {"GRAN_BAD_FRAME", "GRAN_BAD_OP", "GRAN_NOT_FOUND", "GRAN_SYNC_FAILED", "GRAN_AUTH_EXPIRED", "GRAN_TIMEOUT", "GRAN_OVERSIZE", "GRAN_HASH_MISMATCH"}
+CODES = {
+    "GRAN_BAD_FRAME",
+    "GRAN_BAD_OP",
+    "GRAN_NOT_FOUND",
+    "GRAN_SYNC_FAILED",
+    "GRAN_AUTH_EXPIRED",
+    "GRAN_TIMEOUT",
+    "GRAN_OVERSIZE",
+    "GRAN_HASH_MISMATCH",
+}
 
 
 class OracleError(RuntimeError):
@@ -39,7 +49,17 @@ def frame(op, nonce, **fields):
 
 def exchange(host, data, port=PORT, wait=WAIT, sleep=time.sleep):
     """One request, read to the server's close; b"" means closed with no output. An unopened connection is retried."""
-    return socket_exchange.exchange(host, data, port, wait, MAX_REPLY, lambda: OracleError("GRAN_CONNECT_FAILED"), lambda: OracleError("GRAN_TIMEOUT"), sleep=sleep, chunk=1 << 20)
+    return socket_exchange.exchange(
+        host,
+        data,
+        port,
+        wait,
+        MAX_REPLY,
+        lambda: OracleError("GRAN_CONNECT_FAILED"),
+        lambda: OracleError("GRAN_TIMEOUT"),
+        sleep=sleep,
+        chunk=1 << 20,
+    )
 
 
 def call(host, op, send=exchange, **fields):
