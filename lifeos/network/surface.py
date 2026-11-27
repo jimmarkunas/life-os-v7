@@ -1,5 +1,4 @@
-"""The one machine-owned "Network Leads" block on a Job Ledger page. Platform only: Notion calls go through the
-caller's client.
+"""The one machine-owned "Network Leads" block on a Job Ledger page (platform only).
 
 Ownership is the marker, never position: a callout (or older toggle) carrying a marker and a hash of the lead
 set. Nothing else on the page is read for change or written. Reasons come from fixed templates; no outreach text

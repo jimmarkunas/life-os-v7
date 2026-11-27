@@ -1,5 +1,4 @@
-"""Pages the phone when the off-site backup on Oracle fails or is missed, from the `oracle1` reading the card
-already makes.
+"""Pages the phone when the off-site backup on Oracle fails or is missed.
 
 Input: the backup's last result {"ok", "code", "age_h"}. Output: pushes `offsite_backup_failed` (INFO: phone
 only, reminded every 24 h while broken) through the platform alerts gateway. An unobtainable reading changes

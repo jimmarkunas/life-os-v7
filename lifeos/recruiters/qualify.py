@@ -1,6 +1,6 @@
-"""Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. ->
-("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
+"""Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess.
 
+Returns ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 Company comes only from the signature, a first-person statement, or an agreeing sender domain; Client only when
 stated; Role from a fixed pattern; What they want from intent.py. A missing company or ambiguous request makes
 the row Needs review; an unreadable name or a LinkedIn notification without recruiting evidence is UNRESOLVED."""

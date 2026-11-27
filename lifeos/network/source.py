@@ -1,5 +1,6 @@
-"""Find and fetch the connections file attached to a private Notion page. Read-only; the file is held in memory
-only and never saved, logged or uploaded. Only Notion-hosted files are accepted."""
+"""Find and fetch the connections file attached to a private Notion page (read-only, in memory only).
+
+The file is never saved, logged or uploaded. Only Notion-hosted files are accepted."""
 # Notion serves attachments from a short-lived signed address: read from the page's blocks each run, used once,
 # never stored or printed.
 import re

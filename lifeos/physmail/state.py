@@ -1,5 +1,4 @@
-"""The Physical Mail derivative state: one private snapshot row, rebuilt by replay from the anchor, merged
-idempotently.
+"""The Physical Mail derivative state: one private snapshot row, rebuilt by replay from the anchor.
 
 A snapshot, not pure replay: the count is exact only if the window holds every still-pending arrival, which
 replay cannot prove. Binding is by count: the starting pile and each arrival notice are units, each first-seen

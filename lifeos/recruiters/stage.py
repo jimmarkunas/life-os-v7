@@ -1,5 +1,4 @@
-"""Configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification
--> the existing Recruiters data source.
+"""Gmail and Outlook recruiter mail (Inbox and Junk, last 14 days) -> classification -> the Recruiters data source.
 
 Dry run unless live; counts and fixed codes only. Mail is never changed. If every source listing is incomplete
 the run is DEGRADED (nothing written, run fails); if only some are, it is PARTIAL (readable sources written)."""

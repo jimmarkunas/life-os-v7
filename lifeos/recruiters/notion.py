@@ -1,5 +1,4 @@
-"""The existing Recruiters data source, and nothing else: create after absence is proven, update only a single
-non-Done match, read every write back.
+"""The existing Recruiters data source, and nothing else: create after absence is proven, read every write back.
 
 Natural key: Week Ending + Recruiter + Company + Role (normalized, no fuzzy matching); two matches are ambiguous
 and nothing changes. A Done row is never reopened and a non-blank What they want is never replaced. A row with

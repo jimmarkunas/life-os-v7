@@ -1,5 +1,4 @@
-"""The System callout's table (sixteen rows, five columns, fixed order) as pure functions of the readings and
-`now`; no network, no clock."""
+"""The System callout's table (sixteen rows, five columns) as pure functions of the readings and `now`."""
 # Bars: filled = share used (budgets, capacity), share healthy (Services / Backup / Connections) or days left of
 # 7 (sign-ins). Orange at 70% used or 2 days left; red at 90%, 1 day left, a service down or a connection
 # failing. A row is stale when its reading is over two hours old or missing: the page's previous values are kept

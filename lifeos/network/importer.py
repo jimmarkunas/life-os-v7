@@ -1,5 +1,4 @@
-"""Import the connections file attached to the private Notion page into the Hostinger tables. python -m lifeos.run
-network-import
+"""Import the connections file attached to the private Notion page into the Hostinger tables (network-import).
 
 Dry (default): counts only, no database connection, no write. Live: create tables if missing, record the batch,
 apply it in read-back chunks, mark it COMPLETE. Replaying the same file changes nothing."""

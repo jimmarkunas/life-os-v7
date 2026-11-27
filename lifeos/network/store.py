@@ -1,5 +1,4 @@
-"""Hostinger state for the network feature: the sole writer of v7_network_people, v7_network_positions and
-v7_network_batches.
+"""Hostinger state for the network feature: the sole writer of its three v7_network_* tables.
 
 Derived state; the LinkedIn Connections Sheet stays canonical. A batch is applied in chunks, each one
 transaction that also moves the batch's cursor, so a failed run resumes there. Writes are idempotent. Fixed

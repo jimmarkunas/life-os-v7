@@ -1,5 +1,4 @@
-"""Which mail read the Recruiters mail step does this run. Pure logic; clock, ledger times and table row are passed
-in.
+"""Which mail read the Recruiters mail step does this run (pure logic).
 
 A scheduled tick reads every 3 hours (skipped in between); the first read after 09:00 CT each day is the full
 14-day scan. Manual runs are never skipped. No usable ledger record also means the full scan, and the reason

@@ -1,5 +1,4 @@
-"""Measure the connections file attached to a private Notion page, by count only.  python -m lifeos.run
-network-inspect
+"""Measure the connections file attached to a private Notion page, by count only (network-inspect).
 
 Read-only by construction: no Notion or database write; prints counts and the export date, never a name,
 company, address or link. `live` has no effect."""

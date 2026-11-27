@@ -1,5 +1,4 @@
-"""Pages the phone when Oracle's boot-volume backups are at their limit, so the next weekly backup would be
-refused.
+"""Pages the phone when Oracle's boot-volume backups are at their limit.
 
 Input: {"used", "available"} in Oracle's `oracle1` answer. Output: pushes `boot_backups_full` (INFO: phone only,
 reminded every 24 h while true) when no slot is free. An unobtainable reading changes nothing. Never raises."""

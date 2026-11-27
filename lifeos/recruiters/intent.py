@@ -1,5 +1,4 @@
-"""'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (no
-language model).
+"""'What they want': one short, fixed phrase built from a fixed request pattern (no language model).
 
 Only a second-person request counts. The phrase is evergreen and carries only the role and requisition the
 source states. No pattern -> ''. Conflicting durations -> '' and ambiguous. Returns (phrase, ambiguous)."""
