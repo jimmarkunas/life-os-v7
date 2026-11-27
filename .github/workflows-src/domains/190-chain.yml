@@ -1,7 +1,6 @@
   chain:
-    # LIFE-904: the three end-to-end clocks (Jobs, career, full platform) of ONE logical tick, correlated by the tick's run ID (the hourly run ID; the early run gets it as `tick_run`, the run after the tick as
-    # `workflow_run.id`; both gate jobs are named `gate (tick <id>)`). It reads the Actions API only (actions: read, no secret, no write) and ALWAYS ends green: a missing, failed or still-running job is
-    # DEGRADED or UNVERIFIED in the printed `chain:` line, never zero and never Done. The full-platform clock prints only once the last required domain job of both runs has ended, so whichever of the two runs ends last prints the final line.
+    # The three end-to-end clocks (Jobs, career, full platform) of one logical tick, correlated by the tick's run ID
+    # (the hourly run ID; the early run gets it as `tick_run`, the run after the tick as `workflow_run.id`).
     needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola, network_surface, fit_cloud_backlog, last_seen_purge]
     if: ${{ always() && needs.gate.outputs.tick == 'true' }}
     runs-on: ubuntu-24.04
@@ -16,7 +15,6 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      # why: The chain receipt - Jobs, career and full-platform clocks for this tick (counts, times and fixed codes only; never fails the run)
       - name: Chain receipt - Jobs, career and platform clocks
         env:
           GITHUB_TOKEN: ${{ github.token }}

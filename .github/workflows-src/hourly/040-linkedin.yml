@@ -1,6 +1,6 @@
   linkedin:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}   # D219: not on a Cloud Fit backlog dispatch   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}  # not on a Cloud Fit backlog dispatch #: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -14,7 +14,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "600"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_linkedin
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -23,14 +22,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: hourly-jobright
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -38,7 +35,6 @@
           oauth-client-id: ${{ steps.bws_linkedin.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_linkedin.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden

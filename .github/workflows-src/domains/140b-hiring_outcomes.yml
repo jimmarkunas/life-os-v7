@@ -1,7 +1,6 @@
       - name: Hiring outcome mail warning (does not fail the Jobs run)
         if: ${{ always() && steps.houtcomes.outcome == 'failure' }}
         run: echo "::warning title=Hiring outcome mail::the hiring outcome-mail scan failed or a source was unread; the Hiring card keeps the last accepted outcomes"
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
       - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=hiring_outcomes::a stage step failed in the hiring_outcomes job (see the step marked failed above)"; exit 1

@@ -1,9 +1,6 @@
   gate:
-    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}      # LIFE-904: the tick's run ID is the chain's correlation ID; the chain receipt finds this tick's domains runs by it
-    # LIFE-604 item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`; a manual run of one domain skips it, and then a domain job runs only on its own input. Outputs: due_<job> (LIFE-609: one per domain job, from lifeos/platform/due_table.json; for a tick a job is due when its row says
-    # so, for `all` every job is due), tick (only a tick: imessage, granola and the failure push depend on that) and all (only `all`). A failed gate makes every domain job skip (their `needs.gate.result != 'failure'`).
-    # Why each domain job uses always() or !cancelled(): a job that waits for other page writers (needs: ...) uses always() so one failed writer never stops the next card; a job with
-    # no writer to wait for uses !cancelled(). Both skip when the gate failed or the run was cancelled, and both run on their own manual input without the gate.
+    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}  # the tick's run ID is the chain's correlation ID; the chain receipt finds this tick's domains runs by it
+    # item 11: the ONE place that decides whether this run does the domain work. It runs only for a completed tick or `all`
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') || inputs.all }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -12,10 +9,10 @@
       actions: read
     outputs:
       tick: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') }}
-      early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}      # LIFE-775: the jobs that read nothing the tick writes: the early run, `all`, or the after-tick run when it found no early run
-      late: ${{ inputs.all || github.event_name == 'workflow_run' }}      # LIFE-775: megibow, interview, granola: the after-tick run, or `all`
+      early: ${{ inputs.all || inputs.phase == 'tick' || (github.event_name == 'workflow_run' && steps.cover.outputs.early_covered == 'false') }}  # the jobs that read nothing the tick writes: the early run, `all`, or the after-tick run when it found no early run
+      late: ${{ inputs.all || github.event_name == 'workflow_run' }}  # megibow, interview, granola: the after-tick run, or `all`
       all: ${{ inputs.all }}
-      pipeline: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && steps.ran.outputs.ran != 'false' }}      # LIFE-856: the tick's hourly `finish` job ran (unreadable counts as ran); Network Leads and the Cloud Fit backlog moved here from it
+      pipeline: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && steps.ran.outputs.ran != 'false' }}  # the tick's hourly `finish` job ran (unreadable counts as ran)
       due_jira: ${{ steps.due.outputs.due_jira }}
       due_followup: ${{ steps.due.outputs.due_followup }}
       due_outlook: ${{ steps.due.outputs.due_outlook }}
@@ -36,7 +33,7 @@
       due_network_surface: ${{ steps.due.outputs.due_network_surface }}
       due_fit_cloud_backlog: ${{ steps.due.outputs.due_fit_cloud_backlog }}
       due_last_seen_purge: ${{ steps.due.outputs.due_last_seen_purge }}
-      granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}      # LIFE-703: the page's value when GitHub holds none; GitHub's own value when the page cannot be read
+      granola_auto: ${{ steps.settings.outputs.GRANOLA_AUTO }}  # the page's value when GitHub holds none; GitHub's own value when the page cannot be read
       imessage_alerts: ${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
@@ -45,14 +42,12 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      # why: Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due
       - id: due
         name: Which domain jobs are due
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DOMAINS_PHASE: ${{ inputs.phase }}
         run: python3 -m lifeos.platform.due
-      # why: LIFE-775 - is the early run of this tick already started (the after-tick run then leaves the early jobs to it; no early run means it runs every job; unreadable leaves them out)
       - id: cover
         name: Is the early run of this tick already started
         if: ${{ github.event_name == 'workflow_run' }}
@@ -61,7 +56,6 @@
           GITHUB_TOKEN: ${{ github.token }}
           TICK_STARTED: ${{ github.event.workflow_run.run_started_at }}
         run: python3 -m lifeos.platform.phase
-      # why: LIFE-856 - did the tick's hourly finish job run (the moved Network Leads and Cloud Fit backlog jobs run only then; unreadable counts as yes)
       - id: ran
         name: Did the tick's hourly finish job run
         if: ${{ github.event_name == 'workflow_run' }}

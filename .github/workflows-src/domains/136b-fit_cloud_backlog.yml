@@ -1,10 +1,9 @@
-      # why: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; after each tick when V7_CLOUD_FIT_SCHEDULED is set; moved from the hourly finish job, LIFE-856; one Oracle request at a time)
       - id: fit_cloud_backlog
         continue-on-error: true
         name: Step 6a2 - Cloud Fit backlog batch
-        if: ${{ env.V7_CLOUD_FIT_SCHEDULED && env.V7_CLOUD_FIT_SCHEDULED != '0' }}   # LIFE-41 (Jim, Oct 19 2026): one call a tick is too few; after the tick, the strongest never-asked jobs get the Cloud Fit call, bounded
+        if: ${{ env.V7_CLOUD_FIT_SCHEDULED && env.V7_CLOUD_FIT_SCHEDULED != '0' }}  # one call a tick is too few; after the tick, the strongest never-asked jobs get the Cloud Fit call, bounded
         env:
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""  # a domains step must declare them itself
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
           PIPELINE: "true"
@@ -24,11 +23,11 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_fit_cloud_backlog.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_fit_cloud_backlog.outputs.NOTION_API_TOKEN }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_fit_cloud_backlog.outputs.IMESSAGE_ALERTS_HOST }}
-          V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}     # a tick: the scheduled count itself; 0 (unset) asks nothing
-          V7_CLOUD_FIT_BACKLOG_BUDGET: ""     # a tick: sized below to the time left in the hour
-          V7_CLOUD_FIT_BACKLOG_PAGE: ""     # LIFE-41 G6: Jim's one preapproved Ledger page, manual runs only; a tick never narrows to it
+          V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}  # a tick: the scheduled count itself; 0 (unset) asks nothing
+          V7_CLOUD_FIT_BACKLOG_BUDGET: ""  # a tick: sized below to the time left in the hour
+          V7_CLOUD_FIT_BACKLOG_PAGE: ""  # a tick never narrows to it
           V7_CLOUD_FIT_PROFILE_REF: ""
-          V7_CLOUD_FIT_PARALLEL: ${{ env.V7_CLOUD_FIT_PARALLEL || '1' }}     # D232: calls in flight at once, one per Oracle lane (1-3); unset is 1, one at a time
+          V7_CLOUD_FIT_PARALLEL: ${{ env.V7_CLOUD_FIT_PARALLEL || '1' }}  # calls in flight at once, one per Oracle lane (1-3); unset is 1, one at a time
         run: |
           # LIFE-41 (Jim, Oct 20 2026: "fill every hour"): the scheduled batch runs until about :55, so the next tick never waits, never past the
           # code's 45-minute batch cap (D238), and never past this job's 58 minutes (5 minutes kept for the steps after it). Too little time: skipped, not failed.
@@ -38,7 +37,6 @@
           if [ "$budget" -lt 300 ]; then echo "fit-cloud-backlog: skipped this hour (${budget}s left before :55 or the job limit)"; exit 0; fi
           export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
           python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
       - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=fit_cloud_backlog::a stage step failed in the fit_cloud_backlog job (see the step marked failed above)"; exit 1

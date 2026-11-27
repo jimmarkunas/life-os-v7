@@ -5,12 +5,12 @@
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           JIRA_CARD_BLOCK_ID: ""
-          GTV_CARD_BLOCK_ID: ""   # LIFE-975: the Global Talent Visa callout's own block id, filled from the Runtime Configuration row
-          JIRA_GTV_EPIC: ""   # LIFE-975: the visa epic's tickets are left out of this card (the visa callout covers them)
-          JIRA_CARD_PROJECTS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          GTV_CARD_BLOCK_ID: ""  # the Global Talent Visa callout's own block id, filled from the Runtime Configuration row
+          JIRA_GTV_EPIC: ""  # the visa epic's tickets are left out of this card (the visa callout covers them)
+          JIRA_CARD_PROJECTS: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           JIRA_SITE_URL: ""
-          JIRA_GTV_CONTEXT_URL: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          MEJ_SPRINT_AUTOMATION: ""   # LIFE-918: with the switch on the card shows the sprint reconcile summary line
+          JIRA_GTV_CONTEXT_URL: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          MEJ_SPRINT_AUTOMATION: ""  # with the switch on the card shows the sprint reconcile summary line
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -25,7 +25,6 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
-      # why: Auto-release (LIFE-727; moves ready tickets of an epic labelled auto-release to Agent Go, at most 3 an hour; written only when live; counts only)
       - id: jrelease
         continue-on-error: true
         name: Auto-release
@@ -34,7 +33,6 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-release $([ "$LIVE" = "true" ] && echo --live)
-      # why: Stall check (LIFE-729; read-only; names LIFE tickets idle with no waiting-on note)
       - id: jstalled
         continue-on-error: true
         name: Stall check
@@ -43,7 +41,6 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-stalled $([ "$LIVE" = "true" ] && echo --live)
-      # why: Parent, Component and Fix Version fill (LIFE-752; LIFE tickets updated in the last 2 days; one [sweep] comment each; written only when live; counts only)
       - id: jfill
         continue-on-error: true
         name: Parent, Component and Fix Version fill
@@ -52,7 +49,6 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-fill $([ "$LIVE" = "true" ] && echo --live)
-      # why: Jira decision capture (LIFE-994; LIFE tickets updated in the last two hours, decision comments only, into the shared memory through the governed tools; the server filters sensitive text; counts only; dry run unless live)
       - id: jcapture
         continue-on-error: true
         name: Jira decision capture

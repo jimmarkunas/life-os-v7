@@ -1,6 +1,6 @@
   megibow:
-    # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
-    # warning that never touches another card or the Jobs run, and a failed source leaves the last good table in place and says DEGRADED.
+    # MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private
+    # tables
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_megibow == 'true' && needs.gate.outputs.late == 'true') || inputs.megibow) }}
     runs-on: ubuntu-24.04
@@ -16,7 +16,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_megibow
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -25,14 +24,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: megibow
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -40,7 +37,6 @@
           oauth-client-id: ${{ steps.bws_megibow.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_megibow.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden
@@ -50,7 +46,6 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: runtime-config
-      # why: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
       - id: megibow
         continue-on-error: true
         name: MegIBOW (mail and calendars to Notion; counts only)
@@ -61,8 +56,8 @@
           OUTLOOK_CLIENT_ID: ${{ steps.bws_megibow.outputs.OUTLOOK_CLIENT_ID }}
           GCAL_CALENDAR_ID: ""
           MEGIBOW_BLOCK_ID: ""
-          MEGIBOW_REVIEW_DB_ID: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          MEGIBOW_EXCLUDED_DOMAINS: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          MEGIBOW_REVIEW_DB_ID: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          MEGIBOW_EXCLUDED_DOMAINS: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_megibow.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}

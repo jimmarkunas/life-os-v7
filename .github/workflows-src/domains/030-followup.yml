@@ -1,8 +1,6 @@
   followup:
-    # LIFE-757: the Followup lane (Production Contract v2.15.16, FOLLOWUP LANE OWNERSHIP OVERRIDE): one full reconciliation of every approved source every hour (Jim, Nov 16 2026). DEFAULT OFF: the stage is a counts-only
-    # no-op while the switch FOLLOWUP_WIRING (lifeos/platform/switches.json) is off, so merging this job cannot turn a run red; once on it runs LIVE on a scheduled or tick run while the V7_LIVE switch is on (the step adds --live
-    # exactly like the other stages; Jim, Nov 16 2026: "Go Live"; the tables exist, LIFE-756) and stays a dry run that writes nothing on a manual run with live false. Each source credential is one bws-load line below plus its inventory row in lifeos/platform/credential_list.py (named in
-    # lifeos/inbox/followup_wiring.py INVENTORY); a source without both shows DEGRADED. Top-level permissions apply unchanged (contents: read).
+    # the Followup lane (Production Contract v2.15.16, FOLLOWUP LANE OWNERSHIP OVERRIDE): one full reconciliation of every approved source every hour.
+    # DEFAULT OFF: the stage is a counts-only no-op while the switch.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
     runs-on: ubuntu-24.04
@@ -18,7 +16,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
-      # why: Load the credentials from Bitwarden (LIFE-757, the store and its jump route, the existing Jira token, email, Outlook client id and Notion, Calendar and Gmail items, plus the two new FOLLOWUP_ items (Bytalos Gmail refresh token, Todoist token; Jim, Nov 16 2026); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_followup
         name: Load the credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -27,14 +24,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: followup
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID,FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -42,7 +37,6 @@
           oauth-client-id: ${{ steps.bws_followup.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_followup.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden

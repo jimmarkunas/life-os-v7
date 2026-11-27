@@ -1,10 +1,9 @@
-      # why: Step 5a - LinkedIn job search (guest, after the resolver; the same rows as the job alerts, D203)
       - id: linkedin_search
         continue-on-error: true
         timeout-minutes: 4
         name: Step 5a - LinkedIn job search
         if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
-        env:                                   # D203: the store only
+        env:  # the store only
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_USER }}

@@ -5,7 +5,8 @@ The parts under `.github/workflows-src/<workflow>/` are the files people edit; `
   strip_comments(text)   the YAML text without comments, proved to parse to the same document (any doubt keeps the text as it was)
   compress(text)         the same document with repeated values and repeated `env:` / `with:` blocks written once as YAML anchors and aliases (LIFE-1013), kept only when it parses to the same document and `expand_aliases` gives the text back exactly
   expand_aliases(text)   the inverse: the plain text, for code that reads a generated workflow as text
-  why_rows(parts)        [(workflow, job, step, tickets, why)] from the `# why:` lines of (workflow, file name, text) parts
+  why_rows(parts)        [(workflow, job, step, tickets, why)] from the `# why:` lines of (workflow, file name, text) parts (the hand-written v3-pages.yml)
+  why_file_rows(text)    the same rows for the source parts, from `.github/workflows-src/why.yml`
   docs_text(rows)        the generated docs/workflows.md"""
 
 import collections
@@ -197,6 +198,18 @@ def why_rows(parts):
                     text_why,
                 )
             )
+    return rows
+
+
+def why_file_rows(text):
+    """-> the `why_rows` of the parts, read from `.github/workflows-src/why.yml` (LIFE-1016): {"<workflow>/<part file>": [{step: why}, ...]} in file and step order."""
+    rows = []
+    for key, entries in (yaml.safe_load(text) or {}).items():
+        workflow, name = key.split("/", 1)
+        job = re.sub(r"^\d+[a-z]?-", "", name.rsplit(".", 1)[0])
+        for entry in entries:
+            for step, why in entry.items():
+                rows.append((workflow, job, step, ", ".join(dict.fromkeys(TICKET.findall(why))), why.strip()))
     return rows
 
 

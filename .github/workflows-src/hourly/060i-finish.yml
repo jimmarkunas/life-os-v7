@@ -26,8 +26,7 @@
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
-      # LIFE-856 change 4: Step 7c (Network Leads) and the scheduled Step 6a2 (Cloud Fit backlog batch) run in domains.yml's after-tick run now (jobs network_surface and fit_cloud_backlog), beside the other late jobs,
-      # so this run, and the chain, no longer wait for them. Only the manual cloud_backlog dispatch of Step 6a2 stays here.
+      # Only the manual cloud_backlog dispatch of Step 6a2 stays here.
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; private Notion page)

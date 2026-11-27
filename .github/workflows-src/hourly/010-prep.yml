@@ -1,14 +1,14 @@
   prep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45                 # a run may wait up to 25 minutes in the gate for an older run of the other kind (D210)
+    timeout-minutes: 45  # a run may wait up to 25 minutes in the gate for an older run of the other kind
     permissions:
       contents: read
       actions: write
       issues: write
     outputs:
-      pipeline: ${{ steps.pipeline.outputs.value }}      # LIFE-699: whether this run is a live pipeline tick; the other jobs read it here instead of a GitHub variable
+      pipeline: ${{ steps.pipeline.outputs.value }}  # whether this run is a live pipeline tick
       extract: ${{ steps.extract.outcome }}
-      sweep: ${{ steps.sweep.outcome }}      # LIFE-650: the sweep may fail without stopping the tick; the report job names it as its own failed lane
+      sweep: ${{ steps.sweep.outcome }}  # the sweep may fail without stopping the tick; the report job names it as its own failed lane
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -16,18 +16,15 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      # why: Cloud Fit backlog runs alone (LIFE-41 D219) - cloud_backlog with any other action input fails here, before any credential or stage
       - name: Cloud Fit backlog runs alone
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0' && (inputs.interview_probe || inputs.interview || inputs.interview_acceptance || inputs.discover || inputs.tick || inputs.check_store || inputs.reconcile || inputs.resolve_jobright || inputs.resolve_linkedin || inputs.enrich || inputs.web || inputs.web_scale_up || inputs.sponsors || inputs.probe || inputs.fit || inputs.fit_all || inputs.audit || inputs.publish || inputs.maintenance || inputs.finalize || inputs.quick || inputs.report != '') }}
         run: |
           echo "CLOUD_BACKLOG_COMBINED_INPUTS: a cloud_backlog dispatch runs alone (only live may be set with it); nothing ran"
           exit 1
-      # why: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
       - name: Bitwarden helper from a saved, fingerprint-checked copy
         uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "600"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 13; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_prep
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -36,14 +33,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: hourly-prep
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,V7_PIPELINE,GATE_MIN_GAP_MINUTES,LIVE
           live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
-      # why: Pipeline decision (LIFE-699; a live tick only on a scheduled run or a manual tick, and only while the Bitwarden switch V7_PIPELINE is true; an unreadable switch parks the tick, D208)
       - id: pipeline
         name: Pipeline decision
         run: |
@@ -51,7 +46,6 @@
           if [ "$tick" = true ] && [ "$V7_PIPELINE" = true ]; then v=true; else v=false; fi
           echo "PIPELINE=$v" >> "$GITHUB_ENV"
           echo "value=$v" >> "$GITHUB_OUTPUT"
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale

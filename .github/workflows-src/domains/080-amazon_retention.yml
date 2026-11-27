@@ -14,7 +14,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "300"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, these 4 plus the 10 store names the interview_mail job already loads (LIFE-906, the checkpoint of what an old mail's read concluded); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_amazon_retention
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -23,14 +22,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: amazon-retention
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden for the V7 settings page
@@ -40,7 +37,6 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: settings
-      # why: Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)
       - id: aretain
         continue-on-error: true
         name: Amazon retention
@@ -49,11 +45,11 @@
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
-          RETENTION_LIVE: "true"    # D139: live since Jim read the dry-run counts (Oct 5): mail older than 30 days with a recorded order goes to the Trash, at most 200 a run (Jim approved raising it from 40)
+          RETENTION_LIVE: "true"
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon_retention.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon_retention.outputs.NOTION_AMAZON_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_NAME }}      # LIFE-906: the checkpoint store; a store that cannot be reached only means every mail is read, as before
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_NAME }}  # the checkpoint store; a store that cannot be reached only means every mail is read, as before
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_DB_USER }}
           LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_amazon_retention.outputs.LIFEOS_ACQ_SSH_HOST }}
@@ -67,7 +63,6 @@
       - name: Amazon retention warning (does not fail the Jobs run)
         if: ${{ always() && steps.aretain.outcome == 'failure' }}
         run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
       - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon_retention::a stage step failed in the amazon_retention job (see the step marked failed above)"; exit 1

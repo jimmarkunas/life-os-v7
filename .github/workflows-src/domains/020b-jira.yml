@@ -1,4 +1,3 @@
-      # why: Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)
       - id: jrollwatch
         continue-on-error: true
         name: Jira rollover watch
@@ -17,7 +16,6 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-rollover-watch $([ "$LIVE" = "true" ] && echo --live)
-      # why: Jira daily reconcile (LIFE-918 / LIFE-998; off unless MEJ_SPRINT_AUTOMATION is on; once a day at or after 8 AM CT; a manual force skips only today's date guard; dry run unless live; counts only)
       - id: jreconcile
         continue-on-error: true
         name: Jira daily reconcile
