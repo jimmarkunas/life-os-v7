@@ -145,16 +145,17 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 9. Proof and tests
 
-- **Prove deterministically:** a fixture or clock test, or a replay of one recorded real input; never on a live run alone.
+- **Prove:** a fixture or clock test, or a replay of one recorded real input; never on a live run.
 - **Natural runs, one rule:** a natural run never gates a build ticket's Done; its UAT ticket checks it, and a fault is filed as a Bug under LIFE-615.
-- **Fix on the real failing shape.** A defect seen live is fixed and proved on that input or a structure-keeping fixture, through the real path. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
+- **Fix on the real failing shape.** A defect seen live is fixed and proved on that input or a structure-keeping fixture. For Jobs qualification: real job description → requirement rows → non-null Fit → correct disposition.
 - **Runtime-facing changes:** prove the production entry point calls the change, its inputs load, the happy path completes, missing input fails closed, writes use the existing owner, and read-back is wired.
 - **Jobs increments:** test for the future source count before copying a pattern.
 - **Fail closed:** a full result or an error, never a partial one. Dry run is the default; writes need `--live`.
-- **Keep the suite under 90 seconds;** delete tests with the code they covered.
-- **Full width (D16.1):** a page V7 creates under a page uses `template=notion.FULL_WIDTH`; a repo test enforces it.
+- **Keep the suite under 90 s;** delete tests with the code they covered.
+- **Full width:** a page V7 creates under a page uses `template=notion.FULL_WIDTH`; a repo test enforces it.
 - **Net size:** `python -m lifeos.platform.net_size` in every PR.
 - **Decision numbers:** only from `python -m lifeos.sources.devtools.decisions claim`.
+- **Code comments say what and why now;** ticket history lives in Jira and git, not in code.
 
 ## 10. Exceptions in force
 
