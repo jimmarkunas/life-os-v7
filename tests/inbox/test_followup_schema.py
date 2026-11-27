@@ -1,4 +1,6 @@
-"""LIFE-756 (synthetic): the Followup tables' check and one-time apply: flags only, refuses unless ready, creates only the planned DDL and reads it back."""
+"""(synthetic): the Followup tables' check and one-time apply: flags only, refuses unless ready, creates only the planned
+DDL and reads it back.
+"""
 import json
 import pathlib
 import unittest
@@ -37,7 +39,8 @@ class Cursor:
 
 
 class Server(Cursor):
-    """A canned server that also takes the CREATE statements and answers SHOW COLUMNS and COUNT for the tables it holds."""
+    """A canned server that also takes the CREATE statements and answers SHOW COLUMNS and COUNT for the tables it holds.
+    """
 
     def __init__(self, columns=None, count=0, **kw):
         super().__init__(**kw)
@@ -76,7 +79,7 @@ class Plan(unittest.TestCase):
         self.assertEqual(fs.column_counts(), {"v7_followup_threads": 16, "v7_followup_checkpoints": 5, "v7_followup_overrides": 4, "v7_followup_suppressions": 4, "v7_followup_payload": 4})
         self.assertEqual(fs.column_counts()["v7_followup_threads"], len(followup_store.THREAD_COLUMNS))
         self.assertEqual(fs.key_bytes(), {"v7_followup_threads": 444, "v7_followup_checkpoints": 468, "v7_followup_overrides": 256, "v7_followup_suppressions": 512, "v7_followup_payload": 762})
-        self.assertLessEqual(max(fs.key_bytes().values()), fs.KEY_LIMITS["compact"])          # the largest key (the payload's scope_key, 762 bytes) fits even a COMPACT server
+        self.assertLessEqual(max(fs.key_bytes().values()), fs.KEY_LIMITS["compact"])
 
     def test_the_stages_and_the_fixed_codes_are_registered(self):
         self.assertIn("followup-schema-check", run.STAGES)
@@ -93,7 +96,7 @@ class Check(unittest.TestCase):
         self.assertEqual((result["server"], result["version"], result["row_format"], result["tables_present"], result["ready"]), ("mysql", "8.0", "dynamic", [], True))
         self.assertEqual((result["largest_key_bytes"], result["key_limit_bytes"], result["keys_fit"]), (762, 3072, True))
         self.assertEqual(result["grants"], {"CREATE": True, "SELECT": True, "INSERT": True, "UPDATE": True})
-        self.assertNotIn("`x`", repr(result))                                  # no database name, user or grant text leaves the check
+        self.assertNotIn("`x`", repr(result))
 
     def test_a_compact_server_is_still_ready_because_the_keys_are_small(self):
         result = fs.check(Cursor(row_format="compact"))
@@ -101,11 +104,11 @@ class Check(unittest.TestCase):
 
     def test_an_unknown_row_format_a_missing_grant_or_an_existing_table_is_visible(self):
         unknown = fs.check(Cursor(row_format="weird"))
-        self.assertEqual((unknown["keys_fit"], unknown["ready"]), (None, False))          # cannot tell, so not ready
+        self.assertEqual((unknown["keys_fit"], unknown["ready"]), (None, False))  # cannot tell, so not ready
         no_create = fs.check(Cursor(grants=("GRANT SELECT, INSERT, UPDATE ON `x`.* TO `u`@`%`",)))
         self.assertEqual((no_create["grants"]["CREATE"], no_create["ready"]), (False, False))
         present = fs.check(Cursor(tables=("v7_followup_threads", "v7_other")))
-        self.assertEqual(present["tables_present"], ["v7_followup_threads"])          # only this schema's own table names are reported
+        self.assertEqual(present["tables_present"], ["v7_followup_threads"])  # only this schema's own table names are reported
         self.assertTrue(fs.check(Cursor(grants=("GRANT ALL PRIVILEGES ON `x`.* TO `u`@`%`",)))["ready"])
 
     def test_a_refused_statement_is_a_none_never_an_error_text(self):
@@ -121,7 +124,7 @@ class Check(unittest.TestCase):
     def test_the_check_stage_never_writes(self):
         server = Server()
         with mock.patch.object(fs.db, "connect", return_value=stage_cursor(server)):
-            result = fs.run(0, True)                                              # even a live run writes nothing
+            result = fs.run(0, True)  # even a live run writes nothing
         self.assertEqual((result["check"]["ready"], result["tables_in_plan"]), (True, 5))
         self.assertTrue(all(s.split()[0] in ("SELECT", "SHOW") for s in server.sql), server.sql)
 
@@ -133,7 +136,7 @@ class Apply(unittest.TestCase):
         self.assertEqual((result["created"], result["verified"], result["rows"]), (sorted(fs.TABLES), True, {t: 0 for t in fs.TABLES}))
         self.assertEqual(len(result["created"]), 5)
         self.assertEqual(result["columns"], fs.column_counts())
-        self.assertEqual([s for s in server.sql if s.startswith("CREATE")], fs.plan())              # exactly the planned DDL, nothing else is changed
+        self.assertEqual([s for s in server.sql if s.startswith("CREATE")], fs.plan())  # exactly the planned DDL, nothing else is changed
         self.assertFalse([s for s in server.sql if s.split()[0] in ("DROP", "ALTER", "DELETE", "UPDATE", "INSERT", "TRUNCATE")])
 
     def test_apply_refuses_a_server_that_is_not_ready(self):
@@ -157,14 +160,14 @@ class Apply(unittest.TestCase):
             fa.apply(Server(columns=wrong_columns))
         self.assertEqual(str(caught.exception), "FOLLOWUP_SCHEMA_VERIFY_FAILED")
         with self.assertRaises(fa.SchemaError) as caught:
-            fa.apply(Server(count=1))                                             # a table that is not empty is not the planned result
+            fa.apply(Server(count=1))
         self.assertEqual(str(caught.exception), "FOLLOWUP_SCHEMA_VERIFY_FAILED")
 
     def test_the_apply_stage_only_checks_without_the_exact_confirmation_word(self):
         for word in ("", "apply", "APPLY ", "yes"):
             server = Server()
             with mock.patch.object(fa.db, "connect", return_value=stage_cursor(server)), mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": word}):
-                result = fa.apply_stage(0, True)                                  # even a live run creates nothing without the confirmation word
+                result = fa.apply_stage(0, True)
             self.assertEqual((result["dry_run"], result["check"]["ready"]), (True, True), word)
             self.assertFalse([s for s in server.sql if s.startswith("CREATE")], word)
         server = Server()

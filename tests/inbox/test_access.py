@@ -1,4 +1,4 @@
-"""LIFE-707 (synthetic): two separately scoped fake agents read the same fake source through the existing grant check; every request leaves an attributed receipt, a refusal reads nothing."""
+"""(synthetic): two separately scoped fake agents read the same fake source through the existing grant check"""
 import os
 import tempfile
 import unittest
@@ -38,9 +38,9 @@ class Access(unittest.TestCase):
         self.read(self.personal, "r1")
         denied = self.read(self.bytalos, "r2")
         self.assertEqual((denied.decision, denied.reason, denied.rows), ("deny", "no_grant", ()))
-        self.assertEqual(len(self.source.calls), 1)                                                         # only the first agent's read reached the source
+        self.assertEqual(len(self.source.calls), 1)  # only the first agent's read reached the source
         self.assertEqual([(r["principal_id"], r["decision"], r["reason"]) for r in self.ledger.access_receipts("agent-bytalos")], [("agent-bytalos", "deny", "no_grant")])
-        self.assertEqual(len(self.ledger.access_receipts("agent-personal")), 1)                             # receipts are per principal
+        self.assertEqual(len(self.ledger.access_receipts("agent-personal")), 1)  # receipts are per principal
 
     def test_wrong_workspace_wrong_account_revoked_expired_and_wrong_action_all_deny_without_reading(self):
         cases = {
@@ -61,11 +61,11 @@ class Access(unittest.TestCase):
 
     def test_a_repeated_request_id_is_a_replay_and_never_reads_again_even_after_a_restart(self):
         self.read(self.personal, "r1")
-        restarted = F.file_ledger(self.path, create=False)                                                  # a new process: nothing in memory
+        restarted = F.file_ledger(self.path, create=False)  # a new process: nothing in memory
         again = self.read(self.personal, "r1", ledger=restarted)
         self.assertEqual((again.reason, again.replayed, again.rows), ("replayed", True, ()))
         self.assertEqual(len(self.source.calls), 1)
-        self.assertEqual(len(restarted.access_receipts("agent-personal")), 1)                               # receipts survive the restart
+        self.assertEqual(len(restarted.access_receipts("agent-personal")), 1)  # receipts survive the restart
 
     def test_a_failed_read_is_recorded_as_its_type_only_and_hides_the_message(self):
         broken = F.FakeSource("jira", "personal", error=TimeoutError(F.ERROR_CANARY))

@@ -1,5 +1,6 @@
-"""LIFE-973, synthetic only: Company, Role and Client come only from the message behind a row (signature, display name, sender domain; subject, body), `Not stated` when it says nothing,
-a set value is never replaced, and the log carries the row id and the source, never a value."""
+"""synthetic only: Company, Role and Client come only from the message behind a row (signature, display name, sender
+domain)
+"""
 import contextlib
 import io
 import unittest
@@ -7,7 +8,7 @@ import unittest
 from lifeos.recruiters import backfill, fill, notion as store, stage
 from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail, mail, page
 
-AT = "@"                                                      # addresses are built, never written out (docs/PRIVACY.md)
+AT = "@"
 BODY_SIG = "Hi Jim,\n\nI have an opening you may like.\n\nThanks,\nPat Example\nSenior Recruiter at Northwind Staffing\n555-0100"
 
 

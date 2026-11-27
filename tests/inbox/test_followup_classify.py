@@ -1,4 +1,4 @@
-"""LIFE-716: the bounded Followup classifier. Fixtures only: no provider, credential, table or network."""
+"""the bounded Followup classifier."""
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -101,7 +101,7 @@ class Stage(unittest.TestCase):
         rig = self.rig()
         counts = rig.run()
         (payload,) = rig.published
-        self.assertEqual((counts["threads"], counts["review"], counts["written"]), (1, 1, 2))            # one dated loop active, the undated capture is Review Needed (stored, not counted)
+        self.assertEqual((counts["threads"], counts["review"], counts["written"]), (1, 1, 2))
         self.assertEqual([(t["title"], t["state"]) for t in payload["threads"]], [("Dana for the signed quote", "waiting_aging")])
         self.assertEqual(len(payload["review"]), 1)
         self.assertEqual(payload["counts"], {"needs_action_today": 0, "waiting_aging": 1, "upcoming": 0})
@@ -117,7 +117,7 @@ class Stage(unittest.TestCase):
     def test_completing_the_task_does_not_close_the_outcome(self):
         rig = self.rig()
         rig.run()
-        rig.rows["todoist"] = []                                                                     # the task is gone from the open list: no closing proof is read from that
+        rig.rows["todoist"] = []
         rig.run(at=T0 + timedelta(hours=1))
         self.assertEqual([t["resolution"] for t in rig.store.threads("personal", ACCOUNT)].count("open"), 2)
 

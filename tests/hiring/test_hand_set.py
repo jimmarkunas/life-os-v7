@@ -1,7 +1,6 @@
-"""LIFE-111 / LIFE-112 (Jim, Oct 25 2026): a hand-set hold (Paused, Waiting on employer, back to Active) and a hand-set next action / due date, set on Manage through a
-signed review and confirm, stored on the opportunity's Job Ledger row (its HAND_SET property; LIFE-353: the row is the only record a decision or hold is written on), read back; the Hiring
-Pipeline shows the hold and takes it off the to-do list until new mail or Calendar evidence clears it; the opportunity page shows Jim's action beside the derived one until
-Mark Complete clears it. Every name is invented; nothing is live."""
+"""a hand-set hold (Paused, Waiting on employer, back to Active) and a hand-set next action / due date, set on Manage
+through a signed review and.
+"""
 import html
 import re
 import unittest
@@ -60,7 +59,9 @@ class M2(H):
 
 
 def ledger_page(**kw):
-    """A pursuit whose Job Ledger row carries the HAND_SET property, and whose older opportunity page (Manage is opened from it) has the Interview writer's fold."""
+    """A pursuit whose Job Ledger row carries the HAND_SET property, and whose older opportunity page (Manage is opened
+    from it) has the Interview writer's.
+    """
     h = M2([(TD.TARGET, COMPANY, ROLE)], **kw)
     ledger_ready(h.world.source)
     return h, page_with_fold(h, action=DERIVED)
@@ -72,9 +73,9 @@ class ManageLedgerFlow(unittest.TestCase):
         status, body, _ = h.hub(h.world.ws.target)
         self.assertEqual(status, 200, body)
         self.assertIn("<b>State:</b> Active", body)
-        self.assertEqual(sorted(f.get("act") for f in forms(body) if f.get("act")), ["drive", "hold", "next", "sent", "sent"])        # LIFE-114 sent material (LIFE-174: a Drive-link form and a form form), LIFE-173 the Drive search
+        self.assertEqual(sorted(f.get("act") for f in forms(body) if f.get("act")), ["drive", "hold", "next", "sent", "sent"])  # sent material, the Drive search
         self.assertIn('value="paused">Pause it', body)
-        self.assertNotIn('value="active"', body)                                                       # Active is the state already
+        self.assertNotIn('value="active"', body)  # Active is the state already
         status, body, _ = h.hand_review("hold", v="paused")
         self.assertEqual(status, 200, body)
         self.assertIn("Set it to Paused", body)
@@ -86,11 +87,11 @@ class ManageLedgerFlow(unittest.TestCase):
         status, body, _ = h.hand("hold", v="waiting")
         self.assertEqual(status, 200, body)
         self.assertIn("Recorded and read back", body)
-        self.assertEqual(lines(h, fold), before)                                                       # LIFE-353: nothing is written on the page
+        self.assertEqual(lines(h, fold), before)  # nothing is written on the page
         self.assertEqual(M.hold_of(hand_text(h.world.source).splitlines())["state"], M.WAITING)
         self.assertEqual(h.after, ["hiring"])
         self.assertIn("Waiting on employer · set by Jim", h.hub(h.world.ws.target)[1])
-        status, body, _ = h.hand("hold", v=M.ACTIVE)                                                   # set back to Active
+        status, body, _ = h.hand("hold", v=M.ACTIVE)  # set back to Active
         self.assertEqual(status, 200, body)
         self.assertIsNone(M.hold_of(hand_text(h.world.source).splitlines()))
         self.assertEqual(h.world.ws.writes(), [])
@@ -125,9 +126,9 @@ class ManageLedgerFlow(unittest.TestCase):
         status, body, _ = h.hand("next", nx="Send the  work sample to Pat", due="2026-11-02")
         self.assertEqual(status, 200, body)
         self.assertEqual({k: v for k, v in M.next_of(hand_text(h.world.source).splitlines()).items() if k in ("text", "due")}, {"text": "Send the work sample to Pat", "due": "2026-11-02"})
-        status, body, _ = h.hand("next", nx="Wait for the panel")                                    # no date typed: none is invented
+        status, body, _ = h.hand("next", nx="Wait for the panel")  # no date typed: none is invented
         self.assertIsNone(M.next_of(hand_text(h.world.source).splitlines())["due"])
-        self.assertEqual(h.after, [])                                                                   # the page shows it after the hourly run; no region redraw
+        self.assertEqual(h.after, [])  # the page shows it after the hourly run
 
     def test_a_pursuit_closed_after_manage_opened_is_a_409_with_nothing_written(self):
         h, fold = ledger_page()
@@ -136,26 +137,25 @@ class ManageLedgerFlow(unittest.TestCase):
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409)
         self.assertIn("This opportunity was closed after Manage opened", body)
-        self.assertFalse([f for f in forms(body) if f.get("act")])                                      # a closed pursuit is offered nothing to carry over
+        self.assertFalse([f for f in forms(body) if f.get("act")])  # a closed pursuit is offered nothing to carry over
         self.assertEqual(h.writes(), (0, 0))
 
     def test_an_entry_whose_pursuit_moved_to_another_row_is_kept_and_offered_there(self):
-        """LIFE-169 (Jim, Oct 30 2026): the pursuit is carried by another Ledger row after Manage opened. Nothing is written on confirm; the screen offers the same entry for
-        review on that row, signed for that row only."""
+        """the pursuit is carried by another Ledger row after Manage opened."""
         h, fold = ledger_page()
         review = h.fields(h.hand_review("next", nx="Follow up via email", due="2026-11-02")[1])
         source = h.world.source
-        source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                         # no longer a pursuit row
+        source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}
         source.pages[TD.SIBLING] = TD.Source.make(TD.SIBLING, COMPANY, ROLE)
         source.pages[TD.SIBLING]["properties"][D.HAND_SET] = {"rich_text": []}
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409, body)
         self.assertIn(f'This opportunity now lives on <a href="https://www.notion.so/{D._page_id(TD.SIBLING)}" target="_blank" rel="noopener">another Job Ledger row ↗</a>', body)
-        self.assertIn("/manage?o=" + D._page_id(h.world.ws.target), body)                              # Manage again, from the opportunity page
+        self.assertIn("/manage?o=" + D._page_id(h.world.ws.target), body)  # Manage again, from the opportunity page
         self.assertEqual(h.writes(), (0, 0))
         moved = next(f for f in forms(body) if f.get("act") == "next")
         self.assertEqual((moved["k"], moved["o"], moved["nx"], moved["due"], moved["step"]), ("ledger", D._page_id(TD.SIBLING), "Follow up via email", "2026-11-02", "review"))
-        for patch in ({"k": "notes"}, {"o": D._page_id(TD.TARGET)}, {"t": "0" * 64}):                   # signed for that row only
+        for patch in ({"k": "notes"}, {"o": D._page_id(TD.TARGET)}, {"t": "0" * 64}):  # signed for that row only
             self.assertEqual(h.call("POST", "/manage", form={**moved, **patch})[0], 403, patch)
         status, body, _ = h.call("POST", "/manage", form=moved)
         self.assertEqual(status, 200, body)
@@ -164,7 +164,7 @@ class ManageLedgerFlow(unittest.TestCase):
         self.assertEqual(M.next_of(hand_text(source, TD.SIBLING).splitlines())["text"], "Follow up via email")
 
     def test_a_pursuit_with_no_ledger_row_is_refused_and_nothing_is_written(self):
-        h = M2()                                                                                        # D195 superseded: an opportunity page alone carries no hold
+        h = M2()
         page_with_fold(h, action=DERIVED)
         status, body, _ = h.hub(h.world.ws.target)
         self.assertEqual(status, 409, body)
@@ -198,10 +198,10 @@ class ManageLedgerRow(unittest.TestCase):
         status, body, _ = h.hand("next", nx="Call Pat", due="2026-11-02")
         self.assertEqual(status, 200, body)
         got = hand_text(h.world.source).splitlines()
-        self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.PAUSED, "Call Pat", 2))     # the latest of each kind, nothing more
+        self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.PAUSED, "Call Pat", 2))  # the latest of each kind, nothing more
         self.assertEqual([p[2] for p in h.world.source.patches()], [(D.HAND_SET,), (D.HAND_SET,)])
         props = h.world.source.pages[TD.TARGET]["properties"]
-        self.assertEqual({k: props[k] for k in before}, before)                                         # the decision, history, Applied and the rest are untouched
+        self.assertEqual({k: props[k] for k in before}, before)
         self.assertEqual(h.world.ws.writes(), [])
         self.assertIn("Paused · set by Jim", h.hub(h.world.ws.target)[1])
 
@@ -235,10 +235,10 @@ class Pipeline(unittest.TestCase):
     def test_a_held_row_shows_its_state_has_no_to_do_sorts_last_and_is_not_counted_active(self):
         got = T.compile_([held_row(), T.applied("Globex", "Program Director", "2026-09-20")])
         row = next(r for r in got["rows"] if r["company"] == "Acme")
-        self.assertEqual((row["stage"], row["hold"]["state"]), (M.SUBMITTED, M.PAUSED))                 # the evidence stage is untouched
+        self.assertEqual((row["stage"], row["hold"]["state"]), (M.SUBMITTED, M.PAUSED))  # the evidence stage is untouched
         self.assertEqual(T.cells(row)[1:3], ["Paused · Submitted", "No to-do · paused (set by Jim Oct 5)"])
         text, cells, _ = render.render(got, None, T.NOW)
-        self.assertEqual([c[0][0] for c in cells], ["Globex — Program Director", "Acme — Senior Program Manager"])     # the Stale Globex row first, the paused one last
+        self.assertEqual([c[0][0] for c in cells], ["Globex — Program Director", "Acme — Senior Program Manager"])  # the Stale Globex row first, the paused one last
         self.assertEqual(text, "10/6 · 2:00 PM CT · 1 active · 1 paused or waiting")
         waiting = T.compile_([held_row((M.hold_line(M.WAITING, SET_AT, OP),))])["rows"][0]
         self.assertEqual(T.cells(waiting)[1], "Waiting on employer · Submitted")
@@ -252,7 +252,7 @@ class Pipeline(unittest.TestCase):
     def test_newer_calendar_or_mail_evidence_clears_the_hold_and_the_row_says_why(self):
         event = {"id": "e1", "title": "Interview Acme", "start": T.at(2)}
         old = T.compile_([held_row()], events=[dict(event, updated="2026-10-04T09:00:00-05:00")])["rows"][0]
-        self.assertEqual(old["hold"]["state"], M.PAUSED)                                               # the invite was already known when Jim paused it
+        self.assertEqual(old["hold"]["state"], M.PAUSED)  # the invite was already known when Jim paused it
         new = T.compile_([held_row()], events=[dict(event, updated="2026-10-06T09:00:00-05:00")])["rows"][0]
         self.assertNotIn("hold", new)
         self.assertEqual((new["hold_cleared"]["by"], new["stage"]), ("Calendar", M.INTERVIEWING))
@@ -262,7 +262,7 @@ class Pipeline(unittest.TestCase):
             row = C.compile_rows([held_row()], [], [], None, T.OK, T.NOW, **extra)["rows"][0]
             self.assertEqual(row["hold_cleared"]["by"], "mail", extra)
         stale = C.compile_rows([held_row()], [], [], None, T.OK, T.NOW, contacts={key: "2026-10-01T08:00:00-05:00"})["rows"][0]
-        self.assertIn("hold", stale)                                                                   # an older message changes nothing
+        self.assertIn("hold", stale)  # an older message changes nothing
 
     def test_a_cleared_hold_stays_cleared_after_its_evidence_leaves_the_window_until_jim_sets_a_new_one(self):
         event = {"id": "e1", "title": "Interview Acme", "start": T.at(2), "updated": "2026-10-06T09:00:00-05:00"}
@@ -270,7 +270,7 @@ class Pipeline(unittest.TestCase):
         later = T.NOW + T.timedelta(days=40)
         again = C.compile_rows([held_row()], [], [], first, T.OK, later)["rows"][0]
         self.assertNotIn("hold", again)
-        self.assertNotIn("cleared", T.cells(again, later)[2])                                          # the note shows for a week only
+        self.assertNotIn("cleared", T.cells(again, later)[2])  # the note shows for a week only
         fresh = C.compile_rows([held_row((M.hold_line(M.PAUSED, "2026-11-10T09:00:00-06:00", "e" * 16),))], [], [], first, T.OK, later)["rows"][0]
         self.assertEqual(fresh["hold"]["state"], M.PAUSED)
 
@@ -293,7 +293,7 @@ class Pipeline(unittest.TestCase):
         source = ledger_ready(TD.Source(rows=[(TD.TARGET, COMPANY, ROLE)]))
         source.pages[TD.TARGET]["properties"][D.HAND_SET] = {"rich_text": [{"plain_text": line}]}
         self.assertEqual(stage.read_applied(source)[0]["hand"], (line,))
-        self.assertEqual(stage.read_applied(TD.Source(rows=[(TD.TARGET, COMPANY, ROLE)]))[0]["hand"], ())       # no property yet: nothing, and nothing breaks
+        self.assertEqual(stage.read_applied(TD.Source(rows=[(TD.TARGET, COMPANY, ROLE)]))[0]["hand"], ())  # no property yet: nothing, and nothing breaks
 
     def test_an_invites_update_time_is_read_and_a_missing_one_is_never_evidence(self):
         class Cal:
@@ -310,20 +310,20 @@ class OpportunityPage(unittest.TestCase):
     def test_jims_action_replaces_the_derived_one_with_its_own_label_and_complete_link(self):
         page = opp(close_base="https://edge.example.test", page_id="0" * 32, hand=(self.NEXT,))
         shown = texts(template.opportunity_page(page, "2026-10-24"))
-        self.assertIn("SET BY JIM · your next action", shown)                                           # Jim, Oct 29: his action replaces the derived one
+        self.assertIn("SET BY JIM · your next action", shown)
         self.assertIn("Send the work sample to Pat", shown)
         self.assertNotIn("PRIMARY ACTION · derived from the linked recruiter message", shown)
-        self.assertFalse([t for t in shown if t.startswith("New since you set this")])                   # no newer evidence: the derived action is not shown at all
+        self.assertFalse([t for t in shown if t.startswith("New since you set this")])
         self.assertTrue(any(t.startswith("Due: 2026-11-02 · Owner: Jim · set on the Manage screen") for t in shown))
-        self.assertIn(f"v7-action:1;key={OP};text=Send the work sample to Pat", shown)                 # completable by its own key
-        self.assertIn(self.NEXT, shown)                                                                 # carried forward as written
+        self.assertIn(f"v7-action:1;key={OP};text=Send the work sample to Pat", shown)  # completable by its own key
+        self.assertIn(self.NEXT, shown)  # carried forward as written
         self.assertIn(f"https://edge.example.test/complete?o={'0' * 32}&a={OP}", str(template.opportunity_page(page, "2026-10-24")))
         degraded = texts(template.opportunity_page(replace(page, request_url=None, stable_job_key="exampleco-stpm"), "2026-10-24"))
         self.assertFalse([t for t in degraded if t.startswith("DEGRADED · NO VERIFIED ACTION")])
         self.assertIn("SET BY JIM · your next action", degraded)
 
     def test_evidence_after_jim_set_it_shows_under_his_as_new_and_never_replaces_it(self):
-        old = view.Round("round-1", 1, "2026-10-28", None, "accepted", created="2026-10-04T12:00:00.000Z")      # before SET_AT: not new
+        old = view.Round("round-1", 1, "2026-10-28", None, "accepted", created="2026-10-04T12:00:00.000Z")  # before SET_AT: not new
         page = opp(hand=(self.NEXT,), rounds=(old,))
         self.assertFalse([t for t in texts(template.opportunity_page(page, "2026-10-24")) if t.startswith("New since you set this")])
         new = view.Round("round-2", 2, "2026-11-04", None, "accepted", created="2026-10-08T15:00:00.000Z")
@@ -332,8 +332,8 @@ class OpportunityPage(unittest.TestCase):
         self.assertIn("Send the work sample to Pat", shown)
         line = [t for t in shown if t.startswith("New since you set this")]
         self.assertEqual(line, ["New since you set this · Interview 2 page added Oct 8 · PRIMARY ACTION · from the accepted Calendar invite"])
-        self.assertIn("Prepare for Interview 1 on 2026-10-28.", shown)                                  # the derived action, under his
-        self.assertIsNone(view.evidence_since(opp(rounds=(view.Round("r", 3, None, None),)), view.hand_set_at(opp(hand=(self.NEXT,)))))   # no creation time: never new
+        self.assertIn("Prepare for Interview 1 on 2026-10-28.", shown)  # the derived action, under his
+        self.assertIsNone(view.evidence_since(opp(rounds=(view.Round("r", 3, None, None),)), view.hand_set_at(opp(hand=(self.NEXT,)))))  # no creation time: never new
 
     def test_the_stage_line_shows_the_hold_and_why_new_evidence_cleared_it(self):
         held = opp(hand=(M.hold_line(M.WAITING, SET_AT, "f" * 16),))
@@ -351,7 +351,7 @@ class OpportunityPage(unittest.TestCase):
         rounds = (view.Round("round-1", 1, "2026-10-28", None, "accepted"),)
         page = opp(hand=(self.NEXT,), rounds=rounds)
         self.assertEqual(view.hand_action(page), (OP, "Send the work sample to Pat", "2026-11-02"))
-        self.assertEqual(view.primary_action(page, "2026-10-24")[2], "2026-10-28")                     # the derived action follows the evidence; Jim's stays
+        self.assertEqual(view.primary_action(page, "2026-10-24")[2], "2026-10-28")  # the derived action follows the evidence
         undated = opp(hand=(M.next_line("Ask about the panel", None, SET_AT, OP),))
         self.assertEqual(view.hand_action(undated)[2], None)
         self.assertTrue(any(t.startswith("Due: No date set") for t in texts(template.opportunity_page(undated, "2026-10-24"))))
@@ -374,7 +374,7 @@ class OpportunityPage(unittest.TestCase):
         client, page_id = U.written(current)
         fold = client.blocks[page_id][0]["id"]
         hold = M.hold_line(M.PAUSED, SET_AT, "f" * 16)
-        client.blocks[fold] += [TN.block(self.NEXT, id="hand-1"), TN.block(hold, id="hand-2")]          # what decision.set_hand appends
+        client.blocks[fold] += [TN.block(self.NEXT, id="hand-1"), TN.block(hold, id="hand-2")]  # what decision.set_hand appends
         out = {"writes": 0}
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")
         shown = U.texts(client, page_id)
@@ -385,7 +385,7 @@ class OpportunityPage(unittest.TestCase):
         h = M2([(TD.TARGET, COMPANY, ROLE)])
         fold = page_with_fold(h, action=DERIVED)
         ws = h.world.ws
-        ws.add("paragraph", fold, f"v7-action:1;key={OP};text=Send the work sample to Pat")              # what the page writer writes for it
+        ws.add("paragraph", fold, f"v7-action:1;key={OP};text=Send the work sample to Pat")  # what the page writer writes for it
         ws.add("paragraph", fold, self.NEXT)
         hub = h.hub(ws.target)[1]
         self.assertIn("Your next action:</b> Send the work sample to Pat", hub)
@@ -398,7 +398,7 @@ class OpportunityPage(unittest.TestCase):
         page = opp(done=create.done_lines(blocks), hand=create.hand_lines(blocks))
         self.assertIsNone(view.hand_action(page))
         self.assertFalse([t for t in texts(template.opportunity_page(page, "2026-10-24")) if "SET BY JIM" in t or t.startswith(f"v7-action:1;key={OP}")])
-        self.assertIn(self.NEXT, texts(template.opportunity_page(page, "2026-10-24")))                # the line itself stays as history
+        self.assertIn(self.NEXT, texts(template.opportunity_page(page, "2026-10-24")))  # the line itself stays as history
         self.assertNotIn("Your next action", h.hub(ws.target)[1])
 
 

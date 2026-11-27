@@ -1,5 +1,6 @@
-"""LIFE-47 S2 (Career): the Close Opportunity application, driven the way the Edge gate calls it, against the synthetic Ledger and Notes stand-ins already used for S1. Every name here is invented;
-nothing is live. A `Both` client stands for the one Notion integration (Ledger rows and Notes pages); GET gets it behind the gate's real `ReadOnly` facade."""
+"""S2 (Career): the Close Opportunity application, driven the way the Edge gate calls it, against the synthetic Ledger
+and Notes stand-ins already used.
+"""
 import ast
 import html
 import importlib
@@ -34,7 +35,7 @@ class Both:
 
     def call(self, method, path, body=None):
         if path.startswith("/blocks/") and path.split("/")[2].split("?")[0].replace("-", "") in self.w.source.pages:
-            return self.w.source.call(method, path, body)                                    # a Ledger row's own page body (LIFE-361 rows are the opportunity page)
+            return self.w.source.call(method, path, body)  # a Ledger row's own page body
         return (self.w.source if path.startswith("/data_sources") else self.w.ws).call(method, path, body)
 
     def call_once(self, *args, **kw):
@@ -69,7 +70,7 @@ class Harness:
         if method == "GET":
             secrets["reader"] = close_gate.ReadOnly(both)
         else:
-            secrets["notion"], secrets["after"] = TOKEN, self.after             # the gate's refresh requests (close_gate.REFRESH), as close_gate.main passes them
+            secrets["notion"], secrets["after"] = TOKEN, self.after
         def factory(cfg):
             assert method != "GET", "GET must not build a writing client"
             return both
@@ -91,7 +92,7 @@ class Harness:
         return status, body, self.fields(body)
 
     def close(self, pid, outcome, notes="", **kw):
-        """LIFE-973: the Close screen is retired; a decision is recorded the way the screen did (decision.confirm_rejected) so the Manage and Reopen tests keep their closed rows."""
+        """the Close screen is retired"""
         both = Both(self.world)
         rec = D.route(D.rows(D.ledger_pages(both)), {"action": D.ACTION, "id": pid})
         done = D.confirm_rejected(both, {"action": D.ACTION, "confirmed": True, "id": pid, "company": rec["company"], "role": rec["role"], "reason": notes or outcome, "outcome": outcome,
@@ -104,7 +105,7 @@ STAGED = "ee" * 16
 
 
 def staged_harness(**kw):
-    """An interview pursuit's row (LIFE-361): Stage set, Applied not ticked. LIFE-353: it closes on the row like any application."""
+    """An interview pursuit's row: Stage set, Applied not ticked.: it closes on the row like any application."""
     h = Harness([(STAGED, COMPANY, ROLE)], **kw)
     h.world.source.pages[STAGED] = TD.Source.make(STAGED, COMPANY, ROLE, applied=False, stage="Interviewing")
     return h
@@ -125,32 +126,34 @@ class Contract(unittest.TestCase):
                 mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module] + [f"{node.module}.{a.name}" for a in node.names] if isinstance(node, ast.ImportFrom) and node.module else []
                 for mod in (m for m in mods if m.startswith("lifeos")):
                     parts = mod.split(".")
-                    for n in range(1, len(parts) + 1):                                                  # a module needs every package initializer above it too
+                    for n in range(1, len(parts) + 1):
                         for cand in ("/".join(parts[:n]) + ".py", "/".join(parts[:n]) + "/__init__.py"):
                             if (ROOT / cand).is_file():
                                 todo.append(cand)
         self.assertEqual(seen - shipped, set(), "an import the release would not ship")
         files = {p: (ROOT / p).read_bytes() for p in shipped}
         dest = os.path.join(tempfile.mkdtemp(), "tree")
-        rel.stage("a" * 40, dest, github(files))                                                  # the real verifier: regular blobs, hashes, and an isolated import of the app and the gate
+        rel.stage("a" * 40, dest, github(files))
 
     def test_the_release_verifier_and_the_installed_service_use_the_relocated_callable_handler(self):
         self.assertEqual(rel.APP, "lifeos/sources/apps/close_app.py")
         self.assertIn("lifeos/sources/__init__.py", rel.EDGE)
         unit = next(line for line in (ROOT / "lifeos/edge/oracle/install-close.sh").read_text().splitlines() if line.startswith("ExecStart="))
         self.assertIn("from lifeos.sources.apps.close_app import handle; sys.exit(close_gate.main(handle))", unit)
-        self.assertNotIn("lifeos.sources.close_app", unit)                                              # LIFE-624 step 2: the unit imports the real module, not the shim
+        self.assertNotIn("lifeos.sources.close_app", unit)
         self.assertNotIn("lifeos.hiring.close_app", unit)
         self.assertTrue(callable(close_app.handle) and close_app.handle.__module__ == "lifeos.sources.apps.close_app")
-        self.assertFalse((ROOT / "lifeos/hiring/close_app.py").exists())                              # no wrapper is left in the hiring package
+        self.assertFalse((ROOT / "lifeos/hiring/close_app.py").exists())  # no wrapper is left in the hiring package
 
     def test_the_old_path_is_gone_and_the_release_closure_ships_only_the_real_module(self):
-        """LIFE-624 step 3: the shim at lifeos/sources/close_app.py is removed (Oracle's unit and the release tool already name lifeos.sources.apps.close_app)."""
+        """step 3: the shim at lifeos/sources/close_app.py is removed (Oracle's unit and the release tool already name
+        lifeos.sources.apps.close_app).
+        """
         self.assertFalse((ROOT / "lifeos/sources/close_app.py").exists())
         self.assertNotIn("close_app", importlib.import_module("lifeos.sources").__all__)
         self.assertNotIn("lifeos/sources/close_app.py", close_app.CLOSURE)
         self.assertIn("lifeos/sources/apps/close_app.py", close_app.CLOSURE)
-        shipped = set(rel.closure((ROOT / rel.APP).read_bytes()))                                          # the release tool reads the literal CLOSURE from the real module
+        shipped = set(rel.closure((ROOT / rel.APP).read_bytes()))
         self.assertLessEqual(set(close_app.CLOSURE), shipped)
         self.assertNotIn("lifeos/sources/close_app.py", shipped)
 
@@ -164,4 +167,4 @@ class Contract(unittest.TestCase):
 
     def test_the_budget_and_the_files(self):
         lines = sum(1 for p in ("lifeos/sources/apps/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
-        self.assertLessEqual(lines, 330)                               # E05 Mark Complete lives here too (Jim, Oct 23: the 300-line cap is suspended for the Jobs/Interview OS delivery)
+        self.assertLessEqual(lines, 330)  # E05 Mark Complete lives here too

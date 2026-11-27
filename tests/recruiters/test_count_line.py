@@ -1,4 +1,4 @@
-"""LIFE-973, synthetic only: the Recruiter Outreach callout's gray count line is the only text V7 writes there; the title, the link and the live view inside are never touched."""
+"""synthetic only: the Recruiter Outreach callout's gray count line is the only text V7 writes there"""
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -51,7 +51,7 @@ class CountLine(unittest.TestCase):
         self.assertEqual((counts["verified"], [c[0] for c in client.calls].count("PATCH")), (True, 1))
         self.assertIn("2 need action · 1 overdue", "".join(p["plain_text"] for p in client.block["callout"]["rich_text"]))
         card.run(0, True, environ=ENV, notion=rows, client=client, now=NOW)
-        self.assertEqual([c[0] for c in client.calls].count("PATCH"), 1)                       # the same line is not written twice
+        self.assertEqual([c[0] for c in client.calls].count("PATCH"), 1)  # the same line is not written twice
 
     def test_closed_done_and_inactive_rows_are_not_counted(self):
         rows = FakeRecruiters([page("A B", action="Needs Action"), page("C D", action="Needs Action", done=True), page("E F", action="Needs Action", active=False)])

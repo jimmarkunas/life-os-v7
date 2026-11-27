@@ -1,5 +1,6 @@
-"""LIFE-313: a Jira issue becomes the readiness record, proven through the real entrypoint (`python -m lifeos.sources.devtools.readiness issue-json|issue-key`).
-Offline fixtures only, invented keys; the live read uses a fake client."""
+"""a Jira issue becomes the readiness record, proven through the real entrypoint (`python -m
+lifeos.sources.devtools.readiness issue-json|issue-key`).
+"""
 import json
 import subprocess
 import sys
@@ -38,7 +39,6 @@ def entry(*args):
 
 
 class JimMustDoFirstAtStart(unittest.TestCase):
-    """Jim, Nov 21 2026: at start, an unchecked Jim must do first item refuses and a missing section warns."""
 
     def test_an_unchecked_item_refuses_and_a_missing_section_warns(self):
         from lifeos.sources.devtools import readiness
@@ -75,7 +75,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(self.check(raw(desc))[:2], (0, "ready v1\n"))
 
     def test_any_gwt_id_or_none_parses_and_a_done_when_bullet_counts(self):
-        """Delivery flow v3: the id is optional and free-form; a bullet under Done when is a Done-when line."""
+        """Delivery flow v3: the id is optional and free-form"""
         for row in ("GWT-1 Given a, when b, then c", "**GWT-S62-01** Given a, when b, then c", "Given a, when b, then c", "1. Given a, when b, then c"):
             with self.subTest(row=row):
                 self.assertEqual(rr.normalize(raw(f"## Done when\n\n* {row}"))["acceptance"], [{"given": "a", "when": "b", "then": "c"}])
@@ -102,7 +102,7 @@ class RecordTests(unittest.TestCase):
         self.assertIn("warn v1 authorization_missing", self.check(raw(DESC.replace("**Origin / approval:**", "**Origin:**")))[2])
 
     def test_every_release_gate_reason_refuses_at_start_and_the_exceptions_pass(self):
-        """LIFE-850: the release gate's fixed reasons are HARD here too (one case each); a research or verdict child under an Epic in Scoping, and build work under an Epic in Ready, are ready."""
+        """the release gate's fixed reasons are HARD here too (one case each)"""
         for kwargs, code in (({"labels": ("lane-career-v7",)}, "no_readiness_label"), ({"labels": ("ready", "needs-jim")}, "two_readiness_labels"), ({"labels": ("needs-prep",)}, "not_ready_label"),
                              ({"labels": ("needs-jim",)}, "not_ready_label"), ({"epic": "Scoping"}, "epic_scoping"),
                              ({"links": [{"type": {"name": "Blocks"}, "inwardIssue": {"key": "LIFE-899", "fields": {"status": {"name": "To Do", "statusCategory": {"key": "new"}}}}}]}, "blocked_by_open")):
@@ -116,7 +116,7 @@ class RecordTests(unittest.TestCase):
         self.assertIn("refused v1 epic_status_unread", self.check(no_status)[2])
 
     def test_the_open_gaps_report_names_missing_parent_component_fix_version_or_readiness_label_and_writes_nothing(self):
-        """LIFE-850: reporting only (exit 0), from a saved Atlassian MCP search result; an unreadable file is QUEUE_NOT_READY."""
+        """reporting only (exit 0), from a saved Atlassian MCP search result"""
         full = {"key": "LIFE-1", "fields": {"parent": {"key": "LIFE-10"}, "components": [{"name": "C"}], "fixVersions": [{"name": "C 1.0.0"}], "labels": ["ready"]}}
         bare = {"key": "LIFE-2", "fields": {"parent": None, "components": [], "fixVersions": [], "labels": ["lane-platform"]}}
         part = {"key": "LIFE-3", "fields": {"parent": {"key": "LIFE-10"}, "components": [{"name": "C"}], "fixVersions": [], "labels": ["needs-prep"]}}
@@ -130,7 +130,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(entry("open-gaps-mcp", "/nonexistent.json")[0], 2)
 
     def test_a_ready_epic_needs_a_current_pass_review_and_every_other_state_refuses(self):
-        """LIFE-851: epic_unreviewed (HARD) for a missing, failed or stale review; a current pass is ready; an Epic not in Ready is not judged; a review is the first line of one comment (markdown or ADF)."""
+        """epic_unreviewed (HARD) for a missing, failed or stale review"""
         def comment(text, created):
             return {"body": text, "created": created}
         def bundle(comments, children=(), status="Ready"):
@@ -154,7 +154,7 @@ class RecordTests(unittest.TestCase):
             path.write_text(json.dumps(bundle([passing])))
             self.assertEqual(entry("epic-review", path)[:2], (0, "ready v1\n"))
         self.assertEqual(entry("epic-review", "/nonexistent.json")[0], 2)
-        self.assertEqual(readiness.epic_review(bundle([comment("ChatGPT review: pass", "not a date")])), "missing")        # an unreadable time never counts as a review
+        self.assertEqual(readiness.epic_review(bundle([comment("ChatGPT review: pass", "not a date")])), "missing")  # an unreadable time never counts as a review
 
     def test_the_live_epic_bundle_reads_status_comments_and_child_updates_and_a_gap_is_a_fixed_code(self):
         class Fake:
@@ -181,7 +181,7 @@ class RecordTests(unittest.TestCase):
         para = lambda t: {"type": "paragraph", "content": [{"type": "text", "text": t}]}
         adf = {"type": "doc", "content": [para(x) for x in rr.lines(DESC)]}
         a, b = rr.normalize(raw(adf)), rr.normalize(raw(DESC))
-        a.pop("description_chars"), b.pop("description_chars")                 # the raw text length exists only for a text description
+        a.pop("description_chars"), b.pop("description_chars")
         self.assertEqual(a, b)
 
     def test_unreadable_jira_data_is_queue_not_ready_never_ready(self):
@@ -191,7 +191,7 @@ class RecordTests(unittest.TestCase):
             self.assertTrue(err.startswith("QUEUE_NOT_READY — INCOMPLETE:"), err)
 
     def test_a_los_key_is_no_longer_read_and_requirement_pages_stay_listed(self):
-        """LIFE-849: LOS is retired. A LOS key in the origin line adds no requirement check and no `los` field; a linked REQ page is still listed."""
+        """LOS is retired."""
         from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
         page = "\n\n**Requirement:** REQ-7 https://app.notion.com/p/00000000000000000000000000000004"
         for text in (from_los, from_los + "\n\nREQ-7 has no link yet", from_los + "\n\nSee https://app.notion.com/p/00000000000000000000000000000004"):
@@ -217,7 +217,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(done.returncode, 2)
         first, hint = done.stderr.strip().splitlines()
         self.assertEqual(first, "QUEUE_NOT_READY — JIRA_CONFIG_MISSING:JIRA_BASE_URL,JIRA_EMAIL,JIRA_API_TOKEN")
-        self.assertIn("issue-mcp", hint)                                              # LIFE-363: the one-line hint to the MCP route
+        self.assertIn("issue-mcp", hint)  # the one-line hint to the MCP route
 
     def test_fetch_is_one_read_only_get(self):
         calls = []

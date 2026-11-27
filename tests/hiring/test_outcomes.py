@@ -1,4 +1,6 @@
-"""D190: rejection and offer mail for the companies in the Hiring Pipeline is found by fixed wording, matched to one opportunity or not at all, and shown as a line to confirm."""
+"""rejection and offer mail for the companies in the Hiring Pipeline is found by fixed wording, matched to one
+opportunity or not at all, and shown as a.
+"""
 import json
 import unittest
 from datetime import datetime, timedelta
@@ -27,7 +29,7 @@ def row(company, role, event_days_ago=None, applied="2026-09-01"):
 WALMART = row("Walmart", "Senior Manager, Operations and Implementation", 35)
 SMITH = row("Smith", "Senior Project Manager", 35)
 UBER = row("Uber", "Technical Project Manager", 14)
-EXAMPLE = row("Example", "Program Manager", 14)                 # LIFE-26: a synthetic employer whose own domain is example.com
+EXAMPLE = row("Example", "Program Manager", 14)
 REJECTION = "Thank you for interviewing. Unfortunately we will not be moving forward with your candidacy at Walmart."
 
 
@@ -55,7 +57,7 @@ class WordingTests(unittest.TestCase):
         self.assertTrue(outcomes.mentions(msg(body="Dear Jim, thank you for your interest in Smith Consulting."), "Smith Consulting"))
         self.assertFalse(outcomes.mentions(msg(subject="Update", body="Consulting at Smith"), "Smith Consulting"))
         self.assertFalse(outcomes.mentions(msg(subject="Unrelated"), "Walmart"))
-        self.assertFalse(outcomes.mentions(msg(subject="Hello"), "ab"))                              # too short to mean anything
+        self.assertFalse(outcomes.mentions(msg(subject="Hello"), "ab"))  # too short to mean anything
 
 
 class FindTests(unittest.TestCase):
@@ -80,7 +82,7 @@ class FindTests(unittest.TestCase):
         self.assertEqual(found[WALMART["key"]]["match"], "company")
 
     def test_mail_older_than_the_rows_last_evidence_is_not_an_outcome_for_it(self):
-        found, stats = outcomes.find([msg(subject="Walmart", body=REJECTION, days_ago=40)], [WALMART])          # the interview was 35 days ago
+        found, stats = outcomes.find([msg(subject="Walmart", body=REJECTION, days_ago=40)], [WALMART])  # the interview was 35 days ago
         self.assertEqual((found, stats["unmatched"]), ({}, 1))
 
     def test_a_message_naming_two_pipeline_companies_or_two_unreadable_roles_is_never_guessed(self):
@@ -106,7 +108,7 @@ class FindTests(unittest.TestCase):
 
 
 class ShownTests(unittest.TestCase):
-    """The pipeline says what to do; it never closes anything itself."""
+    """The pipeline says what to do"""
     def compiled(self, outcome, parent=True, role="Senior Manager, Operations and Implementation"):
         parents = [{"id": "p1", "company": "Walmart", "role": role, "rounds": 1}] if parent else []
         applied = [{"company": "Walmart", "role": role, "applied_on": "2026-09-01"}]
@@ -120,7 +122,7 @@ class ShownTests(unittest.TestCase):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "role"})
         self.assertEqual(self.action(result), f"Rejection email received {(NOW - timedelta(days=3)).strftime('%b %-d')} · confirm, then move the Notes page to Retired")
         self.assertEqual(result["rows"][0]["stage"], "Interviewing")
-        self.assertEqual(len(result["rows"]), 1)                                  # still listed: V7 closes nothing
+        self.assertEqual(len(result["rows"]), 1)  # still listed: V7 closes nothing
 
     def test_a_company_only_rejection_is_possible_and_a_row_without_a_notes_page_keeps_applied_as_history(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "company"}, parent=False)
@@ -182,7 +184,7 @@ class RunTests(unittest.TestCase):
         counts, store, gmail = self.go([msg(subject="Your Walmart application", body=REJECTION, days_ago=3)])
         self.assertEqual((counts["status"], counts["matched"], counts["rejected"], counts["saved"], counts["roster"]), ("fresh", 1, 1, 1, 2))
         self.assertEqual(list(store.row["outcomes"]), [WALMART["key"]])
-        self.assertIn('"Walmart"', gmail.queries[0])                                       # Gmail is asked only about the pipeline's companies
+        self.assertIn('"Walmart"', gmail.queries[0])  # Gmail is asked only about the pipeline's companies
         self.assertIn("newer_than:37d", gmail.queries[0])
         text = json.dumps(counts)
         for private in ("Walmart", "Uber", "example.com", "Unfortunately"):
@@ -204,7 +206,7 @@ class RunTests(unittest.TestCase):
         with self.assertRaises(outcomes.OutcomeError) as error:
             self.go([], store=store, broken=True)
         self.assertEqual(str(error.exception), "OUTCOMES_DEGRADED_SOURCE_INCOMPLETE")
-        self.assertEqual(list(store.row["outcomes"]), [WALMART["key"]])                   # the last accepted outcomes stay
+        self.assertEqual(list(store.row["outcomes"]), [WALMART["key"]])  # the last accepted outcomes stay
 
     def test_an_empty_pipeline_reads_no_mail(self):
         counts, _, gmail = self.go([], prior={"rows": []})
@@ -213,11 +215,13 @@ class RunTests(unittest.TestCase):
     def test_the_stage_is_registered_and_the_hiring_stage_reads_what_it_found(self):
         from lifeos import run as entry
         self.assertEqual(entry.STAGES["hiring-outcomes"].target, ("lifeos.hiring.outcomes", "run"))
-        self.assertEqual(mail.WINDOW_DAYS, 14)                                           # the Recruiters scan's own window is unchanged
+        self.assertEqual(mail.WINDOW_DAYS, 14)  # the Recruiters scan's own window is unchanged
 
 
 class ContactTests(unittest.TestCase):
-    """LIFE-26: only positive evidence of the hiring team writing resets the Stale clock: an inbox message from a person on the employer's own domain."""
+    """only positive evidence of the hiring team writing resets the Stale clock: an inbox message from a person on the
+    employer's own domain.
+    """
     def test_a_person_at_the_employer_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
         found = outcomes.contacts([msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=9, mid="a"),
                                    msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=2, mid="b")], [EXAMPLE])
@@ -228,19 +232,19 @@ class ContactTests(unittest.TestCase):
                         "store-news@example.com", "jobs@example.com", "careers@example.com", "talent.team@example.com",
                         "pat" + chr(64) + "gmail.com", "recruiter@linkedin.com", "broken-address"):
             self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
-        for marker in ("bulk", "auto", "noreply"):                                                                                     # list, newsletter or auto-submitted mail
+        for marker in ("bulk", "auto", "noreply"):  # list, newsletter or auto-submitted mail
             marked = dict(msg(subject="Example weekly update", sender="Maria Lopez", address="maria@example.com"), markers={marker: True})
             self.assertEqual(outcomes.contacts([marked], [EXAMPLE]), {}, marker)
         for sender, address in (("Example.com", "payments-messages@example.com"), ("Example Customer Service", "cs-reply@example.com"),
-                                ("Example Events", "events@example.com"), ("Uber Receipts", "uber@example.com"), ("Delivery Notice", "delivery-notice@example.com")):    # brand or team senders
+                                ("Example Events", "events@example.com"), ("Uber Receipts", "uber@example.com"), ("Delivery Notice", "delivery-notice@example.com")):  # brand or team senders
             self.assertEqual(outcomes.contacts([msg(subject="Your Example refund", sender=sender, address=address)], [EXAMPLE]), {}, address)
         for domain, own in (("example.com", True), ("example.co.uk", True), ("mail.example.com", False), ("example.myworkday.com", False),
-                            ("example.zendesk.com", False), ("examples.com", False)):                                              # the registered domain only, never a tenant
+                            ("example.zendesk.com", False), ("examples.com", False)):  # the registered domain only, never a tenant
             self.assertEqual(outcomes._own_domain(domain, "Example"), own, domain)
         junk = dict(msg(subject="Example update", sender="Maria Lopez", address="maria@example.com"), folder="JUNK")
-        self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})                                                                         # spam never resets the clock
+        self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})  # spam never resets the clock
         self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", sender="Maria Lopez", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed
-        self.assertEqual(outcomes.contacts([msg(subject="Example update", sender="Maria Lopez", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})        # before the interview
+        self.assertEqual(outcomes.contacts([msg(subject="Example update", sender="Maria Lopez", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})  # before the interview
 
     def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
         prior = {"rows": [dict(EXAMPLE)]}
@@ -260,8 +264,9 @@ class ContactTests(unittest.TestCase):
 
 
 class EntryPointTests(unittest.TestCase):
-    """D190 through the production entry point `lifeos.run.main(["hiring-outcomes", ...])` -> STAGES -> outcomes.run -> the shared snapshot store (real SQL against an in-memory table);
-    only Gmail, Outlook and the database connection are faked."""
+    """through the production entry point `lifeos.run.main(['hiring-outcomes',...])` -> STAGES -> outcomes.run -> the
+    shared snapshot store (real SQL.
+    """
 
     PIPELINE = {"schema": 1, "taken_at": NOW.isoformat(), "accepted_at": NOW.isoformat(), "rows": RunTests.PRIOR["rows"]}
 
@@ -307,7 +312,7 @@ class EntryPointTests(unittest.TestCase):
         code, counts, err, _, tables, conn = self.go(self.REC)
         self.assertEqual((code, err, counts["status"], counts["saved"], counts["rejected"]), (0, "", "fresh", 1, 1))
         stored = json.loads(tables.rows[("v7_hiring_outcomes", 1)])
-        self.assertEqual(sorted(next(iter(stored["outcomes"].values()))), ["exact", "kind", "match", "received"])   # bounded evidence only (exact is a bool): no company, sender, subject or text
+        self.assertEqual(sorted(next(iter(stored["outcomes"].values()))), ["exact", "kind", "match", "received"])
         code, counts, err, fake, tables, _ = self.go(self.REC, tables=tables)
         self.assertEqual((code, counts["status"], counts["saved"], fake.queries), (0, "not_due", 0, []))
 
@@ -334,7 +339,7 @@ class EntryPointTests(unittest.TestCase):
                                                               "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}}})
         return tables, tables.rows[("v7_hiring_outcomes", 1)]
 
-    def test_when_no_source_could_be_listed_the_scan_fails_closed_saves_nothing_and_keeps_the_last_accepted_outcomes(self):      # LIFE-648: one unread source is partial (tests/hiring/test_partial_source.py)
+    def test_when_no_source_could_be_listed_the_scan_fails_closed_saves_nothing_and_keeps_the_last_accepted_outcomes(self):
         tables, before = self.seeded()
         for kwargs in ({"broken": True}, {"broken": True, "accounts": [("work", None)]}, {"broken": True, "accounts": [("work", BrokenOutlook())]}):
             code, counts, err, _, tables, _ = self.go(self.REC, tables=tables, **kwargs)
@@ -351,7 +356,7 @@ class EntryPointTests(unittest.TestCase):
     def test_a_snapshot_write_that_does_not_read_back_cannot_report_success(self):
         code, counts, err, _, tables, _ = self.go(self.REC, tables=self.Tables(mismatch=True))
         self.assertEqual(code, 1)
-        self.assertIsNone(counts)                                                    # no counts line claims a save
+        self.assertIsNone(counts)  # no counts line claims a save
         self.assertEqual(err, "HIRING-OUTCOMES FAILED: OUTCOMES_READBACK_MISMATCH")
 
     def test_the_stage_has_no_notion_or_ledger_write_path_and_never_names_the_applied_property(self):

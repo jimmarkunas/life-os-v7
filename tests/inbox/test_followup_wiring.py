@@ -1,4 +1,4 @@
-"""LIFE-757 (synthetic): the production wiring of the `followup` stage. A sqlite shim stands in for MySQL; no provider, credential, table, workflow or schedule is touched."""
+"""(synthetic): the production wiring of the `followup` stage."""
 import unittest
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -13,12 +13,12 @@ from lifeos.platform import followup_fetchers as F, followup_readers as R
 from tests.kit.mysqlite import MySQLite
 import sys as _sys
 _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
-import wfsets  # noqa: E402  (LIFE-1013: credential lists named with `set:`)
+import wfsets  # noqa: E402
 
 
 UTC = timezone.utc
 T0 = datetime(2026, 11, 16, 20, 0, tzinfo=UTC)
-REFS = F.GRANT_REFS                                                                   # what a grant names, from the fetchers' own table
+REFS = F.GRANT_REFS  # what a grant names, from the fetchers' own table
 EXPIRES = {key: "2027-11-15" for key in REFS}
 ON = {"FOLLOWUP_WIRING": "on", "FOLLOWUP_ACCOUNT_GMAIL_PERSONAL": "gm"}
 OUTLOOK_SLOTS = range(1, F.SLOTS[("outlook", "personal")] + 1)
@@ -41,7 +41,7 @@ def fake_build(environ):
 
 class Switch(unittest.TestCase):
     def test_the_kill_switch_keeps_the_stage_a_no_op_whatever_the_file_says(self):
-        off = {"FOLLOWUP_WIRING": "off"}                                               # the repository variable "off" wins over switches.json (on since the dry run was approved)
+        off = {"FOLLOWUP_WIRING": "off"}
         self.assertIsNone(W.build(off))
         self.assertIsNone(S.production_wiring(off))
         with mock.patch.dict("os.environ", off):
@@ -51,13 +51,13 @@ class Switch(unittest.TestCase):
         with mock.patch.object(F, "build_fetchers", fake_build), mock.patch.object(W.db, "connect", shim()):
             wiring = W.build({"FOLLOWUP_WIRING": "on"})
             self.assertEqual({(s.workspace, s.account) for s in wiring.scopes}, {("personal", "jira-personal"), ("bytalos", "jira-bytalos")})
-            self.assertIsNone(W.build({**ON, "FOLLOWUP_WIRING": "off"}))               # the kill switch wins
+            self.assertIsNone(W.build({**ON, "FOLLOWUP_WIRING": "off"}))  # the kill switch wins
 
     def test_without_the_fetchers_module_nothing_is_configured_and_nothing_crashes(self):
         with mock.patch.object(W, "_fetchers", lambda: None), mock.patch.object(W.db, "connect", shim()):
             self.assertEqual(W.credential_names(), {})
             wiring = W.build(ON)
-        self.assertEqual((wiring.fetchers, wiring.grants), ({}, ()))                    # every source degraded, nothing read
+        self.assertEqual((wiring.fetchers, wiring.grants), ({}, ()))  # every source degraded, nothing read
 
 
 class Build(unittest.TestCase):
@@ -85,9 +85,9 @@ class Build(unittest.TestCase):
         scopes = W.configured({"FOLLOWUP_WIRING": "on"})
         self.assertEqual({k for k, members in scopes.items() if ("jira", 1) in members}, {("personal", "jira-personal"), ("bytalos", "jira-bytalos")})
         grants = [g for g in W.grants_for(ON, REFS, EXPIRES) if g.source == "jira"]
-        self.assertEqual(len(grants), 2)                                                # two Grant objects ...
-        self.assertEqual({F.CREDENTIAL_NAMES[JIRA[0]], F.CREDENTIAL_NAMES[JIRA[1]]}, {"JIRA_API_TOKEN"})     # ... for the one existing item
-        self.assertNotEqual(grants[0].credential_ref, grants[1].credential_ref)         # the grant names carry the workspace, so neither can read as the other
+        self.assertEqual(len(grants), 2)  # two Grant objects...
+        self.assertEqual({F.CREDENTIAL_NAMES[JIRA[0]], F.CREDENTIAL_NAMES[JIRA[1]]}, {"JIRA_API_TOKEN"})  # ...
+        self.assertNotEqual(grants[0].credential_ref, grants[1].credential_ref)
         self.assertEqual(W.fetcher_environment({})["JIRA_BASE_URL"], W.JIRA_SITE)
         self.assertEqual(F.JIRA_PROJECTS["personal"], ("JFM", "LIFE"))
         self.assertEqual(F.JIRA_PROJECTS["bytalos"], ("BAD", "BPP"))
@@ -99,7 +99,7 @@ class Build(unittest.TestCase):
         fetch = F.build_fetchers({"JIRA_API_TOKEN": "x", "JIRA_EMAIL": "a@example.com"}, factories={"jira": lambda env, ws, secret, projects=None: seen.append((ws, projects)) or None})["jira"]
         self.assertEqual(grants["bytalos"].credential_ref, F.GRANT_REFS[("jira", "bytalos", 1)])
         with self.assertRaises(F.FetchError):
-            fetch("JIRA_API_TOKEN:calendar.bytalos", None)                              # a grant naming another source's credential is refused by the fetcher
+            fetch("JIRA_API_TOKEN:calendar.bytalos", None)
 
     def test_each_jira_scope_reads_with_its_own_grant_and_receipts_and_cannot_borrow_the_other(self):
         grants = W.grants_for(ON, REFS, EXPIRES)
@@ -110,7 +110,7 @@ class Build(unittest.TestCase):
                 return []
             R.read_delta("jira", tenant, f"jira-{tenant}", None, grants, fetcher, receipts.append, T0, "batch-0")
         self.assertEqual(seen, [("personal", REFS[("jira", "personal", 1)]), ("bytalos", REFS[("jira", "bytalos", 1)])])
-        self.assertEqual({r["tenant"] for r in receipts}, {"personal", "bytalos"})        # separate receipts per scope
+        self.assertEqual({r["tenant"] for r in receipts}, {"personal", "bytalos"})  # separate receipts per scope
         wrong = R.read_delta("jira", "bytalos", "jira-bytalos", None, [g for g in grants if g.tenant == "personal"], lambda ref, since: [], lambda r: None, T0, "x")
         self.assertEqual((wrong.status, wrong.reason), ("refused", "no_grant"))
         stranger = R.read_delta("jira", "personal", "stranger", None, grants, lambda ref, since: [], lambda r: None, T0, "y")
@@ -125,30 +125,30 @@ class Build(unittest.TestCase):
         self.assertEqual({v for v in used if v.startswith("FOLLOWUP_")}, {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"})
         table = W.expiry_table()
         for key, name in raw.items():
-            self.assertEqual(key in table, key[0] in F.STORED_TOKENS or name in W.INVENTORY, key)       # a credential has an expiry exactly when it has an inventory row (derived from the map, never a count)
+            self.assertEqual(key in table, key[0] in F.STORED_TOKENS or name in W.INVENTORY, key)
         env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp", "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb", "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
                "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb", "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp"}
         grants = W.grants_for(env, W.credential_names())
         calendars = {g.tenant: g for g in grants if g.source == "calendar"}
-        self.assertEqual({t: g.account for t, g in calendars.items()}, {"personal": "cp", "bytalos": "cb"})        # one item, two Grants, two scopes
+        self.assertEqual({t: g.account for t, g in calendars.items()}, {"personal": "cp", "bytalos": "cb"})  # one item, two Grants, two scopes
         self.assertNotEqual(calendars["personal"].credential_ref, calendars["bytalos"].credential_ref)
-        self.assertEqual({(g.source, g.tenant) for g in grants if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")}, {("todoist", "personal"), ("gmail", "bytalos")})   # both have a loader line and an inventory row now
+        self.assertEqual({(g.source, g.tenant) for g in grants if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")}, {("todoist", "personal"), ("gmail", "bytalos")})  # both have a loader line and an inventory row now
 
     def test_outlook_reuses_the_existing_sign_in_labels_and_never_bytalos(self):
-        extra = len(OUTLOOKS) + 1                                                       # one slot past the connected accounts is ignored
+        extra = len(OUTLOOKS) + 1  # one slot past the connected accounts is ignored
         env = {**ON, **OUTLOOKS, f"FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_{extra}": "more", "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no"}
         self.assertEqual(W.accounts(env, "outlook", "personal"), [(n, f"ol{n}") for n in OUTLOOK_SLOTS])
         self.assertEqual(W.accounts(env, "outlook", "bytalos"), [])
         grants = [g for g in W.grants_for(env, W.credential_names()) if g.source == "outlook"]
         self.assertEqual(sorted((g.account, g.credential_ref) for g in grants), sorted((f"ol{n}", F.OUTLOOK_LABELS[n]) for n in OUTLOOK_SLOTS))
-        self.assertTrue({g.credential_ref for g in grants} <= set(outlook_stage.LABELS))   # a label the outlook workflow already signs in, never a new one
+        self.assertTrue({g.credential_ref for g in grants} <= set(outlook_stage.LABELS))
 
     def test_the_school_mailbox_is_tracked_not_connected(self):
         self.assertEqual([key for key in W.NOT_CONNECTED], [("outlook", "personal", "school mailbox")])
         self.assertTrue(all(reason for reason in W.NOT_CONNECTED.values()))
         env = {**ON, "OUTLOOK_CLIENT_ID": "x"}
         labels = [label for _, label in W.accounts(env, "outlook", "personal")]
-        self.assertFalse([label for label in labels if "school" in label])               # no scope, so no grant and no read
+        self.assertFalse([label for label in labels if "school" in label])  # no scope, so no grant and no read
         self.assertFalse([g for g in W.grants_for(env, W.credential_names()) if "school" in str(g.account).lower()])
 
     def test_todoist_notion_and_interview_os_are_personal_only(self):
@@ -195,7 +195,7 @@ class Degraded(unittest.TestCase):
         wiring = S.Wiring(store, (S.Scope("personal", "jira-personal", ("jira", "gmail")),), (), {"jira": lambda ref, since: calls.append(ref) or []}, W.make_audit(ledger), lambda payload: None,
                           clock=lambda: T0)
         counts = S.run(0, False, wiring)
-        self.assertEqual(calls, [])                                                       # no grant, no read
+        self.assertEqual(calls, [])  # no grant, no read
         self.assertEqual(counts["sources_degraded"], 2)
         self.assertEqual(counts["sources_ok"], 0)
         self.assertNotIn("item_failed", counts)
@@ -216,7 +216,7 @@ class Degraded(unittest.TestCase):
         self.assertEqual(str(caught.exception), "FOLLOWUP_AUDIT_UNAVAILABLE")
         wiring = S.Wiring(store, (S.Scope("personal", "jira-personal", ("jira",)),), grants, {"jira": lambda ref, since: calls.append(ref) or []}, audit, lambda payload: None, clock=lambda: T0)
         counts = S.run(0, False, wiring)
-        self.assertEqual(calls, [])                                                       # no receipt, no read
+        self.assertEqual(calls, [])  # no receipt, no read
         self.assertEqual(counts.get("item_failed"), 1)
         self.assertIn("FOLLOWUP_AUDIT_UNAVAILABLE", str(counts.get("item_codes")))
 
@@ -230,8 +230,8 @@ class Receipts(unittest.TestCase):
         grants = W.grants_for(ON, REFS, EXPIRES)
         fetch = lambda ref, since: []                                                     # noqa: E731
         R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0, "batch-0")
-        R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0 + timedelta(hours=1), "batch-0")      # the same reader id one hour later: a new receipt
-        R.read_delta("jira", "bytalos", "jira-bytalos", None, (), fetch, audit, T0, "batch-1")                                 # a refusal still leaves a deny receipt
+        R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0 + timedelta(hours=1), "batch-0")  # the same reader id one hour later: a new receipt
+        R.read_delta("jira", "bytalos", "jira-bytalos", None, (), fetch, audit, T0, "batch-1")  # a refusal still leaves a deny receipt
         rows = ledger.access_receipts(W.PRINCIPAL)
         self.assertEqual(len(rows), 3)
         self.assertEqual(sorted(r["decision"] for r in rows), ["allow", "allow", "deny"])
@@ -241,7 +241,7 @@ class Receipts(unittest.TestCase):
 
 class Dry(unittest.TestCase):
     def test_a_dry_run_store_reads_empty_when_the_tables_are_missing_and_never_writes(self):
-        dry = W.DryStore(FollowupStore(shim()))                                         # no ensure_schema: the Followup tables do not exist
+        dry = W.DryStore(FollowupStore(shim()))  # no ensure_schema: the Followup tables do not exist
         self.assertIsNone(dry.cursor_for("personal", "jira-personal", "jira"))
         self.assertEqual(dry.threads("personal", "jira-personal"), [])
         with self.assertRaises(W.WiringError) as caught:
@@ -274,7 +274,9 @@ class Payload(unittest.TestCase):
 
 
     def test_the_sink_calls_the_real_store_with_arguments_that_bind_to_save_payload(self):
-        """LIFE-789: the first live run failed every scope because the sink passed one argument more than FollowupStore.save_payload takes; a fake with the wrong shape had hidden it."""
+        """the first live run failed every scope because the sink passed one argument more than
+        FollowupStore.save_payload takes
+        """
         import inspect
         seen = []
 
@@ -283,7 +285,7 @@ class Payload(unittest.TestCase):
                 seen.append((args, kwargs))
         W.make_sink(Spy(), lambda: T0)({"workspace": "personal", "account": "jira-personal", "state": "PASS", "generated_at": "2026-11-17T01:00:00+00:00"})
         args, kwargs = seen[0]
-        inspect.signature(FollowupStore.save_payload).bind(object(), *args, **kwargs)           # raises TypeError when the sink's call does not fit the real method
+        inspect.signature(FollowupStore.save_payload).bind(object(), *args, **kwargs)
 
 
 class Job(unittest.TestCase):
@@ -298,18 +300,18 @@ class Job(unittest.TestCase):
         text = wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text())
         doc = yaml.safe_load(text)
         job = doc["jobs"]["followup"]
-        self.assertEqual(doc["permissions"], {"contents": "read"})                       # unchanged
+        self.assertEqual(doc["permissions"], {"contents": "read"})  # unchanged
         self.assertEqual(job["needs"], ["gate"])
-        self.assertNotIn("vars.", job["if"])                                              # no new GitHub value: the switch is in switches.json, never a repository value
+        self.assertNotIn("vars.", job["if"])
         self.assertIn("needs.gate.outputs.due_followup == 'true'", job["if"])
         runs = [step.get("run", "") for step in job["steps"]]
         stage = [r for r in runs if "python -m lifeos.run followup" in r]
         self.assertEqual(len(stage), 1)
-        self.assertIn('$([ "$LIVE" = "true" ] && echo --live)', stage[0])                  # --live only through the V7_LIVE guard, exactly like the other stages
-        self.assertNotIn("--live", stage[0].replace('echo --live)', ""))                   # never a bare --live: a manual run with live false stays a dry run that writes nothing
+        self.assertIn('$([ "$LIVE" = "true" ] && echo --live)', stage[0])
+        self.assertNotIn("--live", stage[0].replace('echo --live)', ""))
         loaded = next(step for step in job["steps"] if str(step.get("uses", "")).endswith("bws-load") and step.get("id") == "bws_followup")
         self.assertTrue({"JIRA_API_TOKEN", "JIRA_EMAIL"} <= {line.split()[-1] for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()})
-        self.assertNotIn("FOLLOWUP_JIRA_", str(loaded["with"]))                          # no new Jira credential: the existing items are reused
+        self.assertNotIn("FOLLOWUP_JIRA_", str(loaded["with"]))
         names = {line.split()[-1] for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()}
         for name in names:
             self.assertRegex(name, r"^[A-Z0-9_]+$")
@@ -318,11 +320,13 @@ class Job(unittest.TestCase):
         switch = json.loads((self.ROOT / "lifeos/platform/switches.json").read_text())["FOLLOWUP_WIRING"]
         self.assertIn(switch["state"], ("off", "on"))
         if switch["state"] == "on":
-            self.assertTrue(switch["turned_on"].strip())                                  # an "on" switch records when, by whom and on whose word
-            self.assertIn("Go Live", switch["bounds"])                                    # and the live flag is a recorded, reviewed decision (Jim, Nov 16 2026), guarded by V7_LIVE in the step
+            self.assertTrue(switch["turned_on"].strip())
+            self.assertIn("Go Live", switch["bounds"])
 
     def test_every_new_followup_credential_is_loaded_passed_and_has_an_inventory_row(self):
-        """Derived from the code: each FOLLOWUP_ secret name the fetchers use needs a bws-load line, a step env entry and a credential inventory row, so a source never silently shows DEGRADED for a wiring gap."""
+        """Derived from the code: each FOLLOWUP_ secret name the fetchers use needs a bws-load line, a step env entry and
+        a credential inventory row, so a.
+        """
         try:
             import yaml
         except ImportError:
@@ -333,20 +337,21 @@ class Job(unittest.TestCase):
         lines = [line.split() for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()]
         loaded_names = {parts[-1] for parts in lines}
         ids = [parts[0] for parts in lines]
-        self.assertEqual(len(ids), len(set(ids)))                                          # one Bitwarden item per line
+        self.assertEqual(len(ids), len(set(ids)))  # one Bitwarden item per line
         env = next(step for step in job["steps"] if step.get("id") == "followup")["env"]
         rows = {row["key"] for row in CREDENTIALS}
         self.assertTrue(F.NEW_NAMES)
         for name in F.NEW_NAMES:
             if name.startswith("FOLLOWUP_GCAL_") or name.startswith("FOLLOWUP_ACCOUNT_"):
-                continue                                                                   # plain identifiers and labels, read by bws-plain or committed, not credentials
+                continue
             self.assertIn(name, loaded_names)
             self.assertIn(name, env)
             self.assertIn(W.INVENTORY.get(name), rows)
 
 
 class DefaultLabels(unittest.TestCase):
-    """Jim creates no label item: each account has a committed label, used only where its credential is there to read."""
+    """Jim creates no label item: each account has a committed label, used only where its credential is there to read.
+    """
 
     def test_every_default_names_a_real_scope_and_is_never_an_address_or_tgp(self):
         self.assertEqual(set(W.DEFAULT_LABELS) - set(F.CREDENTIAL_NAMES), set())
@@ -355,10 +360,10 @@ class DefaultLabels(unittest.TestCase):
 
     def test_a_credential_in_the_environment_brings_its_committed_label(self):
         gmail, name = ("gmail", "bytalos", 1), F.CREDENTIAL_NAMES[("gmail", "bytalos", 1)]
-        self.assertEqual(W.accounts({}, "gmail", "bytalos"), [])                      # no credential, no scope
+        self.assertEqual(W.accounts({}, "gmail", "bytalos"), [])  # no credential, no scope
         self.assertEqual(W.accounts({name: "x"}, "gmail", "bytalos"), [(1, W.DEFAULT_LABELS[gmail])])
-        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "mine"}, "gmail", "bytalos"), [(1, "mine")])   # an environment label still wins
-        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "a@" + "tgp" + "international.com"}, "gmail", "bytalos"), [])   # and a TGP one is refused, not replaced by the default
+        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "mine"}, "gmail", "bytalos"), [(1, "mine")])  # an environment label still wins
+        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "a@" + "tgp" + "international.com"}, "gmail", "bytalos"), [])
 
     def test_outlook_is_judged_by_the_reader_so_its_client_id_is_enough(self):
         self.assertEqual(W.accounts({}, "outlook", "personal"), [])

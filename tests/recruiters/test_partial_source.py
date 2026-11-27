@@ -1,4 +1,3 @@
-"""LIFE-646: one unread source (an Outlook account answering with server errors) no longer fails the Recruiters stage when another source was read."""
 import contextlib
 import io
 import tempfile
@@ -15,7 +14,6 @@ from tests.recruiters.test_incremental import AFTERNOON, FakeLedger, after_a_ful
 
 
 class DownOutlook:
-    """An account whose listing answers with a server error (what Microsoft returned on Nov 12 and 13 2026)."""
 
     def messages(self, *args, **kwargs):
         raise OutlookError("OUTLOOK_HTTP_502")
@@ -35,7 +33,7 @@ class PartialSourceTests(unittest.TestCase):
         self.assertEqual(len(notion.pages), 1)
 
     def test_nothing_is_concluded_from_the_unread_source(self):
-        counts, notion = run([], [("personal", DownOutlook())])                         # Gmail read fine and holds no recruiter mail
+        counts, notion = run([], [("personal", DownOutlook())])  # Gmail read fine and holds no recruiter mail
         self.assertEqual((counts["created"], counts["updated"], notion.writes), (0, 0, []))
 
     def test_a_client_that_could_not_even_be_built_is_unread_too(self):
@@ -55,7 +53,7 @@ class PartialSourceTests(unittest.TestCase):
         self.assertEqual((counts["would_create"], counts["created"], notion.writes), (1, 0, []))
 
     def test_the_ledger_records_only_what_was_read_and_the_next_read_is_not_a_full_scan(self):
-        ledger = FakeLedger()                                                            # nothing recorded yet: this is the 14-day scan
+        ledger = FakeLedger()  # nothing recorded yet: this is the 14-day scan
         run([signed("g1")], [("personal", DownOutlook())], ledger=ledger)
         keys, kind, _ = ledger.commits[0]
         self.assertEqual((keys, kind), ({seen.key("gmail", "g1")}, seen.FULL_SCAN))
@@ -67,7 +65,7 @@ class PartialSourceTests(unittest.TestCase):
         ledger = after_a_full_scan_at_9(["g1"])
         counts, _ = run([signed("g1")], [("personal", DownOutlook())], ledger=ledger)
         self.assertEqual(counts["scan"], "new mail")
-        self.assertEqual(ledger.commits[0][0], set())                                    # nothing new from Gmail, and none from the failed account
+        self.assertEqual(ledger.commits[0][0], set())
 
     def test_the_heading_names_the_unread_source_in_fixed_words(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -77,7 +75,9 @@ class PartialSourceTests(unittest.TestCase):
 
 
 class OutlookOutageTests(unittest.TestCase):
-    """The shared client: after one mailbox has answered with a server error (after its own retries) every later request to it in the same job fails at once."""
+    """The shared client: after one mailbox has answered with a server error (after its own retries) every later request
+    to it in the same job fails at once.
+    """
 
     def client(self, token="refresh-1"):
         return Outlook("client", token, sleep=lambda s: None)
@@ -89,7 +89,7 @@ class OutlookOutageTests(unittest.TestCase):
                 with self.assertRaises(OutlookError) as first:
                     self.client().get("/me/messages")
                 calls_after_first = net.call_count
-                with self.assertRaises(OutlookError) as second:                          # a different step, a new client for the same mailbox
+                with self.assertRaises(OutlookError) as second:
                     self.client().get("/me/messages")
             self.assertEqual((str(first.exception), calls_after_first, net.call_count, str(second.exception)), ("OUTLOOK_NETWORK", 4, 4, "OUTLOOK_UNAVAILABLE_THIS_JOB"))
 

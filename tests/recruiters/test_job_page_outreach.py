@@ -1,4 +1,4 @@
-"""LIFE-10 §2, synthetic only: the outreach table on a Job Ledger job page, fed by Mark as Sent (D221). Every name, id and date is invented; nothing is live."""
+"""§2, synthetic only: the outreach table on a Job Ledger job page, fed by Mark as Sent."""
 import unittest
 from datetime import timedelta
 from unittest import mock
@@ -17,7 +17,9 @@ ON = {"JOB_PAGE_OUTREACH": "on"}
 
 
 def job_page(job_id=JOB_A, leads=True):
-    """A Job Ledger page as V7 writes it: the description marker, the job description, the Network Leads toggle (when there are leads), then Jim's own notes."""
+    """A Job Ledger page as V7 writes it: the description marker, the job description, the Network Leads toggle (when
+    there are leads), then Jim's own notes.
+    """
     t = Tree()
     t.pages.add(job_id)
     t.add("jd-mark", "paragraph", job_id, text="v7-jd:1 | key=invented")
@@ -59,16 +61,16 @@ class JobPageOutreach(unittest.TestCase):
         done = self.run_it(t)
         self.assertEqual((done["job_page_outreach"], done["jobs"], done["conversations"], done["codes"], done["failed"]), ("live", 1, 1, {"created": 1}, 0))
         heading, table, rows = region(t)
-        self.assertEqual(t.kids[JOB_A], ["jd-mark", "jd", "net", heading, table, "notes"])                 # right after the Network Leads block
+        self.assertEqual(t.kids[JOB_A], ["jd-mark", "jd", "net", heading, table, "notes"])  # right after the Network Leads block
         self.assertEqual(R.plain(t.blocks[heading]), "🤝 Outreach (Updated 10/15 @ 10:00 AM CT)")
         self.assertEqual(R.cells_of(t.blocks[t.kids[table][0]]), list(P.HEADERS))
         bold, gray, br = (lambda x: (x, None, "bold")), (lambda x: (x, None, "gray")), ("\n", None, None)
         self.assertEqual(rows, [[[bold("Avery Synthetic")], [bold("LinkedIn"), br, gray("Senior Technical Program Manager")],
                                  [bold("Initial outreach: Oct 15"), br, gray("Waiting · reply unknown (LinkedIn inbox not connected)")],
                                  [bold("Follow up"), br, gray("Due Oct 19")]]])
-        self.assertEqual({k: v for k, v in t.snapshot().items() if k in before}, before)                  # every existing block untouched
+        self.assertEqual({k: v for k, v in t.snapshot().items() if k in before}, before)  # every existing block untouched
         count = len(writes(t))
-        self.assertEqual(self.run_it(t)["codes"], {"unchanged": 1})                                       # replay: nothing to change
+        self.assertEqual(self.run_it(t)["codes"], {"unchanged": 1})  # replay: nothing to change
         self.assertEqual(len(writes(t)), count)
 
     def test_a_page_without_network_leads_gets_the_region_at_the_end(self):
@@ -87,7 +89,7 @@ class JobPageOutreach(unittest.TestCase):
         later = NOW + timedelta(hours=2)
         done = self.run_it(t, now=later)
         self.assertEqual(done["codes"], {"updated": 1})
-        self.assertEqual(region(t)[:2], (heading, table))                                                  # the same blocks, edited in place
+        self.assertEqual(region(t)[:2], (heading, table))  # the same blocks, edited in place
         self.assertEqual([r[0][0][0] for r in region(t)[2]], ["Avery Synthetic", "Blake Synthetic"])
         self.assertEqual(R.plain(t.blocks[heading]), "🤝 Outreach (Updated 10/15 @ 12:00 PM CT)")
 
@@ -126,21 +128,21 @@ class JobPageOutreach(unittest.TestCase):
     def test_top_level_blocks_reordered_during_a_write_fail_the_proof(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
         t = job_page()
-        def swap(tree):                                                        # Jim's notes moved above the description while the region is being created
+        def swap(tree):
             kids = tree.kids[JOB_A]
             kids.remove("notes")
             kids.insert(1, "notes")
         t.trip = ("/children", swap)
         self.assertEqual(self.run_it(t)["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1})
         t = job_page()
-        self.run_it(t)                                                         # and the same during an update of an existing region
+        self.run_it(t)
         mark(self.svc, JOB_A, "Blake Synthetic")
         heading, table, _ = region(t)
         def move(tree):
             kids = tree.kids[JOB_A]
             kids.remove("net")
             kids.append("net")
-        t.trip = (f"/blocks/{table}/children", move)                              # fires on the row append inside the update
+        t.trip = (f"/blocks/{table}/children", move)  # fires on the row append inside the update
         self.assertEqual(self.run_it(t, now=NOW + timedelta(hours=1))["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1})
 
     def test_a_job_with_no_conversation_gets_nothing(self):
@@ -149,19 +151,19 @@ class JobPageOutreach(unittest.TestCase):
         self.assertEqual((done["jobs"], done["codes"], writes(t)), (0, {}, []))
 
     def test_one_page_failing_never_fails_the_run_but_every_page_failing_does(self):
-        """LIFE-689: a page that fails is counted under its fixed code and the other pages still sync; the stage exits 1 only when every page failed."""
+        """a page that fails is counted under its fixed code and the other pages still sync"""
         mark(self.svc, JOB_A, "Avery Synthetic")
         mark(self.svc, JOB_B, "Avery Synthetic")
-        self.ledger.pages[JOB_B]["parent"]["data_source_id"] = "9" * 32                       # JOB_B is refused; JOB_A syncs
+        self.ledger.pages[JOB_B]["parent"]["data_source_id"] = "9" * 32  # JOB_B is refused
         t = job_page()
 
         def stage(limit, live):
             return P.run(limit, live, environ=ON, recruiters=self.rec, ledger=self.ledger, client=t, now=NOW)
         code, err, out = main_exit(stage, "job-page-outreach", "JOB_PAGE_OUTREACH_PAGES_FAILED")
         self.assertEqual((code, err), (0, ""))
-        self.assertEqual(len(region(t, JOB_A)[2]), 1)                                          # the good page was written
+        self.assertEqual(len(region(t, JOB_A)[2]), 1)  # the good page was written
         self.assertIn('"item_codes": {"JOB_PAGE_OUTREACH_NOT_A_LEDGER_PAGE": 1}', out)
-        self.ledger.pages[JOB_A]["parent"]["data_source_id"] = "9" * 32                       # now both are refused
+        self.ledger.pages[JOB_A]["parent"]["data_source_id"] = "9" * 32  # now both are refused
         code, err, _ = main_exit(stage, "job-page-outreach", "JOB_PAGE_OUTREACH_PAGES_FAILED")
         self.assertEqual((code, err.strip()), (1, "JOB-PAGE-OUTREACH FAILED: JOB_PAGE_OUTREACH_PAGES_FAILED"))
 

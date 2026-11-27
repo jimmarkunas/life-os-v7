@@ -1,4 +1,6 @@
-"""LIFE-741 (synthetic, fake Jira): the fill sets only what is missing, by the written rules, once, and readiness fills before it checks."""
+"""(synthetic, fake Jira): the fill sets only what is missing, by the written rules, once, and readiness fills before it
+checks.
+"""
 import json
 import tempfile
 import unittest
@@ -22,7 +24,7 @@ def ticket(key, kind="Task", summary="A ticket", labels=(), parent=None, compone
 
 
 class FakeJira:
-    """Epics and tickets by key; PUT applies the fields, POST /issue makes an epic; every write is logged."""
+    """Epics and tickets by key"""
 
     def __init__(self, epics, tickets, fail_put=False):
         self.items = {x["key"]: x for x in [*epics, *tickets]}
@@ -70,7 +72,7 @@ def world():
 
 
 class Creation(unittest.TestCase):
-    """LIFE-773: a new ticket must name its parent epic and takes its Component and Fix Version from it."""
+    """a new ticket must name its parent epic and takes its Component and Fix Version from it."""
 
     def test_component_and_version_come_from_the_parent_epic(self):
         jira, sent = FakeJira(world(), []), []
@@ -125,7 +127,7 @@ class Rules(unittest.TestCase):
         fake = FakeJira(world(), [ticket("LIFE-903", labels=["los-118"]), ticket("LIFE-904", labels=["action-inbox"]), ticket("LIFE-905", summary="Stability 3/7 clean days")])
         fd.run(0, True, jira=fake)
         got = {k: fake.items[k]["fields"]["parent"]["key"] for k in ("LIFE-903", "LIFE-904", "LIFE-905")}
-        self.assertEqual(got, {"LIFE-903": "LIFE-700", "LIFE-904": "LIFE-696", "LIFE-905": "LIFE-686"})        # LIFE-849: los-118 no longer reaches LIFE-590; it falls to the container epic
+        self.assertEqual(got, {"LIFE-903": "LIFE-700", "LIFE-904": "LIFE-696", "LIFE-905": "LIFE-686"})  # it falls to the container epic
 
     def test_no_match_goes_to_the_container_epic_and_it_is_created_once_when_absent(self):
         fake = FakeJira(world(), [ticket("LIFE-906")])
@@ -180,7 +182,7 @@ class Rules(unittest.TestCase):
             self.assertEqual(fd.plan_file(path), {"LIFE-930": {"parent": "LIFE-615", "components": "Platform / Core OS", "fixVersions": "Platform / Core OS 1.0.0"}})
 
 class Container(unittest.TestCase):
-    """LIFE-741 and LIFE-780: only the open epic titled `LIFE one-off tasks` is the container; the title alone picks it, no label."""
+    """and: only the open epic titled `LIFE one-off tasks` is the container"""
 
     def labelled(self):
         return {e["key"]: e for e in [epic("LIFE-581", labels=["epic-container"], status="done", summary="V7 scalability"), epic("LIFE-615", labels=["epic-container"], summary="Bugs"),

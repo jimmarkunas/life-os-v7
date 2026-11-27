@@ -1,4 +1,6 @@
-"""LIFE-742 (synthetic): an agent promotes a ready ticket itself, waits for Jim only on a protected step, and readiness treats both promotions the same."""
+"""(synthetic): an agent promotes a ready ticket itself, waits for Jim only on a protected step, and readiness treats
+both promotions the same.
+"""
 import unittest
 
 from lifeos.jira import promote, release
@@ -19,17 +21,16 @@ def issue(*lines, status="To Do", labels=("ready",), blockers=(), kind="Task", e
 
 
 class JimMustDoFirst(unittest.TestCase):
-    """Jim, Nov 21 2026: a ticket with an unchecked Jim must do first item, or with no such section, never moves to Agent Go."""
 
     def test_an_unchecked_item_waits_for_jim_and_a_cleared_list_promotes(self):
         waiting = issue("Outcome", "Add a pure helper.", "Jim must do first", "[ ] Store the API key in Bitwarden", "Done when", "* Given X, then Y")
         self.assertEqual(promote.decide(waiting), ("wait", ["jim_first"]))
         self.assertEqual(promote.act(waiting)["label"], "needs-jim")
         cleared = issue("Outcome", "Add a pure helper.", "Jim must do first", "[x] Store the API key in Bitwarden", "Done when", "* Given X, then Y")
-        self.assertEqual(promote.decide(cleared), ("promote", []))              # a cleared credential item is not re-asked by the protected-step scan
+        self.assertEqual(promote.decide(cleared), ("promote", []))
 
     def test_the_section_ends_at_the_next_paragraph_or_heading(self):
-        """A ticked list followed by other text is clear: the text after the list is not an item (LIFE-793 shape, ADF and markdown)."""
+        """A ticked list followed by other text is clear: the text after the list is not an item."""
         def para(text, bold=False):
             mark = [{"type": "strong"}] if bold else []
             return {"type": "paragraph", "content": [{"type": "text", "text": text, "marks": mark}]}
@@ -41,7 +42,7 @@ class JimMustDoFirst(unittest.TestCase):
         open_one = {"type": "doc", "content": [para("Jim must do first:", True), bullets("[x] Choose freshness", "[ ] Approve the schedule"), para("More text")]}
         self.assertEqual(release.jim_first(open_one), (True, ["- [ ] Approve the schedule"]))
         self.assertEqual(release.jim_first("## Jim must do first\n\nNone (code-only scope)\n\n## Exact implementation boundary\n\nText"), (True, []))
-        self.assertEqual(release.jim_first("**Jim must do first:**\n\n- Sign in to the provider\n\n**Done when:**"), (True, ["- Sign in to the provider"]))   # a plain bullet is a need
+        self.assertEqual(release.jim_first("**Jim must do first:**\n\n- Sign in to the provider\n\n**Done when:**"), (True, ["- Sign in to the provider"]))  # a plain bullet is a need
 
     def test_a_ticket_without_the_section_is_not_promoted(self):
         self.assertEqual(promote.decide(issue("Outcome", "Add a pure helper.", "Done when", "* Given X, then Y")), ("skip", ["no_jim_first"]))
@@ -93,7 +94,7 @@ class Decide(unittest.TestCase):
         self.assertEqual(promote.decide(issue(labels=["needs-jim"])), ("skip", ["not_ready_label"]))
 
     def test_every_release_gate_reason_and_the_allowed_exceptions(self):
-        """LIFE-850: one case per fixed reason, the same ones release.eligible uses; a research or verdict child passes under an Epic in Scoping, a build child passes under an Epic in Ready."""
+        """one case per fixed reason, the same ones release.eligible uses"""
         cases = ((issue(labels=()), "no_readiness_label"), (issue(labels=["lane-platform"]), "no_readiness_label"), (issue(labels=["ready", "needs-prep"]), "two_readiness_labels"),
                  (issue(labels=["needs-prep"]), "not_ready_label"), (issue(labels=["needs-jim"]), "not_ready_label"), (issue(epic="Scoping"), "epic_scoping"),
                  (issue(blockers=[("LIFE-2", False)]), "blocked_by_open"))
@@ -103,7 +104,7 @@ class Decide(unittest.TestCase):
         self.assertEqual(promote.decide(issue(labels=["ready", "verdict"], epic="Scoping")), ("promote", []))
         self.assertEqual(promote.decide(issue(epic="Ready")), ("promote", []))
         self.assertEqual(promote.decide(issue(epic="Ready", blockers=[("LIFE-2", True)])), ("promote", []))
-        self.assertEqual(promote.decide({"key": "LIFE-1", "fields": {**issue()["fields"], "parent": {"key": "LIFE-10"}}}), ("skip", ["epic_status_unread"]))   # the read did not return the Epic's status
+        self.assertEqual(promote.decide({"key": "LIFE-1", "fields": {**issue()["fields"], "parent": {"key": "LIFE-10"}}}), ("skip", ["epic_status_unread"]))  # the read did not return the Epic's status
 
     def test_a_done_blocker_does_not_block(self):
         self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", True)])), ("promote", []))

@@ -1,4 +1,6 @@
-"""D181: a scheduled Jira rollover that keeps failing reaches the phone once it has not worked for three hours, then reminds, then says when it recovers."""
+"""a scheduled Jira rollover that keeps failing reaches the phone once it has not worked for three hours, then reminds,
+then says when it recovers.
+"""
 import contextlib
 import io
 import unittest
@@ -9,7 +11,7 @@ from lifeos.platform import alerts
 from tests.kit import shared
 from tests.kit.db import SingleRowDb as FakeDb
 
-T0 = datetime(2026, 10, 12, 13, 0)                          # naive UTC, as stored
+T0 = datetime(2026, 10, 12, 13, 0)  # naive UTC, as stored
 
 
 Pushes = shared.Pushes
@@ -29,13 +31,13 @@ class DecideTests(unittest.TestCase):
     def test_it_pages_once_after_three_hours_then_reminds_every_six(self):
         state = {"last_ok": T0, "alert_open": False, "last_notified": None}
         state, plan = watch.decide(state, False, T0 + timedelta(hours=2))
-        self.assertEqual(plan.notify, [])                                            # two hours is a blip
+        self.assertEqual(plan.notify, [])  # two hours is a blip
         state, plan = watch.decide(state, False, T0 + timedelta(hours=3))
         self.assertEqual([k for k, _ in plan.notify], ["open"])
         self.assertTrue(state["alert_open"])
         state["last_notified"] = T0 + timedelta(hours=3)
         _, plan = watch.decide(state, False, T0 + timedelta(hours=8))
-        self.assertEqual(plan.notify, [])                                            # not yet: reminders are 6 hours apart
+        self.assertEqual(plan.notify, [])  # not yet: reminders are 6 hours apart
         _, plan = watch.decide(state, False, T0 + timedelta(hours=9))
         self.assertEqual([k for k, _ in plan.notify], ["remind"])
 
@@ -62,16 +64,16 @@ class RunTests(unittest.TestCase):
         out = wrapped(db, pushes, "failure")
         (topic, title, body, severity), = pushes.sent
         self.assertEqual((topic, severity, title), ("topic-example", alerts.PAGE, "Jira sprint rollover has not worked for 4 hours"))
-        self.assertEqual(body, "A board kept its old sprint. Next: open the domains run (jira job, rollover step) and look for the JIRA_ code")   # fixed words: no board, project or issue name
+        self.assertEqual(body, "A board kept its old sprint. Next: open the domains run (jira job, rollover step) and look for the JIRA_ code")  # fixed words: no board, project or issue name
         self.assertEqual((out["recorded"], out["alert_open"], out["sent"]), (True, True, 1))
         wrapped(db, pushes, "failure", now=T0 + timedelta(hours=1))
-        self.assertEqual(len(pushes.sent), 1)                                        # still failing, reminder not due
+        self.assertEqual(len(pushes.sent), 1)  # still failing, reminder not due
         self.assertEqual(db.row[1], 1)
 
     def test_a_push_the_phone_service_refused_is_retried_next_run(self):
         db, pushes = FakeDb(self.stuck_row()), Pushes(accept=False)
         wrapped(db, pushes, "failure")
-        self.assertEqual((db.row[1], db.row[2]), (1, None))                          # open, never notified
+        self.assertEqual((db.row[1], db.row[2]), (1, None))  # open, never notified
         pushes.accept = True
         wrapped(db, pushes, "failure", now=T0 + timedelta(hours=1))
         self.assertEqual(len(pushes.sent), 2)

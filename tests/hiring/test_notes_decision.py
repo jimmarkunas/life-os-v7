@@ -1,7 +1,4 @@
-"""LIFE-353 (REQ-5): hiring decisions live on the Job Ledger row only. Confirm Rejected and Reopen are one Ledger write each, read back; no opportunity page is moved and no container is read.
-D195 (closing a Notes-only pursuit by moving its page) is superseded: a pursuit with no Ledger row is refused with nothing written.
-
-Everything is invented. The chain is the Close screen's: decision.route -> decision.confirm_rejected. Only Notion (the page tree and the Ledger), the snapshot store and the Calendar are stand-ins. The page tree stand-in (`Workspace`) stays: the Close, Manage and Mark Complete screens still locate opportunity pages in it."""
+"""(REQ-5): hiring decisions live on the Job Ledger row only."""
 import copy
 import json
 import unittest
@@ -18,7 +15,7 @@ OP, OP2 = "op-0123456789", "op-9876543210"
 NOW = T.NOW
 
 
-_OUTCOME_SCAN = mock.patch.object(T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat()))     # the outcome-mail scan saved an hour ago: these tests are about the decision, not that stage
+_OUTCOME_SCAN = mock.patch.object(T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat()))
 
 
 def setUpModule():
@@ -34,7 +31,9 @@ def nid(n):
 
 
 class Workspace:
-    """An in-memory Notion page hierarchy with just the calls V7 makes: list children, fetch a page, append blocks, relabel a line. The `fail` switches break one step."""
+    """An in-memory Notion page hierarchy with just the calls V7 makes: list children, fetch a page, append blocks,
+    relabel a line.
+    """
 
     def __init__(self):
         self.blocks, self.kids, self.parent_of, self.times, self.log = {}, {}, {}, {}, []
@@ -46,11 +45,11 @@ class Workspace:
         cols = self.add("column_list", self.root)
         self.col_active = self.add("column", cols)
         self.add("heading_2", self.col_active, "Active Opportunities")
-        self.add("child_page", self.root, "Active Opportunities")                                          # the existing machine container
+        self.add("child_page", self.root, "Active Opportunities")  # the existing machine container
         self.target = self.opportunity(f"{COMPANY} — {ROLE}", "Pat Example")
 
     def canon(self, bid):
-        """V7 sends ids without dashes (decision._page_id); Notion accepts either form."""
+        """V7 sends ids without dashes (decision._page_id)"""
         return next(k for k in self.blocks if k.replace("-", "") == bid.replace("-", ""))
 
     def put(self, bid, kind, parent, text=""):
@@ -92,7 +91,7 @@ class Workspace:
     def call_once(self, method, path, body=None, version=None):
         bid = self.canon(path.split("/")[2])
         self.log.append((method, path.split("/")[1], bid))
-        if method == "PATCH" and not path.endswith("/children"):                     # one record line set to its plain label, in place
+        if method == "PATCH" and not path.endswith("/children"):  # one record line set to its plain label, in place
             if "label" in self.fail:
                 raise NotionError("NOTION_HTTP_500")
             kind = self.blocks[bid]["type"]
@@ -140,7 +139,7 @@ class World:
 
 
 def staged(world, pid, stage="Interviewing", **kw):
-    """An interview pursuit's row (LIFE-361): Stage set, Applied not ticked."""
+    """An interview pursuit's row: Stage set, Applied not ticked."""
     world.source.pages[pid] = TD.Source.make(pid, COMPANY, ROLE, applied=False, stage=stage, **kw)
 
 
@@ -169,12 +168,12 @@ class RoutingTests(unittest.TestCase):
 
     def test_the_row_named_by_page_id_is_the_one_and_its_names_must_still_agree(self):
         a, b = self.row("a1" * 16), self.row("b2" * 16)
-        self.assertEqual(D.route([a, b], {**self.WANT, "id": "b2" * 16}), b)                       # two rows for one company and role: the page id decides
-        self.assertEqual(D.route([a], {"action": "CONFIRM_REJECTED", "id": "a1" * 16}), a)           # an id alone (the Close screen's link) is enough
+        self.assertEqual(D.route([a, b], {**self.WANT, "id": "b2" * 16}), b)
+        self.assertEqual(D.route([a], {"action": "CONFIRM_REJECTED", "id": "a1" * 16}), a)  # an id alone (the Close screen's link) is enough
         self.refused([a], {**self.WANT, "id": "a1" * 16, "role": SIBLING_ROLE}, "DECISION_STALE_IDENTITY")
 
     def test_an_id_that_is_no_row_resolves_by_company_and_role_and_company_alone_never_does(self):
-        tree_page = "c3" * 16                                                                          # an older opportunity page's own id (its Manage link)
+        tree_page = "c3" * 16
         self.assertEqual(D.route([self.row("a1" * 16), self.row("b2" * 16, role=SIBLING_ROLE)], {**self.WANT, "id": tree_page})["id"], "a1" * 16)
         self.refused([self.row("a1" * 16, role=SIBLING_ROLE)], {**self.WANT, "id": tree_page}, "DECISION_NO_MATCH")
         self.refused([self.row("a1" * 16), self.row("b2" * 16)], self.WANT, "DECISION_AMBIGUOUS")
@@ -191,10 +190,10 @@ class LedgerDecisionTests(unittest.TestCase):
         world.project()
         done = world.decide(req())
         self.assertEqual((done["status"], done["verified"], world.source.decision(), len(world.source.history().splitlines())), ("recorded", True, {"name": "Rejected"}, 1))
-        self.assertEqual(world.ws.writes(), [])                                                      # no page moved, no record block appended
+        self.assertEqual(world.ws.writes(), [])  # no page moved, no record block appended
         self.assertEqual(world.ws.where(world.ws.target), world.ws.col_active)
         patches = len(world.source.patches())
-        self.assertEqual(world.decide(req())["status"], "already_recorded")                          # the same operation id: nothing written twice
+        self.assertEqual(world.decide(req())["status"], "already_recorded")  # the same operation id: nothing written twice
         self.assertEqual((len(world.source.patches()), len(world.source.history().splitlines())), (patches, 1))
 
     def test_an_interview_pursuit_row_with_stage_set_closes_on_its_row_and_keeps_its_stage(self):
@@ -234,11 +233,11 @@ class LedgerDecisionTests(unittest.TestCase):
             want = req() if action == "CONFIRM_REJECTED" else reopen()
             line = json.dumps({"op": want["op"], "action": action, "at": NOW.isoformat(timespec="seconds"), "reason": want["reason"], "outcome": "Rejected"}, separators=(",", ":"), sort_keys=True)
             history = world.source.history()
-            world.source.pages[TD.TARGET]["properties"]["Hiring Decision History"] = {"rich_text": [{"plain_text": f"{history}\n{line}" if history else line}]}     # the line landed, the decision did not
+            world.source.pages[TD.TARGET]["properties"]["Hiring Decision History"] = {"rich_text": [{"plain_text": f"{history}\n{line}" if history else line}]}  # the line landed, the decision did not
             before = world.source.history()
             done = world.decide(want)
-            self.assertEqual((done["status"], world.source.history()), ("recorded", before), action)            # no second line
-            self.assertEqual(world.source.patches()[-1][2], ("Hiring Decision",), action)                        # only the missing decision was written
+            self.assertEqual((done["status"], world.source.history()), ("recorded", before), action)  # no second line
+            self.assertEqual(world.source.patches()[-1][2], ("Hiring Decision",), action)  # only the missing decision was written
             self.assertEqual(world.source.decision(), {"name": "Rejected"} if action == "CONFIRM_REJECTED" else None, action)
             self.assertEqual(world.decide(want)["status"], "already_recorded", action)
 
@@ -247,7 +246,7 @@ class LedgerDecisionTests(unittest.TestCase):
         world.decide(req())
         world.decide(reopen())
         with self.assertRaises(D.DecisionError) as error:
-            world.decide(req())                                                                         # an old confirm replayed after the reopen
+            world.decide(req())  # an old confirm replayed after the reopen
         self.assertEqual((str(error.exception), world.source.decision()), ("DECISION_CONFLICT", None))
 
     def test_a_decision_set_by_hand_is_reopened_with_one_line(self):
@@ -267,7 +266,7 @@ class LedgerDecisionTests(unittest.TestCase):
         self.assertEqual(str(error.exception), "DECISION_CONFLICT")
 
     def test_a_pursuit_with_no_ledger_row_is_refused_and_its_page_never_moves(self):
-        world = World()                                                                                 # D195 superseded: the Notes page alone carries no decision
+        world = World()
         world.project()
         for want in (req(id=world.ws.target), reopen(id=world.ws.target)):
             with self.assertRaises(D.DecisionError) as error:
@@ -294,7 +293,7 @@ class BoundaryTests(unittest.TestCase):
             self.assertFalse(hasattr(D, name), name)
 
 
-# LIFE-47 S1: six distinct closure outcomes on BOTH paths, guarded Reopen. Invented records only.
+# S1: six distinct closure outcomes on BOTH paths, guarded Reopen.
 NEW = [o for o in M.OUTCOMES if o != "Rejected"]
 
 
@@ -317,7 +316,7 @@ class LedgerOutcomes(unittest.TestCase):
             done = chain.confirm(TD.request(outcome=outcome))
             self.assertEqual((done["status"], done["verified"], chain.source.decision()), ("recorded", True, {"name": outcome}), outcome)
             self.assertEqual(chain.confirm(TD.request(outcome=outcome))["status"], "already_recorded")
-            with self.assertRaises(D.DecisionError):                                       # a different operation never replaces the decision
+            with self.assertRaises(D.DecisionError):  # a different operation never replaces the decision
                 chain.confirm(TD.request(outcome="Other", op="op-9876543210"))
             reopen = TD.request(action="REOPEN", op="op-5555555555", reason="Closed in error")
             if outcome == "Hired":
@@ -329,7 +328,7 @@ class LedgerOutcomes(unittest.TestCase):
             self.assertEqual(chain.source.decision(), None)
             self.assertEqual([e["action"] for e in D.entries(chain.source.history())], ["CONFIRM_REJECTED", "REOPEN"])
             self.assertEqual(chain.confirm(reopen)["status"], "already_recorded")
-            self.assertEqual(chain.confirm(TD.request(outcome="Hired", op="op-7777777777"))["status"], "recorded")   # and it can be closed again
+            self.assertEqual(chain.confirm(TD.request(outcome="Hired", op="op-7777777777"))["status"], "recorded")  # and it can be closed again
 
     def test_an_outcome_without_its_select_option_fails_closed(self):
         chain = TD.Chain()

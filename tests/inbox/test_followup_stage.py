@@ -1,4 +1,4 @@
-"""LIFE-749 (synthetic): the `followup` stage and the Inbox's read of its payload. A sqlite shim stands in for MySQL; no provider, credential, table, workflow or schedule is touched."""
+"""(synthetic): the `followup` stage and the Inbox's read of its payload."""
 import unittest
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -33,7 +33,6 @@ def mail(row_id, at, subject="quote"):
 
 
 def promise(item):
-    """A classifier that treats every Gmail item as an explicit promise owed by Jim, due Nov 20 (source-backed)."""
     if item["source"] != "gmail":
         return None
     return {"kind": "promise", "outcome_key": "Send the signed quote", "owner": "jim", "who": "vendor", "title": item["title"], "checkpoint": "2026-11-20T15:00:00Z",
@@ -73,7 +72,7 @@ class Rig:
 
 class Stage(unittest.TestCase):
     def test_without_production_wiring_the_stage_is_a_no_op(self):
-        off = {"FOLLOWUP_WIRING": "off"}                                               # the kill switch: independent of switches.json, which is on since the dry run was approved
+        off = {"FOLLOWUP_WIRING": "off"}
         self.assertIsNone(S.production_wiring(off))
         with mock.patch.dict("os.environ", off):
             counts = S.run(0, True)
@@ -84,7 +83,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(lines[0], "followup-source personal gmail degraded DENY_EXPIRED")
         self.assertEqual(lines[2], "followup-source personal todoist - -")
         for line in lines:
-            self.assertRegex(line, r"^followup-source [A-Za-z0-9_]+ [A-Za-z0-9_-]+ [A-Za-z0-9_-]+ [A-Za-z0-9_-]+$")   # no space-separated free text, no address characters
+            self.assertRegex(line, r"^followup-source [A-Za-z0-9_]+ [A-Za-z0-9_-]+ [A-Za-z0-9_-]+ [A-Za-z0-9_-]+$")
 
     def test_a_dry_run_computes_everything_and_writes_nothing(self):
         rig = Rig()
@@ -100,7 +99,7 @@ class Stage(unittest.TestCase):
         self.assertEqual((payload["component"], payload["state"], payload["workspace"], payload["account"]), ("followup", "PASS", "personal", ACCOUNT))
         self.assertEqual(payload["counts"], {"needs_action_today": 0, "waiting_aging": 0, "upcoming": 1})
         self.assertEqual([(t["title"], t["state"]) for t in payload["threads"]], [("Send the signed quote", "upcoming")])
-        self.assertEqual(payload["threads"][0]["id"], rig.store.threads("personal", ACCOUNT)[0]["thread_id"])         # a safe store id, never the label
+        self.assertEqual(payload["threads"][0]["id"], rig.store.threads("personal", ACCOUNT)[0]["thread_id"])  # a safe store id, never the label
         self.assertEqual(payload["review"], [])
         self.assertEqual(rig.store.cursor_for("personal", ACCOUNT, "gmail")["cursor"], "2026-11-16T18:00:00+00:00")
         (thread,) = rig.store.threads("personal", ACCOUNT)
@@ -112,7 +111,7 @@ class Stage(unittest.TestCase):
         before = rig.store.threads("personal", ACCOUNT)
         counts = rig.run(at=T0 + timedelta(hours=1))
         self.assertEqual((counts["written"], counts["unchanged"]), (0, 1))
-        self.assertEqual(rig.store.threads("personal", ACCOUNT), before)                         # not even a timestamp or version moved
+        self.assertEqual(rig.store.threads("personal", ACCOUNT), before)  # not even a timestamp or version moved
         self.assertEqual(rig.db.count("v7_followup_threads"), 1)
 
     def test_a_stored_thread_becomes_due_by_time_alone(self):
@@ -133,9 +132,9 @@ class Stage(unittest.TestCase):
         self.assertEqual((payload["state"], counts["sources_degraded"]), ("DEGRADED", 1))
         gmail = next(s for s in payload["sources"] if s["source"] == "gmail")
         self.assertEqual((gmail["status"], gmail["reason"]), ("degraded", "fetch_failed"))
-        self.assertEqual([t["title"] for t in payload["threads"]], ["Send the signed quote"])     # the last accepted thread is still there, never a zero
-        self.assertEqual(rig.store.cursor_for("personal", ACCOUNT, "gmail"), cursor)             # the failed source's cursor did not move
-        self.assertNotIn("canary", repr(payload))                                                # an exception text never leaves
+        self.assertEqual([t["title"] for t in payload["threads"]], ["Send the signed quote"])
+        self.assertEqual(rig.store.cursor_for("personal", ACCOUNT, "gmail"), cursor)  # the failed source's cursor did not move
+        self.assertNotIn("canary", repr(payload))  # an exception text never leaves
 
     def test_every_source_failing_still_publishes_a_degraded_payload_and_keeps_the_threads(self):
         rig = Rig()
@@ -150,7 +149,7 @@ class Stage(unittest.TestCase):
         rig = Rig(scopes=(S.Scope("personal", ACCOUNT, ("gmail", "asana")), S.Scope("tgp", "tgp-acct", ("gmail",))))
         counts = rig.run()
         self.assertEqual((counts["refused"], counts["scopes"], counts["published"]), (1, 1, 1))
-        self.assertEqual(rig.calls, ["gmail"])                                                   # one Gmail read for Personal; no TGP read, no Asana read
+        self.assertEqual(rig.calls, ["gmail"])  # one Gmail read for Personal
         self.assertEqual(rig.published[0]["state"], "PASS")
         self.assertEqual({r["tenant"] for r in rig.receipts}, {"personal"})
 
@@ -255,7 +254,7 @@ class PayloadReader(unittest.TestCase):
             read(payload_for(state="DEGRADED"))
         self.assertEqual(caught.exception.reason, "evidence_degraded")
         out = read(payload_for(state="DEGRADED", threads=[thread()]))
-        self.assertIn("DEGRADED, last accepted", out[0]["notes"])                                 # the last accepted thread stays, visibly degraded
+        self.assertIn("DEGRADED, last accepted", out[0]["notes"])  # the last accepted thread stays, visibly degraded
 
     def test_live_reads_stay_refused_while_the_switch_is_off(self):
         for opener in (followup.refuse_followup, followup.payload_reader(lambda ref: payload_for())):

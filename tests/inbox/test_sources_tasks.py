@@ -1,4 +1,5 @@
-"""LIFE-709 (synthetic): Todoist (Personal only) and Asana (Bytalos programme work only) are read-only, scoped, and fail alone; no TGP or client project ever shows."""
+"""(synthetic): Todoist (Personal only) and Asana (Bytalos programme work only) are read-only, scoped, and fail alone
+"""
 import ast
 import unittest
 from pathlib import Path
@@ -76,8 +77,8 @@ class AsanaReads(unittest.TestCase):
     def test_tgp_and_client_projects_never_show(self):
         rows = [asana("only-client", projects=(TGP,)), asana("mixed", projects=(APPROVED, TGP)), asana("none", projects=()), asana("ok")]
         result = run([asana_src(rows=rows)])
-        self.assertEqual([r.native_id for r in result.records], ["ok"])                                        # the client-only task is out of scope; the other two are ambiguous
-        self.assertEqual([(h.state, h.rejected) for h in result.health], [("degraded", 2)])                      # ambiguous ones fail closed and are counted, not shown
+        self.assertEqual([r.native_id for r in result.records], ["ok"])  # the client-only task is out of scope
+        self.assertEqual([(h.state, h.rejected) for h in result.health], [("degraded", 2)])
         self.assertNotIn(TGP, repr(result))
 
     def test_a_completed_task_is_left_out(self):

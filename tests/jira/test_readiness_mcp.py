@@ -1,5 +1,6 @@
-"""LIFE-363 (REQ-6): `python -m lifeos.sources.devtools.readiness issue-mcp FILE KEY` checks the unmodified Atlassian MCP getJiraIssue result with the same validator as issue-json.
-Offline, synthetic envelope (invented key LIFE-1, no real ids or people), proven through the real entrypoint."""
+"""(REQ-6): `python -m lifeos.sources.devtools.readiness issue-mcp FILE KEY` checks the unmodified Atlassian MCP
+getJiraIssue result with the same.
+"""
 import copy
 import json
 import os
@@ -49,7 +50,7 @@ class IssueMcp(unittest.TestCase):
         self.assertIn("SOURCE mcp-read", out)
         self.assertIn("FIELDS key=LIFE-1 status=Agent Go updated=2030-01-01T12:00:00.000-0600 blockers=LIFE-2=Done", out)
         self.assertNotIn("live", out.lower())
-        self.assertEqual(self.json_run(rr.from_mcp(envelope([DONE]), "LIFE-1"))[:2], (0, "ready v1\n"))       # issue-json on the same unwrapped record says the same
+        self.assertEqual(self.json_run(rr.from_mcp(envelope([DONE]), "LIFE-1"))[:2], (0, "ready v1\n"))
 
     def test_a_key_mismatch_is_refused(self):
         code, out, err = run(envelope(), key="LIFE-9")
@@ -59,7 +60,7 @@ class IssueMcp(unittest.TestCase):
 
     def test_a_stale_file_is_a_warning_not_a_refusal(self):
         code, out, err = run(envelope(), age=16 * 60)
-        self.assertEqual(code, 0)                                   # delivery flow v3: older than 15 minutes only warns
+        self.assertEqual(code, 0)  # delivery flow v3: older than 15 minutes only warns
         self.assertIn("warn v1 stale_read file", err)
         self.assertIn("ready v1", out)
         self.assertEqual(run(envelope(), age=14 * 60)[::2], (0, ""))
@@ -84,7 +85,7 @@ class IssueMcp(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("blocked_by_open", err)
         self.assertIn("blockers=LIFE-3=To Do", run(envelope([OPEN]))[1])
-        code, _, err2 = self.json_run(rr.from_mcp(envelope([OPEN]), "LIFE-1"))                                  # the same record through issue-json
+        code, _, err2 = self.json_run(rr.from_mcp(envelope([OPEN]), "LIFE-1"))  # the same record through issue-json
         self.assertEqual(code, 2)
         self.assertIn("blocked_by_open", err2)
 

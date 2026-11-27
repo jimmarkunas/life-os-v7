@@ -1,4 +1,6 @@
-"""HIRE-1.2: Job Ledger Applied + Hiring Pipeline pages + Calendar -> deterministic compiler -> one private snapshot row -> the floating Daily Report region."""
+"""HIRE-1.2: Job Ledger Applied + Hiring Pipeline pages + Calendar -> deterministic compiler -> one private snapshot row
+-> the floating Daily Report.
+"""
 import json
 import pathlib
 import re
@@ -93,7 +95,7 @@ class CompilerTests(unittest.TestCase):
         self.assertIn("Today 4:00 PM CT", cells(row)[2])
         self.assertIn("Tomorrow 10:00 AM CT", cells(dict(row, event_start=at(1, 10)))[2])
         self.assertIn("Upcoming Oct 9, 10:00 AM CT", cells(dict(row, event_start=at(3, 10)))[2])
-        self.assertIn("held today", cells(dict(row, event_start=at(0, 9)))[2])                 # 9 AM has started by 2 PM
+        self.assertIn("held today", cells(dict(row, event_start=at(0, 9)))[2])  # 9 AM has started by 2 PM
 
     def test_a_hiring_manager_interview_is_scheduled_until_it_has_happened(self):
         events = [{"id": "e1", "title": "Hiring manager interview - Acme", "start": at(2)}]
@@ -151,7 +153,7 @@ class CompilerTests(unittest.TestCase):
         self.assertTrue(text.startswith("DEGRADED · Hiring Pipeline Calendar unreadable"))
         self.assertIn("showing last accepted state (10/6 · 2:00 PM CT)", text)
         self.assertIn("(last accepted)", table[0][1][0])
-        vanished = compile_([applied("Acme", "Senior Program Manager")], prior=prior)               # Calendar read fine, the future event is gone
+        vanished = compile_([applied("Acme", "Senior Program Manager")], prior=prior)  # Calendar read fine, the future event is gone
         self.assertEqual(vanished["rows"][0]["stage"], "Interviewing")
         self.assertIn("EVENT_NOT_ON_CALENDAR", vanished["reasons"])
 
@@ -176,7 +178,7 @@ class CompilerTests(unittest.TestCase):
         complete = compile_([])
         self.assertEqual(complete["rows"], [])
         text, table, _ = render.render(complete, None, NOW)
-        self.assertEqual((table, "Updated" in text, bool(re.match(r"\d{1,2}/\d{1,2} · \d{1,2}:\d{2} [AP]M CT", text))), ([], False, True))     # LIFE-679: the stamp, no word Updated
+        self.assertEqual((table, "Updated" in text, bool(re.match(r"\d{1,2}/\d{1,2} · \d{1,2}:\d{2} [AP]M CT", text))), ([], False, True))  # the stamp, no word Updated
 
     def test_the_same_inputs_compile_and_render_identically(self):
         args = ([applied("Acme", "Senior Program Manager")], [parent("p1", "Acme", "Senior Program Manager")], [{"id": "e", "title": "Interview Acme", "start": at(1)}])
@@ -204,7 +206,7 @@ def page(extra_rows=0, wrapped=False, headers=M.HEADERS, duplicate=False, status
         t.add("wrap", "callout", "right")
         parent_id = "wrap"
     t.add("0000000000000000000000000000a001", "heading_3", parent_id, text=heading)
-    if status == "between":                                       # the retired status paragraph back under the heading
+    if status == "between":
         t.add("0000000000000000000000000000a002", "paragraph", parent_id, text="old status")
     if with_table:
         t.table("0000000000000000000000000000a003", parent_id, [list(headers)] + [[f"old {n}", "s", "a", "Needs Notes"] for n in range(extra_rows)])
@@ -223,7 +225,7 @@ def page(extra_rows=0, wrapped=False, headers=M.HEADERS, duplicate=False, status
         t.add("dcc-h", "heading_3", "dcc", text=router.DCC_REGION)
         t.add("dcc-p", "paragraph", "dcc", text="chatgpt text")
         t.add("notes", "paragraph", "page-1", text="Notes: keep out")
-    if status == "orphan":                                        # the live incident state: the restored paragraph at the bottom of the right column
+    if status == "orphan":
         t.add("0000000000000000000000000000a002", "paragraph", "right", text="old status")
     return t
 
@@ -247,7 +249,9 @@ BASE = "https://oracle.tail1234.ts.net:47443"
 
 
 class CloseLinkTests(unittest.TestCase):
-    """D194 S3: a second Notes-cell link to the private Close screen, only for the one Job Ledger row `decision.route` would close on (LIFE-353: never a Notes page), and only with a safely configured https origin."""
+    """S3: a second Notes-cell link to the private Close screen, only for the one Job Ledger row `decision.route` would
+    close on, and only with a safely.
+    """
     def ids(self, applied_rows, parents):
         rows = compile_(applied_rows, parents)["rows"]
         return rows, stage.close_ids(rows, applied_rows, parents)
@@ -271,10 +275,10 @@ class CloseLinkTests(unittest.TestCase):
         self.assertEqual(R.want_view(both)[3], [("Opportunity Page ↗", plain[3][1], None), (" · ", None, None), ("Close ↗", link, None)])
         self.assertEqual(render.row_cells(row, NOW, None), plain)
         orphan = compile_([applied("Acme", "PM")])["rows"][0]
-        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None, None), ("Close ↗", link, None)])        # a Close link needs no Notes link
+        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None, None), ("Close ↗", link, None)])  # a Close link needs no Notes link
 
 class LifecycleTests(unittest.TestCase):
-    """D189: a Retired page closes the pursuit, and a role that has waited two weeks says so."""
+    """a Retired page closes the pursuit, and a role that has waited two weeks says so."""
     def retired(self, page_id, company, role):
         return {**parent(page_id, company, role, 1), "retired": True}
 
@@ -301,10 +305,10 @@ class LifecycleTests(unittest.TestCase):
         row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-6), "parent": None, "parent_state": "none", "rounds": 0}
         self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held Sep 30 · follow up Oct 7")
         row["event_start"] = at(-7)
-        self.assertEqual(cells(row)[2], "Stale · no news in 7 days · follow up (due Oct 6)")         # LIFE-26: 7 calendar days
+        self.assertEqual(cells(row)[2], "Stale · no news in 7 days · follow up (due Oct 6)")  # 7 calendar days
         row["event_start"] = at(-30)
         self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
-        self.assertEqual(cells(row)[1], "Interviewing")                                         # Stale is attention, never a stage change or closure
+        self.assertEqual(cells(row)[1], "Interviewing")
 
     def test_a_submitted_role_waiting_seven_days_is_stale(self):
         row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=6)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
@@ -318,16 +322,16 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(cells(row)[2], "Last contact Oct 4 · follow up Oct 11")
         row["contact"] = (NOW - timedelta(days=9)).isoformat()
         self.assertEqual(cells(row)[2], "Stale · no contact in 9 days · follow up (due Oct 4)")
-        row["contact"] = (NOW - timedelta(days=40)).isoformat()                                  # before the interview: the interview is the newer evidence
+        row["contact"] = (NOW - timedelta(days=40)).isoformat()
         self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
-        naive = dict(row, event_start="2026-09-06T10:00:00", contact=(NOW - timedelta(days=2)).isoformat())                    # a time with no offset is Central, never a crash
+        naive = dict(row, event_start="2026-09-06T10:00:00", contact=(NOW - timedelta(days=2)).isoformat())  # a time with no offset is Central, never a crash
         self.assertEqual(cells(naive)[2], "Last contact Oct 4 · follow up Oct 11")
         future = dict(row, event_start=at(3, 10), contact=None)
-        self.assertTrue(cells(future)[2].startswith("Prepare for the interview"))                # a confirmed future interview protects it
+        self.assertTrue(cells(future)[2].startswith("Prepare for the interview"))  # a confirmed future interview protects it
 
 
 class ActiveTableTests(unittest.TestCase):
-    """LIFE-47 Slice 1 (Jim, comments 10177 and the decision after 10179): the accepted Active Opportunities table, from existing data only."""
+    """Slice 1: the accepted Active Opportunities table, from existing data only."""
     def test_the_accepted_table_renders_attention_first_then_by_due_date(self):
         parents = [parent("1234abcd-0000-4000-8000-000000000001", "Globex", "Director", rounds=1)]
         found = {C._key("Hooli", "Program Manager"): {"kind": "REJECTED", "received": "2026-10-05T12:00:00+00:00", "match": "role"}}
@@ -335,7 +339,7 @@ class ActiveTableTests(unittest.TestCase):
                              parents, [{"id": "e1", "title": "Interview Globex", "start": at(1, 10)}], None, OK, NOW, outcomes=found)
         _, table, _ = render.render(got, None, NOW)
         self.assertEqual([[t for t, _ in row] for row in table], [
-            ["Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],      # an outcome email needs attention now; its date is evidence, not a deadline
+            ["Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],  # an outcome email needs attention now
             ["Initech — PM", "Submitted", "Stale · no response in 16 days · follow up (due Sep 27)", "Needs Notes"],
             ["Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 9", "Needs Notes"],
             ["Globex — Director", "Interviewing", "Prepare for the interview · Tomorrow 10:00 AM CT", "Opportunity Page ↗"]])
@@ -343,10 +347,10 @@ class ActiveTableTests(unittest.TestCase):
 
     def test_missing_stale_or_unverified_evidence_never_becomes_a_due_date_or_a_green_dot(self):
         base = {"stage": "Submitted", "company": "Acme", "role": "R", "applied_on": None, "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
-        self.assertEqual(cells(base)[0::2], ["Acme — R", "Awaiting response"])                                   # no Applied date: no follow-up date invented
+        self.assertEqual(cells(base)[0::2], ["Acme — R", "Awaiting response"])  # no Applied date: no follow-up date invented
         self.assertEqual(cells(dict(base, stage="Interviewing", rounds=2))[0::2], ["Acme — R", "Awaiting next step · 2 round(s) logged in Notes"])
         carried = dict(base, stage="Interviewing", event_kind="interview", event_start=at(2), carried=True)
-        self.assertEqual(cells(carried)[:2], ["Acme — R", "Interviewing (last accepted)"])                       # a future event the Calendar no longer confirms is not verified activity
+        self.assertEqual(cells(carried)[:2], ["Acme — R", "Interviewing (last accepted)"])
         self.assertEqual(cells(dict(carried, carried=False))[0], "Acme — R")
 
     def test_the_status_dot_still_sorts_and_classifies_every_row_but_is_never_printed_beside_the_name(self):
@@ -366,18 +370,20 @@ class ActiveTableTests(unittest.TestCase):
 
 
 class HeaderMigrationTests(unittest.TestCase):
-    """The header row moves to the accepted text once, in the same fail-closed write; nothing else is touched and a replay changes nothing."""
+    """The header row moves to the accepted text once, in the same fail-closed write"""
     HEAD = "0000000000000000000000000000a003-r0"
 
 class RegionWriterTests(unittest.TestCase):
 
     def test_split_status_reads_the_dated_stamp_and_still_the_time_only_one(self):
-        """LIFE-660: `11/13 · 2:00 PM CT · 5 active` holds a middle dot of its own: the stamp is the whole `11/13 · 2:00 PM CT`, not the text up to the first dot."""
+        """`11/13 · 2:00 PM CT · 5 active` holds a middle dot of its own: the stamp is the whole `11/13 · 2:00 PM CT`,
+        not the text up to the first dot.
+        """
         self.assertEqual(M.split_status("11/13 · 2:00 PM CT · 5 active"), ("11/13 · 2:00 PM CT", "5 active"))
         self.assertEqual(M.split_status("11/13 · 2:00 PM CT"), ("11/13 · 2:00 PM CT", ""))
         self.assertEqual(M.split_status("11/13 · 2:00 PM CT · 5 active · 1 paused or waiting"), ("11/13 · 2:00 PM CT", "5 active · 1 paused or waiting"))
         self.assertEqual(M.split_status("Updated 2:00 PM CT · 5 active"), ("Updated 2:00 PM CT", "5 active"))
-        self.assertEqual(M.split_status("Updated Nov 13 · 2:00 PM CT · 5 active"), ("Updated Nov 13 · 2:00 PM CT", "5 active"))                # LIFE-679: the older dated form is still read
+        self.assertEqual(M.split_status("Updated Nov 13 · 2:00 PM CT · 5 active"), ("Updated Nov 13 · 2:00 PM CT", "5 active"))  # the older dated form is still read
         self.assertEqual(M.split_status("DEGRADED · Hiring Pipeline unavailable at Nov 13 · 2:00 PM CT · Job Ledger unreadable"), ("DEGRADED at Nov 13 · 2:00 PM CT", "Hiring Pipeline unavailable · Job Ledger unreadable"))
         self.assertEqual(M.split_status("DEGRADED · Hiring Pipeline unavailable at 11/13 · 2:00 PM CT · Job Ledger unreadable · no accepted state yet"),
                          ("DEGRADED at 11/13 · 2:00 PM CT", "Hiring Pipeline unavailable · Job Ledger unreadable · no accepted state yet"))
@@ -398,7 +404,7 @@ class ReciprocalProtectionTests(unittest.TestCase):
         self.assertEqual(router.HIRING_REGION, M.TITLE)
         self.assertEqual(len(set(router.OWNERS.values())), len(router.OWNERS))
         self.assertIn(router.HIRING_REGION, router.FLOATING)
-        self.assertIn(router.RECRUITER_OUTREACH_REGION, router.FLOATING)                 # LIFE-20: the second floating region, right under this one
+        self.assertIn(router.RECRUITER_OUTREACH_REGION, router.FLOATING)  # the second floating region, right under this one
         router.check_write("v7-hiring", [router.HIRING_REGION])
         with self.assertRaises(router.RouterError):
             router.check_write("v7-mail-alerts", [router.HIRING_REGION])
@@ -425,25 +431,25 @@ class ReciprocalProtectionTests(unittest.TestCase):
         got = R.protected(t, {router.JIRA_REGION: "0000000000000000000000000000a004", router.HIRING_REGION: ""}, lambda code: RuntimeError(code))
         self.assertEqual(set(got), {router.JIRA_REGION})
         with self.assertRaises(RuntimeError):
-            R.protected(t, {router.JIRA_REGION: "", router.HIRING_REGION: "0000000000000000000000000000a001"}, lambda code: RuntimeError(code))      # a missing mandatory id still fails
+            R.protected(t, {router.JIRA_REGION: "", router.HIRING_REGION: "0000000000000000000000000000a001"}, lambda code: RuntimeError(code))  # a missing mandatory id still fails
 
 class FakeLedger:
     source = "src"
 
     def __init__(self, rows, broken=False, stage_rows=()):
-        self.rows, self.broken, self.stage_rows = rows, broken, list(stage_rows)        # stage_rows (LIFE-352): (id, company, role, stage, decision) Ledger rows with Stage set
+        self.rows, self.broken, self.stage_rows = rows, broken, list(stage_rows)
 
     def call(self, method, path, body=None):
-        if method == "GET" and path.startswith("/blocks/"):                           # the row page's children (rounds, fold): none unless a test says so
+        if method == "GET" and path.startswith("/blocks/"):
             return {"results": [], "has_more": False}
         return {"properties": {name: {"type": kind} for name, kind in ledger.REQUIRED.items()}}
 
     def query_data_source(self, source_id=None, body=None):
         if self.broken:
             raise stage.NotionError("NOTION_HTTP_500")
-        if body["filter"] == {"property": "Hiring Decision", "select": {"is_not_empty": True}}:      # LIFE-973: the decision sync's read (tests/hiring/test_decision_sync.py covers it)
+        if body["filter"] == {"property": "Hiring Decision", "select": {"is_not_empty": True}}:
             return {"results": [], "has_more": False}
-        if body["filter"] == {"property": "Stage", "select": {"is_not_empty": True}}:      # LIFE-352: the Ledger-first read
+        if body["filter"] == {"property": "Stage", "select": {"is_not_empty": True}}:  # the Ledger-first read
             return {"results": [{"id": i, "properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}, "Stage": {"select": {"name": st}},
                                  "Hiring Decision": {"select": {"name": d} if d else None}}} for i, c, r, st, d in self.stage_rows], "has_more": False}
         assert body["filter"] == {"property": "Applied", "checkbox": {"equals": True}}
@@ -467,7 +473,7 @@ def gcal(event_id, title, start, **extra):
 
 
 PARENTS = [hiring_pipeline.Opportunity("aaaa1111-0000-4000-8000-000000000001", "Acme - Senior Program Manager", hiring_pipeline.ACTIVE, 0, "Acme", "Senior Program Manager")]
-RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root", "HIRING_AUTO_CLOSE": "off"}   # tests choose the switch; the repo file never decides for them
+RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root", "HIRING_AUTO_CLOSE": "off"}  # tests choose the switch
 
 
 def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-10-02"),), events=(), parents=PARENTS, ledger_broken=False, calendar_broken=False, pages_ok=True, now=NOW):
@@ -479,7 +485,7 @@ def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-1
 
 class RuntimePathTests(unittest.TestCase):
     def setUp(self):
-        fresh = (NOW - timedelta(hours=1)).astimezone(timezone.utc).isoformat()     # the outcome-mail scan saved an hour ago: these tests are about the other sources
+        fresh = (NOW - timedelta(hours=1)).astimezone(timezone.utc).isoformat()
         patcher = mock.patch.object(stage.outcome_mail, "load", lambda conn: ({}, fresh))
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -489,12 +495,12 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.pipeline.hiring", "run"))
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
-        self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])                                 # LIFE-613: its writes reach only its own heading, table and rows (ScopedClient), so it waits for nobody
-        self.assertTrue({"jira", "agenda", "bills", "amazon", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))      # the Command Center runs after every writer, Hiring Pipeline included
-        for name in ("outlook", "megibow"):                                                        # the two that never write the Daily Report page
+        self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])
+        self.assertTrue({"jira", "agenda", "bills", "amazon", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))
+        for name in ("outlook", "megibow"):  # the two that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))
-        self.assertIn("hiring", doc["jobs"]["recruiters"]["needs"])                                # LIFE-688 option B: the two whole-page walkers take turns, recruiters after hiring
-        step = next(s for s in doc["jobs"]["hiring"]["steps"] if "lifeos.run hiring" in s.get("run", ""))      # EDGE-1.3: a Bitwarden loader step precedes it
+        self.assertIn("hiring", doc["jobs"]["recruiters"]["needs"])
+        step = next(s for s in doc["jobs"]["hiring"]["steps"] if "lifeos.run hiring" in s.get("run", ""))  # a Bitwarden loader step precedes it
         self.assertIn("lifeos.run hiring", step["run"])
         self.assertTrue(step["continue-on-error"])
         self.assertIs(doc[True]["workflow_dispatch"]["inputs"]["hiring"]["default"], False)
@@ -532,7 +538,9 @@ class RuntimePathTests(unittest.TestCase):
 
 
 class OutcomeConsumerTests(unittest.TestCase):
-    """D190 end of the chain: what the outcome-mail stage stored reaches the Hiring Pipeline region as a tentative line, with every other block, the Applied state and the Ledger untouched."""
+    """end of the chain: what the outcome-mail stage stored reaches the Hiring Pipeline region as a tentative line, with
+    every other block, the Applied.
+    """
     KEY = "acme|manager|program|senior"
     FOUND = {KEY: {"kind": "REJECTED", "received": (NOW - timedelta(days=1)).astimezone(timezone.utc).isoformat(), "match": "role"}}
     SCANNED = (NOW - timedelta(hours=2)).astimezone(timezone.utc).isoformat()
@@ -555,7 +563,7 @@ class OutcomeConsumerTests(unittest.TestCase):
         self.assertEqual([e for e in t.log if "Applied" in json.dumps(e)], [])
 
     def seeded(self, loader):
-        """a first fresh run saves the accepted state; the second run is the one under test (a prior snapshot exists, so there is a roster to scan for)."""
+        """a first fresh run saves the accepted state"""
         t, store = page(extra_rows=0), FakeStore()
         with mock.patch.object(stage.outcome_mail, "load", lambda conn: ({}, self.SCANNED)):
             run(t, store)
@@ -569,7 +577,7 @@ class OutcomeConsumerTests(unittest.TestCase):
             with self.subTest(scanned=scanned):
                 t, store, counts = self.seeded(lambda conn, scanned=scanned: (self.FOUND, scanned))
                 self.assertEqual((counts["status"], counts["reasons"]), ("degraded", ["OUTCOME_MAIL_STALE"]))
-                self.assertEqual(counts["mail_outcomes"], 1)                                       # the last accepted outcome is still shown, never dropped
+                self.assertEqual(counts["mail_outcomes"], 1)
         t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))
         self.assertEqual((counts["status"], counts["reasons"]), ("fresh", []))
 
@@ -579,7 +587,6 @@ class OutcomeConsumerTests(unittest.TestCase):
 
 
 class AutoCloseTests(unittest.TestCase):
-    """Jim, Oct 24: a known rejection (the email names the role) closes itself through the Close screen's own checked write, behind his HIRING_AUTO_CLOSE switch, and shows as closed for 24 hours."""
     FOUND = {OutcomeConsumerTests.KEY: {**OutcomeConsumerTests.FOUND[OutcomeConsumerTests.KEY], "exact": True}}
     TARGET = "aaaa1111-0000-4000-8000-0000000000ff"
 
@@ -589,7 +596,7 @@ class AutoCloseTests(unittest.TestCase):
         def confirm(client, request, live_, at):
             calls.append(request)
             return write(request) if write else {"status": "recorded", "verified": True, "entries": 1}
-        pages = [{"id": f"{i:032x}", "properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}}} for i, (c, r, _) in enumerate(rows, 1)]      # the Ledger's pursuit rows
+        pages = [{"id": f"{i:032x}", "properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}}} for i, (c, r, _) in enumerate(rows, 1)]  # the Ledger's pursuit rows
         with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND if found is None else found, (now - timedelta(hours=2)).astimezone(timezone.utc).isoformat())), \
                 mock.patch.dict(RUN_ENV, {"HIRING_AUTO_CLOSE": switch}), mock.patch.object(stage.auto_close.decision, "route", lambda r, w: {"id": self.TARGET}), \
                 mock.patch.object(stage.auto_close.decision, "ledger_pages", lambda client: pages), \
@@ -623,7 +630,7 @@ class GuardrailTests(unittest.TestCase):
 
     def test_no_private_identifier_is_committed(self):
         import hashlib
-        forbidden = {"d1725f63cf1ac7162fd64889fb4f9853f23dfcaa3c74fddc03a6e0444b589c9c", "a26243ba801992915efcdb9597e9f90579c3940b288e9c7cd0d355e04cf47bb5"}                 # sha256 of the private block ids (the ids themselves never appear in the repository)
+        forbidden = {"d1725f63cf1ac7162fd64889fb4f9853f23dfcaa3c74fddc03a6e0444b589c9c", "a26243ba801992915efcdb9597e9f90579c3940b288e9c7cd0d355e04cf47bb5"}
         found = re.compile(r"\b[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}\b")
         for path in ROOT.rglob("*"):
             if not path.is_file() or ".git" in path.parts or path.suffix not in (".py", ".md", ".yml", ".json", ".txt"):
