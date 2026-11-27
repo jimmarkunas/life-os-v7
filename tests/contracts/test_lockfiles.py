@@ -11,7 +11,6 @@ PAIRS = (
     ("requirements-browser.txt", "requirements-browser.lock"),
     ("requirements-fit.txt", "requirements-fit.lock"),
     ("requirements-test.txt", "requirements-test.lock"),
-    ("requirements-yaml.txt", "requirements-yaml.lock"),
 )
 
 
@@ -42,15 +41,6 @@ class Locks(unittest.TestCase):
                 self.assertIsNotNone(m, "%s: every direct requirement is pinned exactly: %r" % (source, line))
                 name = m.group(1).lower().replace("_", "-")
                 self.assertEqual(entries[name][0], m.group(2), "%s: lock version differs from %s" % (lock, source))
-
-    def test_the_yaml_only_lock_keeps_the_pin_and_hash_of_the_full_test_lock(self):
-        full, small = lock_entries("requirements-test.lock"), lock_entries("requirements-yaml.lock")
-        self.assertEqual(small, {"pyyaml": full["pyyaml"]})
-        pattern = r"PyYAML==[^\n]*\n\s+--hash=sha256:[0-9a-f]{64}"
-        self.assertEqual(
-            re.search(pattern, (ROOT / "requirements-yaml.lock").read_text()).group(0),
-            re.search(pattern, (ROOT / "requirements-test.lock").read_text()).group(0),
-        )
 
     def test_no_install_line_in_the_workflows_is_unpinned(self):
         found = []
@@ -90,10 +80,7 @@ class Locks(unittest.TestCase):
 
 
 class Trims(unittest.TestCase):
-    def test_the_hourly_unit_test_step_installs_only_the_yaml_lock_and_the_pip_caches_are_keyed_on_locks(self):
-        hourly = (ROOT / ".github/workflows-src/hourly/020-unit-tests.yml").read_text()
-        self.assertIn("pip install --require-hashes -r requirements-yaml.lock", hourly)
-        self.assertNotIn("requirements-test.lock", hourly)
+    def test_the_pip_caches_are_keyed_on_locks(self):
         action = (ROOT / ".github/actions/python/action.yml").read_text()
         self.assertIn("path: ~/.cache/pip", action)
         self.assertIn("hashFiles('requirements.lock')", action)
