@@ -54,7 +54,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_INTERVIEW_TOKEN,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,IMESSAGE_ALERTS_HOST
-          bitwarden: ${{ toJSON(steps.bws_granola.outputs) }}
+          bitwarden: '{}'
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden for the V7 settings page
@@ -73,7 +73,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
+          bitwarden: '{}'
       - name: Join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 22 and 47341); no join means no Oracle, and the run stops with a fixed code
         uses: ./.github/actions/tailscale
         with:

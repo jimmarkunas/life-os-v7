@@ -59,7 +59,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER
-          bitwarden: ${{ toJSON(steps.bws_diag.outputs) }}
+          bitwarden: '{}'
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -112,7 +112,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,GMAIL_OAUTH_CLIENT_ID
-          bitwarden: ${{ toJSON(steps.bws_trace.outputs) }}
+          bitwarden: '{}'
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -159,7 +159,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_API_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_sandbox.outputs) }}
+          bitwarden: '{}'
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
@@ -177,7 +177,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
+          bitwarden: '{}'
       - name: Notion sandbox access (read-only; codes and counts only)
         if: ${{ inputs.stage == 'notion-sandbox-access' }}
         env:
@@ -227,7 +227,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_INTERVIEW_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_interview.outputs) }}
+          bitwarden: '{}'
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
@@ -245,7 +245,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
+          bitwarden: '{}'
       - name: Interview UI 3c REST capability probe (one QA probe page; typed confirmation; codes, block types and counts only)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
@@ -293,7 +293,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_API_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_report.outputs) }}
+          bitwarden: '{}'
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -340,7 +340,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_API_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_inbox_view.outputs) }}
+          bitwarden: '{}'
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
@@ -358,7 +358,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
+          bitwarden: '{}'
       - name: Agent Inbox proof or tile recount (test rows only, removed again; typed confirmation; counts and fixed codes only)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}

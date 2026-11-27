@@ -51,7 +51,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: JIRA_API_TOKEN,JIRA_EMAIL,BUZZ_STAGE_HERMES_PUBKEY,BUZZ_STAGE_KEY,BUZZ_URL_LIFE_OS
-          bitwarden: ${{ toJSON(steps.bws_hermes.outputs) }}
+          bitwarden: '{}'
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden for the V7 settings page
@@ -70,7 +70,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
+          bitwarden: '{}'
       - name: Hermes stage (every Agent Go issue labelled hermes without a request; dry run unless live; counts and fixed codes only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}

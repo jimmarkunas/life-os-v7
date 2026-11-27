@@ -60,7 +60,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,NOTION_JIRA_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_capacitycard.outputs) }}
+          bitwarden: '{}'
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: ./.github/actions/tailscale
         with:
@@ -84,7 +84,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
+          bitwarden: '{}'
       - id: capacity
         continue-on-error: true
         name: AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)
