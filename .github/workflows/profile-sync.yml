@@ -20,7 +20,7 @@ concurrency:
 jobs:
   settings:
     # LIFE-703: a job's own `if` cannot read its own steps, so this small first job reads the V7 settings page and publishes the one switch the sync job's condition needs.
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains('11 23', substring(github.event.workflow_run.run_started_at, 11, 2)) }}  # the hourly runs that started at 11:xx and 23:xx UTC (5 to 6 AM and 5 to 6 PM CT): twice a day, not 24 times; a manual dispatch still runs it at once
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && (contains(github.event.workflow_run.run_started_at, 'T11:') || contains(github.event.workflow_run.run_started_at, 'T23:')) }}  # the hourly runs that started at 11:xx and 23:xx UTC (5 to 6 AM and 5 to 6 PM CT): twice a day, not 24 times; a manual dispatch still runs it at once
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
