@@ -1,4 +1,5 @@
 """the standing pre-approval gate (tools/workflow_gate.py)."""
+
 import importlib.util
 import io
 import json
@@ -43,7 +44,11 @@ def check(head, base=BASE):
 
 class PreApproved(unittest.TestCase):
     def test_a_plain_edit_needs_no_approval(self):
-        head = BASE.replace("echo hello", "echo hello world").replace("runs-on: ubuntu-24.04\n    steps:\n      - run", "runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - run", 1)
+        head = BASE.replace("echo hello", "echo hello world").replace(
+            "runs-on: ubuntu-24.04\n    steps:\n      - run",
+            "runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - run",
+            1,
+        )
         self.assertEqual(check(head), [])
 
     def test_a_new_job_with_no_secret_and_no_permission_needs_no_approval(self):
@@ -64,34 +69,55 @@ class PreApproved(unittest.TestCase):
 class CommentsAreNeutral(unittest.TestCase):
     def test_dropping_a_trailing_comment_changes_no_line_so_a_spend_word_in_it_or_beside_it_stops_nothing(self):
         """the generated workflows lost their comments"""
-        base = BASE.replace("      - run: echo hello", "      - run: echo hello\n        env:\n          V7_CLOUD_FIT_PARALLEL: '1'     # the old comment").replace("        env:\n          TOKEN", "        env2:\n          TOKEN")
+        base = BASE.replace(
+            "      - run: echo hello",
+            "      - run: echo hello\n        env:\n          V7_CLOUD_FIT_PARALLEL: '1'     # the old comment",
+        ).replace("        env:\n          TOKEN", "        env2:\n          TOKEN")
         head = base.replace("     # the old comment", "")
         self.assertEqual(check(head, base), [])
 
 
 class CredentialSets(unittest.TestCase):
     """a `bws-load` step names its list with `set:` (the lists are in sets.yml)"""
-    FLOW = BASE.replace("        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n", "        with:\n          set: other\n")
+
+    FLOW = BASE.replace(
+        "        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n",
+        "        with:\n          set: other\n",
+    )
     OLD = "other: |\n  11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n"
 
     def test_a_name_added_to_a_set_is_a_new_credential_and_an_unchanged_set_is_not(self):
-        same = gate.reasons_for(".github/workflows/demo.yml", gate.expand_sets(self.FLOW, self.OLD), gate.expand_sets(self.FLOW, self.OLD))
-        more = gate.reasons_for(".github/workflows/demo.yml", gate.expand_sets(self.FLOW, self.OLD), gate.expand_sets(self.FLOW, self.OLD + "  33333333-3333-3333-3333-333333333333 > BRAND_NEW\n"))
+        same = gate.reasons_for(
+            ".github/workflows/demo.yml", gate.expand_sets(self.FLOW, self.OLD), gate.expand_sets(self.FLOW, self.OLD)
+        )
+        more = gate.reasons_for(
+            ".github/workflows/demo.yml",
+            gate.expand_sets(self.FLOW, self.OLD),
+            gate.expand_sets(self.FLOW, self.OLD + "  33333333-3333-3333-3333-333333333333 > BRAND_NEW\n"),
+        )
         self.assertEqual(same, [])
         self.assertTrue(any("new credential" in r and "BRAND_NEW" in r for r in more), more)
 
     def test_a_set_reference_expands_to_the_inline_block(self):
-        self.assertIn("secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM", gate.expand_sets(self.FLOW, self.OLD))
+        self.assertIn(
+            "secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM",
+            gate.expand_sets(self.FLOW, self.OLD),
+        )
 
 
 class Stops(unittest.TestCase):
     def test_a_new_secret_stops(self):
-        head = BASE.replace("TOKEN: ${{ secrets.EXISTING }}", "TOKEN: ${{ secrets.EXISTING }}\n          NEW: ${{ secrets.NEW_THING }}")
+        head = BASE.replace(
+            "TOKEN: ${{ secrets.EXISTING }}", "TOKEN: ${{ secrets.EXISTING }}\n          NEW: ${{ secrets.NEW_THING }}"
+        )
         reasons = check(head)
         self.assertTrue(any(r.startswith("new secret") and "NEW_THING" in r for r in reasons), reasons)
 
     def test_a_new_job_loading_a_name_new_to_the_workflow_stops(self):
-        head = BASE + "  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - id: bws\n        uses: ./.github/actions/bws-load\n        with:\n          secrets: |\n            33333333-3333-3333-3333-333333333333 > BRAND_NEW\n"
+        head = (
+            BASE
+            + "  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - id: bws\n        uses: ./.github/actions/bws-load\n        with:\n          secrets: |\n            33333333-3333-3333-3333-333333333333 > BRAND_NEW\n"
+        )
         self.assertTrue(any(r.startswith("new credential") and "BRAND_NEW" in r for r in check(head)))
 
 
@@ -101,15 +127,23 @@ class ReuseInSameWorkflow(unittest.TestCase):
     """
 
     def test_an_existing_secret_reaching_another_job_passes(self):
-        head = BASE.replace("      - run: echo other", "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}")
+        head = BASE.replace(
+            "      - run: echo other", "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}"
+        )
         self.assertEqual(check(head), [])
 
     def test_a_new_job_reusing_a_bitwarden_name_the_workflow_loads_passes(self):
-        head = BASE + "  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - id: bws\n        uses: ./.github/actions/bws-load\n        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n      - run: echo ${{ steps.bws.outputs.KNOWN_ITEM }}\n"
+        head = (
+            BASE
+            + "  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - id: bws\n        uses: ./.github/actions/bws-load\n        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n      - run: echo ${{ steps.bws.outputs.KNOWN_ITEM }}\n"
+        )
         self.assertEqual(check(head), [])
 
     def test_reuse_next_to_a_new_name_still_stops_for_the_new_name_only(self):
-        head = BASE.replace("      - run: echo other", "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}\n          U: ${{ secrets.NOT_IN_THIS_WORKFLOW }}")
+        head = BASE.replace(
+            "      - run: echo other",
+            "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}\n          U: ${{ secrets.NOT_IN_THIS_WORKFLOW }}",
+        )
         reasons = check(head)
         self.assertTrue(any("NOT_IN_THIS_WORKFLOW" in r for r in reasons), reasons)
         self.assertFalse(any("EXISTING" in r for r in reasons), reasons)
@@ -131,11 +165,17 @@ class ReuseInSameWorkflow(unittest.TestCase):
         self.assertTrue(any(r.startswith("wider permissions") for r in check(head)))
 
     def test_a_job_block_wider_than_the_workflow_stops(self):
-        head = BASE.replace("  other:\n    runs-on: ubuntu-24.04\n", "  other:\n    runs-on: ubuntu-24.04\n    permissions:\n      contents: write\n")
+        head = BASE.replace(
+            "  other:\n    runs-on: ubuntu-24.04\n",
+            "  other:\n    runs-on: ubuntu-24.04\n    permissions:\n      contents: write\n",
+        )
         self.assertTrue(any(r.startswith("wider permissions") and "other" in r for r in check(head)))
 
     def test_a_new_job_with_its_own_wider_block_stops(self):
-        head = BASE + "  extra:\n    runs-on: ubuntu-24.04\n    permissions:\n      issues: write\n    steps:\n      - run: echo extra\n"
+        head = (
+            BASE
+            + "  extra:\n    runs-on: ubuntu-24.04\n    permissions:\n      issues: write\n    steps:\n      - run: echo extra\n"
+        )
         self.assertTrue(any(r.startswith("wider permissions") and "extra" in r for r in check(head)))
 
     def test_a_new_bitwarden_load_stops(self):
@@ -156,7 +196,14 @@ class Cli(unittest.TestCase):
     def repo(self, head):
         tmp = tempfile.TemporaryDirectory()
         root = pathlib.Path(tmp.name)
-        env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com", "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": tmp.name}
+        env = {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "HOME": tmp.name,
+        }
         run = lambda *a: subprocess.run(a, cwd=root, env=env, capture_output=True, text=True, check=True)
         run("git", "init", "-q", "-b", "main")
         (root / ".github" / "workflows").mkdir(parents=True)
@@ -192,7 +239,12 @@ class Cli(unittest.TestCase):
         self.assertEqual((code, reasons, text), (0, [], ""))
 
     def test_a_new_secret_stops_with_the_waiting_line(self):
-        code, text, reasons = self.run_gate(BASE.replace("TOKEN: ${{ secrets.EXISTING }}", "TOKEN: ${{ secrets.EXISTING }}\n          NEW: ${{ secrets.NEW_THING }}"))
+        code, text, reasons = self.run_gate(
+            BASE.replace(
+                "TOKEN: ${{ secrets.EXISTING }}",
+                "TOKEN: ${{ secrets.EXISTING }}\n          NEW: ${{ secrets.NEW_THING }}",
+            )
+        )
         self.assertEqual(code, 5)
         self.assertIn("[waiting on] Jim: new secret", text)
 
@@ -208,7 +260,12 @@ class Cli(unittest.TestCase):
         gate.ROOT = root
         try:
             self.assertEqual(gate.main(["--base", "main"], refused, {}), 5)
-            self.assertEqual(gate.main(["--base", "main"], accepted, {"LIFEOS_JIM_APPROVED": "[approvals] permissions, Jim, 5:40 PM CT"}), 0)
+            self.assertEqual(
+                gate.main(
+                    ["--base", "main"], accepted, {"LIFEOS_JIM_APPROVED": "[approvals] permissions, Jim, 5:40 PM CT"}
+                ),
+                0,
+            )
         finally:
             gate.ROOT = original
         self.assertIn("[waiting on] Jim:", refused.getvalue())
@@ -234,11 +291,15 @@ CHAIN = """  chain:
     steps:
       - run: echo chain
 """
-APPROVED_ITEM = ("* \\[x\\] **LIFE-904 exact workflow read-permission authorization \u2014 Jim's instruction in ChatGPT, November 22, 2026:** Approve **only** the new `chain` job in "
-                 "`.github/workflows/domains.yml` declaring `contents: read` and `actions: read` for the three correlated clocks. No `write` scope, other job permission, additional secret/credential, "
-                 "deletion, spend, schedule/cadence change or production data mutation is approved by this item.")
-TRANSFER_ITEM = ("* \\[x\\] **Approval transfer to agent:** this Jira description is the canonical owner-authorization record. If the ONLY gate reason is `wider permissions (.github/workflows/domains.yml: chain)`, "
-                 "use `[approvals] LIFE-904: Jim approved domains.yml chain job contents: read and actions: read (ChatGPT Nov 22 2026)` via `LIFEOS_JIM_APPROVED`.")
+APPROVED_ITEM = (
+    "* \\[x\\] **LIFE-904 exact workflow read-permission authorization \u2014 Jim's instruction in ChatGPT, November 22, 2026:** Approve **only** the new `chain` job in "
+    "`.github/workflows/domains.yml` declaring `contents: read` and `actions: read` for the three correlated clocks. No `write` scope, other job permission, additional secret/credential, "
+    "deletion, spend, schedule/cadence change or production data mutation is approved by this item."
+)
+TRANSFER_ITEM = (
+    "* \\[x\\] **Approval transfer to agent:** this Jira description is the canonical owner-authorization record. If the ONLY gate reason is `wider permissions (.github/workflows/domains.yml: chain)`, "
+    "use `[approvals] LIFE-904: Jim approved domains.yml chain job contents: read and actions: read (ChatGPT Nov 22 2026)` via `LIFEOS_JIM_APPROVED`."
+)
 
 
 def description(*items):
@@ -246,8 +307,16 @@ def description(*items):
 
 
 def envelope(key="LIFE-904", status="In Progress", body=None):
-    fields = {"summary": "s", "status": {"name": status}, "labels": [], "parent": None, "components": [], "issuelinks": [], "description": description(APPROVED_ITEM, TRANSFER_ITEM) if body is None else body,
-              "updated": "2026-11-22T15:00:00.000-0600"}
+    fields = {
+        "summary": "s",
+        "status": {"name": status},
+        "labels": [],
+        "parent": None,
+        "components": [],
+        "issuelinks": [],
+        "description": description(APPROVED_ITEM, TRANSFER_ITEM) if body is None else body,
+        "updated": "2026-11-22T15:00:00.000-0600",
+    }
     return {"issues": {"nodes": [{"key": key, "fields": fields}]}}
 
 
@@ -258,7 +327,14 @@ class JiraApproval(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = pathlib.Path(tmp.name)
-        env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com", "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": tmp.name}
+        env = {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "HOME": tmp.name,
+        }
         git = lambda *a: subprocess.run(a, cwd=root, env=env, capture_output=True, text=True, check=True)
         git("git", "init", "-q", "-b", "main")
         (root / ".github" / "workflows").mkdir(parents=True)
@@ -296,7 +372,16 @@ class JiraApproval(unittest.TestCase):
 
     def test_the_approval_items_of_the_real_ticket_text_are_exactly_one(self):
         items = gate.approved_items(description(APPROVED_ITEM, TRANSFER_ITEM))
-        self.assertEqual(items, [{"path": ".github/workflows/domains.yml", "job": "chain", "scopes": {"contents": "read", "actions": "read"}}])
+        self.assertEqual(
+            items,
+            [
+                {
+                    "path": ".github/workflows/domains.yml",
+                    "job": "chain",
+                    "scopes": {"contents": "read", "actions": "read"},
+                }
+            ],
+        )
 
     def test_a_write_scope_stops(self):
         code, text = self.run_gate(DOMAINS_BASE + CHAIN % "write")
@@ -304,17 +389,27 @@ class JiraApproval(unittest.TestCase):
         self.assertIn("[waiting on] Jim: wider permissions (.github/workflows/domains.yml: chain)", text)
 
     def test_a_scope_the_item_does_not_name_stops(self):
-        code, text = self.run_gate(DOMAINS_BASE + (CHAIN % "read").replace("      actions: read\n", "      actions: read\n      issues: read\n"))
+        code, text = self.run_gate(
+            DOMAINS_BASE
+            + (CHAIN % "read").replace("      actions: read\n", "      actions: read\n      issues: read\n")
+        )
         self.assertEqual(code, 5)
         self.assertIn("do not cover", text)
 
     def test_a_new_secret_or_credential_beside_the_approved_scopes_stops(self):
-        code, text = self.run_gate(DOMAINS_BASE + (CHAIN % "read").replace("- run: echo chain", "- run: echo chain\n        env:\n          T: ${{ secrets.NEW_THING }}"))
+        code, text = self.run_gate(
+            DOMAINS_BASE
+            + (CHAIN % "read").replace(
+                "- run: echo chain", "- run: echo chain\n        env:\n          T: ${{ secrets.NEW_THING }}"
+            )
+        )
         self.assertEqual(code, 5)
         self.assertIn("[waiting on] Jim: new secret", text)
 
     def test_spend_or_deletion_beside_the_approved_scopes_stops(self):
-        code, text = self.run_gate(DOMAINS_BASE + (CHAIN % "read").replace("echo chain", "curl https://api.anthropic.com/v1"))
+        code, text = self.run_gate(
+            DOMAINS_BASE + (CHAIN % "read").replace("echo chain", "curl https://api.anthropic.com/v1")
+        )
         self.assertEqual(code, 5)
 
     def test_the_wrong_job_stops(self):
@@ -328,12 +423,18 @@ class JiraApproval(unittest.TestCase):
         self.assertEqual(code, 5)
 
     def test_an_unchecked_item_stops(self):
-        code, text = self.run_gate(self.HEAD, issue=envelope(body=description(APPROVED_ITEM.replace("\\[x\\]", "\\[ \\]"))))
+        code, text = self.run_gate(
+            self.HEAD, issue=envelope(body=description(APPROVED_ITEM.replace("\\[x\\]", "\\[ \\]")))
+        )
         self.assertEqual(code, 5)
 
     def test_an_item_that_does_not_name_jim_and_chatgpt_or_names_a_write_stops(self):
-        for item in (APPROVED_ITEM.replace("ChatGPT", "chat"), APPROVED_ITEM.replace("Jim's", "the"), APPROVED_ITEM.replace("`actions: read`", "`actions: write`"),
-                     APPROVED_ITEM.replace("`chain` job", "`chain` and `existing` job")):
+        for item in (
+            APPROVED_ITEM.replace("ChatGPT", "chat"),
+            APPROVED_ITEM.replace("Jim's", "the"),
+            APPROVED_ITEM.replace("`actions: read`", "`actions: write`"),
+            APPROVED_ITEM.replace("`chain` job", "`chain` and `existing` job"),
+        ):
             self.assertEqual(gate.approved_items(description(item)), [], item)
 
     def test_an_approval_outside_the_jim_must_do_first_section_is_ignored(self):
@@ -377,6 +478,7 @@ class JiraApproval(unittest.TestCase):
 
     def test_the_live_jira_read_is_used_when_the_settings_are_set_and_its_failure_stops(self):
         from unittest import mock
+
         live = {"JIRA_BASE_URL": "https://example.atlassian.net", "JIRA_EMAIL": "a@example.com", "JIRA_API_TOKEN": "x"}
         raw = envelope()["issues"]["nodes"][0]
         with mock.patch("lifeos.jira.readiness_record.fetch", return_value=raw):
@@ -389,7 +491,9 @@ class JiraApproval(unittest.TestCase):
         self.assertIn("BLOCKED", text)
 
     def test_a_typed_environment_string_is_unchanged_and_the_jira_path_never_needs_it(self):
-        code, text = self.run_gate(DOMAINS_BASE + CHAIN % "write", environ={"LIFEOS_JIM_APPROVED": "[approvals] write, Jim, 5:40 PM CT"})
+        code, text = self.run_gate(
+            DOMAINS_BASE + CHAIN % "write", environ={"LIFEOS_JIM_APPROVED": "[approvals] write, Jim, 5:40 PM CT"}
+        )
         self.assertEqual(code, 0)
         self.assertIn("Jim approved", text)
 

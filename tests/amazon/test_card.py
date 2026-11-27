@@ -1,4 +1,5 @@
 """the Amazon card renders canonical order rows into the one 'Amazon Orders' callout."""
+
 import copy
 import inspect
 import pathlib
@@ -14,34 +15,59 @@ from tests.kit.notion import AmazonRegions
 
 TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 4, 13, 30, tzinfo=TZ)
-ENV = {"AMAZON_CARD_BLOCK_ID": "amazon-callout", "JIRA_CARD_BLOCK_ID": "jira-callout", "CALENDAR_CARD_BLOCK_ID": "calendar-callout",
-       "BILLS_CARD_BLOCK_ID": "bills-callout", "NOTION_AMAZON_DATA_SOURCE_ID": "source-example"}
+ENV = {
+    "AMAZON_CARD_BLOCK_ID": "amazon-callout",
+    "JIRA_CARD_BLOCK_ID": "jira-callout",
+    "CALENDAR_CARD_BLOCK_ID": "calendar-callout",
+    "BILLS_CARD_BLOCK_ID": "bills-callout",
+    "NOTION_AMAZON_DATA_SOURCE_ID": "source-example",
+}
 
 
 def order(n, status, latest, *, total="12.97", summary=None, review=False):
     oid = f"114-{n:07d}-0000001"
-    return {"Order ID": oid, "Status": status, "Ordered At": latest, "Latest Event At": latest, "Grand Total": total, "Item Summary": summary or f"Item {n}",
-            "Item Count": None, "Amazon Order URL": f"https://www.amazon.com/your-orders/order-details?orderID={oid}", "Source Message IDs": f"m{n}",
-            "Last Source Subject": "x", "Last Reconciled At": latest, "Needs Review": review}
+    return {
+        "Order ID": oid,
+        "Status": status,
+        "Ordered At": latest,
+        "Latest Event At": latest,
+        "Grand Total": total,
+        "Item Summary": summary or f"Item {n}",
+        "Item Count": None,
+        "Amazon Order URL": f"https://www.amazon.com/your-orders/order-details?orderID={oid}",
+        "Source Message IDs": f"m{n}",
+        "Last Source Subject": "x",
+        "Last Reconciled At": latest,
+        "Needs Review": review,
+    }
 
 
 class Reader(AmazonNotion):
     def __init__(self, rows, fail=False):
         super().__init__()
-        self.pages, self.bodies, self.fail = [notion_page(r["Order ID"], r, f"page-{i}") for i, r in enumerate(rows)], [], fail
+        self.pages, self.bodies, self.fail = (
+            [notion_page(r["Order ID"], r, f"page-{i}") for i, r in enumerate(rows)],
+            [],
+            fail,
+        )
 
     def query_data_source(self, source_id, body):
         self.bodies.append(body)
         if self.fail:
             from lifeos.platform.notion_client import NotionError
+
             raise NotionError("NOTION_HTTP_500")
         return {"results": copy.deepcopy(self.pages), "has_more": False}
 
 
-ROWS = [order(1, "SHIPPED", "2026-10-03T15:00:00+00:00", summary="Garden hose"), order(2, "ORDERED", "2026-10-04T10:00:00+00:00", summary="USB cable"),
-        order(3, "DELIVERED", "2026-10-03T17:58:00+00:00", summary="2 Device Accessories items"),
-        order(4, "DELIVERED", "2026-09-26T18:18:00+00:00", summary="Old office item"), order(5, "REVIEW", "2026-10-01T10:00:00+00:00", review=True, summary=None),
-        order(6, "SHIPPED", "2026-06-08T10:00:00+00:00", summary="June order")]
+ROWS = [
+    order(1, "SHIPPED", "2026-10-03T15:00:00+00:00", summary="Garden hose"),
+    order(2, "ORDERED", "2026-10-04T10:00:00+00:00", summary="USB cable"),
+    order(3, "DELIVERED", "2026-10-03T17:58:00+00:00", summary="2 Device Accessories items"),
+    order(4, "DELIVERED", "2026-09-26T18:18:00+00:00", summary="Old office item"),
+    order(5, "REVIEW", "2026-10-01T10:00:00+00:00", review=True, summary=None),
+    order(6, "SHIPPED", "2026-06-08T10:00:00+00:00", summary="June order"),
+]
 
 
 def texts(blocks):
@@ -50,12 +76,19 @@ def texts(blocks):
 
 class ReturnRenderTests(unittest.TestCase):
     """returning orders and refunds are their own sections"""
+
     def test_returning_and_refunded_sections_and_their_fall_off(self):
-        rows = [order(1, "RETURNING", "2026-10-03T15:00:00+00:00", summary="Phone case"), order(2, "REFUNDED", "2026-10-03T17:00:00+00:00", summary="Screen protector"),
-                order(3, "REFUNDED", "2026-09-26T18:00:00+00:00", summary="Old refund"), order(4, "RETURNING", "2026-06-08T10:00:00+00:00", summary="Old return")]
+        rows = [
+            order(1, "RETURNING", "2026-10-03T15:00:00+00:00", summary="Phone case"),
+            order(2, "REFUNDED", "2026-10-03T17:00:00+00:00", summary="Screen protector"),
+            order(3, "REFUNDED", "2026-09-26T18:00:00+00:00", summary="Old refund"),
+            order(4, "RETURNING", "2026-06-08T10:00:00+00:00", summary="Old return"),
+        ]
         blocks, counts = card.render(rows, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "0 in transit · 0 delivered (last 7 days) · 1 returning · 1 refunded (last 7 days) · 0 need review")
+        self.assertEqual(
+            text[0], "0 in transit · 0 delivered (last 7 days) · 1 returning · 1 refunded (last 7 days) · 0 need review"
+        )
         self.assertIn("Returning", text)
         self.assertIn("Refunded, last 7 days", text)
         self.assertTrue(any(t.startswith("Phone case · Returning") for t in text))
@@ -72,9 +105,11 @@ class ReturnRenderTests(unittest.TestCase):
         """Notion accepts a compound filter inside a compound filter, and no deeper: three levels is a 400 and the card
         never redraws.
         """
+
         def depth(node):
             kids = [v for key in ("or", "and") for v in node.get(key, [])]
             return 1 + max((depth(k) for k in kids), default=0) if kids else 0
+
         self.assertLessEqual(depth(card._query_body("2026-09-27")["filter"]), 2)
 
 
@@ -82,14 +117,19 @@ class RenderTests(unittest.TestCase):
     def test_summary_sections_and_the_seven_day_delivered_window(self):
         blocks, counts = card.render(ROWS, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "2 in transit · 1 delivered (last 7 days) · 1 need review · 1 older than 30 days not shown")
+        self.assertEqual(
+            text[0], "2 in transit · 1 delivered (last 7 days) · 1 need review · 1 older than 30 days not shown"
+        )
         self.assertIn("In transit", text)
         self.assertTrue(any(t.startswith("USB cable · Ordered") for t in text))
         self.assertTrue(any(t.startswith("Garden hose · Shipped") for t in text))
         self.assertTrue(any(t.startswith("2 Device Accessories items · Delivered") for t in text))
         self.assertFalse(any("Old office item" in t for t in text))  # delivered 8 days ago is outside the 7-day window
         self.assertFalse(any("June order" in t for t in text))
-        self.assertEqual((counts["in_transit"], counts["delivered"], counts["review"], counts["older_open"], counts["status"]), (2, 1, 1, 1, "fresh"))
+        self.assertEqual(
+            (counts["in_transit"], counts["delivered"], counts["review"], counts["older_open"], counts["status"]),
+            (2, 1, 1, 1, "fresh"),
+        )
 
     def test_the_item_links_to_its_amazon_order_and_a_missing_total_is_said_not_zero(self):
         blocks, _ = card.render([order(9, "SHIPPED", "2026-10-03T15:00:00+00:00", total=None)], NOW)
@@ -120,7 +160,6 @@ class RenderTests(unittest.TestCase):
         self.assertIn("…and 4 more", texts(blocks))
         self.assertEqual(counts["in_transit"], 14)
 
-
     def test_the_summary_links_to_the_orders_database_only_when_there_is_a_link(self):
         blocks, _ = card.render(ROWS, NOW, url="https://app.notion.com/p/" + "a" * 32)
         parts = blocks[0]["paragraph"]["rich_text"]
@@ -129,8 +168,12 @@ class RenderTests(unittest.TestCase):
         self.assertNotIn("link", str(card.render(ROWS, NOW)[0][0]))
 
     def test_delivered_stays_seven_days_and_an_old_open_order_is_counted(self):
-        edge = [order(1, "DELIVERED", "2026-09-27T19:00:00+00:00", summary="Inside"), order(2, "DELIVERED", "2026-09-27T17:00:00+00:00", summary="Outside"),
-                order(3, "ORDERED", "2026-09-05T14:00:00+00:00", summary="Thirty days"), order(4, "ORDERED", "2026-09-03T14:00:00+00:00", summary="Thirty one days")]
+        edge = [
+            order(1, "DELIVERED", "2026-09-27T19:00:00+00:00", summary="Inside"),
+            order(2, "DELIVERED", "2026-09-27T17:00:00+00:00", summary="Outside"),
+            order(3, "ORDERED", "2026-09-05T14:00:00+00:00", summary="Thirty days"),
+            order(4, "ORDERED", "2026-09-03T14:00:00+00:00", summary="Thirty one days"),
+        ]
         blocks, counts = card.render(edge, NOW)
         text = " | ".join(texts(blocks))
         self.assertIn("Inside", text)
@@ -152,7 +195,9 @@ class RunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout")}
         notion, counts = self.run_card(notion)
         kids = notion.children["amazon-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders (10/4 · 1:30 PM CT)")  # the stamp is in the heading
+        self.assertEqual(
+            report_region.plain(kids[0]), "Amazon Orders (10/4 · 1:30 PM CT)"
+        )  # the stamp is in the heading
         self.assertEqual(kids[0]["id"], "heading-amazon-callout")
         self.assertTrue(report_region.plain(kids[1]).startswith("2 in transit"))
         self.assertEqual(kids[-1]["id"], "amazon-table-old")  # a non-text block is never removed
@@ -174,8 +219,16 @@ class RunTests(unittest.TestCase):
         class WithParent(Reader):
             def call(self, method, path, body=None):
                 result = super().call(method, path, body)
-                return {**result, "parent": {"type": "database_id", "database_id": "00000000-0000-0000-0000-000000000006"}} if path.startswith("/data_sources/") else result
-        self.assertEqual(card._orders_url(WithParent(ROWS), "source-example"), "https://app.notion.com/p/00000000000000000000000000000006")
+                return (
+                    {**result, "parent": {"type": "database_id", "database_id": "00000000-0000-0000-0000-000000000006"}}
+                    if path.startswith("/data_sources/")
+                    else result
+                )
+
+        self.assertEqual(
+            card._orders_url(WithParent(ROWS), "source-example"),
+            "https://app.notion.com/p/00000000000000000000000000000006",
+        )
         self.assertIsNone(card._orders_url(Reader(ROWS), "source-example"))
         notion = AmazonRegions()
         card.run(0, True, environ=ENV, reader=WithParent(ROWS), client=notion, now=NOW)
@@ -185,11 +238,15 @@ class RunTests(unittest.TestCase):
         notion, counts = self.run_card(live=False)
         self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE", "PATCH")], [])
         self.assertEqual(counts["status"], "fresh")
-        self.assertEqual(card.run(0, True, environ={}, reader=Reader(ROWS), client=AmazonRegions())["status"], "not_configured")
+        self.assertEqual(
+            card.run(0, True, environ={}, reader=Reader(ROWS), client=AmazonRegions())["status"], "not_configured"
+        )
 
     def test_failed_sync_flag_writes_the_degraded_line(self):
         notion, counts = self.run_card(env={"AMAZON_SYNC_OUTCOME": "failure"})
-        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders (DEGRADED at 10/4 · 1:30 PM CT)")
+        self.assertEqual(
+            report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders (DEGRADED at 10/4 · 1:30 PM CT)"
+        )
         self.assertTrue(report_region.plain(notion.children["amazon-callout"][1]).startswith("Amazon sync failed"))
         self.assertEqual(counts["status"], "degraded")
 
@@ -205,8 +262,12 @@ class RunTests(unittest.TestCase):
             self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
 
     def test_wrong_target_or_missing_protected_ids_refuse_before_any_write(self):
-        for env, code in (({"AMAZON_CARD_BLOCK_ID": "bills-callout"}, "AMAZON_CARD_NOT_OWNED"), ({"AMAZON_CARD_BLOCK_ID": "calendar-callout"}, "AMAZON_CARD_NOT_OWNED"),
-                          ({"BILLS_CARD_BLOCK_ID": ""}, "AMAZON_PROTECTED_REGION_UNAVAILABLE"), ({"JIRA_CARD_BLOCK_ID": ""}, "AMAZON_PROTECTED_REGION_UNAVAILABLE")):
+        for env, code in (
+            ({"AMAZON_CARD_BLOCK_ID": "bills-callout"}, "AMAZON_CARD_NOT_OWNED"),
+            ({"AMAZON_CARD_BLOCK_ID": "calendar-callout"}, "AMAZON_CARD_NOT_OWNED"),
+            ({"BILLS_CARD_BLOCK_ID": ""}, "AMAZON_PROTECTED_REGION_UNAVAILABLE"),
+            ({"JIRA_CARD_BLOCK_ID": ""}, "AMAZON_PROTECTED_REGION_UNAVAILABLE"),
+        ):
             notion = AmazonRegions()
             with self.assertRaises(card.CardError) as caught:
                 card.run(0, True, environ={**ENV, **env}, reader=Reader(ROWS), client=notion, now=NOW)
@@ -228,7 +289,11 @@ class RunTests(unittest.TestCase):
 
         def buggy_writer(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail, shown=None):
             try:
-                client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+                client.call(
+                    "PATCH",
+                    f"/blocks/{foreign}",
+                    {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}},
+                )
             finally:
                 intact()
             return 0
@@ -240,7 +305,9 @@ class RunTests(unittest.TestCase):
         self.assertEqual(notion.full_tree("jira-callout"), before)
         writes = [p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")]
         self.assertEqual(writes, ["/blocks/heading-amazon-callout", "/blocks/heading-amazon-callout"])
-        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders")  # the failed card does not claim to be current
+        self.assertEqual(
+            report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders"
+        )  # the failed card does not claim to be current
 
 
 class OwnershipTests(unittest.TestCase):
@@ -260,15 +327,21 @@ class OwnershipTests(unittest.TestCase):
 
     def test_the_cli_stage_exists_and_the_amazon_job_runs_ingest_then_card_after_the_other_page_writers(self):
         from lifeos import run as runner
+
         self.assertEqual(runner.STAGES["amazon-card"].target, ("lifeos.amazon.card", "run"))
         try:
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        doc = yaml.safe_load((pathlib.Path(card.__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())
+        doc = yaml.safe_load(
+            (pathlib.Path(card.__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text()
+        )
         job = doc["jobs"]["amazon"]
         runs = [s.get("run", "") for s in job["steps"]]
-        order_ = [next(i for i, r in enumerate(runs) if f"lifeos.run {name}" in r) for name in ("amazon-orders", "amazon-card")]
+        order_ = [
+            next(i for i, r in enumerate(runs) if f"lifeos.run {name}" in r)
+            for name in ("amazon-orders", "amazon-card")
+        ]
         self.assertEqual(order_, sorted(order_))
         self.assertEqual(set(job["needs"]), {"gate"})
         card_step = next(s for s in job["steps"] if s.get("id") == "acard")

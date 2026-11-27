@@ -43,18 +43,29 @@ class StageTests(unittest.TestCase):
             self.assertGreater(result["blocked"], 0)
             self.assertTrue(result["why"])
         client = Fake()
-        client.blocks["root"].append({"id": "p2", "type": "child_page", "child_page": {"title": "Example — Program Manager"}})
+        client.blocks["root"].append(
+            {"id": "p2", "type": "child_page", "child_page": {"title": "Example — Program Manager"}}
+        )
         client.pages["p2"] = client.pages["p"]
-        result = stage.run(10, False, environ=ENV, client=client,
-                           evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, ordinal=1))])
+        result = stage.run(
+            10,
+            False,
+            environ=ENV,
+            client=client,
+            evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, ordinal=1))],
+        )
         self.assertGreaterEqual(result["why"]["parent_ambiguous"], 1)
         self.assertGreater(result["blocked"], 0)
 
     def test_blocked_parents_stop_before_ownership_and_children(self):
         client = Fake()
-        client.blocks["root"].append({"id": "duplicate", "type": "child_page", "child_page": {"title": "Example — Program Manager"}})
-        with patch("lifeos.interview.notion.ownership", side_effect=AssertionError("blocked ownership read")), \
-             patch("lifeos.interview.notion.child_scan", side_effect=AssertionError("blocked child scan")):
+        client.blocks["root"].append(
+            {"id": "duplicate", "type": "child_page", "child_page": {"title": "Example — Program Manager"}}
+        )
+        with (
+            patch("lifeos.interview.notion.ownership", side_effect=AssertionError("blocked ownership read")),
+            patch("lifeos.interview.notion.child_scan", side_effect=AssertionError("blocked child scan")),
+        ):
             result = stage.run(10, True, environ=ENV, client=client)
         self.assertEqual(result["observed"], 2)
         self.assertEqual(result["blocked"], 2)
@@ -66,7 +77,9 @@ class StageTests(unittest.TestCase):
 
     def test_unrelated_malformed_parent_does_not_hide_valid_parent(self):
         client = Fake()
-        client.blocks["root"].append({"id": "bad", "type": "child_page", "child_page": {"title": "Other Program Manager"}})
+        client.blocks["root"].append(
+            {"id": "bad", "type": "child_page", "child_page": {"title": "Other Program Manager"}}
+        )
         result = stage.run(10, True, environ=ENV, client=client)
         self.assertEqual(result["valid_parents"], 1)
         self.assertEqual(result["machine_pages"], 1)
@@ -78,8 +91,13 @@ class StageTests(unittest.TestCase):
         client.blocks["p"][0] = block("human opportunity")
         client.blocks["p"].append({"id": "c", "type": "child_page", "child_page": {"title": "Legacy Round"}})
         client.blocks["c"][0] = block("human round")
-        result = stage.run(10, True, environ=ENV, client=client,
-                           evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, explicit_child_page_id="c"))])
+        result = stage.run(
+            10,
+            True,
+            environ=ENV,
+            client=client,
+            evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, explicit_child_page_id="c"))],
+        )
         self.assertEqual(result["valid_parents"], 1)
         self.assertEqual(result["with_rounds"], 1)
         self.assertEqual(result["matched"], 1)
@@ -92,6 +110,7 @@ class StageTests(unittest.TestCase):
 
 class OutcomeTests(unittest.TestCase):
     """the pure outcome rules, called directly with plain dicts (no fakes)."""
+
     def result(self, code, readback_failed=False, writes=0):
         return {"code": code, "readback_failed": readback_failed, "writes": writes}
 

@@ -1,4 +1,5 @@
 """the one alert gateway (lifeos.platform.alerts.ntfy) mutes, caps and pauses"""
+
 import contextlib
 import datetime as dt
 import io
@@ -48,8 +49,12 @@ class Mute(GatewayCase):
 
     def test_a_future_time_mutes_and_a_time_with_no_zone_is_central(self):
         self.assertTrue(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T13:00:00Z"}, self.NOW))
-        self.assertTrue(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T08:00"}, self.NOW))  # 8 AM Central = 13:00Z, still ahead of 12:00Z
-        self.assertFalse(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T07:00"}, self.NOW))  # 7 AM Central = 12:00Z, reached
+        self.assertTrue(
+            alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T08:00"}, self.NOW)
+        )  # 8 AM Central = 13:00Z, still ahead of 12:00Z
+        self.assertFalse(
+            alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T07:00"}, self.NOW)
+        )  # 7 AM Central = 12:00Z, reached
 
     def test_the_mute_ends_on_time(self):
         env = {"ALERTS_MUTED_UNTIL": "2026-10-26T13:00:00Z"}
@@ -64,7 +69,12 @@ class Mute(GatewayCase):
 
     def test_a_muted_command_line_push_is_not_a_failed_step(self):
         out = io.StringIO()
-        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z", "NTFY_TOPIC": "t"}), contextlib.redirect_stdout(out):
+        with (
+            mock.patch.dict(
+                "os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z", "NTFY_TOPIC": "t"}
+            ),
+            contextlib.redirect_stdout(out),
+        ):
             self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "x"]), 0)
         self.assertEqual(json.loads(out.getvalue()), {"push": "muted"})
 
@@ -149,7 +159,9 @@ class OnlyTheGatewaySends(unittest.TestCase):
 
     def test_the_checks_turn_red_for_a_module_that_sends_on_its_own(self):
         sources = dict(self.sources())
-        sources["lifeos/evil/stage.py"] = 'urllib.request.Request("https://ntfy.sh/" + topic, data=b"x", method="POST")\n'
+        sources["lifeos/evil/stage.py"] = (
+            'urllib.request.Request("https://ntfy.sh/" + topic, data=b"x", method="POST")\n'
+        )
         sources["lifeos/evil/relay.py"] = 'run(["openclaw", "message", "send", "--target", to])\n'
         self.assertEqual(ntfy_offenders(sources), ["lifeos/evil/stage.py"])
         self.assertEqual(openclaw_offenders(sources), ["lifeos/evil/relay.py"])

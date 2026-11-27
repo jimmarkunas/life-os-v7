@@ -34,8 +34,22 @@ def heredoc(name):
 
 def proxy_v2(src, cmd=0x21, port=47321):
     if ":" in src:
-        return SIG + bytes([cmd, 0x21]) + struct.pack("!H", 36) + ipaddress.IPv6Address(src).packed + ipaddress.IPv6Address("::1").packed + struct.pack("!HH", 50000, port)
-    return SIG + bytes([cmd, 0x11]) + struct.pack("!H", 12) + ipaddress.IPv4Address(src).packed + ipaddress.IPv4Address("127.0.0.1").packed + struct.pack("!HH", 50000, port)
+        return (
+            SIG
+            + bytes([cmd, 0x21])
+            + struct.pack("!H", 36)
+            + ipaddress.IPv6Address(src).packed
+            + ipaddress.IPv6Address("::1").packed
+            + struct.pack("!HH", 50000, port)
+        )
+    return (
+        SIG
+        + bytes([cmd, 0x11])
+        + struct.pack("!H", 12)
+        + ipaddress.IPv4Address(src).packed
+        + ipaddress.IPv4Address("127.0.0.1").packed
+        + struct.pack("!HH", 50000, port)
+    )
 
 
 def ask(port, payload):
@@ -55,8 +69,7 @@ def ask(port, payload):
 
 
 class Inetd:
-    """launchd's inetdCompatibility, emulated: one process per accepted connection, the connection as its stdin/stdout.
-    """
+    """launchd's inetdCompatibility, emulated: one process per accepted connection, the connection as its stdin/stdout."""
 
     def __init__(self, listener, argv, env=None):
         self.listener, self.argv, self.env = listener, argv, env
@@ -113,6 +126,7 @@ class FakeServe:
                     s.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
+
         back = threading.Thread(target=pump, args=(up, client), daemon=True)
         back.start()
         pump(client, up)
@@ -131,7 +145,12 @@ class Relay(unittest.TestCase):
         os.makedirs(os.path.join(cls.home, "Library/Application Support"))
         f = reader.Fixture()
         with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):
-            f.add(10, timedelta(hours=1), text=None, attributed=reader.typedstream("Mom is in the hospital, call me now SECRET"))
+            f.add(
+                10,
+                timedelta(hours=1),
+                text=None,
+                attributed=reader.typedstream("Mom is in the hospital, call me now SECRET"),
+            )
             f.add(11, timedelta(hours=2), handle=2, text="haha SECRET")
             f.add(10, timedelta(hours=3), mine=1, text="on my way SECRET")
         f.con.close()
@@ -141,10 +160,29 @@ class Relay(unittest.TestCase):
         cls.helper = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         cls.helper.bind(cls.helper_sock)
         cls.helper.listen(8)
-        Inetd(cls.helper, [sys.executable, "-I", str(ROOT / "lifeos/imessage/attention_mcp.py")], env=dict(os.environ, HOME=cls.home))
+        Inetd(
+            cls.helper,
+            [sys.executable, "-I", str(ROOT / "lifeos/imessage/attention_mcp.py")],
+            env=dict(os.environ, HOME=cls.home),
+        )
         cls.relay = os.path.join(cls.tmp, "relay")
-        subprocess.run(CC + ["-O2", "-Wall", "-Wextra", "-Werror", '-DALLOWED_V4="%s"' % ORACLE_V4, '-DALLOWED_V6="%s"' % ORACLE_V6,
-                             '-DTEST_HELPER_SOCKET="%s"' % cls.helper_sock, "-o", cls.relay, str(MAC / "relay.c")], check=True, capture_output=True)
+        subprocess.run(
+            CC
+            + [
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                '-DALLOWED_V4="%s"' % ORACLE_V4,
+                '-DALLOWED_V6="%s"' % ORACLE_V6,
+                '-DTEST_HELPER_SOCKET="%s"' % cls.helper_sock,
+                "-o",
+                cls.relay,
+                str(MAC / "relay.c"),
+            ],
+            check=True,
+            capture_output=True,
+        )
         cls.listener = socket.create_server(("127.0.0.1", 0))
         cls.port = cls.listener.getsockname()[1]
         Inetd(cls.listener, [cls.relay])
@@ -159,10 +197,18 @@ class Relay(unittest.TestCase):
         for src in (ORACLE_V4, ORACLE_V6):
             reply = json.loads(ask(self.port, proxy_v2(src) + b"attention\n"))
             state = reply["result"]["structuredContent"]
-            self.assertEqual((state["attention"], state["health"], state["count"]), ("NEEDS_ATTENTION", "CURRENT", None))
+            self.assertEqual(
+                (state["attention"], state["health"], state["count"]), ("NEEDS_ATTENTION", "CURRENT", None)
+            )
 
     def test_the_installers_negative_checks_all_pass_against_the_real_relay(self):
-        run = subprocess.run([sys.executable, "-I", "-", str(self.port), ORACLE_V4], input=heredoc("PROBE_PY"), capture_output=True, text=True, timeout=60)
+        run = subprocess.run(
+            [sys.executable, "-I", "-", str(self.port), ORACLE_V4],
+            input=heredoc("PROBE_PY"),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         rows = [line.split("\t") for line in run.stdout.splitlines()]
         self.assertEqual(len(rows), 12)
         self.assertEqual({status for _, status in rows}, {"PASS"}, rows)
@@ -175,10 +221,15 @@ class Relay(unittest.TestCase):
         serve = FakeServe(self.port, ORACLE_V4)
         out = w.run(["attention"], path=self.endpoint(serve.port))
         self.assertEqual(set(out), w.KEYS)
-        self.assertEqual((out["attention"], out["health"], out["sync"], out["count"]), ("NEEDS_ATTENTION", "CURRENT", "UNVERIFIED", None))
+        self.assertEqual(
+            (out["attention"], out["health"], out["sync"], out["count"]),
+            ("NEEDS_ATTENTION", "CURRENT", "UNVERIFIED", None),
+        )
         self.assertNotIn("SECRET", json.dumps(out))
         other = FakeServe(self.port, OTHER_V4)
-        self.assertEqual(w.run(["attention"], path=self.endpoint(other.port))["health"], "DISCONNECTED")  # an unauthorized source gets nothing
+        self.assertEqual(
+            w.run(["attention"], path=self.endpoint(other.port))["health"], "DISCONNECTED"
+        )  # an unauthorized source gets nothing
         serve.listener.close()
         other.listener.close()
 
@@ -192,7 +243,12 @@ class Relay(unittest.TestCase):
 
     def test_forged_identity_through_serve_is_refused(self):
         serve = FakeServe(self.port, ORACLE_V4)  # Serve's genuine header comes first
-        for payload in (proxy_v2(ORACLE_V4) + b"attention\n", proxy_v2(OTHER_V4) + b"attention\n", b"send\n", b"attentionXXXXXX\n"):
+        for payload in (
+            proxy_v2(ORACLE_V4) + b"attention\n",
+            proxy_v2(OTHER_V4) + b"attention\n",
+            b"send\n",
+            b"attentionXXXXXX\n",
+        ):
             with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
                 s.settimeout(15)
                 s.sendall(payload)
@@ -203,16 +259,34 @@ class Relay(unittest.TestCase):
         serve = FakeServe(self.port, ORACLE_V4)
         path = self.endpoint(serve.port)
         counts = w.run(["counts"], path=path)
-        self.assertEqual((counts["health"], counts["count_reliable"], counts["counts"]["unread"]["last_24_hours"]), ("CURRENT", False, {"messages": 2, "conversations": 2}))
+        self.assertEqual(
+            (counts["health"], counts["count_reliable"], counts["counts"]["unread"]["last_24_hours"]),
+            ("CURRENT", False, {"messages": 2, "conversations": 2}),
+        )
         recent = w.run(["recent", "--hours", "24"], path=path)
-        self.assertEqual([(m["sender"]["name"], m["text"]) for m in recent["messages"]],
-                         [("Alice Example", "Mom is in the hospital, call me now SECRET"), ("Example Corp", "haha SECRET")])
+        self.assertEqual(
+            [(m["sender"]["name"], m["text"]) for m in recent["messages"]],
+            [("Alice Example", "Mom is in the hospital, call me now SECRET"), ("Example Corp", "haha SECRET")],
+        )
         urgent = w.run(["urgent"], path=path)
-        self.assertEqual((urgent["summary"]["TIME_CRITICAL"], urgent["flagged"][0]["level"], urgent["flagged"][0]["sender"]["name"]), (1, "TIME_CRITICAL", "Alice Example"))
+        self.assertEqual(
+            (urgent["summary"]["TIME_CRITICAL"], urgent["flagged"][0]["level"], urgent["flagged"][0]["sender"]["name"]),
+            (1, "TIME_CRITICAL", "Alice Example"),
+        )
         thread = w.run(["conversation", recent["messages"][0]["chat"]], path=path)
         self.assertEqual(([m["from_me"] for m in thread["messages"]], thread["chat"]), ([False, True], "c10"))
-        self.assertEqual(w.run(["attention"], path=path)["attention"], "NEEDS_ATTENTION")  # the accepted contract is unchanged
-        for refused in (b"recent 73\n", b"recent 0\n", b"conversation 0\n", b"recent 1; id\n", b"conversation c10\n", b"counts all\n", b"send 1\n"):
+        self.assertEqual(
+            w.run(["attention"], path=path)["attention"], "NEEDS_ATTENTION"
+        )  # the accepted contract is unchanged
+        for refused in (
+            b"recent 73\n",
+            b"recent 0\n",
+            b"conversation 0\n",
+            b"recent 1; id\n",
+            b"conversation c10\n",
+            b"counts all\n",
+            b"send 1\n",
+        ):
             with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
                 s.settimeout(15)
                 s.sendall(refused)
@@ -241,10 +315,22 @@ class RelayHelperFailures(unittest.TestCase):
                 with conn:
                     conn.recv(4096)
                     conn.sendall(helper_reply)
+
             threading.Thread(target=answer, daemon=True).start()
         relay = os.path.join(tmp, "relay")
-        subprocess.run(CC + ['-DALLOWED_V4="%s"' % ORACLE_V4, '-DALLOWED_V6="%s"' % ORACLE_V6, '-DTEST_HELPER_SOCKET="%s"' % sock, "-o", relay, str(MAC / "relay.c")],
-                       check=True, capture_output=True)
+        subprocess.run(
+            CC
+            + [
+                '-DALLOWED_V4="%s"' % ORACLE_V4,
+                '-DALLOWED_V6="%s"' % ORACLE_V6,
+                '-DTEST_HELPER_SOCKET="%s"' % sock,
+                "-o",
+                relay,
+                str(MAC / "relay.c"),
+            ],
+            check=True,
+            capture_output=True,
+        )
         run = subprocess.run([relay], input=proxy_v2(ORACLE_V4) + b"attention\n", capture_output=True, timeout=20)
         return run.returncode, run.stdout
 
@@ -259,26 +345,58 @@ class RelayHelperFailures(unittest.TestCase):
 
 class RelayInstaller(unittest.TestCase):
     def test_pinned_hashes_match_the_reviewed_sources(self):
-        for name, path in (("SHA_RELAY", MAC / "relay.c"), ("SHA_AGENT", MAC / "ai.lifeos.imessage-relay.plist"), ("SHA_TOOL", ROOT / "lifeos/imessage/attention_mcp.py")):
-            self.assertEqual(re.search(r'^%s="([0-9a-f]{64})"' % name, RELAY_SH, re.M).group(1), hashlib.sha256(path.read_bytes()).hexdigest(), name)
+        for name, path in (
+            ("SHA_RELAY", MAC / "relay.c"),
+            ("SHA_AGENT", MAC / "ai.lifeos.imessage-relay.plist"),
+            ("SHA_TOOL", ROOT / "lifeos/imessage/attention_mcp.py"),
+        ):
+            self.assertEqual(
+                re.search(r'^%s="([0-9a-f]{64})"' % name, RELAY_SH, re.M).group(1),
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+                name,
+            )
 
     def test_agent_is_on_demand_with_one_loopback_tcp_listener(self):
         agent = plistlib.loads((MAC / "ai.lifeos.imessage-relay.plist").read_bytes())
-        self.assertEqual(set(agent), {"Label", "Program", "ProgramArguments", "inetdCompatibility", "Sockets", "ProcessType"})
-        self.assertEqual(agent["Sockets"], {"Listener": {"SockType": "stream", "SockFamily": "IPv4", "SockNodeName": "127.0.0.1", "SockServiceName": "47321"}})
+        self.assertEqual(
+            set(agent), {"Label", "Program", "ProgramArguments", "inetdCompatibility", "Sockets", "ProcessType"}
+        )
+        self.assertEqual(
+            agent["Sockets"],
+            {
+                "Listener": {
+                    "SockType": "stream",
+                    "SockFamily": "IPv4",
+                    "SockNodeName": "127.0.0.1",
+                    "SockServiceName": "47321",
+                }
+            },
+        )
         self.assertEqual(agent["inetdCompatibility"], {"Wait": False})
         self.assertIn('LOCAL_PORT=47321', RELAY_SH)
 
     def test_never_touches_the_helper_privacy_settings_funnel_or_other_serve_ports(self):
         code = "\n".join(line for line in RELAY_SH.splitlines() if not line.lstrip().startswith("#"))
-        for banned in (r"codesign (-f|--force|--sign|-s)", r"\$HELPER\"? *$", r"install[^\n]*\$HELPER", r"rm[^\n]*\$HELPER", r"\btccutil\b", r"\"\$TS\" funnel", r"--funnel",
-                       r"serve reset", r"serve[^\n]*clear", r"\bssh\b", r"system\.run", r"openclaw"):
+        for banned in (
+            r"codesign (-f|--force|--sign|-s)",
+            r"\$HELPER\"? *$",
+            r"install[^\n]*\$HELPER",
+            r"rm[^\n]*\$HELPER",
+            r"\btccutil\b",
+            r"\"\$TS\" funnel",
+            r"--funnel",
+            r"serve reset",
+            r"serve[^\n]*clear",
+            r"\bssh\b",
+            r"system\.run",
+            r"openclaw",
+        ):
             self.assertIsNone(re.search(banned, code, re.M | re.I), banned)
         self.assertIn('"$TS" serve --bg --tcp "$TAILNET_PORT" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL_PORT"', code)
         self.assertIn('"$TS" serve --tcp "$TAILNET_PORT" off', code)
         self.assertIn("gate 19", code)
         self.assertIn("gate 21", code)
-        update = code[code.index("update_relay() {"):code.index("rollback() {")]
+        update = code[code.index("update_relay() {") : code.index("rollback() {")]
         self.assertNotRegex(update, r"\$HELPER\b[^_]")  # update never writes the signed launcher
         self.assertNotRegex(update, r"bootout|bootstrap|serve --|serve reset")  # nor reloads agents or touches Serve
         self.assertIn('sudo /bin/cp -p "$TOOL" "$TOOL.prev"', update)
@@ -287,16 +405,27 @@ class RelayInstaller(unittest.TestCase):
         script = heredoc("SERVE_PY")
 
         def state(cfg):
-            run = subprocess.run([sys.executable, "-I", "-", "47331", "47321", cfg], input=script, capture_output=True, text=True, timeout=10)
+            run = subprocess.run(
+                [sys.executable, "-I", "-", "47331", "47321", cfg],
+                input=script,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             return run.stdout.strip() if run.returncode == 0 else "unknown"
+
         ours = {"TCP": {"47331": {"TCPForward": "127.0.0.1:47321", "ProxyProtocol": 2}}}
         self.assertEqual(state("{}"), "free")
         self.assertEqual(state(""), "free")
         self.assertEqual(state(json.dumps(ours)), "ours")
         self.assertEqual(state(json.dumps({"TCP": {"443": {"HTTPS": True}}})), "free")  # other ports are left alone
         self.assertEqual(state(json.dumps(dict(ours, AllowFunnel={"mac.example.ts.net:47331": True}))), "other")
-        self.assertEqual(state(json.dumps({"TCP": {"47331": {"TCPForward": "127.0.0.1:47321"}}})), "other")  # no PROXY header
-        self.assertEqual(state(json.dumps({"TCP": {"47331": {"TCPForward": "0.0.0.0:22", "ProxyProtocol": 2}}})), "other")
+        self.assertEqual(
+            state(json.dumps({"TCP": {"47331": {"TCPForward": "127.0.0.1:47321"}}})), "other"
+        )  # no PROXY header
+        self.assertEqual(
+            state(json.dumps({"TCP": {"47331": {"TCPForward": "0.0.0.0:22", "ProxyProtocol": 2}}})), "other"
+        )
         self.assertEqual(state("not json"), "unknown")
 
     def test_listener_check_accepts_only_loopback(self):
@@ -304,21 +433,50 @@ class RelayInstaller(unittest.TestCase):
 
         def check(rows):
             head = "Active Internet connections (including servers)\nProto Recv-Q Send-Q  Local Address          Foreign Address        (state)\n"
-            return subprocess.run(["awk", "-v", "p=.47321", awk], input=head + "\n".join(rows) + "\n", capture_output=True, text=True, timeout=10).returncode
+            return subprocess.run(
+                ["awk", "-v", "p=.47321", awk],
+                input=head + "\n".join(rows) + "\n",
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).returncode
+
         self.assertEqual(check(["tcp4       0      0  127.0.0.1.47321        *.*                    LISTEN"]), 0)
         self.assertEqual(check(["tcp46      0      0  *.47321                *.*                    LISTEN"]), 1)
-        self.assertEqual(check(["tcp4       0      0  127.0.0.1.47321        *.*                    LISTEN", "tcp4  0 0  100.64.0.9.47321  *.*  LISTEN"]), 1)
-        self.assertEqual(check(["tcp4       0      0  127.0.0.1.8080         *.*                    LISTEN"]), 1)  # nothing listening is a failure
+        self.assertEqual(
+            check(
+                [
+                    "tcp4       0      0  127.0.0.1.47321        *.*                    LISTEN",
+                    "tcp4  0 0  100.64.0.9.47321  *.*  LISTEN",
+                ]
+            ),
+            1,
+        )
+        self.assertEqual(
+            check(["tcp4       0      0  127.0.0.1.8080         *.*                    LISTEN"]), 1
+        )  # nothing listening is a failure
 
 
 NOW = datetime(2026, 10, 14, 15, 0, tzinfo=timezone.utc)
 
 
 def reply(**over):
-    state = {"channel": "imessage", "attention": "NEEDS_ATTENTION", "count": None, "count_reliable": False, "health": "CURRENT", "sync": "UNVERIFIED",
-             "observed_at": "2026-10-14T14:59:50Z", "source": "Apple Messages / Mac Mini"}
+    state = {
+        "channel": "imessage",
+        "attention": "NEEDS_ATTENTION",
+        "count": None,
+        "count_reliable": False,
+        "health": "CURRENT",
+        "sync": "UNVERIFIED",
+        "observed_at": "2026-10-14T14:59:50Z",
+        "source": "Apple Messages / Mac Mini",
+    }
     state.update(over)
-    body = {"content": [{"type": "text", "text": json.dumps(state)}], "structuredContent": state, "isError": state["health"] != "CURRENT"}
+    body = {
+        "content": [{"type": "text", "text": json.dumps(state)}],
+        "structuredContent": state,
+        "isError": state["health"] != "CURRENT",
+    }
     return (json.dumps({"jsonrpc": "2.0", "id": 1, "result": body}) + "\n").encode()
 
 
@@ -338,10 +496,23 @@ class Wrapper(unittest.TestCase):
         self.assertEqual(self.check(reply(attention="UNKNOWN", health="DISCONNECTED")), ("UNKNOWN", "DISCONNECTED"))
 
     def test_off_contract_replies_are_degraded(self):
-        for bad in (reply(count=0), reply(count=3), reply(count_reliable=True), reply(attention="CLEAR"), reply(sync="CURRENT"), reply(health="STALE"),
-                    reply(source="elsewhere"), reply(attention="NEEDS_ATTENTION", health="DISCONNECTED"), reply(observed_at="2026-10-14 14:59:50"),
-                    reply().replace(b'"source"', b'"text": "body", "source"'), b"not json\n", b'{"jsonrpc": "2.0"}\n', reply() + reply(), reply()[:-1],
-                    b" " * 3000 + b"\n"):
+        for bad in (
+            reply(count=0),
+            reply(count=3),
+            reply(count_reliable=True),
+            reply(attention="CLEAR"),
+            reply(sync="CURRENT"),
+            reply(health="STALE"),
+            reply(source="elsewhere"),
+            reply(attention="NEEDS_ATTENTION", health="DISCONNECTED"),
+            reply(observed_at="2026-10-14 14:59:50"),
+            reply().replace(b'"source"', b'"text": "body", "source"'),
+            b"not json\n",
+            b'{"jsonrpc": "2.0"}\n',
+            reply() + reply(),
+            reply()[:-1],
+            b" " * 3000 + b"\n",
+        ):
             self.assertEqual(self.check(bad), ("UNKNOWN", "DEGRADED"), bad[:80])
 
     def test_content_text_must_match_the_structured_state(self):
@@ -358,6 +529,7 @@ class Wrapper(unittest.TestCase):
 
         def offline(host, port, request, limit):
             raise socket.timeout()
+
         endpoint = os.path.join(tempfile.mkdtemp(), "endpoint")
         with open(endpoint, "w") as f:
             f.write("mac.example 47331\n")
@@ -369,9 +541,22 @@ class Wrapper(unittest.TestCase):
 
     def test_only_the_single_attention_argument_runs(self):
         script = str(ROOT / "lifeos/imessage/openclaw_imessage.py")
-        for args in ([], ["send"], ["attention", "--path", "/etc"], ["attention", "x"], ["recent", "--hours", "0"], ["recent", "--hours", "73"],
-                     ["recent", "--hours", "024"], ["conversation", "c0"], ["conversation", "../x"], ["conversation"], ["counts", "all"], ["urgent", "24"],
-                     ["mark_read", "c1"], ["recent", "--hours", "1; id"]):
+        for args in (
+            [],
+            ["send"],
+            ["attention", "--path", "/etc"],
+            ["attention", "x"],
+            ["recent", "--hours", "0"],
+            ["recent", "--hours", "73"],
+            ["recent", "--hours", "024"],
+            ["conversation", "c0"],
+            ["conversation", "../x"],
+            ["conversation"],
+            ["counts", "all"],
+            ["urgent", "24"],
+            ["mark_read", "c1"],
+            ["recent", "--hours", "1; id"],
+        ):
             run = subprocess.run([sys.executable, "-I", script] + args, capture_output=True, text=True, timeout=10)
             self.assertEqual((run.returncode, run.stdout.split(":")[0], run.stderr), (2, "usage", ""), args)
 
@@ -402,10 +587,29 @@ class PagedChain(unittest.TestCase):
         cls.helper = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         cls.helper.bind(sock)
         cls.helper.listen(16)
-        Inetd(cls.helper, [sys.executable, "-I", str(ROOT / "lifeos/imessage/attention_mcp.py")], env=dict(os.environ, HOME=home))
+        Inetd(
+            cls.helper,
+            [sys.executable, "-I", str(ROOT / "lifeos/imessage/attention_mcp.py")],
+            env=dict(os.environ, HOME=home),
+        )
         relay = os.path.join(cls.tmp, "relay")
-        subprocess.run(CC + ["-O2", "-Wall", "-Wextra", "-Werror", '-DALLOWED_V4="%s"' % ORACLE_V4, '-DALLOWED_V6="%s"' % ORACLE_V6,
-                             '-DTEST_HELPER_SOCKET="%s"' % sock, "-o", relay, str(MAC / "relay.c")], check=True, capture_output=True)
+        subprocess.run(
+            CC
+            + [
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                '-DALLOWED_V4="%s"' % ORACLE_V4,
+                '-DALLOWED_V6="%s"' % ORACLE_V6,
+                '-DTEST_HELPER_SOCKET="%s"' % sock,
+                "-o",
+                relay,
+                str(MAC / "relay.c"),
+            ],
+            check=True,
+            capture_output=True,
+        )
         cls.listener = socket.create_server(("127.0.0.1", 0))
         Inetd(cls.listener, [relay])
         cls.serve = FakeServe(cls.listener.getsockname()[1], ORACLE_V4)
@@ -421,14 +625,32 @@ class PagedChain(unittest.TestCase):
 
     def test_all_messages_over_several_pages_with_a_proven_end(self):
         out = w.scan(72, path=self.endpoint)
-        self.assertEqual((out["health"], out["complete"], out["truncated"], out["pages"], len(out["messages"])), ("CURRENT", True, False, 3, 140))
+        self.assertEqual(
+            (out["health"], out["complete"], out["truncated"], out["pages"], len(out["messages"])),
+            ("CURRENT", True, False, 3, 140),
+        )
         refs = [m["ref"] for m in out["messages"]]
         self.assertEqual(len(set(refs)), 140)
-        self.assertEqual(refs[-len(self.ids):][::-1][:5], ["m%d" % i for i in self.ids[:5]])  # oldest first on the wire, newest first returned
+        self.assertEqual(
+            refs[-len(self.ids) :][::-1][:5], ["m%d" % i for i in self.ids[:5]]
+        )  # oldest first on the wire, newest first returned
 
     def test_malformed_paging_requests_are_refused_by_the_relay(self):
-        for bad in (b"page 0\n", b"page 73\n", b"page 05\n", b"next 1 0\n", b"next 01 5\n", b"next 5\n", b"next 5 5 5\n", b"next -1 1\n",
-                    b"next 10000000000000000001 1\n", b"next 99999999999999999999 1\n", b"next 5 2147483648\n", b"next 5  5\n", b"next 5 5; id\n"):
+        for bad in (
+            b"page 0\n",
+            b"page 73\n",
+            b"page 05\n",
+            b"next 1 0\n",
+            b"next 01 5\n",
+            b"next 5\n",
+            b"next 5 5 5\n",
+            b"next -1 1\n",
+            b"next 10000000000000000001 1\n",
+            b"next 99999999999999999999 1\n",
+            b"next 5 2147483648\n",
+            b"next 5  5\n",
+            b"next 5 5; id\n",
+        ):
             with socket.create_connection(("127.0.0.1", self.serve.port), timeout=10) as s:
                 s.settimeout(15)
                 s.sendall(bad)

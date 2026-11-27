@@ -1,4 +1,5 @@
 """the scheduled-jobs view."""
+
 import datetime as dt
 import json
 import re
@@ -18,15 +19,38 @@ def row(now, runs=RECORDED):
 
 
 def at(minutes_ago, **extra):
-    return {"created_at": (NOW - dt.timedelta(minutes=minutes_ago)).isoformat(), "updated_at": (NOW - dt.timedelta(minutes=minutes_ago - 5)).isoformat(), "status": "completed", "conclusion": "success", "display_title": "tick", **extra}
+    return {
+        "created_at": (NOW - dt.timedelta(minutes=minutes_ago)).isoformat(),
+        "updated_at": (NOW - dt.timedelta(minutes=minutes_ago - 5)).isoformat(),
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": "tick",
+        **extra,
+    }
 
 
 class Recorded(unittest.TestCase):
     def test_the_recorded_history_reads_on_time_with_the_unreadable_jobs_unknown(self):
         rows = row(NOW)
-        self.assertEqual({k: v["state"] for k, v in rows.items()}, {
-            "hourly run": sj.ON_TIME, "watchdog": sj.ON_TIME, "weekly safety check": sj.ON_TIME, "domain jobs": sj.ON_TIME, "V3 pages": sj.UNKNOWN, "AI capacity card": sj.UNKNOWN, "ticker watch": sj.UNKNOWN,
-            "off-site backup": sj.UNKNOWN, "Honcho nightly backup": sj.UNKNOWN, "Honcho token renewal": sj.UNKNOWN, "Close release": sj.UNKNOWN, "iMessage attention": sj.UNKNOWN, "iMessage relay": sj.UNKNOWN, "private Buzz pilot health": sj.UNKNOWN})
+        self.assertEqual(
+            {k: v["state"] for k, v in rows.items()},
+            {
+                "hourly run": sj.ON_TIME,
+                "watchdog": sj.ON_TIME,
+                "weekly safety check": sj.ON_TIME,
+                "domain jobs": sj.ON_TIME,
+                "V3 pages": sj.UNKNOWN,
+                "AI capacity card": sj.UNKNOWN,
+                "ticker watch": sj.UNKNOWN,
+                "off-site backup": sj.UNKNOWN,
+                "Honcho nightly backup": sj.UNKNOWN,
+                "Honcho token renewal": sj.UNKNOWN,
+                "Close release": sj.UNKNOWN,
+                "iMessage attention": sj.UNKNOWN,
+                "iMessage relay": sj.UNKNOWN,
+                "private Buzz pilot health": sj.UNKNOWN,
+            },
+        )
         self.assertEqual(sj.late_names(list(rows.values())), [])
 
     def test_the_same_history_two_hours_on_reads_the_hourly_run_late_then_missing_and_the_watchdog_late(self):
@@ -40,14 +64,23 @@ class Recorded(unittest.TestCase):
         text = sj.render(sj.evaluate(NOW, RECORDED))
         self.assertIn("Nov 12, 6:17 PM CT", text)
         self.assertIn("Monday 7:17 AM CST", text)  # November 9: standard time
-        self.assertIn("Monday 8:17 AM CDT", row(dt.datetime(2026, 10, 28, tzinfo=dt.timezone.utc))["weekly safety check"]["schedule"])
+        self.assertIn(
+            "Monday 8:17 AM CDT",
+            row(dt.datetime(2026, 10, 28, tzinfo=dt.timezone.utc))["weekly safety check"]["schedule"],
+        )
 
 
 class Rules(unittest.TestCase):
     def test_weekly_not_due_late_missing_and_on_time(self):
         job = [JOBS["weekly safety check"]]
         monday = dt.datetime(2026, 11, 9, 13, 17, tzinfo=dt.timezone.utc)
-        for hours, last, want in ((1, None, sj.NOT_DUE), (13, None, sj.LATE), (25, None, sj.MISSING), (13, "2026-11-09T14:00:00+00:00", sj.ON_TIME), (2, "2026-11-02T14:00:00+00:00", sj.NOT_DUE)):
+        for hours, last, want in (
+            (1, None, sj.NOT_DUE),
+            (13, None, sj.LATE),
+            (25, None, sj.MISSING),
+            (13, "2026-11-09T14:00:00+00:00", sj.ON_TIME),
+            (2, "2026-11-02T14:00:00+00:00", sj.NOT_DUE),
+        ):
             runs = {"safety.yml": [{"created_at": last}] if last else []}
             self.assertEqual(sj.evaluate(monday + dt.timedelta(hours=hours), runs, job)[0]["state"], want, hours)
 
@@ -56,8 +89,13 @@ class Rules(unittest.TestCase):
         tick = at(20)
         self.assertEqual(sj.evaluate(NOW, {"hourly.yml": [tick], "domains.yml": []}, job)[0]["state"], sj.NOT_DUE)
         self.assertEqual(sj.evaluate(NOW, {"hourly.yml": [at(40)], "domains.yml": []}, job)[0]["state"], sj.LATE)
-        self.assertEqual(sj.evaluate(NOW, {"hourly.yml": [at(40)], "domains.yml": [at(30)]}, job)[0]["state"], sj.ON_TIME)
-        self.assertEqual(sj.evaluate(NOW, {"hourly.yml": [at(40, conclusion="cancelled")], "domains.yml": []}, job)[0]["state"], sj.UNKNOWN)
+        self.assertEqual(
+            sj.evaluate(NOW, {"hourly.yml": [at(40)], "domains.yml": [at(30)]}, job)[0]["state"], sj.ON_TIME
+        )
+        self.assertEqual(
+            sj.evaluate(NOW, {"hourly.yml": [at(40, conclusion="cancelled")], "domains.yml": []}, job)[0]["state"],
+            sj.UNKNOWN,
+        )
 
     def test_no_run_at_all_is_missing_and_an_unreadable_history_is_unknown_never_a_guess(self):
         self.assertEqual(sj.evaluate(NOW, {"watchdog.yml": []}, [JOBS["watchdog"]])[0]["state"], sj.MISSING)
@@ -71,8 +109,12 @@ class Rules(unittest.TestCase):
             if "safety" in path:
                 raise OSError("down")
             return {"workflow_runs": [1]}
+
         runs = sj.fetch(api)
-        self.assertEqual(sorted(runs), ["capacity-card.yml", "domains.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])
+        self.assertEqual(
+            sorted(runs),
+            ["capacity-card.yml", "domains.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"],
+        )
         self.assertIsNone(runs["safety.yml"])
         self.assertEqual(len(seen), 6)
 
@@ -80,7 +122,10 @@ class Rules(unittest.TestCase):
         stamp = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
         runs = [{"created_at": stamp, "updated_at": stamp, "display_title": gate.TICK_TITLE, "conclusion": "success"}]
         self.assertNotIn("Late", gate.health(runs, [], NOW)[1])
-        self.assertIn("Late or missing scheduled jobs (2): hourly run, watchdog.", gate.health(runs, [], NOW, late=["hourly run", "watchdog"])[1])
+        self.assertIn(
+            "Late or missing scheduled jobs (2): hourly run, watchdog.",
+            gate.health(runs, [], NOW, late=["hourly run", "watchdog"])[1],
+        )
 
 
 class Coverage(unittest.TestCase):
@@ -93,11 +138,20 @@ class Coverage(unittest.TestCase):
             if re.search(r"^\s+schedule:", path.read_text(), re.M):
                 self.assertIn(path.name, sources, path.name)
         units = {j.get("unit") for j in jobs}
-        wanted = {p.name for p in (ROOT / "lifeos").rglob("*.timer")} | {m["unit"] for m in json.loads((ROOT / "lifeos/platform/runtime.json").read_text())["modules"] if m.get("unit", "").endswith(".timer") or ("mac" in m["host"] and "unit" in m)}
+        wanted = {p.name for p in (ROOT / "lifeos").rglob("*.timer")} | {
+            m["unit"]
+            for m in json.loads((ROOT / "lifeos/platform/runtime.json").read_text())["modules"]
+            if m.get("unit", "").endswith(".timer") or ("mac" in m["host"] and "unit" in m)
+        }
         self.assertEqual(wanted - units, set(), "a scheduled unit has no row in lifeos/platform/scheduled_jobs.json")
 
     def test_every_row_has_a_known_rule_and_host_and_the_tolerances_it_needs(self):
-        need = {"gap": ("source", "late", "missing"), "weekly": ("source", "weekday", "utc", "late", "missing"), "after": ("source", "after", "late"), "unknown": ("unit",)}
+        need = {
+            "gap": ("source", "late", "missing"),
+            "weekly": ("source", "weekday", "utc", "late", "missing"),
+            "after": ("source", "after", "late"),
+            "unknown": ("unit",),
+        }
         for job in sj.load()["jobs"]:
             self.assertIn(job["rule"], need, job["job"])
             self.assertTrue(set(need[job["rule"]]) <= set(job), job["job"])

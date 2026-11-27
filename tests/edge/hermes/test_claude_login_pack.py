@@ -1,6 +1,7 @@
 """the read-only Claude login check pack (lifeos/edge/hermes/pack), run through the REAL runner on a temp tree with a
 fake hand-off client.
 """
+
 import json
 import re
 import shutil
@@ -53,7 +54,9 @@ class LoginPackTests(unittest.TestCase):
         self.staged = Path(self.inbox.format(key="LIFE-518"))
         shutil.copytree(PACK, self.staged)
         (self.staged / "files" / "ROOT").write_text(str(self.fake) + "\n")
-        self.host = runner.Host(state=str(self.tmp / "state"), inbox=self.inbox, require_root=False, systemctl=FakeSystemd(str(self.tmp)))
+        self.host = runner.Host(
+            state=str(self.tmp / "state"), inbox=self.inbox, require_root=False, systemctl=FakeSystemd(str(self.tmp))
+        )
 
     def run_pack(self):
         return runner.execute("LIFE-518", runner.pack_hash(str(self.staged))[:8], self.host)
@@ -71,16 +74,22 @@ class LoginPackTests(unittest.TestCase):
         result = self.run_pack()
         self.assertEqual((result["outcome"], result["code"]), ("ok", None), result)
         got = self.readback(result)
-        self.assertEqual((got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2026-12-04", "no"))
+        self.assertEqual(
+            (got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2026-12-04", "no")
+        )
         self.assertEqual((got["message_ok"], got["message_exit"], got["method"]), ("yes", "0", "claude.ai/max"))
-        self.assertEqual(sum(1 for line in (self.fake / "calls.log").read_text().splitlines() if line.startswith("-p ")), 1)  # exactly one message
+        self.assertEqual(
+            sum(1 for line in (self.fake / "calls.log").read_text().splitlines() if line.startswith("-p ")), 1
+        )  # exactly one message
         self.assertEqual(list((self.fake / "tmp").iterdir()), [])  # the scratch folder is gone
         self.assertEqual(self.staged.joinpath("pack.json").exists(), True)
 
     def test_a_renewed_expiry_is_reported_as_changed(self):
         (self.fake / "expiry-2").write_text("2027-01-03")
         got = self.readback(self.run_pack())
-        self.assertEqual((got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2027-01-03", "yes"))
+        self.assertEqual(
+            (got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2027-01-03", "yes")
+        )
 
     def test_a_failing_message_still_prints_both_dates(self):
         (self.fake / "message-fails").touch()
@@ -88,14 +97,19 @@ class LoginPackTests(unittest.TestCase):
         self.assertEqual((result["outcome"], result["code"]), ("ok", None), result)
         got = self.readback(result)
         self.assertEqual((got["message_ok"], got["message_exit"]), ("no", "1"))
-        self.assertEqual((got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2026-12-04", "no"))
+        self.assertEqual(
+            (got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2026-12-04", "no")
+        )
 
     def test_a_failing_status_read_gives_unknown_not_an_abort(self):
         (self.fake / "status-fails").touch()
         result = self.run_pack()
         self.assertEqual(result["outcome"], "ok", result)
         got = self.readback(result)
-        self.assertEqual((got["expiry_before"], got["expiry_after"], got["expiry_changed"], got["method"]), ("unknown", "unknown", "unknown", "unknown"))
+        self.assertEqual(
+            (got["expiry_before"], got["expiry_after"], got["expiry_changed"], got["method"]),
+            ("unknown", "unknown", "unknown", "unknown"),
+        )
 
     def test_no_secret_or_email_can_reach_the_result(self):
         for flag in (None, "message-fails", "status-fails"):
@@ -106,8 +120,10 @@ class LoginPackTests(unittest.TestCase):
             self.assertNotIn(TOKEN, text)
             self.assertNotIn(EMAIL, text)
             self.assertNotIn("Zx9", text)
-            allowed = re.compile(r"(expiry_(before|after)=(\d{4}-\d{2}-\d{2}|unknown)|expiry_changed=(yes|no|unknown)|message_ok=(yes|no)|message_exit=(\d{1,3}|none)|method=[a-z_./]{1,40}|step=[a-z_]+)")
-            for line in (self.readback(result) and [f"{k}={v}" for k, v in self.readback(result).items()]):
+            allowed = re.compile(
+                r"(expiry_(before|after)=(\d{4}-\d{2}-\d{2}|unknown)|expiry_changed=(yes|no|unknown)|message_ok=(yes|no)|message_exit=(\d{1,3}|none)|method=[a-z_./]{1,40}|step=[a-z_]+)"
+            )
+            for line in self.readback(result) and [f"{k}={v}" for k, v in self.readback(result).items()]:
                 self.assertRegex(line, allowed)
             (self.fake / "tmp").mkdir(exist_ok=True)
 

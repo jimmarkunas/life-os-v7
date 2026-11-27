@@ -1,6 +1,7 @@
 """the contract of.github/workflows/boards.yml, the four daily employer-board windows: schedule, caps and timeouts,
 credentials, the one stage, and the.
 """
+
 import json
 import pathlib
 import re
@@ -13,6 +14,7 @@ except ImportError:
 
 from lifeos.platform import boards_window, limits
 import sys as _sys
+
 _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
 import wfsets  # noqa: E402
 
@@ -70,15 +72,26 @@ class BoardsWorkflow(unittest.TestCase):
     def test_no_new_secret_name_and_only_the_store_and_tailnet_credentials(self):
         text = BOARDS.read_text()
         loaded = re.findall(r"^\s+([0-9a-f-]{36}) > (\w+)$", text, re.M)
-        hourly = dict((u, n) for u, n in re.findall(r"^\s+([0-9a-f-]{36}) > (\w+)$", wfsets.expand_text((ROOT / ".github/workflows/hourly.yml").read_text()), re.M))
+        hourly = dict(
+            (u, n)
+            for u, n in re.findall(
+                r"^\s+([0-9a-f-]{36}) > (\w+)$",
+                wfsets.expand_text((ROOT / ".github/workflows/hourly.yml").read_text()),
+                re.M,
+            )
+        )
         self.assertEqual(len(loaded), 12)
         for uuid, name in loaded:
             self.assertEqual(hourly.get(uuid), name, name)  # the same ids and names the hourly workflow loads
-        self.assertEqual([n for n in re.findall(r"secrets\.(\w+)", text) if n != "DOPPLER_TOKEN"], ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])
+        self.assertEqual(
+            [n for n in re.findall(r"secrets\.(\w+)", text) if n != "DOPPLER_TOKEN"],
+            ["LIFEOS_BWS_RUNTIME_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"],
+        )
         self.assertNotIn("NOTION", text.replace("Notion", ""))
 
     def test_the_hourly_tick_no_longer_runs_the_boards_stage_but_keeps_the_backfill(self):
         from lifeos.jobs import tick
+
         names = [s.name for s in tick.PLAN]
         self.assertNotIn("boards", names)
         self.assertIn("boards-backfill", names)
@@ -88,7 +101,10 @@ class BoardsWorkflow(unittest.TestCase):
         row = json.loads((ROOT / "lifeos/platform/due_table.json").read_text())["workflows"]["boards.yml"]
         self.assertEqual(row["windows_ct"], [])
         self.assertIn("LIFE-905", row["windows_retired"])
-        self.assertEqual((row["cap"], row["timeout_minutes"], row["catchup_cap"], row["catchup_timeout_minutes"]), (limits.BOARDS_PER_RUN, 15, limits.BOARDS_CATCHUP_PER_RUN, 25))
+        self.assertEqual(
+            (row["cap"], row["timeout_minutes"], row["catchup_cap"], row["catchup_timeout_minutes"]),
+            (limits.BOARDS_PER_RUN, 15, limits.BOARDS_CATCHUP_PER_RUN, 25),
+        )
         self.assertTrue(row["owner"])
 
 

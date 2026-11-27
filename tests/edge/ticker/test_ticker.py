@@ -1,6 +1,7 @@
 """the Oracle ticker (lifeos/edge/ticker) - the tick request, fixed codes, the fail-closed watch, the timers' minutes and
 the installer's reach.
 """
+
 import configparser
 import datetime as dt
 import io
@@ -44,6 +45,7 @@ class Reply:
 
 class FakeGitHub:
     """Records requests"""
+
     def __init__(self, answers):
         self.answers, self.requests = answers, []
 
@@ -61,7 +63,7 @@ class FakeGitHub:
 
 
 SWITCH_VALUES = {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "", "ALERT_SETTINGS": '{"v":1}'}
-STORE = lambda: dict(SWITCH_VALUES)      # noqa: E731 - what lifeos.platform.alert_store.read returns
+STORE = lambda: dict(SWITCH_VALUES)  # noqa: E731 - what lifeos.platform.alert_store.read returns
 
 
 class Tick(unittest.TestCase):
@@ -69,35 +71,75 @@ class Tick(unittest.TestCase):
         api = FakeGitHub({"hourly.yml/dispatches": 204})
         self.assertEqual(ticker.tick(TOKEN, api), ("TICK_DISPATCHED", 204))
         (req,) = [r for r in api.requests if r.get_method() == "POST"]
-        self.assertEqual((req.full_url, req.get_method()), ("https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches", "POST"))
+        self.assertEqual(
+            (req.full_url, req.get_method()),
+            ("https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches", "POST"),
+        )
         self.assertEqual(json.loads(req.data), {"ref": "main", "inputs": {"tick": "true"}})
         self.assertEqual(req.get_header("Authorization"), f"Bearer {TOKEN}")
         self.assertEqual(req.get_header("Accept"), "application/vnd.github+json")
 
     def test_a_tick_inside_the_gap_is_not_dispatched_and_one_outside_is(self):
         import datetime as dt
+
         now = dt.datetime(2026, 11, 11, 6, 17, tzinfo=dt.timezone.utc)
-        recent = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}
-        older = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T05:00:10Z"}]}
+        recent = {
+            "workflow_runs": [
+                {"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}
+            ]
+        }
+        older = {
+            "workflow_runs": [
+                {"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T05:00:10Z"}
+            ]
+        }
         for body, want in ((recent, True), (older, False)):
             api = FakeGitHub({"per_page=15": (200, body), "GATE_MIN_GAP_MINUTES": 404})
             self.assertEqual(ticker.too_soon(TOKEN, api, now), want)
-        manual = {"workflow_runs": [{"id": 1, "display_title": "manual", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}
-        self.assertFalse(ticker.too_soon(TOKEN, FakeGitHub({"per_page=15": (200, manual), "GATE_MIN_GAP_MINUTES": 404}), now))
-        cancelled = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "cancelled", "run_started_at": "2026-11-11T06:00:10Z"}]}
-        self.assertFalse(ticker.too_soon(TOKEN, FakeGitHub({"per_page=15": (200, cancelled), "GATE_MIN_GAP_MINUTES": 404}), now))
+        manual = {
+            "workflow_runs": [
+                {"id": 1, "display_title": "manual", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}
+            ]
+        }
+        self.assertFalse(
+            ticker.too_soon(TOKEN, FakeGitHub({"per_page=15": (200, manual), "GATE_MIN_GAP_MINUTES": 404}), now)
+        )
+        cancelled = {
+            "workflow_runs": [
+                {"id": 1, "display_title": "tick", "conclusion": "cancelled", "run_started_at": "2026-11-11T06:00:10Z"}
+            ]
+        }
+        self.assertFalse(
+            ticker.too_soon(TOKEN, FakeGitHub({"per_page=15": (200, cancelled), "GATE_MIN_GAP_MINUTES": 404}), now)
+        )
 
     def test_the_repository_gap_variable_is_honoured(self):
         import datetime as dt
+
         now = dt.datetime(2026, 11, 11, 6, 17, tzinfo=dt.timezone.utc)
-        body = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}  # 17 minutes ago
-        drain = FakeGitHub({"per_page=15": (200, body), "GATE_MIN_GAP_MINUTES": (200, {"name": "GATE_MIN_GAP_MINUTES", "value": "10"})})
+        body = {
+            "workflow_runs": [
+                {"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}
+            ]
+        }  # 17 minutes ago
+        drain = FakeGitHub(
+            {"per_page=15": (200, body), "GATE_MIN_GAP_MINUTES": (200, {"name": "GATE_MIN_GAP_MINUTES", "value": "10"})}
+        )
         self.assertFalse(ticker.too_soon(TOKEN, drain, now))
 
     def test_skipping_dispatches_nothing_and_any_doubt_still_dispatches(self):
         import datetime as dt
-        recent = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success",
-                                     "run_started_at": (clock.now() - dt.timedelta(minutes=17)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+
+        recent = {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "display_title": "tick",
+                    "conclusion": "success",
+                    "run_started_at": (clock.now() - dt.timedelta(minutes=17)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            ]
+        }
         api = FakeGitHub({"per_page=15": (200, recent), "GATE_MIN_GAP_MINUTES": 404, "hourly.yml/dispatches": 204})
         with mock.patch.object(dt, "datetime", clock.FrozenDateTime):
             self.assertEqual(ticker.tick(TOKEN, api), ("TICK_SKIPPED", 200))
@@ -107,13 +149,21 @@ class Tick(unittest.TestCase):
             self.assertEqual(ticker.tick(TOKEN, api), ("TICK_DISPATCHED", 204))
 
     def test_every_failure_is_a_fixed_code(self):
-        for answer, code in ((401, "TICK_REFUSED"), (403, "TICK_REFUSED"), (404, "TICK_REFUSED"), (422, "TICK_REFUSED"),
-                             (500, "TICK_GITHUB_ERROR"), (429, "TICK_GITHUB_ERROR"), (urllib.error.URLError("down"), "TICK_NETWORK")):
+        for answer, code in (
+            (401, "TICK_REFUSED"),
+            (403, "TICK_REFUSED"),
+            (404, "TICK_REFUSED"),
+            (422, "TICK_REFUSED"),
+            (500, "TICK_GITHUB_ERROR"),
+            (429, "TICK_GITHUB_ERROR"),
+            (urllib.error.URLError("down"), "TICK_NETWORK"),
+        ):
             self.assertEqual(ticker.tick(TOKEN, FakeGitHub({"dispatches": answer}))[0], code, answer)
 
 
 class Disk(unittest.TestCase):
     """the Hermes disk alarm (80%), run inside the watch"""
+
     def usage(self, used, free):
         return lambda path: type("U", (), {"used": used, "free": free, "total": used + free})()
 
@@ -125,7 +175,7 @@ class Disk(unittest.TestCase):
 
     def test_signal_opens_at_80_closes_below_and_an_unreadable_mount_changes_nothing(self):
         seen = []
-        sync = lambda *a: seen.append(a) or "ok"                                  # noqa: E731
+        sync = lambda *a: seen.append(a) or "ok"  # noqa: E731
         for used, free, signal in ((79, 21, False), (80, 20, True), (95, 5, True), (34, 66, False)):
             ticker.disk_incident(usage=self.usage(used, free), sync=sync)
             self.assertIs(seen[-1][3], signal, (used, free))
@@ -135,21 +185,38 @@ class Disk(unittest.TestCase):
 
     def test_the_pushes_are_registered_quiet_and_name_the_percent(self):
         from lifeos.platform import alert_registry
+
         seen = []
         ticker.disk_incident(usage=self.usage(85, 15), sync=lambda *a: seen.append(a))
         label, title, body, signal, opened, closed = seen[0]
-        self.assertEqual((label, signal, opened[3], closed[3]), ("hermes-disk-full", True, "hermes_disk_full", "hermes_disk_full_recovered"))
+        self.assertEqual(
+            (label, signal, opened[3], closed[3]),
+            ("hermes-disk-full", True, "hermes_disk_full", "hermes_disk_full_recovered"),
+        )
         self.assertIn("85%", body)
         for key in ("hermes_disk_full", "hermes_disk_full_recovered"):
             self.assertEqual(alert_registry.lookup(key).severity, "info")
 
     def test_watch_runs_the_disk_check_after_the_watchdog_and_a_disk_failure_never_fails_it(self):
         order = []
-        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: order.append("gate"), environ={}, disk=lambda: order.append("disk"))
+        code, _ = ticker.watch(
+            TOKEN,
+            TOPIC,
+            FakeGitHub({}),
+            store=STORE,
+            run=lambda **k: order.append("gate"),
+            environ={},
+            disk=lambda: order.append("disk"),
+        )
         self.assertEqual((code, order), ("WATCH_DONE", ["gate", "disk"]))
+
         def boom():
             raise RuntimeError("x")
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=boom)[0], "WATCH_DONE")
+
+        self.assertEqual(
+            ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=boom)[0],
+            "WATCH_DONE",
+        )
         order.clear()
         ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: order.append("gate"), environ={})
         self.assertEqual(order, ["gate"])
@@ -157,9 +224,16 @@ class Disk(unittest.TestCase):
     def test_a_failed_incident_check_is_named_in_the_journal_by_class_only_and_never_fails_the_watch(self):
         import contextlib
         import io
+
         out = io.StringIO()
-        with contextlib.redirect_stdout(out), mock.patch.object(ticker, "drift_incident", side_effect=RuntimeError("secret detail")), mock.patch.object(ticker, "stall_incident", side_effect=KeyError("secret")):
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)[0]
+        with (
+            contextlib.redirect_stdout(out),
+            mock.patch.object(ticker, "drift_incident", side_effect=RuntimeError("secret detail")),
+            mock.patch.object(ticker, "stall_incident", side_effect=KeyError("secret")),
+        ):
+            code = ticker.watch(
+                TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None
+            )[0]
         self.assertEqual(code, "WATCH_DONE")
         self.assertIn("ticker: drift check failed (RuntimeError)", out.getvalue())
         self.assertIn("ticker: stall check failed (KeyError)", out.getvalue())
@@ -168,6 +242,7 @@ class Disk(unittest.TestCase):
 
 class Stall(unittest.TestCase):
     """the Close release timer writes a marker after 2 hours without a green main head"""
+
     def test_the_marker_opens_the_incident_and_its_absence_closes_it(self):
         seen = []
         self.assertTrue(ticker.stall_incident("/x/auto.stalled", lambda p: True, lambda *a: seen.append(a)))
@@ -178,13 +253,16 @@ class Stall(unittest.TestCase):
 
     def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
         with mock.patch.object(ticker, "stall_incident", side_effect=RuntimeError("x")) as stall:
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)
+            code = ticker.watch(
+                TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None
+            )
         self.assertEqual(code[0], "WATCH_DONE")
         stall.assert_called_once()
 
 
 class ProofUnreadable(unittest.TestCase):
     """the release timer deploys nothing when it cannot read the release-paused flag and writes a marker"""
+
     def test_the_marker_opens_one_page_and_its_absence_closes_it_with_one_recovered_push(self):
         seen = []
         record = lambda *a, **k: seen.append((a, k))
@@ -192,14 +270,20 @@ class ProofUnreadable(unittest.TestCase):
         self.assertFalse(ticker.proof_unreadable_incident("/x/m", lambda p: False, record))
         (first, kw), (second, _) = seen
         self.assertEqual((first[0], first[3], second[3]), ("release-pause-unreadable", True, False))
-        self.assertEqual((first[4][2:], first[5][2:]), (("page", "release_pause_unreadable"), ("info", "release_pause_unreadable_recovered")))
+        self.assertEqual(
+            (first[4][2:], first[5][2:]),
+            (("page", "release_pause_unreadable"), ("info", "release_pause_unreadable_recovered")),
+        )
         self.assertIs(kw.get("remind"), False)  # Jim: state-change pushes only, no 3-hour reminders
         self.assertIn("lifts by itself", first[2])
         from lifeos.platform import alert_registry
+
         for key in ("release_pause_unreadable", "release_pause_unreadable_recovered"):
             self.assertIn(key, alert_registry.REGISTRY)
 
-    def test_ten_unreadable_runs_page_once_a_readable_run_recovers_once_and_the_next_unreadable_run_pages_once_more(self):
+    def test_ten_unreadable_runs_page_once_a_readable_run_recovers_once_and_the_next_unreadable_run_pages_once_more(
+        self,
+    ):
         """The real incident gateway over an in-memory GitHub: the push count is what the phone would see."""
         issues, pushes = [], []
 
@@ -207,16 +291,28 @@ class ProofUnreadable(unittest.TestCase):
             if method == "GET":
                 return [i for i in issues if i["state"] == "open"]
             if method == "POST" and path == "issues":
-                issues.append({"number": len(issues) + 1, "state": "open", "title": body["title"], "labels": [{"name": n} for n in body["labels"]],
-                               "created_at": "2026-11-15T08:00:00Z", "updated_at": "2026-11-15T08:00:00Z"})
+                issues.append(
+                    {
+                        "number": len(issues) + 1,
+                        "state": "open",
+                        "title": body["title"],
+                        "labels": [{"name": n} for n in body["labels"]],
+                        "created_at": "2026-11-15T08:00:00Z",
+                        "updated_at": "2026-11-15T08:00:00Z",
+                    }
+                )
             elif method == "PATCH":
                 issues[int(path.split("/")[1]) - 1]["state"] = body["state"]
             elif method == "POST" and path.endswith("/comments"):
                 pushes.append(("comment", path))
             return {}
 
-        later = dt.datetime(2026, 11, 20, 8, 0, tzinfo=dt.timezone.utc)  # five days open: a reminder would be due long ago
-        sync = lambda *a, **k: gate.sync_incident(*a, push=lambda title, body, severity, key: pushes.append((severity, key)) or True, now=later, **k)
+        later = dt.datetime(
+            2026, 11, 20, 8, 0, tzinfo=dt.timezone.utc
+        )  # five days open: a reminder would be due long ago
+        sync = lambda *a, **k: gate.sync_incident(
+            *a, push=lambda title, body, severity, key: pushes.append((severity, key)) or True, now=later, **k
+        )
         with mock.patch.object(gate, "_api", api):
             for _ in range(10):
                 ticker.proof_unreadable_incident("/x/m", lambda p: True, sync)
@@ -225,7 +321,10 @@ class ProofUnreadable(unittest.TestCase):
             ticker.proof_unreadable_incident("/x/m", lambda p: False, sync)  # nothing open: nothing more is sent
             self.assertEqual(pushes[1:], [("info", "release_pause_unreadable_recovered")])
             ticker.proof_unreadable_incident("/x/m", lambda p: True, sync)
-            self.assertEqual([p for p in pushes if p == ("page", "release_pause_unreadable")], [("page", "release_pause_unreadable")] * 2)
+            self.assertEqual(
+                [p for p in pushes if p == ("page", "release_pause_unreadable")],
+                [("page", "release_pause_unreadable")] * 2,
+            )
             self.assertEqual(len(pushes), 3)
 
     def test_the_marker_is_the_one_the_release_timer_writes(self):
@@ -235,13 +334,16 @@ class ProofUnreadable(unittest.TestCase):
 
     def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
         with mock.patch.object(ticker, "proof_unreadable_incident", side_effect=RuntimeError("x")) as incident:
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)
+            code = ticker.watch(
+                TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None
+            )
         self.assertEqual(code[0], "WATCH_DONE")
         incident.assert_called_once()
 
 
 class ReleaseProof(unittest.TestCase):
     """the watch proves each Close release with one dry quick run and pages once when it fails."""
+
     DEPLOYED, PREVIOUS = "b" * 40, "a" * 40
 
     def drive(self, runs=(), record="", paused=False, manifest=True, sync=None, logs=None):
@@ -263,7 +365,9 @@ class ReleaseProof(unittest.TestCase):
             return "commit %s\n" % (self.DEPLOYED if "current" in path else self.PREVIOUS)
 
         now = dt.datetime(2026, 11, 15, 12, 0, tzinfo=dt.timezone.utc)
-        word = ticker.release_proof(TOKEN, api=api, read=read, sync=sync or (lambda *a: None), logs=logs or (lambda *a: b""), now=now)
+        word = ticker.release_proof(
+            TOKEN, api=api, read=read, sync=sync or (lambda *a: None), logs=logs or (lambda *a: b""), now=now
+        )
         return word, calls
 
     def test_a_new_deploy_dispatches_one_dry_quick_proof_and_records_it(self):
@@ -283,9 +387,16 @@ class ReleaseProof(unittest.TestCase):
 
     def test_a_failed_proof_syncs_one_page_with_both_commits_and_opens_the_flag(self):
         from lifeos.platform import release_proof as rp
+
         record = rp.render_record([rp.Entry(self.DEPLOYED, rp.PENDING, "2026-11-15T11:50:00Z", previous=self.PREVIOUS)])
         seen = []
-        failing = {"id": 9, "created_at": "2026-11-15T11:51:00Z", "updated_at": "2026-11-15T11:55:00Z", "status": "completed", "conclusion": "failure"}
+        failing = {
+            "id": 9,
+            "created_at": "2026-11-15T11:51:00Z",
+            "updated_at": "2026-11-15T11:55:00Z",
+            "status": "completed",
+            "conclusion": "failure",
+        }
         word, _ = self.drive(runs=[failing], record=record, sync=lambda *a: seen.append(a))
         self.assertEqual(word, "failed")
         label, title, text, signal, page, good = seen[0]
@@ -301,7 +412,9 @@ class ReleaseProof(unittest.TestCase):
 
     def test_the_watch_runs_it_and_a_failure_never_fails_the_watchdog(self):
         with mock.patch.object(ticker, "release_proof", side_effect=RuntimeError("x")) as proof:
-            code = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None)
+            code = ticker.watch(
+                TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=lambda: None
+            )
         self.assertEqual(code[0], "WATCH_DONE")
         proof.assert_called_once()
 
@@ -310,14 +423,23 @@ class Watch(unittest.TestCase):
     def test_the_switches_come_from_the_store_and_no_checkin_is_sent(self):
         calls, env = [], {}
         github = FakeGitHub({})
-        code, _ = ticker.watch(TOKEN, TOPIC, github, run=lambda calls=calls, **k: calls.append(k), environ=env, store=STORE)
-        self.assertEqual((code, calls, github.requests), ("WATCH_DONE", [{"checkin": False}], []))  # GitHub is never asked for a switch
-        self.assertEqual((env["ALERTS_ENABLED"], env["ALERT_SETTINGS"], env["GITHUB_REPOSITORY"], env["NTFY_TOPIC"]), ("on", '{"v":1}', "jimmarkunas/life-os-v7", TOPIC))
+        code, _ = ticker.watch(
+            TOKEN, TOPIC, github, run=lambda calls=calls, **k: calls.append(k), environ=env, store=STORE
+        )
+        self.assertEqual(
+            (code, calls, github.requests), ("WATCH_DONE", [{"checkin": False}], [])
+        )  # GitHub is never asked for a switch
+        self.assertEqual(
+            (env["ALERTS_ENABLED"], env["ALERT_SETTINGS"], env["GITHUB_REPOSITORY"], env["NTFY_TOPIC"]),
+            ("on", '{"v":1}', "jimmarkunas/life-os-v7", TOPIC),
+        )
 
     def test_with_a_bitwarden_store_the_switches_come_from_it_and_github_is_not_asked_for_them(self):
         calls, env = [], {}
-        store = lambda: {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "off", "ALERT_SETTINGS": "{}", "OTHER": "x"}      # noqa: E731
-        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub({}), run=lambda calls=calls, **k: calls.append(k), environ=env, store=store)
+        store = lambda: {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "off", "ALERT_SETTINGS": "{}", "OTHER": "x"}  # noqa: E731
+        code, _ = ticker.watch(
+            TOKEN, TOPIC, FakeGitHub({}), run=lambda calls=calls, **k: calls.append(k), environ=env, store=store
+        )
         self.assertEqual((code, calls), ("WATCH_DONE", [{"checkin": False}]))
         self.assertEqual((env["ALERTS_ENABLED"], env["ALERTS_MUTED_UNTIL"], env["ALERT_SETTINGS"]), ("on", "off", "{}"))
         self.assertNotIn("OTHER", env)
@@ -325,8 +447,14 @@ class Watch(unittest.TestCase):
     def test_a_bitwarden_store_that_cannot_be_read_stops_before_the_watchdog_runs_with_no_status(self):
         def broken():
             raise RuntimeError("down")
+
         calls = []
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), run=lambda calls=calls, **k: calls.append(k), environ={}, store=broken), ("TICKER_VARIABLES_UNREADABLE", None))
+        self.assertEqual(
+            ticker.watch(
+                TOKEN, TOPIC, FakeGitHub({}), run=lambda calls=calls, **k: calls.append(k), environ={}, store=broken
+            ),
+            ("TICKER_VARIABLES_UNREADABLE", None),
+        )
         self.assertEqual(calls, [])
 
     def test_the_bwsalerts_credential_selects_bitwarden(self):
@@ -335,7 +463,13 @@ class Watch(unittest.TestCase):
         for name, value in (("github", TOKEN), ("ntfy", TOPIC), ("bwsalerts", "0.abc.def:ghi")):
             Path(folder, name).write_text(value)
         seen = []
-        with mock.patch("lifeos.platform.alert_store.read", side_effect=lambda token, **k: seen.append(token) or {"ALERTS_ENABLED": "on"}), redirect_stdout(io.StringIO()) as out:
+        with (
+            mock.patch(
+                "lifeos.platform.alert_store.read",
+                side_effect=lambda token, **k: seen.append(token) or {"ALERTS_ENABLED": "on"},
+            ),
+            redirect_stdout(io.StringIO()) as out,
+        ):
             self.assertEqual(ticker.main(["dry"], opener=FakeGitHub({}), environ={"CREDENTIALS_DIRECTORY": folder}), 0)
         self.assertEqual((seen, json.loads(out.getvalue())["code"]), (["0.abc.def:ghi"], "TICKER_DRY_OK"))
 
@@ -347,8 +481,17 @@ class Watch(unittest.TestCase):
         for command in ("watch", "dry"):
             github, calls = FakeGitHub({}), []
             with mock.patch("lifeos.platform.alert_store.read") as read, redirect_stdout(io.StringIO()) as out:
-                rc = ticker.main([command], opener=github, run=lambda calls=calls, **k: calls.append(k), environ={"CREDENTIALS_DIRECTORY": folder})
-            self.assertEqual((rc, json.loads(out.getvalue())["code"], github.requests, calls), (1, "TICKER_NO_CREDENTIAL", [], []), command)
+                rc = ticker.main(
+                    [command],
+                    opener=github,
+                    run=lambda calls=calls, **k: calls.append(k),
+                    environ={"CREDENTIALS_DIRECTORY": folder},
+                )
+            self.assertEqual(
+                (rc, json.loads(out.getvalue())["code"], github.requests, calls),
+                (1, "TICKER_NO_CREDENTIAL", [], []),
+                command,
+            )
             read.assert_not_called()
 
     def test_the_ticker_has_no_repository_variable_path_for_the_switches(self):
@@ -359,12 +502,23 @@ class Watch(unittest.TestCase):
     def test_a_watchdog_that_cannot_read_github_is_a_fixed_code(self):
         def boom(**k):
             raise urllib.error.URLError("down")
-        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=boom, environ={})[0], "TICKER_WATCH_FAILED")
+
+        self.assertEqual(
+            ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=boom, environ={})[0], "TICKER_WATCH_FAILED"
+        )
 
     def test_gate_watch_without_checkin_sends_no_checkin_in_the_digest_hour(self):
         sent, now = [], gate.dt.datetime(2026, 11, 6, gate.DIGEST_HOUR_UTC, 5, tzinfo=gate.dt.timezone.utc)
         old = gate._api
-        gate._api = lambda path, *a, **k: {"workflow_runs": [{"id": 1, "conclusion": "success", "display_title": "tick", "updated_at": "2026-11-06T13:00:00Z"}]} if "workflows/" in path else []
+        gate._api = lambda path, *a, **k: (
+            {
+                "workflow_runs": [
+                    {"id": 1, "conclusion": "success", "display_title": "tick", "updated_at": "2026-11-06T13:00:00Z"}
+                ]
+            }
+            if "workflows/" in path
+            else []
+        )
         try:
             gate.watch(now, push=lambda *a: sent.append(a) or True, checkin=False)
             self.assertEqual(sent, [])
@@ -387,8 +541,12 @@ class Main(unittest.TestCase):
 
     def test_output_is_one_line_with_a_code_and_never_a_credential(self):
         both = {"github": TOKEN, "ntfy": TOPIC}
-        for argv, answers, want, rc_want in ((["tick"], {"dispatches": 204}, "TICK_DISPATCHED", 0), (["tick"], {"dispatches": 401}, "TICK_REFUSED", 1),
-                                             (["watch"], {}, "WATCH_DONE", 0), (["dry"], {}, "TICKER_DRY_OK", 0)):
+        for argv, answers, want, rc_want in (
+            (["tick"], {"dispatches": 204}, "TICK_DISPATCHED", 0),
+            (["tick"], {"dispatches": 401}, "TICK_REFUSED", 1),
+            (["watch"], {}, "WATCH_DONE", 0),
+            (["dry"], {}, "TICKER_DRY_OK", 0),
+        ):
             with mock.patch("lifeos.platform.alert_store.read", return_value=dict(SWITCH_VALUES)):
                 rc, out = self.run_main(argv, {**both, "bwsalerts": "0.abc.def:ghi"}, answers)
             self.assertEqual((rc, json.loads(out)["code"]), (rc_want, want), argv)
@@ -402,7 +560,9 @@ class Main(unittest.TestCase):
         self.assertEqual(self.run_main(["bogus"], {}, {})[0], 2)
 
     def test_every_code_it_prints_is_registered(self):
-        printed = set(re.findall(r'"([A-Z][A-Z0-9_]+)"', (ROOT / "lifeos/edge/ticker/ticker.py").read_text())) & set(codes.candidates((ROOT / "lifeos/edge/ticker/ticker.py").read_text()))
+        printed = set(re.findall(r'"([A-Z][A-Z0-9_]+)"', (ROOT / "lifeos/edge/ticker/ticker.py").read_text())) & set(
+            codes.candidates((ROOT / "lifeos/edge/ticker/ticker.py").read_text())
+        )
         self.assertTrue(printed)
         self.assertEqual(sorted(c for c in printed if c not in codes.CODES and c not in codes.NOT_CODES), [])
 
@@ -424,9 +584,21 @@ class Units(unittest.TestCase):
         self.assertEqual(minutes & github_minutes, set())  # never both racing to open one incident
 
     def test_services_take_secrets_only_as_encrypted_credentials(self):
-        for name, creds in (("lifeos-ticker-tick.service", {"github"}), ("lifeos-ticker-watch.service", {"github", "ntfy"})):
+        for name, creds in (
+            ("lifeos-ticker-tick.service", {"github"}),
+            ("lifeos-ticker-watch.service", {"github", "ntfy"}),
+        ):
             text = (ORACLE / name).read_text()
-            self.assertEqual({m for m in re.findall(r"^LoadCredentialEncrypted=(\w+):/etc/credstore\.encrypted/lifeos-ticker\.\1$", text, re.M)}, creds, name)
+            self.assertEqual(
+                {
+                    m
+                    for m in re.findall(
+                        r"^LoadCredentialEncrypted=(\w+):/etc/credstore\.encrypted/lifeos-ticker\.\1$", text, re.M
+                    )
+                },
+                creds,
+                name,
+            )
             self.assertNotRegex(text, r"(?m)^Environment")
             self.assertIn("DynamicUser=yes", text)
             self.assertIn("ExecStart=/usr/bin/python3 -I /opt/lifeos-ticker/ticker.py ", text)
@@ -441,7 +613,10 @@ class Installer(unittest.TestCase):
     def test_it_only_removes_or_writes_its_own_paths(self):
         text = self.SCRIPT.read_text()
         self.assertIn("OPT=/opt/lifeos-ticker", text)
-        self.assertIn('GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"; BW="$CREDS/lifeos-ticker.bwsalerts"', text)
+        self.assertIn(
+            'GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"; BW="$CREDS/lifeos-ticker.bwsalerts"',
+            text,
+        )
         for line in re.findall(r"rm -[rf]+ ([^;\n]+)", text):
             for target in line.split():
                 self.assertIn(target.strip('"'), ('$UNITS/$u', '$OPT', '$GH', '$NT', '$BW', '$DROPIN'), line)
@@ -457,8 +632,7 @@ class Installer(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in ORACLE.glob("lifeos-ticker-*")), sorted(units))
 
     def test_verify_requires_a_real_timer_run_not_just_a_success_result(self):
-        """A never-run service reports Result=success and status 0, so `verify` must also require ExecMainStartTimestamp.
-        """
+        """A never-run service reports Result=success and status 0, so `verify` must also require ExecMainStartTimestamp."""
         text = self.SCRIPT.read_text()
         self.assertIn("ExecMainStartTimestamp", text)
         self.assertIn("ran_ok lifeos-ticker-tick.service", text)
@@ -469,7 +643,9 @@ class Installer(unittest.TestCase):
         """The installed tree is ticker.py plus these modules: every lifeos import they make must be in the list."""
         modules = set(re.search(r'MODULES="([^"]+)"', self.SCRIPT.read_text()).group(1).split())
         for m in modules:
-            for dep in re.findall(r"from lifeos\.platform import ([\w, ]+)", (ROOT / "lifeos/platform" / m).read_text()):
+            for dep in re.findall(
+                r"from lifeos\.platform import ([\w, ]+)", (ROOT / "lifeos/platform" / m).read_text()
+            ):
                 for name in re.sub(r" as \w+", "", dep).split(","):
                     self.assertIn(name.strip() + ".py", modules, m)
             self.assertNotRegex((ROOT / "lifeos/platform" / m).read_text(), r"from lifeos\.(?!platform)", m)
@@ -488,8 +664,11 @@ class Installer(unittest.TestCase):
         (opt / "lifeos/platform/__init__.py").write_text("")
         for m in modules:
             shutil.copy(ROOT / "lifeos/platform" / m, opt / "lifeos/platform" / m)
-        probe = "import runpy, sys; sys.argv = ['ticker.py']; g = runpy.run_path(sys.argv[0] if False else %r, run_name='probe'); " \
-                "import lifeos.platform.gate as gate, lifeos.platform.alerts as alerts; print(gate.__file__)" % str(opt / "ticker.py")
+        probe = (
+            "import runpy, sys; sys.argv = ['ticker.py']; g = runpy.run_path(sys.argv[0] if False else %r, run_name='probe'); "
+            "import lifeos.platform.gate as gate, lifeos.platform.alerts as alerts; print(gate.__file__)"
+            % str(opt / "ticker.py")
+        )
         done = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, text=True, cwd=str(opt))
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertTrue(done.stdout.strip().startswith(str(opt)), done.stdout)

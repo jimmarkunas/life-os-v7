@@ -12,6 +12,7 @@ CELL = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]
 
 class FakeNotion:
     """A callout holding one table, plus a review data source."""
+
     def __init__(self, review_rows=None):
         self.callout = "old"
         self.rows = {f"r{i}": [["x"] * 10][0] for i in range(7)}
@@ -24,16 +25,33 @@ class FakeNotion:
         if method == "POST" and path == "/search":
             return {"results": [], "has_more": False}
         if method == "GET" and path.startswith("/blocks/page/children"):
-            return {"results": [{"id": "para", "type": "paragraph"}, {"id": "cal", "type": "callout"}], "has_more": False}
+            return {
+                "results": [{"id": "para", "type": "paragraph"}, {"id": "cal", "type": "callout"}],
+                "has_more": False,
+            }
         if method == "GET" and path.startswith("/blocks/para"):
             return {"id": "para", "type": "paragraph"}
         if method == "GET" and path.startswith("/blocks/cal/children"):
-            extra = [{"id": "leg", "type": "paragraph", "paragraph": {"rich_text": CELL(self.legacy)}}] if self.legacy else []
+            extra = (
+                [{"id": "leg", "type": "paragraph", "paragraph": {"rich_text": CELL(self.legacy)}}]
+                if self.legacy
+                else []
+            )
             if getattr(self, "phone", ""):
                 extra.append({"id": "phone", "type": "paragraph", "paragraph": {"rich_text": CELL(self.phone)}})
-            return {"results": [{"id": "tbl", "type": "table", "table": {"table_width": 10 if self.shape_ok else 4}}] + extra, "has_more": False}
+            return {
+                "results": [{"id": "tbl", "type": "table", "table": {"table_width": 10 if self.shape_ok else 4}}]
+                + extra,
+                "has_more": False,
+            }
         if method == "GET" and path.startswith("/blocks/tbl/children"):
-            return {"results": [{"id": k, "type": "table_row", "table_row": {"cells": [CELL(c) for c in v]}} for k, v in self.rows.items()], "has_more": False}
+            return {
+                "results": [
+                    {"id": k, "type": "table_row", "table_row": {"cells": [CELL(c) for c in v]}}
+                    for k, v in self.rows.items()
+                ],
+                "has_more": False,
+            }
         if method == "GET" and path.startswith("/blocks/cal"):
             return {"id": "cal", "type": "callout", "callout": {"rich_text": CELL(self.callout)}}
         if method == "PATCH" and path == "/blocks/cal":
@@ -43,7 +61,9 @@ class FakeNotion:
         if method == "PATCH" and path.startswith("/blocks/r"):
             self.rows[path.split("/")[-1]] = [c[0]["text"]["content"] for c in body["table_row"]["cells"]]
             self.bold = getattr(self, "bold", {})
-            self.bold[path.split("/")[-1]] = all(c[0].get("annotations", {}).get("bold") for c in body["table_row"]["cells"])
+            self.bold[path.split("/")[-1]] = all(
+                c[0].get("annotations", {}).get("bold") for c in body["table_row"]["cells"]
+            )
             self.patches.append(path)
             return {}
         if method == "GET" and path.startswith("/data_sources/"):
@@ -52,7 +72,9 @@ class FakeNotion:
 
     def call_once(self, method, path, body=None):
         if path.endswith("/children"):
-            self.appended = getattr(self, "appended", []) + [body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]]
+            self.appended = getattr(self, "appended", []) + [
+                body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]
+            ]
             self.phone = body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]
             return {}
         self.created.append(body["properties"])
@@ -88,12 +110,34 @@ class FakeGcal:
 
 
 def sent(i, to, when, subject="Hello"):
-    return {"id": i, "thread": "t", "sender": "jim@example.com", "to": to, "cc": "", "subject": subject, "snippet": "", "sent_at": when, "labels": [], "bulk": False}
+    return {
+        "id": i,
+        "thread": "t",
+        "sender": "jim@example.com",
+        "to": to,
+        "cc": "",
+        "subject": subject,
+        "snippet": "",
+        "sent_at": when,
+        "labels": [],
+        "bulk": False,
+    }
 
 
 def gevent(uid, who, start, created, summary="Intro", bridged=False):
-    e = {"iCalUID": uid, "id": uid, "summary": summary, "start": {"dateTime": start.isoformat()}, "end": {"dateTime": (start + timedelta(hours=1)).isoformat()},
-         "created": created.isoformat(), "organizer": {"self": True}, "attendees": [{"email": "jim@example.com", "self": True, "organizer": True}, {"email": who, "responseStatus": "accepted"}]}
+    e = {
+        "iCalUID": uid,
+        "id": uid,
+        "summary": summary,
+        "start": {"dateTime": start.isoformat()},
+        "end": {"dateTime": (start + timedelta(hours=1)).isoformat()},
+        "created": created.isoformat(),
+        "organizer": {"self": True},
+        "attendees": [
+            {"email": "jim@example.com", "self": True, "organizer": True},
+            {"email": who, "responseStatus": "accepted"},
+        ],
+    }
     if bridged:
         e["extendedProperties"] = {"private": {"v7_src": "outlook"}}
     return e
@@ -104,7 +148,9 @@ KNOWN = {"lensa"}
 
 
 def run(gmail, gcal, notion, live=True, env=ENV, now=NOW):
-    return stage.run(0, live, environ=env, gmail=gmail, gcal=gcal, outlook_clients=[], notion=notion, now=now, known=KNOWN)
+    return stage.run(
+        0, live, environ=env, gmail=gmail, gcal=gcal, outlook_clients=[], notion=notion, now=now, known=KNOWN
+    )
 
 
 class Card(unittest.TestCase):
@@ -141,10 +187,21 @@ class Card(unittest.TestCase):
 class Stage(unittest.TestCase):
     def test_counts_dedupe_bridged_and_writes_table(self):
         mon = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
-        gm = FakeGmail({"a": sent("a", "Pat <pat@lensa.com>", mon), "b": sent("b", "pat@lensa.com", mon + timedelta(hours=1)), "c": sent("c", "noreply@lensa.com", mon),
-                        "d": sent("d", "jim@example.com", mon)})
+        gm = FakeGmail(
+            {
+                "a": sent("a", "Pat <pat@lensa.com>", mon),
+                "b": sent("b", "pat@lensa.com", mon + timedelta(hours=1)),
+                "c": sent("c", "noreply@lensa.com", mon),
+                "d": sent("d", "jim@example.com", mon),
+            }
+        )
         n = FakeNotion()
-        gc = FakeGcal([gevent("u1", "pat@lensa.com", NOW + timedelta(days=2), NOW - timedelta(hours=5)), gevent("u2", "pat@lensa.com", NOW + timedelta(days=3), NOW, bridged=True)])
+        gc = FakeGcal(
+            [
+                gevent("u1", "pat@lensa.com", NOW + timedelta(days=2), NOW - timedelta(hours=5)),
+                gevent("u2", "pat@lensa.com", NOW + timedelta(days=3), NOW, bridged=True),
+            ]
+        )
         counts = run(gm, gc, n)
         self.assertEqual(counts["status"][C.OUTREACH], 2)
         self.assertEqual(counts["status"][C.SCHEDULED], 1)
@@ -163,18 +220,31 @@ class Stage(unittest.TestCase):
         self.assertEqual((counts["review_open"], counts["status"][C.OUTREACH]), (1, 0))
         self.assertEqual(len(n.created), 1)
         key = n.created[0]["Source key"]["rich_text"][0]["text"]["content"]
-        answered = [{"id": "page1", "last_edited_time": "2026-10-07T12:00:00Z", "properties": {
-            "Source key": {"rich_text": [{"plain_text": key}]}, "Resolution": {"select": {"name": "Count as Outreach"}}, "Status": {"select": {"name": "Open"}}}}]
+        answered = [
+            {
+                "id": "page1",
+                "last_edited_time": "2026-10-07T12:00:00Z",
+                "properties": {
+                    "Source key": {"rich_text": [{"plain_text": key}]},
+                    "Resolution": {"select": {"name": "Count as Outreach"}},
+                    "Status": {"select": {"name": "Open"}},
+                },
+            }
+        ]
         n2 = FakeNotion(answered)
         counts2 = run(gm, FakeGcal([]), n2, live=False)
-        self.assertEqual((counts2["decisions_applied"], counts2["status"][C.OUTREACH], counts2["review_open"]), (1, 1, 0))
+        self.assertEqual(
+            (counts2["decisions_applied"], counts2["status"][C.OUTREACH], counts2["review_open"]), (1, 1, 0)
+        )
         self.assertEqual(n2.created, [])
 
     def test_failed_source_is_degraded_and_keeps_table(self):
         class Boom(FakeGcal):
             def list_events(self, a, b):
                 from lifeos.platform.gcal import GcalError
+
                 raise GcalError("GCAL_DOWN")
+
         n = FakeNotion()
         before = dict(n.rows)
         with self.assertRaises(stage.MegibowError):
@@ -189,7 +259,9 @@ class Stage(unittest.TestCase):
         self.assertEqual(n.appended, ["Phone calls: none"])  # added once, live
         run(FakeGmail({}), FakeGcal([]), n)
         self.assertEqual(len(n.appended), 1)  # never again
-        n.phone = "Phone calls: Oct 5 Recruiter Calls 2; Oct 6 Company Calls 1; Oct 7 Outreach 1; Oct 7 Bogus 4; nonsense"
+        n.phone = (
+            "Phone calls: Oct 5 Recruiter Calls 2; Oct 6 Company Calls 1; Oct 7 Outreach 1; Oct 7 Bogus 4; nonsense"
+        )
         counts = run(FakeGmail({}), FakeGcal([]), n)
         self.assertEqual(counts["manual_unreadable"], 2)  # counted and ignored, never guessed
         self.assertEqual(counts["status"][C.RECRUITER], 2)
@@ -198,7 +270,11 @@ class Stage(unittest.TestCase):
 
     def test_the_phone_line_parser_reads_dates_and_counts_strictly(self):
         from datetime import date
-        got, bad = card.parse_manual("Phone calls: Oct 5 Recruiter Calls 1; Oct 5 Recruiter Calls 2; Sep 29 Networking Calls 1; Oct 5 Recruiter Calls x; Oct 5 Recruiter Calls", date(2026, 10, 7))
+
+        got, bad = card.parse_manual(
+            "Phone calls: Oct 5 Recruiter Calls 1; Oct 5 Recruiter Calls 2; Sep 29 Networking Calls 1; Oct 5 Recruiter Calls x; Oct 5 Recruiter Calls",
+            date(2026, 10, 7),
+        )
         self.assertEqual(got, {date(2026, 10, 5): {"Recruiter Calls": 3}, date(2026, 9, 28): {"Networking Calls": 1}})
         self.assertEqual(bad, 2)
         self.assertEqual(card.parse_manual("Phone calls: none", date(2026, 10, 7)), ({}, 0))
@@ -223,7 +299,12 @@ class FixedBlock(unittest.TestCase):
         """no shape discovery"""
         n = FakeNotion()
         with self.assertRaises(Exception) as caught:
-            run(FakeGmail([]) if "FakeGmail" in globals() else None, None, n, env={"MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"})
+            run(
+                FakeGmail([]) if "FakeGmail" in globals() else None,
+                None,
+                n,
+                env={"MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"},
+            )
         self.assertIn("BLOCK_NOT_FOUND", str(caught.exception))
         self.assertEqual(n.callout, "old")
 

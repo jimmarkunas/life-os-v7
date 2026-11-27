@@ -9,24 +9,78 @@ OLD, NEW1, NEW2 = "2026-11-16T17:00:00+00:00", "2026-11-16T19:00:00+00:00", "202
 BASE = "https://example.atlassian.net"
 
 ROWS = {
-    "gmail": [{"id": "m1", "link": "https://mail.example/m1", "at": NEW1, "subject": "Re: deliverable", "body": "BODY MUST NOT LEAVE", "to": "x@example.com"}, {"id": "m0", "link": "https://mail.example/m0", "at": OLD}],
-    "outlook": [{"id": "o1", "link": "https://outlook.example/o1", "at": NEW1, "subject": "hello", "snippet": "NOR THIS"}],
-    "calendar": [{"id": "e1", "htmlLink": "https://cal.example/e1", "updated": NEW2, "summary": "Sync", "description": "NOR THIS", "attendees": ["a"]}],
+    "gmail": [
+        {
+            "id": "m1",
+            "link": "https://mail.example/m1",
+            "at": NEW1,
+            "subject": "Re: deliverable",
+            "body": "BODY MUST NOT LEAVE",
+            "to": "x@example.com",
+        },
+        {"id": "m0", "link": "https://mail.example/m0", "at": OLD},
+    ],
+    "outlook": [
+        {"id": "o1", "link": "https://outlook.example/o1", "at": NEW1, "subject": "hello", "snippet": "NOR THIS"}
+    ],
+    "calendar": [
+        {
+            "id": "e1",
+            "htmlLink": "https://cal.example/e1",
+            "updated": NEW2,
+            "summary": "Sync",
+            "description": "NOR THIS",
+            "attendees": ["a"],
+        }
+    ],
     "jira": [{"key": "LIFE-9", "fields": {"updated": NEW1, "summary": "A ticket", "description": "NOR THIS"}}],
-    "todoist": [{"id": "t1", "url": "https://todoist.example/t1", "updated_at": NEW1, "content": "call back", "description": "NOR THIS"}],
-    "notion": [{"id": "n1", "url": "https://notion.example/n1", "last_edited_time": NEW1, "title": "Page", "properties": {"x": 1}}],
-    "interview_os": [{"id": "i1", "url": "https://interview.example/i1", "at": NEW1, "title": "Panel", "notes": "NOR THIS"}],
+    "todoist": [
+        {
+            "id": "t1",
+            "url": "https://todoist.example/t1",
+            "updated_at": NEW1,
+            "content": "call back",
+            "description": "NOR THIS",
+        }
+    ],
+    "notion": [
+        {
+            "id": "n1",
+            "url": "https://notion.example/n1",
+            "last_edited_time": NEW1,
+            "title": "Page",
+            "properties": {"x": 1},
+        }
+    ],
+    "interview_os": [
+        {"id": "i1", "url": "https://interview.example/i1", "at": NEW1, "title": "Panel", "notes": "NOR THIS"}
+    ],
 }
 
 
 def grant(source, tenant="personal", account="acct-1", **kw):
-    return R.Grant(**{"source": source, "tenant": tenant, "account": account, "credential_ref": f"bws-{source}-{tenant}", "expires": NOW + timedelta(hours=1), **kw})
+    return R.Grant(
+        **{
+            "source": source,
+            "tenant": tenant,
+            "account": account,
+            "credential_ref": f"bws-{source}-{tenant}",
+            "expires": NOW + timedelta(hours=1),
+            **kw,
+        }
+    )
 
 
 class Harness:
     def __init__(self, grants=None, rows=None, boom=None, audit_boom=False):
         self.grants = tuple(grants if grants is not None else [grant(s, t) for s in R.SOURCES for t in R.TENANTS])
-        self.rows, self.receipts, self.fetched, self.boom, self.audit_boom = rows if rows is not None else ROWS, [], [], boom or set(), audit_boom
+        self.rows, self.receipts, self.fetched, self.boom, self.audit_boom = (
+            rows if rows is not None else ROWS,
+            [],
+            [],
+            boom or set(),
+            audit_boom,
+        )
 
     def audit(self, receipt):
         if self.audit_boom:
@@ -39,6 +93,7 @@ class Harness:
             if source in self.boom:
                 raise RuntimeError("secret detail that must not appear")
             return self.rows[source]
+
         return fetch
 
     def read(self, source, tenant="personal", account="acct-1", since=SINCE, rows_override=None, rid="r1"):
@@ -52,7 +107,11 @@ class Deltas(unittest.TestCase):
         for source in R.SOURCES:
             d = h.read(source)
             self.assertEqual((d.status, d.reason), ("ok", "ok"), source)
-            self.assertTrue(d.items and all(set(i) == {"source", "native_id", "link", "kind", "observed_at", "title"} for i in d.items), source)
+            self.assertTrue(
+                d.items
+                and all(set(i) == {"source", "native_id", "link", "kind", "observed_at", "title"} for i in d.items),
+                source,
+            )
             self.assertNotIn("NOR THIS", repr(d.items))
             self.assertNotIn("BODY MUST NOT LEAVE", repr(d.items))
             self.assertTrue(all(i["link"].startswith("https://") for i in d.items))
@@ -79,16 +138,29 @@ class Degraded(unittest.TestCase):
     def test_a_failed_source_is_degraded_with_the_last_accepted_time_and_never_a_zero(self):
         h = Harness(boom={"jira"})
         d = h.read("jira")
-        self.assertEqual((d.status, d.reason, d.items, d.last_accepted, d.next_checkpoint), ("degraded", "fetch_failed", (), SINCE, None))
+        self.assertEqual(
+            (d.status, d.reason, d.items, d.last_accepted, d.next_checkpoint),
+            ("degraded", "fetch_failed", (), SINCE, None),
+        )
         self.assertNotIn("secret detail", repr(h.receipts))  # the error message is never recorded
 
     def test_an_incomplete_or_truncated_answer_is_degraded(self):
         h = Harness()
         self.assertEqual(h.read("gmail", rows_override={"items": []}).reason, "listing_incomplete")
-        self.assertEqual(h.read("gmail", rows_override=[{"id": str(n), "link": "https://m/x", "at": NEW1} for n in range(R.MAX_ROWS + 1)]).reason, "truncated")
+        self.assertEqual(
+            h.read(
+                "gmail",
+                rows_override=[{"id": str(n), "link": "https://m/x", "at": NEW1} for n in range(R.MAX_ROWS + 1)],
+            ).reason,
+            "truncated",
+        )
 
     def test_one_malformed_row_degrades_the_read_and_the_checkpoint_does_not_advance(self):
-        rows = [{"id": "ok", "link": "https://mail.example/ok", "at": NEW1}, {"id": "bad", "link": "http://not-https", "at": NEW1}, {"id": "naive", "link": "https://x/y", "at": "2026-11-16T19:00:00"}]
+        rows = [
+            {"id": "ok", "link": "https://mail.example/ok", "at": NEW1},
+            {"id": "bad", "link": "http://not-https", "at": NEW1},
+            {"id": "naive", "link": "https://x/y", "at": "2026-11-16T19:00:00"},
+        ]
         d = Harness().read("gmail", rows_override=rows)
         self.assertEqual((d.status, d.reason, d.next_checkpoint), ("degraded", "row_invalid", None))
         self.assertEqual([i["native_id"] for i in d.items], ["ok"])
@@ -108,7 +180,10 @@ class Degraded(unittest.TestCase):
     def test_a_source_with_no_reader_is_degraded_not_empty(self):
         h = Harness()
         out = R.read_all([("notion", "personal", "acct-1")], h.grants, {}, h.audit, NOW)
-        self.assertEqual((out[("notion", "personal", "acct-1")].status, out[("notion", "personal", "acct-1")].reason), ("degraded", "no_reader"))
+        self.assertEqual(
+            (out[("notion", "personal", "acct-1")].status, out[("notion", "personal", "acct-1")].reason),
+            ("degraded", "no_reader"),
+        )
 
 
 class Refusals(unittest.TestCase):
@@ -131,15 +206,21 @@ class Refusals(unittest.TestCase):
         self.assertEqual(h.read("slack").reason, "unknown_source")
         self.assertEqual(h.read("gmail", account="other-account").reason, "no_grant")
         self.assertEqual(Harness(grants=[grant("gmail", revoked=True)]).read("gmail").reason, "grant_revoked")
-        self.assertEqual(Harness(grants=[grant("gmail", expires=NOW - timedelta(seconds=1))]).read("gmail").reason, "grant_expired")
+        self.assertEqual(
+            Harness(grants=[grant("gmail", expires=NOW - timedelta(seconds=1))]).read("gmail").reason, "grant_expired"
+        )
         self.assertEqual(h.fetched, [])
 
     def test_personal_and_bytalos_never_share_a_grant_credential_or_result(self):
         h = Harness(grants=[grant("gmail", "personal")])
-        self.assertEqual(h.read("gmail", tenant="bytalos").reason, "no_grant")  # a personal grant never opens a bytalos read
+        self.assertEqual(
+            h.read("gmail", tenant="bytalos").reason, "no_grant"
+        )  # a personal grant never opens a bytalos read
         both = Harness()
         a, b = both.read("gmail", "personal"), both.read("gmail", "bytalos", rid="r2")
-        self.assertEqual([f[1] for f in both.fetched], ["bws-gmail-personal", "bws-gmail-bytalos"])  # each tenant uses only its own credential name
+        self.assertEqual(
+            [f[1] for f in both.fetched], ["bws-gmail-personal", "bws-gmail-bytalos"]
+        )  # each tenant uses only its own credential name
         self.assertIsNot(a.items, b.items)
 
     def test_revoking_one_source_or_tenant_leaves_the_others_readable(self):
@@ -163,7 +244,13 @@ class Refusals(unittest.TestCase):
     def test_the_module_imports_nothing_that_can_write_or_reach_a_network(self):
         import ast
         import inspect
-        imported = {n.module if isinstance(n, ast.ImportFrom) else a.name for n in ast.walk(ast.parse(inspect.getsource(R))) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in (n.names if isinstance(n, ast.Import) else [n])}
+
+        imported = {
+            n.module if isinstance(n, ast.ImportFrom) else a.name
+            for n in ast.walk(ast.parse(inspect.getsource(R)))
+            if isinstance(n, (ast.Import, ast.ImportFrom))
+            for a in (n.names if isinstance(n, ast.Import) else [n])
+        }
         self.assertEqual(imported, {"re", "dataclasses", "datetime"})
 
 

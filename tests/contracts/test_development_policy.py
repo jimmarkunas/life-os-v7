@@ -1,4 +1,5 @@
 """The old 11-part split, its manifest and the dated amendments are history in docs/archive/ (no authority)."""
+
 import re
 import unittest
 from pathlib import Path
@@ -10,10 +11,21 @@ POLICY = POLICY_PATH.read_text()
 
 class DryRunGate(unittest.TestCase):
     """the scoping gate is in the policy, the one-page boot guide and the ticket template."""
+
     def test_the_policy_section_has_the_rules(self):
         self.assertIn("## 12. Dry run gate (scoping, before Agent Go;", POLICY)
-        for kept in ("**Dry run**", "**Decisions pre-made**", "`dry-run-green`", "`dry-run-miss`", "`release LIFE-nnn`", "`dry run 856 877 981`",
-                     "read-only: no write, merge, deploy or delete", "One session, one outcome", "grandfathered", "is already its own `UAT for LIFE-nnn` ticket under LIFE-615"):
+        for kept in (
+            "**Dry run**",
+            "**Decisions pre-made**",
+            "`dry-run-green`",
+            "`dry-run-miss`",
+            "`release LIFE-nnn`",
+            "`dry run 856 877 981`",
+            "read-only: no write, merge, deploy or delete",
+            "One session, one outcome",
+            "grandfathered",
+            "is already its own `UAT for LIFE-nnn` ticket under LIFE-615",
+        ):
             self.assertIn(kept, POLICY, kept)
         self.assertNotIn("Found mid-run: the same, then keep building.", POLICY)
 
@@ -24,26 +36,57 @@ class DryRunGate(unittest.TestCase):
         self.assertIn("`ORCHESTRATOR_CAN_START`", POLICY)
         self.assertIn("Jim starts every agent run", POLICY)
         agents = (ROOT / "AGENTS.md").read_text()
-        for kept in ("claim with `start_work`", "post status, blocker and completion to the Orca room", "it never approves anything new"):
+        for kept in (
+            "claim with `start_work`",
+            "post status, blocker and completion to the Orca room",
+            "it never approves anything new",
+        ):
             self.assertIn(kept, agents, kept)
-        self.assertNotIn("anything that starts or wakes an agent after the session ends", (ROOT / "CLAUDE.md").read_text())
+        self.assertNotIn(
+            "anything that starts or wakes an agent after the session ends", (ROOT / "CLAUDE.md").read_text()
+        )
 
     def test_agents_md_requires_the_label_at_claim_time_and_the_template_has_every_section(self):
         self.assertIn("only with label `dry-run-green` (policy §12", (ROOT / "AGENTS.md").read_text())
         template = (ROOT / "docs" / "templates" / "ticket.md").read_text()
-        for heading in ("Why", "Exact targets", "Dry run", "Decisions pre-made", "Jim must do first", "Done when", "Not in scope", "Rollback", "Executing agent", "Verifier"):
+        for heading in (
+            "Why",
+            "Exact targets",
+            "Dry run",
+            "Decisions pre-made",
+            "Jim must do first",
+            "Done when",
+            "Not in scope",
+            "Rollback",
+            "Executing agent",
+            "Verifier",
+        ):
             self.assertIn(f"## {heading}\n", template, heading)
 
 
 class OneFilePolicy(unittest.TestCase):
     def test_it_is_one_file_under_the_size_ceiling(self):
         self.assertLessEqual(len(POLICY.encode()), 18 * 1024)
-        self.assertFalse((ROOT / "docs" / "development-policy").exists(), "the policy is one file; history lives in docs/archive/")
+        self.assertFalse(
+            (ROOT / "docs" / "development-policy").exists(), "the policy is one file; history lives in docs/archive/"
+        )
 
     def test_the_kept_guardrails_are_stated(self):
-        for kept in ("workflow `permissions`", "credential", "one bootstrap token per secrets manager", "Deleting a GitHub value or production data", "Spend or a paid model",
-                     "metered Notion query", "sign-in", "Notion page or database IDs", "docs/PRIVACY.md", "ARCHITECTURAL DRIFT DETECTED — NO MUTATION",
-                     "exactly one writer", "one writer per branch", "never invent an approval"):
+        for kept in (
+            "workflow `permissions`",
+            "credential",
+            "one bootstrap token per secrets manager",
+            "Deleting a GitHub value or production data",
+            "Spend or a paid model",
+            "metered Notion query",
+            "sign-in",
+            "Notion page or database IDs",
+            "docs/PRIVACY.md",
+            "ARCHITECTURAL DRIFT DETECTED — NO MUTATION",
+            "exactly one writer",
+            "one writer per branch",
+            "never invent an approval",
+        ):
             self.assertIn(kept, POLICY, kept)
 
     def test_the_release_rule_and_the_start_rule_are_stated(self):
@@ -53,7 +96,9 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("Jim starts every agent run", POLICY)
         self.assertIn("agents use `ssh opc@lifeos-edge-01`; `sudo -u ubuntu` reads are read-only", POLICY)
         self.assertIn("inside one, it may watch its own CI and runs", POLICY)
-        self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', POLICY)
+        self.assertIn(
+            'project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', POLICY
+        )
 
     def test_los_is_retired_and_epics_carry_the_lifecycle(self):
         self.assertIn("The `LOS` project is retired", POLICY)
@@ -91,8 +136,18 @@ class OneFilePolicy(unittest.TestCase):
         self.assertIn("Freezes and STOP gates lifted", POLICY)
 
     def test_the_removed_ceremony_stays_removed(self):
-        for gone in ("Deadline Mode", "LIFEOS_DEADLINE_EPOCH", "five minutes", "300 production-line", "three production files", "[claim]",
-                     "authorization receipt", "manifest.json", "Tech Lead", "Codex"):
+        for gone in (
+            "Deadline Mode",
+            "LIFEOS_DEADLINE_EPOCH",
+            "five minutes",
+            "300 production-line",
+            "three production files",
+            "[claim]",
+            "authorization receipt",
+            "manifest.json",
+            "Tech Lead",
+            "Codex",
+        ):
             self.assertNotIn(gone, POLICY, gone)
 
     def test_the_boot_files_route_to_it_and_carry_no_deadline_or_buzz_ceremony(self):
@@ -112,7 +167,17 @@ class LosIsRetired(unittest.TestCase):
         hits = []
         for base in ("lifeos", ".github"):
             for path in sorted((ROOT / base).rglob("*")):
-                if path.is_file() and path.suffix in {".py", ".yml", ".yaml", ".sh", ".json", ".mjs", ".js", ".md", ".txt"}:
+                if path.is_file() and path.suffix in {
+                    ".py",
+                    ".yml",
+                    ".yaml",
+                    ".sh",
+                    ".json",
+                    ".mjs",
+                    ".js",
+                    ".md",
+                    ".txt",
+                }:
                     for n, line in enumerate(path.read_text(errors="ignore").splitlines(), 1):
                         if self.PATTERN.search(line):
                             hits.append(f"{path.relative_to(ROOT)}:{n}")
@@ -129,11 +194,16 @@ class GlobalIndex(unittest.TestCase):
     """(LOS-74 Q11): the root INDEX.md routes every global source with its path, authority, purpose, owner and retrieval,
     and copies no policy text.
     """
+
     INDEX = ROOT / "INDEX.md"
 
     def rows(self, heading):
         section = self.INDEX.read_text().split(f"## {heading}\n", 1)[1].split("\n## ", 1)[0]
-        return [[c.strip() for c in line.strip("|").split(" | ")] for line in section.splitlines() if line.startswith("| [`")]
+        return [
+            [c.strip() for c in line.strip("|").split(" | ")]
+            for line in section.splitlines()
+            if line.startswith("| [`")
+        ]
 
     @staticmethod
     def path(cell):
@@ -153,7 +223,17 @@ class GlobalIndex(unittest.TestCase):
 
     def test_the_policy_and_bootstrap_are_routed(self):
         listed = {self.path(r[0]) for r in self.rows("Global sources")}
-        self.assertLessEqual({"INDEX.md", "AGENTS.md", "CLAUDE.md", "docs/life-os-development-policy.md", "docs/agent-reference.md", "docs/jira/issue-schema.v1.json"}, listed)
+        self.assertLessEqual(
+            {
+                "INDEX.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+                "docs/life-os-development-policy.md",
+                "docs/agent-reference.md",
+                "docs/jira/issue-schema.v1.json",
+            },
+            listed,
+        )
 
     def test_it_copies_no_policy_text_and_stays_small(self):
         text = self.INDEX.read_text()
@@ -173,9 +253,12 @@ class AgentNames(unittest.TestCase):
 
     def run_with(self, **env):
         import subprocess, os
+
         base = {"PATH": os.environ["PATH"]}
         base.update(env)
-        out = subprocess.run(["sh", str(ROOT / "tools/agent_name.sh")], env=base, capture_output=True, text=True, check=True)
+        out = subprocess.run(
+            ["sh", str(ROOT / "tools/agent_name.sh")], env=base, capture_output=True, text=True, check=True
+        )
         return out.stdout.strip()
 
     def test_vscode_is_oc(self):
@@ -192,7 +275,12 @@ class AgentNames(unittest.TestCase):
 
     def test_boot_file_and_policy_name_agents_by_app(self):
         text = (ROOT / "CLAUDE.md").read_text()
-        for must in ("**OC** is Claude Code inside VS Code", "**MC** is Claude Code inside the Claude Mac app", "tools/agent_name.sh", "Claimed by OC"):
+        for must in (
+            "**OC** is Claude Code inside VS Code",
+            "**MC** is Claude Code inside the Claude Mac app",
+            "tools/agent_name.sh",
+            "Claimed by OC",
+        ):
             self.assertIn(must, text)
         self.assertNotIn("Mac and Oracle Claude Code", POLICY)
         self.assertNotIn("Mac Claude Code is the exclusive writer", POLICY)
@@ -202,24 +290,47 @@ class CloseWhenShipped(unittest.TestCase):
     """every wait becomes a `UAT for LIFE-nnn` Task under the Bug Epic."""
 
     def test_the_policy_states_the_rule(self):
-        for phrase in ("a build ticket is Done once it is merged on same-head green CI, live, and first-proved", "UAT for LIFE-nnn", "LIFE-615", "label `uat`", "not before <time> CT", "Not before (CT)",
-                       "A merged PR on green is not Done by itself.", "Agent Go", "a successor starts once its predecessor is Done"):
+        for phrase in (
+            "a build ticket is Done once it is merged on same-head green CI, live, and first-proved",
+            "UAT for LIFE-nnn",
+            "LIFE-615",
+            "label `uat`",
+            "not before <time> CT",
+            "Not before (CT)",
+            "A merged PR on green is not Done by itself.",
+            "Agent Go",
+            "a successor starts once its predecessor is Done",
+        ):
             self.assertIn(phrase, POLICY, phrase)
-        self.assertNotIn("gates Done only when the ticket's Done when names it", POLICY)  # the old 24-hour natural-run gate is gone
+        self.assertNotIn(
+            "gates Done only when the ticket's Done when names it", POLICY
+        )  # the old 24-hour natural-run gate is gone
 
     def test_the_boot_file_states_the_rule_and_no_longer_asks_for_every_done_when_line_before_done(self):
         text = (ROOT / "CLAUDE.md").read_text()
-        for phrase in ("merged, live and first-proved", "UAT for LIFE-nnn", "LIFE-615", "`uat`", "Not before (CT)", "If it fails: file a Bug under LIFE-615", "a successor starts once its predecessor is Done"):
+        for phrase in (
+            "merged, live and first-proved",
+            "UAT for LIFE-nnn",
+            "LIFE-615",
+            "`uat`",
+            "Not before (CT)",
+            "If it fails: file a Bug under LIFE-615",
+            "a successor starts once its predecessor is Done",
+        ):
             self.assertIn(phrase, text, phrase)
-        self.assertNotIn("prove every Done when line on the delivered outcome (Agent UAT), then move the ticket to Done", text)
+        self.assertNotIn(
+            "prove every Done when line on the delivered outcome (Agent UAT), then move the ticket to Done", text
+        )
         self.assertNotIn("gets a watch note, not your session", text)
 
     def test_the_fixture_catches_a_policy_without_the_rule(self):  # negative control: the check can fail
-        self.assertNotIn("UAT for LIFE-nnn", "- **Agent UAT:** after merge, the agent checks the delivered outcome. A merged PR on green is not Done by itself.")
+        self.assertNotIn(
+            "UAT for LIFE-nnn",
+            "- **Agent UAT:** after merge, the agent checks the delivered outcome. A merged PR on green is not Done by itself.",
+        )
 
 
 class NeverIdleOnAClock(unittest.TestCase):
-
     def test_boot_file_says_build_successors_during_waits(self):
         text = (ROOT / "CLAUDE.md").read_text()
         self.assertIn("**Never idle on a clock", text)

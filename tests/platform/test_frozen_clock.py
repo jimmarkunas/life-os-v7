@@ -1,6 +1,7 @@
 """the test clock reads LIFEOS_TEST_NOW, is the same moment in every form, and its frozen datetime and date classes
 answer now and today from it.
 """
+
 import datetime as dt
 import importlib
 import os
@@ -32,7 +33,9 @@ class TestClock(unittest.TestCase):
         default = reload_with(None)
         self.assertEqual(default.now(), dt.datetime(2026, 11, 14, 18, 0, tzinfo=dt.timezone.utc))
         moved = reload_with("2027-03-09")
-        self.assertEqual((moved.now(), moved.today()), (dt.datetime(2027, 3, 9, tzinfo=dt.timezone.utc), dt.date(2027, 3, 9)))
+        self.assertEqual(
+            (moved.now(), moved.today()), (dt.datetime(2027, 3, 9, tzinfo=dt.timezone.utc), dt.date(2027, 3, 9))
+        )
         zoned = reload_with("2027-03-14T07:30:00Z")
         self.assertEqual(zoned.now().isoformat(), "2027-03-14T07:30:00+00:00")
 
@@ -48,7 +51,9 @@ class TestClock(unittest.TestCase):
         self.assertEqual(c.FrozenDateTime.utcnow(), dt.datetime(2027, 3, 9, 12))
         self.assertEqual(c.FrozenDateTime.now(), dt.datetime(2027, 3, 9, 12))
         self.assertEqual(c.FrozenDate.today(), dt.date(2027, 3, 9))
-        self.assertEqual(c.FrozenDateTime.strptime("2026-01-02", "%Y-%m-%d"), dt.datetime(2026, 1, 2))  # the real methods still work
+        self.assertEqual(
+            c.FrozenDateTime.strptime("2026-01-02", "%Y-%m-%d"), dt.datetime(2026, 1, 2)
+        )  # the real methods still work
         self.assertEqual(c.FrozenDateTime(2026, 1, 2) + dt.timedelta(days=1), dt.datetime(2026, 1, 3))
 
 

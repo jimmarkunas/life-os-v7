@@ -4,8 +4,11 @@ from lifeos.jobs.resolve import search_match
 
 
 class SearchMatchTests(unittest.TestCase):
-    ok = {"url": "https://job-boards.greenhouse.io/acmedata/jobs/42", "title": "Senior Data Engineer - Acme Data",
-          "snippet": "Acme Data is hiring"}
+    ok = {
+        "url": "https://job-boards.greenhouse.io/acmedata/jobs/42",
+        "title": "Senior Data Engineer - Acme Data",
+        "snippet": "Acme Data is hiring",
+    }
 
     def test_accepts_matching_title_and_company(self):
         self.assertTrue(search_match._good(self.ok, "Acme Data, Inc.", "Senior Data Engineer", False))
@@ -17,8 +20,11 @@ class SearchMatchTests(unittest.TestCase):
         self.assertFalse(search_match._good(agg, "Acme Data", "Senior Data Engineer", False))
 
     def test_listing_and_snippet_only_matches_are_rejected(self):
-        listing = {"url": "https://jobs.jobvite.com/ninjaone/search/?p=1", "title": "NinjaOne Careers",
-                   "snippet": "Senior Data Engineer Remote"}
+        listing = {
+            "url": "https://jobs.jobvite.com/ninjaone/search/?p=1",
+            "title": "NinjaOne Careers",
+            "snippet": "Senior Data Engineer Remote",
+        }
         self.assertFalse(search_match._good(listing, "NinjaOne", "Senior Data Engineer", False))
         snippet_only = dict(self.ok, title="Acme Data Careers", snippet="Senior Data Engineer")
         self.assertFalse(search_match._good(snippet_only, "Acme Data", "Senior Data Engineer", False))
@@ -33,13 +39,24 @@ class SearchMatchTests(unittest.TestCase):
 class OneSearchPerJob(unittest.TestCase):
     def test_one_call_and_both_kinds_of_hit_are_accepted(self):
         from unittest import mock
+
         calls = []
-        ats = {"url": "https://boards.greenhouse.io/acmedata/jobs/1", "title": "Senior Data Engineer - Acme Data", "snippet": "Acme Data"}
-        own = {"url": "https://www.acmedata.com/careers/senior-data-engineer", "title": "Senior Data Engineer | Acme Data", "snippet": ""}
+        ats = {
+            "url": "https://boards.greenhouse.io/acmedata/jobs/1",
+            "title": "Senior Data Engineer - Acme Data",
+            "snippet": "Acme Data",
+        }
+        own = {
+            "url": "https://www.acmedata.com/careers/senior-data-engineer",
+            "title": "Senior Data Engineer | Acme Data",
+            "snippet": "",
+        }
         for result, kind in ((ats, "ats"), (own, "employer")):
+
             def fake(query, domains=None, _r=result):
                 calls.append((query, domains))
                 return [_r]
+
             with mock.patch.object(search_match.tinyfish_search, "search", fake):
                 verdict = search_match.find("Acme Data", "Senior Data Engineer")
             self.assertEqual((verdict[0], verdict[2]), ("hit", result["url"]))
@@ -48,18 +65,24 @@ class OneSearchPerJob(unittest.TestCase):
 
     def test_a_miss_costs_one_search(self):
         from unittest import mock
+
         calls = []
         with mock.patch.object(search_match.tinyfish_search, "search", lambda q, d=None: calls.append(q) or []):
             self.assertEqual(search_match.find("Acme Data", "Senior Data Engineer"), ("miss", "no_result"))
         self.assertEqual(len(calls), 1)
 
     def test_a_decorated_aggregator_title_still_finds_the_employers_page(self):
-        page = {"url": "https://job-boards.greenhouse.io/acmedata/jobs/42", "title": "Senior Data Engineer - Acme Data", "snippet": ""}
+        page = {
+            "url": "https://job-boards.greenhouse.io/acmedata/jobs/42",
+            "title": "Senior Data Engineer - Acme Data",
+            "snippet": "",
+        }
         self.assertTrue(search_match._good(page, "Acme Data", "Senior Data Engineer (Fully Remote)", False))
         self.assertFalse(search_match._good(page, "Acme Data", "Staff Data Engineer (Fully Remote)", False))
 
     def test_the_search_query_uses_the_title_without_remote_noise(self):
         from unittest import mock
+
         with mock.patch.object(search_match.tinyfish_search, "search", return_value=[]) as search:
             search_match.find("Acme Data", "Senior Data Engineer (Fully Remote)")
         self.assertEqual(search.call_args.args[0], "Acme Data senior data engineer careers apply")
@@ -69,11 +92,18 @@ class FailedSearchIsNeverAMiss(unittest.TestCase):
     """A search that failed (429, outage, a 202 or changed answer) is a Failed Search with its cause, not 'nothing
     found': the job is not charged an attempt.
     """
+
     def test_a_failed_search_names_its_cause_and_pages_that_fail_the_checks_are_no_fit(self):
         from unittest import mock
         from lifeos.platform.tinyfish import TinyFishError
-        for code, cause in (("TINYFISH_SEARCH_HTTP_429", "rate_limited"), ("TINYFISH_SEARCH_UNREADABLE", "unreadable_answer"),
-                            ("TINYFISH_SEARCH_NETWORK", "network"), ("TINYFISH_SEARCH_HTTP_503", "http_503"), ("SOMETHING_ELSE", "error")):
+
+        for code, cause in (
+            ("TINYFISH_SEARCH_HTTP_429", "rate_limited"),
+            ("TINYFISH_SEARCH_UNREADABLE", "unreadable_answer"),
+            ("TINYFISH_SEARCH_NETWORK", "network"),
+            ("TINYFISH_SEARCH_HTTP_503", "http_503"),
+            ("SOMETHING_ELSE", "error"),
+        ):
             with mock.patch.object(search_match.tinyfish_search, "search", side_effect=TinyFishError(code)):
                 self.assertEqual(search_match.find("Acme Data", "Senior Data Engineer"), ("failed_search", cause), code)
         other = {"url": "https://www.facebook.com/acmedata", "title": "Acme Data", "snippet": ""}
@@ -96,7 +126,11 @@ class FailedSearchIsNeverAMiss(unittest.TestCase):
             def __exit__(self, *a):
                 return False
 
-        for outcome, bump in (("failed_search:rate_limited", 0), ("failed_search:http_503", 0), ("no_match_no_board+no_result", 1)):
+        for outcome, bump in (
+            ("failed_search:rate_limited", 0),
+            ("failed_search:http_503", 0),
+            ("no_match_no_board+no_result", 1),
+        ):
             cursor = Cursor()
             stage.apply_result(type("C", (), {"cursor": lambda self, cursor=cursor: cursor})(), 7, {"outcome": outcome})
             reason, charged = cursor.calls[-1][1][:2]
@@ -110,13 +144,25 @@ class FailedSearchIsNeverAMiss(unittest.TestCase):
 
         class Answer(io.BytesIO):
             def __init__(self, body, status=200):
-                super().__init__(json.dumps(body).encode()); self.status = status
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-        with mock.patch.dict("os.environ", {"TINYFISH_API_KEY": "sk-tinyfish-abc"}), mock.patch.object(tinyfish_search, "MIN_GAP_SECONDS", 0), \
-                mock.patch.object(tinyfish_search.limits, "TINYFISH_SEARCH_GAP_SECONDS", 0):
-            for body, status, code in (({"queued": True}, 200, "TINYFISH_SEARCH_UNREADABLE"), ([], 200, "TINYFISH_SEARCH_UNREADABLE"),
-                                       ({"results": []}, 202, "TINYFISH_SEARCH_HTTP_202")):
+                super().__init__(json.dumps(body).encode())
+                self.status = status
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        with (
+            mock.patch.dict("os.environ", {"TINYFISH_API_KEY": "sk-tinyfish-abc"}),
+            mock.patch.object(tinyfish_search, "MIN_GAP_SECONDS", 0),
+            mock.patch.object(tinyfish_search.limits, "TINYFISH_SEARCH_GAP_SECONDS", 0),
+        ):
+            for body, status, code in (
+                ({"queued": True}, 200, "TINYFISH_SEARCH_UNREADABLE"),
+                ([], 200, "TINYFISH_SEARCH_UNREADABLE"),
+                ({"results": []}, 202, "TINYFISH_SEARCH_HTTP_202"),
+            ):
                 with mock.patch.object(tinyfish_search.urllib.request, "urlopen", return_value=Answer(body, status)):
                     with self.assertRaises(TinyFishError) as caught:
                         tinyfish_search.search("acme")
@@ -127,12 +173,18 @@ class FailedSearchIsNeverAMiss(unittest.TestCase):
     def test_a_failed_search_is_not_an_attempt_and_stops_the_runs_searches(self):
         from unittest import mock
         from lifeos.jobs.resolve.aggregators import linkedin
+
         rows = [(1, "u1", "Acme", "PM", ""), (2, "u2", "Globex", "PM", "")]
-        with mock.patch.object(linkedin.ats_match, "match_many", return_value=["no_board", "no_board"]), \
-                mock.patch.object(linkedin.search_match, "find", return_value=("failed_search", "rate_limited")) as find:
-            out = linkedin.match_rows(rows, [{"outcome": "external_hidden"}, {"outcome": "external_hidden"}], budget={"left": 5})
+        with (
+            mock.patch.object(linkedin.ats_match, "match_many", return_value=["no_board", "no_board"]),
+            mock.patch.object(linkedin.search_match, "find", return_value=("failed_search", "rate_limited")) as find,
+        ):
+            out = linkedin.match_rows(
+                rows, [{"outcome": "external_hidden"}, {"outcome": "external_hidden"}], budget={"left": 5}
+            )
         self.assertEqual([r["outcome"] for r in out], ["failed_search:rate_limited", "deferred"])
         from lifeos.jobs.resolve import stage
+
         self.assertEqual(stage.why(out[0]), "failed_search")  # the run summary counts it as a Failed Search
         self.assertEqual(find.call_count, 1)
 

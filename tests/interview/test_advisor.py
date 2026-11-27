@@ -5,9 +5,24 @@ import unittest
 from unittest.mock import patch
 
 from lifeos.interview import advisor
-from lifeos.interview.advisor import (AdvisorContractError, AdvisorDraft, AdvisorInputBundle, AdvisorManifest,
-    AdvisorModel, AdvisorSource, CandidateEvidence, EvidenceRef, ForecastConfidence, GroundedAdvice,
-    PreInterviewForecast, PreInterviewRisk, SourceKind, bundle_digest, compile_prep, render_forecast)
+from lifeos.interview.advisor import (
+    AdvisorContractError,
+    AdvisorDraft,
+    AdvisorInputBundle,
+    AdvisorManifest,
+    AdvisorModel,
+    AdvisorSource,
+    CandidateEvidence,
+    EvidenceRef,
+    ForecastConfidence,
+    GroundedAdvice,
+    PreInterviewForecast,
+    PreInterviewRisk,
+    SourceKind,
+    bundle_digest,
+    compile_prep,
+    render_forecast,
+)
 from lifeos.interview.models import PrepEvidence
 
 
@@ -15,8 +30,7 @@ HASH = "a" * 64
 
 
 def manifest(**changes):
-    base = AdvisorManifest("sl-v1", HASH, "gt-v1", "b" * 64, "profile-v1", "c" * 64,
-                          "bank-v1", "d" * 64, "prompt-v1")
+    base = AdvisorManifest("sl-v1", HASH, "gt-v1", "b" * 64, "profile-v1", "c" * 64, "bank-v1", "d" * 64, "prompt-v1")
     return replace(base, **changes)
 
 
@@ -29,16 +43,29 @@ def sources():
         AdvisorSource("JD-SYN-001", SourceKind.JOB_DESCRIPTION, "Synthetic role description."),
         AdvisorSource("PROFILE-SYN-001", SourceKind.CANDIDATE_PROFILE, "Synthetic profile source."),
         AdvisorSource("GUIDE-SYN-001", SourceKind.GUIDANCE, "Keep the response concise."),
-        AdvisorSource("SIGNAL-SYN-001", SourceKind.ACCEPTED_SIGNAL, "The panel values clear tradeoffs.", source_round="ROUND-SYN-001"),
+        AdvisorSource(
+            "SIGNAL-SYN-001",
+            SourceKind.ACCEPTED_SIGNAL,
+            "The panel values clear tradeoffs.",
+            source_round="ROUND-SYN-001",
+        ),
         AdvisorSource("SL-SYN-001", SourceKind.STRAIGHT_LINE_DOCTRINE, "Synthetic doctrine source."),
         AdvisorSource("GT-SYN-001", SourceKind.GAME_THEORY_DOCTRINE, "Synthetic strategy source."),
     )
 
 
 def bundle(src=None, evidence=None, **changes):
-    base = AdvisorInputBundle("Example Company", "Synthetic Role", "2026-10-02", "Synthetic Interviewer", 1,
-                              "JOB-SYN-001", manifest(), sources() if src is None else src,
-                              (candidate(),) if evidence is None else evidence)
+    base = AdvisorInputBundle(
+        "Example Company",
+        "Synthetic Role",
+        "2026-10-02",
+        "Synthetic Interviewer",
+        1,
+        "JOB-SYN-001",
+        manifest(),
+        sources() if src is None else src,
+        (candidate(),) if evidence is None else evidence,
+    )
     return replace(base, **changes)
 
 
@@ -50,7 +77,9 @@ def draft(**changes):
     base = AdvisorDraft(
         straight_line=(GroundedAdvice("Establish the decision threshold.", ("SL-SYN-001@1", "JD-SYN-001@1")),),
         game_theory=(GroundedAdvice("Clarify who decides and what they value.", ("GT-SYN-001@1", "JD-SYN-001@1")),),
-        decision_criteria=(), objections=(), close_strategy=(),
+        decision_criteria=(),
+        objections=(),
+        close_strategy=(),
         focus=(advice("Confirm the role's success measure."),),
         strongest_evidence_refs=("E-SYN-001@1",),
         pressure_points=(advice("Test the timing assumption."),),
@@ -60,21 +89,32 @@ def draft(**changes):
 
 
 def risk(hypothesis="Stakeholders may be hard to coordinate.", **changes):
-    values = dict(hypothesis=hypothesis, confidence=ForecastConfidence.MEDIUM,
-                  why_plausible="The accepted role context spans several teams.",
-                  source_refs=("JD-SYN-001@1",),
-                  watch_for=("Approvals take time", "People are in different time zones"),
-                  if_confirmed="Use async intake, batched decisions, and explicit owners and dates.",
-                  do_not_do="Do not add more stakeholder meetings.", evidence_refs=(),
-                  certainty_target="opportunity")
+    values = dict(
+        hypothesis=hypothesis,
+        confidence=ForecastConfidence.MEDIUM,
+        why_plausible="The accepted role context spans several teams.",
+        source_refs=("JD-SYN-001@1",),
+        watch_for=("Approvals take time", "People are in different time zones"),
+        if_confirmed="Use async intake, batched decisions, and explicit owners and dates.",
+        do_not_do="Do not add more stakeholder meetings.",
+        evidence_refs=(),
+        certainty_target="opportunity",
+    )
     values.update(changes)
     return PreInterviewRisk(**values)
 
 
 def forecast(*risks):
-    return PreInterviewForecast(tuple(risks or (
-        risk(), risk("The interviewer may need concise tradeoffs."),
-        risk("Ownership may be unclear across teams."))))
+    return PreInterviewForecast(
+        tuple(
+            risks
+            or (
+                risk(),
+                risk("The interviewer may need concise tradeoffs."),
+                risk("Ownership may be unclear across teams."),
+            )
+        )
+    )
 
 
 class EvidenceContractTests(unittest.TestCase):
@@ -83,8 +123,17 @@ class EvidenceContractTests(unittest.TestCase):
         self.assertEqual((ref.evidence_id, ref.version, ref.canonical()), ("E-SYN-001", 1, "E-SYN-001@1"))
 
     def test_malformed_references_fail_closed(self):
-        for value in ("E-SYN-001@0", "E-SYN-001@-1", "E-SYN-001", " E-SYN-001@1", "E-SYN 001@1",
-                      "e-SYN-001@1", "E--SYN@1", "E-SYN@01", "E-SYN@1 "):
+        for value in (
+            "E-SYN-001@0",
+            "E-SYN-001@-1",
+            "E-SYN-001",
+            " E-SYN-001@1",
+            "E-SYN 001@1",
+            "e-SYN-001@1",
+            "E--SYN@1",
+            "E-SYN@01",
+            "E-SYN@1 ",
+        ):
             with self.subTest(value=value), self.assertRaises(AdvisorContractError):
                 EvidenceRef.parse(value)
 
@@ -95,8 +144,10 @@ class EvidenceContractTests(unittest.TestCase):
             bundle(evidence=(item,))
         with self.assertRaises(FrozenInstanceError):
             item.active = True
-        for args in ((EvidenceRef.parse("E-SYN-001@1"), " ", "PROFILE-SYN-001"),
-                     (EvidenceRef.parse("E-SYN-001@1"), "Text", " ")):
+        for args in (
+            (EvidenceRef.parse("E-SYN-001@1"), " ", "PROFILE-SYN-001"),
+            (EvidenceRef.parse("E-SYN-001@1"), "Text", " "),
+        ):
             with self.subTest(args=args), self.assertRaises(AdvisorContractError):
                 CandidateEvidence(*args)
         with self.assertRaises(AdvisorContractError):
@@ -106,8 +157,20 @@ class EvidenceContractTests(unittest.TestCase):
 class SourceAndManifestTests(unittest.TestCase):
     def test_allowed_source_kinds_and_protected_kinds_absent(self):
         allowed = {kind.value for kind in SourceKind}
-        self.assertEqual(allowed, {"job_description", "company", "interviewer", "prior_derived", "guidance",
-                                   "accepted_signal", "candidate_profile", "straight_line_doctrine", "game_theory_doctrine"})
+        self.assertEqual(
+            allowed,
+            {
+                "job_description",
+                "company",
+                "interviewer",
+                "prior_derived",
+                "guidance",
+                "accepted_signal",
+                "candidate_profile",
+                "straight_line_doctrine",
+                "game_theory_doctrine",
+            },
+        )
         for forbidden in ("live_notes", "raw_notes"):
             with self.assertRaises(ValueError):
                 SourceKind(forbidden)
@@ -118,9 +181,11 @@ class SourceAndManifestTests(unittest.TestCase):
     def test_source_identity_text_and_version_constraints(self):
         with self.assertRaises(AdvisorContractError):
             bundle(src=(sources()[0], sources()[0]))
-        for args in (("JD-SYN-001", SourceKind.COMPANY, " "),
-                     ("JD-SYN-002", SourceKind.COMPANY, "Company", 0),
-                     ("https://synthetic.test", SourceKind.COMPANY, "Company")):
+        for args in (
+            ("JD-SYN-001", SourceKind.COMPANY, " "),
+            ("JD-SYN-002", SourceKind.COMPANY, "Company", 0),
+            ("https://synthetic.test", SourceKind.COMPANY, "Company"),
+        ):
             with self.subTest(args=args), self.assertRaises(AdvisorContractError):
                 AdvisorSource(*args)
 
@@ -130,8 +195,10 @@ class SourceAndManifestTests(unittest.TestCase):
             bundle(src=guidance)
         with self.assertRaises(AdvisorContractError):
             AdvisorSource("G-SYN-LONG", SourceKind.GUIDANCE, "x" * 301)
-        signals = tuple(AdvisorSource(f"S-SYN-{i}", SourceKind.ACCEPTED_SIGNAL, "Signal",
-                                      source_round="ROUND-SYN-1") for i in range(6))
+        signals = tuple(
+            AdvisorSource(f"S-SYN-{i}", SourceKind.ACCEPTED_SIGNAL, "Signal", source_round="ROUND-SYN-1")
+            for i in range(6)
+        )
         with self.assertRaises(AdvisorContractError):
             bundle(src=signals)
         with self.assertRaises(AdvisorContractError):
@@ -140,10 +207,16 @@ class SourceAndManifestTests(unittest.TestCase):
             AdvisorSource("S-SYN-NO-ROUND", SourceKind.ACCEPTED_SIGNAL, "Signal")
 
     def test_current_bundle_requires_core_sources_and_active_inputs(self):
-        required = (SourceKind.JOB_DESCRIPTION, SourceKind.CANDIDATE_PROFILE,
-                    SourceKind.STRAIGHT_LINE_DOCTRINE, SourceKind.GAME_THEORY_DOCTRINE)
+        required = (
+            SourceKind.JOB_DESCRIPTION,
+            SourceKind.CANDIDATE_PROFILE,
+            SourceKind.STRAIGHT_LINE_DOCTRINE,
+            SourceKind.GAME_THEORY_DOCTRINE,
+        )
         valid = bundle()
-        self.assertTrue(all(any(source.kind == kind and source.active for source in valid.sources) for kind in required))
+        self.assertTrue(
+            all(any(source.kind == kind and source.active for source in valid.sources) for kind in required)
+        )
         self.assertTrue(valid.evidence and all(item.active for item in valid.evidence))
         for missing in required:
             with self.subTest(missing=missing), self.assertRaises(AdvisorContractError) as error:
@@ -168,14 +241,19 @@ class SourceAndManifestTests(unittest.TestCase):
         self.assertEqual(str(error.exception), "advisor_input_invalid")
 
     def test_distinct_source_and_evidence_refs_remain_usable(self):
-        result = compile_prep(bundle(), draft(focus=(GroundedAdvice("Evidence grounded focus", (
-            "SL-SYN-001@1", "E-SYN-001@1")),)))
+        result = compile_prep(
+            bundle(), draft(focus=(GroundedAdvice("Evidence grounded focus", ("SL-SYN-001@1", "E-SYN-001@1")),))
+        )
         self.assertEqual(result.focus, ("Evidence grounded focus",))
 
     def test_manifest_hashes_and_versions_are_required(self):
         bundle()
-        for change in ({"straight_line_hash": "BAD"}, {"game_theory_hash": "A" * 64},
-                       {"candidate_profile_version": " "}, {"advisor_prompt_version": ""}):
+        for change in (
+            {"straight_line_hash": "BAD"},
+            {"game_theory_hash": "A" * 64},
+            {"candidate_profile_version": " "},
+            {"advisor_prompt_version": ""},
+        ):
             with self.subTest(change=change), self.assertRaises(AdvisorContractError):
                 replace(manifest(), **change)
 
@@ -220,15 +298,24 @@ class ModelAndCompilerTests(unittest.TestCase):
         tree = ast.parse(source)
         imports = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
         imports |= {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
-        self.assertFalse(any(name and (name.startswith("openai") or name.startswith("urllib") or name == "requests") for name in imports))
+        self.assertFalse(
+            any(
+                name and (name.startswith("openai") or name.startswith("urllib") or name == "requests")
+                for name in imports
+            )
+        )
         self.assertNotIn("logging", imports)
 
     def test_compiler_uses_canonical_evidence_and_preserves_order(self):
         item = candidate(text="Canonical synthetic fact")
-        result = compile_prep(bundle(evidence=(item,)), draft(
-            focus=(advice("Second", "E-SYN-001@1"), advice("First", "JD-SYN-001@1")),
-            pressure_points=(advice("Risk B"), advice("Risk A")),
-            questions=(advice("Question B"), advice("Question A"))))
+        result = compile_prep(
+            bundle(evidence=(item,)),
+            draft(
+                focus=(advice("Second", "E-SYN-001@1"), advice("First", "JD-SYN-001@1")),
+                pressure_points=(advice("Risk B"), advice("Risk A")),
+                questions=(advice("Question B"), advice("Question A")),
+            ),
+        )
         self.assertIsInstance(result, PrepEvidence)
         self.assertEqual(result.focus, ("Second", "First"))
         self.assertEqual(result.pressure_points, ("Risk B", "Risk A"))
@@ -237,7 +324,8 @@ class ModelAndCompilerTests(unittest.TestCase):
 
     def test_draft_sections_grounding_and_bounds_are_enforced(self):
         cases = (
-            {"straight_line": ()}, {"game_theory": ()},
+            {"straight_line": ()},
+            {"game_theory": ()},
             {"focus": (GroundedAdvice("Dangling", ("NO-SUCH-REF@1",)),)},
             {"decision_criteria": tuple(advice("Finding") for _ in range(9))},
             {"focus": tuple(advice("Finding") for _ in range(6))},
@@ -266,13 +354,16 @@ class ModelAndCompilerTests(unittest.TestCase):
         for section, item in invalid:
             with self.subTest(section=section, refs=item.source_refs), self.assertRaises(AdvisorContractError):
                 compile_prep(bundle(), draft(**{section: (item,)}))
-        candidate_context = GroundedAdvice("Evidence contextualized through Straight Line.",
-                                          ("SL-SYN-001@1", "E-SYN-001@1"))
+        candidate_context = GroundedAdvice(
+            "Evidence contextualized through Straight Line.", ("SL-SYN-001@1", "E-SYN-001@1")
+        )
         self.assertIsInstance(compile_prep(bundle(), draft(straight_line=(candidate_context,))), PrepEvidence)
 
     def test_evidence_resolution_is_exact_active_version_and_never_model_prose(self):
-        evidence = (candidate("E-SYN-001@1", "Immutable canonical text"),
-                    candidate("E-SYN-001@2", "New immutable canonical text"))
+        evidence = (
+            candidate("E-SYN-001@1", "Immutable canonical text"),
+            candidate("E-SYN-001@2", "New immutable canonical text"),
+        )
         compiled = compile_prep(bundle(evidence=evidence), draft(strongest_evidence_refs=("E-SYN-001@2",)))
         self.assertEqual(compiled.strongest_evidence, ("New immutable canonical text [E-SYN-001@2]",))
         with self.assertRaises(AdvisorContractError) as missing:
@@ -288,8 +379,10 @@ class ModelAndCompilerTests(unittest.TestCase):
     def test_final_prep_validation_and_no_side_effects(self):
         with self.assertRaises(AdvisorContractError):
             compile_prep(bundle(), draft(focus=(), strongest_evidence_refs=(), pressure_points=(), questions=()))
-        with patch("lifeos.interview.prep.apply", side_effect=AssertionError("B3 mutation")) as apply_b3, \
-             patch("urllib.request.urlopen", side_effect=AssertionError("network")) as urlopen:
+        with (
+            patch("lifeos.interview.prep.apply", side_effect=AssertionError("B3 mutation")) as apply_b3,
+            patch("urllib.request.urlopen", side_effect=AssertionError("network")) as urlopen,
+        ):
             result = compile_prep(bundle(), draft())
             apply_b3.assert_not_called()
             urlopen.assert_not_called()
@@ -324,8 +417,7 @@ class ModelAndCompilerTests(unittest.TestCase):
 
 class PreInterviewForecastTests(unittest.TestCase):
     def test_valid_three_risk_forecast_renders_in_supplied_order(self):
-        value = forecast(risk("First synthetic risk."), risk("Second synthetic risk."),
-                         risk("Third synthetic risk."))
+        value = forecast(risk("First synthetic risk."), risk("Second synthetic risk."), risk("Third synthetic risk."))
         rendered = render_forecast(bundle(), value)
         self.assertLess(rendered.index("### First synthetic risk."), rendered.index("### Second synthetic risk."))
         self.assertLess(rendered.index("### Second synthetic risk."), rendered.index("### Third synthetic risk."))
@@ -337,17 +429,23 @@ class PreInterviewForecastTests(unittest.TestCase):
                 render_forecast(bundle(), PreInterviewForecast(risks))
 
     def test_unresolved_source_and_evidence_refs_fail_closed(self):
-        for value in (forecast(risk(source_refs=("MISSING@1",)), risk("Second."), risk("Third.")),
-                      forecast(risk(evidence_refs=("E-MISSING@1",)), risk("Second."), risk("Third."))):
+        for value in (
+            forecast(risk(source_refs=("MISSING@1",)), risk("Second."), risk("Third.")),
+            forecast(risk(evidence_refs=("E-MISSING@1",)), risk("Second."), risk("Third.")),
+        ):
             with self.assertRaises(AdvisorContractError):
                 render_forecast(bundle(), value)
 
     def test_text_bounds_trim_duplicates_and_watch_limits_fail_closed(self):
         invalid_risks = (
-            risk(hypothesis=" padded "), risk(hypothesis="H" * 301),
-            risk(why_plausible="W" * 501), risk(watch_for=("W" * 201,)),
-            risk(watch_for=("same", "same")), risk(watch_for=()),
-            risk(if_confirmed="I" * 501), risk(do_not_do="D" * 301),
+            risk(hypothesis=" padded "),
+            risk(hypothesis="H" * 301),
+            risk(why_plausible="W" * 501),
+            risk(watch_for=("W" * 201,)),
+            risk(watch_for=("same", "same")),
+            risk(watch_for=()),
+            risk(if_confirmed="I" * 501),
+            risk(do_not_do="D" * 301),
             risk(source_refs=("JD-SYN-001@1", "JD-SYN-001@1")),
             risk(evidence_refs=("E-SYN-001@1", "E-SYN-001@1")),
             risk(certainty_target="interviewer"),
@@ -359,12 +457,19 @@ class PreInterviewForecastTests(unittest.TestCase):
             render_forecast(bundle(), forecast(risk("Repeated."), risk(" repeated "), risk("Third.")))
 
     def test_any_valid_evidence_bank_entry_can_be_selected(self):
-        entries = (candidate("E-SYN-101@3", "American Apparel synthetic campaign result."),
-                   candidate("E-SYN-202@1", "Unilever synthetic vendor recovery."))
+        entries = (
+            candidate("E-SYN-101@3", "American Apparel synthetic campaign result."),
+            candidate("E-SYN-202@1", "Unilever synthetic vendor recovery."),
+        )
         value = bundle(evidence=entries)
-        rendered = render_forecast(value, forecast(
-            risk(evidence_refs=("E-SYN-101@3",)),
-            risk("Second risk.", evidence_refs=("E-SYN-202@1",)), risk("Third risk.")))
+        rendered = render_forecast(
+            value,
+            forecast(
+                risk(evidence_refs=("E-SYN-101@3",)),
+                risk("Second risk.", evidence_refs=("E-SYN-202@1",)),
+                risk("Third risk."),
+            ),
+        )
         self.assertIn("American Apparel synthetic campaign result.", rendered)
         self.assertIn("Unilever synthetic vendor recovery.", rendered)
         self.assertNotIn("E-SYN-101@3", rendered)
@@ -376,15 +481,18 @@ class PreInterviewForecastTests(unittest.TestCase):
         with self.assertRaises(AdvisorContractError):
             render_forecast(bundle(), value)
         grounded = replace(personal, source_refs=("PROFILE-SYN-001@1",))
-        self.assertIn("I may over-explain", render_forecast(bundle(), forecast(
-            grounded, risk("Second."), risk("Third."))))
+        self.assertIn(
+            "I may over-explain", render_forecast(bundle(), forecast(grounded, risk("Second."), risk("Third.")))
+        )
 
     def test_you_or_your_role_language_does_not_infer_a_personal_pattern(self):
-        ordinary = risk("Your stakeholders may need more time to align.",
-                        why_plausible="The role has several independent teams.")
+        ordinary = risk(
+            "Your stakeholders may need more time to align.", why_plausible="The role has several independent teams."
+        )
         self.assertFalse(ordinary.personal_pattern)
-        self.assertIn("Your stakeholders", render_forecast(bundle(), forecast(
-            ordinary, risk("Second."), risk("Third."))))
+        self.assertIn(
+            "Your stakeholders", render_forecast(bundle(), forecast(ordinary, risk("Second."), risk("Third.")))
+        )
 
     def test_personal_pattern_requires_profile_guidance_or_accepted_signal(self):
         personal = risk("An over-explanation pattern may recur.", personal_pattern=True)
@@ -393,46 +501,55 @@ class PreInterviewForecastTests(unittest.TestCase):
         for source_ref in ("PROFILE-SYN-001@1", "GUIDE-SYN-001@1", "SIGNAL-SYN-001@1"):
             with self.subTest(source_ref=source_ref):
                 grounded = replace(personal, source_refs=(source_ref,))
-                self.assertIn("An over-explanation pattern may recur", render_forecast(
-                    bundle(), forecast(grounded, risk("Second."), risk("Third."))))
+                self.assertIn(
+                    "An over-explanation pattern may recur",
+                    render_forecast(bundle(), forecast(grounded, risk("Second."), risk("Third."))),
+                )
 
     def test_prior_derived_does_not_ground_a_personal_pattern(self):
         prior = AdvisorSource("PRIOR-SYN-001", SourceKind.PRIOR_DERIVED, "Synthetic derived coaching.")
         value = bundle(src=sources() + (prior,))
-        personal = risk("A familiar pattern may recur.", source_refs=("PRIOR-SYN-001@1",),
-                        personal_pattern=True)
+        personal = risk("A familiar pattern may recur.", source_refs=("PRIOR-SYN-001@1",), personal_pattern=True)
         with self.assertRaises(AdvisorContractError):
             render_forecast(value, forecast(personal, risk("Second."), risk("Third.")))
 
     def test_personal_pattern_requires_an_actual_bool_and_does_not_change_rendering(self):
-        personal = risk("A pattern may recur.", personal_pattern=True,
-                        source_refs=("PROFILE-SYN-001@1",))
+        personal = risk("A pattern may recur.", personal_pattern=True, source_refs=("PROFILE-SYN-001@1",))
         with self.assertRaises(AdvisorContractError):
-            render_forecast(bundle(), forecast(replace(personal, personal_pattern=1),
-                                               risk("Second."), risk("Third.")))
+            render_forecast(bundle(), forecast(replace(personal, personal_pattern=1), risk("Second."), risk("Third.")))
         ordinary = replace(personal, personal_pattern=False, source_refs=("JD-SYN-001@1",))
-        self.assertEqual(render_forecast(bundle(), forecast(ordinary, risk("Second."), risk("Third."))),
-                         render_forecast(bundle(), forecast(personal, risk("Second."), risk("Third."))))
+        self.assertEqual(
+            render_forecast(bundle(), forecast(ordinary, risk("Second."), risk("Third."))),
+            render_forecast(bundle(), forecast(personal, risk("Second."), risk("Third."))),
+        )
 
     def test_renderer_resolves_canonical_evidence_and_hides_all_refs(self):
         text = "Canonical synthetic evidence, never model supplied prose."
-        rendered = render_forecast(bundle(evidence=(candidate(text=text),)), forecast(
-            risk(evidence_refs=("E-SYN-001@1",)), risk("Second."), risk("Third.")))
+        rendered = render_forecast(
+            bundle(evidence=(candidate(text=text),)),
+            forecast(risk(evidence_refs=("E-SYN-001@1",)), risk("Second."), risk("Third.")),
+        )
         self.assertIn(text, rendered)
         for internal in ("E-SYN-001@1", "JD-SYN-001@1", "PROFILE-SYN-001@1"):
             self.assertNotIn(internal, rendered)
 
     def test_orchestration_and_stakeholder_scarcity_examples_render(self):
-        orchestration = risk("The role may require orchestration across vendors and teams.",
+        orchestration = risk(
+            "The role may require orchestration across vendors and teams.",
             why_plausible="The accepted role context describes independent cross-functional owners.",
             watch_for=("No single owner", "Vendor handoffs are unclear"),
             if_confirmed="Name one accountable owner, map dependencies, and batch decisions.",
-            do_not_do="Do not add meetings without a decision owner.", certainty_target="company")
-        scarcity = risk("Internal stakeholders may be too busy for a meeting-heavy PM model.",
+            do_not_do="Do not add meetings without a decision owner.",
+            certainty_target="company",
+        )
+        scarcity = risk(
+            "Internal stakeholders may be too busy for a meeting-heavy PM model.",
             why_plausible="Role topology suggests cross-functional stakeholders with independent priorities.",
             watch_for=("Hard to get time", "Approvals take forever", "Different time zones", "People are slammed"),
             if_confirmed="Pivot to async intake, batched decisions, explicit owners and dates, and minimal synchronous burden.",
-            do_not_do="Do not propose more stakeholder meetings.", certainty_target="opportunity")
+            do_not_do="Do not propose more stakeholder meetings.",
+            certainty_target="opportunity",
+        )
         rendered = render_forecast(bundle(), forecast(orchestration, scarcity, risk("Third risk.")))
         self.assertIn("Vendor handoffs are unclear", rendered)
         self.assertIn("**Certainty target:** Company", rendered)

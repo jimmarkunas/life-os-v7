@@ -1,5 +1,5 @@
-"""the `hermes` stage, proved against a MOCKED Jira and a MOCKED Buzz relay with synthetic keys and invented issue keys.
-"""
+"""the `hermes` stage, proved against a MOCKED Jira and a MOCKED Buzz relay with synthetic keys and invented issue keys."""
+
 import unittest
 
 from lifeos.buzz import nip98
@@ -27,7 +27,14 @@ def setup(live=True, may_address=True):
     fake = FakeRelay()
     fake.check_auth = False  # the signature checks are not what this file proves
     fake.events.append(nip98.event(KEY_ADMIN, 39002, [["d", CHAN], ["p", PK_HERMES]], ""))
-    relay = Relay(URLS, {"life-os": KEY_A}, [("life-os", CHAN)] if live else [], fake, recipients={("life-os", "hermes"): PK_HERMES}, may_address=may_address)
+    relay = Relay(
+        URLS,
+        {"life-os": KEY_A},
+        [("life-os", CHAN)] if live else [],
+        fake,
+        recipients={("life-os", "hermes"): PK_HERMES},
+        may_address=may_address,
+    )
     return fake, relay
 
 
@@ -46,7 +53,9 @@ def run(fake_jira, relay, live, limit=40):
 class Planning(unittest.TestCase):
     def test_a_dry_run_counts_what_is_new_and_writes_nothing(self):
         fake, relay = setup()
-        relay.post_message("life-os", CHAN, "seed", "seed1", recipient="hermes", etype="handoff_request", case=hr.case_of("LIFE-1"))  # one request already exists
+        relay.post_message(
+            "life-os", CHAN, "seed", "seed1", recipient="hermes", etype="handoff_request", case=hr.case_of("LIFE-1")
+        )  # one request already exists
         before = len(writes(fake))
         counts = run(FakeJira(["LIFE-1", "LIFE-2", "LIFE-3"]), relay, live=False)
         self.assertEqual((counts["eligible"], counts["already"], counts["planned"], counts["posted"]), (3, 1, 2, 0))
@@ -94,8 +103,24 @@ class Posting(unittest.TestCase):
 
     def test_a_replayed_post_is_already_delivered(self):
         fake, relay = setup()
-        relay.post_message("life-os", CHAN, hr.TEXT.format(case="LIFE-4-AGENTGO", key="LIFE-4", status="Agent Go"), hr.idempotency_of("LIFE-4"), recipient="hermes", etype="handoff_request", case="LIFE-4-AGENTGO")
-        again = relay.post_message("life-os", CHAN, hr.TEXT.format(case="LIFE-4-AGENTGO", key="LIFE-4", status="Agent Go"), hr.idempotency_of("LIFE-4"), recipient="hermes", etype="handoff_request", case="LIFE-4-AGENTGO")
+        relay.post_message(
+            "life-os",
+            CHAN,
+            hr.TEXT.format(case="LIFE-4-AGENTGO", key="LIFE-4", status="Agent Go"),
+            hr.idempotency_of("LIFE-4"),
+            recipient="hermes",
+            etype="handoff_request",
+            case="LIFE-4-AGENTGO",
+        )
+        again = relay.post_message(
+            "life-os",
+            CHAN,
+            hr.TEXT.format(case="LIFE-4-AGENTGO", key="LIFE-4", status="Agent Go"),
+            hr.idempotency_of("LIFE-4"),
+            recipient="hermes",
+            etype="handoff_request",
+            case="LIFE-4-AGENTGO",
+        )
         self.assertEqual(again["status"], "already_delivered")
 
 
@@ -138,15 +163,27 @@ class Refusals(unittest.TestCase):
 
 
 class Config(unittest.TestCase):
-    ENV = {"BUZZ_URL_LIFE_OS": "https://example-a.communities.buzz.xyz", "BUZZ_STAGE_KEY": "07" * 32, "BUZZ_STAGE_CHANNEL": CHAN, "BUZZ_STAGE_HERMES_PUBKEY": PK_HERMES}
+    ENV = {
+        "BUZZ_URL_LIFE_OS": "https://example-a.communities.buzz.xyz",
+        "BUZZ_STAGE_KEY": "07" * 32,
+        "BUZZ_STAGE_CHANNEL": CHAN,
+        "BUZZ_STAGE_HERMES_PUBKEY": PK_HERMES,
+    }
 
     def test_missing_settings_are_named_without_values(self):
         with self.assertRaises(hr.HermesError) as c:
             hr.relay_from_env({"BUZZ_URL_LIFE_OS": self.ENV["BUZZ_URL_LIFE_OS"]}, live=True)
-        self.assertEqual(str(c.exception), "HERMES_CONFIG_MISSING:BUZZ_STAGE_KEY,BUZZ_STAGE_CHANNEL,BUZZ_STAGE_HERMES_PUBKEY")
+        self.assertEqual(
+            str(c.exception), "HERMES_CONFIG_MISSING:BUZZ_STAGE_KEY,BUZZ_STAGE_CHANNEL,BUZZ_STAGE_HERMES_PUBKEY"
+        )
 
     def test_invalid_settings_are_one_fixed_code(self):
-        for name, bad in (("BUZZ_URL_LIFE_OS", "http://example.com"), ("BUZZ_STAGE_CHANNEL", "not-a-uuid"), ("BUZZ_STAGE_HERMES_PUBKEY", "zz"), ("BUZZ_STAGE_KEY", "nope")):
+        for name, bad in (
+            ("BUZZ_URL_LIFE_OS", "http://example.com"),
+            ("BUZZ_STAGE_CHANNEL", "not-a-uuid"),
+            ("BUZZ_STAGE_HERMES_PUBKEY", "zz"),
+            ("BUZZ_STAGE_KEY", "nope"),
+        ):
             with self.assertRaises(hr.HermesError) as c:
                 hr.relay_from_env({**self.ENV, name: bad}, live=True)
             self.assertEqual(str(c.exception), "HERMES_CONFIG_INVALID")
@@ -159,6 +196,7 @@ class Config(unittest.TestCase):
 
     def test_the_stage_is_registered_with_the_runner(self):
         from lifeos import run as runner
+
         self.assertEqual(runner.STAGES["hermes"].target, ("lifeos.hermes_requests", "run"))
 
 

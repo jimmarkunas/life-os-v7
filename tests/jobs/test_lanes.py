@@ -1,4 +1,5 @@
 """The lane policy matrix (docs/LANES.md): one qualify over data-driven policies."""
+
 from datetime import date, timedelta
 import unittest
 
@@ -18,8 +19,17 @@ def us(**kw):
 
 
 def uk(**kw):
-    return Facts(**{"fit": 80, "market": "UK", "work_mode": "onsite", "posted": ago(2),
-                    "route": {"Scale-up": POSITIVE}, "geography": POSITIVE, **kw})
+    return Facts(
+        **{
+            "fit": 80,
+            "market": "UK",
+            "work_mode": "onsite",
+            "posted": ago(2),
+            "route": {"Scale-up": POSITIVE},
+            "geography": POSITIVE,
+            **kw,
+        }
+    )
 
 
 class UsRemote(unittest.TestCase):
@@ -27,10 +37,15 @@ class UsRemote(unittest.TestCase):
         self.assertEqual(qualify(US, us(), TODAY).status, ADMIT)
         self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(work_mode="hybrid"), TODAY).status, EXCLUDE)
-        self.assertEqual((qualify(US, us(work_mode="unknown"), TODAY).status, qualify(US, us(work_mode="unknown"), TODAY).reason), (ADMIT, "remote assumed"))  # presumed, recorded as such
+        self.assertEqual(
+            (qualify(US, us(work_mode="unknown"), TODAY).status, qualify(US, us(work_mode="unknown"), TODAY).reason),
+            (ADMIT, "remote assumed"),
+        )  # presumed, recorded as such
         self.assertEqual(qualify(US, us(pay_min=74_999, pay_currency="$"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(pay_min=75_000, pay_currency="$"), TODAY).status, ADMIT)
-        self.assertEqual(qualify(US, us(pay_min=70_000, pay_currency="$"), TODAY).reason, "explicit pay below $75,000")  # the documented reason
+        self.assertEqual(
+            qualify(US, us(pay_min=70_000, pay_currency="$"), TODAY).reason, "explicit pay below $75,000"
+        )  # the documented reason
         self.assertEqual(qualify(US, us(pay_min=None), TODAY).status, ADMIT)  # missing pay is allowed
 
     def test_freshness_is_14_days_and_unknown_is_review(self):
@@ -41,13 +56,22 @@ class UsRemote(unittest.TestCase):
 
 class ScaleUp(unittest.TestCase):
     def test_the_liberal_lane(self):
-        self.assertEqual(qualify(SCALE, uk(pay_min=39_999, pay_currency="£"), TODAY).status, EXCLUDE)  # Scale-Up has a £40,000 floor
-        self.assertEqual(qualify(SCALE, uk(pay_min=39_999, pay_currency="£"), TODAY).reason, "explicit pay below £40,000")
-        for case in (uk(pay_min=40_000, pay_currency="£"),  # at the floor is fine
-                     uk(pay_min=None),  # missing pay
-                     uk(work_mode="hybrid"), uk(work_mode="onsite"), uk(work_mode="remote"),
-                     uk(posted=ago(29)), uk(posted=ago(30)),
-                     uk(posted=None)):  # a missing date does not suppress
+        self.assertEqual(
+            qualify(SCALE, uk(pay_min=39_999, pay_currency="£"), TODAY).status, EXCLUDE
+        )  # Scale-Up has a £40,000 floor
+        self.assertEqual(
+            qualify(SCALE, uk(pay_min=39_999, pay_currency="£"), TODAY).reason, "explicit pay below £40,000"
+        )
+        for case in (
+            uk(pay_min=40_000, pay_currency="£"),  # at the floor is fine
+            uk(pay_min=None),  # missing pay
+            uk(work_mode="hybrid"),
+            uk(work_mode="onsite"),
+            uk(work_mode="remote"),
+            uk(posted=ago(29)),
+            uk(posted=ago(30)),
+            uk(posted=None),
+        ):  # a missing date does not suppress
             self.assertEqual(qualify(SCALE, case, TODAY).status, ADMIT, case)
 
     def test_age_gate_is_30_days_by_decision(self):
@@ -74,10 +98,14 @@ class SkilledWorker(unittest.TestCase):
         self.assertEqual(qualify(on, uk(route=sw, pay_min=50_000, pay_currency="£"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(on, uk(route={}), TODAY).status, REVIEW)  # sponsor unresolved
         self.assertEqual(qualify(on, uk(route=sw, posted=None), TODAY).status, REVIEW)
-        self.assertEqual(qualify(on, uk(route=sw, market=None), TODAY).status, REVIEW)  # never assume the job is in the UK
+        self.assertEqual(
+            qualify(on, uk(route=sw, market=None), TODAY).status, REVIEW
+        )  # never assume the job is in the UK
         self.assertEqual(qualify(on, uk(route=sw, geography=UNRESOLVED), TODAY).status, REVIEW)  # UK-remote / unplaced
         self.assertEqual(qualify(on, uk(route=sw, geography=NEGATIVE), TODAY).status, EXCLUDE)
-        self.assertEqual(qualify(on, uk(route={"Skilled Worker": NEGATIVE}), TODAY).status, EXCLUDE)  # employer not on the register
+        self.assertEqual(
+            qualify(on, uk(route={"Skilled Worker": NEGATIVE}), TODAY).status, EXCLUDE
+        )  # employer not on the register
         self.assertEqual(qualify(on, uk(route=sw, posted=ago(20)), TODAY).status, EXCLUDE)  # 14 days, unlike Scale-Up
 
 
@@ -91,15 +119,25 @@ class Routing(unittest.TestCase):
         self.assertEqual(lanes.decide_all("Newsletter", us(), TODAY)[1:], ("US Remote", ["US Remote"]))
         both = uk(route={"Scale-up": POSITIVE, "Skilled Worker": POSITIVE})
         self.assertEqual(lanes.decide_all("Scale-Up", both, TODAY)[1:], ("Scale-Up", ["Scale-Up", "Skilled Worker"]))
-        self.assertEqual(lanes.decide_all("Skilled Worker", both, TODAY)[1:], ("Scale-Up", ["Scale-Up", "Skilled Worker"]))
+        self.assertEqual(
+            lanes.decide_all("Skilled Worker", both, TODAY)[1:], ("Scale-Up", ["Scale-Up", "Skilled Worker"])
+        )
 
     def test_nothing_admits_keeps_the_own_lane_decision(self):
         decision, lane, eligible = lanes.decide_all("Newsletter", uk(route={}), TODAY)
-        self.assertEqual((decision.status, lane, eligible), (EXCLUDE, "US Remote", []))  # a UK job is not a US Remote job
+        self.assertEqual(
+            (decision.status, lane, eligible), (EXCLUDE, "US Remote", [])
+        )  # a UK job is not a US Remote job
 
     def test_route_strings_merge(self):
-        self.assertEqual(lanes.route_dict("Scale-up:POSITIVE;Skilled Worker:NEGATIVE"), {"Scale-up": "POSITIVE", "Skilled Worker": "NEGATIVE"})
-        self.assertEqual(lanes.join_routes("Scale-up:POSITIVE", **{"Skilled Worker": "POSITIVE"}), "Scale-up:POSITIVE;Skilled Worker:POSITIVE")
+        self.assertEqual(
+            lanes.route_dict("Scale-up:POSITIVE;Skilled Worker:NEGATIVE"),
+            {"Scale-up": "POSITIVE", "Skilled Worker": "NEGATIVE"},
+        )
+        self.assertEqual(
+            lanes.join_routes("Scale-up:POSITIVE", **{"Skilled Worker": "POSITIVE"}),
+            "Scale-up:POSITIVE;Skilled Worker:POSITIVE",
+        )
 
 
 class CrossLane(unittest.TestCase):
@@ -109,11 +147,14 @@ class CrossLane(unittest.TestCase):
         for policy, facts in ((US, us), (SCALE, uk), (SW, skilled)):
             for fit in (60, 67, 68, 71):
                 decision = qualify(policy, facts(fit=fit), TODAY)
-                self.assertEqual((decision.status, decision.reason), (REVIEW, f"Fit {fit} below 72"), (policy.name, fit))
+                self.assertEqual(
+                    (decision.status, decision.reason), (REVIEW, f"Fit {fit} below 72"), (policy.name, fit)
+                )
             for fit in (72, 73, 100):
                 self.assertEqual(qualify(policy, facts(fit=fit), TODAY).status, ADMIT, (policy.name, fit))
             self.assertEqual(qualify(policy, facts(fit=None), TODAY).reason, "Fit unscorable")  # no invented number
         from lifeos.jobs import fit
+
         self.assertEqual((lanes.FIT_FLOOR, fit.UNIVERSAL_FIT_FLOOR, fit.GO_THRESHOLD), (72, 72, 72))
 
     def test_a_clear_score_never_overrides_an_independent_gate(self):
@@ -121,7 +162,9 @@ class CrossLane(unittest.TestCase):
         self.assertEqual(qualify(US, us(fit=95, work_mode="onsite"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(fit=95, market="UK"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(fit=95, pay_min=50_000, pay_currency="$"), TODAY).status, EXCLUDE)
-        self.assertEqual(qualify(US, us(fit=72, work_mode="unknown"), TODAY).status, ADMIT)  # no office requirement is not an open question
+        self.assertEqual(
+            qualify(US, us(fit=72, work_mode="unknown"), TODAY).status, ADMIT
+        )  # no office requirement is not an open question
 
     def test_target_does_not_lower_fit(self):
         self.assertEqual(SCALE.bucket, "Target")
@@ -154,8 +197,13 @@ class Parsing(unittest.TestCase):
         self.assertEqual(lanes.route_dict("Scale-up:POSITIVE"), {"Scale-up": POSITIVE})
         self.assertEqual(lanes.route_dict(None), {})
         facts = lanes.facts_for(80, "Program Manager", "London", "text", None, None, TODAY, route="Scale-up:POSITIVE")
-        self.assertEqual(lanes.decide("Scale-Up", facts, TODAY)[0].status, ADMIT)  # route + geography positive, any work mode
-        self.assertEqual(lanes.decide("Scale-Up", lanes.facts_for(80, "PM", "London", "t", None, None, TODAY), TODAY)[0].status, REVIEW)
+        self.assertEqual(
+            lanes.decide("Scale-Up", facts, TODAY)[0].status, ADMIT
+        )  # route + geography positive, any work mode
+        self.assertEqual(
+            lanes.decide("Scale-Up", lanes.facts_for(80, "PM", "London", "t", None, None, TODAY), TODAY)[0].status,
+            REVIEW,
+        )
 
     def test_work_mode(self):
         self.assertEqual(lanes.detect_work_mode("Remote - United States"), "remote")
@@ -165,12 +213,21 @@ class Parsing(unittest.TestCase):
         self.assertEqual(lanes.detect_work_mode("Denver, CO"), "unknown")
 
 
-
 class MarketTests(unittest.TestCase):
     def test_market_detection(self):
-        for text, market in (("Remote - United States", "US"), ("Austin, TX", "US"), ("London, UK", "UK"), ("Manchester", "UK"),
-                             ("Toronto, ON", "OTHER"), ("Berlin, Germany", "OTHER"), ("Remote", None), ("", None), ("US or UK", None),
-                             ("London, ON", "OTHER"), ("Remote, Europe", "OTHER")):
+        for text, market in (
+            ("Remote - United States", "US"),
+            ("Austin, TX", "US"),
+            ("London, UK", "UK"),
+            ("Manchester", "UK"),
+            ("Toronto, ON", "OTHER"),
+            ("Berlin, Germany", "OTHER"),
+            ("Remote", None),
+            ("", None),
+            ("US or UK", None),
+            ("London, ON", "OTHER"),
+            ("Remote, Europe", "OTHER"),
+        ):
             with self.subTest(text):
                 self.assertEqual(lanes.market_of(text), market)
 
@@ -195,17 +252,38 @@ class LondonAndRemote(unittest.TestCase):
     """Scale-Up needs London, not remote"""
 
     def facts(self, location, mode, fit=80):
-        return lanes.Facts(fit=fit, market="UK", work_mode=mode, posted=ago(2), route={"Scale-up": POSITIVE},
-                           geography=lanes.geography_status(location), located=bool(location.strip()))
+        return lanes.Facts(
+            fit=fit,
+            market="UK",
+            work_mode=mode,
+            posted=ago(2),
+            route={"Scale-up": POSITIVE},
+            geography=lanes.geography_status(location),
+            located=bool(location.strip()),
+        )
 
     def test_remote_never_disqualifies_a_london_scale_up_job(self):
-        for location, mode in (("London", "onsite"), ("London (hybrid)", "hybrid"), ("London (Remote)", "remote"), ("Remote - London, UK", "remote"),
-                               ("Remote: UK", "remote"), ("Remote - United Kingdom", "remote"), ("Remote: England", "remote"), ("UK Remote", "remote"),
-                               ("Barcelona · office · Spain | London · office · United Kingdom | Madrid · office · Spain", "onsite")):
+        for location, mode in (
+            ("London", "onsite"),
+            ("London (hybrid)", "hybrid"),
+            ("London (Remote)", "remote"),
+            ("Remote - London, UK", "remote"),
+            ("Remote: UK", "remote"),
+            ("Remote - United Kingdom", "remote"),
+            ("Remote: England", "remote"),
+            ("UK Remote", "remote"),
+            ("Barcelona · office · Spain | London · office · United Kingdom | Madrid · office · Spain", "onsite"),
+        ):
             self.assertEqual(qualify(SCALE, self.facts(location, mode), TODAY).status, ADMIT, location)
 
     def test_a_scale_up_job_outside_london_is_excluded_whether_or_not_it_is_remote(self):
-        for location, mode in (("Manchester", "onsite"), ("Remote - Ireland", "remote"), ("Edinburgh, Scotland", "hybrid"), ("Leeds (Remote)", "remote"), ("Remote - EMEA", "remote")):
+        for location, mode in (
+            ("Manchester", "onsite"),
+            ("Remote - Ireland", "remote"),
+            ("Edinburgh, Scotland", "hybrid"),
+            ("Leeds (Remote)", "remote"),
+            ("Remote - EMEA", "remote"),
+        ):
             decision = qualify(SCALE, self.facts(location, mode), TODAY)
             self.assertEqual((decision.status, decision.reason), (EXCLUDE, "not in London"), location)
 
@@ -215,7 +293,10 @@ class LondonAndRemote(unittest.TestCase):
     def test_a_us_job_must_still_be_remote(self):
         self.assertEqual(qualify(US, us(work_mode="remote"), TODAY).status, ADMIT)
         self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).reason, "not remote: onsite required")
-        self.assertEqual(qualify(US, us(work_mode="hybrid", work_evidence="3 days a week in the office"), TODAY).reason, 'not remote: hybrid required ("3 days a week in the office")')
+        self.assertEqual(
+            qualify(US, us(work_mode="hybrid", work_evidence="3 days a week in the office"), TODAY).reason,
+            'not remote: hybrid required ("3 days a week in the office")',
+        )
 
 
 class TwoDoubts(unittest.TestCase):
@@ -228,8 +309,12 @@ class TwoDoubts(unittest.TestCase):
 
     def test_one_doubt_is_still_review(self):
         self.assertEqual(qualify(US, us(fit=66), TODAY).status, REVIEW)  # near-miss alone
-        self.assertEqual(qualify(US, us(fit=75, work_mode="unknown"), TODAY).status, ADMIT)  # clear fit, remote presumed
-        self.assertEqual(qualify(US, us(fit=68, work_mode="unknown"), TODAY).status, REVIEW)  # Fit below 72 is the one doubt
+        self.assertEqual(
+            qualify(US, us(fit=75, work_mode="unknown"), TODAY).status, ADMIT
+        )  # clear fit, remote presumed
+        self.assertEqual(
+            qualify(US, us(fit=68, work_mode="unknown"), TODAY).status, REVIEW
+        )  # Fit below 72 is the one doubt
         self.assertEqual(qualify(US, us(fit=71, work_mode="unknown"), TODAY).status, REVIEW)
         self.assertEqual(qualify(US, us(fit=67, work_mode="unknown"), TODAY).status, REVIEW)
 
@@ -244,25 +329,49 @@ class OtherLaneNeedsAPositiveMarket(unittest.TestCase):
     """
 
     def facts(self, location):
-        return lanes.Facts(fit=77, market=lanes.market_of(location), work_mode="remote", posted=ago(2), route={"Scale-up": POSITIVE},
-                           geography=lanes.geography_status(location), located=True)
+        return lanes.Facts(
+            fit=77,
+            market=lanes.market_of(location),
+            work_mode="remote",
+            posted=ago(2),
+            route={"Scale-up": POSITIVE},
+            geography=lanes.geography_status(location),
+            located=True,
+        )
 
     def test_a_scale_up_job_outside_london_is_not_taken_by_the_us_lane(self):
-        for location in ("Argentina - Remote · remote · Argentina", "Colombia - Remote · remote · Colombia", "South Africa - Remote · remote · South Africa",
-                         "Cyprus - Remote · remote · Cyprus", "Switzerland - Remote · remote · Switzerland"):
+        for location in (
+            "Argentina - Remote · remote · Argentina",
+            "Colombia - Remote · remote · Colombia",
+            "South Africa - Remote · remote · South Africa",
+            "Cyprus - Remote · remote · Cyprus",
+            "Switzerland - Remote · remote · Switzerland",
+        ):
             decision, lane, eligible = lanes.decide_all("Scale-Up", self.facts(location), TODAY)
-            self.assertEqual((decision.status, decision.reason, lane, eligible), (EXCLUDE, "not in London", "Scale-Up", []), location)
+            self.assertEqual(
+                (decision.status, decision.reason, lane, eligible), (EXCLUDE, "not in London", "Scale-Up", []), location
+            )
 
     def test_london_and_uk_remote_still_admit(self):
         for location in ("London · office · United Kingdom", "UK - Remote · remote · United Kingdom"):
             self.assertEqual(lanes.decide_all("Scale-Up", self.facts(location), TODAY)[0].status, ADMIT, location)
 
     def test_a_us_row_is_still_judged_by_its_own_lane(self):
-        decision, lane, _ = lanes.decide_all("US Remote", lanes.Facts(fit=80, market=None, work_mode="remote", posted=ago(1)), TODAY)
+        decision, lane, _ = lanes.decide_all(
+            "US Remote", lanes.Facts(fit=80, market=None, work_mode="remote", posted=ago(1)), TODAY
+        )
         self.assertEqual((decision.status, lane), (ADMIT, "US Remote"))
 
     def test_a_newsletter_uk_sponsor_job_is_still_taken_by_the_uk_lane(self):
-        facts = lanes.Facts(fit=80, market="UK", work_mode="onsite", posted=ago(2), route={"Skilled Worker": POSITIVE}, geography=POSITIVE, located=True)
+        facts = lanes.Facts(
+            fit=80,
+            market="UK",
+            work_mode="onsite",
+            posted=ago(2),
+            route={"Skilled Worker": POSITIVE},
+            geography=POSITIVE,
+            located=True,
+        )
         self.assertEqual(lanes.decide_all("Newsletter", facts, TODAY)[1], "Skilled Worker")
 
 
@@ -284,20 +393,37 @@ class FirstPartyAge(unittest.TestCase):
 
     def test_the_us_remote_employer_board_limit_is_14_days(self):
         self.assertEqual(qualify(US, self.first_party(us(), posted=ago(14)), TODAY).status, ADMIT)
-        self.assertEqual((qualify(US, self.first_party(us(), posted=ago(15)), TODAY).status, qualify(US, self.first_party(us(), posted=ago(15)), TODAY).reason),
-                         (EXCLUDE, "older than 14 days"))
+        self.assertEqual(
+            (
+                qualify(US, self.first_party(us(), posted=ago(15)), TODAY).status,
+                qualify(US, self.first_party(us(), posted=ago(15)), TODAY).reason,
+            ),
+            (EXCLUDE, "older than 14 days"),
+        )
 
     def test_the_scale_up_employer_board_limit_is_30_days(self):
         self.assertEqual(qualify(SCALE, self.first_party(uk(), posted=ago(30)), TODAY).status, ADMIT)
-        self.assertEqual((qualify(SCALE, self.first_party(uk(), posted=ago(31)), TODAY).status, qualify(SCALE, self.first_party(uk(), posted=ago(31)), TODAY).reason),
-                         (EXCLUDE, "older than 30 days"))
+        self.assertEqual(
+            (
+                qualify(SCALE, self.first_party(uk(), posted=ago(31)), TODAY).status,
+                qualify(SCALE, self.first_party(uk(), posted=ago(31)), TODAY).reason,
+            ),
+            (EXCLUDE, "older than 30 days"),
+        )
 
     def test_a_skilled_worker_employer_board_job_is_still_not_judged_by_age(self):
         sw = uk(posted=ago(90), route={"Skilled Worker": POSITIVE}, located=True)
         self.assertEqual(qualify(SW, sw, TODAY).reason, "older than 14 days")
         self.assertEqual(qualify(SW, self.first_party(sw), TODAY).status, ADMIT)
-        self.assertEqual((lanes.first_party_age("Skilled Worker"), lanes.first_party_age("US Remote"), lanes.first_party_age("Newsletter"), lanes.first_party_age("Scale-up")),
-                         (None, 14, 14, 30))
+        self.assertEqual(
+            (
+                lanes.first_party_age("Skilled Worker"),
+                lanes.first_party_age("US Remote"),
+                lanes.first_party_age("Newsletter"),
+                lanes.first_party_age("Scale-up"),
+            ),
+            (None, 14, 14, 30),
+        )
 
     def test_an_undated_first_party_job_is_never_bounced_on_age(self):
         undated = Facts(**{**us().__dict__, "posted": None})
@@ -313,18 +439,32 @@ class FirstPartyAge(unittest.TestCase):
 
 
 class ThinPageTests(unittest.TestCase):
-
     def facts(self, fit, thin, kept=False):
-        return lanes.facts_for(fit, "Delivery Lead", "London \u00b7 office \u00b7 United Kingdom", "x", None, None, date(2026, 10, 4),
-                               route="Scale-up:POSITIVE", first_party=True, kept=kept or thin, thin=thin)
+        return lanes.facts_for(
+            fit,
+            "Delivery Lead",
+            "London \u00b7 office \u00b7 United Kingdom",
+            "x",
+            None,
+            None,
+            date(2026, 10, 4),
+            route="Scale-up:POSITIVE",
+            first_party=True,
+            kept=kept or thin,
+            thin=thin,
+        )
 
     def test_a_thin_page_never_admits_and_is_never_excluded_for_fit_alone(self):
         today = date(2026, 10, 4)
         decision = lanes.decide("Scale-Up", self.facts(90, True), today)[0]
-        self.assertEqual((decision.status, decision.reason), (lanes.REVIEW, lanes.THIN_REASON))  # a good score from thin text is not a Go
+        self.assertEqual(
+            (decision.status, decision.reason), (lanes.REVIEW, lanes.THIN_REASON)
+        )  # a good score from thin text is not a Go
         low = lanes.decide("Scale-Up", self.facts(40, True), today)[0]
         self.assertEqual(low.status, lanes.REVIEW)  # and a poor one is not an exclusion
-        self.assertEqual(lanes.decide("Scale-Up", self.facts(40, False), today)[0].status, lanes.EXCLUDE)  # a real description is judged as before
+        self.assertEqual(
+            lanes.decide("Scale-Up", self.facts(40, False), today)[0].status, lanes.EXCLUDE
+        )  # a real description is judged as before
         self.assertEqual(lanes.public_reason(lanes.THIN_REASON), "thin_description")
 
     def test_only_a_scale_up_boards_own_source_counts(self):
@@ -337,8 +477,20 @@ class ThinBoardAdmitTests(unittest.TestCase):
     TODAY = date(2026, 10, 4)
 
     def facts(self, fit, thin=True, thin_admit=True):
-        return lanes.facts_for(fit, "Delivery Lead", "London \u00b7 office \u00b7 United Kingdom", "x", None, None, self.TODAY,
-                               route="Scale-up:POSITIVE", first_party=True, kept=thin, thin=thin, thin_admit=thin_admit)
+        return lanes.facts_for(
+            fit,
+            "Delivery Lead",
+            "London \u00b7 office \u00b7 United Kingdom",
+            "x",
+            None,
+            None,
+            self.TODAY,
+            route="Scale-up:POSITIVE",
+            first_party=True,
+            kept=thin,
+            thin=thin,
+            thin_admit=thin_admit,
+        )
 
     def test_a_fitting_thin_board_feed_role_is_admitted(self):
         for fit in (60, 65, 72, 90):
@@ -353,12 +505,23 @@ class ThinBoardAdmitTests(unittest.TestCase):
         closed = self.facts(90)
         closed.closed = True
         self.assertEqual(lanes.decide("Scale-Up", closed, self.TODAY)[0].status, lanes.EXCLUDE)
-        self.assertEqual(lanes.decide("Scale-Up", self.facts(90), self.TODAY, exclusion="a private title rule")[0].status, lanes.EXCLUDE)
+        self.assertEqual(
+            lanes.decide("Scale-Up", self.facts(90), self.TODAY, exclusion="a private title rule")[0].status,
+            lanes.EXCLUDE,
+        )
 
     def test_a_thin_page_not_from_a_board_source_and_a_real_description_are_unchanged(self):
-        self.assertEqual(lanes.decide("Scale-Up", self.facts(90, thin_admit=False), self.TODAY)[0].reason, lanes.THIN_REASON)
-        self.assertEqual(lanes.decide("Scale-Up", self.facts(65, thin=False), self.TODAY)[0].status, lanes.REVIEW)  # a full description still needs Fit 72
-        self.assertFalse(lanes.facts_for(90, "Delivery Lead", "London", "x", None, None, self.TODAY, thin=False, thin_admit=True).thin_admit)
+        self.assertEqual(
+            lanes.decide("Scale-Up", self.facts(90, thin_admit=False), self.TODAY)[0].reason, lanes.THIN_REASON
+        )
+        self.assertEqual(
+            lanes.decide("Scale-Up", self.facts(65, thin=False), self.TODAY)[0].status, lanes.REVIEW
+        )  # a full description still needs Fit 72
+        self.assertFalse(
+            lanes.facts_for(
+                90, "Delivery Lead", "London", "x", None, None, self.TODAY, thin=False, thin_admit=True
+            ).thin_admit
+        )
 
     def test_only_a_scale_up_or_ats_board_source_counts(self):
         for source in ("web:su-acme", "web:gh-acme", "web:lv-acme", "web:ab-acme"):
@@ -371,8 +534,18 @@ class KeepListTests(unittest.TestCase):
     """a role on Jim's keep list is never excluded for Fit alone"""
 
     def facts(self, fit, kept):
-        return lanes.facts_for(fit, "Product Designer (Platform)", "London · office · United Kingdom", "x", None, None, date(2026, 10, 4),
-                               route="Scale-up:POSITIVE", first_party=True, kept=kept)
+        return lanes.facts_for(
+            fit,
+            "Product Designer (Platform)",
+            "London · office · United Kingdom",
+            "x",
+            None,
+            None,
+            date(2026, 10, 4),
+            route="Scale-up:POSITIVE",
+            first_party=True,
+            kept=kept,
+        )
 
     def test_fit_below_the_review_floor_is_review_when_kept_and_excluded_otherwise(self):
         today = date(2026, 10, 4)
@@ -388,16 +561,33 @@ class KeepListTests(unittest.TestCase):
         self.assertFalse(lanes.on_keep_list("Acme", "Product Designer (Platform)"))
 
     def test_the_four_revolut_roles_jim_named_are_on_the_list(self):
-        for title in ("Credit Manager (Product)", "Product Owner (UX)", "Product Owner (Technical)", "Operations Manager (Revenue)",
-                      "Product Owner - UX", "Product Owner, Technical", "Product Owner (User Experience)"):
+        for title in (
+            "Credit Manager (Product)",
+            "Product Owner (UX)",
+            "Product Owner (Technical)",
+            "Operations Manager (Revenue)",
+            "Product Owner - UX",
+            "Product Owner, Technical",
+            "Product Owner (User Experience)",
+        ):
             self.assertTrue(lanes.on_keep_list("Revolut Ltd", title), title)
-        for title in ("Product Owner (Crypto)", "Product Owner", "Credit Manager (Risk)", "Credit Manager", "Credit Risk Manager"):
+        for title in (
+            "Product Owner (Crypto)",
+            "Product Owner",
+            "Credit Manager (Risk)",
+            "Credit Manager",
+            "Credit Risk Manager",
+        ):
             self.assertFalse(lanes.on_keep_list("Revolut Ltd", title), title)
         self.assertFalse(lanes.on_keep_list("Acme", "Credit Manager (Product)"))
 
     def test_only_credit_manager_product_overrides_a_private_title_rule(self):
         self.assertTrue(lanes.keep_overrides_exclusion("Revolut Ltd", "Credit Manager (Product)"))
-        for company, title in (("Revolut Ltd", "Credit Manager (Risk)"), ("Revolut Ltd", "Product Owner (UX)"), ("Acme", "Credit Manager (Product)")):
+        for company, title in (
+            ("Revolut Ltd", "Credit Manager (Risk)"),
+            ("Revolut Ltd", "Product Owner (UX)"),
+            ("Acme", "Credit Manager (Product)"),
+        ):
             self.assertFalse(lanes.keep_overrides_exclusion(company, title), (company, title))
 
     def test_a_hard_exclusion_still_wins(self):
@@ -410,6 +600,7 @@ class RemoteDefault(unittest.TestCase):
 
     def mode(self, text, where="San Diego, CA", title="Technical Program Manager"):
         from lifeos.jobs import lanes
+
         return lanes.work_mode_evidence(where, title, text)
 
     def test_mandatory_attendance_excludes_with_the_employers_words(self):
@@ -421,21 +612,33 @@ class RemoteDefault(unittest.TestCase):
         self.assertEqual(self.mode("This is not a remote position."), ("onsite", "not a remote position"))
 
     def test_optional_negated_or_incidental_office_words_are_not_requirements(self):
-        for text in ("There is no onsite requirement for this role.", "Optional office access in Denver.", "Occasional travel to our NYC office for planning.",
-                     "Lead onsite customer visits twice a quarter.", "You are not required to be in the office.", "This is not a hybrid role.",
-                     "Coordinate with onsite and remote teams."):
+        for text in (
+            "There is no onsite requirement for this role.",
+            "Optional office access in Denver.",
+            "Occasional travel to our NYC office for planning.",
+            "Lead onsite customer visits twice a quarter.",
+            "You are not required to be in the office.",
+            "This is not a hybrid role.",
+            "Coordinate with onsite and remote teams.",
+        ):
             with self.subTest(text=text):
                 self.assertEqual(self.mode(text)[0], "unknown")
 
     def test_a_named_city_with_no_requirement_is_presumed_remote_not_office(self):
         from lifeos.jobs import lanes
+
         self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "unknown")
-        self.assertEqual(qualify(US, us(work_mode=lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "")), TODAY).reason, "remote assumed")
+        self.assertEqual(
+            qualify(US, us(work_mode=lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "")), TODAY).reason,
+            "remote assumed",
+        )
 
     def test_remote_offered_alongside_hybrid_is_remote_and_a_stated_remote_is_verified(self):
         self.assertEqual(self.mode("", where="Remote or Hybrid - Chicago, IL")[0], "remote")
         self.assertEqual(self.mode("This is a fully remote role.")[0], "remote")
-        self.assertIsNone(qualify(US, us(work_mode="remote"), TODAY).reason)  # verified remote carries no "assumed" reason
+        self.assertIsNone(
+            qualify(US, us(work_mode="remote"), TODAY).reason
+        )  # verified remote carries no "assumed" reason
 
     def test_a_non_us_market_still_excludes_whatever_the_work_mode(self):
         self.assertEqual(qualify(US, us(work_mode="unknown", market="UK"), TODAY).status, EXCLUDE)
@@ -446,14 +649,23 @@ class ContradictoryWorkMode(unittest.TestCase):
 
     def mode(self, text, where="Remote - US"):
         from lifeos.jobs import lanes
+
         return lanes.work_mode_evidence(where, "Technical Program Manager", text)
 
     def test_a_required_attendance_beats_a_remote_place_a_remote_statement_and_a_remote_tag(self):
         self.assertEqual(self.mode("You must work onsite at our Chicago office."), ("onsite", "must work onsite"))
         self.assertEqual(self.mode("This is a hybrid role: 3 days a week in the office."), ("hybrid", "hybrid role"))
-        self.assertEqual(self.mode("This is a fully remote role. You must work onsite at our Chicago office.", "Chicago, IL"), ("onsite", "must work onsite"))
-        self.assertEqual(self.mode("#LI-Remote You must work onsite at our Chicago office.", "Chicago, IL"), ("onsite", "must work onsite"))
-        self.assertEqual(self.mode("Remote work is not available for this role."), ("onsite", "Remote work is not available"))
+        self.assertEqual(
+            self.mode("This is a fully remote role. You must work onsite at our Chicago office.", "Chicago, IL"),
+            ("onsite", "must work onsite"),
+        )
+        self.assertEqual(
+            self.mode("#LI-Remote You must work onsite at our Chicago office.", "Chicago, IL"),
+            ("onsite", "must work onsite"),
+        )
+        self.assertEqual(
+            self.mode("Remote work is not available for this role."), ("onsite", "Remote work is not available")
+        )
 
     def test_a_recruiters_hybrid_or_onsite_tag_beats_a_remote_place(self):
         self.assertEqual(self.mode("Great team. #LI-Hybrid"), ("hybrid", "#LI-Hybrid"))
@@ -461,17 +673,25 @@ class ContradictoryWorkMode(unittest.TestCase):
         self.assertEqual(self.mode("Fully remote. #LI-Remote", "Chicago, IL"), ("remote", None))
 
     def test_negated_optional_occasional_and_conditional_attendance_keeps_the_remote_place(self):
-        for text in ("There is no onsite requirement.", "You will be expected to be onsite for quarterly planning.",
-                     "You will need to work in the office occasionally.", "You may need to be onsite at customer sites.",
-                     "If you live within 50 miles of our Chicago office, you will need to be in the office two days a week.",
-                     "If you live near Chicago, you must work onsite 2 days a week. Otherwise this role is fully remote.",
-                     "Our office is not required; we offer onsite 3 days a week for those who want it.",
-                     "You have the option to work in the office 2 days a week.", "This is not a hybrid role.  #li-remote"):
+        for text in (
+            "There is no onsite requirement.",
+            "You will be expected to be onsite for quarterly planning.",
+            "You will need to work in the office occasionally.",
+            "You may need to be onsite at customer sites.",
+            "If you live within 50 miles of our Chicago office, you will need to be in the office two days a week.",
+            "If you live near Chicago, you must work onsite 2 days a week. Otherwise this role is fully remote.",
+            "Our office is not required; we offer onsite 3 days a week for those who want it.",
+            "You have the option to work in the office 2 days a week.",
+            "This is not a hybrid role.  #li-remote",
+        ):
             with self.subTest(text=text):
                 self.assertEqual(self.mode(text), ("remote", None))
 
     def test_the_same_qualifiers_leave_an_unstated_place_presumed_not_verified(self):
-        for text in ("You will need to work in the office occasionally.", "If you are local, you are expected to be onsite 2 days a week."):
+        for text in (
+            "You will need to work in the office occasionally.",
+            "If you are local, you are expected to be onsite 2 days a week.",
+        ):
             with self.subTest(text=text):
                 self.assertEqual(self.mode(text, "Seattle, WA"), ("unknown", None))
 
@@ -481,9 +701,12 @@ class ContradictoryWorkMode(unittest.TestCase):
 
     def test_a_contradicted_remote_place_is_excluded_by_the_lane_with_the_employers_words(self):
         from lifeos.jobs import lanes
+
         mode, words = self.mode("You must work onsite at our Chicago office.")
         decision = qualify(US, us(work_mode=mode, work_evidence=words), TODAY)
-        self.assertEqual((decision.status, decision.reason), (EXCLUDE, 'not remote: onsite required ("must work onsite")'))
+        self.assertEqual(
+            (decision.status, decision.reason), (EXCLUDE, 'not remote: onsite required ("must work onsite")')
+        )
         self.assertEqual(lanes.detect_work_mode("Remote - US", "", "Great team. #LI-Hybrid"), "hybrid")
 
 
@@ -494,20 +717,36 @@ class FirstPartyUsEligibility(unittest.TestCase):
 
     def decide(self, where, text="", first_party=True):
         from lifeos.jobs import lanes
-        facts = lanes.facts_for(80, "Technical Program Manager", where, text, None, ago(1), None, first_party=first_party)
+
+        facts = lanes.facts_for(
+            80, "Technical Program Manager", where, text, None, ago(1), None, first_party=first_party
+        )
         got = qualify(US, facts, TODAY)
         return got.status, got.reason, facts.market
 
     def test_a_us_city_or_state_or_a_stated_us_eligibility_is_us(self):
-        for where, text in (("San Jose", ""), ("Phoenix", ""), ("UT - Cottonwood Heights; FL - Jacksonville", ""), ("Palo Alto, California", ""),
-                            ("Remote", "You can be based anywhere in the United States."), ("Remote", "Candidates must be authorized to work in the US."),
-                            ("Remote", "This is a US-based remote role.")):
+        for where, text in (
+            ("San Jose", ""),
+            ("Phoenix", ""),
+            ("UT - Cottonwood Heights; FL - Jacksonville", ""),
+            ("Palo Alto, California", ""),
+            ("Remote", "You can be based anywhere in the United States."),
+            ("Remote", "Candidates must be authorized to work in the US."),
+            ("Remote", "This is a US-based remote role."),
+        ):
             with self.subTest(where=where, text=text):
                 self.assertEqual(self.decide(where, text)[::2], (ADMIT, "US"))
 
     def test_remote_alone_a_region_or_an_unknown_place_is_review_not_admit(self):
-        for where, text in (("Remote", ""), ("Remote, North America", ""), ("Americas", ""), ("RWC HQ", ""), ("Newcastle", ""),
-                            ("Remote", "We serve US customers across the world."), ("Remote", "Fully remote team.")):
+        for where, text in (
+            ("Remote", ""),
+            ("Remote, North America", ""),
+            ("Americas", ""),
+            ("RWC HQ", ""),
+            ("Newcastle", ""),
+            ("Remote", "We serve US customers across the world."),
+            ("Remote", "Fully remote team."),
+        ):
             with self.subTest(where=where, text=text):
                 self.assertEqual(self.decide(where, text), (REVIEW, "market unresolved", None))
 
@@ -522,10 +761,24 @@ class OpenApplication(unittest.TestCase):
     """an unsolicited or general application is not a vacancy"""
 
     def test_open_application_titles(self):
-        for title in ("Initiativbewerbung", "Initiativbewerbung (m/w/d)", "Spontanbewerbung", "Open Application", "Unsolicited application",
-                      "General Application - Engineering", "Speculative Application", "Join our Talent Pool", "Candidature spontanée"):
+        for title in (
+            "Initiativbewerbung",
+            "Initiativbewerbung (m/w/d)",
+            "Spontanbewerbung",
+            "Open Application",
+            "Unsolicited application",
+            "General Application - Engineering",
+            "Speculative Application",
+            "Join our Talent Pool",
+            "Candidature spontanée",
+        ):
             self.assertTrue(lanes.open_application(title), title)
-        for title in ("Technical Program Manager", "Application Engineer", "Program Manager, Applications", "Talent Acquisition Partner"):
+        for title in (
+            "Technical Program Manager",
+            "Application Engineer",
+            "Program Manager, Applications",
+            "Talent Acquisition Partner",
+        ):
             self.assertFalse(lanes.open_application(title), title)
 
     def test_no_lane_admits_an_open_application(self):
@@ -534,17 +787,21 @@ class OpenApplication(unittest.TestCase):
             decision = qualify(policy, facts, TODAY)
             self.assertEqual((decision.status, decision.reason), (EXCLUDE, "not a vacancy: open application"))
         self.assertEqual(lanes.public_reason("not a vacancy: open application"), "not_a_vacancy")
-        self.assertEqual(lanes.facts_for(80, "Initiativbewerbung", "Remote", "", None, None, TODAY).open_application, True)
+        self.assertEqual(
+            lanes.facts_for(80, "Initiativbewerbung", "Remote", "", None, None, TODAY).open_application, True
+        )
 
 
 class RecruiterLane(unittest.TestCase):
-    """E01b: a recruiter's outreach is shown whatever its Fit, in its own lane, and it changes no other job's decision.
-    """
+    """E01b: a recruiter's outreach is shown whatever its Fit, in its own lane, and it changes no other job's decision."""
+
     def test_it_is_admitted_in_its_own_lane_whatever_the_fit_but_a_private_rule_still_excludes(self):
         low = Facts(fit=30, market="UK", work_mode="onsite", posted=date(2026, 1, 1))
         decision, lane, eligible = lanes.decide_all("Recruiter", low, date(2026, 10, 21))
         self.assertEqual((decision.status, lane, eligible), (ADMIT, "Recruiter", ["Recruiter"]))
-        self.assertEqual(lanes.decide_all("Recruiter", None, date(2026, 10, 21), exclusion="private-rule")[0].status, EXCLUDE)
+        self.assertEqual(
+            lanes.decide_all("Recruiter", None, date(2026, 10, 21), exclusion="private-rule")[0].status, EXCLUDE
+        )
 
     def test_it_never_becomes_the_visible_lane_of_another_job_and_every_lane_still_judges_the_same(self):
         facts = Facts(fit=80, market="US", work_mode="remote", posted=date(2026, 10, 20))
@@ -557,15 +814,23 @@ class OfficeDaysPastTheWindow(unittest.TestCase):
     FILLER = "Responsibilities include planning programs and reporting status. " * 40
 
     def test_a_required_number_of_office_days_far_down_the_posting_is_hybrid_not_remote_assumed(self):
-        policy = ('"Default Together" Policy: we practice a "default together" approach and expect our team members to work in an office 4+ days per week.')
+        policy = '"Default Together" Policy: we practice a "default together" approach and expect our team members to work in an office 4+ days per week.'
         self.assertEqual(lanes.detect_work_mode("Bellevue, WA", "Security TPM", self.FILLER + policy), "hybrid")
-        self.assertEqual(lanes.detect_work_mode("Remote - US", "TPM", self.FILLER + "Plan to be in the office three days a week."), "hybrid")
-        self.assertEqual(lanes.detect_work_mode("Austin, TX", "TPM", self.FILLER + "You will work 3 days per week in the office."), "hybrid")
+        self.assertEqual(
+            lanes.detect_work_mode("Remote - US", "TPM", self.FILLER + "Plan to be in the office three days a week."),
+            "hybrid",
+        )
+        self.assertEqual(
+            lanes.detect_work_mode("Austin, TX", "TPM", self.FILLER + "You will work 3 days per week in the office."),
+            "hybrid",
+        )
 
     def test_optional_or_conditional_office_days_and_unrelated_numbers_are_not_a_requirement(self):
-        for text in ("Office access is optional, 4 days a week in the office if you prefer.",
-                     "No requirement to be in the office 3 days a week.",
-                     "For candidates near our Seattle office, in the office two days a week is available.",
-                     "We run 4 days of onboarding and 5 days of training at our office occasionally.",
-                     "Occasional travel to the office 2 days per quarter."):
+        for text in (
+            "Office access is optional, 4 days a week in the office if you prefer.",
+            "No requirement to be in the office 3 days a week.",
+            "For candidates near our Seattle office, in the office two days a week is available.",
+            "We run 4 days of onboarding and 5 days of training at our office occasionally.",
+            "Occasional travel to the office 2 days per quarter.",
+        ):
             self.assertEqual(lanes.detect_work_mode("Denver, CO", "", self.FILLER + text), "unknown", text)

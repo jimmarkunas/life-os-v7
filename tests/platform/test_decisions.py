@@ -1,5 +1,5 @@
-"""(PLAT-GOV-2): decision numbers are claimed on the remote before use, so parallel sessions never take the same one.
-"""
+"""(PLAT-GOV-2): decision numbers are claimed on the remote before use, so parallel sessions never take the same one."""
+
 import os
 import subprocess
 import sys
@@ -63,8 +63,17 @@ class Claim(Remote):
     def test_parallel_processes_never_get_the_same_number(self):
         sessions = [self.clone(f"s{i}") for i in range(4)]
         env = {**os.environ, "PYTHONPATH": str(ROOT)}
-        procs = [subprocess.Popen([sys.executable, "-m", "lifeos.sources.devtools.decisions", "claim"], cwd=s, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                 for s in sessions]
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-m", "lifeos.sources.devtools.decisions", "claim"],
+                cwd=s,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for s in sessions
+        ]
         got = [p.communicate(timeout=120)[0].strip() for p in procs]
         self.assertEqual(sorted(got), ["D4", "D5", "D6", "D7"], got)
 
@@ -104,6 +113,7 @@ class Show(unittest.TestCase):
     def test_the_command_prints_the_real_log_entry_and_a_missing_number_exits_nonzero(self):
         import contextlib
         import io
+
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(decisions.main(["show", "D139"]), 0)

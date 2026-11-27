@@ -1,4 +1,5 @@
 """(REQ-5): a new interview pursuit finds or creates its Job Ledger row and its rounds go under the row page"""
+
 import unittest
 from unittest.mock import patch
 from lifeos.interview import notion, stage
@@ -13,13 +14,18 @@ KEY = "a" * 64
 
 
 def no_container(client):
-    client.blocks["root"] = [b for b in client.blocks["root"] if b.get("type") != "child_page"]  # no Active Opportunities container anywhere
+    client.blocks["root"] = [
+        b for b in client.blocks["root"] if b.get("type") != "child_page"
+    ]  # no Active Opportunities container anywhere
     return client
 
 
 def jobs_body(rid):
     """A Jobs OS row body: the hidden v7-jd marker paragraph and the two-column description."""
-    return [block("⁠", id=f"{rid}-jd"), {"id": f"{rid}-cols", "type": "column_list", "has_children": False, "column_list": {}}]
+    return [
+        block("⁠", id=f"{rid}-jd"),
+        {"id": f"{rid}-cols", "type": "column_list", "has_children": False, "column_list": {}},
+    ]
 
 
 def run(client, query=ROUND, live=True, pursuit=PURSUIT):
@@ -27,20 +33,28 @@ def run(client, query=ROUND, live=True, pursuit=PURSUIT):
 
 
 class FindOrCreateRow(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_no_row_gets_exactly_one_manual_row_and_a_replay_creates_nothing(self):  # GWT-IC-2
         client = no_container(WritableFake())
         result = run(client)
-        self.assertEqual((result["why"], result["parents_created"], result["rows_created"], result["readback_ok"]), ({"parent_created": 1}, 1, 1, 1))
+        self.assertEqual(
+            (result["why"], result["parents_created"], result["rows_created"], result["readback_ok"]),
+            ({"parent_created": 1}, 1, 1, 1),
+        )
         self.assertEqual(list(client.rows), ["created-1"])
         row = client.rows["created-1"]
-        self.assertEqual([client._value(row[k]) for k in ("Job", "Company", "Stage")], ["Program Manager", "ExampleCo", "Applied"])
+        self.assertEqual(
+            [client._value(row[k]) for k in ("Job", "Company", "Stage")], ["Program Manager", "ExampleCo", "Applied"]
+        )
         self.assertEqual(row["Source Types"], {"multi_select": [{"name": "Manual"}]})
-        self.assertEqual(notion.text(client.blocks["created-1"][0]), notion.FOLD)  # REQ-5 row layout: the machine fold first
+        self.assertEqual(
+            notion.text(client.blocks["created-1"][0]), notion.FOLD
+        )  # REQ-5 row layout: the machine fold first
         self.assertIn(notion.JIM_NOTES, [notion.text(b) for b in client.blocks["created-1"]])
         posts = len(client.posts)
         result = run(client, RoundQuery(True))  # the same pursuit again, no new round evidence
@@ -71,7 +85,9 @@ class FindOrCreateRow(unittest.TestCase):
         self.assertNotIn("Source Types", client.rows["job"])  # a Jobs OS row's own fields are not touched
         top = client.blocks["job"]
         self.assertEqual(notion.text(top[0]), notion.FOLD)
-        self.assertEqual([b["id"] for b in top[-2:]], ["job-jd", "job-cols"])  # the description is still there, whole and in order
+        self.assertEqual(
+            [b["id"] for b in top[-2:]], ["job-jd", "job-cols"]
+        )  # the description is still there, whole and in order
 
     def test_a_row_found_by_its_key_under_other_names_is_not_written(self):
         client = no_container(WritableFake())
@@ -104,22 +120,32 @@ class FindOrCreateRow(unittest.TestCase):
     def test_a_dry_run_and_mail_alone_create_nothing(self):
         client = no_container(WritableFake())
         result = run(client, live=False)
-        self.assertEqual((result["why"], result["writes_planned"], result["writes"]), ({"parent_create_allowed": 1}, 1, 0))
+        self.assertEqual(
+            (result["why"], result["writes_planned"], result["writes"]), ({"parent_create_allowed": 1}, 1, 0)
+        )
         result = run(client, RoundQuery(False))
         self.assertEqual(result["why"], {"pursuit_unconfirmed": 1})
         self.assertEqual((client.posts, client.rows), ([], {}))
 
     def test_ledger_row_lookup(self):
         client = WritableFake()
-        self.assertEqual(notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager"), ("ledger_row_missing", None))
+        self.assertEqual(
+            notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager"), ("ledger_row_missing", None)
+        )
         client.add_row("a", "ExampleCo", "Program Manager")
         code, row = notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager")
         self.assertEqual((code, row["id"]), ("ledger_row_found", "a"))
         client.add_row("b", "ExampleCo", "Program Manager", key=KEY)
-        self.assertEqual(notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager")[0], "ledger_row_ambiguous")
-        self.assertEqual(notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager", KEY)[1]["id"], "b")  # the key decides
+        self.assertEqual(
+            notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager")[0], "ledger_row_ambiguous"
+        )
+        self.assertEqual(
+            notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager", KEY)[1]["id"], "b"
+        )  # the key decides
         client.fail.add("/data_sources/ds-synthetic/query")
-        self.assertEqual(notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager"), ("ledger_unreadable", None))
+        self.assertEqual(
+            notion.ledger_row(client, "ds-synthetic", "ExampleCo", "Program Manager"), ("ledger_unreadable", None)
+        )
         self.assertEqual(notion.ledger_row(client, "ds-synthetic", "", "Program Manager"), ("ledger_unreadable", None))
 
     def test_container_helpers_are_gone(self):

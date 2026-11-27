@@ -20,7 +20,9 @@ class ShardsPartitionTheSuite(unittest.TestCase):
         second, _ = self.ids(2, 2)
         self.assertEqual(len(first) + len(second), total)
         self.assertEqual(set(first) & set(second), set())
-        everything = {t.id() for t in shard.tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(shard.ROOT)))}
+        everything = {
+            t.id() for t in shard.tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(shard.ROOT)))
+        }
         self.assertEqual(set(first) | set(second), everything)
 
     def test_each_shard_is_substantial_and_this_file_is_in_one(self):
@@ -41,7 +43,9 @@ class ShardsPartitionTheSuite(unittest.TestCase):
                 shard.main(argv)
 
 
-@unittest.skipIf(os.environ.get("SHARD_MEASURING"), "the weights file is being rewritten by `python -m tests.shard --measure`")
+@unittest.skipIf(
+    os.environ.get("SHARD_MEASURING"), "the weights file is being rewritten by `python -m tests.shard --measure`"
+)
 class ShardWeights(unittest.TestCase):
     """the split is balanced by measured seconds (tests/shard-weights.json)."""
 
@@ -51,7 +55,9 @@ class ShardWeights(unittest.TestCase):
 
     def test_the_weights_file_lists_only_real_test_modules_with_real_times(self):
         weights = shard.load_weights()
-        self.assertTrue(weights, "tests/shard-weights.json is missing: run `python -m tests.shard --measure` and commit it")
+        self.assertTrue(
+            weights, "tests/shard-weights.json is missing: run `python -m tests.shard --measure` and commit it"
+        )
         self.assertEqual(shard.check_weights(weights, self.modules()), [])
 
     def test_the_file_has_no_dates_and_no_paths_and_is_sorted(self):
@@ -62,7 +68,10 @@ class ShardWeights(unittest.TestCase):
         self.assertFalse(re.search(r"\d{4}-\d\d-\d\d|/Users/|/home/|/tmp/", text))
 
     def test_negative_control_a_module_that_does_not_exist_is_reported(self):
-        problems = shard.check_weights({"tests.nothing.test_gone": 3.0, "tests.contracts.test_shards": 1.0, "tests.contracts.test_x": -1}, {"tests.contracts.test_shards", "tests.contracts.test_x"})
+        problems = shard.check_weights(
+            {"tests.nothing.test_gone": 3.0, "tests.contracts.test_shards": 1.0, "tests.contracts.test_x": -1},
+            {"tests.contracts.test_shards", "tests.contracts.test_x"},
+        )
         self.assertEqual(len(problems), 2)
         self.assertTrue(any("test_gone" in p for p in problems) and any("bad time" in p for p in problems))
 
@@ -94,16 +103,21 @@ class ShardWeights(unittest.TestCase):
         class Quick(unittest.TestCase):
             def test_a(self):
                 pass
+
         Quick.__module__ = "tests.fake.test_quick"
         ticks = iter([0, 2.0])
         first = shard.measure([Quick("test_a")], clock=lambda: next(ticks))
         self.assertEqual(first, {"tests.fake.test_quick": 2.0})
-        self.assertEqual(shard.merge([first, {"tests.fake.test_quick": 0.5, "tests.fake.test_other": 1.234}]), {"tests.fake.test_other": 1.23, "tests.fake.test_quick": 0.5})
+        self.assertEqual(
+            shard.merge([first, {"tests.fake.test_quick": 0.5, "tests.fake.test_other": 1.234}]),
+            {"tests.fake.test_other": 1.23, "tests.fake.test_quick": 0.5},
+        )
 
     def test_a_shard_reports_seconds_per_module_and_weights_can_be_built_from_the_logs(self):
         """each CI shard prints its measured seconds per module, so the split can be balanced on CI time (not a
         laptop's).
         """
+
         class A(unittest.TestCase):
             def test_a(self):
                 pass
@@ -114,6 +128,7 @@ class ShardWeights(unittest.TestCase):
         class B(unittest.TestCase):
             def test_c(self):
                 pass
+
         A.__module__, B.__module__ = "tests.fake.test_a", "tests.fake.test_b"
         ticks = iter([10.0, 11.0, 14.0, 17.0])  # three test starts, then the end of the run
         with mock.patch.object(shard.time, "perf_counter", lambda: next(ticks)):
@@ -123,17 +138,37 @@ class ShardWeights(unittest.TestCase):
                 result.startTest(test)
                 result.stopTest(test)
             result.stopTestRun()
-        self.assertEqual({m: round(v, 1) for m, v in result.module_seconds.items()}, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0})  # the span of each module
-        lines = shard.timing_report(1, 3, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01})
+        self.assertEqual(
+            {m: round(v, 1) for m, v in result.module_seconds.items()},
+            {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0},
+        )  # the span of each module
+        lines = shard.timing_report(
+            1, 3, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01}
+        )
         self.assertIn("shard 1/3 took 7.0 s", lines[0])
-        self.assertEqual(json.loads(lines[1][len("shard-seconds "):]), {"k": 1, "n": 3, "rest": 0.01, "seconds": {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0}})
-        weights = shard.weights_from_logs([lines[1], lines[1].replace("4.0", "6.0")], {"tests.fake.test_a", "tests.fake.test_b", "tests.fake.test_tiny", "tests.fake.test_new"})
-        self.assertEqual(weights, {"tests.fake.test_a": 5.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01, "tests.fake.test_new": 0.01})  # the mean over logs
+        self.assertEqual(
+            json.loads(lines[1][len("shard-seconds ") :]),
+            {"k": 1, "n": 3, "rest": 0.01, "seconds": {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0}},
+        )
+        weights = shard.weights_from_logs(
+            [lines[1], lines[1].replace("4.0", "6.0")],
+            {"tests.fake.test_a", "tests.fake.test_b", "tests.fake.test_tiny", "tests.fake.test_new"},
+        )
+        self.assertEqual(
+            weights,
+            {
+                "tests.fake.test_a": 5.0,
+                "tests.fake.test_b": 3.0,
+                "tests.fake.test_tiny": 0.01,
+                "tests.fake.test_new": 0.01,
+            },
+        )  # the mean over logs
 
     def test_a_failing_module_stops_the_measurement(self):
         class Broken(unittest.TestCase):
             def test_b(self):
                 self.fail("x")
+
         Broken.__module__ = "tests.fake.test_broken"
         with self.assertRaises(SystemExit):
             shard.measure([Broken("test_b")])

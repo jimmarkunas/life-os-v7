@@ -15,8 +15,12 @@ def typedstream(text):
     """The shape macOS writes to message.attributedBody when `text` is empty."""
     raw = text.encode()
     size = bytes([len(raw)]) if len(raw) < 0x80 else b"\x81" + len(raw).to_bytes(2, "little")
-    return (b"\x04\x0bstreamtyped\x81\xe8\x03\x84\x01@\x84\x84\x84\x12NSAttributedString\x00\x84\x84\x08NSObject\x00\x85\x92\x84\x84\x84\x08NSString\x01\x94\x84\x01+"
-            + size + raw + b"\x86\x84\x02iI\x01\x01\x92\x84\x84\x84\x0cNSDictionary\x00")
+    return (
+        b"\x04\x0bstreamtyped\x81\xe8\x03\x84\x01@\x84\x84\x84\x12NSAttributedString\x00\x84\x84\x08NSObject\x00\x85\x92\x84\x84\x84\x08NSString\x01\x94\x84\x01+"
+        + size
+        + raw
+        + b"\x86\x84\x02iI\x01\x01\x92\x84\x84\x84\x0cNSDictionary\x00"
+    )
 
 
 class Fixture:
@@ -34,19 +38,61 @@ class Fixture:
                                   is_from_me INTEGER, is_read INTEGER, item_type INTEGER, associated_message_type INTEGER DEFAULT 0,
                                   date_retracted INTEGER DEFAULT 0, date_edited INTEGER DEFAULT 0, cache_has_attachments INTEGER DEFAULT 0);
         """)
-        con.executemany("INSERT INTO handle VALUES (?, ?, ?)", [(1, ALICE, "iMessage"), (2, BOB, "iMessage"), (3, SHORT, "SMS")])
-        con.executemany("INSERT INTO chat VALUES (?, ?, ?, ?, ?)", [(10, "c-alice", 45, "", ALICE), (11, "c-bob", 45, None, BOB), (12, "c-group", 43, "Family", "chat99"),
-                                                                    (13, "c-short", 45, None, SHORT)])
+        con.executemany(
+            "INSERT INTO handle VALUES (?, ?, ?)", [(1, ALICE, "iMessage"), (2, BOB, "iMessage"), (3, SHORT, "SMS")]
+        )
+        con.executemany(
+            "INSERT INTO chat VALUES (?, ?, ?, ?, ?)",
+            [
+                (10, "c-alice", 45, "", ALICE),
+                (11, "c-bob", 45, None, BOB),
+                (12, "c-group", 43, "Family", "chat99"),
+                (13, "c-short", 45, None, SHORT),
+            ],
+        )
         self.con = con
         self.rowid = 100
 
-    def add(self, chat, age, handle=1, text="hello", attributed=None, mine=0, read=0, kind=0, assoc=0, retracted=0, edited=0, attach=0, service="iMessage",
-            guid=None, also=None):
+    def add(
+        self,
+        chat,
+        age,
+        handle=1,
+        text="hello",
+        attributed=None,
+        mine=0,
+        read=0,
+        kind=0,
+        assoc=0,
+        retracted=0,
+        edited=0,
+        attach=0,
+        service="iMessage",
+        guid=None,
+        also=None,
+    ):
         self.rowid += 1
         guid = guid or "g%d" % self.rowid
-        self.con.execute("INSERT INTO message (ROWID, guid, text, attributedBody, handle_id, service, date, is_from_me, is_read, item_type, associated_message_type,"
-                         " date_retracted, date_edited, cache_has_attachments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                         (self.rowid, guid, text, attributed, 0 if mine else handle, service, m._ticks(NOW - age), mine, read, kind, assoc, retracted, edited, attach))
+        self.con.execute(
+            "INSERT INTO message (ROWID, guid, text, attributedBody, handle_id, service, date, is_from_me, is_read, item_type, associated_message_type,"
+            " date_retracted, date_edited, cache_has_attachments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                self.rowid,
+                guid,
+                text,
+                attributed,
+                0 if mine else handle,
+                service,
+                m._ticks(NOW - age),
+                mine,
+                read,
+                kind,
+                assoc,
+                retracted,
+                edited,
+                attach,
+            ),
+        )
         for c in [chat] + ([also] if also else []):
             self.con.execute("INSERT INTO chat_message_join VALUES (?, ?, ?)", (c, self.rowid, 0))
         self.con.commit()
@@ -94,7 +140,10 @@ class Counts(unittest.TestCase):
         self.assertIn("iPhone", out["limitation"])
 
     def test_unreadable_or_off_schema_database_has_no_counts(self):
-        self.assertEqual((m.counts("/nonexistent/chat.db", NOW)["health"], m.counts("/nonexistent/chat.db", NOW)["counts"]), ("DISCONNECTED", None))
+        self.assertEqual(
+            (m.counts("/nonexistent/chat.db", NOW)["health"], m.counts("/nonexistent/chat.db", NOW)["counts"]),
+            ("DISCONNECTED", None),
+        )
         path = os.path.join(tempfile.mkdtemp(), "chat.db")
         with sqlite3.connect(path) as con:
             con.execute("CREATE TABLE message (ROWID INTEGER PRIMARY KEY, date INTEGER)")
@@ -116,9 +165,15 @@ class Recent(unittest.TestCase):
         self.assertEqual([x["ref"] for x in msgs][:2], ["m%d" % b, "m%d" % a])
         first, second = msgs[0], msgs[1]
         self.assertEqual(first["sender"], {"handle": BOB, "name": "Example Corp"})
-        self.assertEqual((first["unread"], first["edited"], first["attachment"], first["text"]), (False, True, True, "Invoice attached"))
+        self.assertEqual(
+            (first["unread"], first["edited"], first["attachment"], first["text"]),
+            (False, True, True, "Invoice attached"),
+        )
         self.assertEqual(second["sender"], {"handle": ALICE, "name": "Alice Example"})
-        self.assertEqual((second["text"], second["chat"], second["group"], second["unread"]), ("Can you call me before 5pm?", "c10", False, True))
+        self.assertEqual(
+            (second["text"], second["chat"], second["group"], second["unread"]),
+            ("Can you call me before 5pm?", "c10", False, True),
+        )
         group = [x for x in msgs if x["group"]][0]
         self.assertEqual((group["chat_name"], group["service"]), ("Family", "RCS"))
         long = [x for x in msgs if x["service"] == "SMS"][0]
@@ -137,7 +192,10 @@ class Recent(unittest.TestCase):
         long = Fixture()
         long.add(10, H, text="y" * 5000)
         one = m.recent(24, long.db, NOW, "/nonexistent")
-        self.assertEqual((len(one["messages"][0]["text"]), one["messages"][0]["text_truncated"], one["contacts"]), (2000, True, "UNAVAILABLE"))
+        self.assertEqual(
+            (len(one["messages"][0]["text"]), one["messages"][0]["text_truncated"], one["contacts"]),
+            (2000, True, "UNAVAILABLE"),
+        )
 
     def test_failures_return_no_messages(self):
         out = m.recent(24, "/nonexistent/chat.db", NOW)
@@ -161,20 +219,40 @@ class Conversation(unittest.TestCase):
 
 class Arguments(unittest.TestCase):
     def call(self, name, args):
-        ops = {"imessage_counts": lambda a: {"health": "CURRENT"}, "imessage_recent": lambda a: {"health": "CURRENT", "hours": a["hours"]},
-               "imessage_conversation": lambda a: {"health": "CURRENT", "chat": a["chat"]}}
-        return m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}}, ops=ops)
+        ops = {
+            "imessage_counts": lambda a: {"health": "CURRENT"},
+            "imessage_recent": lambda a: {"health": "CURRENT", "hours": a["hours"]},
+            "imessage_conversation": lambda a: {"health": "CURRENT", "chat": a["chat"]},
+        }
+        return m.handle(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}}, ops=ops
+        )
 
     def test_only_bounded_integers_are_accepted(self):
         self.assertEqual(self.call("imessage_recent", {"hours": 72})["result"]["structuredContent"]["hours"], 72)
         self.assertEqual(self.call("imessage_conversation", {"chat": 10})["result"]["structuredContent"]["chat"], 10)
         self.assertIn("result", self.call("imessage_counts", {}))
-        for name, args in (("imessage_recent", {"hours": 0}), ("imessage_recent", {"hours": 73}), ("imessage_recent", {"hours": "24"}),
-                           ("imessage_recent", {"hours": True}), ("imessage_recent", {"hours": 1.5}), ("imessage_recent", {}),
-                           ("imessage_recent", {"hours": 1, "query": "SELECT text FROM message"}), ("imessage_conversation", {"chat": 0}),
-                           ("imessage_conversation", {"chat": "c10"}), ("imessage_conversation", {"chat": -1}), ("imessage_conversation", {"path": "/etc"}),
-                           ("imessage_counts", {"window": "all"}), ("imessage_send", {}), ("imessage_mark_read", {"chat": 1})):
-            self.assertEqual(self.call(name, args)["error"], {"code": -32602, "message": "unsupported tool or arguments"}, (name, args))
+        for name, args in (
+            ("imessage_recent", {"hours": 0}),
+            ("imessage_recent", {"hours": 73}),
+            ("imessage_recent", {"hours": "24"}),
+            ("imessage_recent", {"hours": True}),
+            ("imessage_recent", {"hours": 1.5}),
+            ("imessage_recent", {}),
+            ("imessage_recent", {"hours": 1, "query": "SELECT text FROM message"}),
+            ("imessage_conversation", {"chat": 0}),
+            ("imessage_conversation", {"chat": "c10"}),
+            ("imessage_conversation", {"chat": -1}),
+            ("imessage_conversation", {"path": "/etc"}),
+            ("imessage_counts", {"window": "all"}),
+            ("imessage_send", {}),
+            ("imessage_mark_read", {"chat": 1}),
+        ):
+            self.assertEqual(
+                self.call(name, args)["error"],
+                {"code": -32602, "message": "unsupported tool or arguments"},
+                (name, args),
+            )
 
 
 class ReadOnly(unittest.TestCase):
@@ -203,21 +281,29 @@ class Urgency(unittest.TestCase):
         return self.w.classify({"text": text, "sender": {"handle": handle, "name": name}, "group": group}, context)
 
     def test_levels(self):
-        cases = [("Mom is in the hospital, call me now", "TIME_CRITICAL", False),
-                 ("URGENT: need the signed form today by 3pm", "TIME_CRITICAL", False),
-                 ("The recruiter wants to schedule a call for your interview", "ACTION_REQUIRED", False),
-                 ("Can you send the invoice by Friday?", "ACTION_REQUIRED", False),
-                 ("Are we still on for dinner?", "ATTENTION", False),
-                 ("Haha nice photo", "INFORMATIONAL", False),
-                 ("this is urgent", "ATTENTION", True)]
+        cases = [
+            ("Mom is in the hospital, call me now", "TIME_CRITICAL", False),
+            ("URGENT: need the signed form today by 3pm", "TIME_CRITICAL", False),
+            ("The recruiter wants to schedule a call for your interview", "ACTION_REQUIRED", False),
+            ("Can you send the invoice by Friday?", "ACTION_REQUIRED", False),
+            ("Are we still on for dinner?", "ATTENTION", False),
+            ("Haha nice photo", "INFORMATIONAL", False),
+            ("this is urgent", "ATTENTION", True),
+        ]
         for text, level, review in cases:
             v = self.level(text)
             self.assertEqual((v["level"], v["review"]), (level, review), text)
             self.assertTrue(v["next_action"])
 
     def test_codes_short_codes_and_marketing_never_escalate(self):
-        self.assertEqual(self.level("Your verification code is 482913. Do not share it.", name=None, handle="+15550100009")["level"], "INFORMATIONAL")
-        self.assertEqual(self.level("URGENT: your account expires today, reply now", name=None, handle="262966")["level"], "INFORMATIONAL")
+        self.assertEqual(
+            self.level("Your verification code is 482913. Do not share it.", name=None, handle="+15550100009")["level"],
+            "INFORMATIONAL",
+        )
+        self.assertEqual(
+            self.level("URGENT: your account expires today, reply now", name=None, handle="262966")["level"],
+            "INFORMATIONAL",
+        )
 
     def test_unknown_senders_and_groups_are_reviewed_not_promoted(self):
         v = self.level("There was an accident, call me now", name=None, handle="+15550100009")
@@ -228,7 +314,9 @@ class Urgency(unittest.TestCase):
         self.assertEqual(self.level("Jim can you bring chairs?", group=True)["level"], "ATTENTION")
 
     def test_context_carries_a_deadline_or_scheduling_thread(self):
-        self.assertEqual(self.level("Does that work?", context=["The interview panel moved to Thursday"])["level"], "ACTION_REQUIRED")
+        self.assertEqual(
+            self.level("Does that work?", context=["The interview panel moved to Thursday"])["level"], "ACTION_REQUIRED"
+        )
         self.assertEqual(self.level("Does that work?")["level"], "ATTENTION")
 
     def test_missing_text_is_reviewed(self):
@@ -251,7 +339,9 @@ class Paging(unittest.TestCase):
 
     def test_more_than_one_page_each_message_exactly_once_in_order(self):
         f = Fixture()
-        ids = [f.add(10 + i % 3, timedelta(minutes=500 - i), text="t%d" % i, read=i % 2) for i in range(137)]  # read and unread alike
+        ids = [
+            f.add(10 + i % 3, timedelta(minutes=500 - i), text="t%d" % i, read=i % 2) for i in range(137)
+        ]  # read and unread alike
         f.add(10, timedelta(minutes=1), mine=1)  # outgoing: never listed
         f.add(10, 30 * H)  # outside the window
         pages, out = self.walk(f)
@@ -285,14 +375,29 @@ class Paging(unittest.TestCase):
         pages, out = self.walk(f)
         self.assertEqual((out, pages[0]["more"], pages[0]["cursor"]), ([], False, None))
         bad = m.page(24, db="/nonexistent/chat.db", now=NOW)
-        self.assertEqual((bad["health"], bad["messages"], bad["more"], bad["cursor"]), ("DISCONNECTED", None, None, None))
+        self.assertEqual(
+            (bad["health"], bad["messages"], bad["more"], bad["cursor"]), ("DISCONNECTED", None, None, None)
+        )
 
     def test_only_bounded_integer_cursors_are_accepted(self):
-        ok = lambda args: m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "imessage_page", "arguments": args}},
-                                   ops={"imessage_page": lambda a: {"health": "CURRENT"}})
+        ok = lambda args: m.handle(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "imessage_page", "arguments": args}},
+            ops={"imessage_page": lambda a: {"health": "CURRENT"}},
+        )
         self.assertIn("result", ok({"hours": 10}))
         self.assertIn("result", ok({"after_date": 812345678901234567, "after_rowid": 286135}))
-        for args in ({}, {"hours": 0}, {"hours": 73}, {"after_date": 1}, {"after_rowid": 1}, {"after_date": 0, "after_rowid": 1}, {"after_date": 1, "after_rowid": 0},
-                     {"after_date": 10 ** 19, "after_rowid": 1}, {"after_date": 1, "after_rowid": 2 ** 31}, {"after_date": "1", "after_rowid": 1},
-                     {"hours": 1, "after_date": 1, "after_rowid": 1}, {"after_date": 1, "after_rowid": 1, "query": "x"}):
+        for args in (
+            {},
+            {"hours": 0},
+            {"hours": 73},
+            {"after_date": 1},
+            {"after_rowid": 1},
+            {"after_date": 0, "after_rowid": 1},
+            {"after_date": 1, "after_rowid": 0},
+            {"after_date": 10**19, "after_rowid": 1},
+            {"after_date": 1, "after_rowid": 2**31},
+            {"after_date": "1", "after_rowid": 1},
+            {"hours": 1, "after_date": 1, "after_rowid": 1},
+            {"after_date": 1, "after_rowid": 1, "query": "x"},
+        ):
             self.assertEqual(ok(args)["error"]["code"], -32602, args)

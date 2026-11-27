@@ -1,4 +1,5 @@
 """§2: the read-only sandbox access check."""
+
 import contextlib
 import io
 import json
@@ -18,6 +19,7 @@ def refused(code, detail=""):
 
 class Fake:
     """Answers the three reads"""
+
     def __init__(self, refuse=None, rows=1):
         self.refuse, self.rows, self.calls = refuse or {}, rows, []
 
@@ -45,16 +47,40 @@ class SandboxAccess(unittest.TestCase):
     def test_reads_only_the_three_fixed_sandbox_targets_and_reports_200s(self):
         fake = Fake()
         done = S.run(0, False, environ={}, client=fake)
-        self.assertEqual(done, {"notion_sandbox_access": "read_only", "data_source": "200", "query": "200", "rows": 1, "page": "200", "failed": 0})
-        self.assertEqual(fake.calls, [("GET", f"/data_sources/{S.SANDBOX_SOURCE}", None),
-                                      ("POST", f"/data_sources/{S.SANDBOX_SOURCE}/query", {"page_size": 1}),
-                                      ("GET", f"/pages/{S.SANDBOX_PAGE}", None)])
+        self.assertEqual(
+            done,
+            {
+                "notion_sandbox_access": "read_only",
+                "data_source": "200",
+                "query": "200",
+                "rows": 1,
+                "page": "200",
+                "failed": 0,
+            },
+        )
+        self.assertEqual(
+            fake.calls,
+            [
+                ("GET", f"/data_sources/{S.SANDBOX_SOURCE}", None),
+                ("POST", f"/data_sources/{S.SANDBOX_SOURCE}/query", {"page_size": 1}),
+                ("GET", f"/pages/{S.SANDBOX_PAGE}", None),
+            ],
+        )
 
     def test_an_unshared_sandbox_reports_notions_codes_and_counts_each_refused_read(self):
         missing = refused("NOTION_HTTP_404", "object_not_found")
         done = S.run(0, False, environ={}, client=Fake({"/data_sources/": missing, "/pages/": missing}))
-        self.assertEqual(done, {"notion_sandbox_access": "read_only", "data_source": "NOTION_HTTP_404 object_not_found", "query": "NOTION_HTTP_404 object_not_found",
-                                "rows": 0, "page": "NOTION_HTTP_404 object_not_found", "failed": 3})
+        self.assertEqual(
+            done,
+            {
+                "notion_sandbox_access": "read_only",
+                "data_source": "NOTION_HTTP_404 object_not_found",
+                "query": "NOTION_HTTP_404 object_not_found",
+                "rows": 0,
+                "page": "NOTION_HTTP_404 object_not_found",
+                "failed": 3,
+            },
+        )
 
     def test_live_is_refused_before_any_call(self):
         fake = Fake()
@@ -64,18 +90,27 @@ class SandboxAccess(unittest.TestCase):
 
     def test_the_default_client_uses_the_jobs_token_and_the_sandbox_source_never_the_production_ledger(self):
         made = {}
+
         def capture(environ, **kw):
             made.update(environ=dict(environ), **kw)
             return Fake()
+
         with patch.object(S, "Client", side_effect=capture):
             S.run(0, False, environ={"NOTION_API_TOKEN": "t", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "production"})
-        self.assertEqual(made, {"environ": {"NOTION_API_TOKEN": "t", "SANDBOX_SOURCE": S.SANDBOX_SOURCE}, "source_name": "SANDBOX_SOURCE"})
+        self.assertEqual(
+            made,
+            {"environ": {"NOTION_API_TOKEN": "t", "SANDBOX_SOURCE": S.SANDBOX_SOURCE}, "source_name": "SANDBOX_SOURCE"},
+        )
         self.assertEqual(Client(made["environ"], source_name="SANDBOX_SOURCE").source, S.SANDBOX_SOURCE)
 
     def test_a_refused_read_fails_the_step_with_a_fixed_code_and_still_prints_the_codes(self):
         out, err = io.StringIO(), io.StringIO()
-        with patch.object(S, "Client", return_value=Fake({"/pages/": refused("NOTION_HTTP_404", "object_not_found")})), \
-                patch.dict("os.environ", {"NOTION_API_TOKEN": "t"}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with (
+            patch.object(S, "Client", return_value=Fake({"/pages/": refused("NOTION_HTTP_404", "object_not_found")})),
+            patch.dict("os.environ", {"NOTION_API_TOKEN": "t"}),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
             code = runner.main(["notion-sandbox-access", "--limit", "0"])
         self.assertEqual((code, err.getvalue()), (1, "NOTION-SANDBOX-ACCESS FAILED: NOTION_SANDBOX_ACCESS_DENIED\n"))
         printed = json.loads(out.getvalue().split(": ", 1)[1])

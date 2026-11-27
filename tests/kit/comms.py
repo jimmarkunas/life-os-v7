@@ -1,6 +1,7 @@
 """A synthetic Daily Report column holding the Attention callout and the Communications callout (heading, two columns,
 four rows), with Jim's custom.
 """
+
 from copy import deepcopy
 
 LAUNCH = "https://example.com/launch/%s/"
@@ -8,13 +9,24 @@ EMOJI = {"e-msg": "messages", "e-tg": "telegram", "e-wa": "whatsapp", "e-dc": "d
 
 
 def text(content, link=None):
-    return {"type": "text", "plain_text": content, "annotations": {"bold": False, "color": "default"},
-            "text": {"content": content, "link": {"url": link} if link else None}}
+    return {
+        "type": "text",
+        "plain_text": content,
+        "annotations": {"bold": False, "color": "default"},
+        "text": {"content": content, "link": {"url": link} if link else None},
+    }
 
 
 def emoji(emoji_id):
-    return {"type": "mention", "plain_text": ":%s:" % EMOJI[emoji_id], "annotations": {"bold": False, "color": "default"},
-            "mention": {"type": "custom_emoji", "custom_emoji": {"id": emoji_id, "name": EMOJI[emoji_id], "url": "https://example.com/%s.png" % emoji_id}}}
+    return {
+        "type": "mention",
+        "plain_text": ":%s:" % EMOJI[emoji_id],
+        "annotations": {"bold": False, "color": "default"},
+        "mention": {
+            "type": "custom_emoji",
+            "custom_emoji": {"id": emoji_id, "name": EMOJI[emoji_id], "url": "https://example.com/%s.png" % emoji_id},
+        },
+    }
 
 
 class Report:
@@ -28,16 +40,26 @@ class Report:
         self.add("cl", "column_list", "comms")
         self.add("left", "column", "cl")
         self.add("right", "column", "cl")
-        for i, (eid, app, label) in enumerate((("e-msg", "messages", "Messages (—)"), ("e-tg", "telegram", "Telegram (—)"),
-                                                ("e-wa", "whatsapp", "WhatsApp (—)"), ("e-dc", "discord", "Discord"))):
+        for i, (eid, app, label) in enumerate(
+            (
+                ("e-msg", "messages", "Messages (—)"),
+                ("e-tg", "telegram", "Telegram (—)"),
+                ("e-wa", "whatsapp", "WhatsApp (—)"),
+                ("e-dc", "discord", "Discord"),
+            )
+        ):
             self.add("l%d" % i, "paragraph", "left", [emoji(eid), text(" "), text(label, LAUNCH % app)])
         for i, line in enumerate(("Latest: unavailable", "Latest: unavailable", "Latest: unavailable", "Launch only")):
             self.add("r%d" % i, "paragraph", "right", [text(line)])
         self.add("bills", "callout", "col", [text("Bills")])
 
     def add(self, block_id, kind, parent, rich=None):
-        self.blocks[block_id] = {"id": block_id, "type": kind, "parent": {"type": "block_id", "block_id": parent},
-                                 kind: {"rich_text": rich} if rich is not None else {}}
+        self.blocks[block_id] = {
+            "id": block_id,
+            "type": kind,
+            "parent": {"type": "block_id", "block_id": parent},
+            kind: {"rich_text": rich} if rich is not None else {},
+        }
         self.kids.setdefault(parent, []).append(block_id)
 
     def plain(self, block_id):
@@ -66,9 +88,16 @@ class Report:
                 ce = item["mention"]["custom_emoji"]
                 if set(ce) != {"id"}:
                     raise AssertionError("a custom icon is sent by id only")
-                stored.append({**emoji(ce["id"]), **({"annotations": item["annotations"]} if "annotations" in item else {})})
+                stored.append(
+                    {**emoji(ce["id"]), **({"annotations": item["annotations"]} if "annotations" in item else {})}
+                )
             else:
                 link = (item["text"].get("link") or {}).get("url")
-                stored.append({**text(item["text"]["content"], link), **({"annotations": item["annotations"]} if "annotations" in item else {})})
+                stored.append(
+                    {
+                        **text(item["text"]["content"], link),
+                        **({"annotations": item["annotations"]} if "annotations" in item else {}),
+                    }
+                )
         block[kind]["rich_text"] = stored
         return deepcopy(block)

@@ -1,6 +1,7 @@
 """the job-source registry (lifeos/platform/source_registry.json) drives the stage table, the Jobs-tick plan and the
 source's own codes, and a stage.
 """
+
 import importlib
 import json
 import sys
@@ -19,8 +20,13 @@ NOT_YET_MIGRATED = frozenset(())
 def unlisted(stages, sources=registry.SOURCES, legacy=NOT_YET_MIGRATED):
     """The stages whose target is under lifeos/sources/ and that are neither registered nor legacy, sorted."""
     registered = {s.name for s in sources}
-    return sorted(name for name, stage in stages.items()
-                  if getattr(stage, "target", ("",))[0].startswith("lifeos.sources") and name not in registered and name not in legacy)
+    return sorted(
+        name
+        for name, stage in stages.items()
+        if getattr(stage, "target", ("",))[0].startswith("lifeos.sources")
+        and name not in registered
+        and name not in legacy
+    )
 
 
 class EveryEntryIsReal(unittest.TestCase):
@@ -29,7 +35,10 @@ class EveryEntryIsReal(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for s in registry.SOURCES:
             module = importlib.import_module(s.module)
-            self.assertTrue(callable(getattr(module, s.function, None)), f"source {s.name}: {s.module}.{s.function} is not a function")
+            self.assertTrue(
+                callable(getattr(module, s.function, None)),
+                f"source {s.name}: {s.module}.{s.function} is not a function",
+            )
 
     def test_every_registered_source_is_a_stage_pointing_at_its_module(self):
         for s in registry.SOURCES:
@@ -76,13 +85,20 @@ class MissingSourcesAreCaught(unittest.TestCase):
         self.assertEqual(unlisted(stages), ["brand-new-source"])
 
     def test_removing_a_registry_line_is_caught_by_name(self):
-        self.assertEqual(unlisted(run.STAGES, sources=()), sorted(s.name for s in registry.SOURCES if s.module.startswith("lifeos.sources")))
+        self.assertEqual(
+            unlisted(run.STAGES, sources=()),
+            sorted(s.name for s in registry.SOURCES if s.module.startswith("lifeos.sources")),
+        )
 
 
 class ThePilotIsUnchanged(unittest.TestCase):
     def test_sponsors_has_the_same_stage_tick_step_and_place_as_before_the_registry(self):
-        self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT"))  # the pilot stage is declared through its contract
-        self.assertEqual(next(s for s in tick.PLAN if s.name == "sponsors"), tick.Step("sponsors", 120, 40, bulk=True, group="B"))
+        self.assertEqual(
+            run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT")
+        )  # the pilot stage is declared through its contract
+        self.assertEqual(
+            next(s for s in tick.PLAN if s.name == "sponsors"), tick.Step("sponsors", 120, 40, bulk=True, group="B")
+        )
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[names.index("sponsors") + 1], "boards-backfill")
 
@@ -93,9 +109,15 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
         module.run = lambda limit, live: {"limit": limit, "live": live, "found": 3}
         sys.modules["lifeos.sources._fake_source"] = module
         self.addCleanup(sys.modules.pop, "lifeos.sources._fake_source", None)
-        self.fake = registry.Source("fake-source", "lifeos.sources._fake_source", floor=5, tick={"budget": 90, "bulk": True, "group": "B"}, after="sponsors",
-                                    codes={"FAKE_SOURCE_FAILED": ("degraded", False, "The fake source could not be read.", "Repeat the run.")},
-                                    partial_failure="FAKE_SOURCE_FAILED")
+        self.fake = registry.Source(
+            "fake-source",
+            "lifeos.sources._fake_source",
+            floor=5,
+            tick={"budget": 90, "bulk": True, "group": "B"},
+            after="sponsors",
+            codes={"FAKE_SOURCE_FAILED": ("degraded", False, "The fake source could not be read.", "Repeat the run.")},
+            partial_failure="FAKE_SOURCE_FAILED",
+        )
 
     def test_the_stage_runs_with_the_floor_applied(self):
         stage = registry.stages(run.lazy, [self.fake])["fake-source"]
@@ -109,7 +131,9 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
 
     def test_a_step_named_after_a_step_that_does_not_exist_raises(self):
         with self.assertRaises(ValueError):
-            registry.with_tick_steps(tick.PLAN, tick.Step, [registry.Source("x", "m", tick={"budget": 1}, after="no-such-step")])
+            registry.with_tick_steps(
+                tick.PLAN, tick.Step, [registry.Source("x", "m", tick={"budget": 1}, after="no-such-step")]
+            )
 
     def test_two_sources_that_follow_the_same_step_are_refused_by_name(self):
         other = registry.Source("other-source", "lifeos.sources._fake_source", tick={"budget": 1}, after="sponsors")
@@ -117,13 +141,20 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
             registry.with_tick_steps(tick.PLAN, tick.Step, [self.fake, other])
 
     def test_its_partial_failure_code_is_what_the_run_exits_with_when_its_counts_say_failed(self):
-        self.assertEqual(registry.partial_failures([self.fake, registry.Source("quiet", "m")]), {"fake-source": "FAKE_SOURCE_FAILED"})
-        self.assertEqual(registry.partial_failures(), {s.name: s.partial_failure for s in registry.SOURCES if s.partial_failure})
+        self.assertEqual(
+            registry.partial_failures([self.fake, registry.Source("quiet", "m")]), {"fake-source": "FAKE_SOURCE_FAILED"}
+        )
+        self.assertEqual(
+            registry.partial_failures(), {s.name: s.partial_failure for s in registry.SOURCES if s.partial_failure}
+        )
         self.assertTrue({"mail-filing", "manual-job", "granola-auto"} <= set(run.PARTIAL_FAILURE))
 
     def test_its_codes_become_registered_codes_with_the_sources_stage(self):
         rows = registry.code_rows(codes._r, [self.fake])
-        self.assertEqual(rows["FAKE_SOURCE_FAILED"], codes._r("fake-source", "degraded", False, "The fake source could not be read.", "Repeat the run."))
+        self.assertEqual(
+            rows["FAKE_SOURCE_FAILED"],
+            codes._r("fake-source", "degraded", False, "The fake source could not be read.", "Repeat the run."),
+        )
         self.assertIn(rows["FAKE_SOURCE_FAILED"].klass, codes.CLASSES)
 
 
@@ -131,6 +162,7 @@ class StatusIsStated(unittest.TestCase):
     """every registered source carries one status word (the loader ignores the key, so a run never changes), and the
     words that name a limit match the code.
     """
+
     RAW = json.loads(registry.FILE.read_text(encoding="utf-8"))
     WORDS = {"active", "parked", "manual", "retired"}
 
@@ -138,7 +170,11 @@ class StatusIsStated(unittest.TestCase):
         status = self.RAW["status"]
         names = {s.name for s in registry.SOURCES}
         self.assertEqual(sorted(names - set(status)), [], "add a status word for each new source")
-        self.assertEqual(sorted(set(status) - names - {step.name for step in tick.PLAN}), [], "a status for a stage that does not exist")
+        self.assertEqual(
+            sorted(set(status) - names - {step.name for step in tick.PLAN}),
+            [],
+            "a status for a stage that does not exist",
+        )
         self.assertEqual(sorted(w for w in status.values() if w not in self.WORDS), [])
 
     def test_a_status_other_than_active_says_why(self):
@@ -153,10 +189,12 @@ class StatusIsStated(unittest.TestCase):
 
     def test_boards_backfill_is_parked_exactly_while_its_switch_is_off(self):
         from lifeos.platform import switches
+
         self.assertEqual(self.RAW["status"]["boards-backfill"] == "parked", not switches.state("BOARDS_BACKFILL", {}))
 
     def test_dice_is_parked_while_no_sender_rule_feeds_it(self):
         from lifeos.sources.newsletters import config
+
         fed = any(name == "dice" for name, _ in config.SENDER_RULES)
         self.assertEqual(self.RAW["status"]["resolve-dice"] == "parked", not fed)
 

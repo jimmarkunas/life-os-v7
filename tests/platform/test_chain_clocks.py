@@ -1,4 +1,5 @@
 """the three end-to-end clocks of one tick, correlated by the tick's run ID"""
+
 import datetime as dt
 import json
 import pathlib
@@ -21,16 +22,45 @@ def at(seconds):
 
 def log(**ends):
     """A tick log: each stage line is stamped when it ended (the runner's prefix)."""
-    return "\n".join(f"{at(sec)[:-1]}.1234567Z stage {name.replace('_', '-')}: {outcome} 12.3s" for name, (outcome, sec) in ends.items())
+    return "\n".join(
+        f"{at(sec)[:-1]}.1234567Z stage {name.replace('_', '-')}: {outcome} 12.3s"
+        for name, (outcome, sec) in ends.items()
+    )
 
 
 def job(name, end, conclusion="success", status="completed"):
-    return {"name": name, "status": status, "conclusion": conclusion, "started_at": at(0), "completed_at": at(end) if end is not None else None}
+    return {
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+        "started_at": at(0),
+        "completed_at": at(end) if end is not None else None,
+    }
 
 
-TICK = {"id": 77, "status": "completed", "conclusion": "success", "run_started_at": at(0), "created_at": at(-5), "updated_at": at(700)}
-EARLY_JOBS = [job("gate (tick 77)", 10), job("hiring", 400), job("recruiters", 520), job("amazon", 300), job("hiring_outcomes", 450), job("report", 800, "skipped")]
-LATE_JOBS = [job("gate (tick 77)", 710), job("interview", 900), job("megibow", 800), job("granola", 1000), job("hiring", 800, "skipped")]
+TICK = {
+    "id": 77,
+    "status": "completed",
+    "conclusion": "success",
+    "run_started_at": at(0),
+    "created_at": at(-5),
+    "updated_at": at(700),
+}
+EARLY_JOBS = [
+    job("gate (tick 77)", 10),
+    job("hiring", 400),
+    job("recruiters", 520),
+    job("amazon", 300),
+    job("hiring_outcomes", 450),
+    job("report", 800, "skipped"),
+]
+LATE_JOBS = [
+    job("gate (tick 77)", 710),
+    job("interview", 900),
+    job("megibow", 800),
+    job("granola", 1000),
+    job("hiring", 800, "skipped"),
+]
 EARLY = {"id": 1, "event": "workflow_dispatch", "conclusion": None, "jobs": EARLY_JOBS}
 LATE = {"id": 2, "event": "workflow_run", "conclusion": None, "jobs": LATE_JOBS}
 STAGES = log(publish=("ok", 200), publish_fresh=("ok", 330))
@@ -43,16 +73,27 @@ class Clocks(unittest.TestCase):
 
     def test_the_three_clocks_from_one_correlated_chain_in_seconds_and_minutes(self):
         c = self.full()
-        self.assertEqual((c["jobs"]["status"], c["jobs"]["seconds"], c["jobs"]["minutes"], c["jobs"]["stage"]), ("OK", 330, 5.5, "publish-fresh"))
-        self.assertEqual((c["career"]["status"], c["career"]["seconds"], c["career"]["minutes"], c["career"]["stage"]), ("OK", 900, 15.0, "interview"))
-        self.assertEqual((c["platform"]["status"], c["platform"]["seconds"], c["platform"]["minutes"], c["platform"]["stage"]), ("OK", 1000, 16.7, "granola"))
+        self.assertEqual(
+            (c["jobs"]["status"], c["jobs"]["seconds"], c["jobs"]["minutes"], c["jobs"]["stage"]),
+            ("OK", 330, 5.5, "publish-fresh"),
+        )
+        self.assertEqual(
+            (c["career"]["status"], c["career"]["seconds"], c["career"]["minutes"], c["career"]["stage"]),
+            ("OK", 900, 15.0, "interview"),
+        )
+        self.assertEqual(
+            (c["platform"]["status"], c["platform"]["seconds"], c["platform"]["minutes"], c["platform"]["stage"]),
+            ("OK", 1000, 16.7, "granola"),
+        )
         self.assertEqual(c["jobs"]["at"], "Nov 22 2026, 12:05 PM CT")  # Central Time, never UTC
         self.assertEqual(c["platform"]["at"], "Nov 22 2026, 12:16 PM CT")
 
     def test_the_receipt_names_the_tick_the_role_and_the_runs(self):
         r = cc.receipt(77, "late", TICK, STAGES, [EARLY, LATE], 2)
         self.assertEqual((r["tick"], r["role"], r["run"], r["origin"]), ("77", "late", "2", "Nov 22 2026, 12:00 PM CT"))
-        self.assertEqual([(x["id"], x["event"]) for x in r["runs"]], [("1", "workflow_dispatch"), ("2", "workflow_run")])
+        self.assertEqual(
+            [(x["id"], x["event"]) for x in r["runs"]], [("1", "workflow_dispatch"), ("2", "workflow_run")]
+        )
         self.assertNotIn("UTC", json.dumps(r))
 
     def test_the_full_platform_clock_is_unverified_until_the_after_tick_run_exists_and_its_jobs_ended(self):
@@ -71,7 +112,10 @@ class Clocks(unittest.TestCase):
         self.assertIn("TICK_RUNNING", c["platform"]["why"])
 
     def test_a_failed_or_timed_out_job_is_degraded_never_done_and_still_has_its_time(self):
-        late = {**LATE, "jobs": [job("interview", 900, "failure"), job("granola", 1000, "timed_out"), job("megibow", 800)]}
+        late = {
+            **LATE,
+            "jobs": [job("interview", 900, "failure"), job("granola", 1000, "timed_out"), job("megibow", 800)],
+        }
         c = self.full(runs=[EARLY, late])
         self.assertEqual(c["platform"]["status"], "DEGRADED")
         self.assertEqual(c["platform"]["why"], ["GRANOLA_TIMED_OUT", "INTERVIEW_FAILURE"])
@@ -88,7 +132,9 @@ class Clocks(unittest.TestCase):
 
     def test_a_career_job_not_due_is_neither_a_failure_nor_a_write(self):
         c = self.full(runs=[EARLY, {**LATE, "jobs": [job("interview", 5, "skipped"), job("granola", 1000)]}])
-        self.assertEqual((c["career"]["status"], c["career"]["stage"], c["career"]["seconds"]), ("OK", "recruiters", 520))
+        self.assertEqual(
+            (c["career"]["status"], c["career"]["stage"], c["career"]["seconds"]), ("OK", "recruiters", 520)
+        )
 
     def test_no_career_job_in_the_chain_is_unverified(self):
         c = self.full(runs=[{**LATE, "jobs": [job("granola", 1000)]}])
@@ -102,7 +148,10 @@ class JobsClock(unittest.TestCase):
 
     def test_a_stage_that_did_not_print_ok_degrades_the_clock_and_never_counts_as_zero(self):
         c = cc.jobs_clock(T0, cc.stage_ends(log(publish=("ok", 200), publish_fresh=("timeout", 330))))
-        self.assertEqual((c["status"], c["seconds"], c["stage"], c["why"]), ("DEGRADED", 200, "publish", ["STAGE_PUBLISH_FRESH_TIMEOUT"]))
+        self.assertEqual(
+            (c["status"], c["seconds"], c["stage"], c["why"]),
+            ("DEGRADED", 200, "publish", ["STAGE_PUBLISH_FRESH_TIMEOUT"]),
+        )
         none = cc.jobs_clock(T0, cc.stage_ends(log(publish=("failed", 200), publish_fresh=("skipped", 330))))
         self.assertEqual((none["status"], none["seconds"], none["at"]), ("DEGRADED", None, None))
         self.assertEqual(none["why"], ["STAGE_PUBLISH_FAILED", "STAGE_PUBLISH_FRESH_SKIPPED"])
@@ -116,14 +165,27 @@ class JobsClock(unittest.TestCase):
 
 
 class Finding(unittest.TestCase):
-    LISTING = [{"id": 1, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(20)},
-               {"id": 2, "display_title": gate.DOMAINS_TITLE, "event": "workflow_run", "created_at": at(702)},
-               {"id": 3, "display_title": "domains (manual)", "event": "workflow_dispatch", "created_at": at(30)},
-               {"id": 4, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(-3600 + 20)},  # the previous hour's early run
-               {"id": 5, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(25)}]  # near this tick, but another tick's ID
+    LISTING = [
+        {"id": 1, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(20)},
+        {"id": 2, "display_title": gate.DOMAINS_TITLE, "event": "workflow_run", "created_at": at(702)},
+        {"id": 3, "display_title": "domains (manual)", "event": "workflow_dispatch", "created_at": at(30)},
+        {
+            "id": 4,
+            "display_title": gate.DOMAINS_TITLE,
+            "event": "workflow_dispatch",
+            "created_at": at(-3600 + 20),
+        },  # the previous hour's early run
+        {"id": 5, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(25)},
+    ]  # near this tick, but another tick's ID
 
     def test_only_this_ticks_runs_are_correlated_by_the_id_in_the_gate_job_name(self):
-        jobs = {1: EARLY_JOBS, 2: LATE_JOBS, 3: EARLY_JOBS, 4: [job("gate (tick 70)", 1)], 5: [job("gate (tick 78)", 1)]}
+        jobs = {
+            1: EARLY_JOBS,
+            2: LATE_JOBS,
+            3: EARLY_JOBS,
+            4: [job("gate (tick 70)", 1)],
+            5: [job("gate (tick 78)", 1)],
+        }
         got = cc.correlated_runs(77, TICK, self.LISTING, lambda rid: jobs[rid])
         self.assertEqual([r["id"] for r in got], [1, 2])
 
@@ -132,6 +194,7 @@ class Main(unittest.TestCase):
     def run_main(self, env, api, text=STAGES):
         out = []
         import contextlib, io
+
         with contextlib.redirect_stdout(io.StringIO()) as buffer:
             code = cc.main(env, api, lambda rid, environ=None: text)
         out.extend(buffer.getvalue().splitlines())
@@ -158,6 +221,7 @@ class Main(unittest.TestCase):
 
         def broken(path):
             raise OSError("no")
+
         code, out = self.run_main({"CHAIN_TICK_ID": "77"}, broken)
         self.assertEqual(code, 0)
         self.assertIn("CHAIN_UNREADABLE_OSERROR", out[-1])
@@ -166,7 +230,9 @@ class Main(unittest.TestCase):
     def test_an_unreadable_tick_log_leaves_the_other_clocks_standing(self):
         def no_log(rid, environ=None):
             raise OSError("x")
+
         import contextlib, io
+
         with contextlib.redirect_stdout(io.StringIO()) as buffer:
             cc.main({"CHAIN_TICK_ID": "77"}, self.api, no_log)
         receipt = json.loads(buffer.getvalue().splitlines()[-1].split("chain: ", 1)[1])

@@ -1,4 +1,5 @@
 """the avatar manifest and the checked install script."""
+
 import hashlib
 import os
 import re
@@ -39,7 +40,11 @@ class Avatars(unittest.TestCase):
         self.write_manifest({p: ("%s.png" % p, PNG + p.encode()) for p in PROFILES})
 
     def avatar(self, profile, ext):
-        base = os.path.join(self.home, "assets") if profile == "main" else os.path.join(self.home, "profiles", profile, "assets")
+        base = (
+            os.path.join(self.home, "assets")
+            if profile == "main"
+            else os.path.join(self.home, "profiles", profile, "assets")
+        )
         return os.path.join(base, "avatar." + ext)
 
     def write_manifest(self, rows, mangle=None):
@@ -54,7 +59,21 @@ class Avatars(unittest.TestCase):
             handle.write("\n".join(lines) + "\n")
 
     def run_script(self, *args):
-        done = subprocess.run(["bash", os.path.join(HERMES, "deploy_avatars.sh"), "--src", self.src, "--home", self.home, "--manifest", self.manifest, *args], capture_output=True, text=True)
+        done = subprocess.run(
+            [
+                "bash",
+                os.path.join(HERMES, "deploy_avatars.sh"),
+                "--src",
+                self.src,
+                "--home",
+                self.home,
+                "--manifest",
+                self.manifest,
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+        )
         return done.returncode, done.stdout + done.stderr
 
     def read(self, path):
@@ -78,7 +97,9 @@ class Avatars(unittest.TestCase):
         for p in PROFILES:
             self.assertEqual(self.read(self.avatar(p, "png")), PNG + p.encode(), p)
             self.assertEqual(os.stat(self.avatar(p, "png")).st_mode & 0o777, 0o600, p)
-            self.assertTrue(self.read(os.path.join(self.backup, p, "avatar.png")).startswith(b"\x89PNG\r\n\x1a\nOLD"), p)
+            self.assertTrue(
+                self.read(os.path.join(self.backup, p, "avatar.png")).startswith(b"\x89PNG\r\n\x1a\nOLD"), p
+            )
             self.assertFalse(os.path.exists(self.avatar(p, "png") + ".tmp"), p)
         self.assertIn("ROLLBACK writer", out)
         line = [l for l in out.splitlines() if l.startswith("ROLLBACK writer")][0]
@@ -144,9 +165,11 @@ class Avatars(unittest.TestCase):
         self.assertIn("does not match the manifest hash", out)
 
     def test_not_an_image_too_big_missing_and_bad_lines_are_refused(self):
-        for name, blob, needle in (("text", b"just some text, not an image at all.", "not a PNG, JPEG or WebP"),
-                                   ("big", PNG + b"q" * 2_000_001, "over 2000000 bytes"),
-                                   ("empty", b"", "empty or over")):
+        for name, blob, needle in (
+            ("text", b"just some text, not an image at all.", "not a PNG, JPEG or WebP"),
+            ("big", PNG + b"q" * 2_000_001, "over 2000000 bytes"),
+            ("empty", b"", "empty or over"),
+        ):
             self.write_manifest({"writer": ("w.png", blob)})
             status, out = self.run_script("--apply", "--backup", self.backup)
             self.assertEqual(status, 1, (name, out))
@@ -156,9 +179,14 @@ class Avatars(unittest.TestCase):
         status, out = self.run_script()
         self.assertEqual(status, 1, out)
         self.assertIn("is not in", out)
-        for line, needle in (("writer ../../etc/passwd %s 5" % ("a" * 64), "plain file name"), ("writer w.png nothex 5", "bad sha256"),
-                             ("writer w.png %s five" % ("a" * 64), "bad size"), ("onlytwo fields", "bad manifest line"),
-                             ("Writer w.png %s 5" % ("a" * 64), "not a profile name"), ("nobody w.png %s 5" % ("a" * 64), "no profile folder")):
+        for line, needle in (
+            ("writer ../../etc/passwd %s 5" % ("a" * 64), "plain file name"),
+            ("writer w.png nothex 5", "bad sha256"),
+            ("writer w.png %s five" % ("a" * 64), "bad size"),
+            ("onlytwo fields", "bad manifest line"),
+            ("Writer w.png %s 5" % ("a" * 64), "not a profile name"),
+            ("nobody w.png %s 5" % ("a" * 64), "no profile folder"),
+        ):
             with open(self.manifest, "w") as handle:
                 handle.write(line + "\n")
             status, out = self.run_script()
@@ -175,7 +203,9 @@ class Avatars(unittest.TestCase):
         status, out = self.run_script()
         self.assertEqual(status, 1, out)
         self.assertIn("listed twice", out)
-        done = subprocess.run(["bash", os.path.join(HERMES, "deploy_avatars.sh"), "--home", self.home], capture_output=True, text=True)
+        done = subprocess.run(
+            ["bash", os.path.join(HERMES, "deploy_avatars.sh"), "--home", self.home], capture_output=True, text=True
+        )
         self.assertEqual(done.returncode, 1)
         self.assertIn("--src DIR is required", done.stdout)
 
@@ -198,7 +228,9 @@ class RepoFiles(unittest.TestCase):
             self.assertTrue(f.endswith((".png", ".apng", ".webp", ".jpg")), p)
         images = []
         for dirpath, _dirs, files in os.walk(os.path.join(ROOT, "hermes")):
-            images += [n for n in files if n.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".apng"))]
+            images += [
+                n for n in files if n.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".apng"))
+            ]
         self.assertEqual(images, [], "images belong in the private bot-studio repo, never here")
 
     def test_the_canon_names_the_manifest_the_script_and_the_private_repo(self):

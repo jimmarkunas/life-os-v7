@@ -1,6 +1,7 @@
 """an incremental Gmail read: mail an earlier COMPLETE read holds is not read again, the result equals a full read, and
 anything uncertain falls back to.
 """
+
 import json
 import unittest
 import zlib
@@ -16,6 +17,7 @@ NOW = datetime(2026, 11, 23, 3, 0, tzinfo=UTC)
 
 class Gmail:
     """Ids newest first"""
+
     def __init__(self, listing, received, bad=()):
         self.listing, self.received, self.bad, self.reads, self.retries = list(listing), received, set(bad), [], 0
 
@@ -26,8 +28,14 @@ class Gmail:
         self.reads.append(message_id)
         if message_id in self.bad:
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
-        return {"id": message_id, "received_at": self.received[message_id], "headers": {"from": f"P <{message_id}@example.test>", "subject": f"S {message_id}"}, "body_text": "b " + message_id,
-                "label_ids": ["INBOX"], "thread": "t" + message_id}
+        return {
+            "id": message_id,
+            "received_at": self.received[message_id],
+            "headers": {"from": f"P <{message_id}@example.test>", "subject": f"S {message_id}"},
+            "body_text": "b " + message_id,
+            "label_ids": ["INBOX"],
+            "thread": "t" + message_id,
+        }
 
 
 def ago(hours):
@@ -76,6 +84,7 @@ class Incremental(unittest.TestCase):
 
 class Db:
     """Only the checkpoint query: rows are (taken_at, days, complete, fingerprint, payload)"""
+
     def __init__(self, rows, down=False):
         self.rows, self.down = rows, down
 
@@ -102,23 +111,47 @@ class Db:
 
 
 def row(taken, days=14, complete=True, records=None, corrupt=False):
-    records = records if records is not None else [{"provider": "gmail", "id": "g1", "received": ago(30)}, {"provider": "outlook", "id": "a:1", "received": ago(30)}]
-    return (taken, days, complete, "0" * 64 if corrupt else snap.fingerprint(records), zlib.compress(json.dumps({"records": records}).encode()))
+    records = (
+        records
+        if records is not None
+        else [
+            {"provider": "gmail", "id": "g1", "received": ago(30)},
+            {"provider": "outlook", "id": "a:1", "received": ago(30)},
+        ]
+    )
+    return (
+        taken,
+        days,
+        complete,
+        "0" * 64 if corrupt else snap.fingerprint(records),
+        zlib.compress(json.dumps({"records": records}).encode()),
+    )
 
 
 class FullHours(unittest.TestCase):
     def test_the_whole_window_is_read_in_the_full_read_hours_and_the_checkpoint_is_used_in_the_others(self):
         from unittest import mock
         from lifeos.sources.interview import interview_evidence as ev
+
         seen = []
 
         def fake_read(environ, now, gmail, outlook, days, seconds, detail, **kw):
             seen.append(bool(kw.get("reuse")))
-            detail["gmail"] = {"listed": 1, "read": 0 if kw.get("reuse") else 1, "reused": 1 if kw.get("reuse") else 0, "retries": 0}
+            detail["gmail"] = {
+                "listed": 1,
+                "read": 0 if kw.get("reuse") else 1,
+                "reused": 1 if kw.get("reuse") else 0,
+                "retries": 0,
+            }
             return [], 0
+
         for hour, reused in ((12, False), (13, True), (18, False), (23, True)):
             when = datetime(2026, 11, 23, hour, 5, tzinfo=ev.TZ)
-            with mock.patch.object(ev, "read_mail", fake_read), mock.patch.object(snap, "previous", return_value={"g1": {"id": "g1"}}), mock.patch.object(snap, "save", return_value=True):
+            with (
+                mock.patch.object(ev, "read_mail", fake_read),
+                mock.patch.object(snap, "previous", return_value={"g1": {"id": "g1"}}),
+                mock.patch.object(snap, "save", return_value=True),
+            ):
                 counts = snap.stage(0, True, environ={}, now=when, connect=lambda: None)
             self.assertEqual((seen[-1], counts["gmail"]["reused"]), (reused, 1 if reused else 0), hour)
 
@@ -129,11 +162,20 @@ class Checkpoint(unittest.TestCase):
         self.assertEqual(list(got), ["g1"])
 
     def test_a_partial_read_never_becomes_the_checkpoint_the_older_complete_one_stays(self):
-        older, partial = row(NOW - timedelta(minutes=110), records=[{"provider": "gmail", "id": "old", "received": ago(30)}]), row(NOW - timedelta(minutes=50), complete=False)
+        older, partial = (
+            row(NOW - timedelta(minutes=110), records=[{"provider": "gmail", "id": "old", "received": ago(30)}]),
+            row(NOW - timedelta(minutes=50), complete=False),
+        )
         self.assertEqual(list(snap.previous(Db([older, partial]), NOW, 14)), ["old"])
 
     def test_stale_other_window_corrupt_future_or_unreadable_all_fall_back_to_the_full_window(self):
-        for rows in ([row(NOW - timedelta(hours=4))], [row(NOW - timedelta(minutes=50), days=7)], [row(NOW - timedelta(minutes=50), corrupt=True)], [row(NOW + timedelta(minutes=5))], []):
+        for rows in (
+            [row(NOW - timedelta(hours=4))],
+            [row(NOW - timedelta(minutes=50), days=7)],
+            [row(NOW - timedelta(minutes=50), corrupt=True)],
+            [row(NOW + timedelta(minutes=5))],
+            [],
+        ):
             self.assertEqual(snap.previous(Db(rows), NOW, 14), {})
         self.assertEqual(snap.previous(Db([], down=True), NOW, 14), {})
 

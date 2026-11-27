@@ -4,6 +4,7 @@ import unittest
 
 from lifeos.platform import due
 import sys as _sys
+
 _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
 import wfsets  # noqa: E402
 
@@ -30,7 +31,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(data[True]), ["schedule", "workflow_dispatch"])  # Jim's weekly check
         self.assertEqual(data[True]["schedule"], [{"cron": "17 13 * * 1"}])
         self.assertIn("|| 'all'", yaml.safe_load((root / "safety.yml").read_text())["jobs"]["safety"]["env"]["STAGE"])
-        self.assertEqual(data[True]["workflow_dispatch"]["inputs"]["stage"]["options"], ["all", "sql-smoke", "fit-golden", "fit-capture"])
+        self.assertEqual(
+            data[True]["workflow_dispatch"]["inputs"]["stage"]["options"],
+            ["all", "sql-smoke", "fit-golden", "fit-capture"],
+        )
 
     def test_hourly_workflow_is_valid_yaml_with_dispatch_inputs(self):
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
@@ -43,6 +47,7 @@ class WorkflowTests(unittest.TestCase):
         import os
         import subprocess
         import tempfile
+
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
         data = yaml.safe_load(path.read_text())
         steps = data["jobs"]["finish"]["steps"]
@@ -51,18 +56,34 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(publish.get("continue-on-error"))
         self.assertIn("python -m lifeos.run publish", publish["run"])
         self.assertNotIn("|| true", publish["run"])  # nothing swallows the exit code
-        for later in steps[index + 1:]:
-            self.assertNotIn("steps.publish", str(later.get("if", "")), later.get("name"))  # a failed publish never skips a later stage
+        for later in steps[index + 1 :]:
+            self.assertNotIn(
+                "steps.publish", str(later.get("if", "")), later.get("name")
+            )  # a failed publish never skips a later stage
         lanes = next(step for step in steps if step.get("id") == "lanes")
         self.assertEqual(lanes.get("if"), "${{ always() }}")
         self.assertEqual(data["jobs"]["finish"]["outputs"]["failed"], "${{ steps.lanes.outputs.failed }}")
 
         def lane_result(failed_step):
-            script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == f"steps.{failed_step}.outcome" else "success", lanes["run"])
+            script = re.sub(
+                r"\$\{\{\s*([^}]+?)\s*\}\}",
+                lambda m: "failure" if m.group(1) == f"steps.{failed_step}.outcome" else "success",
+                lanes["run"],
+            )
             with tempfile.TemporaryDirectory() as directory:
                 output = pathlib.Path(directory, "out")
-                done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
-                return done.returncode, done.stdout.strip(), next(line for line in output.read_text().splitlines() if line.startswith("failed="))  # codes= is its own line
+                done = subprocess.run(
+                    ["bash", "-e", "-c", script],
+                    env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                return (
+                    done.returncode,
+                    done.stdout.strip(),
+                    next(line for line in output.read_text().splitlines() if line.startswith("failed=")),
+                )  # codes= is its own line
 
         self.assertEqual(lane_result("publish"), (1, "FAILED STAGES: publish", "failed=publish"))
         self.assertEqual(lane_result("none"), (0, "", "failed="))
@@ -74,7 +95,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("stages: $STAGES", report["run"])
         self.assertFalse(report.get("continue-on-error"))  # a push the provider refuses turns the job red
         job = data["jobs"]["report"]
-        self.assertEqual(job["if"], "${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}")  # an automatic run's failed prep pushes
+        self.assertEqual(
+            job["if"],
+            "${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}",
+        )  # an automatic run's failed prep pushes
         self.assertIn("prep", job["needs"])
         self.assertIn("prep=${{ needs.prep.result }}", report["run"])  # a failed prep is named in the push
 
@@ -82,24 +106,43 @@ class WorkflowTests(unittest.TestCase):
         """a pipeline tick runs lifeos.jobs.tick in the finish job (one credential load, one store tunnel)"""
         from pathlib import Path
         from lifeos.jobs import tick
+
         path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
         data = yaml.safe_load(path.read_text())
         self.assertNotIn("resolve_dice", data[True]["workflow_dispatch"]["inputs"])
         self.assertNotIn("dice", data["jobs"])
         self.assertIn("resolve-dice", [s.name for s in tick.PLAN])
         for lane in ("jobright", "linkedin", "lensa"):
-            self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick", data["jobs"][lane]["if"], lane)  # a quick proof runs the tick path instead
+            self.assertIn(
+                "github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick",
+                data["jobs"][lane]["if"],
+                lane,
+            )  # a quick proof runs the tick path instead
         finish = data["jobs"]["finish"]
         self.assertIn("needs.prep.outputs.pipeline == 'true'", finish["if"])
         steps = finish["steps"]
         step = next(s for s in steps if s.get("id") == "tick")
-        self.assertEqual(step["if"], "${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}")  # a manual quick run proves exactly what a tick runs
+        self.assertEqual(
+            step["if"],
+            "${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}",
+        )  # a manual quick run proves exactly what a tick runs
         self.assertIn("${{ inputs.quick && '--quick' || '' }}", step["run"])
         self.assertTrue(step.get("continue-on-error"))
         self.assertIn("python -m lifeos.jobs.tick", step["run"])
         self.assertIn("tick=${{ steps.tick.outcome }}", next(s for s in steps if s.get("id") == "lanes")["run"])
         for s in steps:
-            if s.get("id") in ("web", "enrich", "fit", "audit", "publish", "holds", "finalize", "web_scale_up", "titlewatch", "sponsors"):
+            if s.get("id") in (
+                "web",
+                "enrich",
+                "fit",
+                "audit",
+                "publish",
+                "holds",
+                "finalize",
+                "web_scale_up",
+                "titlewatch",
+                "sponsors",
+            ):
                 self.assertNotIn("PIPELINE", s["if"], s["id"])
 
     def test_only_a_tick_or_a_domains_dispatch_starts_the_jira_job(self):
@@ -107,13 +150,17 @@ class WorkflowTests(unittest.TestCase):
         true for an empty input, so every.
         """
         from pathlib import Path
-        condition = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["jobs"]["jira"]["if"]
+
+        condition = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())[
+            "jobs"
+        ]["jira"]["if"]
         self.assertIn("(github.event_name == 'workflow_dispatch' && inputs.jira != 'none')", condition)
         self.assertIn("needs.gate.outputs.due_jira == 'true'", condition)
         self.assertNotIn("|| inputs.jira != 'none'", condition)
 
     def test_domain_jobs_left_hourly_and_run_after_a_tick_from_domains(self):
         from pathlib import Path
+
         root = Path(__file__).resolve().parents[2] / ".github/workflows"
         hourly = yaml.safe_load((root / "hourly.yml").read_text())
         domains = yaml.safe_load((root / "domains.yml").read_text())
@@ -131,6 +178,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_bills_paid_runs_on_a_tick_before_the_snapshot_and_follows_the_live_flag(self):
         from pathlib import Path
+
         domains = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())
         steps = domains["jobs"]["bills"]["steps"]
         ids = [s.get("id") for s in steps]
@@ -143,6 +191,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_the_manual_amazon_orders_pass_queues_with_the_domain_jobs_and_maintenance_does_not(self):
         from pathlib import Path
+
         root = Path(__file__).resolve().parents[2]
         amazon = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
         domains = yaml.safe_load((root / ".github/workflows/domains.yml").read_text())
@@ -155,12 +204,15 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("'life-os-v7-domains' ||", group)  # orders: the very group the real domain runs hold
         self.assertIn("'life-os-v7-amazon-orders'", group)  # backfill, retention, review-reset: their own
         self.assertIs(amazon["concurrency"]["cancel-in-progress"], False)
-        self.assertEqual(group, "${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}")  # left the queueing exactly as it was
+        self.assertEqual(
+            group, "${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}"
+        )  # left the queueing exactly as it was
         self.assertEqual(amazon["jobs"]["amazon"]["timeout-minutes"], 330)
         self.assertNotIn("schedule", amazon[True])
 
     def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
         from pathlib import Path
+
         root = Path(__file__).resolve().parents[2]
         hourly = yaml.safe_load((root / ".github/workflows/hourly.yml").read_text())
         manual = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
@@ -168,23 +220,40 @@ class WorkflowTests(unittest.TestCase):
         self.assertIs(manual[True]["workflow_dispatch"]["inputs"]["live"]["default"], False)
 
     def test_amazon_reads_its_three_migrated_credentials_from_bitwarden_through_the_pinned_action(self):
-        """Phase B: exactly the Gmail client secret, Gmail refresh token and Notion Amazon token come from Bitwarden
-        """
+        """Phase B: exactly the Gmail client secret, Gmail refresh token and Notion Amazon token come from Bitwarden"""
         import re
         from pathlib import Path
+
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/amazon.yml").read_text()
         manual = yaml.safe_load(text)
         inputs = manual[True]["workflow_dispatch"]["inputs"]
         self.assertEqual(list(manual[True]), ["workflow_dispatch"])  # manual only: no schedule, push or other trigger
         self.assertEqual(inputs["stage"]["options"], ["orders", "backfill", "retention", "review-reset", "census"])
-        self.assertEqual((inputs["since"]["default"], inputs["live"]["default"]), ("2015-01-01", False))  # dry run stays the default
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])
+        self.assertEqual(
+            (inputs["since"]["default"], inputs["live"]["default"]), ("2015-01-01", False)
+        )  # dry run stays the default
+        self.assertEqual(
+            sorted(set(re.findall(r"secrets\.(\w+)", text))), ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"]
+        )
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)  # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 2)
-        mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
-        self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
-                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN", "8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID", UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN", UUIDS["V7_RUNTIME_CONFIG_SOURCE_ID"] + " > V7_RUNTIME_CONFIG_SOURCE_ID"]))
+        mappings = re.findall(
+            r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M
+        )
+        self.assertEqual(
+            sorted(mappings),
+            sorted(
+                [
+                    "08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET",
+                    "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
+                    "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN",
+                    "8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID",
+                    UUIDS["NOTION_JIRA_TOKEN"] + " > NOTION_JIRA_TOKEN",
+                    UUIDS["V7_RUNTIME_CONFIG_SOURCE_ID"] + " > V7_RUNTIME_CONFIG_SOURCE_ID",
+                ]
+            ),
+        )
         self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 6)
         self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))  # loaded before the Amazon command
         self.assertIn("--live", text)
@@ -195,6 +264,7 @@ class WorkflowTests(unittest.TestCase):
         """
         import re
         from pathlib import Path
+
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/amazon.yml").read_text()
         step_env = yaml.safe_load(text)["jobs"]["amazon"]["steps"][-1]["env"]
         expression = step_env["AMAZON_SINCE"]
@@ -206,33 +276,76 @@ class WorkflowTests(unittest.TestCase):
         passed = {stage: (default_since if stage == gate else "") for stage in stage_choices}
         self.assertEqual({stage for stage, value in passed.items() if value}, {"backfill"})
         self.assertEqual(passed["orders"], "")
-        self.assertEqual(yaml.safe_load(text)[True]["workflow_dispatch"]["inputs"]["since"]["default"], "2015-01-01")  # the backfill default is unchanged
+        self.assertEqual(
+            yaml.safe_load(text)[True]["workflow_dispatch"]["inputs"]["since"]["default"], "2015-01-01"
+        )  # the backfill default is unchanged
 
     def test_diag_reads_its_seven_database_and_ssh_values_from_bitwarden_through_the_pinned_action(self):
         """Phase B: the read-only diagnostic keeps its manual contract"""
         import re
         from pathlib import Path
+
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/diag.yml").read_text()
         diag = yaml.safe_load(text)
-        moved = {"LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda", "LIFEOS_ACQ_DB_PASSWORD": "00d82e0d-be10-4c8c-bdbe-b4db015ed389", "LIFEOS_ACQ_DB_USER": "9422b842-3bb0-4153-bb8d-b4db015ed746",
-                 "LIFEOS_ACQ_SSH_HOST": "6f1c86f6-c48f-4e77-b65d-b4db015edb15", "LIFEOS_ACQ_SSH_KNOWN_HOSTS": "b65dd2fc-2573-4bda-9e80-b4db015edec6",
-                 "LIFEOS_ACQ_SSH_PRIVATE_KEY": "7ada9cea-8711-4b37-bef9-b4db015ee298", "LIFEOS_ACQ_SSH_USER": "6b3e12b9-1987-4073-bda2-b4db015ee653"}
+        moved = {
+            "LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda",
+            "LIFEOS_ACQ_DB_PASSWORD": "00d82e0d-be10-4c8c-bdbe-b4db015ed389",
+            "LIFEOS_ACQ_DB_USER": "9422b842-3bb0-4153-bb8d-b4db015ed746",
+            "LIFEOS_ACQ_SSH_HOST": "6f1c86f6-c48f-4e77-b65d-b4db015edb15",
+            "LIFEOS_ACQ_SSH_KNOWN_HOSTS": "b65dd2fc-2573-4bda-9e80-b4db015edec6",
+            "LIFEOS_ACQ_SSH_PRIVATE_KEY": "7ada9cea-8711-4b37-bef9-b4db015ee298",
+            "LIFEOS_ACQ_SSH_USER": "6b3e12b9-1987-4073-bda2-b4db015ee653",
+        }
         stage = diag[True]["workflow_dispatch"]["inputs"]["stage"]
         job = diag["jobs"]["diag"]
         self.assertEqual(list(diag[True]), ["workflow_dispatch"])
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|repository_dispatch|push|pull_request\w*):")
-        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "scale-up-boards", "scale-up-exclusions", "scale-up-exclusion-review", "scale-up-register", "jobs-backlog", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe", "inbox-proof", "inbox-recount", "inbox-schema-check", "inbox-schema-apply", "followup-schema-check", "followup-schema-apply"], "scale-up-holds"))
+        self.assertEqual(
+            (stage["options"], stage["default"]),
+            (
+                [
+                    "scale-up-holds",
+                    "scale-up-links",
+                    "scale-up-boards",
+                    "scale-up-exclusions",
+                    "scale-up-exclusion-review",
+                    "scale-up-register",
+                    "jobs-backlog",
+                    "alerts-open",
+                    "newsletter-trace",
+                    "notion-sandbox-access",
+                    "notion-sandbox-outreach-proof",
+                    "interview-ui-probe",
+                    "inbox-proof",
+                    "inbox-recount",
+                    "inbox-schema-check",
+                    "inbox-schema-apply",
+                    "followup-schema-check",
+                    "followup-schema-apply",
+                ],
+                "scale-up-holds",
+            ),
+        )
         self.assertEqual(diag["permissions"], {"contents": "read"})
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)
         self.assertEqual(job["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
-        self.assertEqual(job["steps"][-1]["env"], {"STAGE": "${{ inputs.stage }}", "SCHEMA_CONFIRM": "${{ inputs.confirm }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
+        self.assertEqual(
+            job["steps"][-1]["env"],
+            {
+                "STAGE": "${{ inputs.stage }}",
+                "SCHEMA_CONFIRM": "${{ inputs.confirm }}",
+                "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}",
+            },
+        )
         message = diag[True]["workflow_dispatch"]["inputs"]["message_ref"]
         self.assertEqual((message["type"], message["default"]), ("string", ""))
         self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])  # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])
+        self.assertEqual(
+            sorted(set(re.findall(r"secrets\.(\w+)", text))), ["DOPPLER_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"]
+        )
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)  # no direct copy, so no fallback
         self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), ["./.github/actions/bws-load"] * 9)
@@ -242,65 +355,154 @@ class WorkflowTests(unittest.TestCase):
         ui_text, report_text = ui_text.split("\n  # LIFE-121:")
         report_text, qa_text = report_text.split("\n  # LIFE-791:")
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-        gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987", "GMAIL_OAUTH_CLIENT_ID": "8657d1ed-2cde-4298-bd62-b50301523e01"}
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()]))
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]))
-        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (len(moved), len(moved) + len(gmail)))
+        gmail = {
+            "GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967",
+            "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987",
+            "GMAIL_OAUTH_CLIENT_ID": "8657d1ed-2cde-4298-bd62-b50301523e01",
+        }
+        self.assertEqual(
+            sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)),
+            sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()]),
+        )
+        self.assertEqual(
+            sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)),
+            sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()]),
+        )
+        self.assertEqual(
+            (len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (len(moved), len(moved) + len(gmail))
+        )
         self.assertNotIn("GMAIL", head)  # no Gmail value or secret in the database-only job
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])
+        self.assertEqual(
+            re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M),
+            [
+                "53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN",
+                f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID",
+            ],
+        )
         self.assertEqual(len(re.findall(uuid, sandbox_text)), 2)
         self.assertNotIn("NOTION", head + trace_text)
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION"):
             self.assertNotIn(word, sandbox_text)
-        self.assertLess(text.index("bws-load"), text.index("python -m lifeos.run"))  # loaded before the diagnostic command
+        self.assertLess(
+            text.index("bws-load"), text.index("python -m lifeos.run")
+        )  # loaded before the diagnostic command
         trace = diag["jobs"]["trace"]
         sandbox = diag["jobs"]["sandbox"]
-        self.assertEqual((job["if"], trace["if"], sandbox["if"]),
-                         ("${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' && inputs.stage != 'inbox-proof' && inputs.stage != 'inbox-recount' }}",
-                          "${{ inputs.stage == 'newsletter-trace' }}",
-                          "${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}"))  # exactly one of the three jobs runs
+        self.assertEqual(
+            (job["if"], trace["if"], sandbox["if"]),
+            (
+                "${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' && inputs.stage != 'inbox-proof' && inputs.stage != 'inbox-recount' }}",
+                "${{ inputs.stage == 'newsletter-trace' }}",
+                "${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}",
+            ),
+        )  # exactly one of the three jobs runs
         self.assertEqual(sandbox["timeout-minutes"], 5)
         token = "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}"
         read, proof = sandbox["steps"][-2:]
-        self.assertEqual((read["if"], read["run"], without_address(read["env"])), ("${{ inputs.stage == 'notion-sandbox-access' }}", "python -m lifeos.run notion-sandbox-access --limit 0", {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""}))  # the ids map is declared empty
-        self.assertEqual((proof["if"], proof["run"], without_address(proof["env"])), ("${{ inputs.stage == 'notion-sandbox-outreach-proof' }}", "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
-                                                                    {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))  # the only write step
-        self.assertEqual([s.get("env") for s in sandbox["steps"][:-2]], [None] * (len(sandbox["steps"]) - 2))  # only the two stage steps receive the token
-        self.assertIs(next(s for s in sandbox["steps"] if s.get("id") == "bws_sandbox")["with"]["set_env"], False)  # a masked step output, never exported job-wide
+        self.assertEqual(
+            (read["if"], read["run"], without_address(read["env"])),
+            (
+                "${{ inputs.stage == 'notion-sandbox-access' }}",
+                "python -m lifeos.run notion-sandbox-access --limit 0",
+                {"NOTION_API_TOKEN": token, "LIFEOS_NOTION_IDS": ""},
+            ),
+        )  # the ids map is declared empty
+        self.assertEqual(
+            (proof["if"], proof["run"], without_address(proof["env"])),
+            (
+                "${{ inputs.stage == 'notion-sandbox-outreach-proof' }}",
+                "python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live",
+                {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""},
+            ),
+        )  # the only write step
+        self.assertEqual(
+            [s.get("env") for s in sandbox["steps"][:-2]], [None] * (len(sandbox["steps"]) - 2)
+        )  # only the two stage steps receive the token
+        self.assertIs(
+            next(s for s in sandbox["steps"] if s.get("id") == "bws_sandbox")["with"]["set_env"], False
+        )  # a masked step output, never exported job-wide
         report = diag["jobs"]["report"]  # private reports to one Notion page
-        self.assertEqual((report["if"], report["timeout-minutes"]), ("${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' || inputs.stage == 'jobs-backlog' }}", 10))
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()]))
-        self.assertEqual(report["steps"][-1]["env"], {"NOTION_JOB_LEDGER_DATA_SOURCE_ID": "",  # declared empty, the V7 settings page fills it
-                                                      "STAGE": "${{ inputs.stage }}", "REPORT_CONFIRM": "${{ inputs.confirm }}"})
+        self.assertEqual(
+            (report["if"], report["timeout-minutes"]),
+            (
+                "${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' || inputs.stage == 'jobs-backlog' }}",
+                10,
+            ),
+        )
+        self.assertEqual(
+            sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)),
+            sorted(
+                [
+                    f"{uuid_} > {name}"
+                    for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()
+                ]
+            ),
+        )
+        self.assertEqual(
+            report["steps"][-1]["env"],
+            {
+                "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "",  # declared empty, the V7 settings page fills it
+                "STAGE": "${{ inputs.stage }}",
+                "REPORT_CONFIRM": "${{ inputs.confirm }}",
+            },
+        )
         self.assertEqual(report["steps"][-1]["run"].count("--live"), 1)
         self.assertIn('[ "$REPORT_CONFIRM" = "REPORT" ]', report["steps"][-1]["run"])
         self.assertNotIn("GMAIL", report_text)
         ui = diag["jobs"]["interview_ui"]  # the one job that holds the Interview token
         self.assertEqual((ui["if"], ui["timeout-minutes"]), ("${{ inputs.stage == 'interview-ui-probe' }}", 5))
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])  # plus the address, in its own loader
+        self.assertEqual(
+            re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M),
+            [
+                "092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN",
+                f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID",
+            ],
+        )  # plus the address, in its own loader
         for word in ("LIFEOS_ACQ", "GMAIL", "inputs.message_ref", "secrets.NOTION", "NOTION_API_TOKEN"):
             self.assertNotIn(word, ui_text)
         qa = diag["jobs"]["inbox_view_qa"]
         self.assertEqual(qa["if"], "${{ inputs.stage == 'inbox-proof' || inputs.stage == 'inbox-recount' }}")
-        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN", f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID"])  # plus the address, in its own loader
+        self.assertEqual(
+            re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", qa_text, re.M),
+            [
+                "53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN",
+                f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID",
+            ],
+        )  # plus the address, in its own loader
         self.assertEqual(qa_text.count("--live"), 1)
         self.assertIn("INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}", qa_text)
         for word in ("LIFEOS_ACQ", "GMAIL", "NOTION_INTERVIEW_TOKEN", "inputs.message_ref"):
             self.assertNotIn(word, qa_text)
         self.assertNotIn("NOTION_INTERVIEW_TOKEN", head + trace_text + sandbox_text)
         probe = ui["steps"][-1]
-        self.assertEqual((probe["run"], without_address(probe["env"])), ("python -m lifeos.run interview-ui-probe --limit 0 --live", {
-            "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}",
-            "PROBE_CONFIRM": "${{ inputs.confirm }}", "LIFEOS_NOTION_IDS": ""}))  # the stage itself refuses without QA
+        self.assertEqual(
+            (probe["run"], without_address(probe["env"])),
+            (
+                "python -m lifeos.run interview-ui-probe --limit 0 --live",
+                {
+                    "NOTION_INTERVIEW_TOKEN": "${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}",
+                    "PROBE_CONFIRM": "${{ inputs.confirm }}",
+                    "LIFEOS_NOTION_IDS": "",
+                },
+            ),
+        )  # the stage itself refuses without QA
         self.assertEqual([s.get("env") for s in ui["steps"][:-1]], [None] * (len(ui["steps"]) - 1))
         self.assertEqual(trace["timeout-minutes"], 10)
         self.assertEqual(trace["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
-        self.assertEqual(trace["steps"][-1]["env"], {"GMAIL_OAUTH_CLIENT_ID": "${{ steps.bws_trace.outputs.GMAIL_OAUTH_CLIENT_ID }}", "STAGE": "${{ inputs.stage }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
+        self.assertEqual(
+            trace["steps"][-1]["env"],
+            {
+                "GMAIL_OAUTH_CLIENT_ID": "${{ steps.bws_trace.outputs.GMAIL_OAUTH_CLIENT_ID }}",
+                "STAGE": "${{ inputs.stage }}",
+                "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}",
+            },
+        )
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class SuiteTimingWorkflow(unittest.TestCase):
     """suite-timing.yml measures the full unit-test suite on fresh runners."""
+
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "suite-timing.yml"
 
     def test_it_is_dispatch_only_read_only_and_holds_no_secret(self):
@@ -310,15 +512,23 @@ class SuiteTimingWorkflow(unittest.TestCase):
         for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live", "bws-load"):
             self.assertNotIn(word, text)
         self.assertEqual(list(doc["jobs"]), ["plan", "timing", "report"])
-        self.assertEqual(doc["jobs"]["timing"]["strategy"]["fail-fast"], False)  # one slow or failed run never hides the others
+        self.assertEqual(
+            doc["jobs"]["timing"]["strategy"]["fail-fast"], False
+        )  # one slow or failed run never hides the others
 
     def test_the_timing_job_runs_the_same_shard_command_as_pr_tests(self):
-        timing = next(s for s in yaml.safe_load(self.path.read_text())["jobs"]["timing"]["steps"] if s.get("name", "").startswith("Full suite"))["run"]
+        timing = next(
+            s
+            for s in yaml.safe_load(self.path.read_text())["jobs"]["timing"]["steps"]
+            if s.get("name", "").startswith("Full suite")
+        )["run"]
         pr = (self.path.parent / "pr-tests.yml").read_text()
         self.assertIn('python -m tests.shard "$k" "$n"', timing)
         self.assertIn("python -m tests.shard", pr)  # the same module, the same split rule
         self.assertIn("-ge 120", pr)  # the CI limit the report compares against
-        self.assertIn("LIMIT = 120", (pathlib.Path(__file__).resolve().parents[2] / "tests" / "suite_timing.py").read_text())
+        self.assertIn(
+            "LIMIT = 120", (pathlib.Path(__file__).resolve().parents[2] / "tests" / "suite_timing.py").read_text()
+        )
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -339,7 +549,10 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         """today's date changing changes no test result."""
         doc = yaml.safe_load(self.path.read_text())
         job = doc["jobs"]["unit-tests-second-date"]
-        self.assertEqual((job["if"], job["timeout-minutes"], job.get("needs")), ("${{ github.event_name == 'pull_request' }}", 5, None))
+        self.assertEqual(
+            (job["if"], job["timeout-minutes"], job.get("needs")),
+            ("${{ github.event_name == 'pull_request' }}", 5, None),
+        )
         run = [s for s in job["steps"] if "env" in s and "LIFEOS_TEST_NOW" in s["env"]]
         self.assertEqual(len(run), 1)
         self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09"})
@@ -354,14 +567,23 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         key = "test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-"
         restore = next(s for s in unit if str(s.get("uses", "")).startswith("actions/cache/restore@"))
         names = [s.get("name", "") for s in unit]
-        self.assertLess(unit.index(restore), names.index(next(n for n in names if n.startswith("Pick the tests"))))  # restored before `select` reads it
+        self.assertLess(
+            unit.index(restore), names.index(next(n for n in names if n.startswith("Pick the tests")))
+        )  # restored before `select` reads it
         self.assertEqual(restore["if"], "${{ github.event_name == 'pull_request' }}")
-        self.assertEqual((restore["with"]["path"], restore["with"]["key"], restore["with"]["restore-keys"]), ("docs/test-index.json", key + "${{ github.sha }}", key))
-        self.assertFalse([s for s in unit if "cache/save" in str(s.get("uses", ""))])  # a pull request never writes the cache
+        self.assertEqual(
+            (restore["with"]["path"], restore["with"]["key"], restore["with"]["restore-keys"]),
+            ("docs/test-index.json", key + "${{ github.sha }}", key),
+        )
+        self.assertFalse(
+            [s for s in unit if "cache/save" in str(s.get("uses", ""))]
+        )  # a pull request never writes the cache
         self.assertEqual((build["needs"], build["if"]), ("unit-tests", "${{ github.event_name == 'push' }}"))
         self.assertLessEqual(build["timeout-minutes"], 15)
         save = next(s for s in build["steps"] if str(s.get("uses", "")).startswith("actions/cache/save@"))
-        self.assertEqual((save["with"]["path"], save["with"]["key"]), ("docs/test-index.json", key + "${{ github.sha }}"))
+        self.assertEqual(
+            (save["with"]["path"], save["with"]["key"]), ("docs/test-index.json", key + "${{ github.sha }}")
+        )
         runs = [s["run"] for s in build["steps"] if "run" in s]
         self.assertIn("pip install --require-hashes -r requirements-test.lock", runs)
         built = next(i for i, s in enumerate(build["steps"]) if s.get("run") == "python -m tests.testindex build")
@@ -390,14 +612,18 @@ class PullRequestTestsWorkflow(unittest.TestCase):
                 if value(token):
                     return str(value(token))
             return ""
+
         return re.sub(r"\$\{\{(.*?)\}\}", one, str(expression))
 
-    def test_a_merge_to_main_never_cancels_the_previous_merges_check_but_a_pull_request_push_still_replaces_its_older_one(self):
+    def test_a_merge_to_main_never_cancels_the_previous_merges_check_but_a_pull_request_push_still_replaces_its_older_one(
+        self,
+    ):
         concurrency = yaml.safe_load(self.path.read_text())["concurrency"]
 
         def settings(name, **context):
             ctx = {"github": {"event_name": name, **context}}
             return self.evaluate(concurrency["group"], ctx), self.evaluate(concurrency["cancel-in-progress"], ctx)
+
         first = settings("push", ref="refs/heads/main", sha="aaa", event={})
         second = settings("push", ref="refs/heads/main", sha="bbb", event={})
         self.assertNotEqual(first[0], second[0])
@@ -411,7 +637,10 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own fetch, token never stored)", "./.github/actions/python"])
+        self.assertEqual(
+            [s.get("name") or s.get("uses") for s in steps[:2]],
+            ["Checkout the exact commit (own fetch, token never stored)", "./.github/actions/python"],
+        )
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         for k in (1, 2, 3, 4):
             self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
@@ -430,15 +659,24 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertGreater(room, python_suite)
         self.assertEqual(steps[room]["run"], "node --test tools/orca-concord-room/test/worker.test.mjs")
         self.assertEqual(steps[room - 1]["uses"], "./.github/actions/node")
-        self.assertTrue(pathlib.Path(__file__).resolve().parents[2].joinpath("tools/orca-concord-room/test/worker.test.mjs").is_file())
+        self.assertTrue(
+            pathlib.Path(__file__)
+            .resolve()
+            .parents[2]
+            .joinpath("tools/orca-concord-room/test/worker.test.mjs")
+            .is_file()
+        )
 
 
 class AmazonRetentionOffTheChainTests(unittest.TestCase):
     """Nothing else about it changed."""
+
     @classmethod
     def setUpClass(cls):
         try:
-            cls.jobs = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/domains.yml").read_text())["jobs"]
+            cls.jobs = yaml.safe_load(
+                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/domains.yml").read_text()
+            )["jobs"]
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
 
@@ -453,7 +691,10 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
     def test_the_amazon_job_no_longer_runs_retention_and_the_command_is_unchanged_in_the_new_job(self):
         self.assertNotIn("aretain", [s.get("id") for s in self.jobs["amazon"]["steps"]])
         step = next(s for s in self.jobs["amazon_retention"]["steps"] if s.get("id") == "aretain")
-        self.assertEqual(step["run"], 'python -m lifeos.run amazon-retention --limit 200 $([ "$RETENTION_LIVE" = "true" ] && echo --live)')
+        self.assertEqual(
+            step["run"],
+            'python -m lifeos.run amazon-retention --limit 200 $([ "$RETENTION_LIVE" = "true" ] && echo --live)',
+        )
         self.assertEqual(step["env"]["RETENTION_LIVE"], "true")
         self.assertIs(step["continue-on-error"], True)  # a failure is a warning only, as before
         self.assertNotIn("always()", step.get("if", ""))  # the job's own steps run in order
@@ -467,10 +708,13 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
 
 class UnitTestGateTests(unittest.TestCase):
     """the unit tests are skipped only through the fail-closed gate"""
+
     @classmethod
     def setUpClass(cls):
         try:
-            cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
+            cls.doc = yaml.safe_load(
+                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text()
+            )
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
 
@@ -485,7 +729,9 @@ class UnitTestGateTests(unittest.TestCase):
         self.assertLess(gate, tests)
         self.assertEqual(steps[gate]["id"], "testgate")
         self.assertEqual(steps[gate]["run"], "python -m lifeos.platform.testgate")
-        self.assertEqual(steps[tests]["if"], "${{ steps.testgate.outputs.skip != 'true' }}")  # anything but the gate's own "true" runs the tests
+        self.assertEqual(
+            steps[tests]["if"], "${{ steps.testgate.outputs.skip != 'true' }}"
+        )  # anything but the gate's own "true" runs the tests
         self.assertEqual(steps[tests]["run"], "python -m unittest discover -s tests -t . -v")
         self.assertNotIn("env", steps[tests])  # no index freshness flag or step
         self.assertFalse([n for n in names if "freshness" in n])
@@ -506,17 +752,34 @@ class UnitTestGateTests(unittest.TestCase):
         self.assertNotIn("bws", text)  # no Bitwarden load, so no new secret name
         self.assertEqual(job["timeout-minutes"], 20)
         prep = [s.get("name", "") for s in self.doc["jobs"]["prep"]["steps"]]
-        self.assertFalse([n for n in prep if n.startswith("Unit-test gate") or n in ("Unit tests", "Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)")])
+        self.assertFalse(
+            [
+                n
+                for n in prep
+                if n.startswith("Unit-test gate")
+                or n
+                in (
+                    "Unit tests",
+                    "Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)",
+                )
+            ]
+        )
         for name, j in self.doc["jobs"].items():
             if name not in ("report", "unit-tests"):
-                self.assertNotIn("unit-tests", j.get("needs", []) if isinstance(j.get("needs"), list) else [j.get("needs")], name)  # nothing on the critical path waits for the tests
+                self.assertNotIn(
+                    "unit-tests", j.get("needs", []) if isinstance(j.get("needs"), list) else [j.get("needs")], name
+                )  # nothing on the critical path waits for the tests
         report = self.doc["jobs"]["report"]
         self.assertIn("unit-tests", report["needs"])
-        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "finish job report" in s.get("name", ""))["run"])
+        self.assertIn(
+            "unit-tests=${{ needs.unit-tests.result }}",
+            next(s for s in report["steps"] if "finish job report" in s.get("name", ""))["run"],
+        )
 
     def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
         """item 13: ONE shared composite action installs the browser"""
         import yaml
+
         root = pathlib.Path(__file__).resolve().parents[2]
         steps = self.doc["jobs"]["finish"]["steps"]
         ids = [s.get("id") for s in steps]
@@ -530,26 +793,42 @@ class UnitTestGateTests(unittest.TestCase):
         self.assertNotIn("pip install", tick["run"])
         jobright = self.doc["jobs"]["jobright"]["steps"]
         shared = next(s for s in jobright if s.get("id") == "jobright_browser")
-        self.assertEqual((shared["uses"], shared["with"]), (browser["uses"], browser["with"]))  # both jobs run the same step
+        self.assertEqual(
+            (shared["uses"], shared["with"]), (browser["uses"], browser["with"])
+        )  # both jobs run the same step
         resolve = next(s for s in jobright if s.get("id") == "jobright")
-        self.assertLess([s.get("id") for s in jobright].index("jobright_browser"), [s.get("id") for s in jobright].index("jobright"))
+        self.assertLess(
+            [s.get("id") for s in jobright].index("jobright_browser"), [s.get("id") for s in jobright].index("jobright")
+        )
         self.assertNotIn("playwright install", resolve["run"])  # no second install path left in the workflow
         self.assertNotIn("playwright install", (root / ".github/workflows/hourly.yml").read_text())
         action = yaml.safe_load((root / ".github/actions/browser/action.yml").read_text())
         inner = action["runs"]["steps"]
         inner_ids = [s.get("id") for s in inner]
         cache = inner[inner_ids.index("chromium_cache")]
-        self.assertEqual((cache["uses"], cache["with"]["path"]), ("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830", "~/.cache/ms-playwright"))
+        self.assertEqual(
+            (cache["uses"], cache["with"]["path"]),
+            ("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830", "~/.cache/ms-playwright"),
+        )
         self.assertIn("hashFiles('requirements-browser.lock')", cache["with"]["key"])
         self.assertIn("inputs.cache_bust", cache["with"]["key"])
         libs = inner[inner_ids.index("libs_cache")]  # the system libraries are cached next to Chromium
-        self.assertEqual((libs["uses"], libs["with"]["path"]), ("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830", "~/apt-debs"))
+        self.assertEqual(
+            (libs["uses"], libs["with"]["path"]),
+            ("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830", "~/apt-debs"),
+        )
         self.assertIn("steps.runner_image.outputs.version", libs["with"]["key"])
         self.assertIn("hashFiles('requirements-browser.lock')", libs["with"]["key"])
         self.assertLess(inner_ids.index("runner_image"), inner_ids.index("libs_cache"))
         self.assertLess(inner_ids.index("libs_cache"), inner_ids.index("browser"))
         inner_browser = inner[inner_ids.index("browser")]
-        self.assertEqual(inner_browser["env"], {"CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}", "LIBS_CACHE_HIT": "${{ steps.libs_cache.outputs.cache-hit }}"})
+        self.assertEqual(
+            inner_browser["env"],
+            {
+                "CHROMIUM_CACHE_HIT": "${{ steps.chromium_cache.outputs.cache-hit }}",
+                "LIBS_CACHE_HIT": "${{ steps.libs_cache.outputs.cache-hit }}",
+            },
+        )
         run = inner_browser["run"]
         self.assertIn("pip install --require-hashes -r requirements-browser.lock", run)  # integrity unchanged
         self.assertNotIn("while ", run)  # bounded: three tries, never an unbounded loop
@@ -562,13 +841,16 @@ class BrowserStepBehaviourTests(unittest.TestCase):
     """the real browser step script, run in bash with fake python/timeout/sleep, shows what a hit, a miss, a retry and a
     used-up retry do.
     """
+
     @classmethod
     def setUpClass(cls):
         try:
             import yaml
         except ImportError:
             raise unittest.SkipTest("pyyaml unavailable") from None
-        path = pathlib.Path(__file__).resolve().parents[2] / ".github/actions/browser/action.yml"  # item 13: the one shared step
+        path = (
+            pathlib.Path(__file__).resolve().parents[2] / ".github/actions/browser/action.yml"
+        )  # item 13: the one shared step
         steps = yaml.safe_load(path.read_text())["runs"]["steps"]
         cls.script = next(s for s in steps if s.get("id") == "browser")["run"]
 
@@ -578,6 +860,7 @@ class BrowserStepBehaviourTests(unittest.TestCase):
         """
         import subprocess
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmp:
             log = pathlib.Path(tmp, "calls.log")
             if saved is not None:
@@ -597,10 +880,19 @@ class BrowserStepBehaviourTests(unittest.TestCase):
                 f'apt-get(){{ echo "apt-get $*" >> "$LOG"; {"return 100" if download_fails else "touch libx.deb"}; }}\n'
                 'python(){ echo "python $*" >> "$LOG"; case "$*" in *--with-deps*) COUNT=$((COUNT+1)); '
                 '[ "$COUNT" -le "$FAILS" ] && { echo "apt could not resolve the mirror" >&2; return 100; };; esac; return 0; }\n'
-                + self.script)
-            done = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
-                                  env={"CHROMIUM_CACHE_HIT": hit, "LIBS_CACHE_HIT": libs_hit, "HOME": tmp, "PATH": "/usr/bin:/bin"})
-            self.debs_left = sorted(p.name for p in pathlib.Path(tmp, "apt-debs").glob("*")) if pathlib.Path(tmp, "apt-debs").exists() else None
+                + self.script
+            )
+            done = subprocess.run(
+                ["bash", "-c", harness],
+                capture_output=True,
+                text=True,
+                env={"CHROMIUM_CACHE_HIT": hit, "LIBS_CACHE_HIT": libs_hit, "HOME": tmp, "PATH": "/usr/bin:/bin"},
+            )
+            self.debs_left = (
+                sorted(p.name for p in pathlib.Path(tmp, "apt-debs").glob("*"))
+                if pathlib.Path(tmp, "apt-debs").exists()
+                else None
+            )
             return done.returncode, done.stdout, log.read_text().splitlines()
 
     def test_a_cache_hit_runs_no_apt_command(self):
@@ -666,6 +958,7 @@ class BrowserStepBehaviourTests(unittest.TestCase):
 
 class FastPathFirstTests(unittest.TestCase):
     """the Ledger never waits on bulk discovery, and a quick proof run reads few boards."""
+
     @classmethod
     def setUpClass(cls):
         try:
@@ -689,6 +982,7 @@ class FastPathFirstTests(unittest.TestCase):
         text = (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
         self.assertNotIn("lifeos.run boards --limit", text)
 
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -700,6 +994,7 @@ class IsolatedJobTests(unittest.TestCase):
     def test_no_workflow_level_secret_reaches_an_isolated_job(self):
         import yaml
         from pathlib import Path
+
         doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
         self.assertEqual(sorted(shared), [])
@@ -711,21 +1006,68 @@ class IsolatedJobTests(unittest.TestCase):
 
     def test_python_setup_is_declared_once(self):
         from pathlib import Path
+
         for path in (Path(__file__).resolve().parents[2] / ".github/workflows").glob("*.yml"):
             self.assertNotIn("setup-python", path.read_text(), path.name)
 
 
-DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-      "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS"}
+DB = {
+    "LIFEOS_ACQ_DB_NAME",
+    "LIFEOS_ACQ_DB_PASSWORD",
+    "LIFEOS_ACQ_DB_USER",
+    "LIFEOS_ACQ_SSH_HOST",
+    "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+    "LIFEOS_ACQ_SSH_PORT",
+    "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+    "LIFEOS_ACQ_SSH_USER",
+    "LIFEOS_ACQ_SSH_JUMP_KEY",
+    "LIFEOS_ACQ_SSH_JUMP_HOST",
+    "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+}
 # a job that has to read the V7 settings page adds ONE more loader, and it loads nothing but the Notion token.
 SETTINGS_LOADER_ID = "bws_settings"
 SETTINGS_CONSUMER = "${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}"
 RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"
-RUNTIME_CONFIG_JOBS = {"agenda": {"agenda"}, "branches": {"report"}, "capacity-card": {"capacitycard"}, "diag": {"inbox_view_qa", "interview_ui", "sandbox"}, "domains": {"agenda", "amazon", "bills", "dcc", "fit_cloud_backlog", "followup", "hiring", "imessage", "interview", "jira", "last_seen_purge", "mail", "megibow", "network_surface", "recruiters", "weekly_review"}, "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"}, "network": {"network"}, "v3-pages": {"v3pages"}}  # the exact jobs that carry it: nothing else may
+RUNTIME_CONFIG_JOBS = {
+    "agenda": {"agenda"},
+    "branches": {"report"},
+    "capacity-card": {"capacitycard"},
+    "diag": {"inbox_view_qa", "interview_ui", "sandbox"},
+    "domains": {
+        "agenda",
+        "amazon",
+        "bills",
+        "dcc",
+        "fit_cloud_backlog",
+        "followup",
+        "hiring",
+        "imessage",
+        "interview",
+        "jira",
+        "last_seen_purge",
+        "mail",
+        "megibow",
+        "network_surface",
+        "recruiters",
+        "weekly_review",
+    },
+    "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"},
+    "network": {"network"},
+    "v3-pages": {"v3pages"},
+}  # the exact jobs that carry it: nothing else may
 RUNTIME_CONFIG_CONSUMER = "${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}"
 SETTINGS_JOBS = {
-    "amazon": {"amazon"}, "bills": {"bills"}, "calendar": {"calendar"}, "granola": {"granola"}, "granola-auto": {"auto"}, "hermes-stage": {"hermes"}, "manual-job": {"manual"},
-    "profile-sync": {"settings", "sync"}, "recruiters": {"recruiters"}, "interview-proof": {"proof"}, "readiness-live": {"readiness"},
+    "amazon": {"amazon"},
+    "bills": {"bills"},
+    "calendar": {"calendar"},
+    "granola": {"granola"},
+    "granola-auto": {"auto"},
+    "hermes-stage": {"hermes"},
+    "manual-job": {"manual"},
+    "profile-sync": {"settings", "sync"},
+    "recruiters": {"recruiters"},
+    "interview-proof": {"proof"},
+    "readiness-live": {"readiness"},
     "domains": {"gate", "outlook", "amazon_retention", "hiring_outcomes", "granola"},
 }
 
@@ -734,7 +1076,11 @@ def settings_loader_with():
     """The one `with:` the settings loader may have (the Notion token's id is read from UUIDS below, so this file never
     holds a second copy of it).
     """
-    return {"access_token": "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", "set_env": False, "secrets": f"{UUIDS['NOTION_JIRA_TOKEN']} > NOTION_JIRA_TOKEN\n"}
+    return {
+        "access_token": "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}",
+        "set_env": False,
+        "secrets": f"{UUIDS['NOTION_JIRA_TOKEN']} > NOTION_JIRA_TOKEN\n",
+    }
 
 
 def without_address(env):
@@ -747,8 +1093,16 @@ def settings_loader_withs():
     steps that run lifeos.run
     """
     base = settings_loader_with()
-    plain = [base, {**base, "secrets": base["secrets"] + f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID\n"}]
-    return plain + [{**w, "doppler_compare": "${{ secrets.DOPPLER_TOKEN }}"} for w in plain]  # the Doppler parity compare runs inside the loader
+    plain = [
+        base,
+        {
+            **base,
+            "secrets": base["secrets"] + f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID\n",
+        },
+    ]
+    return plain + [
+        {**w, "doppler_compare": "${{ secrets.DOPPLER_TOKEN }}"} for w in plain
+    ]  # the Doppler parity compare runs inside the loader
 
 
 def is_parity(step):
@@ -763,45 +1117,244 @@ def is_settings_loader(step):
     with_ = step.get("with")
     if isinstance(with_, dict) and "set" in with_:  # the list is named in sets.yml
         with_ = {**{k: v for k, v in with_.items() if k != "set"}, "secrets": wfsets.load()[with_["set"]]}
-    return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and with_ in settings_loader_withs()
-            and step.get("continue-on-error") is True and set(step) == {"id", "name", "uses", "with", "continue-on-error"})
+    return (
+        step.get("id") == SETTINGS_LOADER_ID
+        and step.get("uses") == "./.github/actions/bws-load"
+        and with_ in settings_loader_withs()
+        and step.get("continue-on-error") is True
+        and set(step) == {"id", "name", "uses", "with", "continue-on-error"}
+    )
 
 
 DOMAIN_SECRETS = {  # the only secrets each domain job may see
-    "granola": DB | {"LIFEOS_ACQ_SSH_PORT", "NOTION_INTERVIEW_TOKEN", "HIRING_PIPELINE_PAGE_ID", "IMESSAGE_ALERTS_HOST", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"},
-    "weekly_review": {"NOTION_JIRA_TOKEN", "IMESSAGE_ALERTS_HOST", "JIRA_CARD_BLOCK_ID", "WEEKLY_REVIEW", "WEEKLY_REVIEW_PAGE_ID", "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID", "V7_RUNTIME_CONFIG_SOURCE_ID"},  # the Weekly Review job
+    "granola": DB
+    | {
+        "LIFEOS_ACQ_SSH_PORT",
+        "NOTION_INTERVIEW_TOKEN",
+        "HIRING_PIPELINE_PAGE_ID",
+        "IMESSAGE_ALERTS_HOST",
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+    },
+    "weekly_review": {
+        "NOTION_JIRA_TOKEN",
+        "IMESSAGE_ALERTS_HOST",
+        "JIRA_CARD_BLOCK_ID",
+        "WEEKLY_REVIEW",
+        "WEEKLY_REVIEW_PAGE_ID",
+        "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID",
+        "V7_RUNTIME_CONFIG_SOURCE_ID",
+    },  # the Weekly Review job
     "report": {"NTFY_TOPIC"},
     "chain": set(),
     "gate": {"NOTION_JIRA_TOKEN"},
-    "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "FOLLOWUP_TODOIST_PERSONAL_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
-                  "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},
-    "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
-                  "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "LIFEOS_MCP_JIRA_CAPTURE", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-    "followup": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "OUTLOOK_CLIENT_ID", "NOTION_API_TOKEN", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"},
+    "imessage": DB
+    | {
+        "LIFEOS_ACQ_SSH_PORT",
+        "NTFY_TOPIC",
+        "IMESSAGE_ALERTS_HOST",
+        "NOTION_JIRA_TOKEN",
+        "FOLLOWUP_TODOIST_PERSONAL_TOKEN",
+        "AMAZON_CARD_BLOCK_ID",
+        "ATTENTION_CARD_BLOCK_ID",
+        "BILLS_CARD_BLOCK_ID",
+        "CALENDAR_CARD_BLOCK_ID",
+        "HIRING_CARD_BLOCK_ID",
+        "JIRA_CARD_BLOCK_ID",
+    },
+    "jira": DB
+    | {
+        "JIRA_API_TOKEN",
+        "JIRA_BASE_URL",
+        "JIRA_BOARDS",
+        "JIRA_CARD_BLOCK_ID",
+        "JIRA_CARD_PROJECTS",
+        "JIRA_EMAIL",
+        "JIRA_GTV_CONTEXT_URL",
+        "JIRA_GTV_EPIC",
+        "JIRA_SITE_URL",
+        "LIFEOS_MCP_JIRA_CAPTURE",
+        "NOTION_JIRA_TOKEN",
+        "NTFY_TOPIC",
+    },
+    "followup": DB
+    | {
+        "JIRA_API_TOKEN",
+        "JIRA_EMAIL",
+        "OUTLOOK_CLIENT_ID",
+        "NOTION_API_TOKEN",
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH",
+        "FOLLOWUP_TODOIST_PERSONAL_TOKEN",
+    },
     "outlook": DB | {"GCAL_CALENDAR_ID", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
-    "bills": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
-    "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
-    "megibow": DB | {"GCAL_CALENDAR_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
-    "dcc": {"V7_RUNTIME_CONFIG_SOURCE_ID", "WEEKLY_ARCHIVE_PAGE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
-    "recruiters": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
-                     "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",  # step outputs, not secrets
-                     "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},
-    "hiring_outcomes": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},
-    "interview": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN",
-                       "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "GCAL_CALENDAR_ID", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},  # the Interview OS step
-    "interview_mail": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},
-    "mail": DB | {"AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
-                  "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-    "hiring": DB | {"GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_API_TOKEN",
-                    "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL"},
-    "amazon": {"V7_RUNTIME_CONFIG_SOURCE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
-               "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
-    "network_surface": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
-                        "NETWORK_SURFACE_SKIP", "NOTION_API_TOKEN", "TINYFISH_API_KEY", "V7_CLOSE_BASE_URL"},  # Step 7c moved here from hourly's finish job
-    "last_seen_purge": DB | {"LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "NOTION_API_TOKEN", "NTFY_TOPIC", "PURGE_FORCE"},
-    "fit_cloud_backlog": DB | {"CLOUD_BACKLOG", "FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "IMESSAGE_ALERTS_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "NOTION_API_TOKEN", "PIPELINE",
-                               "V7_CLOUD_FIT_BACKLOG_BUDGET", "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PARALLEL", "V7_CLOUD_FIT_PROFILE_REF"},
-    "amazon_retention": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},
+    "bills": DB
+    | {
+        "V7_RUNTIME_CONFIG_SOURCE_ID",
+        "BILLS_CARD_BLOCK_ID",
+        "CALENDAR_CARD_BLOCK_ID",
+        "HIRING_CARD_BLOCK_ID",
+        "JIRA_CARD_BLOCK_ID",
+        "NOTION_BILLS_DATA_SOURCE_ID",
+        "NOTION_BILLS_TOKEN",
+        "NOTION_JIRA_TOKEN",
+    },
+    "agenda": DB
+    | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
+    "megibow": DB
+    | {
+        "GCAL_CALENDAR_ID",
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "MEGIBOW_BLOCK_ID",
+        "MEGIBOW_EXCLUDED_DOMAINS",
+        "MEGIBOW_REVIEW_DB_ID",
+        "NOTION_JIRA_TOKEN",
+        "NTFY_TOPIC",
+        "OUTLOOK_CLIENT_ID",
+    },
+    "dcc": {
+        "V7_RUNTIME_CONFIG_SOURCE_ID",
+        "WEEKLY_ARCHIVE_PAGE_ID",
+        "AMAZON_CARD_BLOCK_ID",
+        "BILLS_CARD_BLOCK_ID",
+        "CALENDAR_CARD_BLOCK_ID",
+        "DCC_CARD_BLOCK_ID",
+        "GITHUB_TOKEN",
+        "HIRING_CARD_BLOCK_ID",
+        "JIRA_CARD_BLOCK_ID",
+        "MAIL_ALERTS_CARD_BLOCK_ID",
+        "NOTION_JIRA_TOKEN",
+    },
+    "recruiters": DB
+    | {
+        "V7_RUNTIME_CONFIG_SOURCE_ID",
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "NOTION_RECRUITERS_DATA_SOURCE_ID",
+        "NOTION_RECRUITERS_TOKEN",
+        "OUTLOOK_CLIENT_ID",
+        "NOTION_API_TOKEN",
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+        "V7_CLOSE_BASE_URL",
+        "RECRUITERS_SCAN",
+        "RECRUITERS_SCAN_AT",  # step outputs, not secrets
+        "HIRING_TABLE_BLOCK_ID",
+        "NOTION_JIRA_TOKEN",
+    },
+    "hiring_outcomes": DB
+    | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},
+    "interview": DB
+    | {
+        "V7_RUNTIME_CONFIG_SOURCE_ID",
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "OUTLOOK_CLIENT_ID",
+        "NOTION_RECRUITERS_DATA_SOURCE_ID",
+        "NOTION_RECRUITERS_TOKEN",
+        "NOTION_API_TOKEN",
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+        "V7_CLOSE_BASE_URL",
+        "GCAL_CALENDAR_ID",
+        "HIRING_PIPELINE_PAGE_ID",
+        "NOTION_INTERVIEW_TOKEN",
+    },  # the Interview OS step
+    "interview_mail": DB
+    | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},
+    "mail": DB
+    | {
+        "AMAZON_CARD_BLOCK_ID",
+        "BILLS_CARD_BLOCK_ID",
+        "CALENDAR_CARD_BLOCK_ID",
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "HIRING_CARD_BLOCK_ID",
+        "JIRA_CARD_BLOCK_ID",
+        "MAIL_ALERTS_CARD_BLOCK_ID",
+        "NOTION_JIRA_TOKEN",
+        "NTFY_TOPIC",
+    },
+    "hiring": DB
+    | {
+        "GCAL_CALENDAR_ID",
+        "HIRING_CARD_BLOCK_ID",
+        "HIRING_PIPELINE_PAGE_ID",
+        "HIRING_STATUS_BLOCK_ID",
+        "HIRING_TABLE_BLOCK_ID",
+        "JIRA_CARD_BLOCK_ID",
+        "NOTION_API_TOKEN",
+        "NOTION_INTERVIEW_TOKEN",
+        "NOTION_JIRA_TOKEN",
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+        "V7_CLOSE_BASE_URL",
+    },
+    "amazon": {
+        "V7_RUNTIME_CONFIG_SOURCE_ID",
+        "AMAZON_CARD_BLOCK_ID",
+        "BILLS_CARD_BLOCK_ID",
+        "CALENDAR_CARD_BLOCK_ID",
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "HIRING_CARD_BLOCK_ID",
+        "JIRA_CARD_BLOCK_ID",
+        "NOTION_AMAZON_DATA_SOURCE_ID",
+        "NOTION_AMAZON_TOKEN",
+        "NOTION_JIRA_TOKEN",
+    },
+    "network_surface": DB
+    | {
+        "FIT_PROFILE_EXTRA_JSON",
+        "FIT_PROFILE_JSON",
+        "JOBRIGHT_EMAIL",
+        "JOBRIGHT_PASSWORD",
+        "LIFEOS_ACQ_SSH_JUMP_HOST",
+        "LIFEOS_ACQ_SSH_JUMP_KEY",
+        "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+        "NETWORK_SURFACE_SKIP",
+        "NOTION_API_TOKEN",
+        "TINYFISH_API_KEY",
+        "V7_CLOSE_BASE_URL",
+    },  # Step 7c moved here from hourly's finish job
+    "last_seen_purge": DB
+    | {
+        "LIFEOS_ACQ_SSH_JUMP_HOST",
+        "LIFEOS_ACQ_SSH_JUMP_KEY",
+        "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+        "NOTION_API_TOKEN",
+        "NTFY_TOPIC",
+        "PURGE_FORCE",
+    },
+    "fit_cloud_backlog": DB
+    | {
+        "CLOUD_BACKLOG",
+        "FIT_PROFILE_EXTRA_JSON",
+        "FIT_PROFILE_JSON",
+        "IMESSAGE_ALERTS_HOST",
+        "LIFEOS_ACQ_SSH_JUMP_HOST",
+        "LIFEOS_ACQ_SSH_JUMP_KEY",
+        "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+        "NOTION_API_TOKEN",
+        "PIPELINE",
+        "V7_CLOUD_FIT_BACKLOG_BUDGET",
+        "V7_CLOUD_FIT_BACKLOG_MAX",
+        "V7_CLOUD_FIT_BACKLOG_PAGE",
+        "V7_CLOUD_FIT_PARALLEL",
+        "V7_CLOUD_FIT_PROFILE_REF",
+    },
+    "amazon_retention": DB
+    | {
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_OAUTH_REFRESH_TOKEN",
+        "NOTION_AMAZON_DATA_SOURCE_ID",
+        "NOTION_AMAZON_TOKEN",
+    },
 }
 for _job in SETTINGS_JOBS["domains"] - {"gate"}:
     DOMAIN_SECRETS[_job] = DOMAIN_SECRETS[_job] | {"NOTION_JIRA_TOKEN"}
@@ -830,7 +1383,9 @@ class DomainsWorkflowTests(unittest.TestCase):
         writer = self.doc["jobs"]["interview"]["concurrency"]
         self.assertEqual(writer, {"group": "life-os-v7-interview-writer", "cancel-in-progress": False})
         self.assertEqual(self.doc["jobs"]["granola"]["concurrency"], writer)
-        self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["interview", "granola"])
+        self.assertEqual(
+            [name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["interview", "granola"]
+        )
         self.assertEqual(self.doc["jobs"]["granola"]["needs"], ["interview", "gate"])
 
     def test_recruiters_takes_its_turn_after_the_jira_card_and_still_runs_when_jira_is_red(self):
@@ -845,16 +1400,37 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_only_five_steps_read_the_close_origin_from_its_own_secret(self):
         """S3 / / / E05: the links exist only when the V7_CLOSE_BASE_URL secret is set"""
-        seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
-        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("interview", "interview"), ("network_surface", "network_surface"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])  # the Recruiter Outreach table's action links
+        seen = [
+            (job, step.get("id"))
+            for job, spec in self.doc["jobs"].items()
+            for step in spec.get("steps", [])
+            if "V7_CLOSE_BASE_URL" in str(step)
+        ]
+        self.assertEqual(
+            sorted(seen),
+            [
+                ("hiring", "hiring"),
+                ("interview", "interview"),
+                ("network_surface", "network_surface"),
+                ("recruiters", "jpoutreach"),
+                ("recruiters", "routreach"),
+            ],
+        )  # the Recruiter Outreach table's action links
         for job, ident in seen:
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "")  # declared empty
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
             if path.name not in ("domains.yml", "hourly.yml"):
                 self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
-        hourly = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text())
-        named = [(job, step.get("id")) for job, spec in hourly["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
+        hourly = yaml.safe_load(
+            (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text()
+        )
+        named = [
+            (job, step.get("id"))
+            for job, spec in hourly["jobs"].items()
+            for step in spec.get("steps", [])
+            if "V7_CLOSE_BASE_URL" in str(step)
+        ]
         self.assertEqual(named, [])
         self.assertNotIn("V7_CLOSE_BASE_URL", str(hourly.get("env")))
 
@@ -865,7 +1441,9 @@ class DomainsWorkflowTests(unittest.TestCase):
         job = self.doc["jobs"]["outlook"]
         self.assertIn("inputs.calendar_sync", job["if"])
         steps = {s.get("id"): s for s in job["steps"]}
-        self.assertEqual(steps["calsync"]["env"]["CALENDAR_ALLOW_MASS_DELETE"], "${{ inputs.allow_mass_delete && 'true' || '' }}")  # a tick (no inputs) is always ''
+        self.assertEqual(
+            steps["calsync"]["env"]["CALENDAR_ALLOW_MASS_DELETE"], "${{ inputs.allow_mass_delete && 'true' || '' }}"
+        )  # a tick (no inputs) is always ''
         for name, other in self.doc["jobs"].items():
             if name != "outlook":
                 self.assertNotIn("CALENDAR_ALLOW_MASS_DELETE", str(other))
@@ -873,9 +1451,17 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_each_job_sees_only_its_own_secrets(self):
         self.assertEqual(set(self.doc["jobs"]), set(DOMAIN_SECRETS))
         for name, job in self.doc["jobs"].items():
-            used = {k for k, v in (job.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}
+            used = {
+                k
+                for k, v in (job.get("env") or {}).items()
+                if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)
+            }
             for step in job["steps"]:
-                used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)}
+                used |= {
+                    k
+                    for k, v in (step.get("env") or {}).items()
+                    if "secrets." in str(v) or "steps." in str(v) and ".outputs." in str(v)
+                }
             used -= {"V7_RUNTIME_CONFIG_SOURCE_ID"}
             self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
 
@@ -885,16 +1471,31 @@ class DomainsWorkflowTests(unittest.TestCase):
     def uncovered_stage_steps(job, exempt=()):
         """> what a job's final step fails to surface."""
         steps, problems = job["steps"], []
-        stage = [s for s in steps if s.get("continue-on-error") and not is_settings_loader(s) and not is_parity(s) and s.get("id") != RUNTIME_CONFIG_LOADER_ID]  # the settings loader may fail quietly
+        stage = [
+            s
+            for s in steps
+            if s.get("continue-on-error")
+            and not is_settings_loader(s)
+            and not is_parity(s)
+            and s.get("id") != RUNTIME_CONFIG_LOADER_ID
+        ]  # the settings loader may fail quietly
         for step in stage:
             if not step.get("id") and step.get("uses") != "./.github/actions/tailscale":
                 problems.append(f"stage step without an id: {step.get('name')}")
         last = steps[-1]
         condition, ids = last.get("if", ""), [s["id"] for s in stage if s.get("id")]
-        if not str(condition).startswith("${{ always() &&") or not str(last.get("run", "")).rstrip().endswith("exit 1") or last.get("continue-on-error"):
+        if (
+            not str(condition).startswith("${{ always() &&")
+            or not str(last.get("run", "")).rstrip().endswith("exit 1")
+            or last.get("continue-on-error")
+        ):
             problems.append("the last step does not fail the job after every stage")
         elif "contains(steps.*.outcome, 'failure')" not in condition:
-            problems += [f"{i} not covered" for i in ids if i not in exempt and f"steps.{i}.outcome == 'failure'" not in condition]
+            problems += [
+                f"{i} not covered"
+                for i in ids
+                if i not in exempt and f"steps.{i}.outcome == 'failure'" not in condition
+            ]
         return problems
 
     def test_a_failed_stage_step_ends_its_job_red_after_every_stage_ran_and_never_skips_another_job(self):
@@ -904,7 +1505,9 @@ class DomainsWorkflowTests(unittest.TestCase):
         jobs = {n: j for n, j in self.doc["jobs"].items() if n not in ("gate", "report", "chain")}
         self.assertEqual(set(jobs), set(due.load_table()))
         for name, job in jobs.items():
-            self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name)
+            self.assertEqual(
+                self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN if name == "jira" else ()), [], name
+            )
             self.assertNotIn("continue-on-error", job)  # the job itself never swallows the failure
             self.assertTrue(any(s.get("continue-on-error") and s.get("id") for s in job["steps"]), name)
             if name != "granola":
@@ -912,7 +1515,11 @@ class DomainsWorkflowTests(unittest.TestCase):
             condition = job["if"]  # independence: a red job never skips another one
             self.assertTrue("always()" in condition or "!cancelled()" in condition, name)
             self.assertIn("needs.gate.result != 'failure'", condition, name)
-            self.assertLessEqual(set(job.get("needs") or []) - {"gate"}, {"jira", "agenda", "bills", "amazon", "mail", "hiring", "imessage", "interview", "dcc"}, name)
+            self.assertLessEqual(
+                set(job.get("needs") or []) - {"gate"},
+                {"jira", "agenda", "bills", "amazon", "mail", "hiring", "imessage", "interview", "dcc"},
+                name,
+            )
             if set(job.get("needs") or []) - {"gate"}:
                 self.assertIn("always()", condition, name)
         self.assertEqual(self.doc["concurrency"]["cancel-in-progress"], False)
@@ -922,6 +1529,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         goes.
         """
         import copy
+
         job = copy.deepcopy(self.doc["jobs"]["bills"])
         self.assertEqual(self.uncovered_stage_steps(job), [])
         gone = copy.deepcopy(job)
@@ -938,7 +1546,9 @@ class DomainsWorkflowTests(unittest.TestCase):
         """(temporary): the V3 accountability stages warn but do not end the jira job red"""
         job = self.doc["jobs"]["jira"]
         condition = job["steps"][-1]["if"]
-        ids = [s["id"] for s in job["steps"] if s.get("id") and s["id"] != RUNTIME_CONFIG_LOADER_ID and not is_parity(s)]
+        ids = [
+            s["id"] for s in job["steps"] if s.get("id") and s["id"] != RUNTIME_CONFIG_LOADER_ID and not is_parity(s)
+        ]
         v3 = set(self.V3_STAGES_THAT_ONLY_WARN)
         self.assertLessEqual(v3, set(ids))  # the five exempt ids are real steps of this job
         self.assertNotIn("contains(steps.*.outcome", condition)
@@ -971,15 +1581,24 @@ class DomainsWorkflowTests(unittest.TestCase):
             self.assertEqual({k for k in step["env"] if k != "JIRA_WRITERS_VERIFY"}, {"JIRA_API_TOKEN", "JIRA_EMAIL"})
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
         trigger = self.doc.get("on") or self.doc[True]
-        self.assertLessEqual({"writers-check", "writers-verify"}, set(trigger["workflow_dispatch"]["inputs"]["jira"]["options"]))
+        self.assertLessEqual(
+            {"writers-check", "writers-verify"}, set(trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
+        )
 
-    def test_the_daily_reconcile_runs_on_the_due_tick_or_the_manual_reconcile_choice_and_goes_live_only_with_the_live_box(self):
+    def test_the_daily_reconcile_runs_on_the_due_tick_or_the_manual_reconcile_choice_and_goes_live_only_with_the_live_box(
+        self,
+    ):
         """AC10: the permanent manual entry point."""
         job = self.doc["jobs"]["jira"]
         step = [s for s in job["steps"] if s.get("id") == "jreconcile"][0]
         self.assertEqual(step["if"], "${{ needs.gate.outputs.due_jira == 'true' || inputs.jira == 'reconcile' }}")
-        self.assertEqual(step["run"], 'python -m lifeos.run jira-reconcile-daily $([ "$LIVE" = "true" ] && echo --live)')
-        self.assertEqual(step["env"]["JIRA_RECONCILE_FORCE"], "${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'reconcile' && inputs.reconcile_force && 'true' || '' }}")
+        self.assertEqual(
+            step["run"], 'python -m lifeos.run jira-reconcile-daily $([ "$LIVE" = "true" ] && echo --live)'
+        )
+        self.assertEqual(
+            step["env"]["JIRA_RECONCILE_FORCE"],
+            "${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'reconcile' && inputs.reconcile_force && 'true' || '' }}",
+        )
         self.assertEqual(self.doc[True]["workflow_dispatch"]["inputs"]["reconcile_force"]["default"], False)
         trigger = self.doc.get("on") or self.doc[True]
         self.assertIn("reconcile", trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
@@ -994,20 +1613,34 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(trigger["workflow_run"], {"workflows": ["domains"], "types": ["completed"]})
         self.assertEqual(trigger["schedule"], [{"cron": "40 * * * *"}])  # the fallback stays
         self.assertEqual(list(trigger["workflow_dispatch"]["inputs"]), ["live"])  # workflow_dispatch is unchanged
-        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}")
-        self.assertIn("live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}", text)  # a workflow_run start follows V7_LIVE
+        self.assertEqual(
+            data["jobs"]["v3pages"]["if"],
+            "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}",
+        )
+        self.assertIn(
+            "live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}",
+            text,
+        )  # a workflow_run start follows V7_LIVE
         self.assertEqual(data["permissions"], {"contents": "read"})
         self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})
-        domains_name = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["run-name"]
+        domains_name = yaml.safe_load(
+            (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text()
+        )["run-name"]
         self.assertIn("'domains (after tick)'", domains_name)  # the title the condition depends on
 
     def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
         import copy
+
         job = copy.deepcopy(self.doc["jobs"]["jira"])
         self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN), [])
         job["steps"].insert(-1, {"id": "jnew", "name": "A new jira stage", "continue-on-error": True, "run": "true"})
-        self.assertEqual(self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN), ["jnew not covered"])  # it fails until the red list names it
-        self.assertEqual(self.uncovered_stage_steps(copy.deepcopy(self.doc["jobs"]["jira"])), [f"{i} not covered" for i in self.V3_STAGES_THAT_ONLY_WARN])  # without the exemption the V3 stages are uncovered
+        self.assertEqual(
+            self.uncovered_stage_steps(job, self.V3_STAGES_THAT_ONLY_WARN), ["jnew not covered"]
+        )  # it fails until the red list names it
+        self.assertEqual(
+            self.uncovered_stage_steps(copy.deepcopy(self.doc["jobs"]["jira"])),
+            [f"{i} not covered" for i in self.V3_STAGES_THAT_ONLY_WARN],
+        )  # without the exemption the V3 stages are uncovered
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):
         for name, job in self.doc["jobs"].items():
@@ -1022,16 +1655,34 @@ class DomainsWorkflowTests(unittest.TestCase):
         condition = job["if"]
         for part in ("always()", "needs.gate.outputs.tick == 'true'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
-        (step,) = [s for s in job["steps"] if "run" in s and not str(s.get("name", "")).startswith("Checkout the exact commit")]
+        (step,) = [
+            s for s in job["steps"] if "run" in s and not str(s.get("name", "")).startswith("Checkout the exact commit")
+        ]
         self.assertIn("lifeos.platform.alerts push --key domain_jobs_failed", step["run"])
         self.assertFalse(step.get("continue-on-error"))  # a push the provider refuses turns the job red
-        self.assertEqual(sorted(re.findall(r"needs\.(\w+)\.result", step["run"])), sorted(n for n in job["needs"] if n != "gate"))
+        self.assertEqual(
+            sorted(re.findall(r"needs\.(\w+)\.result", step["run"])), sorted(n for n in job["needs"] if n != "gate")
+        )
 
 
-DB = {f"LIFEOS_ACQ_{n}" for n in ("DB_NAME", "DB_PASSWORD", "DB_USER", "SSH_HOST", "SSH_KNOWN_HOSTS", "SSH_PRIVATE_KEY", "SSH_USER")}
+DB = {
+    f"LIFEOS_ACQ_{n}"
+    for n in ("DB_NAME", "DB_PASSWORD", "DB_USER", "SSH_HOST", "SSH_KNOWN_HOSTS", "SSH_PRIVATE_KEY", "SSH_USER")
+}
 JUMP = {"LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS"}
 TS = {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"}  # loaded by those store jobs for their tailnet join
-HRL = {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "GMAIL_OAUTH_CLIENT_ID"}
+HRL = {
+    "FIT_PROFILE_EXTRA_JSON",
+    "FIT_PROFILE_JSON",
+    "GMAIL_OAUTH_CLIENT_SECRET",
+    "GMAIL_OAUTH_REFRESH_TOKEN",
+    "JOBRIGHT_EMAIL",
+    "JOBRIGHT_PASSWORD",
+    "NOTION_API_TOKEN",
+    "OPEN_JOBS_CONTACT",
+    "TINYFISH_API_KEY",
+    "GMAIL_OAUTH_CLIENT_ID",
+}
 # The 25 values verified value-for-value in Bitwarden by migration run 37532718917 (name -> secret id).
 UUIDS = {
     "V7_RUNTIME_CONFIG_SOURCE_ID": "0053654c-d504-4453-87f7-b5080113d136",
@@ -1084,32 +1735,100 @@ UUIDS = {
 TAILSCALE_ACTION = "./.github/actions/tailscale"
 TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret": "TAILSCALE_OAUTH_CLIENT_SECRET"}
 # Least privilege: the credentials each job may load from Bitwarden (a conscious decision)
-HRL_PREP = HRL - {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"}
-HRL_LANE = HRL - {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"}
+HRL_PREP = HRL - {
+    "FIT_PROFILE_EXTRA_JSON",
+    "FIT_PROFILE_JSON",
+    "JOBRIGHT_EMAIL",
+    "JOBRIGHT_PASSWORD",
+    "OPEN_JOBS_CONTACT",
+    "TINYFISH_API_KEY",
+}
+HRL_LANE = HRL - {
+    "GMAIL_OAUTH_CLIENT_ID",
+    "GMAIL_OAUTH_CLIENT_SECRET",
+    "GMAIL_OAUTH_REFRESH_TOKEN",
+    "OPEN_JOBS_CONTACT",
+}
 LOADED = {
     "branches": {"report": {"NOTION_JIRA_TOKEN"}, "archive": {"V7_ARCHIVE_TOKEN"}},
     "agenda": {"agenda": DB | {"NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
     "calendar": {"calendar": DB | {"OUTLOOK_CLIENT_ID"}},
-    "hourly": {"prep": DB | JUMP | TS | HRL_PREP, "jobright": DB | JUMP | TS | HRL_LANE, "linkedin": DB | JUMP | TS | HRL_LANE, "lensa": DB | JUMP | TS | HRL_LANE, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
+    "hourly": {
+        "prep": DB | JUMP | TS | HRL_PREP,
+        "jobright": DB | JUMP | TS | HRL_LANE,
+        "linkedin": DB | JUMP | TS | HRL_LANE,
+        "lensa": DB | JUMP | TS | HRL_LANE,
+        "finish": DB
+        | JUMP
+        | TS
+        | HRL
+        | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"},
+        "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"},
+        "report": {"NTFY_TOPIC"},
+    },
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
-    "capacity-card": {"capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "NOTION_JIRA_TOKEN"}},  # the retired AI Capacity stage reads nothing
+    "capacity-card": {
+        "capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "NOTION_JIRA_TOKEN"}
+    },  # the retired AI Capacity stage reads nothing
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
     "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
-    "granola-auto": {"auto": DB - {"LIFEOS_ACQ_SSH_PORT"} | {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
-    "granola": {"granola": {"NOTION_INTERVIEW_TOKEN", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
+    "granola-auto": {
+        "auto": DB - {"LIFEOS_ACQ_SSH_PORT"}
+        | {
+            "NOTION_INTERVIEW_TOKEN",
+            "TAILSCALE_OAUTH_CLIENT_ID",
+            "TAILSCALE_OAUTH_CLIENT_SECRET",
+            "IMESSAGE_ALERTS_HOST",
+        }
+    },
+    "granola": {
+        "granola": {
+            "NOTION_INTERVIEW_TOKEN",
+            "TAILSCALE_OAUTH_CLIENT_ID",
+            "TAILSCALE_OAUTH_CLIENT_SECRET",
+            "IMESSAGE_ALERTS_HOST",
+        }
+    },
     "manual-job": {"manual": DB | {"NOTION_INTERVIEW_TOKEN"}},
-    "hermes-stage": {"hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL", "BUZZ_STAGE_KEY", "BUZZ_STAGE_HERMES_PUBKEY", "BUZZ_URL_LIFE_OS"}},
+    "hermes-stage": {
+        "hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL", "BUZZ_STAGE_KEY", "BUZZ_STAGE_HERMES_PUBKEY", "BUZZ_URL_LIFE_OS"}
+    },
     "readiness-live": {"readiness": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
     "interview-proof": {"proof": {"NOTION_INTERVIEW_TOKEN"}},
-    "recruiters": {"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN", "GMAIL_OAUTH_CLIENT_ID", "OUTLOOK_CLIENT_ID"}},
+    "recruiters": {
+        "recruiters": DB
+        | {
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "NOTION_RECRUITERS_TOKEN",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "OUTLOOK_CLIENT_ID",
+        }
+    },
     "watchdog": {"watch": {"NTFY_TOPIC"}},
     "safety": {"safety": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NTFY_TOPIC"}},
-    "amazon": {"amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "GMAIL_OAUTH_CLIENT_ID"}},
-    "fit-edge-test": {"fit_edge": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},
-    "diag": {"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "GMAIL_OAUTH_CLIENT_ID"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "inbox_view_qa": {"NOTION_API_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},
+    "amazon": {
+        "amazon": {
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "NOTION_AMAZON_TOKEN",
+            "GMAIL_OAUTH_CLIENT_ID",
+        }
+    },
+    "fit-edge-test": {
+        "fit_edge": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}
+    },
+    "diag": {
+        "diag": DB,
+        "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "GMAIL_OAUTH_CLIENT_ID"},
+        "sandbox": {"NOTION_API_TOKEN"},
+        "interview_ui": {"NOTION_INTERVIEW_TOKEN"},
+        "inbox_view_qa": {"NOTION_API_TOKEN"},
+        "report": DB | {"NOTION_API_TOKEN"},
+    },
 }
 PILOTS = ("watchdog", "safety", "amazon", "diag")
 SECRET_FREE = ("pr-tests", "suite-timing", "mariadb-race")
@@ -1118,6 +1837,7 @@ SECRET_FREE = ("pr-tests", "suite-timing", "mariadb-race")
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class BitwardenConsumerTests(unittest.TestCase):
     """step 2: rules, not pins."""
+
     ACTION = "./.github/actions/bws-load"  # the one local loader
     PINNED = "./.github/actions/sm-action"
     OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \}\}")  # a loaded value, read from the loader's output
@@ -1126,15 +1846,25 @@ class BitwardenConsumerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
-        cls.text = {p.stem: wfsets.expand_text(p.read_text()) for p in sorted(root.glob("*.yml")) if p.stem not in SECRET_FREE}
+        cls.text = {
+            p.stem: wfsets.expand_text(p.read_text()) for p in sorted(root.glob("*.yml")) if p.stem not in SECRET_FREE
+        }
         cls.doc = {n: yaml.safe_load(t) for n, t in cls.text.items()}
 
     def loaders(self, name, job):
         """The job's credential loader."""
-        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") not in (SETTINGS_LOADER_ID, RUNTIME_CONFIG_LOADER_ID)]
+        return [
+            (i, s)
+            for i, s in enumerate(self.doc[name]["jobs"][job]["steps"])
+            if s.get("uses") == self.ACTION and s.get("id") not in (SETTINGS_LOADER_ID, RUNTIME_CONFIG_LOADER_ID)
+        ]
 
     def settings_loaders(self, name, job):
-        return [(i, s) for i, s in enumerate(self.doc[name]["jobs"][job]["steps"]) if s.get("uses") == self.ACTION and s.get("id") == SETTINGS_LOADER_ID]
+        return [
+            (i, s)
+            for i, s in enumerate(self.doc[name]["jobs"][job]["steps"])
+            if s.get("uses") == self.ACTION and s.get("id") == SETTINGS_LOADER_ID
+        ]
 
     def jobs_with_loaders(self, name):
         return [job for job in self.doc[name]["jobs"] if self.loaders(name, job)]
@@ -1143,14 +1873,21 @@ class BitwardenConsumerTests(unittest.TestCase):
         return {job for job in self.doc[name]["jobs"] if self.settings_loaders(name, job)}
 
     def loaded(self, name, job):
-        return {m.group(2) for m in re.finditer(r"^([0-9a-f-]{36}) > (\w+)$", self.loaders(name, job)[0][1]["with"]["secrets"], re.M)}
+        return {
+            m.group(2)
+            for m in re.finditer(r"^([0-9a-f-]{36}) > (\w+)$", self.loaders(name, job)[0][1]["with"]["secrets"], re.M)
+        }
 
     def test_the_runtime_config_loader_is_the_bootstrap_id_alone_in_exactly_its_jobs(self):
         """the compare-only read loads the one existing bootstrap ID (an address) through its own step, never exported
         job-wide, and a failed load only means no.
         """
         for name, doc in self.doc.items():
-            carriers = {job for job, body in doc["jobs"].items() if any(st.get("id") == RUNTIME_CONFIG_LOADER_ID for st in body["steps"])}
+            carriers = {
+                job
+                for job, body in doc["jobs"].items()
+                if any(st.get("id") == RUNTIME_CONFIG_LOADER_ID for st in body["steps"])
+            }
             self.assertEqual(carriers, RUNTIME_CONFIG_JOBS.get(name, set()), name)
             for job in carriers:
                 (step,) = [st for st in doc["jobs"][job]["steps"] if st.get("id") == RUNTIME_CONFIG_LOADER_ID]
@@ -1158,7 +1895,11 @@ class BitwardenConsumerTests(unittest.TestCase):
                 self.assertIs(step.get("continue-on-error"), True, (name, job))
                 self.assertEqual(step["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(str(step["with"]["set_env"]).lower(), "false", (name, job))
-                self.assertEqual(step["with"]["secrets"].strip(), f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID", (name, job))
+                self.assertEqual(
+                    step["with"]["secrets"].strip(),
+                    f"{UUIDS['V7_RUNTIME_CONFIG_SOURCE_ID']} > V7_RUNTIME_CONFIG_SOURCE_ID",
+                    (name, job),
+                )
                 self.assertNotIn("V7_RUNTIME_CONFIG_SOURCE_ID", doc["jobs"][job].get("env") or {}, (name, job))
 
     def test_every_loader_is_the_local_action_with_the_exact_ids_and_nothing_that_could_bypass_it(self):
@@ -1166,8 +1907,14 @@ class BitwardenConsumerTests(unittest.TestCase):
             text, jobs = self.text[name], self.jobs_with_loaders(name)
             self.assertTrue(jobs, name)
             self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", re.findall(r"secrets\.(\w+)", text), name)
-            self.assertFalse([n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name)  # no migrated value is read from GitHub any more
-            self.assertEqual(re.findall(r"uses:\s*(\S*bws-load)", text), [self.ACTION] * (len(jobs) + len(SETTINGS_JOBS.get(name, ())) + len(RUNTIME_CONFIG_JOBS.get(name, ()))), name)
+            self.assertFalse(
+                [n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name
+            )  # no migrated value is read from GitHub any more
+            self.assertEqual(
+                re.findall(r"uses:\s*(\S*bws-load)", text),
+                [self.ACTION] * (len(jobs) + len(SETTINGS_JOBS.get(name, ())) + len(RUNTIME_CONFIG_JOBS.get(name, ()))),
+                name,
+            )
             self.assertNotIn("bitwarden/", text, name)
             if name != "domains":
                 self.assertEqual(set(jobs), set(LOADED[name]), name)
@@ -1175,13 +1922,27 @@ class BitwardenConsumerTests(unittest.TestCase):
                 ((at, loader),) = self.loaders(name, job)
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
-                self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job))
+                self.assertTrue(
+                    names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job],
+                    (name, job, sorted(names)),
+                )
+                self.assertEqual(
+                    steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job)
+                )
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
-                self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
+                self.assertEqual(
+                    sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)),
+                    sorted((UUIDS[n], n) for n in names),
+                    (name, job),
+                )
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
                 self.assertFalse({"if", "env", "continue-on-error"} & set(loader), (name, job))
-                self.assertTrue({"access_token", "secrets"} <= set(loader["with"]) <= {"access_token", "secrets", "set_env", "doppler_compare"}, (name, job))
+                self.assertTrue(
+                    {"access_token", "secrets"}
+                    <= set(loader["with"])
+                    <= {"access_token", "secrets", "set_env", "doppler_compare"},
+                    (name, job),
+                )
                 if name not in PILOTS:
                     self.assertEqual(loader["id"], f"bws_{job}", (name, job))  # deterministic, unique id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))  # nothing is exported job-wide
@@ -1195,29 +1956,48 @@ class BitwardenConsumerTests(unittest.TestCase):
         action = yaml.safe_load((root / "actions" / "bws-load" / "action.yml").read_text())
         sets, first, pause, retry, names, doppler = action["runs"]["steps"]
         failed = "${{ steps.first.outcome == 'failure' }}"
-        passed = {"access_token": "${{ inputs.access_token }}", "secrets": "${{ inputs.set != '' && steps.sets.outputs.list || inputs.secrets }}", "set_env": "${{ inputs.set_env }}"}  # the list is the named set, else the inline one
+        passed = {
+            "access_token": "${{ inputs.access_token }}",
+            "secrets": "${{ inputs.set != '' && steps.sets.outputs.list || inputs.secrets }}",
+            "set_env": "${{ inputs.set_env }}",
+        }  # the list is the named set, else the inline one
         self.assertEqual(action["runs"]["using"], "composite")
         self.assertEqual(first, {"id": "first", "continue-on-error": True, "uses": self.PINNED, "with": passed})
-        self.assertEqual(pause, {"if": failed, "shell": "bash", "run": self.PAUSE})  # a jittered pause, only when the first load failed
-        self.assertEqual(retry, {"id": "retry", "if": failed, "uses": self.PINNED, "with": passed})  # the same pinned action and ids
+        self.assertEqual(
+            pause, {"if": failed, "shell": "bash", "run": self.PAUSE}
+        )  # a jittered pause, only when the first load failed
+        self.assertEqual(
+            retry, {"id": "retry", "if": failed, "uses": self.PINNED, "with": passed}
+        )  # the same pinned action and ids
         self.assertEqual(names["id"], "names")
         self.assertIn("inputs.doppler_compare != ''", names["if"])
-        self.assertEqual({k: doppler.get(k) for k in ("id", "continue-on-error", "uses")}, {"id": "doppler", "continue-on-error": True, "uses": "./.github/actions/doppler-load"})
+        self.assertEqual(
+            {k: doppler.get(k) for k in ("id", "continue-on-error", "uses")},
+            {"id": "doppler", "continue-on-error": True, "uses": "./.github/actions/doppler-load"},
+        )
         self.assertEqual(doppler["with"]["token"], "${{ inputs.doppler_compare }}")
         self.assertEqual(set(doppler["with"]), {"token", "names", "bitwarden"})
         needed = {n for text in self.text.values() for n in re.findall(r"^\s+[0-9a-f-]{36} > (\w+)$", text, re.M)}
-        self.assertTrue(needed <= set(action["outputs"]), sorted(needed - set(action["outputs"])))  # every loaded name has an output
+        self.assertTrue(
+            needed <= set(action["outputs"]), sorted(needed - set(action["outputs"]))
+        )  # every loaded name has an output
         for key, spec in action["outputs"].items():
-            self.assertEqual(spec["value"], "${{ steps.first.outputs.%s || steps.retry.outputs.%s }}" % (key, key), key)  # the first load's value, else its one retry's
+            self.assertEqual(
+                spec["value"], "${{ steps.first.outputs.%s || steps.retry.outputs.%s }}" % (key, key), key
+            )  # the first load's value, else its one retry's
         for path in sorted(root.rglob("*.y*ml")):
             if path != root / "actions" / "bws-load" / "action.yml":
-                self.assertNotRegex(path.read_text(), r"uses:\s*bitwarden/", path.name)  # the third-party action is used nowhere else
+                self.assertNotRegex(
+                    path.read_text(), r"uses:\s*bitwarden/", path.name
+                )  # the third-party action is used nowhere else
 
     def test_only_steps_that_run_a_command_receive_a_loaded_value_and_the_loader_carries_exactly_what_they_use(self):
         for name, doc in self.doc.items():
             if name in PILOTS:
                 continue
-            self.assertFalse([k for k, v in (doc.get("env") or {}).items() if k in UUIDS], name)  # nothing at workflow level
+            self.assertFalse(
+                [k for k, v in (doc.get("env") or {}).items() if k in UUIDS], name
+            )  # nothing at workflow level
             for job, body in doc["jobs"].items():
                 self.assertFalse([k for k, v in (body.get("env") or {}).items() if k in UUIDS and v != ""], (name, job))
                 found = self.loaders(name, job)
@@ -1226,9 +2006,31 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for i, step in enumerate(body["steps"]):
                         for k, v in (step.get("env") or {}).items():
                             if k in UUIDS:
-                                self.assertIn((k, str(v).strip()), (("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER), ("V7_RUNTIME_CONFIG_SOURCE_ID", SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"))), (name, job, step.get("name")))
-                                self.assertTrue(settings_at is not None and i > settings_at, (name, job, step.get("name")))
-                    self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v) and not is_parity(step)], (name, job))
+                                self.assertIn(
+                                    (k, str(v).strip()),
+                                    (
+                                        ("NOTION_JIRA_TOKEN", SETTINGS_CONSUMER),
+                                        (
+                                            "V7_RUNTIME_CONFIG_SOURCE_ID",
+                                            SETTINGS_CONSUMER.replace(
+                                                "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"
+                                            ),
+                                        ),
+                                    ),
+                                    (name, job, step.get("name")),
+                                )
+                                self.assertTrue(
+                                    settings_at is not None and i > settings_at, (name, job, step.get("name"))
+                                )
+                    self.assertFalse(
+                        [
+                            v
+                            for step in body["steps"]
+                            for v in (step.get("with") or {}).values()
+                            if "steps.bws_" in str(v) and not is_parity(step)
+                        ],
+                        (name, job),
+                    )
                     continue
                 ((at, loader),) = found
                 seen = set()
@@ -1237,19 +2039,35 @@ class BitwardenConsumerTests(unittest.TestCase):
                     got = set()
                     for key, value in (step.get("env") or {}).items():
                         if key in UUIDS and str(value).strip() == SETTINGS_CONSUMER:
-                            self.assertEqual((key, settings_at is not None and i > settings_at), ("NOTION_JIRA_TOKEN", True), (name, job, label))
+                            self.assertEqual(
+                                (key, settings_at is not None and i > settings_at),
+                                ("NOTION_JIRA_TOKEN", True),
+                                (name, job, label),
+                            )
                             continue
                         if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == RUNTIME_CONFIG_CONSUMER:
-                            rc_at = min([j for j, st in enumerate(body["steps"]) if st.get("id") == RUNTIME_CONFIG_LOADER_ID], default=None)
-                            self.assertTrue(rc_at is not None and i > rc_at and job in RUNTIME_CONFIG_JOBS.get(name, ()), (name, job, label))
+                            rc_at = min(
+                                [j for j, st in enumerate(body["steps"]) if st.get("id") == RUNTIME_CONFIG_LOADER_ID],
+                                default=None,
+                            )
+                            self.assertTrue(
+                                rc_at is not None and i > rc_at and job in RUNTIME_CONFIG_JOBS.get(name, ()),
+                                (name, job, label),
+                            )
                             continue
-                        if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == SETTINGS_CONSUMER.replace("NOTION_JIRA_TOKEN", key):
+                        if key == "V7_RUNTIME_CONFIG_SOURCE_ID" and str(value).strip() == SETTINGS_CONSUMER.replace(
+                            "NOTION_JIRA_TOKEN", key
+                        ):
                             self.assertTrue(settings_at is not None and i > settings_at, (name, job, label))
                             continue
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())
-                            alias = {("interview", "INTERVIEW_ACCEPTANCE_JSON"): "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}.get((job, key))
-                            self.assertTrue(m and m.group(2) in {key, alias} and m.group(1) == loader["id"], (name, job, label, key))
+                            alias = {
+                                ("interview", "INTERVIEW_ACCEPTANCE_JSON"): "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"
+                            }.get((job, key))
+                            self.assertTrue(
+                                m and m.group(2) in {key, alias} and m.group(1) == loader["id"], (name, job, label, key)
+                            )
                             got.add(m.group(2))
                             self.assertGreater(i, at, (name, job, label))
                     if step is loader:
@@ -1257,7 +2075,11 @@ class BitwardenConsumerTests(unittest.TestCase):
                     passed = {k: self.OUTPUT.fullmatch(str(v).strip()) for k, v in (step.get("with") or {}).items()}
                     passed = {k: m for k, m in passed.items() if m}
                     if step.get("uses") == TAILSCALE_ACTION:
-                        self.assertEqual({k: (m.group(1), m.group(2)) for k, m in passed.items()}, {k: (loader["id"], n) for k, n in TAILSCALE_WITH.items()}, (name, job))
+                        self.assertEqual(
+                            {k: (m.group(1), m.group(2)) for k, m in passed.items()},
+                            {k: (loader["id"], n) for k, n in TAILSCALE_WITH.items()},
+                            (name, job),
+                        )
                         self.assertGreater(i, at, (name, job, label))
                         seen |= set(TAILSCALE_WITH.values())
                     else:
@@ -1265,7 +2087,9 @@ class BitwardenConsumerTests(unittest.TestCase):
                     if "run" not in step or "uses" in step:
                         self.assertEqual(got, set(), (name, job, label))
                     seen |= got
-                self.assertEqual(seen, self.loaded(name, job), (name, job))  # the loader carries exactly what its consumers use
+                self.assertEqual(
+                    seen, self.loaded(name, job), (name, job)
+                )  # the loader carries exactly what its consumers use
 
     def test_the_settings_loader_is_exactly_the_notion_token_in_exactly_the_jobs_that_read_the_settings_page(self):
         """one extra loader step, in these jobs only, loading nothing but NOTION_JIRA_TOKEN, never failing the job, after
@@ -1278,23 +2102,36 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps = self.doc[name]["jobs"][job]["steps"]
                 self.assertTrue(is_settings_loader(loader), (name, job))
                 self.assertTrue(all(i < at for i, _ in self.loaders(name, job)), (name, job))
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job))
+                self.assertEqual(
+                    steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job)
+                )
                 consumers = [s for s in steps if SETTINGS_CONSUMER in str((s.get("env") or {}).values())]
                 self.assertTrue(consumers, (name, job))  # a loader nobody uses is not there
                 for step in consumers:
                     self.assertGreater(steps.index(step), at, (name, job))
-                    self.assertTrue("lifeos.platform.settings" in str(step.get("run")) or "lifeos.run" in str(step.get("run")), (name, job, step.get("name")))  # only a command that reads the page gets the token
+                    self.assertTrue(
+                        "lifeos.platform.settings" in str(step.get("run")) or "lifeos.run" in str(step.get("run")),
+                        (name, job, step.get("name")),
+                    )  # only a command that reads the page gets the token
 
     def test_every_workflow_is_read_only_queues_its_runs_and_bounds_every_job(self):
         for name, doc in self.doc.items():
             self.assertTrue({"pull_request_target", "issue_comment"}.isdisjoint(doc[True]), name)
-            extra = {"watchdog": {"issues": "write"}, "calendar": {"id-token": "write"}, "agenda": {"id-token": "write"}}  # id-token is the keyless Google sign-in
+            extra = {
+                "watchdog": {"issues": "write"},
+                "calendar": {"id-token": "write"},
+                "agenda": {"id-token": "write"},
+            }  # id-token is the keyless Google sign-in
             self.assertEqual({k: v for k, v in doc["permissions"].items() if v != "read"}, extra.get(name, {}), name)
             self.assertTrue(doc.get("concurrency") or name == "watchdog", name)  # runs queue
-            self.assertIs((doc.get("concurrency") or {}).get("cancel-in-progress", False), False, name)  # and a waiting run is never cancelled by the next
+            self.assertIs(
+                (doc.get("concurrency") or {}).get("cancel-in-progress", False), False, name
+            )  # and a waiting run is never cancelled by the next
             for job, body in doc["jobs"].items():
                 self.assertIsInstance(body.get("timeout-minutes"), int, (name, job))  # every job is bounded
-            self.assertFalse(re.findall(r"run:[^\n]*\$\{\{ *secrets\.", self.text[name]), name)  # a secret is never pasted into a command line
+            self.assertFalse(
+                re.findall(r"run:[^\n]*\$\{\{ *secrets\.", self.text[name]), name
+            )  # a secret is never pasted into a command line
 
     def test_a_stopped_granola_bridge_fails_the_job_so_the_report_job_pushes_the_phone(self):
         """the bridge step keeps continue-on-error so the warning prints, then a final step fails the job"""
@@ -1339,23 +2176,34 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
         self.assertIn("python -m lifeos.run fit-profile-sync", self.text)
 
     def test_it_is_a_dry_run_unless_ticked_or_following_a_tick_with_the_variable_on(self):
-        self.assertFalse(self.doc["on"]["workflow_dispatch"]["inputs"]["live"]["default"] if "on" in self.doc else self.doc[True]["workflow_dispatch"]["inputs"]["live"]["default"])
+        self.assertFalse(
+            self.doc["on"]["workflow_dispatch"]["inputs"]["live"]["default"]
+            if "on" in self.doc
+            else self.doc[True]["workflow_dispatch"]["inputs"]["live"]["default"]
+        )
         job = self.doc["jobs"]["sync"]
         self.assertEqual(job["needs"], ["settings"])
-        self.assertIn("needs.settings.outputs.fit_profile_sync == 'on'", job["if"])  # the switch now comes from the V7 settings page...
+        self.assertIn(
+            "needs.settings.outputs.fit_profile_sync == 'on'", job["if"]
+        )  # the switch now comes from the V7 settings page...
         self.assertIn("github.event.workflow_run.conclusion == 'success'", job["if"])
         self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
-        self.assertEqual(self.doc["jobs"]["settings"]["outputs"]["fit_profile_sync"], "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}")  # ...
+        self.assertEqual(
+            self.doc["jobs"]["settings"]["outputs"]["fit_profile_sync"],
+            "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}",
+        )  # ...
         self.assertNotIn("vars.FIT_PROFILE_SYNC", job["if"])
 
 
 class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
-    """it is its own failed lane in the report job's push, while credentials, the gate and the unit tests still block.
-    """
+    """it is its own failed lane in the report job's push, while credentials, the gate and the unit tests still block."""
+
     @classmethod
     def setUpClass(cls):
         try:
-            cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
+            cls.doc = yaml.safe_load(
+                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text()
+            )
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
         cls.steps = cls.doc["jobs"]["prep"]["steps"]
@@ -1367,7 +2215,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         self.assertNotIn("|| true", sweep["run"])
         self.assertEqual(self.doc["jobs"]["prep"]["outputs"]["sweep"], "${{ steps.sweep.outcome }}")
         self.assertNotIn("continue-on-error", self.doc["jobs"]["prep"])  # only the one step is tolerated, never the job
-        for later in self.steps[self.steps.index(sweep) + 1:]:
+        for later in self.steps[self.steps.index(sweep) + 1 :]:
             self.assertNotIn("steps.sweep", str(later.get("if", "")), later.get("name"))
 
     def test_credentials_and_gate_still_fail_prep_and_so_block_finish(self):
@@ -1376,9 +2224,13 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
         for prefix in ("Load the migrated credentials", "Gate - skip"):
             step = next(s for s in before if s.get("name", "").startswith(prefix))
             self.assertNotIn("continue-on-error", step, prefix)
-        tolerated = [s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error") and not is_parity(s)]
+        tolerated = [
+            s.get("name", "") for s in self.steps[:sweep_at] if s.get("continue-on-error") and not is_parity(s)
+        ]
         self.assertEqual(len(tolerated), 2)
-        self.assertEqual(sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 0)  # ...
+        self.assertEqual(
+            sum(name.startswith("LIFE-854 - start the employer-board window") for name in tolerated), 0
+        )  # ...
         self.assertEqual(sum("tailnet" in name for name in tolerated), 1)
         self.assertEqual(sum(name.startswith("Start the early domains run") for name in tolerated), 1)  # ...
         finish = self.doc["jobs"]["finish"]
@@ -1388,14 +2240,23 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
     def test_the_report_job_names_a_failed_sweep_as_its_own_lane_and_pushes_once(self):
         import os
         import subprocess
+
         report = next(s for s in self.doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
         self.assertIn("sweep=${{ needs.prep.outputs.sweep }}", report["run"])
 
         def run(prep="success", sweep="success", finish="success"):
             values = {"needs.prep.result": prep, "needs.prep.outputs.sweep": sweep, "needs.finish.result": finish}
             script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: values.get(m.group(1), "success"), report["run"])
-            script = script.replace("python3 -m lifeos.platform.alerts push", "echo PUSH")  # the real push is never called from a test
-            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "STAGES": "", "CODES": ""}, capture_output=True, text=True, check=False)
+            script = script.replace(
+                "python3 -m lifeos.platform.alerts push", "echo PUSH"
+            )  # the real push is never called from a test
+            done = subprocess.run(
+                ["bash", "-e", "-c", script],
+                env={**os.environ, "STAGES": "", "CODES": ""},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
             return done.returncode, done.stdout
 
         code, out = run(sweep="failure")  # the sweep failed, everything else ran
@@ -1417,6 +2278,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     """a failed browser install costs only the Jobright lane, and no `continue-on-error` step in the finish job fails
     silently: each is a lane in the lanes.
     """
+
     SILENT = {
         None: "the tailnet join (no id): a failed join only means no Oracle fallback (LIFE-85)",
         "review": "dispatch-only report: a person started it and reads the log",
@@ -1430,7 +2292,9 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.doc = yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text())
+            cls.doc = yaml.safe_load(
+                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text()
+            )
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
         cls.steps = cls.doc["jobs"]["finish"]["steps"]
@@ -1440,10 +2304,21 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
         import os
         import subprocess
         import tempfile
-        script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == f"steps.{failed_step}.outcome" else "success", self.lanes["run"])
+
+        script = re.sub(
+            r"\$\{\{\s*([^}]+?)\s*\}\}",
+            lambda m: "failure" if m.group(1) == f"steps.{failed_step}.outcome" else "success",
+            self.lanes["run"],
+        )
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory, "out")
-            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
+            done = subprocess.run(
+                ["bash", "-e", "-c", script],
+                env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
             return done.returncode, next(line for line in output.read_text().splitlines() if line.startswith("failed="))
 
     def test_every_continue_on_error_step_is_a_lane_or_listed_as_silent_with_a_reason(self):
@@ -1451,7 +2326,10 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
         for step in self.steps:
             if step.get("continue-on-error") and step.get("id") != "lanes" and not is_parity(step):
                 ident = step.get("id")
-                self.assertTrue(ident in listed or (ident in self.SILENT and self.SILENT[ident]), f"silent and unlisted: {ident or step.get('name')}")
+                self.assertTrue(
+                    ident in listed or (ident in self.SILENT and self.SILENT[ident]),
+                    f"silent and unlisted: {ident or step.get('name')}",
+                )
         self.assertTrue(listed.isdisjoint(self.SILENT))  # a step is one or the other, never both
         for ident in self.SILENT:
             if ident:
@@ -1461,8 +2339,10 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
         for ident in ("alerts",):
             step = next(s for s in self.steps if s.get("id") == ident)
             self.assertTrue(step.get("continue-on-error"), ident)  # every later stage still runs
-            self.assertEqual(self.lane_result(ident), (1, f"failed={ident}"))  # the run ends red and names only the lane
-            for later in self.steps[self.steps.index(step) + 1:]:
+            self.assertEqual(
+                self.lane_result(ident), (1, f"failed={ident}")
+            )  # the run ends red and names only the lane
+            for later in self.steps[self.steps.index(step) + 1 :]:
                 if "annotation" not in later.get("name", ""):  # the warning step reads the outcome on purpose
                     self.assertNotIn(f"steps.{ident}.", str(later.get("if", "")), later.get("name"))
         self.assertEqual(self.lane_result("none"), (0, "failed="))  # nothing changes when they succeed
@@ -1472,9 +2352,11 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
         tick = next(s for s in self.steps if s.get("id") == "tick")
         self.assertTrue(browser.get("continue-on-error"))
         self.assertEqual(self.lane_result("browser"), (1, "failed=jobright"))  # the lane is named
-        self.assertEqual(tick["env"]["TICK_SKIP_STAGES"], "${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}")
+        self.assertEqual(
+            tick["env"]["TICK_SKIP_STAGES"], "${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}"
+        )
         self.assertNotIn("steps.browser", str(tick.get("if", "")))  # the tick still runs after a failed install
-        for later in self.steps[self.steps.index(browser) + 1:]:
+        for later in self.steps[self.steps.index(browser) + 1 :]:
             self.assertNotIn("steps.browser", str(later.get("if", "")), later.get("name"))
         manual = next(s for s in self.doc["jobs"]["jobright"]["steps"] if s.get("id") == "jobright_browser")
         self.assertNotIn("continue-on-error", manual)
@@ -1493,12 +2375,23 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     def test_the_report_job_pushes_once_and_names_the_stages(self):
         import os
         import subprocess
+
         report = next(s for s in self.doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
 
         def run(stages):
-            script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == "needs.finish.result" else "success", report["run"])
+            script = re.sub(
+                r"\$\{\{\s*([^}]+?)\s*\}\}",
+                lambda m: "failure" if m.group(1) == "needs.finish.result" else "success",
+                report["run"],
+            )
             script = script.replace("python3 -m lifeos.platform.alerts push", "echo PUSH")
-            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "STAGES": stages, "CODES": ""}, capture_output=True, text=True, check=False)
+            done = subprocess.run(
+                ["bash", "-e", "-c", script],
+                env={**os.environ, "STAGES": stages, "CODES": ""},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
             return done.returncode, done.stdout
 
         code, out = run("network_surface alerts jobright")
@@ -1508,9 +2401,13 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
 
 class ConcurrencyHasNoSwitch(unittest.TestCase):
     """approval 5: TICK_CONCURRENCY are gone from the workflow and the code"""
+
     def test_no_workflow_or_code_file_reads_the_switch(self):
         root = pathlib.Path(__file__).resolve().parents[2]
-        for path in list((root / ".github/workflows").glob("*.yml")) + [root / "lifeos/jobs/tick.py", root / "lifeos/platform/credential_list.py"]:
+        for path in list((root / ".github/workflows").glob("*.yml")) + [
+            root / "lifeos/jobs/tick.py",
+            root / "lifeos/platform/credential_list.py",
+        ]:
             self.assertNotIn("TICK_CONCURRENCY", path.read_text(), path.name)
             self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
 
@@ -1541,9 +2438,16 @@ class DopplerParityTests(unittest.TestCase):
                 steps = body.get("steps") or []
                 for i, step in enumerate(steps):
                     with_ = step.get("with") or {}
-                    if step.get("uses") == "./.github/actions/bws-load" and step.get("id") and "LIFEOS_BWS_RUNTIME_TOKEN" in str(with_.get("access_token")):
-                        later = steps[i + 1:]
-                        stop = next((k for k, s in enumerate(later) if s.get("uses") == "./.github/actions/bws-load"), len(later))
+                    if (
+                        step.get("uses") == "./.github/actions/bws-load"
+                        and step.get("id")
+                        and "LIFEOS_BWS_RUNTIME_TOKEN" in str(with_.get("access_token"))
+                    ):
+                        later = steps[i + 1 :]
+                        stop = next(
+                            (k for k, s in enumerate(later) if s.get("uses") == "./.github/actions/bws-load"),
+                            len(later),
+                        )
                         old = next((s for s in later[:stop] if is_parity(s)), None)
                         out.append((name, job, step, step if with_.get("doppler_compare") else old))
         return out
@@ -1569,14 +2473,27 @@ class DopplerParityTests(unittest.TestCase):
             text = self.texts[name]
             if name in LEAN:
                 self.assertNotIn("actions/doppler-load", text, name)  # no separate compare step in the lean workflows
-            ids = [s["id"] for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s) and s.get("id")]
+            ids = [
+                s["id"]
+                for body in (doc.get("jobs") or {}).values()
+                for s in (body.get("steps") or [])
+                if is_parity(s) and s.get("id")
+            ]
             for ident in ids:
                 self.assertEqual(re.findall(rf"steps\.{ident}\.(\w+)", text), [], (name, ident))
             token_uses = re.findall(r".*secrets\.DOPPLER_TOKEN.*", text)
-            compares = sum(1 for body in (doc.get("jobs") or {}).values() for s in (body.get("steps") or []) if is_parity(s) or (s.get("with") or {}).get("doppler_compare"))
+            compares = sum(
+                1
+                for body in (doc.get("jobs") or {}).values()
+                for s in (body.get("steps") or [])
+                if is_parity(s) or (s.get("with") or {}).get("doppler_compare")
+            )
             self.assertEqual(len(token_uses), compares, name)
 
     def test_the_action_only_reports_a_code_and_counts(self):
         import yaml as _yaml
-        action = _yaml.safe_load(pathlib.Path(__file__).resolve().parents[2].joinpath(".github/actions/doppler-load/action.yml").read_text())
+
+        action = _yaml.safe_load(
+            pathlib.Path(__file__).resolve().parents[2].joinpath(".github/actions/doppler-load/action.yml").read_text()
+        )
         self.assertEqual(set(action["outputs"]), {"code", "matched", "total", "doppler_ms"})

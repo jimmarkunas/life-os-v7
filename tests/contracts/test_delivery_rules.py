@@ -1,20 +1,31 @@
 """Jim's nine delivery rules (LOS-119, November 11 2026) are in docs/agent-reference.md (the full guide AGENTS.md points
 to) exactly once, in order.
 """
+
 import pathlib
 import re
 import unittest
 
 AGENTS = pathlib.Path(__file__).resolve().parents[2] / "docs" / "agent-reference.md"
-TITLES = ("Fewer, bigger tickets.", "One approval pass at the start.", "Measurement never waits on the hourly schedule.", "Watches live outside the epic.",
-          "An epic closes only when its done-when is measured.", "Dependency pre-flight per ticket.", "Estimate in gates, not effort.",
-          "One end-to-end prompt, one final receipt.", "Claude does not relay.")
+TITLES = (
+    "Fewer, bigger tickets.",
+    "One approval pass at the start.",
+    "Measurement never waits on the hourly schedule.",
+    "Watches live outside the epic.",
+    "An epic closes only when its done-when is measured.",
+    "Dependency pre-flight per ticket.",
+    "Estimate in gates, not effort.",
+    "One end-to-end prompt, one final receipt.",
+    "Claude does not relay.",
+)
 
 
 class DeliveryRules(unittest.TestCase):
     def section(self):
         text = AGENTS.read_text()
-        self.assertEqual(text.count("## Delivery rules for every epic"), 1)  # the rules appear once, never as a second copy
+        self.assertEqual(
+            text.count("## Delivery rules for every epic"), 1
+        )  # the rules appear once, never as a second copy
         start = text.index("## Delivery rules for every epic")
         end = text.index("\n## ", start + 5)
         return text[start:end]

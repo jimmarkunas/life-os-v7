@@ -1,4 +1,5 @@
 """synthetic, no Jira writes."""
+
 import unittest
 
 from lifeos.jira.rollover import preview_mej_selective_carry
@@ -6,8 +7,13 @@ from lifeos.platform.jira import JiraError
 
 
 def issue(key, kind="Task", parent=None):
-    return {"key": key, "fields": {"issuetype": {"name": kind, "subtask": kind == "Sub-task"},
-                                    "parent": {"key": parent} if parent else None}}
+    return {
+        "key": key,
+        "fields": {
+            "issuetype": {"name": kind, "subtask": kind == "Sub-task"},
+            "parent": {"key": parent} if parent else None,
+        },
+    }
 
 
 class RosterGuard(unittest.TestCase):

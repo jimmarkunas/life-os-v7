@@ -1,4 +1,5 @@
 """a Cloud Fit backlog dispatch runs alone."""
+
 import pathlib
 import re
 import unittest
@@ -9,7 +10,9 @@ except ImportError:
     yaml = None
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml"
-TOKEN = re.compile(r"\s*(?:(\$\{\{)|(\}\})|('(?:[^']|'')*')|(&&|\|\||==|!=|!|\(|\)|,)|(-?\d+(?:\.\d+)?)|([A-Za-z_][\w\-]*(?:\.[\w\-\*]+)*))")
+TOKEN = re.compile(
+    r"\s*(?:(\$\{\{)|(\}\})|('(?:[^']|'')*')|(&&|\|\||==|!=|!|\(|\)|,)|(-?\d+(?:\.\d+)?)|([A-Za-z_][\w\-]*(?:\.[\w\-\*]+)*))"
+)
 
 
 def truthy(v):
@@ -21,13 +24,13 @@ def evaluate(text, ctx):
     while i < len(text):
         m = TOKEN.match(text, i)
         if not m or m.end() == i:
-            assert text[i:].strip() == "", text[i:i + 30]
+            assert text[i:].strip() == "", text[i : i + 30]
             break
         i = m.end()
         if not (m.group(1) or m.group(2)):
             toks.append(m.group(0).strip())
     pos = [0]
-    peek = lambda: toks[pos[0]] if pos[0] < len(toks) else None                          # noqa: E731
+    peek = lambda: toks[pos[0]] if pos[0] < len(toks) else None  # noqa: E731
 
     def take():
         pos[0] += 1
@@ -60,8 +63,14 @@ def evaluate(text, ctx):
                 return False  # a simulated run is never cancelled part-way
             if t == "contains":
                 haystack = args[0]
-                return (str(args[1]).lower() in [str(x).lower() for x in haystack]) if isinstance(haystack, list) else str(args[1]).lower() in str(haystack or "").lower()
-            return True if t == "always" else isinstance(args[0], str) and args[0].lower().startswith(str(args[1]).lower())
+                return (
+                    (str(args[1]).lower() in [str(x).lower() for x in haystack])
+                    if isinstance(haystack, list)
+                    else str(args[1]).lower() in str(haystack or "").lower()
+                )
+            return (
+                True if t == "always" else isinstance(args[0], str) and args[0].lower().startswith(str(args[1]).lower())
+            )
         cur = ctx
         for part in t.split("."):
             if part == "*":  # needs.*.result: the values of every entry
@@ -76,7 +85,9 @@ def evaluate(text, ctx):
         left = primary()
         while peek() in ("==", "!="):
             op, right = take(), primary()
-            same = (left.lower() if isinstance(left, str) else left) == (right.lower() if isinstance(right, str) else right)
+            same = (left.lower() if isinstance(left, str) else left) == (
+                right.lower() if isinstance(right, str) else right
+            )
             left = same if op == "==" else not same
         return left
 
@@ -97,19 +108,32 @@ def evaluate(text, ctx):
         return left
 
     value = orexpr()
-    assert pos[0] == len(toks), toks[pos[0]:]
+    assert pos[0] == len(toks), toks[pos[0] :]
     return value
 
 
 def context(doc, event, variables=None, **given):
-    inputs = {k: v.get("default", "" if v.get("type") == "string" else False) for k, v in doc[True]["workflow_dispatch"]["inputs"].items()} if event == "workflow_dispatch" else {}
+    inputs = (
+        {
+            k: v.get("default", "" if v.get("type") == "string" else False)
+            for k, v in doc[True]["workflow_dispatch"]["inputs"].items()
+        }
+        if event == "workflow_dispatch"
+        else {}
+    )
     inputs.update(given)
-    ctx = {"github": {"event_name": event}, "inputs": inputs, "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true", **(variables or {})}, "steps": {}}
+    ctx = {
+        "github": {"event_name": event},
+        "inputs": inputs,
+        "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true", **(variables or {})},
+        "steps": {},
+    }
     tick = event == "schedule" or (event == "workflow_dispatch" and bool(inputs.get("tick")))
     pipeline = "true" if tick and ctx["vars"].get("V7_PIPELINE") == "true" else "false"
-    ctx["env"] = {"PIPELINE": pipeline,
-                  **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT")}}
-    ctx["needs"] = {"prep": {"result": "success", "outputs": {"pipeline": pipeline}}}  # the other jobs read the decision from the prep job
+    ctx["env"] = {"PIPELINE": pipeline, **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT")}}
+    ctx["needs"] = {
+        "prep": {"result": "success", "outputs": {"pipeline": pipeline}}
+    }  # the other jobs read the decision from the prep job
     return ctx
 
 
@@ -120,15 +144,25 @@ def plan(doc, event, variables=None, **given):
     for name, job in doc["jobs"].items():
         needs = job.get("needs") or []
         needs = [needs] if isinstance(needs, str) else needs
-        ctx["needs"] = {n: {"result": results.get(n, "skipped"), "outputs": {"pipeline": ctx["env"]["PIPELINE"]} if n == "prep" else {}} for n in needs}
-        runs = truthy(evaluate(str(job["if"]), ctx)) if job.get("if") else all(results.get(n) == "success" for n in needs)
+        ctx["needs"] = {
+            n: {
+                "result": results.get(n, "skipped"),
+                "outputs": {"pipeline": ctx["env"]["PIPELINE"]} if n == "prep" else {},
+            }
+            for n in needs
+        }
+        runs = (
+            truthy(evaluate(str(job["if"]), ctx)) if job.get("if") else all(results.get(n) == "success" for n in needs)
+        )
         if not runs:
             results[name] = "skipped"
             continue
         steps, failed = [], False
         for step in job.get("steps", []):
             cond = str(step.get("if") or "")
-            status_aware = any(f in cond for f in ("always(", "failure(", "cancelled("))  # otherwise GitHub prefixes an implicit success &&
+            status_aware = any(
+                f in cond for f in ("always(", "failure(", "cancelled(")
+            )  # otherwise GitHub prefixes an implicit success &&
             if (not failed or status_aware) and (truthy(evaluate(cond, ctx)) if cond else True):
                 steps.append(step)
                 failed = failed or "CLOUD_BACKLOG_COMBINED_INPUTS" in str(step.get("run", ""))
@@ -138,7 +172,18 @@ def plan(doc, event, variables=None, **given):
 
 
 LOADERS = ("bitwarden/sm-action",)
-ALLOWED_RUNS = ("tick=${{ (github.event_name == 'schedule'", "git init -q .", "python3 -m lifeos.platform.gate", "pip install --require-hashes -r requirements-test.lock", "python -m unittest discover", "python -m lifeos.platform.testgate", "python -m unittest tests.test_testindex.CommittedIndexIsFresh", "python -m lifeos.run fit-cloud-backlog", "failed=\"\"", "alerts push")
+ALLOWED_RUNS = (
+    "tick=${{ (github.event_name == 'schedule'",
+    "git init -q .",
+    "python3 -m lifeos.platform.gate",
+    "pip install --require-hashes -r requirements-test.lock",
+    "python -m unittest discover",
+    "python -m lifeos.platform.testgate",
+    "python -m unittest tests.test_testindex.CommittedIndexIsFresh",
+    "python -m lifeos.run fit-cloud-backlog",
+    "failed=\"\"",
+    "alerts push",
+)
 
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
@@ -147,19 +192,37 @@ class CloudBacklogRunsAlone(unittest.TestCase):
         self.doc = yaml.safe_load(WORKFLOW.read_text())
         self.inputs = self.doc[True]["workflow_dispatch"]["inputs"]
 
-    def test_a_cloud_backlog_only_live_dispatch_runs_only_the_batch_and_never_a_source_newsletter_gmail_or_tinyfish_stage(self):
+    def test_a_cloud_backlog_only_live_dispatch_runs_only_the_batch_and_never_a_source_newsletter_gmail_or_tinyfish_stage(
+        self,
+    ):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
         self.assertEqual(sorted(p), ["finish", "prep", "report"])
         self.assertTrue(all(result == "success" for result, _ in p.values()))
         ran = [s for _, steps in p.values() for s in steps]
         names = [s.get("id") or s.get("name") or s.get("uses") for s in ran]
         self.assertIn("fit_cloud_backlog", names)
-        for absent in ("sweep", "extract", "tick", "fit", "audit", "publish", "web", "discover", "enrich", "boards", "titlewatch", "sponsors", "finalize"):
+        for absent in (
+            "sweep",
+            "extract",
+            "tick",
+            "fit",
+            "audit",
+            "publish",
+            "web",
+            "discover",
+            "enrich",
+            "boards",
+            "titlewatch",
+            "sponsors",
+            "finalize",
+        ):
             self.assertNotIn(absent, names)
         for step in ran:
             run = str(step.get("run") or "")
             if run:
-                self.assertTrue(any(a in run for a in ALLOWED_RUNS), (step.get("name"), run[:80]))  # every command that runs is one of these
+                self.assertTrue(
+                    any(a in run for a in ALLOWED_RUNS), (step.get("name"), run[:80])
+                )  # every command that runs is one of these
             env = step.get("env") or {}
             if "TINYFISH_API_KEY" in env or any(k.startswith("GMAIL_") for k in env):
                 self.assertIn("python3 -m lifeos.platform.gate", run, step.get("name"))
@@ -176,14 +239,18 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertEqual(list(p), ["prep"], name)
             result, steps = p["prep"]
             self.assertEqual(result, "failure", name)
-            self.assertEqual([st.get("name") for st in steps[:1]], ["Checkout the exact commit (own fetch, token never stored)"], name)
+            self.assertEqual(
+                [st.get("name") for st in steps[:1]],
+                ["Checkout the exact commit (own fetch, token never stored)"],
+                name,
+            )
             self.assertEqual(len(steps), 2, name)
             self.assertIn("CLOUD_BACKLOG_COMBINED_INPUTS", steps[1]["run"])
             self.assertIn("exit 1", steps[1]["run"])
         self.assertEqual(self.doc["jobs"]["prep"]["steps"][1]["name"].split(" (")[0], "Cloud Fit backlog runs alone")
 
     def test_ticks_and_every_other_manual_run_keep_their_plan(self):
-        names = lambda p, job: [s.get("id") or s.get("name") for s in p[job][1]]                         # noqa: E731
+        names = lambda p, job: [s.get("id") or s.get("name") for s in p[job][1]]  # noqa: E731
         for shape in ({"event": "schedule"}, {"event": "workflow_dispatch", "tick": True, "live": True}):
             event = shape.pop("event")
             p = plan(self.doc, event, **shape)
@@ -191,7 +258,13 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertIn("extract", names(p, "prep"))
             self.assertIn("tick", names(p, "finish"))
             self.assertNotIn("fit_cloud_backlog", names(p, "finish"))
-        for given in ({"fit": True, "publish": True, "live": True}, {"discover": True}, {"quick": True, "live": True}, {"cloud_backlog": "0", "fit": True}, {"cloud_backlog": "", "web": True}):
+        for given in (
+            {"fit": True, "publish": True, "live": True},
+            {"discover": True},
+            {"quick": True, "live": True},
+            {"cloud_backlog": "0", "fit": True},
+            {"cloud_backlog": "", "web": True},
+        ):
             p = plan(self.doc, "workflow_dispatch", **given)
             self.assertIn("sweep", names(p, "prep"), given)
             self.assertNotIn("Cloud Fit backlog runs alone", " ".join(str(n) for n in names(p, "prep")), given)
@@ -218,9 +291,15 @@ class ScheduledBatch(unittest.TestCase):
 
     def env(self, event, variables, **given):
         ctx = context(self.doc, event, variables, **given)
-        return {k: evaluate(v, ctx) for k, v in self.step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))}
+        return {
+            k: evaluate(v, ctx)
+            for k, v in self.step["env"].items()
+            if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))
+        }
 
-    def test_a_tick_with_the_variable_no_longer_runs_the_batch_in_the_hourly_run_it_runs_in_the_after_tick_domains_run(self):
+    def test_a_tick_with_the_variable_no_longer_runs_the_batch_in_the_hourly_run_it_runs_in_the_after_tick_domains_run(
+        self,
+    ):
         on = {"V7_CLOUD_FIT_SCHEDULED": "20", "V7_CLOUD_FIT_BACKLOG_PAGE": "0" * 32, "V7_CLOUD_FIT_BACKLOG_MAX": "1"}
         for event, given in (("schedule", {}), ("workflow_dispatch", {"tick": True, "live": True})):
             names = self.names(plan(self.doc, event, on, **given))
@@ -229,8 +308,15 @@ class ScheduledBatch(unittest.TestCase):
             self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), event)
         domains = yaml.safe_load((WORKFLOW.parent / "domains.yml").read_text())["jobs"]["fit_cloud_backlog"]
         step = next(s for s in domains["steps"] if s.get("id") == "fit_cloud_backlog")
-        self.assertEqual({k: v for k, v in step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))},
-                         {"CLOUD_BACKLOG": "${{ env.V7_CLOUD_FIT_SCHEDULED }}", "V7_CLOUD_FIT_BACKLOG_MAX": "${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}", "V7_CLOUD_FIT_BACKLOG_BUDGET": "", "V7_CLOUD_FIT_BACKLOG_PAGE": ""})  # the scheduled count is its own ceiling
+        self.assertEqual(
+            {k: v for k, v in step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))},
+            {
+                "CLOUD_BACKLOG": "${{ env.V7_CLOUD_FIT_SCHEDULED }}",
+                "V7_CLOUD_FIT_BACKLOG_MAX": "${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}",
+                "V7_CLOUD_FIT_BACKLOG_BUDGET": "",
+                "V7_CLOUD_FIT_BACKLOG_PAGE": "",
+            },
+        )  # the scheduled count is its own ceiling
 
     def test_without_the_variable_a_tick_is_unchanged(self):
         for variables in ({}, {"V7_CLOUD_FIT_SCHEDULED": "0"}, {"V7_CLOUD_FIT_SCHEDULED": ""}):
@@ -245,11 +331,24 @@ class ScheduledBatch(unittest.TestCase):
         self.assertNotIn("finish", p)
 
     def test_a_manual_batch_keeps_its_input_ceiling_budget_and_page(self):
-        variables = {"V7_CLOUD_FIT_SCHEDULED": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "1", "V7_CLOUD_FIT_BACKLOG_BUDGET": "240", "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32}
-        self.assertEqual(self.env("workflow_dispatch", variables, cloud_backlog="1", live=True),
-                         {"CLOUD_BACKLOG": "1", "V7_CLOUD_FIT_BACKLOG_MAX": "1", "V7_CLOUD_FIT_BACKLOG_BUDGET": "240", "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32})
-        self.assertNotIn("tick", self.names(plan(self.doc, "workflow_dispatch", variables, cloud_backlog="1", live=True)))
-
+        variables = {
+            "V7_CLOUD_FIT_SCHEDULED": "20",
+            "V7_CLOUD_FIT_BACKLOG_MAX": "1",
+            "V7_CLOUD_FIT_BACKLOG_BUDGET": "240",
+            "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32,
+        }
+        self.assertEqual(
+            self.env("workflow_dispatch", variables, cloud_backlog="1", live=True),
+            {
+                "CLOUD_BACKLOG": "1",
+                "V7_CLOUD_FIT_BACKLOG_MAX": "1",
+                "V7_CLOUD_FIT_BACKLOG_BUDGET": "240",
+                "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32,
+            },
+        )
+        self.assertNotIn(
+            "tick", self.names(plan(self.doc, "workflow_dispatch", variables, cloud_backlog="1", live=True))
+        )
 
 
 class TheHourIsFilled(unittest.TestCase):
@@ -262,17 +361,36 @@ class TheHourIsFilled(unittest.TestCase):
         import subprocess
         import tempfile
         import yaml
-        doc = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "domains.yml")))
+
+        doc = yaml.safe_load(
+            open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "domains.yml"))
+        )
         script = next(s["run"] for s in doc["jobs"]["fit_cloud_backlog"]["steps"] if s.get("id") == "fit_cloud_backlog")
         now = 1792500000 - (1792500000 % 3600) + minute * 60 + second
         with tempfile.TemporaryDirectory() as d:
-            for name, body in (("date", f'case "$1" in +%s) echo {now};; +%M) printf %02d {minute};; +%S) printf %02d {second};; esac'),
-                               ("stat", f"echo {now - job_seconds}"), ("python", 'echo "BUDGET=${V7_CLOUD_FIT_BACKLOG_BUDGET:-unset}"')):
+            for name, body in (
+                (
+                    "date",
+                    f'case "$1" in +%s) echo {now};; +%M) printf %02d {minute};; +%S) printf %02d {second};; esac',
+                ),
+                ("stat", f"echo {now - job_seconds}"),
+                ("python", 'echo "BUDGET=${V7_CLOUD_FIT_BACKLOG_BUDGET:-unset}"'),
+            ):
                 with open(os.path.join(d, name), "w") as f:
                     f.write("#!/bin/bash\n" + body + "\n")
                 os.chmod(os.path.join(d, name), 0o755)
-            out = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
-                                 env={"PATH": d + ":/usr/bin:/bin", "PIPELINE": "true", "GITHUB_WORKSPACE": d, "CLOUD_BACKLOG": "100", "LIVE": "true"})
+            out = subprocess.run(
+                ["bash", "-c", script],
+                capture_output=True,
+                text=True,
+                env={
+                    "PATH": d + ":/usr/bin:/bin",
+                    "PIPELINE": "true",
+                    "GITHUB_WORKSPACE": d,
+                    "CLOUD_BACKLOG": "100",
+                    "LIVE": "true",
+                },
+            )
         self.assertEqual(out.returncode, 0, out.stderr)
         return out.stdout.strip()
 
@@ -292,4 +410,3 @@ class TheHourIsFilled(unittest.TestCase):
     def test_too_little_time_skips_without_failing(self):
         self.assertIn("skipped this hour", self.budget(53, 0, 9 * 60))
         self.assertIn("skipped this hour", self.budget(58, 0, 9 * 60))
-

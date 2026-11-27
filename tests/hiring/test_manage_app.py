@@ -1,6 +1,7 @@
 """E14: Manage (12a, a read-only hub of the existing actions) and Reopen (12b, a signed review and confirm through the S1
 decision rules), driven the.
 """
+
 import html
 import re
 import unittest
@@ -46,7 +47,10 @@ class Hub(unittest.TestCase):
         self.assertIn(f"/resume?j={lid}", links(body))
         self.assertIn(f"/sent?j={lid}", links(body))
         self.assertNotIn("Reopen this opportunity", body)
-        self.assertIn(f'<a class="status" href="https://www.notion.so/{lid}" target="_blank" rel="noopener">Open · Job Ledger ↗</a>', body)  # the record label opens it in Notion
+        self.assertIn(
+            f'<a class="status" href="https://www.notion.so/{lid}" target="_blank" rel="noopener">Open · Job Ledger ↗</a>',
+            body,
+        )  # the record label opens it in Notion
         self.assertEqual(h.writes(), (0, 0))
 
     def test_a_pursuit_with_no_ledger_row_is_refused_with_nothing_written(self):
@@ -70,7 +74,10 @@ class Hub(unittest.TestCase):
         fold = ws.add("toggle", page, close_app.FOLD)
         ws.kids[page].remove(fold)
         ws.kids[page].insert(0, fold)
-        for text in (close_app.OPP_MARKER, "v7-action:1;key=0123456789abcdef;text=Prepare for Interview 1 on 2026-11-02."):
+        for text in (
+            close_app.OPP_MARKER,
+            "v7-action:1;key=0123456789abcdef;text=Prepare for Interview 1 on 2026-11-02.",
+        ):
             ws.add("paragraph", fold, text)
         self.assertIn(f"/complete?o={D._page_id(page)}&a=0123456789abcdef", links(h.hub(page)[1]))
         ws.add("paragraph", fold, "v7-done:1;key=0123456789abcdef;on=2026-10-24")
@@ -94,7 +101,10 @@ class Reopen(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn("Opportunity reopened", body)
         self.assertIsNone(h.world.source.decision())
-        self.assertEqual([(e["action"], e["outcome"]) for e in D.entries(h.world.source.history())], [(D.ACTION, "Rejected"), (D.REOPEN, "Rejected")])  # the close stays
+        self.assertEqual(
+            [(e["action"], e["outcome"]) for e in D.entries(h.world.source.history())],
+            [(D.ACTION, "Rejected"), (D.REOPEN, "Rejected")],
+        )  # the close stays
         self.assertEqual(h.after, ["hiring"])
         self.assertGreater(h.writes(), writes)
 
@@ -113,7 +123,14 @@ class Reopen(unittest.TestCase):
     def test_reopen_is_offered_only_when_the_reopen_routing_reaches_the_same_record(self):
         h = H([(TD.TARGET, COMPANY, ROLE)])
         h.close(TD.TARGET, "Rejected")
-        with mock.patch.object(D, "route", side_effect=[{"id": TD.TARGET, "company": COMPANY, "role": ROLE, "decision": "Rejected"}, D.fail("AMBIGUOUS")]):
+        with mock.patch.object(
+            D,
+            "route",
+            side_effect=[
+                {"id": TD.TARGET, "company": COMPANY, "role": ROLE, "decision": "Rejected"},
+                D.fail("AMBIGUOUS"),
+            ],
+        ):
             body = h.hub(h.world.ws.target)[1]
         self.assertIn("Reopen is not available here: DECISION_AMBIGUOUS", body)
         self.assertNotIn("Reopen this opportunity", body)
@@ -155,7 +172,9 @@ class Reopen(unittest.TestCase):
         form = h.fields(h.hub(h.world.ws.target)[1])
         self.assertEqual(h.call("POST", "/manage", form={**form, "step": "confirm"})[0], 200)
         writes = h.writes()
-        status, body, _ = h.call("POST", "/manage", form={**form, "step": "confirm"})  # the same signed form again: already open
+        status, body, _ = h.call(
+            "POST", "/manage", form={**form, "step": "confirm"}
+        )  # the same signed form again: already open
         self.assertIn(status, (200, 409), body)
         self.assertEqual(h.writes(), writes)
 

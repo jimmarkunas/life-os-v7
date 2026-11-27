@@ -1,4 +1,5 @@
 """step 4b: the Runs OK today count from GitHub's run history (fake GitHub, no network)."""
+
 import io
 import json
 import unittest
@@ -13,14 +14,26 @@ ENV = {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r"}
 
 
 def run(i, at, title="tick", conclusion="success", **more):
-    return {"id": i, "created_at": at, "display_title": title, "conclusion": conclusion, "html_url": f"https://github.com/o/r/actions/runs/{i}", **more}
+    return {
+        "id": i,
+        "created_at": at,
+        "display_title": title,
+        "conclusion": conclusion,
+        "html_url": f"https://github.com/o/r/actions/runs/{i}",
+        **more,
+    }
 
 
 class Github:
     """Answers the three kinds of read the module makes."""
 
     def __init__(self, ticks=(), domains=(), recruiters=(), capacity=(), state="active", broken=False):
-        self.by = {"hourly.yml": list(ticks), "domains.yml": list(domains), "recruiters.yml": list(recruiters), "capacity-card.yml": list(capacity)}
+        self.by = {
+            "hourly.yml": list(ticks),
+            "domains.yml": list(domains),
+            "recruiters.yml": list(recruiters),
+            "capacity-card.yml": list(capacity),
+        }
         self.state, self.broken, self.urls = state, broken, []
 
     def __call__(self, request, timeout=0):
@@ -43,8 +56,14 @@ class RunsToday(unittest.TestCase):
         self.assertEqual((out["state"], out["ok"], out["total"], out["failed"]), ("ok", 3, 3, []))
 
     def test_dispatched_and_scheduled_ticks_both_count_but_manual_runs_cancelled_and_unfinished_do_not(self):
-        runs = [run(1, "2026-11-25T06:07:00Z"), run(2, "2026-11-25T07:07:00Z", title="tick", event="workflow_dispatch"), run(3, "2026-11-25T07:27:00Z", title="manual", conclusion="failure"),
-                run(4, "2026-11-25T08:07:00Z", conclusion="cancelled"), run(5, "2026-11-25T08:27:00Z", conclusion=None), run(6, "2026-11-25T09:07:00Z", title="test dispatch", conclusion="failure")]
+        runs = [
+            run(1, "2026-11-25T06:07:00Z"),
+            run(2, "2026-11-25T07:07:00Z", title="tick", event="workflow_dispatch"),
+            run(3, "2026-11-25T07:27:00Z", title="manual", conclusion="failure"),
+            run(4, "2026-11-25T08:07:00Z", conclusion="cancelled"),
+            run(5, "2026-11-25T08:27:00Z", conclusion=None),
+            run(6, "2026-11-25T09:07:00Z", title="test dispatch", conclusion="failure"),
+        ]
         out = read(Github(runs))
         self.assertEqual((out["ok"], out["total"], out["state"]), (2, 2, "ok"))
 
@@ -62,8 +81,19 @@ class RunsToday(unittest.TestCase):
         self.assertEqual((out["state"], out["ok"], out["total"]), ("none", 0, 0))
 
     def test_a_failed_tick_among_ok_ones_counts_failed_and_links_the_run(self):
-        out = read(Github([run(1, "2026-11-25T06:07:00Z"), run(2, "2026-11-25T07:07:00Z", conclusion="failure"), run(3, "2026-11-25T08:07:00Z")]))
-        self.assertEqual((out["state"], out["ok"], out["total"], out["failed"]), ("failed", 2, 3, ["https://github.com/o/r/actions/runs/2"]))
+        out = read(
+            Github(
+                [
+                    run(1, "2026-11-25T06:07:00Z"),
+                    run(2, "2026-11-25T07:07:00Z", conclusion="failure"),
+                    run(3, "2026-11-25T08:07:00Z"),
+                ]
+            )
+        )
+        self.assertEqual(
+            (out["state"], out["ok"], out["total"], out["failed"]),
+            ("failed", 2, 3, ["https://github.com/o/r/actions/runs/2"]),
+        )
 
     def test_the_latest_tick_failing_with_no_success_since_is_last_run_failed(self):
         out = read(Github([run(1, "2026-11-25T06:07:00Z"), run(2, "2026-11-25T07:07:00Z", conclusion="timed_out")]))
@@ -73,11 +103,27 @@ class RunsToday(unittest.TestCase):
         ticks = [run(1, "2026-11-25T06:07:00Z"), run(2, "2026-11-25T07:07:00Z"), run(3, "2026-11-25T08:07:00Z")]
         domains = [run(10, "2026-11-25T07:12:00Z", title="domains (after tick)", conclusion="failure")]
         out = read(Github(ticks, domains))
-        self.assertEqual((out["state"], out["ok"], out["total"], out["failed"]), ("failed", 2, 3, ["https://github.com/o/r/actions/runs/10"]))
-        for follow in ({"recruiters": [run(11, "2026-11-25T07:20:00Z", title="recruiters", conclusion="failure")]}, {"capacity": [run(12, "2026-11-25T07:20:00Z", title="capacity-card", conclusion="failure")]}):
+        self.assertEqual(
+            (out["state"], out["ok"], out["total"], out["failed"]),
+            ("failed", 2, 3, ["https://github.com/o/r/actions/runs/10"]),
+        )
+        for follow in (
+            {"recruiters": [run(11, "2026-11-25T07:20:00Z", title="recruiters", conclusion="failure")]},
+            {"capacity": [run(12, "2026-11-25T07:20:00Z", title="capacity-card", conclusion="failure")]},
+        ):
             self.assertEqual(read(Github(ticks, **follow))["ok"], 2)
-        self.assertEqual(read(Github(ticks, [run(13, "2026-11-25T07:12:00Z", title="domains (manual)", conclusion="failure")]))["ok"], 3)  # another title is not a follow-on
-        self.assertEqual(read(Github(ticks, [run(14, "2026-11-25T07:12:00Z", title="domains (after tick)", conclusion="success")]))["ok"], 3)
+        self.assertEqual(
+            read(Github(ticks, [run(13, "2026-11-25T07:12:00Z", title="domains (manual)", conclusion="failure")]))[
+                "ok"
+            ],
+            3,
+        )  # another title is not a follow-on
+        self.assertEqual(
+            read(Github(ticks, [run(14, "2026-11-25T07:12:00Z", title="domains (after tick)", conclusion="success")]))[
+                "ok"
+            ],
+            3,
+        )
 
     def test_a_follow_on_of_the_last_tick_makes_it_the_latest_failure(self):
         ticks = [run(1, "2026-11-25T06:07:00Z"), run(2, "2026-11-25T07:07:00Z")]

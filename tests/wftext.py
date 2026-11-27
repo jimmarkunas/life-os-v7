@@ -1,4 +1,5 @@
 """the generated workflows write repeats as YAML anchors and aliases"""
+
 import pathlib
 import sys
 

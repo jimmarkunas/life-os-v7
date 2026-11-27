@@ -1,4 +1,5 @@
 """Domain-free: nothing here imports lifeos."""
+
 import io
 import json
 
@@ -62,18 +63,30 @@ class SelfCursorDb:
     bare).
     """
 
-    def __enter__(self): return self
-    def __exit__(self, *e): return False
-    def cursor(self): return self
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *e):
+        return False
+
+    def cursor(self):
+        return self
 
 
 class SqlLog(SelfCursorDb):
     """A connection that is its own cursor and records each statement as (its first word, args)."""
 
-    def __init__(self, new=True, held=False): self.sql, self.rowcount, self.held = [], 1 if new else 0, held
-    def execute(self, sql, args=()): self.sql.append((sql.split()[0], args))
-    def fetchone(self): return (1,) if self.held else None
-    def fetchall(self): return []
+    def __init__(self, new=True, held=False):
+        self.sql, self.rowcount, self.held = [], 1 if new else 0, held
+
+    def execute(self, sql, args=()):
+        self.sql.append((sql.split()[0], args))
+
+    def fetchone(self):
+        return (1,) if self.held else None
+
+    def fetchall(self):
+        return []
 
 
 class Page:

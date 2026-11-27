@@ -1,4 +1,5 @@
 """the slim npm tree."""
+
 import json
 import subprocess
 import sys
@@ -10,8 +11,12 @@ ROOT = Path(__file__).resolve().parents[3]
 ORACLE = ROOT / "lifeos" / "whatsapp" / "oracle"
 PACK = ROOT / "lifeos" / "edge" / "whatsapp" / "pack_row5"
 BUILD_STEP = PACK / "pack" / "steps" / "20-build.sh"
+
+
 def lock_packages():
-    return {name: meta for name, meta in json.loads((ORACLE / "package-lock.json").read_text())["packages"].items() if name}
+    return {
+        name: meta for name, meta in json.loads((ORACLE / "package-lock.json").read_text())["packages"].items() if name
+    }
 
 
 def kept(packages):
@@ -25,14 +30,26 @@ class LockfileTests(unittest.TestCase):
         keep = kept(packages)
         self.assertEqual((len(packages), len(keep)), (95, 64))
         self.assertEqual([n for n in keep if "sharp" in n or "@img" in n], [])
-        self.assertEqual((sum(1 for m in packages.values() if m.get("optional")), sum(1 for m in packages.values() if m.get("peer"))), (27, 31))
+        self.assertEqual(
+            (
+                sum(1 for m in packages.values() if m.get("optional")),
+                sum(1 for m in packages.values() if m.get("peer")),
+            ),
+            (27, 31),
+        )
 
     def test_only_baileys_and_protobufjs_have_install_scripts_and_neither_is_needed(self):
         scripted = sorted(name for name, meta in lock_packages().items() if meta.get("hasInstallScript"))
         self.assertEqual(scripted, ["node_modules/baileys", "node_modules/protobufjs"])
 
     def test_the_service_imports_only_baileys_pino_and_node_builtins(self):
-        imports = sorted({line.split("from")[-1].strip(" ;'\"") for line in (ORACLE / "attention.mjs").read_text().splitlines() if line.startswith("import ")})
+        imports = sorted(
+            {
+                line.split("from")[-1].strip(" ;'\"")
+                for line in (ORACLE / "attention.mjs").read_text().splitlines()
+                if line.startswith("import ")
+            }
+        )
         self.assertTrue(all(i in ("baileys", "pino") or i.startswith(("node:", "./")) for i in imports), imports)
 
 
@@ -40,7 +57,14 @@ class StepTests(unittest.TestCase):
     def test_the_build_step_copies_and_prunes_and_never_runs_npm_or_the_network(self):
         script = BUILD_STEP.read_text()
         code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
-        for word in (" npm ", "npm ci", "npm install", "curl", "wget", "as_user \"$NEW_USER\" env \"HOME=$NEW_HOME\" \"PATH"):
+        for word in (
+            " npm ",
+            "npm ci",
+            "npm install",
+            "curl",
+            "wget",
+            "as_user \"$NEW_USER\" env \"HOME=$NEW_HOME\" \"PATH",
+        ):
             self.assertNotIn(word, code)
         self.assertIn("cp -a", code)
         self.assertIn("slim.py\" prune", code)
@@ -48,17 +72,28 @@ class StepTests(unittest.TestCase):
     def test_a_build_step_without_the_prune_fails_the_same_check(self):
         def prunes(script):
             return any('slim.py" prune' in line for line in script.splitlines() if not line.lstrip().startswith("#"))
+
         self.assertTrue(prunes(BUILD_STEP.read_text()))
-        self.assertFalse(prunes("\n".join(line for line in BUILD_STEP.read_text().splitlines() if 'slim.py" prune' not in line)))
+        self.assertFalse(
+            prunes("\n".join(line for line in BUILD_STEP.read_text().splitlines() if 'slim.py" prune' not in line))
+        )
 
     def test_the_pack_builds_and_passes_the_runners_own_check(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "pack"
-            subprocess.run([sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True)
-            done = subprocess.run([sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)], capture_output=True, text=True)
+            subprocess.run(
+                [sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True
+            )
+            done = subprocess.run(
+                [sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)],
+                capture_output=True,
+                text=True,
+            )
             self.assertEqual(done.returncode, 0, done.stdout)
             self.assertIn("PACK ok LIFE-643 steps=4 restore_files=0 restore_services=2", done.stdout)
-            self.assertEqual((out / "files" / "package-lock.json").read_bytes(), (ORACLE / "package-lock.json").read_bytes())
+            self.assertEqual(
+                (out / "files" / "package-lock.json").read_bytes(), (ORACLE / "package-lock.json").read_bytes()
+            )
 
     def test_the_preflight_names_the_missing_row1_layout_with_a_fixed_word(self):
         self.assertIn("|| fail row1_layout_missing", (PACK / "pack" / "steps" / "10-preflight.sh").read_text())
@@ -72,7 +107,25 @@ class SlimHelperTests(unittest.TestCase):
         (70 of 95), each folder with a.
         """
         packages = lock_packages()
-        installed = {n for n, m in packages.items() if not (m.get("optional") and ("darwin" in n or "win32" in n or "musl" in n or "arm" in n or "ppc" in n or "s390x" in n or "riscv" in n or "wasm" in n or "freebsd" in n or "ia32" in n))} - set(drop)
+        installed = {
+            n
+            for n, m in packages.items()
+            if not (
+                m.get("optional")
+                and (
+                    "darwin" in n
+                    or "win32" in n
+                    or "musl" in n
+                    or "arm" in n
+                    or "ppc" in n
+                    or "s390x" in n
+                    or "riscv" in n
+                    or "wasm" in n
+                    or "freebsd" in n
+                    or "ia32" in n
+                )
+            )
+        } - set(drop)
         modules = Path(tmp) / "node_modules"
         for name in installed:
             folder = Path(tmp) / name
@@ -84,13 +137,19 @@ class SlimHelperTests(unittest.TestCase):
         return installed
 
     def slim(self, command, tmp):
-        return subprocess.run([sys.executable, "-I", self.SLIM, command, tmp, str(ORACLE / "package-lock.json")], capture_output=True, text=True)
+        return subprocess.run(
+            [sys.executable, "-I", self.SLIM, command, tmp, str(ORACLE / "package-lock.json")],
+            capture_output=True,
+            text=True,
+        )
 
     def test_pruning_a_copy_of_the_installed_tree_leaves_exactly_the_64_and_verify_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
             installed = self.fixture(tmp)
             self.assertIn("sharp", " ".join(installed))  # the fixture really has the image libraries
-            self.assertEqual(self.slim("verify", tmp).stdout.strip(), "image_library_present")  # before the prune it fails
+            self.assertEqual(
+                self.slim("verify", tmp).stdout.strip(), "image_library_present"
+            )  # before the prune it fails
             done = self.slim("prune", tmp)
             self.assertEqual(done.returncode, 0, done.stdout)
             self.assertIn("dangling_links_removed=1", done.stdout)

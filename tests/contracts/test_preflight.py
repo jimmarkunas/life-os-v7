@@ -1,5 +1,5 @@
-"""tools/preflight.sh is the gate before a push, and tools/automerge.sh arms auto-merge only for a HEAD that passed it.
-"""
+"""tools/preflight.sh is the gate before a push, and tools/automerge.sh arms auto-merge only for a HEAD that passed it."""
+
 import os
 import shutil
 import subprocess
@@ -23,12 +23,20 @@ class Gate(unittest.TestCase):
         (self.tmp / "a.txt").write_text("a")
         subprocess.run([*GIT, "add", "a.txt", "tools"], cwd=self.tmp, check=True)
         subprocess.run([*GIT, "commit", "-q", "-m", "x"], cwd=self.tmp, check=True)
-        self.sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.tmp, capture_output=True, text=True).stdout.strip()
+        self.sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=self.tmp, capture_output=True, text=True
+        ).stdout.strip()
         self.marker = self.tmp / ".git" / "lifeos-preflight-ok"
 
     def run_tool(self, name, *args, **env):
         base = {"PATH": "/usr/bin:/bin", "HOME": str(self.tmp), "LIFEOS_AUTOMERGE_WAIT": "0"}
-        return subprocess.run(["bash", str(self.tmp / "tools" / name), *args], capture_output=True, text=True, env={**base, **env}, cwd=str(self.tmp))
+        return subprocess.run(
+            ["bash", str(self.tmp / "tools" / name), *args],
+            capture_output=True,
+            text=True,
+            env={**base, **env},
+            cwd=str(self.tmp),
+        )
 
     def test_automerge_refuses_without_a_passing_preflight_for_this_head(self):
         done = self.run_tool("automerge.sh", "7")

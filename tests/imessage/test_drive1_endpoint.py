@@ -1,6 +1,7 @@
 """(synthetic): the private endpoint's `drive1 <days>` request and the Drive helper behind it, with fake sockets and a
 fake Google.
 """
+
 import io
 import json
 import os
@@ -34,8 +35,17 @@ class Endpoint(unittest.TestCase):
         self.assertEqual(self.call(v2(RUNNER) + b"drive1 7\n"), (0, REPLY, [b"drive1 7\n"]))
 
     def test_refusals_never_reach_the_helper(self):
-        for payload, uid in ((v2(OTHER) + b"drive1 7\n", 0), (b"drive1 7\n", 0), (v2(RUNNER) + b"drive1 7\n", 1001), (v2(RUNNER) + b"drive1 0\n", 0), (v2(RUNNER) + b"drive1 15\n", 0),
-                             (v2(RUNNER) + b"drive1 07\n", 0), (v2(RUNNER) + b"drive1 x\n", 0), (v2(RUNNER) + b"drive1 7 8\n", 0), (v2(RUNNER) + b"drive2 7\n", 0)):
+        for payload, uid in (
+            (v2(OTHER) + b"drive1 7\n", 0),
+            (b"drive1 7\n", 0),
+            (v2(RUNNER) + b"drive1 7\n", 1001),
+            (v2(RUNNER) + b"drive1 0\n", 0),
+            (v2(RUNNER) + b"drive1 15\n", 0),
+            (v2(RUNNER) + b"drive1 07\n", 0),
+            (v2(RUNNER) + b"drive1 x\n", 0),
+            (v2(RUNNER) + b"drive1 7 8\n", 0),
+            (v2(RUNNER) + b"drive2 7\n", 0),
+        ):
             code, out, seen = self.call(payload, uid=uid)
             self.assertEqual((code, out, seen), (1, b"", []), payload[-14:])
 
@@ -91,21 +101,45 @@ def fake_google(files):
         if "/files/root" in url:
             return Reply({"id": "ROOT"})
         return Reply({"files": files})
+
     return opener
 
 
 class Helper(unittest.TestCase):
-    CREDS = staticmethod(lambda account, service: {"client_id": "a", "client_secret": "b", "refresh_token": "c"} if (account, service) == ("personal", "drive") else None)
+    CREDS = staticmethod(
+        lambda account, service: (
+            {"client_id": "a", "client_secret": "b", "refresh_token": "c"}
+            if (account, service) == ("personal", "drive")
+            else None
+        )
+    )
 
     def test_a_week_of_files_becomes_counts_only_and_no_name_id_or_link_is_in_the_reply(self):
-        files = [{"createdTime": "2026-11-23T10:00:00Z", "modifiedTime": "2026-11-23T10:00:00Z", "parents": ["ROOT"], "md5Checksum": "m1", "name": "SECRET-NAME", "id": "SECRET-ID"},
-                 {"createdTime": "2026-11-23T11:00:00Z", "modifiedTime": "2026-11-23T11:00:00Z", "parents": ["FOLDER"], "md5Checksum": "m1"},
-                 {"createdTime": "2026-10-01T11:00:00Z", "modifiedTime": "2026-11-22T11:00:00Z", "parents": ["FOLDER"]}]
+        files = [
+            {
+                "createdTime": "2026-11-23T10:00:00Z",
+                "modifiedTime": "2026-11-23T10:00:00Z",
+                "parents": ["ROOT"],
+                "md5Checksum": "m1",
+                "name": "SECRET-NAME",
+                "id": "SECRET-ID",
+            },
+            {
+                "createdTime": "2026-11-23T11:00:00Z",
+                "modifiedTime": "2026-11-23T11:00:00Z",
+                "parents": ["FOLDER"],
+                "md5Checksum": "m1",
+            },
+            {"createdTime": "2026-10-01T11:00:00Z", "modifiedTime": "2026-11-22T11:00:00Z", "parents": ["FOLDER"]},
+        ]
         google = google_read.Google(self.CREDS, opener=fake_google(files))
         google.tokens[("personal", "drive")] = "t"
         from datetime import datetime, timezone
+
         out = drive_week.summary(google, "personal", 7, now=datetime(2026, 11, 24, tzinfo=timezone.utc))
-        self.assertEqual(out, {"new": 2, "changed": 1, "unfiled": 1, "duplicates": 1, "missing_metadata": 1, "complete": True})
+        self.assertEqual(
+            out, {"new": 2, "changed": 1, "unfiled": 1, "duplicates": 1, "missing_metadata": 1, "complete": True}
+        )
         self.assertNotIn("SECRET", json.dumps(out))
 
     def test_bad_frames_and_missing_credentials_and_google_failures_give_fixed_codes_only(self):
@@ -114,6 +148,7 @@ class Helper(unittest.TestCase):
 
         def boom(request, timeout=0):
             raise OSError("boom with details")
+
         got = drive_helper.answer(b"drive1 7\n", self.CREDS, boom)
         self.assertEqual(got, {"ok": False, "code": "DRIVE_UNAVAILABLE"})
 

@@ -9,11 +9,6 @@ from lifeos.platform.notion_client import NotionError
 from tests.interview.support import FakeNotion, ROUND, UUID, envelope
 
 
-
-
-
-
-
 class Lines(unittest.TestCase):
     def test_lines_carry_offset_speaker_and_text_in_order(self):
         out = gw.lines(envelope())
@@ -23,7 +18,9 @@ class Lines(unittest.TestCase):
     def test_a_long_utterance_is_one_block_of_several_runs(self):
         body = gw.blocks(envelope())
         self.assertEqual(len(body), 2 + 3)
-        self.assertEqual(body[0]["paragraph"]["rich_text"][0]["text"]["content"], create.ACCEPTED + envelope().source_content_sha256)
+        self.assertEqual(
+            body[0]["paragraph"]["rich_text"][0]["text"]["content"], create.ACCEPTED + envelope().source_content_sha256
+        )
         self.assertGreater(len(body[3]["paragraph"]["rich_text"]), 1)
 
 
@@ -39,7 +36,9 @@ class Write(unittest.TestCase):
         code, counts = gw.write(client, ROUND, envelope(), True)
         self.assertEqual((code, counts["readback_ok"], counts["blocks_written"]), ("TRANSCRIPT_WRITTEN", 1, 5))
         (page,) = client.templated  # made from the Full Width template
-        self.assertFalse([b for b in client.pages[page] if b.get("id") == f"filler-{page}"])  # and the template's empty paragraph is gone
+        self.assertFalse(
+            [b for b in client.pages[page] if b.get("id") == f"filler-{page}"]
+        )  # and the template's empty paragraph is gone
 
     def test_more_than_one_batch_is_appended(self):
         client = FakeNotion()
@@ -61,10 +60,17 @@ class Write(unittest.TestCase):
         self.assertEqual(gw.write(client, ROUND, envelope(3), True)[0], "TRANSCRIPT_CHANGED_NOT_REWRITTEN")
 
     def marked(self, text):
-        return [{"type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}, "plain_text": text}]}}]
+        return [
+            {
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}, "plain_text": text}]},
+            }
+        ]
 
     def test_an_existing_page_that_is_not_ours_is_never_touched(self):
-        client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Notes"}}])  # found by its machine marker, not its title
+        client = FakeNotion(
+            [{"id": "x", "type": "child_page", "child_page": {"title": "Notes"}}]
+        )  # found by its machine marker, not its title
         client.pages["x"] = self.marked("v7-transcript:1;draft-not-accepted")
         self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_PAGE_UNVERIFIED")
         self.assertFalse([c for c in client.calls if c[0] in ("POST", "PATCH")])
@@ -92,6 +98,7 @@ class Write(unittest.TestCase):
                 if method == "PATCH" and path.endswith("/children"):
                     raise NotionError("NOTION_NETWORK")
                 return super().call(method, path, body)
+
         client = AppendFails()
         self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")
         self.assertEqual(client.archived, client.templated)  # the blank page made from the template is set aside

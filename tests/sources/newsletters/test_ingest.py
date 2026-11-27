@@ -27,26 +27,35 @@ def store_double():
             cursor.row = None
         else:
             cursor.rowcount = 1
+
     return FakeConn(handler=handler), db
 
 
-HTML = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><tr><td>Project Manager</td></tr>'
-        '<tr><td>Remote</td></tr></table></a>'
-        '<a href="https://email.lensa.com/f/a/J2"><table><tr><td>Globex</td></tr><tr><td>Program Lead</td></tr>'
-        '<tr><td>Remote</td></tr></table></a>')
+HTML = (
+    '<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><tr><td>Project Manager</td></tr>'
+    '<tr><td>Remote</td></tr></table></a>'
+    '<a href="https://email.lensa.com/f/a/J2"><table><tr><td>Globex</td></tr><tr><td>Program Lead</td></tr>'
+    '<tr><td>Remote</td></tr></table></a>'
+)
 NOW = int(time.time())
-MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
-            "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW)}
+MESSAGES = {
+    "m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
+    "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW),
+}
 
 
 JOBRIGHT = "Jobright <alerts@jobright.ai>"
-CARDS = {"m1": (JOBRIGHT, alert("v1", "v2"), NOW - 3600), "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW)}
+CARDS = {
+    "m1": (JOBRIGHT, alert("v1", "v2"), NOW - 3600),
+    "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW),
+}
 
 
 class ExtractTests(unittest.TestCase):
     """The extract mechanics (parse, save, mark Processed, stale and no-card handling), driven by the Jobright card
     layout
     """
+
     def test_dry_run_counts_and_writes_nothing(self):
         gmail = FakeGmail(messages=CARDS)
         counts = ingest.extract(gmail, live=False, limit=10)
@@ -62,7 +71,14 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual((second["new_jobs"], second["repeat_links"]), (0, 2))
 
     def test_no_cards_message_stays_pending_and_stale_jobs_are_excluded(self):
-        gmail, conn = FakeGmail(messages={"m3": (JOBRIGHT, '<a href="https://jobright.ai/jobs/info/zz9">layout we cannot read</a>', NOW)}), store_double()[0]
+        gmail, conn = (
+            FakeGmail(
+                messages={
+                    "m3": (JOBRIGHT, '<a href="https://jobright.ai/jobs/info/zz9">layout we cannot read</a>', NOW)
+                }
+            ),
+            store_double()[0],
+        )
         counts = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((counts["no_cards"], counts["marked_processed"]), (1, 0))
         self.assertEqual(gmail.calls, [])
@@ -85,10 +101,14 @@ class RetiredSenderTests(unittest.TestCase):
     """Lensa mail still leaves the inbox, but it is closed out at once with its own Retired label (count
     retired_sender_lensa): no card is parsed, no job is.
     """
+
     def test_a_dry_run_counts_lensa_mail_as_retired_and_writes_nothing(self):
         gmail = FakeGmail(messages=MESSAGES)
         counts = ingest.extract(gmail, live=False, limit=10)
-        self.assertEqual((counts["retired_sender_lensa"], counts["messages"], counts["cards"], counts["unsupported_sender"]), (1, 0, 0, 1))
+        self.assertEqual(
+            (counts["retired_sender_lensa"], counts["messages"], counts["cards"], counts["unsupported_sender"]),
+            (1, 0, 0, 1),
+        )
         self.assertEqual(gmail.calls, [])
 
     def test_live_labels_lensa_mail_retired_never_processed_and_finalize_never_sees_it(self):
@@ -98,11 +118,18 @@ class RetiredSenderTests(unittest.TestCase):
         from lifeos.sources.newsletters import finalize
         from tests.jobs.support import Mailbox
         from tests.jobs.fakes_jobsdb import JobsDB
+
         box, db = Mailbox({"l1": (MESSAGES["m1"][0], HTML, time.time() - 60)}), JobsDB()
         box.labels["l1"].add("j-newsletters")
         counts = ingest.extract(box, True, 10, db)
-        self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"], counts["new_jobs"]), (1, 1, 0, 0))
-        self.assertEqual(box.labels["l1"] & {"j-newsletters-retired", "j-newsletters-processed", "j-newsletters-done"}, {"j-newsletters-retired"})
+        self.assertEqual(
+            (counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"], counts["new_jobs"]),
+            (1, 1, 0, 0),
+        )
+        self.assertEqual(
+            box.labels["l1"] & {"j-newsletters-retired", "j-newsletters-processed", "j-newsletters-done"},
+            {"j-newsletters-retired"},
+        )
         self.assertEqual(box.list_ids(config.PENDING_QUERY), [])  # it holds no pending slot on the next run
         self.assertEqual((box.list_ids(config.FINALIZE_QUERY), box.list_ids(config.RECONCILE_QUERY)), ([], []))
         self.assertEqual(ingest.extract(box, True, 10, db)["marked_retired"], 0)  # a second run finds nothing to do
@@ -116,9 +143,11 @@ class RetiredSenderTests(unittest.TestCase):
 
 class SourceAccountingTests(unittest.TestCase):
     """every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
+
     def world(self, **mails):
         from tests.jobs.support import Mailbox, alert
         from tests.jobs.fakes_jobsdb import JobsDB
+
         box = Mailbox({i: ("Jobright <alerts@jobright.ai>", alert(*ids), time.time() - 60) for i, ids in mails.items()})
         for labels in box.labels.values():
             labels.add("j-newsletters")
@@ -131,13 +160,16 @@ class SourceAccountingTests(unittest.TestCase):
 
     def test_a_vacancy_repeated_in_a_later_mail_is_accounted_for_that_mail_and_holds_it_open(self):
         from lifeos.sources.newsletters import finalize
+
         box, db = self.world(m1=("v1", "v2"), m2=("v2", "v3"))
         counts = ingest.extract(box, True, 50, db)
         self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
         self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"]), (3, 1, 0))
         cursor = db.cursor()
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
-        self.assertEqual(finalize.blockers(db, ["m1", "m2"]), {"m1": "in_flight", "m2": "in_flight"})  # v2 is unfinished in BOTH mails
+        self.assertEqual(
+            finalize.blockers(db, ["m1", "m2"]), {"m1": "in_flight", "m2": "in_flight"}
+        )  # v2 is unfinished in BOTH mails
 
     def test_a_mail_whose_cards_were_all_seen_before_still_has_its_rows_and_a_replay_adds_none(self):
         box, db = self.world(m1=("v1", "v2"), m2=("v1", "v2"))
@@ -151,10 +183,18 @@ class SourceAccountingTests(unittest.TestCase):
         from datetime import timedelta
         from lifeos.jobs import identity, tombstone
         from lifeos.sources.newsletters import finalize
+
         box, db = self.world(m1=("v1", "v2"))
-        tombstone.write(db.cursor(), identity.url_hash("https://jobright.ai/jobs/info/v2"), "f" * 64, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1))
+        tombstone.write(
+            db.cursor(),
+            identity.url_hash("https://jobright.ai/jobs/info/v2"),
+            "f" * 64,
+            datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1),
+        )
         counts = ingest.extract(box, True, 50, db)
-        self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"], self.rows(db, "m1")), (1, 0, 1, 2))
+        self.assertEqual(
+            (counts["new_jobs"], counts["repeat_links"], counts["suppressed"], self.rows(db, "m1")), (1, 0, 1, 2)
+        )
         cursor = db.cursor()
         cursor.execute("SELECT COUNT(*) FROM v7_job_sources WHERE job_id IS NULL")
         self.assertEqual(cursor.fetchone()[0], 1)
@@ -184,7 +224,9 @@ class SourceAccountingTests(unittest.TestCase):
         for labels in box.labels.values():
             labels.add("j-newsletters-done")
         cursor = db.cursor()
-        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))  # v2 stays NEW: in flight in both mails
+        cursor.execute(
+            "UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",)
+        )  # v2 stays NEW: in flight in both mails
         counts = ingest.reconcile(box, lambda: db, 50)
         self.assertEqual(counts["reopened"], 2)
         self.assertTrue(all("j-newsletters-done" not in box.labels[i] for i in ("m1", "m2")))
@@ -211,6 +253,7 @@ class SourceAccountingTests(unittest.TestCase):
             def __exit__(self, *exc):
                 open_now[0] -= 1
                 return False
+
         real = box.message
         box.message = lambda message_id: (read_while_open.append(open_now[0]), real(message_id))[1]
         cursor = db.cursor()
@@ -250,15 +293,21 @@ class MissingLabelTests(unittest.TestCase):
         self.assertEqual((box.created, box.calls), ([], []))
 
     def test_a_dry_run_with_no_labels_at_all_still_runs(self):
-        self.assertEqual(ingest.extract(self.Box(set(), messages=MESSAGES), live=False, limit=10)["retired_sender_lensa"], 1)
+        self.assertEqual(
+            ingest.extract(self.Box(set(), messages=MESSAGES), live=False, limit=10)["retired_sender_lensa"], 1
+        )
 
     def test_a_dry_run_with_every_label_present_reads_no_label_and_moves_nothing(self):
         box = self.Box({config.PROCESSED_LABEL, config.RETIRED_LABEL}, messages=MESSAGES)
         looked = []
         box.label_id = lambda name, create=False: looked.append(name) or name
         counts = ingest.extract(box, live=False, limit=10)
-        self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"]), (1, 0, 0))
-        self.assertEqual((looked, box.created, box.calls), ([], [], []))  # zero mutation: no label read, created or applied
+        self.assertEqual(
+            (counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"]), (1, 0, 0)
+        )
+        self.assertEqual(
+            (looked, box.created, box.calls), ([], [], [])
+        )  # zero mutation: no label read, created or applied
 
     def test_a_live_run_uses_a_preexisting_retired_label_without_creating_it(self):
         retired_only = {k: v for k, v in MESSAGES.items() if config.classify(v[0]) in config.RETIRED_SENDERS}

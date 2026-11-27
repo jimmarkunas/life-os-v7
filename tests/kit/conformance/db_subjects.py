@@ -1,4 +1,5 @@
 """Observers for the db family: the real pymysql Cursor class (API only), the FakeCursor and MySQLite fakes."""
+
 import inspect
 
 from tests.kit.db import FakeCursor
@@ -13,8 +14,11 @@ except ImportError:  # pymysql is a runtime dependency
 def observe_api(target):
     def observe(case):
         if "doc_of" in case:
-            return {"mentions_affected_rows": "affected" in (inspect.getdoc(getattr(target, case["doc_of"])) or "").lower()}
+            return {
+                "mentions_affected_rows": "affected" in (inspect.getdoc(getattr(target, case["doc_of"])) or "").lower()
+            }
         return {"present": sorted(name for name in case["api"] if hasattr(target, name))}
+
     return observe
 
 
@@ -36,7 +40,7 @@ def _run(cursor, case):
                     value = cursor.fetchone()
                 elif op.get("fetch") == "all_types":
                     value = sorted({type(row).__name__ for row in cursor.fetchall()})
-        except Exception as error:                                          # noqa: BLE001 - the case records which kind of error
+        except Exception as error:  # noqa: BLE001 - the case records which kind of error
             if "raises" in op:
                 out[op["raises"]] = type(error).__name__.replace("sqlite3.", "")
                 continue

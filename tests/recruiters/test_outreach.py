@@ -1,6 +1,7 @@
 """/, synthetic only: Mark as Sent on the private Close service -> one canonical Waiting outreach row linked to the exact
 Job Ledger job -> the.
 """
+
 import html
 import json
 import re
@@ -25,9 +26,16 @@ SCHEMA = {"Job": {"type": "relation", "relation": {"data_source_id": LEDGER}}}
 
 
 def ledger_page(pid, company, role, parent=LEDGER, archived=False, decision=None):
-    return {"id": pid, "archived": archived, "parent": {"type": "data_source_id", "data_source_id": parent},
-            "properties": {"Company": {"type": "rich_text", "rich_text": [{"plain_text": company}]}, "Job": {"type": "title", "title": [{"plain_text": role}]},
-                           "Hiring Decision": {"type": "select", "select": {"name": decision} if decision else None}}}
+    return {
+        "id": pid,
+        "archived": archived,
+        "parent": {"type": "data_source_id", "data_source_id": parent},
+        "properties": {
+            "Company": {"type": "rich_text", "rich_text": [{"plain_text": company}]},
+            "Job": {"type": "title", "title": [{"plain_text": role}]},
+            "Hiring Decision": {"type": "select", "select": {"name": decision} if decision else None},
+        },
+    }
 
 
 class Ledger:
@@ -47,8 +55,18 @@ class Ledger:
 
 
 def lead(person_id, name, title="Program Manager"):
-    return {"person_id": person_id, "tier": match.CURRENT, "freshness": "FRESH", "age_days": 12, "name": name, "company": "Northwind Labs", "title": title,
-            "verified": date(2026, 10, 3), "url_key": f"invented-{person_id}", "evidence_hash": f"{person_id:012x}"}
+    return {
+        "person_id": person_id,
+        "tier": match.CURRENT,
+        "freshness": "FRESH",
+        "age_days": 12,
+        "name": name,
+        "company": "Northwind Labs",
+        "title": title,
+        "verified": date(2026, 10, 3),
+        "url_key": f"invented-{person_id}",
+        "evidence_hash": f"{person_id:012x}",
+    }
 
 
 def network_blocks(page_id, leads, dismissed=()):
@@ -60,8 +78,15 @@ def network_blocks(page_id, leads, dismissed=()):
     for k in kids:
         if k["type"] == "to_do" and int(hidden.refs(k)[0].split(" ")[-1].split(":")[0]) in dismissed:
             k["to_do"]["checked"] = True
-    top = [{"id": "p0", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "v7-jd:1 | key=invented"}]}, "has_children": False},
-           {"id": "net", "type": "callout", "callout": callout["callout"], "has_children": True}]
+    top = [
+        {
+            "id": "p0",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [{"plain_text": "v7-jd:1 | key=invented"}]},
+            "has_children": False,
+        },
+        {"id": "net", "type": "callout", "callout": callout["callout"], "has_children": True},
+    ]
     return {page_id: top, "net": kids}
 
 
@@ -83,9 +108,22 @@ class Service:
     def __call__(self, method, path, query=None, form=None, headers=None):
         secrets = {"link": SECRET, "config": self.config}
         secrets.update({"reader": self.ledger} if method == "GET" else {"notion": b"token", "after": self.after})
-        with mock.patch.object(outreach_app, "Client", self._client), mock.patch.object(close_app, "_now", lambda: self.clock), \
-                mock.patch.object(outreach_app, "_now", lambda: self.clock):
-            return close_app.handle({"method": method, "path": path, "query": query or {}, "form": form or {}, **({"headers": headers} if headers else {})}, WHO, secrets)
+        with (
+            mock.patch.object(outreach_app, "Client", self._client),
+            mock.patch.object(close_app, "_now", lambda: self.clock),
+            mock.patch.object(outreach_app, "_now", lambda: self.clock),
+        ):
+            return close_app.handle(
+                {
+                    "method": method,
+                    "path": path,
+                    "query": query or {},
+                    "form": form or {},
+                    **({"headers": headers} if headers else {}),
+                },
+                WHO,
+                secrets,
+            )
 
 
 def fields(body):
@@ -109,8 +147,10 @@ def mark(svc, job_id, person):
 
 class MarkAsSent(unittest.TestCase):
     def world(self, **kw):
-        return Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), ledger_page(JOB_B, "Northwind Labs", "Technical Program Manager")), \
-            FakeRecruiters(schema=SCHEMA, **kw)
+        return Ledger(
+            ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"),
+            ledger_page(JOB_B, "Northwind Labs", "Technical Program Manager"),
+        ), FakeRecruiters(schema=SCHEMA, **kw)
 
     def test_confirm_records_one_waiting_row_with_a_two_business_day_follow_up(self):
         ledger, rec = self.world()
@@ -118,8 +158,30 @@ class MarkAsSent(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn(b"Marked as sent", body)
         [row] = [store.read(p) for p in rec.pages]
-        self.assertEqual((row["person"], row["client"], row["role"], row["medium"], row["action"], row["follow_up"], row["jobs"], row["done"], row["active"]),
-                         ("Avery Synthetic", "Northwind Labs", "Senior Technical Program Manager", "LinkedIn", "Waiting", "2026-10-19", [JOB_A], False, True))
+        self.assertEqual(
+            (
+                row["person"],
+                row["client"],
+                row["role"],
+                row["medium"],
+                row["action"],
+                row["follow_up"],
+                row["jobs"],
+                row["done"],
+                row["active"],
+            ),
+            (
+                "Avery Synthetic",
+                "Northwind Labs",
+                "Senior Technical Program Manager",
+                "LinkedIn",
+                "Waiting",
+                "2026-10-19",
+                [JOB_A],
+                False,
+                True,
+            ),
+        )
         self.assertEqual(ledger.writes, [])
 
     def test_a_recorded_mark_asks_for_the_recruiter_outreach_redraw_once_and_a_replay_never_does(self):
@@ -143,8 +205,10 @@ class MarkAsSent(unittest.TestCase):
         svc = Service(ledger, rec)
         for job_id, person in ((JOB_A, "Avery Synthetic"), (JOB_B, "Avery Synthetic"), (JOB_A, "Blake Synthetic")):
             self.assertEqual(mark(svc, job_id, person)[0], 200)
-        self.assertEqual(sorted((store.read(p)["jobs"][0], store.read(p)["person"]) for p in rec.pages),
-                         [(JOB_A, "Avery Synthetic"), (JOB_A, "Blake Synthetic"), (JOB_B, "Avery Synthetic")])
+        self.assertEqual(
+            sorted((store.read(p)["jobs"][0], store.read(p)["person"]) for p in rec.pages),
+            [(JOB_A, "Avery Synthetic"), (JOB_A, "Blake Synthetic"), (JOB_B, "Avery Synthetic")],
+        )
 
     def test_get_and_review_never_write(self):
         ledger, rec = self.world()
@@ -161,7 +225,9 @@ class MarkAsSent(unittest.TestCase):
         for bad in ({**good, "t": "0" * 64}, {**good, "ro": "Another Role"}, {**good, "exp": "1"}):
             self.assertEqual(svc("POST", "/sent", form={**bad, "person": "Avery Synthetic", "step": "review"})[0], 403)
         review = svc("POST", "/sent", form={**good, "person": "Avery Synthetic", "step": "review"})
-        self.assertEqual(svc("POST", "/sent", form={**fields(review[2]), "person": "Someone Else", "step": "confirm"})[0], 403)  # the confirmation signs the person
+        self.assertEqual(
+            svc("POST", "/sent", form={**fields(review[2]), "person": "Someone Else", "step": "confirm"})[0], 403
+        )  # the confirmation signs the person
         self.assertEqual(svc("POST", "/sent", form={**good, "person": " ", "step": "review"})[0], 400)
         self.assertEqual(svc("GET", "/sent", {"j": "c" * 32})[0], 409)  # not a Ledger job
         self.assertEqual(rec.writes, [])
@@ -177,17 +243,21 @@ class MarkAsSent(unittest.TestCase):
         self.assertEqual((status, rec.writes), (409, []))
         self.assertIn(b"OUTREACH_SCHEMA_MISSING", body)
         rec = FakeRecruiters(schema=SCHEMA)
-        status, _, body, _ = mark(Service(ledger, rec, {"ledger": LEDGER, "pipeline": PIPELINE}), JOB_A, "Avery Synthetic")
+        status, _, body, _ = mark(
+            Service(ledger, rec, {"ledger": LEDGER, "pipeline": PIPELINE}), JOB_A, "Avery Synthetic"
+        )
         self.assertEqual((status, rec.writes), (409, []))
         wrong = FakeRecruiters(schema={"Job": {"type": "relation", "relation": {"data_source_id": "9" * 32}}})
         self.assertEqual((mark(Service(ledger, wrong), JOB_A, "Avery Synthetic")[0], wrong.writes), (409, []))
 
     def test_replay_reports_the_persisted_state_and_never_relabels_or_writes(self):
-        for kind, action, extra, code, words in (("due", "Needs Action", {}, 200, b"currently Needs Action"),
-                                                 ("completed", "Completed", {}, 409, b"already closed"),
-                                                 ("dismissed", "Dismissed", {}, 409, b"already closed"),
-                                                 ("done", "Waiting", {"done": True}, 409, b"already closed"),
-                                                 ("inactive", "Waiting", {"active": False}, 409, b"already closed")):
+        for kind, action, extra, code, words in (
+            ("due", "Needs Action", {}, 200, b"currently Needs Action"),
+            ("completed", "Completed", {}, 409, b"already closed"),
+            ("dismissed", "Dismissed", {}, 409, b"already closed"),
+            ("done", "Waiting", {"done": True}, 409, b"already closed"),
+            ("inactive", "Waiting", {"active": False}, 409, b"already closed"),
+        ):
             with self.subTest(kind=kind):
                 ledger, rec = self.world()
                 svc = Service(ledger, rec)
@@ -206,7 +276,9 @@ class MarkAsSent(unittest.TestCase):
     def test_a_closed_or_unknown_ledger_job_is_refused_at_open_and_at_confirm(self):
         for decision in ("Rejected", "Withdrew", "Hired"):
             with self.subTest(decision=decision):
-                ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager", decision=decision))
+                ledger = Ledger(
+                    ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager", decision=decision)
+                )
                 rec = FakeRecruiters(schema=SCHEMA)
                 status, _, body, _ = Service(ledger, rec)("GET", "/sent", {"j": JOB_A})
                 self.assertEqual((status, rec.writes), (409, []))
@@ -245,7 +317,10 @@ class ChooseThePerson(unittest.TestCase):
 
     def world(self, dismissed=()):
         leads = [lead(7, "Casey Example", "Account Executive"), lead(8, "Drew Invented"), lead(9, "Emery Sample")]
-        ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), blocks=network_blocks(JOB_A, leads, dismissed))
+        ledger = Ledger(
+            ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"),
+            blocks=network_blocks(JOB_A, leads, dismissed),
+        )
         return ledger, FakeRecruiters(schema=SCHEMA)
 
     def open(self, svc):
@@ -280,7 +355,9 @@ class ChooseThePerson(unittest.TestCase):
         svc = Service(ledger, rec)
         _, form = self.open(svc)
         self.assertEqual(svc("POST", "/sent", form={**form, "who": "other", "person": " ", "step": "review"})[0], 400)
-        self.assertEqual(svc("POST", "/sent", form={**form, "person": "Fallon Typed", "step": "review"})[0], 400)  # nothing chosen
+        self.assertEqual(
+            svc("POST", "/sent", form={**form, "person": "Fallon Typed", "step": "review"})[0], 400
+        )  # nothing chosen
         review = svc("POST", "/sent", form={**form, "who": "other", "person": "Fallon Typed", "step": "review"})
         status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
         self.assertEqual((status, [store.read(p)["person"] for p in rec.pages]), (200, ["Fallon Typed"]))
@@ -296,7 +373,9 @@ class ChooseThePerson(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn(b"Casey Example (Northwind Labs)", body)
         [row] = [store.read(p) for p in rec.pages]
-        self.assertEqual((row["person"], row["company"], row["client"]), ("Casey Example", "Northwind Labs", "Northwind Labs"))
+        self.assertEqual(
+            (row["person"], row["company"], row["client"]), ("Casey Example", "Northwind Labs", "Northwind Labs")
+        )
 
     def test_a_typed_employer_wins_and_other_without_one_records_none(self):
         ledger, rec = self.world()
@@ -308,29 +387,52 @@ class ChooseThePerson(unittest.TestCase):
         review = svc("POST", "/sent", form={**form, "who": "other", "person": "Fallon Typed", "step": "review"})
         self.assertIn(b"<dt>Their employer</dt><dd>Not recorded</dd>", review[2])
         svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
-        self.assertEqual(sorted((store.read(p)["person"], store.read(p)["company"]) for p in rec.pages), [("Casey Example", "Contoso Talent"), ("Fallon Typed", "")])
+        self.assertEqual(
+            sorted((store.read(p)["person"], store.read(p)["company"]) for p in rec.pages),
+            [("Casey Example", "Contoso Talent"), ("Fallon Typed", "")],
+        )
 
     def test_the_confirmation_signs_the_employer(self):
         ledger, rec = self.world()
         svc = Service(ledger, rec)
         _, form = self.open(svc)
         review = svc("POST", "/sent", form={**form, "who": "lead:0", "step": "review"})
-        self.assertEqual(svc("POST", "/sent", form={**fields(review[2]), "employer": "Someone Else Inc", "step": "confirm"})[0], 403)
+        self.assertEqual(
+            svc("POST", "/sent", form={**fields(review[2]), "employer": "Someone Else Inc", "step": "confirm"})[0], 403
+        )
         self.assertEqual(rec.writes, [])
 
     def test_only_a_current_listing_names_an_employer(self):
-        self.assertEqual(O.employer_from("Listed at Northwind Labs as Account Executive, as of Oct 3 (12 days)"), "Northwind Labs")
-        self.assertEqual(O.employer_from("Listed at Northwind Labs, as of Oct 3 (12 days) · verify first"), "Northwind Labs")
-        for line in ("Previously listed at Northwind Labs, as of Oct 3 (12 days)", "Name differs: listed at Northwind Labs, as of Oct 3 (12 days). Same company?",
-                     "Listed at this company, as of Oct 3 (12 days)", "", None):
+        self.assertEqual(
+            O.employer_from("Listed at Northwind Labs as Account Executive, as of Oct 3 (12 days)"), "Northwind Labs"
+        )
+        self.assertEqual(
+            O.employer_from("Listed at Northwind Labs, as of Oct 3 (12 days) · verify first"), "Northwind Labs"
+        )
+        for line in (
+            "Previously listed at Northwind Labs, as of Oct 3 (12 days)",
+            "Name differs: listed at Northwind Labs, as of Oct 3 (12 days). Same company?",
+            "Listed at this company, as of Oct 3 (12 days)",
+            "",
+            None,
+        ):
             self.assertEqual(O.employer_from(line), "", line)
 
     def test_a_tampered_or_unknown_choice_writes_nothing(self):
         ledger, rec = self.world()
         svc = Service(ledger, rec)
         _, form = self.open(svc)
-        self.assertEqual(svc("POST", "/sent", form={**form, "l0": "Someone Else", "who": "lead:0", "step": "review"})[0], 403)  # the offered names are signed
-        self.assertEqual(svc("POST", "/sent", form={**{k: v for k, v in form.items() if k != "l2"}, "who": "lead:0", "step": "review"})[0], 403)
+        self.assertEqual(
+            svc("POST", "/sent", form={**form, "l0": "Someone Else", "who": "lead:0", "step": "review"})[0], 403
+        )  # the offered names are signed
+        self.assertEqual(
+            svc(
+                "POST",
+                "/sent",
+                form={**{k: v for k, v in form.items() if k != "l2"}, "who": "lead:0", "step": "review"},
+            )[0],
+            403,
+        )
         self.assertEqual(svc("POST", "/sent", form={**form, "who": "lead:9", "step": "review"})[0], 400)
         self.assertEqual(rec.writes, [])
 
@@ -352,7 +454,9 @@ class ChooseThePerson(unittest.TestCase):
 
     def test_an_unreadable_leads_block_is_refused_not_shown_empty(self):
         ledger, rec = self.world()
-        ledger.blocks["net"] = [k for k in ledger.blocks["net"] if not (k["type"] == "to_do" and any(" 8:" in r for r in hidden.refs(k)))]
+        ledger.blocks["net"] = [
+            k for k in ledger.blocks["net"] if not (k["type"] == "to_do" and any(" 8:" in r for r in hidden.refs(k)))
+        ]
         status, _, body, _ = Service(ledger, rec)("GET", "/sent", {"j": JOB_A})
         self.assertEqual((status, rec.writes), (409, []))
         self.assertIn(b"NETWORK_SURFACE_PAGE_INCOMPLETE", body)
@@ -360,7 +464,10 @@ class ChooseThePerson(unittest.TestCase):
     def test_the_reader_round_trips_the_block_the_network_stage_writes(self):
         leads = [lead(7, "Casey Example"), lead(8, "Drew Invented")]
         found = surface.leads_on_page(Ledger(blocks=network_blocks(JOB_A, leads)), JOB_A)
-        self.assertEqual([(x["person_id"], x["evidence_hash"], x["name"]) for x in found], [(7, f"{7:012x}", "Casey Example"), (8, f"{8:012x}", "Drew Invented")])
+        self.assertEqual(
+            [(x["person_id"], x["evidence_hash"], x["name"]) for x in found],
+            [(7, f"{7:012x}", "Casey Example"), (8, f"{8:012x}", "Drew Invented")],
+        )
         self.assertTrue(found[0]["reason"].startswith("Listed at Northwind Labs as Program Manager, as of Oct 3"))
         self.assertEqual(surface.leads_on_page(Ledger(blocks={JOB_A: []}), JOB_A), [])
 
@@ -369,15 +476,31 @@ class Lifecycle(unittest.TestCase):
     """The same canonical row through the existing recruiters stage and into the native Job Outreach projection."""
 
     def setUp(self):
-        self.ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), ledger_page(JOB_B, "Northwind Labs", "Technical Program Manager"))
+        self.ledger = Ledger(
+            ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"),
+            ledger_page(JOB_B, "Northwind Labs", "Technical Program Manager"),
+        )
         self.rec = FakeRecruiters(schema=SCHEMA)
         mark(Service(self.ledger, self.rec), JOB_A, "Avery Synthetic")
-        self.jobs = {JOB_A: {"company": "Northwind Labs", "role": "Senior Technical Program Manager", "url": "https://app.notion.com/p/" + JOB_A},
-                     JOB_B: {"company": "Northwind Labs", "role": "Technical Program Manager", "url": "https://app.notion.com/p/" + JOB_B}}
+        self.jobs = {
+            JOB_A: {
+                "company": "Northwind Labs",
+                "role": "Senior Technical Program Manager",
+                "url": "https://app.notion.com/p/" + JOB_A,
+            },
+            JOB_B: {
+                "company": "Northwind Labs",
+                "role": "Technical Program Manager",
+                "url": "https://app.notion.com/p/" + JOB_B,
+            },
+        }
 
     def run_stage(self, when, records=()):
         from tests.recruiters.test_recruiters import ReadOnlyGmail
-        return stage.run(10, True, gmail=ReadOnlyGmail(list(records)), outlook_accounts=[], notion=self.rec, now=when, chores=False)
+
+        return stage.run(
+            10, True, gmail=ReadOnlyGmail(list(records)), outlook_accounts=[], notion=self.rec, now=when, chores=False
+        )
 
     def rows(self):
         return [store.read(p) for p in self.rec.pages]
@@ -385,25 +508,56 @@ class Lifecycle(unittest.TestCase):
     def test_projection_is_one_row_per_exact_job_with_the_follow_up(self):
         mark(Service(self.ledger, self.rec), JOB_A, "Blake Synthetic")
         out = O.project(self.rows(), self.jobs, NOW.date())
-        self.assertEqual(out, [{"job": "Northwind Labs — Senior Technical Program Manager", "outreach": "2 contacted · 0 need action", "next": "Follow up · Oct 19",
-                                "link": self.jobs[JOB_A]["url"], "sort": "2026-10-19"}])
+        self.assertEqual(
+            out,
+            [
+                {
+                    "job": "Northwind Labs — Senior Technical Program Manager",
+                    "outreach": "2 contacted · 0 need action",
+                    "next": "Follow up · Oct 19",
+                    "link": self.jobs[JOB_A]["url"],
+                    "sort": "2026-10-19",
+                }
+            ],
+        )
         self.assertEqual(O.project(self.rows(), {}, NOW.date()), [])
 
     def test_the_follow_up_is_kept_then_returns_to_needs_action_when_due(self):
-        before = self.run_stage(datetime(2026, 10, 16, 17, 0, tzinfo=ZoneInfo("UTC")))  # Friday: Waiting, date already set
-        self.assertEqual((before["waiting"], before["scheduled"], before["reopened_due"], self.rows()[0]["action"]), (1, 0, 0, "Waiting"))
+        before = self.run_stage(
+            datetime(2026, 10, 16, 17, 0, tzinfo=ZoneInfo("UTC"))
+        )  # Friday: Waiting, date already set
+        self.assertEqual(
+            (before["waiting"], before["scheduled"], before["reopened_due"], self.rows()[0]["action"]),
+            (1, 0, 0, "Waiting"),
+        )
         due = self.run_stage(datetime(2026, 10, 19, 17, 0, tzinfo=ZoneInfo("UTC")))  # Monday: the checkpoint
         [row] = self.rows()
-        self.assertEqual((due["reopened_due"], row["action"], row["follow_up"], row["jobs"]), (1, "Needs Action", "2026-10-19", [JOB_A]))
+        self.assertEqual(
+            (due["reopened_due"], row["action"], row["follow_up"], row["jobs"]),
+            (1, "Needs Action", "2026-10-19", [JOB_A]),
+        )
         out = O.project(self.rows(), self.jobs, datetime(2026, 10, 19).date())
-        self.assertEqual((out[0]["outreach"], out[0]["next"]), ("1 contacted · 1 need action", "1 needs action · Today"))
+        self.assertEqual(
+            (out[0]["outreach"], out[0]["next"]), ("1 contacted · 1 need action", "1 needs action · Today")
+        )
 
     def test_inbound_recruiter_mail_never_merges_into_an_outreach_row(self):
         body = "Hi,\n\nI'm reaching out about a Senior Technical Program Manager role.\n\nBest,\nAvery Synthetic\nSenior Recruiter at Northwind Labs\n"
-        counts = self.run_stage(datetime(2026, 10, 16, 17, 0, tzinfo=ZoneInfo("UTC")),
-                                [mail(sender_name="Avery Synthetic", body=body, received="2026-10-16T15:00:00+00:00")])
+        counts = self.run_stage(
+            datetime(2026, 10, 16, 17, 0, tzinfo=ZoneInfo("UTC")),
+            [mail(sender_name="Avery Synthetic", body=body, received="2026-10-16T15:00:00+00:00")],
+        )
         outreach = [r for r in self.rows() if r["jobs"]]
-        self.assertEqual((counts["created"], counts["updated"], len(outreach), outreach[0]["action"], outreach[0]["last_contact"][:10]), (1, 0, 1, "Waiting", "2026-10-15"))
+        self.assertEqual(
+            (
+                counts["created"],
+                counts["updated"],
+                len(outreach),
+                outreach[0]["action"],
+                outreach[0]["last_contact"][:10],
+            ),
+            (1, 0, 1, "Waiting", "2026-10-15"),
+        )
 
     def test_counts_and_codes_carry_no_private_value(self):
         counts = self.run_stage(datetime(2026, 10, 19, 17, 0, tzinfo=ZoneInfo("UTC")))

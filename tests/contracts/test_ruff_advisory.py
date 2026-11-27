@@ -1,4 +1,5 @@
 """ruff is an ADVISORY check."""
+
 import re
 import unittest
 from pathlib import Path
@@ -26,7 +27,11 @@ class Configured(unittest.TestCase):
     def test_ruff_is_pinned_exactly_and_hashed_in_the_test_lock(self):
         pin = re.search(r"^ruff==(\S+)$", (ROOT / "requirements-test.txt").read_text(), flags=re.M)
         self.assertIsNotNone(pin)
-        block = re.search(r"^ruff==%s \\\n((?:\s+--hash=sha256:[0-9a-f]{64}\s*\\?\n?)+)" % re.escape(pin.group(1)), (ROOT / "requirements-test.lock").read_text(), flags=re.M)
+        block = re.search(
+            r"^ruff==%s \\\n((?:\s+--hash=sha256:[0-9a-f]{64}\s*\\?\n?)+)" % re.escape(pin.group(1)),
+            (ROOT / "requirements-test.lock").read_text(),
+            flags=re.M,
+        )
         self.assertIsNotNone(block, "the lock has no hashed ruff entry at the pinned version")
 
 
@@ -75,10 +80,29 @@ class StepIsAdvisory(unittest.TestCase):
     def test_the_four_rules_find_nothing_in_the_repository_now(self):
         import subprocess
         import sys
-        done = subprocess.run([sys.executable, "-m", "ruff", "check", "--no-cache", "--select", "B023,B904,F811,B017", "--output-format", "concise", "."], cwd=ROOT, capture_output=True, text=True)
+
+        done = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ruff",
+                "check",
+                "--no-cache",
+                "--select",
+                "B023,B904,F811,B017",
+                "--output-format",
+                "concise",
+                ".",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
         if "No module named ruff" in done.stderr:
             self.skipTest("ruff is not installed in this environment (CI installs the locked version)")
-        self.assertEqual((done.returncode, done.stdout.strip().splitlines()[:5]), (0, ["All checks passed!"]), done.stdout)
+        self.assertEqual(
+            (done.returncode, done.stdout.strip().splitlines()[:5]), (0, ["All checks passed!"]), done.stdout
+        )
 
 
 if __name__ == "__main__":

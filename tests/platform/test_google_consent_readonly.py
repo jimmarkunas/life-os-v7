@@ -1,4 +1,5 @@
 """/ GWT-T13-01 to GWT-T13-03: the read-only Google sign-in helper."""
+
 import io
 import json
 import pathlib
@@ -12,14 +13,27 @@ from lifeos.platform import google_consent as base, google_consent_readonly as R
 from tests.kit import shared
 
 SECRET = "fake-client-secret-not-real"
-ALLOW = [{"account": "acct-a-gmail", "tenant": "TENANT-A-TEST", "service": "gmail", "label": "INBOX", "size_cap": 1000},
-         {"account": "acct-a-drive", "tenant": "TENANT-A-TEST", "service": "drive", "label": "Fake folder", "size_cap": 500},
-         {"account": "acct-a-cal", "tenant": "TENANT-A-TEST", "service": "calendar", "label": "primary", "size_cap": 200}]
-GOOD = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.readonly",
-        "calendar": "https://www.googleapis.com/auth/calendar.readonly"}
-WRITE = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/gmail.modify",
-         "https://www.googleapis.com/auth/gmail.send", "https://mail.google.com/", "https://www.googleapis.com/auth/calendar",
-         "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/gmail.compose"]
+ALLOW = [
+    {"account": "acct-a-gmail", "tenant": "TENANT-A-TEST", "service": "gmail", "label": "INBOX", "size_cap": 1000},
+    {"account": "acct-a-drive", "tenant": "TENANT-A-TEST", "service": "drive", "label": "Fake folder", "size_cap": 500},
+    {"account": "acct-a-cal", "tenant": "TENANT-A-TEST", "service": "calendar", "label": "primary", "size_cap": 200},
+]
+GOOD = {
+    "gmail": "https://www.googleapis.com/auth/gmail.readonly",
+    "drive": "https://www.googleapis.com/auth/drive.readonly",
+    "calendar": "https://www.googleapis.com/auth/calendar.readonly",
+}
+WRITE = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://mail.google.com/",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/gmail.compose",
+]
 
 
 Reply = shared.Reply
@@ -30,6 +44,7 @@ def token_endpoint(scope, refresh="fake-refresh-token", seen=None):
         if seen is not None:
             seen.append(request.full_url)
         return Reply({"scope": scope, "refresh_token": refresh} if refresh else {"scope": scope})
+
     return opener
 
 
@@ -41,10 +56,15 @@ def reply_with(state_ok=True):
     """A catcher that plays Google's redirect back to the loopback port (a fake consent endpoint), then uses the real
     loopback catcher.
     """
+
     def catcher(srv, state):
         query = urllib.parse.urlencode({"state": state if state_ok else "wrong", "code": "fake-code"})
-        threading.Thread(target=lambda: urllib.request.urlopen(f"http://127.0.0.1:{srv.server_port}/?{query}", timeout=10).read(), daemon=True).start()
+        threading.Thread(
+            target=lambda: urllib.request.urlopen(f"http://127.0.0.1:{srv.server_port}/?{query}", timeout=10).read(),
+            daemon=True,
+        ).start()
         return base.catch(srv, state)
+
     return catcher
 
 
@@ -52,8 +72,19 @@ def go(account="acct-a-gmail", service="gmail", scope=None, **kw):
     out, tty = io.StringIO(), io.StringIO()
     srv = server()
     try:
-        receipt = R.run(ALLOW, account, service, "fake-client-id", SECRET, out, tty, opener=kw.pop("opener", token_endpoint(GOOD.get(service, "") if scope is None else scope)),
-                        server=srv, catcher=kw.pop("catcher", reply_with()), **kw)
+        receipt = R.run(
+            ALLOW,
+            account,
+            service,
+            "fake-client-id",
+            SECRET,
+            out,
+            tty,
+            opener=kw.pop("opener", token_endpoint(GOOD.get(service, "") if scope is None else scope)),
+            server=srv,
+            catcher=kw.pop("catcher", reply_with()),
+            **kw,
+        )
     finally:
         srv.server_close()
     return receipt, out.getvalue(), tty.getvalue()
@@ -72,7 +103,9 @@ class LinkScopes(unittest.TestCase):
                 self.assertEqual(len(links), 1)
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(links[0]).query)
                 self.assertEqual(q["scope"], [GOOD[entry["service"]]])
-                self.assertEqual((q["code_challenge_method"], q["access_type"]), (["S256"], ["offline"]))  # the reused PKCE link
+                self.assertEqual(
+                    (q["code_challenge_method"], q["access_type"]), (["S256"], ["offline"])
+                )  # the reused PKCE link
                 self.assertEqual((receipt["outcome"], receipt["scopes_granted"]), ("stored", [GOOD[entry["service"]]]))
 
     def test_the_scope_set_is_exactly_gmail_drive_metadata_and_calendar_readonly(self):
@@ -83,7 +116,10 @@ class LinkScopes(unittest.TestCase):
 
 class Refusals(unittest.TestCase):
     def refused(self, receipt, out, tty, code):
-        self.assertEqual((receipt["outcome"], receipt["code"], receipt["stored"], receipt["scopes_granted"]), ("refused", code, "nothing", []))
+        self.assertEqual(
+            (receipt["outcome"], receipt["code"], receipt["stored"], receipt["scopes_granted"]),
+            ("refused", code, "nothing", []),
+        )
         self.assertEqual(out, "")  # nothing was stored
         self.assertNotIn("https://", tty)  # and no link was produced
         self.assertNotIn(SECRET, tty)
@@ -95,7 +131,12 @@ class Refusals(unittest.TestCase):
         self.refused(*go("acct-a-gmail", "composio"), "DENY_INPUT")
 
     def test_a_broken_or_duplicate_allowlist_entry_never_authorizes(self):
-        bad = [{**ALLOW[0], "size_cap": 0}, {**ALLOW[0], "size_cap": True}, {**ALLOW[0], "label": " "}, {k: v for k, v in ALLOW[0].items() if k != "tenant"}]
+        bad = [
+            {**ALLOW[0], "size_cap": 0},
+            {**ALLOW[0], "size_cap": True},
+            {**ALLOW[0], "label": " "},
+            {k: v for k, v in ALLOW[0].items() if k != "tenant"},
+        ]
         for entry in bad:
             self.assertEqual(R.plan([entry], "acct-a-gmail", "gmail")["code"], "DENY_ACCOUNT_AMBIGUOUS", entry)
         self.assertEqual(R.plan([ALLOW[0], dict(ALLOW[0])], "acct-a-gmail", "gmail")["code"], "DENY_ACCOUNT_AMBIGUOUS")
@@ -113,7 +154,10 @@ class Refusals(unittest.TestCase):
         for granted in (GOOD["gmail"] + " " + WRITE[2], WRITE[2], GOOD["drive"], ""):
             with self.subTest(granted=granted):
                 receipt, out, tty = go(scope=granted)
-                self.assertEqual((receipt["outcome"], receipt["code"], receipt["stored"], out), ("refused", "DENY_UNSUPPORTED_ACTION", "nothing", ""))
+                self.assertEqual(
+                    (receipt["outcome"], receipt["code"], receipt["stored"], out),
+                    ("refused", "DENY_UNSUPPORTED_ACTION", "nothing", ""),
+                )
 
     def test_a_reply_without_a_refresh_token_or_with_the_wrong_state_stores_nothing(self):
         receipt, out, tty = go(opener=token_endpoint(GOOD["gmail"], refresh=None))
@@ -124,23 +168,38 @@ class Refusals(unittest.TestCase):
     def test_it_refuses_to_print_the_credential_on_a_terminal(self):
         Tty = shared.Terminal
         tty = io.StringIO()
+
         def never(srv, state):
             raise AssertionError("no sign-in may start when the output is a terminal")
+
         receipt = R.run(ALLOW, "acct-a-gmail", "gmail", "cid", SECRET, Tty(), tty, server=server(), catcher=never)
         self.assertEqual((receipt["outcome"], receipt["code"]), ("refused", "DENY_SECRET_EXPOSURE"))
         self.assertNotIn("https://", tty.getvalue())
 
-
     def test_the_sign_in_link_uses_the_fixed_port_asked_for_and_any_free_port_by_default(self):
         import socket
+
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         for asked, expect in ((port, port), (0, None)):
             with self.subTest(port=asked):
                 out, tty = io.StringIO(), io.StringIO()
-                R.run(ALLOW, "acct-a-gmail", "gmail", "cid", SECRET, out, tty, opener=token_endpoint(GOOD["gmail"]), catcher=lambda srv, state: None, port=asked)
-                redirect = urllib.parse.parse_qs(urllib.parse.urlparse(tty.getvalue().splitlines()[1]).query)["redirect_uri"][0]
+                R.run(
+                    ALLOW,
+                    "acct-a-gmail",
+                    "gmail",
+                    "cid",
+                    SECRET,
+                    out,
+                    tty,
+                    opener=token_endpoint(GOOD["gmail"]),
+                    catcher=lambda srv, state: None,
+                    port=asked,
+                )
+                redirect = urllib.parse.parse_qs(urllib.parse.urlparse(tty.getvalue().splitlines()[1]).query)[
+                    "redirect_uri"
+                ][0]
                 self.assertEqual(redirect == f"http://127.0.0.1:{expect}", expect is not None)
                 self.assertTrue(redirect.startswith("http://127.0.0.1:"))
 
@@ -149,13 +208,18 @@ class CredentialAndReceipt(unittest.TestCase):
     def test_gwt_t13_03_the_credential_goes_only_to_the_pipe_and_no_secret_is_shown(self):
         seen = []
         receipt, out, tty = go(opener=token_endpoint(GOOD["gmail"], seen=seen))
-        self.assertEqual(json.loads(out), {"client_id": "fake-client-id", "client_secret": SECRET, "refresh_token": "fake-refresh-token"})  # the pipe only
+        self.assertEqual(
+            json.loads(out),
+            {"client_id": "fake-client-id", "client_secret": SECRET, "refresh_token": "fake-refresh-token"},
+        )  # the pipe only
         self.assertEqual(seen, [base.TOKEN_URL])
         for shown in (tty, json.dumps(receipt)):
             for secret in (SECRET, "fake-refresh-token", "fake-code"):
                 self.assertNotIn(secret, shown)
-        self.assertEqual((receipt["account"], receipt["tenant"], receipt["service"], receipt["label"], receipt["size_cap"]),
-                         ("acct-a-gmail", "TENANT-A-TEST", "gmail", "INBOX", 1000))
+        self.assertEqual(
+            (receipt["account"], receipt["tenant"], receipt["service"], receipt["label"], receipt["size_cap"]),
+            ("acct-a-gmail", "TENANT-A-TEST", "gmail", "INBOX", 1000),
+        )
 
     def test_the_helper_opens_no_browser_and_imports_nothing_that_could(self):
         text = pathlib.Path(R.__file__).read_text()
@@ -173,11 +237,15 @@ class CredentialAndReceipt(unittest.TestCase):
 class Cli(unittest.TestCase):
     def test_a_missing_allowlist_or_unlisted_account_is_refused_before_any_prompt(self):
         tty, out = io.StringIO(), io.StringIO()
-        self.assertEqual(R.main(["--account", "acct-a-gmail", "--service", "gmail", "--allowlist", "/nonexistent.json"], out, tty), 2)
+        self.assertEqual(
+            R.main(["--account", "acct-a-gmail", "--service", "gmail", "--allowlist", "/nonexistent.json"], out, tty), 2
+        )
         path = pathlib.Path(self.id() + ".json")
         path.write_text(json.dumps(ALLOW))
         try:
-            self.assertEqual(R.main(["--account", "acct-x", "--service", "gmail", "--allowlist", str(path)], out, tty), 1)
+            self.assertEqual(
+                R.main(["--account", "acct-x", "--service", "gmail", "--allowlist", str(path)], out, tty), 1
+            )
         finally:
             path.unlink()
         self.assertEqual(out.getvalue(), "")

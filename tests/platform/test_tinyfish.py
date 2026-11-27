@@ -23,10 +23,12 @@ class CleanKeyTests(unittest.TestCase):
         self.assertEqual(tinyfish.clean_key("TINYFISH_API_KEY=abcdefghijklmnop1234")[0], "abcdefghijklmnop1234")
         self.assertEqual(tinyfish.clean_key("")[0], "")
 
+
 class KeyConfigTests(unittest.TestCase):
     def test_missing_key_is_a_fixed_code(self):
         import os
         from lifeos.platform import tinyfish
+
         os.environ.pop("TINYFISH_API_KEY", None)
         with self.assertRaises(tinyfish.TinyFishError) as ctx:
             tinyfish.fetch_many(["https://example.com"])

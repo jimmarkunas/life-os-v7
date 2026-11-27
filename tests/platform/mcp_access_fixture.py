@@ -1,6 +1,7 @@
 """test data: the real seeded mcp_access.json and capability catalog, widened for tests that exercise a server's own
 behavior (publish grants for both.
 """
+
 import copy
 import json
 from datetime import datetime, timezone
@@ -16,8 +17,32 @@ def inbox_rows():
     """A test-only inbox write grant and catalog row for the Mac client: the shipped seed grants no `send_to_jim` call
     (no client has that MCP server.
     """
-    return ({"id": "t-claude-code-mac-send-to-jim", "principal": "claude-code-mac", "tenant": "personal", "account": "agent-inbox", "tool": "send_to_jim", "purpose": "agent-inbox", "actions": ["write"], "credential_ref": "notion-v7-integration", "expires": "2027-02-22", "revoked": False},
-            {"principal": "claude-code-mac", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": None, "host": "mac-worktree", "source": "lifeos/inbox/send_to_jim.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"})
+    return (
+        {
+            "id": "t-claude-code-mac-send-to-jim",
+            "principal": "claude-code-mac",
+            "tenant": "personal",
+            "account": "agent-inbox",
+            "tool": "send_to_jim",
+            "purpose": "agent-inbox",
+            "actions": ["write"],
+            "credential_ref": "notion-v7-integration",
+            "expires": "2027-02-22",
+            "revoked": False,
+        },
+        {
+            "principal": "claude-code-mac",
+            "tool": "send_to_jim",
+            "action": "write",
+            "provider": "notion",
+            "account_alias": None,
+            "host": "mac-worktree",
+            "source": "lifeos/inbox/send_to_jim.py",
+            "as_of": "2026-11-22",
+            "max_age_days": 90,
+            "status": "synthetic",
+        },
+    )
 
 
 def build(grants=None, clients=None, catalog_rows=(), inbox=True):
@@ -44,8 +69,34 @@ def publish_rows():
     for client in ("claude-chat", "chatgpt-chat"):
         for tenant in ("personal", "bytalos"):
             who = principal(client, tenant)
-            grants.append({"id": f"t-{who}-publish", "principal": who, "tenant": tenant, "account": "buzz", "tool": "buzz_publish", "purpose": "buzz-publish", "actions": ["write"], "credential_ref": "buzz-scoped-member-key", "expires": "2027-02-22", "revoked": False})
-            rows.append({"principal": who, "tool": "buzz_publish", "action": "write", "provider": "buzz", "account_alias": None, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"})
+            grants.append(
+                {
+                    "id": f"t-{who}-publish",
+                    "principal": who,
+                    "tenant": tenant,
+                    "account": "buzz",
+                    "tool": "buzz_publish",
+                    "purpose": "buzz-publish",
+                    "actions": ["write"],
+                    "credential_ref": "buzz-scoped-member-key",
+                    "expires": "2027-02-22",
+                    "revoked": False,
+                }
+            )
+            rows.append(
+                {
+                    "principal": who,
+                    "tool": "buzz_publish",
+                    "action": "write",
+                    "provider": "buzz",
+                    "account_alias": None,
+                    "host": "oracle-edge",
+                    "source": "lifeos/buzz/mcp.py",
+                    "as_of": "2026-11-22",
+                    "max_age_days": 90,
+                    "status": "synthetic",
+                }
+            )
     return grants, rows
 
 

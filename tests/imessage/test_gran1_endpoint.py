@@ -33,8 +33,17 @@ class Gran1(unittest.TestCase):
         self.assertEqual((code, out, seen), (0, reply, [GOOD]))
 
     def test_refusals_never_reach_the_helper(self):
-        for payload, uid in ((v2(OTHER) + GOOD, 0), (GOOD, 0), (v2(RUNNER) + GOOD, 1001), (v2(RUNNER) + b"gran1 0\n", 0), (v2(RUNNER) + b"gran1 4097\n", 0),
-                             (v2(RUNNER) + b"gran1 01\n{}", 0), (v2(RUNNER) + b"gran1 5\nab", 0), (v2(RUNNER) + b"gran1 x\n{}", 0), (v2(RUNNER) + b"gran2 2\n{}", 0)):
+        for payload, uid in (
+            (v2(OTHER) + GOOD, 0),
+            (GOOD, 0),
+            (v2(RUNNER) + GOOD, 1001),
+            (v2(RUNNER) + b"gran1 0\n", 0),
+            (v2(RUNNER) + b"gran1 4097\n", 0),
+            (v2(RUNNER) + b"gran1 01\n{}", 0),
+            (v2(RUNNER) + b"gran1 5\nab", 0),
+            (v2(RUNNER) + b"gran1 x\n{}", 0),
+            (v2(RUNNER) + b"gran2 2\n{}", 0),
+        ):
             code, out, seen = self.call(payload, b"gran1 2\n{}", uid=uid)
             self.assertEqual((code, out, seen), (1, b"", []), payload[-20:])
 
@@ -81,8 +90,16 @@ class Gran1(unittest.TestCase):
         self.assertIn("SocketUser=grans", sock)
         self.assertIn("SocketMode=0660", sock)
         self.assertIn("Accept=yes", sock)
-        for line in ("User=grans", "NoNewPrivileges=yes", "StandardInput=socket", "StandardOutput=socket", "StandardError=null", "RuntimeMaxSec=85", "ProtectSystem=strict",
-                     "ExecStart=/usr/bin/python3 -I /opt/lifeos-gran/gran_helper.py"):
+        for line in (
+            "User=grans",
+            "NoNewPrivileges=yes",
+            "StandardInput=socket",
+            "StandardOutput=socket",
+            "StandardError=null",
+            "RuntimeMaxSec=85",
+            "ProtectSystem=strict",
+            "ExecStart=/usr/bin/python3 -I /opt/lifeos-gran/gran_helper.py",
+        ):
             self.assertIn(line, unit)
         self.assertNotIn("Restart=", unit)
 

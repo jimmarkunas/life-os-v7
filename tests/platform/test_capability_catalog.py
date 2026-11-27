@@ -1,4 +1,5 @@
 """(F01, synthetic): the capability catalog resolver."""
+
 import copy
 import json
 import unittest
@@ -11,12 +12,51 @@ ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 11, 21, tzinfo=timezone.utc)
 DOC = {
     "version": 1,
-    "principals": [{"id": "client-a", "kind": "agent", "workspace": "ws-one"}, {"id": "client-b", "kind": "session", "workspace": "ws-two"}],
-    "accounts": [{"alias": "acct-a", "provider": "prov", "tenant": "tenant-a"}, {"alias": "acct-b", "provider": "prov", "tenant": "tenant-b"}],
+    "principals": [
+        {"id": "client-a", "kind": "agent", "workspace": "ws-one"},
+        {"id": "client-b", "kind": "session", "workspace": "ws-two"},
+    ],
+    "accounts": [
+        {"alias": "acct-a", "provider": "prov", "tenant": "tenant-a"},
+        {"alias": "acct-b", "provider": "prov", "tenant": "tenant-b"},
+    ],
     "capabilities": [
-        {"principal": "client-a", "tool": "tool1", "action": "read", "provider": "prov", "account_alias": "acct-a", "host": "host-one", "source": "src/a.py", "as_of": "2026-11-20", "max_age_days": 30, "status": "working"},
-        {"principal": "client-b", "tool": "tool1", "action": "read", "provider": "prov", "account_alias": "acct-b", "host": "host-two", "source": "src/b.py", "as_of": "2026-11-20", "max_age_days": 30, "status": "synthetic"},
-        {"principal": "client-a", "tool": "tool2", "action": "write", "provider": "prov", "account_alias": None, "host": "host-one", "source": "src/c.py", "as_of": "2026-11-20", "max_age_days": 30, "status": "missing"},
+        {
+            "principal": "client-a",
+            "tool": "tool1",
+            "action": "read",
+            "provider": "prov",
+            "account_alias": "acct-a",
+            "host": "host-one",
+            "source": "src/a.py",
+            "as_of": "2026-11-20",
+            "max_age_days": 30,
+            "status": "working",
+        },
+        {
+            "principal": "client-b",
+            "tool": "tool1",
+            "action": "read",
+            "provider": "prov",
+            "account_alias": "acct-b",
+            "host": "host-two",
+            "source": "src/b.py",
+            "as_of": "2026-11-20",
+            "max_age_days": 30,
+            "status": "synthetic",
+        },
+        {
+            "principal": "client-a",
+            "tool": "tool2",
+            "action": "write",
+            "provider": "prov",
+            "account_alias": None,
+            "host": "host-one",
+            "source": "src/c.py",
+            "as_of": "2026-11-20",
+            "max_age_days": 30,
+            "status": "missing",
+        },
     ],
 }
 
@@ -31,9 +71,16 @@ def cat(patch=None):
 class Resolve(unittest.TestCase):
     def test_two_clients_resolve_the_same_tool_to_their_own_account_host_and_source(self):
         c = cat()
-        a, b = C.resolve(c, "client-a", "tool1", "read", "ws-one", NOW), C.resolve(c, "client-b", "tool1", "read", "ws-two", NOW)
-        self.assertEqual((a["tenant"], a["host"], a["allowed_source"], a["synthetic"]), ("tenant-a", "host-one", "src/a.py", False))
-        self.assertEqual((b["tenant"], b["host"], b["allowed_source"], b["synthetic"]), ("tenant-b", "host-two", "src/b.py", True))
+        a, b = (
+            C.resolve(c, "client-a", "tool1", "read", "ws-one", NOW),
+            C.resolve(c, "client-b", "tool1", "read", "ws-two", NOW),
+        )
+        self.assertEqual(
+            (a["tenant"], a["host"], a["allowed_source"], a["synthetic"]), ("tenant-a", "host-one", "src/a.py", False)
+        )
+        self.assertEqual(
+            (b["tenant"], b["host"], b["allowed_source"], b["synthetic"]), ("tenant-b", "host-two", "src/b.py", True)
+        )
         self.assertEqual(a["provenance"], {"source": "src/a.py", "as_of": "2026-11-20"})
 
     def test_a_resolution_never_carries_a_credential_or_an_endpoint(self):
@@ -42,9 +89,14 @@ class Resolve(unittest.TestCase):
 
     def test_refusals_use_fixed_codes_and_invent_no_route(self):
         c = cat()
-        cases = [(c, "stranger", "tool1", "read", "ws-one", "unknown_principal"), (c, "client-a", "tool1", "read", "ws-two", "wrong_workspace"),
-                 (c, "client-a", "tool9", "read", "ws-one", "unknown_capability"), (c, "client-a", "tool2", "write", "ws-one", "unavailable"),
-                 (None, "client-a", "tool1", "read", "ws-one", "catalog_unreadable"), (c, None, "tool1", "read", "ws-one", "unknown_principal")]
+        cases = [
+            (c, "stranger", "tool1", "read", "ws-one", "unknown_principal"),
+            (c, "client-a", "tool1", "read", "ws-two", "wrong_workspace"),
+            (c, "client-a", "tool9", "read", "ws-one", "unknown_capability"),
+            (c, "client-a", "tool2", "write", "ws-one", "unavailable"),
+            (None, "client-a", "tool1", "read", "ws-one", "catalog_unreadable"),
+            (c, None, "tool1", "read", "ws-one", "unknown_principal"),
+        ]
         for catalog, who, tool, action, ws, code in cases:
             out = C.resolve(catalog, who, tool, action, ws, NOW)
             self.assertEqual((out["ok"], out["code"]), (False, code))
@@ -62,30 +114,45 @@ class Resolve(unittest.TestCase):
 
     def test_a_stale_source_refuses_at_the_age_limit(self):
         c = cat()
-        self.assertTrue(C.resolve(c, "client-a", "tool1", "read", "ws-one", datetime(2026, 12, 20, tzinfo=timezone.utc))["ok"])
+        self.assertTrue(
+            C.resolve(c, "client-a", "tool1", "read", "ws-one", datetime(2026, 12, 20, tzinfo=timezone.utc))["ok"]
+        )
         out = C.resolve(c, "client-a", "tool1", "read", "ws-one", datetime(2026, 12, 21, tzinfo=timezone.utc))
         self.assertEqual((out["ok"], out["code"]), (False, "source_stale"))
 
 
 class Load(unittest.TestCase):
     def test_bad_documents_raise_fixed_codes(self):
-        for text, code in [("nope", "not_json"), ("[]", "bad_shape"), (json.dumps({**DOC, "version": 2}), "bad_version"), (json.dumps({**DOC, "extra": 1}), "bad_shape")]:
+        for text, code in [
+            ("nope", "not_json"),
+            ("[]", "bad_shape"),
+            (json.dumps({**DOC, "version": 2}), "bad_version"),
+            (json.dumps({**DOC, "extra": 1}), "bad_shape"),
+        ]:
             with self.assertRaises(C.CatalogError) as caught:
                 C.load(text)
             self.assertEqual(str(caught.exception), code)
 
     def test_a_credential_or_endpoint_in_the_catalog_is_refused(self):
-        bad = [lambda d: d["capabilities"][0].update(source="ghp_" + "a" * 36), lambda d: d["accounts"][0].update(api_key="x"),
-               lambda d: d["capabilities"][0].update(host="0" * 40), lambda d: d["capabilities"][0].update(endpoint="https://example.com")]
+        bad = [
+            lambda d: d["capabilities"][0].update(source="ghp_" + "a" * 36),
+            lambda d: d["accounts"][0].update(api_key="x"),
+            lambda d: d["capabilities"][0].update(host="0" * 40),
+            lambda d: d["capabilities"][0].update(endpoint="https://example.com"),
+        ]
         for patch in bad:
             with self.assertRaises(C.CatalogError) as caught:
                 cat(patch)
             self.assertEqual(str(caught.exception), "credential_in_catalog")
 
     def test_bad_status_and_bad_rows_are_refused(self):
-        for patch, code in [(lambda d: d["capabilities"][0].update(status="live"), "bad_status"), (lambda d: d["capabilities"][0].update(max_age_days=0), "bad_row"),
-                            (lambda d: d["capabilities"][0].update(as_of="soon"), "bad_row"), (lambda d: d["principals"][0].update(kind="robot"), "bad_row"),
-                            (lambda d: d["capabilities"][0].pop("host"), "bad_row")]:
+        for patch, code in [
+            (lambda d: d["capabilities"][0].update(status="live"), "bad_status"),
+            (lambda d: d["capabilities"][0].update(max_age_days=0), "bad_row"),
+            (lambda d: d["capabilities"][0].update(as_of="soon"), "bad_row"),
+            (lambda d: d["principals"][0].update(kind="robot"), "bad_row"),
+            (lambda d: d["capabilities"][0].pop("host"), "bad_row"),
+        ]:
             with self.assertRaises(C.CatalogError) as caught:
                 cat(patch)
             self.assertEqual(str(caught.exception), code)

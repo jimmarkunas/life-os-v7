@@ -1,4 +1,5 @@
 """borrowed code is a security flaw unless listed."""
+
 import json
 import pathlib
 import re
@@ -7,7 +8,9 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 USES = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)")
 PINNED = re.compile(r"^([\w.-]+/[\w.-]+)(?:/[\w./-]+)?@[0-9a-f]{40}$")
-DOWNLOAD = re.compile(r"\b(curl|wget|apt-get download|playwright install|npm (?:i|install|ci)|npx|cargo (?:install|build)|git clone)\b")
+DOWNLOAD = re.compile(
+    r"\b(curl|wget|apt-get download|playwright install|npm (?:i|install|ci)|npx|cargo (?:install|build)|git clone)\b"
+)
 PIP = re.compile(r"\bpip3? install\b")
 FIELDS = ("name", "owner", "level", "reason", "review")
 
@@ -45,7 +48,9 @@ def unpinned_mcp_commands(files, inventory):
     for package in inventory["packages"]:
         for path in package["configs"]:
             commands = re.findall(r'(?:"command"\s*:\s*|^command\s*=\s*)"([^"]+)"', files[path], re.M)
-            allowed = [package["path"]] + (["ssh"] if commands[1:] == ["ssh"] and files[path].count(ORACLE_PATH) == 1 else [])
+            allowed = [package["path"]] + (
+                ["ssh"] if commands[1:] == ["ssh"] and files[path].count(ORACLE_PATH) == 1 else []
+            )
             if commands != allowed:
                 problems.append(f"{path} calls {commands} instead of the pinned {package['path']}")
     return sorted(problems)
@@ -53,7 +58,14 @@ def unpinned_mcp_commands(files, inventory):
 
 def _files():
     from tests import wftext
-    return {str(path.relative_to(ROOT)): wftext.text(path) if path.parent == ROOT / ".github" / "workflows" else path.read_text() for path in sorted((ROOT / ".github").rglob("*")) if path.suffix in (".yml", ".yaml", ".sh") and "__pycache__" not in path.parts}
+
+    return {
+        str(path.relative_to(ROOT)): wftext.text(path)
+        if path.parent == ROOT / ".github" / "workflows"
+        else path.read_text()
+        for path in sorted((ROOT / ".github").rglob("*"))
+        if path.suffix in (".yml", ".yaml", ".sh") and "__pycache__" not in path.parts
+    }
 
 
 class BorrowedCodeTests(unittest.TestCase):
@@ -63,7 +75,12 @@ class BorrowedCodeTests(unittest.TestCase):
         self.assertEqual(violations(_files(), self.inventory), [])
 
     def test_every_inventory_entry_has_owner_level_reason_and_review_date(self):
-        for entry in self.inventory["actions"] + self.inventory["downloads"] + self.inventory["packages"] + self.inventory["baselines"]:
+        for entry in (
+            self.inventory["actions"]
+            + self.inventory["downloads"]
+            + self.inventory["packages"]
+            + self.inventory["baselines"]
+        ):
             self.assertTrue(all(entry.get(field) for field in FIELDS), entry)
             self.assertIn(entry["level"], ("a", "b", "c"), entry)
             self.assertRegex(entry["review"], r"^\d{4}-\d{2}-\d{2}$")
@@ -77,24 +94,47 @@ class BorrowedCodeTests(unittest.TestCase):
         }
         found = violations(bad, self.inventory)
         self.assertEqual(len(found), 4, found)
-        self.assertEqual(violations({".github/workflows/ok.yml": "      - uses: actions/cache@" + "b" * 40 + "\n      - uses: ./.github/actions/python\n      - run: pip install --require-hashes -r requirements.lock\n"}, self.inventory), [])
+        self.assertEqual(
+            violations(
+                {
+                    ".github/workflows/ok.yml": "      - uses: actions/cache@"
+                    + "b" * 40
+                    + "\n      - uses: ./.github/actions/python\n      - run: pip install --require-hashes -r requirements.lock\n"
+                },
+                self.inventory,
+            ),
+            [],
+        )
 
     def test_every_concord_mcp_config_calls_the_pinned_path_and_a_bare_command_fails_the_same_check(self):
-        files = {path: (ROOT / path).read_text() for package in self.inventory["packages"] for path in package["configs"]}
+        files = {
+            path: (ROOT / path).read_text() for package in self.inventory["packages"] for path in package["configs"]
+        }
         self.assertEqual(len(files), 7)
         self.assertEqual(unpinned_mcp_commands(files, self.inventory), [])
-        bare = {path: text.replace(self.inventory["packages"][0]["path"], "concord-mcp") for path, text in files.items()}  # fail-then-pass: the old PATH lookup
+        bare = {
+            path: text.replace(self.inventory["packages"][0]["path"], "concord-mcp") for path, text in files.items()
+        }  # fail-then-pass: the old PATH lookup
         self.assertEqual(len(unpinned_mcp_commands(bare, self.inventory)), 7)
         mcp = files[".mcp.json"]
         self.assertIn('"command": "ssh"', mcp)
-        self.assertEqual(len(unpinned_mcp_commands({**files, ".mcp.json": mcp.replace(ORACLE_PATH, "concord-mcp")}, self.inventory)), 1)
+        self.assertEqual(
+            len(unpinned_mcp_commands({**files, ".mcp.json": mcp.replace(ORACLE_PATH, "concord-mcp")}, self.inventory)),
+            1,
+        )
 
     def test_the_package_is_pinned_by_version_and_integrity_and_the_accepted_exceptions_are_written_down(self):
         package = self.inventory["packages"][0]
         self.assertEqual(package["version"], "0.20.0")
         self.assertRegex(package["integrity"], r"^sha512-[A-Za-z0-9+/]{86}==$")
-        self.assertIn("0.20.0", (ROOT / "tools" / "orca-concord-room" / "README.md").read_text())  # the install instruction names the same version
-        accepted = {entry["name"]: entry["level"] for entry in self.inventory["actions"] + self.inventory["downloads"] + self.inventory["baselines"] if entry["level"] == "c"}
+        self.assertIn(
+            "0.20.0", (ROOT / "tools" / "orca-concord-room" / "README.md").read_text()
+        )  # the install instruction names the same version
+        accepted = {
+            entry["name"]: entry["level"]
+            for entry in self.inventory["actions"] + self.inventory["downloads"] + self.inventory["baselines"]
+            if entry["level"] == "c"
+        }
         self.assertIn("actions/cache", accepted)
         self.assertTrue(any(name.startswith("Playwright") for name in accepted))
         self.assertTrue(any(name.startswith("GitHub-hosted runner image") for name in accepted))

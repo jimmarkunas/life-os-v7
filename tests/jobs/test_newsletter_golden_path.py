@@ -1,6 +1,7 @@
 """NEWSLETTER_GOLDEN_PATH_GATE: one production-shaped Jobright alert through the REAL V7 stages to the Job Ledger and
 back to Gmail.
 """
+
 import json
 import time
 import unittest
@@ -18,43 +19,81 @@ from tests.jobs.fakes_jobsdb import JobsDB
 from tests.jobs.fakes_ledger import SOURCE
 from tests.jobs.support import CARD, ENGINEER_BODY, Mailbox, PM_BODY, VACANCIES, alert
 
-PROFILE = {"years": 15, "scope": {"team_size": 10, "budget_usd": 20_000_000, "global": "direct", "enterprise": "direct", "multi_team": "direct", "executive": "adjacent", "people_leadership": "direct"},
-           "capabilities": [{"id": "erp", "label": "ERP integrations", "class": "direct", "terms": ["netsuite", "erp"], "committed": True},
-                            {"id": "cms", "label": "headless CMS", "class": "adjacent", "terms": ["contentful", "cms"]},
-                            {"id": "pay", "label": "payments", "class": "direct", "terms": ["stripe", "payment"], "bucket": "skill"},
-                            {"id": "pm", "label": "program delivery", "class": "direct", "terms": ["program management", "delivery"], "bucket": "skill"}],
-           "functions": [{"terms": ["program manager", "technical program manager", "roadmap"], "class": "direct"}, {"terms": ["implementation", "integration"], "class": "adjacent"}],
-           "advantage": ["ai", "automation"], "specialization": ["technical program manager"]}
+PROFILE = {
+    "years": 15,
+    "scope": {
+        "team_size": 10,
+        "budget_usd": 20_000_000,
+        "global": "direct",
+        "enterprise": "direct",
+        "multi_team": "direct",
+        "executive": "adjacent",
+        "people_leadership": "direct",
+    },
+    "capabilities": [
+        {"id": "erp", "label": "ERP integrations", "class": "direct", "terms": ["netsuite", "erp"], "committed": True},
+        {"id": "cms", "label": "headless CMS", "class": "adjacent", "terms": ["contentful", "cms"]},
+        {"id": "pay", "label": "payments", "class": "direct", "terms": ["stripe", "payment"], "bucket": "skill"},
+        {
+            "id": "pm",
+            "label": "program delivery",
+            "class": "direct",
+            "terms": ["program management", "delivery"],
+            "bucket": "skill",
+        },
+    ],
+    "functions": [
+        {"terms": ["program manager", "technical program manager", "roadmap"], "class": "direct"},
+        {"terms": ["implementation", "integration"], "class": "adjacent"},
+    ],
+    "advantage": ["ai", "automation"],
+    "specialization": ["technical program manager"],
+}
 ENV = {"FIT_PROFILE_JSON": json.dumps(PROFILE), "V7_FIT_GATE": "true"}
 
 
 # id -> (company, title, employer page url, page body).
 
 
-
-
 def page(title, company, body):
-    ld = {"@type": "JobPosting", "title": title, "hiringOrganization": {"@type": "Organization", "name": company}, "datePosted": date.today().isoformat(), "description": body.replace('"', "'")}
+    ld = {
+        "@type": "JobPosting",
+        "title": title,
+        "hiringOrganization": {"@type": "Organization", "name": company},
+        "datePosted": date.today().isoformat(),
+        "description": body.replace('"', "'"),
+    }
     return "<html><title>%s</title><script type='application/ld+json'>%s</script></html>" % (title, json.dumps(ld))
-
-
 
 
 class JobLedger:
     """A synthetic Notion Job Ledger: it checks the target, creates pages, answers the URL query and the read-back, and
     takes the Fit patches.
     """
+
     source = SOURCE
 
     def __init__(self):
-        self.pages, self.blocks, self.kids, self.calls, self.created, self.break_url, self.n = {}, {}, {}, 0, 0, False, 0
+        self.pages, self.blocks, self.kids, self.calls, self.created, self.break_url, self.n = (
+            {},
+            {},
+            {},
+            0,
+            0,
+            False,
+            0,
+        )
 
     @staticmethod
     def _read(props):
         out = {}
         for name, prop in props.items():
             kind = next(iter(prop))
-            out[name] = {kind: [{"plain_text": r["text"]["content"]} for r in prop[kind]]} if kind in ("title", "rich_text") else prop
+            out[name] = (
+                {kind: [{"plain_text": r["text"]["content"]} for r in prop[kind]]}
+                if kind in ("title", "rich_text")
+                else prop
+            )
         return out
 
     def create(self, props, blocks):
@@ -70,8 +109,16 @@ class JobLedger:
         """
         self.n += 1
         kind, inner = b["type"], b[b["type"]]
-        runs = [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in inner.get("rich_text", [])]
-        block = {"id": f"blk{self.n}", "type": kind, kind: {"rich_text": runs}, "has_children": bool(inner.get("children"))}
+        runs = [
+            {"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")}
+            for r in inner.get("rich_text", [])
+        ]
+        block = {
+            "id": f"blk{self.n}",
+            "type": kind,
+            kind: {"rich_text": runs},
+            "has_children": bool(inner.get("children")),
+        }
         self.kids[block["id"]] = [self._store(c) for c in inner.get("children", ())]
         return block
 
@@ -84,18 +131,37 @@ class JobLedger:
 
     def call(self, method, path, body=None):
         from lifeos.jobs import ledger
+
         self.calls += 1
         if method == "GET" and path.startswith("/data_sources/"):
             return {"properties": {n: {"type": t} for n, t in ledger.REQUIRED.items()}}
         if method == "POST" and path.endswith("/query"):
             where = (body or {}).get("filter") or {}
             if where.get("property") == "Role":
-                return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
-                                    and not "".join(r["plain_text"] for r in self._shown(p).get("Role", {}).get("rich_text", []))], "has_more": False}
+                return {
+                    "results": [
+                        {"id": i, "properties": self._shown(p)}
+                        for i, p in self.pages.items()
+                        if not p["archived"]
+                        and not "".join(r["plain_text"] for r in self._shown(p).get("Role", {}).get("rich_text", []))
+                    ],
+                    "has_more": False,
+                }
             ors = where.get("or")
-            wanted = {f["rich_text"]["equals"] for f in ors} if ors else ({where["rich_text"]["equals"]} if where.get("rich_text") else None)  # one key, a batch or none (the URL read)
-            return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
-                                and (wanted is None or p["props"]["Stable Job Key"]["rich_text"][0]["plain_text"] in wanted)], "has_more": False}
+            wanted = (
+                {f["rich_text"]["equals"] for f in ors}
+                if ors
+                else ({where["rich_text"]["equals"]} if where.get("rich_text") else None)
+            )  # one key, a batch or none (the URL read)
+            return {
+                "results": [
+                    {"id": i, "properties": self._shown(p)}
+                    for i, p in self.pages.items()
+                    if not p["archived"]
+                    and (wanted is None or p["props"]["Stable Job Key"]["rich_text"][0]["plain_text"] in wanted)
+                ],
+                "has_more": False,
+            }
         if method == "GET" and path.startswith("/pages/"):
             found = self.pages[path.rsplit("/", 1)[1]]
             return {"archived": found["archived"], "properties": self._shown(found)}
@@ -116,13 +182,22 @@ class JobLedger:
 
 class Journey:
     """The chain a tick runs, in order, over one mailbox, one Jobs store and one Ledger."""
+
     def __init__(self, test, messages):
         self.mailbox, self.db, self.ledger = Mailbox(messages), JobsDB(), JobLedger()
         self.resolved = {}  # jobright url -> the provider's resolution result
-        patches = [mock.patch.object(store, "connect", lambda: self.db), mock.patch.object(store, "ensure_schema", lambda c: None),
-                   mock.patch.object(enrich, "fetch", self._fetch), mock.patch.object(publish, "Client", lambda environ: self.ledger),
-                   mock.patch.object(enrich.tinyfish, "fetch_many", side_effect=AssertionError("TinyFish must never be reached")),
-                   mock.patch.object(enrich.usage, "reserve", side_effect=AssertionError("no paid browser usage in the golden path"))]
+        patches = [
+            mock.patch.object(store, "connect", lambda: self.db),
+            mock.patch.object(store, "ensure_schema", lambda c: None),
+            mock.patch.object(enrich, "fetch", self._fetch),
+            mock.patch.object(publish, "Client", lambda environ: self.ledger),
+            mock.patch.object(
+                enrich.tinyfish, "fetch_many", side_effect=AssertionError("TinyFish must never be reached")
+            ),
+            mock.patch.object(
+                enrich.usage, "reserve", side_effect=AssertionError("no paid browser usage in the golden path")
+            ),
+        ]
         for p in patches:
             p.start()
             test.addCleanup(p.stop)
@@ -137,13 +212,18 @@ class Journey:
     def resolve_all(self, ok):
         for key in ok:
             company, title, final, _ = VACANCIES[key]
-            self.resolved["https://jobright.ai/jobs/info/" + {"v1": "v1", "v2": "v2", "v3": "v3", "v4": "v4", "v5": "v5", "v6": "v6"}[key]] = {"outcome": "landed", "url": final, "kind": "ats", "via": "original_post"}
+            self.resolved[
+                "https://jobright.ai/jobs/info/"
+                + {"v1": "v1", "v2": "v2", "v3": "v3", "v4": "v4", "v5": "v5", "v6": "v6"}[key]
+            ] = {"outcome": "landed", "url": final, "kind": "ats", "via": "original_post"}
 
     def tick(self):
         """sweep and extract, then the resolver, enrich, fit, publish with its read-back, then finalize."""
         sweep.sweep(self.mailbox, True)
         ingest.extract(self.mailbox, True, 100, self.db)
-        resolve_stage.run_rows("jobright", 40, True, lambda rows: [self.resolved.get(row[1], {"outcome": "rate_limited"}) for row in rows])
+        resolve_stage.run_rows(
+            "jobright", 40, True, lambda rows: [self.resolved.get(row[1], {"outcome": "rate_limited"}) for row in rows]
+        )
         enrich.run(50, True)
         fit_stage.run(100, True, ENV)
         published = publish.run(60, True, ENV)
@@ -151,7 +231,9 @@ class Journey:
 
     def table(self):
         """{company: (status, reason, verified, has a Ledger page)}: one row per vacancy, which is the accounting."""
-        rows = self.db.raw.execute("SELECT company, status, unresolved_reason, verified_at IS NOT NULL, notion_page_id IS NOT NULL FROM v7_jobs ORDER BY id").fetchall()
+        rows = self.db.raw.execute(
+            "SELECT company, status, unresolved_reason, verified_at IS NOT NULL, notion_page_id IS NOT NULL FROM v7_jobs ORDER BY id"
+        ).fetchall()
         return {r[0]: (r[1], r[2], bool(r[3]), bool(r[4])) for r in rows}
 
     def labels(self, message_id):
@@ -174,13 +256,23 @@ class GoldenPath(unittest.TestCase):
         j = self.journey(m1=mail("v1", "v2", "v3", "v4", "v5"), m2=mail("v6"))
         j.resolve_all(["v1", "v2", "v3", "v4", "v6"])
         published, closed = j.tick()
-        self.assertEqual(j.table(), {
-            "Acme": ("PUBLISHED", None, True, True), "Globex": ("PUBLISHED", None, True, True), "Initech": ("EXCLUDED_FIT", "lane_exclude", False, False),
-            "Umbrella": ("DUPLICATE", "dup_of_final_url", False, False), "Hooli": ("NEW", "rate_limited", False, False), "Wayne": ("PUBLISHED", None, True, True)})
+        self.assertEqual(
+            j.table(),
+            {
+                "Acme": ("PUBLISHED", None, True, True),
+                "Globex": ("PUBLISHED", None, True, True),
+                "Initech": ("EXCLUDED_FIT", "lane_exclude", False, False),
+                "Umbrella": ("DUPLICATE", "dup_of_final_url", False, False),
+                "Hooli": ("NEW", "rate_limited", False, False),
+                "Wayne": ("PUBLISHED", None, True, True),
+            },
+        )
         self.assertEqual((j.labels("m1"), j.labels("m2")), (NEWSLETTER, DONE))  # m1 still has a pending vacancy
         self.assertEqual((closed["closed"], closed["in_flight"]), (1, 1))
         self.assertEqual(j.ledger.created, 3)
-        self.assertEqual(published["readback"], {"checked": 3, "verified": 3, "failed": 0, "why": {}})  # every created page is read back from Notion
+        self.assertEqual(
+            published["readback"], {"checked": 3, "verified": 3, "failed": 0, "why": {}}
+        )  # every created page is read back from Notion
         self.assertEqual(published["fit_sync"]["due"], 0)
 
     def test_the_us_remote_view_carries_the_admitted_vacancy_with_its_employer_link_key_and_fit(self):
@@ -273,34 +365,54 @@ class GoldenPath(unittest.TestCase):
         def lost_answer(props, blocks):
             made(props, blocks)
             raise NotionError("NOTION_NETWORK")
+
         j.ledger.create = lost_answer
         published, _ = j.tick()
         self.assertEqual((published["failed"], j.ledger.created, published["claim_won"]), (1, 1, 1))
-        self.assertEqual(j.db.raw.execute("SELECT ledger_claim_by IS NOT NULL, notion_page_id IS NULL FROM v7_jobs").fetchone(), (1, 1))  # unresolved: claim held, no page recorded
+        self.assertEqual(
+            j.db.raw.execute("SELECT ledger_claim_by IS NOT NULL, notion_page_id IS NULL FROM v7_jobs").fetchone(),
+            (1, 1),
+        )  # unresolved: claim held, no page recorded
         j.ledger.create = made
         published, closed = j.tick()
         self.assertEqual((published["failed"], j.ledger.created, published["claim_held"]), (0, 1, 0))
-        self.assertEqual((j.table()["Acme"], j.db.raw.execute("SELECT ledger_claim_by IS NULL FROM v7_jobs").fetchone()), (("PUBLISHED", None, True, True), (1,)))
+        self.assertEqual(
+            (j.table()["Acme"], j.db.raw.execute("SELECT ledger_claim_by IS NULL FROM v7_jobs").fetchone()),
+            (("PUBLISHED", None, True, True), (1,)),
+        )
 
     def test_a_create_that_made_nothing_is_not_retried_until_the_lease_passes_then_exactly_once(self):
         j = self.journey(m1=mail("v1"))
         j.resolve_all(["v1"])
         made = j.ledger.create
-        j.ledger.create = lambda props, blocks: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))  # nothing was created
+        j.ledger.create = lambda props, blocks: (_ for _ in ()).throw(
+            NotionError("NOTION_NETWORK")
+        )  # nothing was created
         published, _ = j.tick()
         self.assertEqual((published["failed"], j.ledger.created), (1, 0))
         j.ledger.create = made
         published, _ = j.tick()
-        self.assertEqual((published["failed"], published["claim_held"], j.ledger.created), (0, 1, 0))  # inside the lease: nothing is created on a guess
-        j.db.raw.execute("UPDATE v7_jobs SET ledger_claim_at = ?", (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30),))
+        self.assertEqual(
+            (published["failed"], published["claim_held"], j.ledger.created), (0, 1, 0)
+        )  # inside the lease: nothing is created on a guess
+        j.db.raw.execute(
+            "UPDATE v7_jobs SET ledger_claim_at = ?",
+            (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30),),
+        )
         published, _ = j.tick()
-        self.assertEqual((published["failed"], published["claim_won"], j.ledger.created), (0, 1, 1))  # lease over, key read back empty: one create
+        self.assertEqual(
+            (published["failed"], published["claim_won"], j.ledger.created), (0, 1, 1)
+        )  # lease over, key read back empty: one create
         self.assertEqual(j.table()["Acme"], ("PUBLISHED", None, True, True))
 
     def assertRefused(self, j, error):
         published, closed = j.tick()
-        self.assertEqual((published["failed"], published["error"], j.ledger.created), (1, error, 1))  # nothing created, nothing adopted
-        self.assertEqual((j.table()["Acme"], j.labels("m1"), closed["closed"]), (("READY", None, False, False), NEWSLETTER, 0))
+        self.assertEqual(
+            (published["failed"], published["error"], j.ledger.created), (1, error, 1)
+        )  # nothing created, nothing adopted
+        self.assertEqual(
+            (j.table()["Acme"], j.labels("m1"), closed["closed"]), (("READY", None, False, False), NEWSLETTER, 0)
+        )
 
     def test_two_ledger_pages_for_one_key_are_refused_never_resolved_by_picking_one(self):
         j = self.crashed_after_create()
@@ -313,7 +425,10 @@ class GoldenPath(unittest.TestCase):
                 j = self.crashed_after_create()
                 lookup = j.ledger.call
                 j.ledger.call = lambda method, path, body=None, lookup=lookup, answer=answer: (
-                    answer if body and set(body.get("filter") or {}) & {"rich_text", "or"} else lookup(method, path, body))
+                    answer
+                    if body and set(body.get("filter") or {}) & {"rich_text", "or"}
+                    else lookup(method, path, body)
+                )
                 self.assertRefused(j, "ledger_lookup_unreadable")
 
     def test_an_unreadable_batched_lookup_falls_back_to_the_per_key_lookup_and_adopts(self):
@@ -327,6 +442,7 @@ class GoldenPath(unittest.TestCase):
                 if len(batches) == 1:  # publish's batched lookup only
                     return {"results": None}
             return lookup(method, path, body)
+
         j.ledger.call = call
         published, _ = j.tick()
         self.assertEqual((published["failed"], published.get("key_lookup"), j.ledger.created), (0, "per_key", 1))
@@ -337,8 +453,22 @@ class GoldenPath(unittest.TestCase):
         j.resolve_all(["v1", "v2"])
         queries = []
         lookup = j.ledger.call
-        j.ledger.call = lambda method, path, body=None: (queries.append("role" if (body.get("filter") or {}).get("property") == "Role" else "or" if (body.get("filter") or {}).get("or") else "one" if (body.get("filter") or {}).get("rich_text") else "all")
-                                                          if body and method == "POST" and path.endswith("/query") else None) or lookup(method, path, body)
+        j.ledger.call = lambda method, path, body=None: (
+            (
+                queries.append(
+                    "role"
+                    if (body.get("filter") or {}).get("property") == "Role"
+                    else "or"
+                    if (body.get("filter") or {}).get("or")
+                    else "one"
+                    if (body.get("filter") or {}).get("rich_text")
+                    else "all"
+                )
+                if body and method == "POST" and path.endswith("/query")
+                else None
+            )
+            or lookup(method, path, body)
+        )
         published, _ = j.tick()
         self.assertEqual((published["created"], published["failed"], j.ledger.created), (2, 0, 2))
         self.assertEqual(queries.count("one"), 2)

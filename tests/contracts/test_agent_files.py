@@ -1,6 +1,7 @@
 """the Concord block in the per-tool instruction files is generated from AGENTS.md plus each tool's own paragraph from
 the generator's table, and cannot.
 """
+
 import shutil
 import tempfile
 import unittest
@@ -23,7 +24,11 @@ def scratch():
 
 class GeneratedCopies(unittest.TestCase):
     def test_every_committed_copy_equals_the_block_in_agents_md(self):
-        self.assertEqual(af.drifted(REAL), [], "a generated agent file differs from AGENTS.md: run python -m lifeos.platform.agent_files")
+        self.assertEqual(
+            af.drifted(REAL),
+            [],
+            "a generated agent file differs from AGENTS.md: run python -m lifeos.platform.agent_files",
+        )
 
     def test_editing_agents_md_changes_all_generated_files_and_keeps_their_other_content(self):
         root = scratch()
@@ -49,6 +54,7 @@ class GeneratedCopies(unittest.TestCase):
     def test_the_cursor_file_follows_a_change_to_its_own_paragraph_in_the_table(self):
         root = scratch()
         from unittest import mock
+
         with mock.patch.dict(af.PARAGRAPHS, {"cursor": af.PARAGRAPHS["cursor"] + "\nExtra Cursor line."}):
             self.assertEqual(af.drifted(root), [".cursor/rules/concord.mdc"])
             self.assertEqual(af.sync(root), [".cursor/rules/concord.mdc"])
@@ -77,18 +83,26 @@ class GeneratedCopies(unittest.TestCase):
     def test_the_variant_file_is_listed_with_a_reason_and_is_not_compared(self):
         root = scratch()
         self.assertEqual(list(af.VARIANTS), [".agents/rules/concord.md"])
-        self.assertNotEqual(af.block_of((root / ".agents/rules/concord.md").read_text()), af.source(root))  # it really is a different block
+        self.assertNotEqual(
+            af.block_of((root / ".agents/rules/concord.md").read_text()), af.source(root)
+        )  # it really is a different block
         self.assertNotIn(".agents/rules/concord.md", af.drifted(root))
         self.assertTrue(all(len(reason.split()) > 5 for reason in af.VARIANTS.values()))
 
-    def test_every_other_file_in_the_agent_folders_that_carries_a_concord_block_is_either_generated_or_a_listed_variant(self):
+    def test_every_other_file_in_the_agent_folders_that_carries_a_concord_block_is_either_generated_or_a_listed_variant(
+        self,
+    ):
         known = set(af.GENERATED) | set(af.VARIANTS)
         found = set()
         for folder in (".agents", ".claude", ".codex", ".cursor", ".gemini", ".github"):
             for path in (REAL / folder).rglob("*"):
                 if path.is_file() and path.suffix in (".md", ".mdc") and "concord:start" in path.read_text():
                     found.add(str(path.relative_to(REAL)))
-        self.assertEqual(found - known, set(), "a new per-tool file repeats the Concord block: add it to GENERATED or to VARIANTS with a reason")
+        self.assertEqual(
+            found - known,
+            set(),
+            "a new per-tool file repeats the Concord block: add it to GENERATED or to VARIANTS with a reason",
+        )
 
 
 if __name__ == "__main__":

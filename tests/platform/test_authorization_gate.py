@@ -1,4 +1,5 @@
 """(F02, synthetic): the central authorization gate."""
+
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -16,11 +17,27 @@ FAKE_SECRET = "ghp_" + "A" * 24
 
 
 def catalog_text(**patch):
-    doc = {"version": 1,
-           "principals": [{"id": p, "kind": "agent", "workspace": t} for p, t in TENANT.items()],
-           "accounts": [{"alias": t + "-acct", "provider": "fakeprov", "tenant": t} for t in TENANT.values()],
-           "capabilities": [{"principal": p, "tool": "notion.page", "action": a, "provider": "fakeprov", "account_alias": t + "-acct", "host": "mac-fixture", "source": "tests/fixture",
-                             "as_of": "2026-11-20", "max_age_days": 30, "status": "synthetic"} for p, t in TENANT.items() for a in ACTIONS]}
+    doc = {
+        "version": 1,
+        "principals": [{"id": p, "kind": "agent", "workspace": t} for p, t in TENANT.items()],
+        "accounts": [{"alias": t + "-acct", "provider": "fakeprov", "tenant": t} for t in TENANT.values()],
+        "capabilities": [
+            {
+                "principal": p,
+                "tool": "notion.page",
+                "action": a,
+                "provider": "fakeprov",
+                "account_alias": t + "-acct",
+                "host": "mac-fixture",
+                "source": "tests/fixture",
+                "as_of": "2026-11-20",
+                "max_age_days": 30,
+                "status": "synthetic",
+            }
+            for p, t in TENANT.items()
+            for a in ACTIONS
+        ],
+    }
     doc.update(patch)
     return json.dumps(doc)
 
@@ -31,8 +48,20 @@ POLICY = A.load(json.dumps({"version": 1, "default": {}, "agents": {k: {"notion"
 
 def grant(agent, **kw):
     t = TENANT[agent]
-    return G.Grant(**{"id": "grant-" + agent, "principal": agent, "tenant": t, "account": t + "-acct", "tool": "notion.page", "purpose": "weekly-report", "actions": ("read", "write"),
-                      "credential_ref": "bws-fake-" + t, "expires": NOW + timedelta(hours=1), **kw})
+    return G.Grant(
+        **{
+            "id": "grant-" + agent,
+            "principal": agent,
+            "tenant": t,
+            "account": t + "-acct",
+            "tool": "notion.page",
+            "purpose": "weekly-report",
+            "actions": ("read", "write"),
+            "credential_ref": "bws-fake-" + t,
+            "expires": NOW + timedelta(hours=1),
+            **kw,
+        }
+    )
 
 
 def session(agent, **kw):
@@ -40,13 +69,29 @@ def session(agent, **kw):
 
 
 def request(agent, action="read", **kw):
-    return G.Request(**{"tool": "notion.page", "action": action, "account": TENANT[agent] + "-acct", "purpose": "weekly-report", "service": "notion", "request_id": "req-1", **kw})
+    return G.Request(
+        **{
+            "tool": "notion.page",
+            "action": action,
+            "account": TENANT[agent] + "-acct",
+            "purpose": "weekly-report",
+            "service": "notion",
+            "request_id": "req-1",
+            **kw,
+        }
+    )
 
 
 class Harness:
     def __init__(self, grants=None, approvals=(), catalog=CATALOG, policy=POLICY, result=None, boom=False):
         self.grants = tuple(grants if grants is not None else [grant(a) for a in KEY])
-        self.approvals, self.catalog, self.policy, self.result, self.boom = tuple(approvals), catalog, policy, result or {"ok": True}, boom
+        self.approvals, self.catalog, self.policy, self.result, self.boom = (
+            tuple(approvals),
+            catalog,
+            policy,
+            result or {"ok": True},
+            boom,
+        )
         self.receipts, self.effects = [], []
 
     def effect(self):
@@ -56,11 +101,34 @@ class Harness:
         return self.result
 
     def run(self, agent="personal-agent", action="read", at=NOW, audit=None, excluded=(), sess=None, **rkw):
-        return G.execute(sess or session(agent), request(agent, action, **rkw), self.catalog, self.policy, self.grants, self.approvals, HUMAN, self.effect, audit or self.receipts.append, at, excluded)
+        return G.execute(
+            sess or session(agent),
+            request(agent, action, **rkw),
+            self.catalog,
+            self.policy,
+            self.grants,
+            self.approvals,
+            HUMAN,
+            self.effect,
+            audit or self.receipts.append,
+            at,
+            excluded,
+        )
 
 
 def approval(agent, action, **kw):
-    return G.Approval(**{"principal": agent, "tenant": TENANT[agent], "tool": "notion.page", "action": action, "request_id": "req-1", "approver": "jim-human", "approved_at": NOW - timedelta(minutes=1), **kw})
+    return G.Approval(
+        **{
+            "principal": agent,
+            "tenant": TENANT[agent],
+            "tool": "notion.page",
+            "action": action,
+            "request_id": "req-1",
+            "approver": "jim-human",
+            "approved_at": NOW - timedelta(minutes=1),
+            **kw,
+        }
+    )
 
 
 class GF02GWT01(unittest.TestCase):
@@ -72,7 +140,9 @@ class GF02GWT01(unittest.TestCase):
         h = Harness()
         for agent in KEY:
             out = h.run(agent)
-            self.assertEqual((out.decision, out.reason, out.executed, out.live_proven), ("allow", "ok", True, False), agent)
+            self.assertEqual(
+                (out.decision, out.reason, out.executed, out.live_proven), ("allow", "ok", True, False), agent
+            )
         self.assertEqual(len(h.effects), 3)
         self.assertEqual({r["tenant"] for r in h.receipts}, {"personal", "bytalos", "tgp"})
         self.assertTrue(all(r["mode"] == "synthetic" for r in h.receipts))
@@ -101,9 +171,17 @@ class GF02GWT01(unittest.TestCase):
         self.assertEqual((out.reason, h.effects), ("tenant_mismatch", []))
 
     def test_an_account_of_another_tenant_in_the_catalog_is_refused(self):
-        swapped = C.load(catalog_text(accounts=[{"alias": "personal-acct", "provider": "fakeprov", "tenant": "bytalos"}]))
+        swapped = C.load(
+            catalog_text(accounts=[{"alias": "personal-acct", "provider": "fakeprov", "tenant": "bytalos"}])
+        )
         self.assertEqual(Harness(catalog=swapped).run("personal-agent").reason, "tenant_mismatch")
-        dup = C.load(catalog_text(accounts=[{"alias": "personal-acct", "provider": "fakeprov", "tenant": t} for t in ("personal", "bytalos")]))
+        dup = C.load(
+            catalog_text(
+                accounts=[
+                    {"alias": "personal-acct", "provider": "fakeprov", "tenant": t} for t in ("personal", "bytalos")
+                ]
+            )
+        )
         self.assertEqual(Harness(catalog=dup).run("personal-agent").reason, "catalog_alias_duplicate")
 
     def test_a_grant_for_another_account_or_tool_is_no_grant(self):
@@ -121,7 +199,9 @@ class GF02GWT01(unittest.TestCase):
         h = Harness()
         self.assertEqual(h.run("personal-agent", at=NOW + timedelta(hours=1) - timedelta(seconds=1)).reason, "ok")
         self.assertEqual(h.run("personal-agent", at=NOW + timedelta(hours=1)).reason, "grant_expired")
-        self.assertEqual(h.run("personal-agent", at=NOW + timedelta(days=40)).reason, "catalog_source_stale")  # an old catalog row also refuses
+        self.assertEqual(
+            h.run("personal-agent", at=NOW + timedelta(days=40)).reason, "catalog_source_stale"
+        )  # an old catalog row also refuses
         self.assertEqual(len(h.effects), 1)
 
     def test_a_naive_expiry_is_refused(self):
@@ -140,13 +220,20 @@ class GF02GWT01(unittest.TestCase):
 
     def test_an_unknown_untrusted_or_policy_denied_caller_is_refused(self):
         h = Harness()
-        self.assertEqual(h.run("personal-agent", sess=session("personal-agent", principal="ghost-agent")).reason, "catalog_unknown_principal")
-        self.assertEqual(h.run("personal-agent", sess=session("personal-agent", trusted=False)).reason, "untrusted_session")
+        self.assertEqual(
+            h.run("personal-agent", sess=session("personal-agent", principal="ghost-agent")).reason,
+            "catalog_unknown_principal",
+        )
+        self.assertEqual(
+            h.run("personal-agent", sess=session("personal-agent", trusted=False)).reason, "untrusted_session"
+        )
         off = A.load(json.dumps({"version": 1, "default": {}, "agents": {}}))
         self.assertEqual(Harness(policy=off).run("personal-agent").reason, "policy_denied")
         self.assertEqual(Harness(policy=None).run("personal-agent").reason, "policy_denied")
         self.assertEqual(Harness(catalog=None).run("personal-agent").reason, "catalog_unreadable")
-        self.assertEqual(h.run("personal-agent", sess=session("personal-agent", tenant="acme")).reason, "unknown_tenant")
+        self.assertEqual(
+            h.run("personal-agent", sess=session("personal-agent", tenant="acme")).reason, "unknown_tenant"
+        )
         self.assertEqual(h.run("personal-agent", action="erase-everything").reason, "unknown_action")
         self.assertEqual(h.effects, [])
 
@@ -176,6 +263,7 @@ class GF02GWT01(unittest.TestCase):
 
         def broken(_):
             raise OSError("disk full")
+
         with self.assertRaises(OSError):
             h.run("personal-agent", audit=broken)
         with self.assertRaises(OSError):
@@ -219,12 +307,19 @@ class GF02GWT02(unittest.TestCase):
             h = Harness(self.protected_grants(), [approval("personal-agent", "delete", approved_at=at)])
             self.assertEqual(h.run("personal-agent", "delete").reason, "approval_stale")
             self.assertEqual(h.effects, [])
-        edge = Harness(self.protected_grants(), [approval("personal-agent", "delete", approved_at=NOW - G.APPROVAL_TTL)])
+        edge = Harness(
+            self.protected_grants(), [approval("personal-agent", "delete", approved_at=NOW - G.APPROVAL_TTL)]
+        )
         self.assertEqual(edge.run("personal-agent", "delete").reason, "ok")
 
     def test_an_approval_for_another_principal_action_tool_tenant_or_request_does_not_count(self):
-        other = [approval("bytalos-agent", "delete"), approval("personal-agent", "send"), approval("personal-agent", "delete", request_id="req-2"),
-                 approval("personal-agent", "delete", tool="notion.other"), approval("personal-agent", "delete", tenant="bytalos")]
+        other = [
+            approval("bytalos-agent", "delete"),
+            approval("personal-agent", "send"),
+            approval("personal-agent", "delete", request_id="req-2"),
+            approval("personal-agent", "delete", tool="notion.other"),
+            approval("personal-agent", "delete", tenant="bytalos"),
+        ]
         h = Harness(self.protected_grants(), other)
         self.assertEqual(h.run("personal-agent", "delete").reason, "approval_missing")
         self.assertEqual(h.effects, [])
@@ -245,7 +340,12 @@ class GF02GWT02(unittest.TestCase):
         h.grants = G.revoke(h.grants, principal="personal-agent")
         self.assertEqual(h.run("personal-agent", "delete").reason, "grant_revoked")
         ro = A.load(json.dumps({"version": 1, "default": {}, "agents": {KEY["personal-agent"]: {"notion": "read"}}}))
-        self.assertEqual(Harness(self.protected_grants(), [approval("personal-agent", "delete")], policy=ro).run("personal-agent", "delete").reason, "policy_denied")
+        self.assertEqual(
+            Harness(self.protected_grants(), [approval("personal-agent", "delete")], policy=ro)
+            .run("personal-agent", "delete")
+            .reason,
+            "policy_denied",
+        )
 
     def test_the_protected_receipt_is_redacted_and_attributable(self):
         h = Harness(self.protected_grants())
@@ -254,8 +354,27 @@ class GF02GWT02(unittest.TestCase):
         for forbidden in (KEY["personal-agent"], "grant-personal-agent", "bws-fake", "personal-acct", "jim-human"):
             self.assertNotIn(forbidden, text)
         rec = h.receipts[-1]
-        self.assertEqual(set(rec), {"t", "mode", "principal_fp", "tenant", "tool", "action", "purpose", "request_id", "grant_fp", "approver_fp", "outcome", "reason"})
-        self.assertEqual((rec["principal_fp"], rec["grant_fp"], rec["action"]), (G.fingerprint("personal-agent"), G.fingerprint("grant-personal-agent"), "delete"))
+        self.assertEqual(
+            set(rec),
+            {
+                "t",
+                "mode",
+                "principal_fp",
+                "tenant",
+                "tool",
+                "action",
+                "purpose",
+                "request_id",
+                "grant_fp",
+                "approver_fp",
+                "outcome",
+                "reason",
+            },
+        )
+        self.assertEqual(
+            (rec["principal_fp"], rec["grant_fp"], rec["action"]),
+            (G.fingerprint("personal-agent"), G.fingerprint("grant-personal-agent"), "delete"),
+        )
         self.assertTrue(rec["t"].endswith(("-06:00", "-05:00")))  # Central time
 
     def test_a_provider_failure_and_a_secret_in_the_result_are_recorded_by_outcome_only(self):

@@ -4,10 +4,12 @@ from lifeos.jobs import explain
 
 
 class Explain(unittest.TestCase):
-    ROWS = [(1, "PUBLISHED", "web:su-revolut-ltd", 70, "ok", None),
-            (2, "RESOLVED", "web:su-revolut-ltd", 62, "Fit 62 below 68", None),
-            (3, "HOLD", "lensa", None, None, "http_403"),
-            (4, "EXCLUDED_FIT", "web:titlewatch:x", 40, "Fit 40 below 60", "lane_exclude")]
+    ROWS = [
+        (1, "PUBLISHED", "web:su-revolut-ltd", 70, "ok", None),
+        (2, "RESOLVED", "web:su-revolut-ltd", 62, "Fit 62 below 68", None),
+        (3, "HOLD", "lensa", None, None, "http_403"),
+        (4, "EXCLUDED_FIT", "web:titlewatch:x", 40, "Fit 40 below 60", "lane_exclude"),
+    ]
 
     def test_counts_and_open_lines_carry_codes_only(self):
         out = explain.summarize(self.ROWS)

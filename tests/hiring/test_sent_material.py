@@ -1,4 +1,5 @@
 """Materials Sent on the opportunity page."""
+
 import unittest
 from dataclasses import replace
 from unittest import mock
@@ -21,7 +22,12 @@ DRIVE_URL = f"https://docs.google.com/document/d/{FILE_ID}/edit"
 
 class Drive:
     def __init__(self, trashed=False, name="Launch plan for ExampleCo"):
-        self.meta = {"id": FILE_ID, "name": name, "trashed": trashed, "webViewLink": f"https://docs.google.com/document/d/{FILE_ID}/edit?usp=drivesdk"}
+        self.meta = {
+            "id": FILE_ID,
+            "name": name,
+            "trashed": trashed,
+            "webViewLink": f"https://docs.google.com/document/d/{FILE_ID}/edit?usp=drivesdk",
+        }
         self.gets = 0
 
     def get(self, fid):
@@ -34,7 +40,9 @@ class Manage(unittest.TestCase):
     def test_a_form_is_reviewed_then_recorded_as_one_line_read_back_and_listed_on_manage(self):
         h, fold = ledger_page()
         before = hand_text(h.world.source).splitlines()
-        status, body, _ = h.hand_review("sent", sk="form", sx="Workday application answers", su="https://example.test/apply/1")
+        status, body, _ = h.hand_review(
+            "sent", sk="form", sx="Workday application answers", su="https://example.test/apply/1"
+        )
         self.assertEqual(status, 200, body)
         self.assertIn("Sent: Application form / portal answers · Workday application answers", body)
         self.assertEqual(h.writes(), (0, 0))  # review writes nothing
@@ -43,15 +51,22 @@ class Manage(unittest.TestCase):
         after = hand_text(h.world.source).splitlines()
         self.assertEqual(after[:-1], before)
         got = M.sent_of(after)
-        self.assertEqual([(s["kind"], s["text"], s["url"]) for s in got], [(M.FORM, "Workday application answers", "https://example.test/apply/1")])
-        self.assertIn("Application form / portal answers: Workday application answers · recorded", h.hub(h.world.ws.target)[1])
+        self.assertEqual(
+            [(s["kind"], s["text"], s["url"]) for s in got],
+            [(M.FORM, "Workday application answers", "https://example.test/apply/1")],
+        )
+        self.assertIn(
+            "Application form / portal answers: Workday application answers · recorded", h.hub(h.world.ws.target)[1]
+        )
         self.assertEqual(h.after, [])  # sent material never redraws the Hiring Pipeline
 
     def test_a_form_needs_what_it_was_and_a_link_is_optional_but_must_be_https(self):
         h, fold = ledger_page()
         self.assertEqual(h.hand_review("sent", sk="form", sx="")[0], 400)
         self.assertEqual(h.hand_review("sent", sk="form", sx="Portal answers", su="javascript:alert(1)")[0], 400)
-        self.assertEqual(h.hand_review("sent", sk="letter", sx="Cover letter")[0], 400)  # cover letters are out of scope: only form | file
+        self.assertEqual(
+            h.hand_review("sent", sk="letter", sx="Cover letter")[0], 400
+        )  # cover letters are out of scope: only form | file
         status, body, _ = h.hand("sent", sk="form", sx="Portal answers")
         self.assertEqual(status, 200, body)
         self.assertEqual(M.sent_of(hand_text(h.world.source).splitlines())[0]["url"], None)
@@ -60,7 +75,9 @@ class Manage(unittest.TestCase):
         h, fold = ledger_page()
         self.assertEqual(h.hand_review("sent", sk="file", su="https://example.test/not-drive")[0], 400)
         with mock.patch.object(manage_app, "_drive", lambda secrets: None):
-            self.assertEqual(h.hand_review("sent", sk="file", su=DRIVE_URL)[0], 409)  # Drive not connected on the Close service
+            self.assertEqual(
+                h.hand_review("sent", sk="file", su=DRIVE_URL)[0], 409
+            )  # Drive not connected on the Close service
         with mock.patch.object(manage_app, "_drive", lambda secrets: Drive(trashed=True)):
             status, body, _ = h.hand_review("sent", sk="file", su=DRIVE_URL)
             self.assertEqual(status, 409)
@@ -71,7 +88,10 @@ class Manage(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(drive.gets, 2)  # read at review and again at confirm, never changed
         got = M.sent_of(hand_text(h.world.source).splitlines())
-        self.assertEqual([(s["kind"], s["text"], s["url"]) for s in got], [(M.FILE, "Launch plan for ExampleCo", drive.meta["webViewLink"])])
+        self.assertEqual(
+            [(s["kind"], s["text"], s["url"]) for s in got],
+            [(M.FILE, "Launch plan for ExampleCo", drive.meta["webViewLink"])],
+        )
 
     def test_a_file_trashed_between_review_and_confirm_writes_nothing(self):
         h, fold = ledger_page()
@@ -86,25 +106,36 @@ class Manage(unittest.TestCase):
     def test_on_the_ledger_sent_lines_are_kept_beside_the_latest_hold_and_next_action(self):
         h = M2([(TD.TARGET, COMPANY, ROLE)])
         ledger_ready(h.world.source)
-        for act, values in (("hold", {"v": "paused"}), ("sent", {"sk": "form", "sx": "Portal answers"}), ("sent", {"sk": "form", "sx": "Assessment answers"}),
-                            ("next", {"nx": "Call Pat"}), ("hold", {"v": "waiting"})):
+        for act, values in (
+            ("hold", {"v": "paused"}),
+            ("sent", {"sk": "form", "sx": "Portal answers"}),
+            ("sent", {"sk": "form", "sx": "Assessment answers"}),
+            ("next", {"nx": "Call Pat"}),
+            ("hold", {"v": "waiting"}),
+        ):
             status, body, _ = h.hand(act, **values)
             self.assertEqual(status, 200, body)
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([s["text"] for s in M.sent_of(got)], ["Portal answers", "Assessment answers"])
         self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.WAITING, "Call Pat", 4))
-        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["drive", "hold", "next", "sent", "sent", "unsent", "unsent"])
+        self.assertEqual(
+            sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")),
+            ["drive", "hold", "next", "sent", "sent", "unsent", "unsent"],
+        )
 
 
 class Remove(unittest.TestCase):
     """a sent item is removed on Manage through its own review and confirm."""
+
     def test_a_removed_item_leaves_manage_and_the_ledger_keeps_both_lines(self):
         h = M2([(TD.TARGET, COMPANY, ROLE)])
         ledger_ready(h.world.source)
         for text in ("Test", "Portal answers"):
             self.assertEqual(h.hand("sent", sk="form", sx=text)[0], 200)
         test = next(m for m in M.sent_of(hand_text(h.world.source).splitlines()) if m["text"] == "Test")
-        remove = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent" and f.get("v") == test["op"])
+        remove = next(
+            f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent" and f.get("v") == test["op"]
+        )
         before = len(h.world.source.patches())
         status, body, _ = h.call("POST", "/manage", form=remove)
         self.assertEqual(status, 200, body)
@@ -115,11 +146,15 @@ class Remove(unittest.TestCase):
         self.assertEqual(len(h.world.source.patches()), before + 1)
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([m["text"] for m in M.sent_of(got)], ["Portal answers"])
-        self.assertEqual(sum(1 for t in got if M.SENT_LINE.fullmatch(t)), 2)  # the item's own line stays: history is kept
+        self.assertEqual(
+            sum(1 for t in got if M.SENT_LINE.fullmatch(t)), 2
+        )  # the item's own line stays: history is kept
         self.assertEqual(M.UNSENT_LINE.fullmatch(got[-1]).group(3), test["op"])
         hub = h.hub(h.world.ws.target)[1]
         self.assertNotIn("Form / portal answers: Test", hub)
-        self.assertEqual([f["v"] for f in forms(hub) if f.get("act") == "unsent"], [next(m["op"] for m in M.sent_of(got))])
+        self.assertEqual(
+            [f["v"] for f in forms(hub) if f.get("act") == "unsent"], [next(m["op"] for m in M.sent_of(got))]
+        )
 
     def test_a_forged_or_invalid_removal_writes_nothing(self):
         h = M2([(TD.TARGET, COMPANY, ROLE)])
@@ -137,7 +172,9 @@ class Remove(unittest.TestCase):
         h, fold = ledger_page()
         self.assertEqual(h.hand("sent", sk="form", sx="Test")[0], 200)
         remove = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent")
-        status, body, _ = h.call("POST", "/manage", form={**h.fields(h.call("POST", "/manage", form=remove)[1]), "step": "confirm"})
+        status, body, _ = h.call(
+            "POST", "/manage", form={**h.fields(h.call("POST", "/manage", form=remove)[1]), "step": "confirm"}
+        )
         self.assertEqual(status, 200, body)
         self.assertEqual(M.sent_of(hand_text(h.world.source).splitlines()), [])
         self.assertTrue(M.UNSENT_LINE.fullmatch(hand_text(h.world.source).splitlines()[-1]))
@@ -145,10 +182,15 @@ class Remove(unittest.TestCase):
     def test_the_page_leaves_a_removed_item_out_and_carries_the_removal(self):
         gone = M.unsent_line(OP, "2026-10-06T09:00:00-05:00", "e" * 16)
         page = Page()
-        self.assertFalse([t for t in page.materials(opp(hand=(FORM,), hand_ledger=(gone,))) if t.startswith("Application form")])  # removed on the other record: still gone
-        para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}         # noqa: E731
+        self.assertFalse(
+            [t for t in page.materials(opp(hand=(FORM,), hand_ledger=(gone,))) if t.startswith("Application form")]
+        )  # removed on the other record: still gone
+        para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}  # noqa: E731
         self.assertEqual(create.hand_lines([para(FORM), para(gone)]), (FORM, gone))
-        self.assertEqual(create._undone([{"text": notion.FOLD, "children": [{"text": gone}]}]), [{"text": notion.FOLD, "children": []}])
+        self.assertEqual(
+            create._undone([{"text": notion.FOLD, "children": [{"text": gone}]}]),
+            [{"text": notion.FOLD, "children": []}],
+        )
         self.assertEqual((view.UNSENT_LINE.pattern, D._op(gone)), (M.UNSENT_LINE.pattern, "e" * 16))
 
 
@@ -156,10 +198,16 @@ class Page(unittest.TestCase):
     def materials(self, page):
         shown = texts(template.opportunity_page(page, "2026-10-24"))
         start = shown.index("Materials Sent")
-        return shown[start + 1:start + 1 + next(i for i, t in enumerate(shown[start + 1:]) if t.startswith("Forms, portal answers"))]
+        return shown[
+            start + 1 : start
+            + 1
+            + next(i for i, t in enumerate(shown[start + 1 :]) if t.startswith("Forms, portal answers"))
+        ]
 
     def test_recorded_material_and_jims_own_emails_are_listed_after_the_resume(self):
-        page = opp(hand=(FORM,), sent_mail=(("2026-10-07T01:30:00+00:00", "Thank you — ExampleCo"),), sent_mail_state="read")
+        page = opp(
+            hand=(FORM,), sent_mail=(("2026-10-07T01:30:00+00:00", "Thank you — ExampleCo"),), sent_mail_state="read"
+        )
         got = self.materials(page)
         self.assertTrue(got[0].startswith("Submitted résumé"))
         self.assertIn("Application form — Workday application answers · recorded Oct 5", got)
@@ -167,19 +215,39 @@ class Page(unittest.TestCase):
         self.assertIn("https://example.test/apply/1", str(template.opportunity_page(page, "2026-10-24")))
 
     def test_none_sent_unreadable_and_not_connected_are_never_the_same(self):
-        self.assertIn("Follow-up / thank-you email — none sent on this job's request thread yet", self.materials(opp(sent_mail_state="read")))
-        self.assertIn("Follow-up / thank-you email — DEGRADED · Gmail unreadable this run", self.materials(opp(sent_mail_state="unreadable")))
+        self.assertIn(
+            "Follow-up / thank-you email — none sent on this job's request thread yet",
+            self.materials(opp(sent_mail_state="read")),
+        )
+        self.assertIn(
+            "Follow-up / thank-you email — DEGRADED · Gmail unreadable this run",
+            self.materials(opp(sent_mail_state="unreadable")),
+        )
         self.assertFalse([t for t in self.materials(opp()) if "email" in t.lower()])
-        health = [t for t in texts(template.opportunity_page(opp(hand=(FORM,), sent_mail_state="unreadable"), "2026-10-24")) if t.startswith("Submitted résumé and sent materials")]
+        health = [
+            t
+            for t in texts(template.opportunity_page(opp(hand=(FORM,), sent_mail_state="unreadable"), "2026-10-24"))
+            if t.startswith("Submitted résumé and sent materials")
+        ]
         self.assertIn("1 form(s) / Drive file(s) recorded on Manage; DEGRADED · Gmail unreadable this run", health[0])
 
     def test_the_same_record_on_both_records_shows_once_and_sent_lines_are_carried_and_never_an_edit(self):
-        self.assertEqual(len([t for t in self.materials(opp(hand=(FORM,), hand_ledger=(FORM,))) if t.startswith("Application form")]), 1)
-        self.assertIn(FORM, texts(template.opportunity_page(opp(hand=(FORM,)), "2026-10-24")))  # carried in the fold as written
-        para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}         # noqa: E731
+        self.assertEqual(
+            len(
+                [t for t in self.materials(opp(hand=(FORM,), hand_ledger=(FORM,))) if t.startswith("Application form")]
+            ),
+            1,
+        )
+        self.assertIn(
+            FORM, texts(template.opportunity_page(opp(hand=(FORM,)), "2026-10-24"))
+        )  # carried in the fold as written
+        para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}  # noqa: E731
         hold = M.hold_line(M.PAUSED, SET_AT, "f" * 16)
         self.assertEqual(create.hand_lines([para(FORM), para(notion.MARKERS["opportunity"]), para(hold)]), (FORM, hold))
-        self.assertEqual(create._undone([{"text": notion.FOLD, "children": [{"text": FORM}]}]), [{"text": notion.FOLD, "children": []}])
+        self.assertEqual(
+            create._undone([{"text": notion.FOLD, "children": [{"text": FORM}]}]),
+            [{"text": notion.FOLD, "children": []}],
+        )
 
     def test_the_line_format_is_one_contract(self):
         self.assertEqual((view.SENT_LINE.pattern, template.SENT_MAX), (M.SENT_LINE.pattern, M.SENT_MAX))
@@ -190,8 +258,13 @@ class Mail(unittest.TestCase):
     THREAD = "18f2a3b4c5d6e7f8"
 
     def evidence(self, source=None):
-        return [(ParentQuery("ExampleCo", "Director"), RoundQuery(True, source=source or f"https://mail.google.com/mail/u/0/#all/{self.THREAD}")),
-                (ParentQuery("Initech", "Lead"), RoundQuery(True, source="https://www.linkedin.com/messaging/thread/x"))]
+        return [
+            (
+                ParentQuery("ExampleCo", "Director"),
+                RoundQuery(True, source=source or f"https://mail.google.com/mail/u/0/#all/{self.THREAD}"),
+            ),
+            (ParentQuery("Initech", "Lead"), RoundQuery(True, source="https://www.linkedin.com/messaging/thread/x")),
+        ]
 
     def test_only_the_exact_gmail_thread_is_read_and_unreadable_is_never_none(self):
         class G:
@@ -200,32 +273,53 @@ class Mail(unittest.TestCase):
             def thread_sent(self, thread):
                 self.asked.append(thread)
                 from datetime import datetime, timezone
+
                 return [(datetime(2026, 10, 7, 1, 30, tzinfo=timezone.utc), "Thank you")]
+
         g = G()
         out, failed = interview_evidence.sent_mail({}, self.evidence(), g)
         self.assertFalse(failed)
         self.assertEqual(g.asked, [self.THREAD])
-        self.assertEqual((out[0][1].sent_mail, out[0][1].sent_mail_state), ((("2026-10-07T01:30:00+00:00", "Thank you"),), "read"))
+        self.assertEqual(
+            (out[0][1].sent_mail, out[0][1].sent_mail_state), ((("2026-10-07T01:30:00+00:00", "Thank you"),), "read")
+        )
         self.assertEqual((out[1][1].sent_mail, out[1][1].sent_mail_state), ((), None))  # not a Gmail request: untouched
 
         class Down:
             def thread_sent(self, thread):
                 raise GmailError("GMAIL_THREAD_INCOMPLETE")
+
         out, failed = interview_evidence.sent_mail({}, self.evidence(), Down())
         self.assertTrue(failed)
         self.assertEqual(out[0][1].sent_mail_state, "unreadable")
+
         class Gone:
             def thread_sent(self, thread):
                 raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 404 notFound")
+
         out, failed = interview_evidence.sent_mail({}, self.evidence(), Gone())
         self.assertEqual((failed, out[0][1].sent_mail_state), (False, "unreadable"))
-        out, failed = interview_evidence.sent_mail({}, self.evidence(), None)  # no Gmail credential in this step: not connected
+        out, failed = interview_evidence.sent_mail(
+            {}, self.evidence(), None
+        )  # no Gmail credential in this step: not connected
         self.assertEqual((out, failed), (self.evidence(), False))
 
     def test_the_reader_keeps_only_sent_messages_and_their_subject(self):
         g = Gmail("id", "secret", "refresh")
-        reply = {"messages": [{"labelIds": ["INBOX"], "internalDate": "1791000000000", "payload": {"headers": [{"name": "Subject", "value": "Interview"}]}},
-                              {"labelIds": ["SENT"], "internalDate": "1791100000000", "payload": {"headers": [{"name": "Subject", "value": "Re:  Interview"}]}}]}
+        reply = {
+            "messages": [
+                {
+                    "labelIds": ["INBOX"],
+                    "internalDate": "1791000000000",
+                    "payload": {"headers": [{"name": "Subject", "value": "Interview"}]},
+                },
+                {
+                    "labelIds": ["SENT"],
+                    "internalDate": "1791100000000",
+                    "payload": {"headers": [{"name": "Subject", "value": "Re:  Interview"}]},
+                },
+            ]
+        }
         with mock.patch.object(g, "_request", return_value=reply) as call:
             got = g.thread_sent(self.THREAD)
         self.assertIn("format=metadata", call.call_args[0][1])
@@ -247,6 +341,7 @@ if __name__ == "__main__":
 
 class Search(unittest.TestCase):
     """'I don't want to have to hunt for Google Drive files'."""
+
     class Found(Drive):
         def __init__(self, files=None):
             super().__init__()
@@ -266,7 +361,15 @@ class Search(unittest.TestCase):
         drive = self.Found()
         (status, body, _), form = self.search(h, "Launch o'plan", drive)
         self.assertEqual(status, 200, body)
-        self.assertEqual(drive.queries, [("name contains 'Launch o\\'plan' and mimeType != 'application/vnd.google-apps.folder'", "modifiedTime desc")])
+        self.assertEqual(
+            drive.queries,
+            [
+                (
+                    "name contains 'Launch o\\'plan' and mimeType != 'application/vnd.google-apps.folder'",
+                    "modifiedTime desc",
+                )
+            ],
+        )
         self.assertIn("Launch plan for ExampleCo", body)
         self.assertIn(f"/manage?o={form['p']}", body)  # back to Manage, nothing recorded
         self.assertEqual(h.writes(), (0, 0))
@@ -279,7 +382,10 @@ class Search(unittest.TestCase):
             self.assertEqual(h.writes(), (0, 0))  # review writes nothing
             status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
-        self.assertEqual([(m["kind"], m["text"]) for m in M.sent_of(hand_text(h.world.source).splitlines())], [(M.FILE, "Launch plan for ExampleCo")])
+        self.assertEqual(
+            [(m["kind"], m["text"]) for m in M.sent_of(hand_text(h.world.source).splitlines())],
+            [(M.FILE, "Launch plan for ExampleCo")],
+        )
 
     def test_no_match_an_empty_query_a_missing_credential_or_a_forged_form_shows_nothing_and_writes_nothing(self):
         h, fold = ledger_page()
@@ -311,7 +417,11 @@ class Search(unittest.TestCase):
 
     def test_folders_and_files_without_a_drive_link_are_never_offered(self):
         h, _ = ledger_page()
-        files = [{"name": "Odd", "webViewLink": "https://example.test/x"}, {"name": None, "webViewLink": DRIVE_URL}, {"name": "Good plan", "webViewLink": DRIVE_URL}]
+        files = [
+            {"name": "Odd", "webViewLink": "https://example.test/x"},
+            {"name": None, "webViewLink": DRIVE_URL},
+            {"name": "Good plan", "webViewLink": DRIVE_URL},
+        ]
         (status, body, _), _ = self.search(h, "plan", self.Found(files=files))
         self.assertEqual([f["su"] for f in forms(body) if f.get("act") == "sent"], [DRIVE_URL])
 
@@ -320,12 +430,19 @@ class Layout(unittest.TestCase):
     """Manage's actions are one card each, their fields and button together, styled by /manage.css (the gate's CSP allows
     no inline styles).
     """
+
     def test_the_hub_links_its_stylesheet_and_every_field_sits_in_a_card(self):
         h, _ = ledger_page()
         body = h.hub(h.world.ws.target)[1]
         self.assertIn('<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">', body)
         self.assertNotIn("<style", body)
-        for heading in ("Status", "Set a next action", "Materials sent", "Add a Google Drive file you sent", "Add an application form or portal answers"):
+        for heading in (
+            "Status",
+            "Set a next action",
+            "Materials sent",
+            "Add a Google Drive file you sent",
+            "Add an application form or portal answers",
+        ):
             self.assertIn(f'<div class="mcard"><h4>{heading}</h4>', body)
         self.assertEqual(sorted(f.get("sk") for f in forms(body) if f.get("act") == "sent"), [M.FILE, M.FORM])
         self.assertEqual(h.call("GET", "/manage.css")[:2][0], 200)
@@ -335,8 +452,10 @@ class Layout(unittest.TestCase):
 
 class Expiry(unittest.TestCase):
     """Manage forms stayed valid for only 15 minutes, so a page left open refused every click."""
+
     def test_a_page_open_for_hours_still_works_and_an_expired_one_offers_a_reload(self):
         from datetime import timedelta
+
         h, fold = ledger_page()
         form = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "drive")
         drive = Search.Found()
@@ -356,7 +475,12 @@ class Expiry(unittest.TestCase):
 
 class Picker(unittest.TestCase):
     """Google's own Drive picker on Manage, shown only once its public browser identifiers are set"""
-    CONFIG = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
+
+    CONFIG = {
+        "client_id": "1234567-exampleclientid.apps.googleusercontent.com",
+        "api_key": "AIza" + "x" * 35,
+        "app_id": "1234567",
+    }
 
     def test_no_picker_until_it_is_configured(self):
         h, _ = ledger_page()
@@ -371,27 +495,57 @@ class Picker(unittest.TestCase):
             body = h.hub(h.world.ws.target)[1]
         self.assertIn('<script src="/manage-picker.js" defer></script>', body)
         self.assertEqual(body.count("<script"), body.count('<script src="/'))  # no inline script: the CSP allows none
-        self.assertIn(f'id="pick-drive" disabled data-client="{self.CONFIG["client_id"]}" data-key="{self.CONFIG["api_key"]}" data-app="1234567"', body)
-        pick = next(f for f in forms(body) if f.get("act") == "sent" and "su" in f and f.get("su") == "" and f.get("sk") == M.FILE and 'id="pick-form"' in body)
+        self.assertIn(
+            f'id="pick-drive" disabled data-client="{self.CONFIG["client_id"]}" data-key="{self.CONFIG["api_key"]}" data-app="1234567"',
+            body,
+        )
+        pick = next(
+            f
+            for f in forms(body)
+            if f.get("act") == "sent"
+            and "su" in f
+            and f.get("su") == ""
+            and f.get("sk") == M.FILE
+            and 'id="pick-form"' in body
+        )
         self.assertEqual((pick["sk"], pick["su"]), (M.FILE, ""))
         self.assertIn("Show my Drive files", body)
         status, ctype, js, extra = manage_app.handle_js({}, {}, {})
         self.assertEqual((status, ctype, extra), (200, "text/javascript; charset=utf-8", ()))
-        for part in (b"https://www.googleapis.com/auth/drive.file", b'"https://drive.google.com/file/d/" + d.docs[0].id + "/view"', b"google.picker.Action.PICKED", b"f.submit()"):
+        for part in (
+            b"https://www.googleapis.com/auth/drive.file",
+            b'"https://drive.google.com/file/d/" + d.docs[0].id + "/view"',
+            b"google.picker.Action.PICKED",
+            b"f.submit()",
+        ):
             self.assertIn(part, js)
         self.assertNotIn(b"auth/drive\"", js)  # never the full Drive scope
-        for part in (b'localStorage.setItem(KEY', b"t.exp > Date.now()", b'requestAccessToken({ prompt: "" })', b"keep(r); show();"):  # one sign-in, reused
+        for part in (
+            b'localStorage.setItem(KEY',
+            b"t.exp > Date.now()",
+            b'requestAccessToken({ prompt: "" })',
+            b"keep(r); show();",
+        ):  # one sign-in, reused
             self.assertIn(part, js)
         self.assertTrue(manage_app.DRIVE_LINK.fullmatch("https://drive.google.com/file/d/1AbCdEfGhIjK_lmnop/view"))
 
     def test_the_identifiers_come_only_from_the_gate_and_only_in_their_exact_shapes(self):
         self.assertEqual(manage_app.picker({"picker": dict(self.CONFIG)}), self.CONFIG)
-        self.assertEqual(manage_app.picker({"picker": {**self.CONFIG, "extra": "x"}}), self.CONFIG)  # only the three fields are used
-        for bad in ({}, {"picker": None}, {"picker": {**self.CONFIG, "api_key": ""}}, {"picker": {**self.CONFIG, "client_id": 'x" onclick="y'}},
-                    {"picker": {**self.CONFIG, "app_id": "12a"}}, {"picker": {k: v for k, v in self.CONFIG.items() if k != "app_id"}}):
+        self.assertEqual(
+            manage_app.picker({"picker": {**self.CONFIG, "extra": "x"}}), self.CONFIG
+        )  # only the three fields are used
+        for bad in (
+            {},
+            {"picker": None},
+            {"picker": {**self.CONFIG, "api_key": ""}},
+            {"picker": {**self.CONFIG, "client_id": 'x" onclick="y'}},
+            {"picker": {**self.CONFIG, "app_id": "12a"}},
+            {"picker": {k: v for k, v in self.CONFIG.items() if k != "app_id"}},
+        ):
             self.assertIsNone(manage_app.picker(bad), bad)
         self.assertFalse(hasattr(manage_app, "PICKER"))  # never held in this public repository
 
     def test_the_picker_script_is_routed(self):
         from lifeos.sources.apps import close_app
+
         self.assertEqual(close_app.ROUTES["/manage-picker.js"], ("apps.manage_app", "handle_js"))

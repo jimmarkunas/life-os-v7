@@ -1,6 +1,7 @@
 """the pilot end to end against the simulator (no network, no paid call): the free proofs come first and each one can
 stop the run before the guard arms.
 """
+
 import importlib.util
 import json
 import pathlib
@@ -75,7 +76,11 @@ class Db:
     def __init__(self, before=None, after=None, due=None, due_after=None):
         self.states = [before or {"count": 31, "newest": "2026-11-26 07:42:26", "hash": "h31"}]
         self.after = after
-        self.due, self.due_after, self.n = due if due is not None else [], due_after if due_after is not None else ["um-t2-fixture-v1"], 0
+        self.due, self.due_after, self.n = (
+            due if due is not None else [],
+            due_after if due_after is not None else ["um-t2-fixture-v1"],
+            0,
+        )
 
     def personal_state(self):
         self.n += 1
@@ -116,7 +121,18 @@ class Free(unittest.TestCase):
     def test_a_clean_run_goes_through_every_step_in_order_and_ends_bounded(self):
         w, ev = go()
         names = [s["step"] for s in ev["steps"]]
-        self.assertEqual(names, ["personal_baseline", "due_before", "created_all_off", "token_refused_on_personal", "brake_test_unarmed_message_creates_no_work", "oversize_message_refused_by_the_api", "guard_run"])
+        self.assertEqual(
+            names,
+            [
+                "personal_baseline",
+                "due_before",
+                "created_all_off",
+                "token_refused_on_personal",
+                "brake_test_unarmed_message_creates_no_work",
+                "oversize_message_refused_by_the_api",
+                "guard_run",
+            ],
+        )
         self.assertNotIn("stopped", ev)
         self.assertLessEqual(w.ours(), 2.0)  # the approved scope
         self.assertEqual(w.armed_posts, 20)
@@ -125,9 +141,13 @@ class Free(unittest.TestCase):
         w, ev = go(db=Db(before={"count": 31, "newest": "x", "hash": "a"}))
         self.assertEqual(ev["steps"][0]["count"], 31)
         self.assertTrue(ev["personal_unchanged"])
-        w, ev = go(db=Db(before={"count": 31, "newest": "x", "hash": "a"}, after={"count": 31, "newest": "x", "hash": "b"}))
+        w, ev = go(
+            db=Db(before={"count": 31, "newest": "x", "hash": "a"}, after={"count": 31, "newest": "x", "hash": "b"})
+        )
         self.assertFalse(ev["personal_unchanged"])
-        w, ev = go(db=Db(before={"count": 30, "newest": "x", "hash": "a"}, after={"count": 31, "newest": "y", "hash": "a"}))
+        w, ev = go(
+            db=Db(before={"count": 30, "newest": "x", "hash": "a"}, after={"count": 31, "newest": "y", "hash": "a"})
+        )
         self.assertFalse(ev["personal_unchanged"])
 
     def test_a_token_that_is_not_scoped_stops_before_anything_is_armed(self):
@@ -139,7 +159,11 @@ class Free(unittest.TestCase):
         self.assertEqual(w.spent, sim.BASE)
 
     def test_a_missing_or_wrong_scope_stops_the_pilot_before_anything_is_armed(self):
-        for change, reason in (({"scope_gone": True}, "scope_missing"), ({"scope_id": "other"}, "scope_mismatch"), ({"scope_state": "breached"}, "scope_not_open")):
+        for change, reason in (
+            ({"scope_gone": True}, "scope_missing"),
+            ({"scope_id": "other"}, "scope_mismatch"),
+            ({"scope_state": "breached"}, "scope_not_open"),
+        ):
             with self.subTest(reason):
                 w = sim.World("typical")
                 for key, value in change.items():
@@ -153,7 +177,9 @@ class Free(unittest.TestCase):
         self.assertEqual(ev["steps"][0]["step"], "personal_baseline")
         self.assertEqual(sorted(ev["comparison"]), ["combined", "direct", "graph", "honcho"])
         guard_run = ev["steps"][-1]
-        self.assertEqual((guard_run["step"], guard_run["scope"]["cap_usd"], guard_run["scope"]["state"]), ("guard_run", 2.0, "open"))
+        self.assertEqual(
+            (guard_run["step"], guard_run["scope"]["cap_usd"], guard_run["scope"]["state"]), ("guard_run", 2.0, "open")
+        )
         self.assertEqual(guard_run["cleanup"], {"flags": [False, False], "queue_idle": True})
 
     def test_the_brake_test_stops_the_run_if_an_unarmed_message_creates_work(self):
@@ -224,6 +250,7 @@ class Safe(unittest.TestCase):
     def test_the_live_flag_never_runs_a_live_experiment_from_this_file(self):
         import io
         from contextlib import redirect_stdout
+
         buf = io.StringIO()
         with redirect_stdout(buf):
             code = pilot.main(["--live"])
@@ -244,7 +271,12 @@ class Safe(unittest.TestCase):
 
         def fake(cmd, input=None, **kw):
             sent.append(input)
-            return Done("BEGIN\n0|1|1\nROLLBACK\n" if "dream_run_changes" in input else "BEGIN\n3|2026-11-26 07:42:26|abc\nROLLBACK\n")
+            return Done(
+                "BEGIN\n0|1|1\nROLLBACK\n"
+                if "dream_run_changes" in input
+                else "BEGIN\n3|2026-11-26 07:42:26|abc\nROLLBACK\n"
+            )
+
         db = pilot.OracleDb(run=fake)
         db.personal_state()
         db.residue("um-t2-fixture-v1", "c1")

@@ -1,4 +1,5 @@
 """Build resume on the private Close service, driven the way the Edge gate calls it."""
+
 import base64
 import hashlib
 import html
@@ -19,7 +20,11 @@ from lifeos.platform.notion_client import NotionError
 from lifeos.sources.apps import close_app
 from lifeos.sources.apps import resume_app
 
-SECRET, TOKEN, LEDGER = b"link-signing-key-0123456789abcdef", b"notion-token-secret", "11111111-2222-3333-4444-555555555555"
+SECRET, TOKEN, LEDGER = (
+    b"link-signing-key-0123456789abcdef",
+    b"notion-token-secret",
+    "11111111-2222-3333-4444-555555555555",
+)
 PID = "00000000-0000-0000-0000-000000000007"
 WHO = {"login": "jim@example.com", "node": "node-1"}
 NOW = datetime(2026, 10, 20, 1, 40, tzinfo=close_app.TZ)
@@ -36,53 +41,105 @@ class Page:
     """One open Ledger job page: its properties and the body V7 published (v7-jd marker, sections), then whatever is
     appended.
     """
+
     def __init__(self, decision=None, sections=True, lose_attachments=False, lose_column=False):
-        self.props = {"Company": {"type": "rich_text", "rich_text": rt("Acme Grid")}, "Job": {"type": "title", "title": rt("Technical Program Manager")},
-                      "Hiring Decision": {"type": "select", "select": {"name": decision} if decision else None},
-                      "Location / Work Mode": {"type": "rich_text", "rich_text": rt("USA - Remote")}, "Resume": {"type": "files", "files": []}}
+        self.props = {
+            "Company": {"type": "rich_text", "rich_text": rt("Acme Grid")},
+            "Job": {"type": "title", "title": rt("Technical Program Manager")},
+            "Hiring Decision": {"type": "select", "select": {"name": decision} if decision else None},
+            "Location / Work Mode": {"type": "rich_text", "rich_text": rt("USA - Remote")},
+            "Resume": {"type": "files", "files": []},
+        }
         body = [{"type": "paragraph", "paragraph": {"rich_text": rt("v7-jd:1 | key=abc")}}]
         if sections:
-            body += [{"type": "heading_2", "heading_2": {"rich_text": rt("Summary")}},
-                     {"type": "paragraph", "paragraph": {"rich_text": rt("We build digital twins of electricity grids for the largest utilities. " * 3)}},
-                     {"type": "heading_2", "heading_2": {"rich_text": rt("Responsibilities")}},
-                     {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rt("Lead end-to-end delivery of complex enterprise programs.")}}]
-        body += [{"type": "toggle", "toggle": {"rich_text": rt("Network Leads")}}, {"type": "paragraph", "paragraph": {"rich_text": rt("not part of the description")}}]
-        self.blocks, self.appended, self.lose, self.lose_column, self.writes = body, [], lose_attachments, lose_column, []
+            body += [
+                {"type": "heading_2", "heading_2": {"rich_text": rt("Summary")}},
+                {
+                    "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": rt("We build digital twins of electricity grids for the largest utilities. " * 3)
+                    },
+                },
+                {"type": "heading_2", "heading_2": {"rich_text": rt("Responsibilities")}},
+                {
+                    "type": "bulleted_list_item",
+                    "bulleted_list_item": {"rich_text": rt("Lead end-to-end delivery of complex enterprise programs.")},
+                },
+            ]
+        body += [
+            {"type": "toggle", "toggle": {"rich_text": rt("Network Leads")}},
+            {"type": "paragraph", "paragraph": {"rich_text": rt("not part of the description")}},
+        ]
+        self.blocks, self.appended, self.lose, self.lose_column, self.writes = (
+            body,
+            [],
+            lose_attachments,
+            lose_column,
+            [],
+        )
         self.source = LEDGER
 
     def get_page(self, pid):
         return {"id": PID, "parent": {"data_source_id": LEDGER}, "properties": self.props}
 
     def call(self, method, path, body=None):
-        assert method == "GET" and path.replace("-", "").startswith(f"/blocks/{PID.replace('-', '')}/children"), (method, path)
+        assert method == "GET" and path.replace("-", "").startswith(f"/blocks/{PID.replace('-', '')}/children"), (
+            method,
+            path,
+        )
         return {"results": self.blocks + ([] if self.lose else self.appended), "has_more": False}
 
     def call_once(self, method, path, body=None):
         if path.replace("-", "") == f"/pages/{PID.replace('-', '')}":
-            assert method == "PATCH" and len(body["properties"]) == 1 and set(body["properties"]) <= {"Resume", resume_app.SUBMITTED_COLUMN}, body  # one column, nothing else
+            assert (
+                method == "PATCH"
+                and len(body["properties"]) == 1
+                and set(body["properties"]) <= {"Resume", resume_app.SUBMITTED_COLUMN}
+            ), body  # one column, nothing else
             if resume_app.SUBMITTED_COLUMN in body["properties"]:
                 if not self.lose_column:
-                    self.props[resume_app.SUBMITTED_COLUMN] = {"type": "files", "files": [dict(f) for f in body["properties"][resume_app.SUBMITTED_COLUMN]["files"]]}
+                    self.props[resume_app.SUBMITTED_COLUMN] = {
+                        "type": "files",
+                        "files": [dict(f) for f in body["properties"][resume_app.SUBMITTED_COLUMN]["files"]],
+                    }
                 self.writes.append(body)
                 return {}
             self.writes.append(body)
             if not self.lose_column:
-                self.props["Resume"] = {"type": "files", "files": [{"name": f["name"], "type": "file"} if f["type"] == "file_upload" else dict(f)
-                                                                   for f in body["properties"]["Resume"]["files"]]}
+                self.props["Resume"] = {
+                    "type": "files",
+                    "files": [
+                        {"name": f["name"], "type": "file"} if f["type"] == "file_upload" else dict(f)
+                        for f in body["properties"]["Resume"]["files"]
+                    ],
+                }
             return {}
         assert method == "PATCH" and path.replace("-", "") == f"/blocks/{PID.replace('-', '')}/children", (method, path)
         self.writes.append(body)
         for child in body["children"]:
             kept = {"external": child["file"]["external"]} if child["file"]["type"] == "external" else {}
-            self.appended.append({"type": "file", "file": {"type": child["file"]["type"].replace("file_upload", "file"), "name": child["file"]["name"],
-                                                           "caption": child["file"]["caption"], **kept}})
+            self.appended.append(
+                {
+                    "type": "file",
+                    "file": {
+                        "type": child["file"]["type"].replace("file_upload", "file"),
+                        "name": child["file"]["name"],
+                        "caption": child["file"]["caption"],
+                        **kept,
+                    },
+                }
+            )
         return {"results": body["children"]}
 
 
 class Run:
     def __init__(self, page=None, reply=None, drive=None):
         self.page, self.asked, self.uploads, self.drive = page or Page(), [], [], drive
-        self.reply = reply if reply is not None else {"status": "OK", "filename": FILENAME, "docx": base64.b64encode(DOCX).decode()}
+        self.reply = (
+            reply
+            if reply is not None
+            else {"status": "OK", "filename": FILENAME, "docx": base64.b64encode(DOCX).decode()}
+        )
 
     def worker(self, payload):
         self.asked.append(payload)
@@ -93,8 +150,19 @@ class Run:
         return "upload-1"
 
     def call(self, method, query=None, form=None):
-        req = {"method": method, "path": "/resume", "query": query or {}, "headers": {}, "body": b"", "form": form or {}}
-        secrets = {"link": SECRET, "config": {"ledger": LEDGER}, **({"gdrive": GDRIVE} if self.drive is not None and method == "POST" else {})}
+        req = {
+            "method": method,
+            "path": "/resume",
+            "query": query or {},
+            "headers": {},
+            "body": b"",
+            "form": form or {},
+        }
+        secrets = {
+            "link": SECRET,
+            "config": {"ledger": LEDGER},
+            **({"gdrive": GDRIVE} if self.drive is not None and method == "POST" else {}),
+        }
         if method == "GET":
             secrets["reader"] = close_gate.ReadOnly(self.page)
         else:
@@ -103,9 +171,15 @@ class Run:
         def factory(cfg):
             assert method != "GET", "GET must not build a writing client"
             return self.page
-        with mock.patch.object(resume_app, "_now", lambda: NOW), mock.patch.object(close_app, "_now", lambda: NOW), mock.patch.object(resume_app, "Client", factory), \
-                mock.patch.object(resume_app, "ask_worker", self.worker), mock.patch.object(resume_app.notion_files, "upload", self.upload), \
-                mock.patch.object(gdrive, "Drive", lambda raw: self.drive.bind(raw)):
+
+        with (
+            mock.patch.object(resume_app, "_now", lambda: NOW),
+            mock.patch.object(close_app, "_now", lambda: NOW),
+            mock.patch.object(resume_app, "Client", factory),
+            mock.patch.object(resume_app, "ask_worker", self.worker),
+            mock.patch.object(resume_app.notion_files, "upload", self.upload),
+            mock.patch.object(gdrive, "Drive", lambda raw: self.drive.bind(raw)),
+        ):
             status, _, body, _ = close_app.handle(req, WHO, secrets)
         return status, body.decode()
 
@@ -125,7 +199,9 @@ class BuildResume(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("Build resume", body)
         self.assertIn('action="/resume"', body)
-        self.assertIn('value="build" data-wait="90" data-label="Building your résumé" data-late="If nothing appears by 3:30', body)
+        self.assertIn(
+            'value="build" data-wait="90" data-label="Building your résumé" data-late="If nothing appears by 3:30', body
+        )
         self.assertEqual((r.asked, r.page.appended), ([], []))
 
     def test_build_sends_the_published_description_attaches_the_docx_and_reads_it_back(self):
@@ -134,16 +210,25 @@ class BuildResume(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn("Resume attached", body)
         job = r.asked[0]["job"]
-        self.assertEqual((job["company"], job["title"], job["location"]), ("Acme Grid", "Technical Program Manager", "USA - Remote"))
+        self.assertEqual(
+            (job["company"], job["title"], job["location"]), ("Acme Grid", "Technical Program Manager", "USA - Remote")
+        )
         self.assertTrue(job["description"].startswith("Summary\nWe build digital twins"))
         self.assertIn("- Lead end-to-end delivery", job["description"])
         self.assertNotIn("Network Leads", job["description"])
-        self.assertEqual(r.uploads, [(TOKEN.decode(), FILENAME, DOCX, resume_app.DOCX)] * 2)  # one copy for the page, one for the Resume column
+        self.assertEqual(
+            r.uploads, [(TOKEN.decode(), FILENAME, DOCX, resume_app.DOCX)] * 2
+        )  # one copy for the page, one for the Resume column
         self.assertEqual([f["name"] for f in r.page.props["Resume"]["files"]], [FILENAME])
-        self.assertIn('href="https://www.notion.so/00000000000000000000000000000007"', body)  # straight to the job's Ledger page
+        self.assertIn(
+            'href="https://www.notion.so/00000000000000000000000000000007"', body
+        )  # straight to the job's Ledger page
         self.assertIn("Open the job in Notion", body)
         self.assertEqual(r.page.appended[0]["file"]["name"], FILENAME)
-        self.assertEqual(r.page.appended[0]["file"]["caption"][0]["text"]["content"], "Tailored resume · built Oct 20, 1:40 AM CT · LIFE OS")
+        self.assertEqual(
+            r.page.appended[0]["file"]["caption"][0]["text"]["content"],
+            "Tailored resume · built Oct 20, 1:40 AM CT · LIFE OS",
+        )
 
     def test_a_tampered_or_expired_form_runs_nothing(self):
         r = Run()
@@ -163,8 +248,11 @@ class BuildResume(unittest.TestCase):
         self.assertEqual(r.asked, [])
 
     def test_a_worker_refusal_is_named_and_nothing_is_attached(self):
-        for reply, words in (({"status": "QUOTA_RESERVE"}, "50% reserve"), ({"status": "REJECTED", "codes": ["NUMBER_NOT_IN_EVIDENCE@summary:37"]}, "NUMBER_NOT_IN_EVIDENCE"),
-                             ({"status": "WORKER_UNAVAILABLE"}, "WORKER_UNAVAILABLE")):
+        for reply, words in (
+            ({"status": "QUOTA_RESERVE"}, "50% reserve"),
+            ({"status": "REJECTED", "codes": ["NUMBER_NOT_IN_EVIDENCE@summary:37"]}, "NUMBER_NOT_IN_EVIDENCE"),
+            ({"status": "WORKER_UNAVAILABLE"}, "WORKER_UNAVAILABLE"),
+        ):
             r = Run(reply=reply)
             status, body = r.build()
             self.assertIn(status, (409, 500))
@@ -172,9 +260,11 @@ class BuildResume(unittest.TestCase):
             self.assertEqual((r.uploads, r.page.appended), ([], []))
 
     def test_a_malformed_reply_is_never_attached(self):
-        for reply in ({"status": "OK", "filename": "resume.docx", "docx": base64.b64encode(DOCX).decode()},
-                      {"status": "OK", "filename": FILENAME, "docx": base64.b64encode(b"not a docx").decode()},
-                      {"status": "OK", "filename": FILENAME, "docx": "%%%"}):
+        for reply in (
+            {"status": "OK", "filename": "resume.docx", "docx": base64.b64encode(DOCX).decode()},
+            {"status": "OK", "filename": FILENAME, "docx": base64.b64encode(b"not a docx").decode()},
+            {"status": "OK", "filename": FILENAME, "docx": "%%%"},
+        ):
             r = Run(reply=reply)
             status, body = r.build()
             self.assertEqual(status, 500)
@@ -190,10 +280,18 @@ class BuildResume(unittest.TestCase):
     def test_a_second_build_replaces_the_column_and_keeps_both_files_on_the_page(self):
         r = Run()
         r.build()
-        r.reply = {"status": "OK", "filename": "Jim_Markunas_Resume_Acme_TPM_V9b.docx", "docx": base64.b64encode(DOCX).decode()}
+        r.reply = {
+            "status": "OK",
+            "filename": "Jim_Markunas_Resume_Acme_TPM_V9b.docx",
+            "docx": base64.b64encode(DOCX).decode(),
+        }
         r.build()
-        self.assertEqual([f["name"] for f in r.page.props["Resume"]["files"]], ["Jim_Markunas_Resume_Acme_TPM_V9b.docx"])
-        self.assertEqual([b["file"]["name"] for b in r.page.appended], [FILENAME, "Jim_Markunas_Resume_Acme_TPM_V9b.docx"])
+        self.assertEqual(
+            [f["name"] for f in r.page.props["Resume"]["files"]], ["Jim_Markunas_Resume_Acme_TPM_V9b.docx"]
+        )
+        self.assertEqual(
+            [b["file"]["name"] for b in r.page.appended], [FILENAME, "Jim_Markunas_Resume_Acme_TPM_V9b.docx"]
+        )
 
     def test_the_route_and_its_modules_are_in_the_release(self):
         for module in ("lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py"):
@@ -202,8 +300,17 @@ class BuildResume(unittest.TestCase):
 
 class FakeDrive:
     """A stand-in for gdrive.Drive: LIFE OS's own files only, as the drive.file scope sees them."""
+
     def __init__(self, lose=False, fail=None):
-        self.files, self.folders, self.lose, self.fail, self.raw, self.locks, self.no_lock = {}, [], lose, fail, None, [], False
+        self.files, self.folders, self.lose, self.fail, self.raw, self.locks, self.no_lock = (
+            {},
+            [],
+            lose,
+            fail,
+            None,
+            [],
+            False,
+        )
 
     def bind(self, raw):
         self.raw = raw
@@ -217,8 +324,17 @@ class FakeDrive:
 
     def upload(self, folder_id, name, data, mime, tags):
         fid = f"file-{len(self.files) + 1}-0123456789"
-        self.files[fid] = {"id": fid, "name": name, "md5Checksum": hashlib.md5(data).hexdigest(), "webViewLink": f"https://docs.google.com/document/d/{fid}/edit?usp=drivesdk&rtpof=true&sd=true",
-                           "parents": [folder_id], "mimeType": mime, "appProperties": dict(tags), "trashed": False, "data": data}
+        self.files[fid] = {
+            "id": fid,
+            "name": name,
+            "md5Checksum": hashlib.md5(data).hexdigest(),
+            "webViewLink": f"https://docs.google.com/document/d/{fid}/edit?usp=drivesdk&rtpof=true&sd=true",
+            "parents": [folder_id],
+            "mimeType": mime,
+            "appProperties": dict(tags),
+            "trashed": False,
+            "data": data,
+        }
         return dict(self.files[fid])
 
     def get(self, fid):
@@ -240,15 +356,26 @@ class DriveBuild(unittest.TestCase):
         self.assertEqual(r.uploads, [])  # nothing is uploaded to Notion
         self.assertEqual(r.drive.raw, GDRIVE)
         stored = r.drive.files["file-1-0123456789"]
-        self.assertEqual((stored["name"], stored["data"], stored["mimeType"], stored["parents"]), (FILENAME, DOCX, resume_app.DOCX, ["folder-1"]))
+        self.assertEqual(
+            (stored["name"], stored["data"], stored["mimeType"], stored["parents"]),
+            (FILENAME, DOCX, resume_app.DOCX, ["folder-1"]),
+        )
         self.assertEqual(stored["appProperties"], {"lifeos": "resume", "job": PID.replace("-", "")})
         link = stored["webViewLink"]
-        self.assertEqual(r.page.props["Resume"]["files"], [{"type": "external", "external": {"url": link}, "name": FILENAME}])
-        self.assertEqual((r.page.appended[0]["file"]["external"]["url"], r.page.appended[0]["file"]["name"]), (link, FILENAME))
+        self.assertEqual(
+            r.page.props["Resume"]["files"], [{"type": "external", "external": {"url": link}, "name": FILENAME}]
+        )
+        self.assertEqual(
+            (r.page.appended[0]["file"]["external"]["url"], r.page.appended[0]["file"]["name"]), (link, FILENAME)
+        )
         self.assertIn("Google Drive", r.page.appended[0]["file"]["caption"][0]["text"]["content"])
 
     def test_drive_success_is_shown_only_after_drive_the_page_and_the_column_read_back(self):
-        for page, drive in ((Page(), FakeDrive(lose=True)), (Page(lose_attachments=True), FakeDrive()), (Page(lose_column=True), FakeDrive())):
+        for page, drive in (
+            (Page(), FakeDrive(lose=True)),
+            (Page(lose_attachments=True), FakeDrive()),
+            (Page(lose_column=True), FakeDrive()),
+        ):
             status, body = Run(page, drive=drive).build()
             self.assertEqual(status, 500)
             self.assertIn("not read back", body)
@@ -274,7 +401,6 @@ class DriveBuild(unittest.TestCase):
 
 
 class Applied(unittest.TestCase):
-
     def built(self, **drive):
         r = Run(drive=FakeDrive(**drive))
         self.assertEqual(r.build()[0], 200)
@@ -285,7 +411,11 @@ class Applied(unittest.TestCase):
         status, body = r.call("GET", query={"j": PID})
         self.assertEqual(status, 200, body)
         forms = re.findall(r'<form method="post" action="/resume">(.*?)</form>', body, re.S)
-        return body, [{k: html.unescape(v) for k, v in re.findall(r'type="hidden" name="(\w+)" value="([^"]*)"', f)} for f in forms if 'name="a"' in f]
+        return body, [
+            {k: html.unescape(v) for k, v in re.findall(r'type="hidden" name="(\w+)" value="([^"]*)"', f)}
+            for f in forms
+            if 'name="a"' in f
+        ]
 
     def record(self, r, form):
         review = r.call("POST", form={**form, "step": "submit"})
@@ -295,6 +425,7 @@ class Applied(unittest.TestCase):
 
     def test_the_column_name_is_the_one_the_interview_page_reads(self):
         from lifeos.interview import view
+
         self.assertEqual(resume_app.SUBMITTED_COLUMN, view.SUBMITTED)
 
     def test_each_drive_build_is_offered_and_recording_locks_it_and_sets_submitted_resume(self):
@@ -307,7 +438,10 @@ class Applied(unittest.TestCase):
         self.assertEqual(done[0], 200, done[1])
         self.assertIn("Submitted résumé recorded", done[1])
         link = r.drive.files["file-1-0123456789"]["webViewLink"]
-        self.assertEqual(r.page.props[resume_app.SUBMITTED_COLUMN]["files"], [{"type": "external", "external": {"url": link}, "name": FILENAME}])
+        self.assertEqual(
+            r.page.props[resume_app.SUBMITTED_COLUMN]["files"],
+            [{"type": "external", "external": {"url": link}, "name": FILENAME}],
+        )
         self.assertEqual(r.drive.locks, [("file-1-0123456789", resume_app.LOCK_REASON)])
         self.assertEqual(len(r.page.writes), 1)  # one property write
         body, forms = self.offer(r)
@@ -322,7 +456,10 @@ class Applied(unittest.TestCase):
         again = r.call("POST", form=fields)
         self.assertIn("already recorded as submitted", again[1])
         self.assertEqual((len(r.page.writes), len(r.drive.locks)), (1, 1))
-        r.page.props[resume_app.SUBMITTED_COLUMN] = {"type": "files", "files": [{"type": "external", "external": {"url": "https://x"}, "name": "Other.docx"}]}
+        r.page.props[resume_app.SUBMITTED_COLUMN] = {
+            "type": "files",
+            "files": [{"type": "external", "external": {"url": "https://x"}, "name": "Other.docx"}],
+        }
         refused = r.call("POST", form=fields)
         self.assertEqual(refused[0], 409)
         self.assertIn("already recorded", refused[1])
@@ -331,7 +468,14 @@ class Applied(unittest.TestCase):
     def test_tampered_forms_write_nothing(self):
         r = self.built()
         _, forms = self.offer(r)
-        for patch in ({"f": "file-9-0123456789"}, {"n": "Other.docx"}, {"a": "bad"}, {"j": "0" * 32}, {"exp": "1"}, {"co": "Mallory"}):
+        for patch in (
+            {"f": "file-9-0123456789"},
+            {"n": "Other.docx"},
+            {"a": "bad"},
+            {"j": "0" * 32},
+            {"exp": "1"},
+            {"co": "Mallory"},
+        ):
             self.assertEqual(r.call("POST", form={**forms[0], **patch, "step": "record"})[0], 403, patch)
         self.assertEqual((r.page.writes, r.drive.locks), ([], []))
 
@@ -367,6 +511,7 @@ class Applied(unittest.TestCase):
 
         def broken(*a):
             raise gdrive.DriveError("GDRIVE_HTTP_503")
+
         r.drive.lock = broken
         status, body = r.call("POST", form={**forms[0], "step": "record"})
         self.assertEqual(status, 500)
@@ -381,6 +526,7 @@ class Applied(unittest.TestCase):
             if resume_app.SUBMITTED_COLUMN in ((body or {}).get("properties") or {}):
                 raise NotionError("NOTION_HTTP_502")
             return once(method, path, body)
+
         r.page.call_once = notion_down
         status, body = r.call("POST", form={**forms[0], "step": "record"})
         self.assertEqual(status, 500)
@@ -448,17 +594,30 @@ class DriveClient(unittest.TestCase):
 
                 def read(s):
                     return json.dumps(reply).encode()
+
             return R()
 
     def test_the_credential_must_be_complete_and_is_never_echoed(self):
-        for raw in (b"", b"{}", b'{"client_id": "a", "client_secret": "b"}', b'{"client_id": "a", "client_secret": "b", "refresh_token": ""}', b"[1]"):
+        for raw in (
+            b"",
+            b"{}",
+            b'{"client_id": "a", "client_secret": "b"}',
+            b'{"client_id": "a", "client_secret": "b", "refresh_token": ""}',
+            b"[1]",
+        ):
             with self.assertRaises(gdrive.DriveError) as caught:
                 gdrive.Drive(raw)
             self.assertEqual(str(caught.exception), "GDRIVE_CONFIG_INVALID")
 
     def test_the_folder_is_my_drive_life_os_resumes_found_or_created_inside_it_once(self):
-        opener = self.Opener({"access_token": "at", "scope": gdrive.SCOPE}, {"files": [{"id": "home-1"}]}, {"files": []}, {"id": "folder-9"},
-                             {"files": [{"id": "home-1"}]}, {"files": [{"id": "folder-9"}]})
+        opener = self.Opener(
+            {"access_token": "at", "scope": gdrive.SCOPE},
+            {"files": [{"id": "home-1"}]},
+            {"files": []},
+            {"id": "folder-9"},
+            {"files": [{"id": "home-1"}]},
+            {"files": [{"id": "folder-9"}]},
+        )
         drive = gdrive.Drive(GDRIVE, opener)
         self.assertEqual(drive.folder(), "folder-9")
         self.assertEqual(drive.folder(), "folder-9")
@@ -466,15 +625,28 @@ class DriveClient(unittest.TestCase):
         self.assertEqual(token[1], gdrive.TOKEN_URL)
         self.assertNotIn("Authorization", token[2])
         self.assertIn(b"refresh_token=rtoken", token[3])
-        self.assertIn("name%3D%27LIFE+OS%27+and+%27root%27+in+parents", home[1])  # exactly the LIFE OS folder at the top of My Drive
+        self.assertIn(
+            "name%3D%27LIFE+OS%27+and+%27root%27+in+parents", home[1]
+        )  # exactly the LIFE OS folder at the top of My Drive
         self.assertIn("%27home-1%27+in+parents", search[1])
         self.assertIn(urllib.parse.quote_plus("name='Re\u0301sume\u0301s'"), search[1])
         self.assertEqual(home[2]["Authorization"], "Bearer at")
-        self.assertEqual(json.loads(made[3]), {"name": "Résumés", "mimeType": gdrive.FOLDER_MIME, "parents": ["home-1"], "appProperties": {"lifeos": "resumes"}})
+        self.assertEqual(
+            json.loads(made[3]),
+            {
+                "name": "Résumés",
+                "mimeType": gdrive.FOLDER_MIME,
+                "parents": ["home-1"],
+                "appProperties": {"lifeos": "resumes"},
+            },
+        )
         self.assertEqual(again[0], "GET")
 
     def test_no_or_two_life_os_folders_or_a_narrow_grant_are_refused_before_anything_is_made(self):
-        for homes, code in (([], "GDRIVE_LIFE_OS_FOLDER_MISSING"), ([{"id": "a"}, {"id": "b"}], "GDRIVE_LIFE_OS_FOLDER_AMBIGUOUS")):
+        for homes, code in (
+            ([], "GDRIVE_LIFE_OS_FOLDER_MISSING"),
+            ([{"id": "a"}, {"id": "b"}], "GDRIVE_LIFE_OS_FOLDER_AMBIGUOUS"),
+        ):
             opener = self.Opener({"access_token": "at"}, {"files": homes})
             with self.assertRaises(gdrive.DriveError) as caught:
                 gdrive.Drive(GDRIVE, opener).folder()
@@ -486,7 +658,11 @@ class DriveClient(unittest.TestCase):
         self.assertEqual(str(caught.exception), "GDRIVE_SCOPE_NARROW")  # the pre-"full" grant: rerun the sign-in
 
     def test_an_upload_is_the_docx_itself_and_its_checksum_must_match(self):
-        good = {"id": "f1", "md5Checksum": hashlib.md5(DOCX).hexdigest(), "webViewLink": "https://drive.google.com/file/d/f1/view"}
+        good = {
+            "id": "f1",
+            "md5Checksum": hashlib.md5(DOCX).hexdigest(),
+            "webViewLink": "https://drive.google.com/file/d/f1/view",
+        }
         opener = self.Opener({"access_token": "at"}, good)
         meta = gdrive.Drive(GDRIVE, opener).upload("folder-9", FILENAME, DOCX, resume_app.DOCX, {"lifeos": "resume"})
         self.assertEqual(meta["id"], "f1")
@@ -498,12 +674,18 @@ class DriveClient(unittest.TestCase):
         self.assertNotIn(b"google-apps.document", body)  # never converted to a Google Doc
         for wrong in ({**good, "md5Checksum": "0" * 32}, {**good, "webViewLink": "http://x"}):
             with self.assertRaises(gdrive.DriveError) as caught:
-                gdrive.Drive(GDRIVE, self.Opener({"access_token": "at"}, wrong)).upload("folder-9", FILENAME, DOCX, resume_app.DOCX, {})
+                gdrive.Drive(GDRIVE, self.Opener({"access_token": "at"}, wrong)).upload(
+                    "folder-9", FILENAME, DOCX, resume_app.DOCX, {}
+                )
             self.assertEqual(str(caught.exception), "GDRIVE_UPLOAD_UNVERIFIED")
 
     def test_http_and_network_failures_are_fixed_codes(self):
         import urllib.error
-        for reply, code in ((urllib.error.HTTPError("u", 403, "no", {}, None), "GDRIVE_HTTP_403"), (OSError("down"), "GDRIVE_NETWORK")):
+
+        for reply, code in (
+            (urllib.error.HTTPError("u", 403, "no", {}, None), "GDRIVE_HTTP_403"),
+            (OSError("down"), "GDRIVE_NETWORK"),
+        ):
             with self.assertRaises(gdrive.DriveError) as caught:
                 gdrive.Drive(GDRIVE, self.Opener(reply)).get("f1")
             self.assertEqual(str(caught.exception), code)
@@ -515,7 +697,10 @@ class DriveClient(unittest.TestCase):
         opener = self.Opener({"access_token": "at"}, {"id": "f1", "contentRestrictions": [{"readOnly": True}]})
         meta = gdrive.Drive(GDRIVE, opener).lock("f1", "Submitted with an application")
         self.assertTrue(gdrive.locked(meta))
-        self.assertEqual(json.loads(opener.sent[1][3]), {"contentRestrictions": [{"readOnly": True, "reason": "Submitted with an application"}]})
+        self.assertEqual(
+            json.loads(opener.sent[1][3]),
+            {"contentRestrictions": [{"readOnly": True, "reason": "Submitted with an application"}]},
+        )
         self.assertFalse(gdrive.locked({"contentRestrictions": [{"readOnly": False}]}))
 
 
@@ -535,13 +720,16 @@ class Worker(unittest.TestCase):
             got.append(json.loads(data))
             conn.sendall(json.dumps({"status": "OK", "filename": FILENAME}).encode() + b"\n")
             conn.close()
+
         threading.Thread(target=serve).start()
         self.assertEqual(resume_app.ask_worker({"job": {"company": "Acme"}}, path=path, wait=5)["status"], "OK")
         self.assertEqual(got, [{"job": {"company": "Acme"}}])
         server.close()
 
     def test_no_worker_is_a_named_refusal(self):
-        self.assertEqual(resume_app.ask_worker({}, path="/nonexistent/worker.sock", wait=1), {"status": "WORKER_UNAVAILABLE"})
+        self.assertEqual(
+            resume_app.ask_worker({}, path="/nonexistent/worker.sock", wait=1), {"status": "WORKER_UNAVAILABLE"}
+        )
 
 
 class Upload(unittest.TestCase):
@@ -562,7 +750,9 @@ class Upload(unittest.TestCase):
         self.assertEqual(notion_files.upload("tok", FILENAME, DOCX, "application/x-test", opener=opener), "up-1")
         create, send = opener.requests
         self.assertTrue(create.full_url.endswith("/file_uploads"))
-        self.assertEqual(json.loads(create.data), {"mode": "single_part", "filename": FILENAME, "content_type": "application/x-test"})
+        self.assertEqual(
+            json.loads(create.data), {"mode": "single_part", "filename": FILENAME, "content_type": "application/x-test"}
+        )
         self.assertTrue(send.full_url.endswith("/file_uploads/up-1/send"))
         self.assertIn(DOCX, send.data)
         self.assertIn(f'filename="{FILENAME}"'.encode(), send.data)
@@ -570,8 +760,13 @@ class Upload(unittest.TestCase):
 
     def test_failures_are_fixed_codes(self):
         import urllib.error
-        for opener, code in ((self.Opener({"id": "up-1"}, {"status": "pending"}), "NOTION_UPLOAD_INCOMPLETE"), (self.Opener({}), "NOTION_UPLOAD_NOT_CREATED"),
-                             (self.Opener(urllib.error.HTTPError("u", 403, "x", {}, None)), "NOTION_UPLOAD_HTTP_403"), (self.Opener(OSError()), "NOTION_UPLOAD_NETWORK")):
+
+        for opener, code in (
+            (self.Opener({"id": "up-1"}, {"status": "pending"}), "NOTION_UPLOAD_INCOMPLETE"),
+            (self.Opener({}), "NOTION_UPLOAD_NOT_CREATED"),
+            (self.Opener(urllib.error.HTTPError("u", 403, "x", {}, None)), "NOTION_UPLOAD_HTTP_403"),
+            (self.Opener(OSError()), "NOTION_UPLOAD_NETWORK"),
+        ):
             with self.assertRaises(NotionError) as ctx:
                 notion_files.upload("tok", FILENAME, DOCX, "application/x-test", opener=opener)
             self.assertEqual(str(ctx.exception), code)

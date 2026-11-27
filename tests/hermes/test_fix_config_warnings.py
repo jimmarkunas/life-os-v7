@@ -1,4 +1,5 @@
 """the two empty-setting warnings."""
+
 import hashlib
 import os
 import subprocess
@@ -38,7 +39,9 @@ class Fix(HermesHome, unittest.TestCase):
     CONFIG = CONFIG
 
     def run_script(self, *args):
-        done = subprocess.run(["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args], capture_output=True, text=True)
+        done = subprocess.run(
+            ["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args], capture_output=True, text=True
+        )
         return done.returncode, done.stdout + done.stderr
 
     def test_dry_run_names_both_edits_and_writes_nothing(self):
@@ -59,7 +62,14 @@ class Fix(HermesHome, unittest.TestCase):
         self.assertIn("  codex_responses_compact_threshold: 24000\n", text)
         self.assertIn("# max_concurrent_sessions:   # unset = unlimited", text)
         self.assertNotIn("\nmax_concurrent_sessions:", text)
-        for kept in ("# Hermes config", "context_length: 64000", "# Optional absolute server compaction trigger in input tokens.", "# Maximum number of simultaneously active chat sessions.", "group_sessions_per_user: true", "threshold: 0.50"):
+        for kept in (
+            "# Hermes config",
+            "context_length: 64000",
+            "# Optional absolute server compaction trigger in input tokens.",
+            "# Maximum number of simultaneously active chat sessions.",
+            "group_sessions_per_user: true",
+            "threshold: 0.50",
+        ):
             self.assertIn(kept, text)
         self.assertEqual(open(os.path.join(self.backup, "config.yaml")).read(), CONFIG)
         self.assertEqual(os.stat(self.conf).st_mode & 0o777, 0o640)
@@ -105,11 +115,18 @@ class Fix(HermesHome, unittest.TestCase):
         self.write(CONFIG)
         for bad in ("abc", "0", "12", "1e5", "-5"):
             self.assertEqual(self.run_script("--threshold", bad)[0], 1, bad)
-        self.assertEqual(subprocess.run(["bash", SCRIPT, "--home", os.path.join(self.tmp, "none")], capture_output=True, text=True).returncode, 1)
+        self.assertEqual(
+            subprocess.run(
+                ["bash", SCRIPT, "--home", os.path.join(self.tmp, "none")], capture_output=True, text=True
+            ).returncode,
+            1,
+        )
         self.assertEqual(self.run_script("--nonsense")[0], 2)
 
     def test_no_restart_command_in_the_code(self):
-        code = "\n".join(l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#") and "echo" not in l)
+        code = "\n".join(
+            l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#") and "echo" not in l
+        )
         self.assertNotIn("systemctl", code)
 
 

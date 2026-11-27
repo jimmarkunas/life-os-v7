@@ -1,5 +1,5 @@
-"""The code map is generated on demand: the generator runs, lists every stage and package, and `find` answers from it.
-"""
+"""The code map is generated on demand: the generator runs, lists every stage and package, and `find` answers from it."""
+
 import unittest
 
 from lifeos.sources.devtools import codemap
@@ -42,7 +42,10 @@ class RoutingPageAndFind(unittest.TestCase):
     def test_find_a_stage_returns_its_module_and_a_decision_number_returns_its_title(self):
         m = codemap.build()
         self.assertIn("stage `amazon-retention` -> `lifeos.amazon.retention:run`", codemap.find(m, "amazon-retention"))
-        self.assertEqual([line for line in codemap.find(m, "D139") if line.startswith("decision ")], [f"decision D139: {m['decisions']['D139']}"])
+        self.assertEqual(
+            [line for line in codemap.find(m, "D139") if line.startswith("decision ")],
+            [f"decision D139: {m['decisions']['D139']}"],
+        )
 
     def test_find_nothing_and_an_overlong_answer_are_bounded(self):
         m = codemap.build()
@@ -53,6 +56,7 @@ class RoutingPageAndFind(unittest.TestCase):
     def test_the_command_line_find_prints_the_entry_and_a_miss_exits_nonzero(self):
         import contextlib
         import io
+
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(codemap.main(["find", "amazon-retention"]), 0)

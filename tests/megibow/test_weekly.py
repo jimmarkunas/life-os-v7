@@ -1,4 +1,5 @@
 """(synthetic): Jim's weekly database is the history and the source of his lifetime Cumulative"""
+
 import unittest
 from datetime import date, datetime, timezone
 
@@ -7,21 +8,39 @@ from lifeos.sources.cards import megibow as stage
 from tests.megibow import test_v3 as T
 
 SHEET = {
-    date(2026, 7, 27): (2, 0, 0, 6, 0), date(2026, 8, 3): (5, 2, 1, 7, 0), date(2026, 8, 10): (2, 4, 1, 5, 4), date(2026, 8, 17): (4, 0, 1, 5, 4), date(2026, 8, 24): (4, 1, 5, 3, 0),
-    date(2026, 8, 31): (1, 0, 0, 3, 1), date(2026, 9, 7): (1, 3, 0, 2, 1), date(2026, 9, 14): (1, 1, 2, 1, 3), date(2026, 9, 21): (0, 1, 1, 3, 1), date(2026, 9, 28): (0, 1, 0, 1, 1),
-    date(2026, 10, 5): (0, 0, 1, 2, 0), date(2026, 10, 12): (0, 0, 0, 4, 0), date(2026, 10, 19): (0, 0, 0, 0, 0), date(2026, 10, 26): (0, 2, 0, 2, 0),
-    date(2026, 11, 2): (4, 0, 0, 1, 0), date(2026, 11, 9): (0, 0, 0, 0, 0)}
+    date(2026, 7, 27): (2, 0, 0, 6, 0),
+    date(2026, 8, 3): (5, 2, 1, 7, 0),
+    date(2026, 8, 10): (2, 4, 1, 5, 4),
+    date(2026, 8, 17): (4, 0, 1, 5, 4),
+    date(2026, 8, 24): (4, 1, 5, 3, 0),
+    date(2026, 8, 31): (1, 0, 0, 3, 1),
+    date(2026, 9, 7): (1, 3, 0, 2, 1),
+    date(2026, 9, 14): (1, 1, 2, 1, 3),
+    date(2026, 9, 21): (0, 1, 1, 3, 1),
+    date(2026, 9, 28): (0, 1, 0, 1, 1),
+    date(2026, 10, 5): (0, 0, 1, 2, 0),
+    date(2026, 10, 12): (0, 0, 0, 4, 0),
+    date(2026, 10, 19): (0, 0, 0, 0, 0),
+    date(2026, 10, 26): (0, 2, 0, 2, 0),
+    date(2026, 11, 2): (4, 0, 0, 1, 0),
+    date(2026, 11, 9): (0, 0, 0, 0, 0),
+}
 LIFETIME = {"Outreach": 24, "Scheduled": 15, "Networking Calls": 12, "Recruiter Calls": 45, "Company Calls": 15}
 
 
 def wrow(monday, nums, source="Sheet", over=None, edited="2026-11-01T00:00:00Z"):
-    props = {"Week Start": {"date": {"start": monday.isoformat()}}, "Source": {"select": {"name": source}},
-             **{a: {"number": n} for a, n in zip(C.ACTIVITIES, nums, strict=True)}, **{o: {"number": (over or {}).get(a)} for a, o in weekly.OVERRIDE.items()}}
+    props = {
+        "Week Start": {"date": {"start": monday.isoformat()}},
+        "Source": {"select": {"name": source}},
+        **{a: {"number": n} for a, n in zip(C.ACTIVITIES, nums, strict=True)},
+        **{o: {"number": (over or {}).get(a)} for a, o in weekly.OVERRIDE.items()},
+    }
     return {"id": f"w{monday}", "last_edited_time": edited, "properties": props}
 
 
 class WeeklyPage(T.Page):
     """The V3 fake plus Jim's weekly database and the two history pages."""
+
     def __init__(self, jim_rows, history=True, schema_ok=True, **kw):
         super().__init__(**kw)
         self.jim_rows, self.history, self.schema_ok, self.created = list(jim_rows), history, schema_ok, []
@@ -31,8 +50,16 @@ class WeeklyPage(T.Page):
             kind = body["filter"]["value"]
             base = super().call(method, path, body)
             if kind == "page" and self.history:
-                base["results"] += [{"id": "histjim", "properties": {"title": {"type": "title", "title": [{"plain_text": v3.HISTORY_TITLE["Jim"]}]}}},
-                                    {"id": "histmatt", "properties": {"title": {"type": "title", "title": [{"plain_text": v3.HISTORY_TITLE["Matt"]}]}}}]
+                base["results"] += [
+                    {
+                        "id": "histjim",
+                        "properties": {"title": {"type": "title", "title": [{"plain_text": v3.HISTORY_TITLE["Jim"]}]}},
+                    },
+                    {
+                        "id": "histmatt",
+                        "properties": {"title": {"type": "title", "title": [{"plain_text": v3.HISTORY_TITLE["Matt"]}]}},
+                    },
+                ]
             if kind == "data_source":
                 base["results"].append({"id": "jimdb", "title": [{"plain_text": weekly.JIM_SOURCE_TITLE}]})
             return base
@@ -44,14 +71,23 @@ class WeeklyPage(T.Page):
         return super().call(method, path, body)
 
     def query_data_source(self, source_id, body):
-        return {"results": self.jim_rows, "has_more": False} if source_id == "jimdb" else super().query_data_source(source_id, body)
+        return (
+            {"results": self.jim_rows, "has_more": False}
+            if source_id == "jimdb"
+            else super().query_data_source(source_id, body)
+        )
 
     def call_once(self, method, path, body=None):
         if method == "POST" and path == "/pages":
             p = body["properties"]
             self.created.append(date.fromisoformat(p["Week Start"]["date"]["start"]))
-            self.jim_rows.append({"id": f"new{len(self.created)}", "last_edited_time": "2026-11-20T00:00:00Z", "properties": {
-                **p, **{o: {"number": None} for o in weekly.OVERRIDE.values()}}})
+            self.jim_rows.append(
+                {
+                    "id": f"new{len(self.created)}",
+                    "last_edited_time": "2026-11-20T00:00:00Z",
+                    "properties": {**p, **{o: {"number": None} for o in weekly.OVERRIDE.values()}},
+                }
+            )
             return {}
         return super().call_once(method, path, body)
 
@@ -69,8 +105,17 @@ def sheet_rows(changes=None):
 
 
 def run(page, now=T.NOW, mail=True):
-    gm = T.Gmail({"a": T.sent("a", datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)), "b": T.sent("b", datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc))} if mail else {})
-    return stage.run(0, True, environ=T.ENV, gmail=gm, gcal=T.Gcal(), outlook_clients=[], notion=page, now=now, known={"lensa"})
+    gm = T.Gmail(
+        {
+            "a": T.sent("a", datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)),
+            "b": T.sent("b", datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc)),
+        }
+        if mail
+        else {}
+    )
+    return stage.run(
+        0, True, environ=T.ENV, gmail=gm, gcal=T.Gcal(), outlook_clients=[], notion=page, now=now, known={"lensa"}
+    )
 
 
 def cumulative(page):
@@ -84,7 +129,9 @@ class History(unittest.TestCase):
         self.assertEqual(cumulative(page), LIFETIME)
         self.assertEqual(page.cells("jim")[6][-1], "111")
         self.assertEqual(page.cells("jim")[0][1:4], ["Sep 21", "Sep 28", "Oct 5"])
-        self.assertEqual([r[1] for r in page.cells("jim")[1:6]], ["0", "1", "1", "3", "1"])  # the Sep 21 week as typed in the sheet
+        self.assertEqual(
+            [r[1] for r in page.cells("jim")[1:6]], ["0", "1", "1", "3", "1"]
+        )  # the Sep 21 week as typed in the sheet
 
     def test_a_week_that_leaves_the_eight_week_table_still_counts(self):
         later = datetime(2026, 12, 4, 14, 0, tzinfo=T.CHI)
@@ -139,7 +186,11 @@ class History(unittest.TestCase):
         page = WeeklyPage(sheet_rows(), matt_rows=[T.row(T.WEEKS[1], 3)])
         run(page, mail=False)
         for who, ident in (("jim", "histjim"), ("matt", "histmatt")):
-            links = [p["text"]["link"]["url"] for p in page.blocks[f"{who}-notes"]["paragraph"]["rich_text"] if p["text"].get("link")]
+            links = [
+                p["text"]["link"]["url"]
+                for p in page.blocks[f"{who}-notes"]["paragraph"]["rich_text"]
+                if p["text"].get("link")
+            ]
             self.assertIn(f"https://www.notion.so/{ident}", links)
         self.assertIn("Megibow history", page.text("jim-notes"))
 
@@ -151,7 +202,10 @@ class History(unittest.TestCase):
 
 class Reader(unittest.TestCase):
     def test_duplicate_rows_for_a_week_use_the_newest_and_bad_rows_are_ignored(self):
-        old, new = wrow(date(2026, 11, 2), (1, 0, 0, 0, 0), edited="2026-11-01T00:00:00Z"), wrow(date(2026, 11, 3), (7, 0, 0, 0, 0), edited="2026-11-05T00:00:00Z")
+        old, new = (
+            wrow(date(2026, 11, 2), (1, 0, 0, 0, 0), edited="2026-11-01T00:00:00Z"),
+            wrow(date(2026, 11, 3), (7, 0, 0, 0, 0), edited="2026-11-05T00:00:00Z"),
+        )
         bad = wrow(date(2026, 11, 9), (1, 0, 0, 0, 0))
         bad["properties"]["Outreach"] = {"number": -1}
         rows, ignored = weekly.read(WeeklyPage([old, new, bad]), "jimdb")
@@ -164,7 +218,20 @@ class Reader(unittest.TestCase):
         self.assertEqual(str(caught.exception), "MEGIBOW_WEEKLY_SCHEMA")
 
     def test_an_override_only_row_uses_the_engine_for_the_rest(self):
-        rows = {date(2026, 11, 2): {"stored": None, "over": {"Outreach": 5, "Scheduled": None, "Networking Calls": None, "Recruiter Calls": None, "Company Calls": None}, "source": "Typed", "id": "x"}}
+        rows = {
+            date(2026, 11, 2): {
+                "stored": None,
+                "over": {
+                    "Outreach": 5,
+                    "Scheduled": None,
+                    "Networking Calls": None,
+                    "Recruiter Calls": None,
+                    "Company Calls": None,
+                },
+                "source": "Typed",
+                "id": "x",
+            }
+        }
         engine = {a: 2 for a in C.ACTIVITIES}
         counts, typed = weekly.shown(date(2026, 11, 2), date(2026, 11, 9), rows[date(2026, 11, 2)], engine)
         self.assertEqual((counts["Outreach"], counts["Scheduled"], typed), (5, 2, frozenset({"Outreach"})))
@@ -172,7 +239,14 @@ class Reader(unittest.TestCase):
 
     def test_a_future_dated_row_never_counts(self):
         proj = P.project([], date(2026, 11, 13))
-        rows = {date(2026, 12, 7): {"stored": {a: 9 for a in C.ACTIVITIES}, "over": {a: None for a in C.ACTIVITIES}, "source": "Typed", "id": "f"}}
+        rows = {
+            date(2026, 12, 7): {
+                "stored": {a: 9 for a in C.ACTIVITIES},
+                "over": {a: None for a in C.ACTIVITIES},
+                "source": "Typed",
+                "id": "f",
+            }
+        }
         self.assertEqual(weekly.project(proj, rows)["cumulative"], P.zero())
 
 

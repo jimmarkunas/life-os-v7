@@ -1,6 +1,7 @@
 """A synthetic Job Ledger in Notion: pages with a Stable Job Key, a data source, and a body of blocks (a toggle holds its
 children).
 """
+
 from tests.kit.notion import LANE_OPTIONS, filter_depth, _select_names  # noqa: F401
 from urllib.parse import unquote
 
@@ -22,12 +23,24 @@ class FakeLedger:
         """`runs` is a plain string or the rich_text a writer sent"""
         self.n += 1
         bid = f"blk{self.n}"
-        runs = [{"plain_text": runs}] if isinstance(runs, str) else [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in runs]
+        runs = (
+            [{"plain_text": runs}]
+            if isinstance(runs, str)
+            else [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in runs]
+        )
         inner = {"rich_text": runs}
         if checked is not None:
             inner["checked"] = checked
         self.blocks[bid] = {"id": bid, "type": kind, kind: inner, "has_children": bool(children)}
-        self.kids[bid] = [self._new(c["type"], c[c["type"]].get("rich_text", []), (c[c["type"]].get("checked")), c[c["type"]].get("children", ())) for c in children]
+        self.kids[bid] = [
+            self._new(
+                c["type"],
+                c[c["type"]].get("rich_text", []),
+                (c[c["type"]].get("checked")),
+                c[c["type"]].get("children", ()),
+            )
+            for c in children
+        ]
         return bid
 
     def create(self, props, blocks):
@@ -40,11 +53,17 @@ class FakeLedger:
         self.pages[page_id], self.kids[page_id] = {"key": key, "source": SOURCE, "archived": False}, []
         for b in blocks:
             inner = b[b["type"]]
-            self.kids[page_id].append(self._new(b["type"], inner.get("rich_text", []), inner.get("checked"), inner.get("children", ())))
+            self.kids[page_id].append(
+                self._new(b["type"], inner.get("rich_text", []), inner.get("checked"), inner.get("children", ()))
+            )
         return page_id
 
     def add_page(self, page_id, job_key, description=True, **flags):
-        self.pages[page_id] = {"key": job_key, "source": flags.get("source", SOURCE), "archived": flags.get("archived", False)}
+        self.pages[page_id] = {
+            "key": job_key,
+            "source": flags.get("source", SOURCE),
+            "archived": flags.get("archived", False),
+        }
         self.kids[page_id] = []
         if description:
             self.kids[page_id].append(self._new("paragraph", f"v7-jd:1 | key={job_key}"))
@@ -62,6 +81,7 @@ class FakeLedger:
         ledger_body.description_list), else None.
         """
         from lifeos.platform import ledger_body
+
         found = ledger_body.description_list(self.top(page_id), self.pages[page_id]["key"])
         return self.kids[found["id"]][1] if found else None
 
@@ -95,7 +115,10 @@ class FakeLedger:
         """
         for child in self.owned(page_id) or []:
             runs = child["type"] == "to_do" and child["to_do"]["rich_text"]
-            if runs and (runs[0]["plain_text"].startswith(prefix) or unquote((runs[0].get("href") or "").rsplit("/lifeos/", 1)[-1]).startswith(prefix)):
+            if runs and (
+                runs[0]["plain_text"].startswith(prefix)
+                or unquote((runs[0].get("href") or "").rsplit("/lifeos/", 1)[-1]).startswith(prefix)
+            ):
                 child["to_do"]["checked"] = True
                 self._touch(child["id"])
                 return
@@ -113,7 +136,10 @@ class FakeLedger:
 
     def edited_time(self, page_id):
         from datetime import datetime, timedelta
-        return (datetime(2026, 10, 7, 9, 0) + timedelta(minutes=self.edited.get(page_id, 0))).strftime("%Y-%m-%dT%H:%M:00.000Z")
+
+        return (datetime(2026, 10, 7, 9, 0) + timedelta(minutes=self.edited.get(page_id, 0))).strftime(
+            "%Y-%m-%dT%H:%M:00.000Z"
+        )
 
     def call(self, method, path, body=None):
         self.calls += 1
@@ -123,7 +149,12 @@ class FakeLedger:
             return {"properties": {n: {"type": t} for n, t in ledger.REQUIRED.items()}}
         if method == "GET" and path.startswith("/pages/"):
             page = self.pages[path.rsplit("/", 1)[1]]
-            return {"archived": page["archived"], "last_edited_time": self.edited_time(path.rsplit("/", 1)[1]), "parent": {"data_source_id": page["source"]}, "properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": page["key"]}]}}}
+            return {
+                "archived": page["archived"],
+                "last_edited_time": self.edited_time(path.rsplit("/", 1)[1]),
+                "parent": {"data_source_id": page["source"]},
+                "properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": page["key"]}]}},
+            }
         if method == "GET" and "/children" in path:
             owner = unquote(path.split("/blocks/")[1].split("/children")[0])
             return {"results": [dict(self.blocks[b]) for b in self.kids[owner]], "has_more": False}
@@ -134,7 +165,10 @@ class FakeLedger:
             self._touch(path.rsplit("/", 1)[1])
             block = self.blocks[path.rsplit("/", 1)[1]]
             kind = block["type"]
-            block[kind]["rich_text"] = [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in body[kind]["rich_text"]]
+            block[kind]["rich_text"] = [
+                {"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")}
+                for r in body[kind]["rich_text"]
+            ]
             return {}
         if method == "DELETE" and path.startswith("/blocks/"):
             if self.fail_delete:
@@ -158,7 +192,12 @@ class FakeLedger:
         at = self.kids[page_id].index(body["after"]) + 1 if body.get("after") else len(self.kids[page_id])
         for child in body["children"]:
             kind = child["type"]
-            self.kids[page_id].insert(at, self._new(kind, child[kind].get("rich_text", []), child[kind].get("checked"), child[kind].get("children", ())))
+            self.kids[page_id].insert(
+                at,
+                self._new(
+                    kind, child[kind].get("rich_text", []), child[kind].get("checked"), child[kind].get("children", ())
+                ),
+            )
             at += 1
         return {}
 
@@ -170,6 +209,7 @@ class LedgerWithFilterLimit:
 
     def __init__(self, pages=(), properties=None, lane_options=LANE_OPTIONS):
         from lifeos.jobs import ledger
+
         self.source, self.pages, self.queries, self.log = "ledger", list(pages), [], []
         self.properties = {n: {"type": k} for n, k in (properties or ledger.REQUIRED).items()}
         self.properties["Visible Lane"] = {"type": "select", "select": {"options": [{"name": n} for n in lane_options]}}
@@ -177,6 +217,7 @@ class LedgerWithFilterLimit:
 
     def call(self, method, path, body=None):
         from lifeos.platform.notion_client import NotionError
+
         self.log.append((method, path))
         if method == "GET":
             return {"properties": self.properties}

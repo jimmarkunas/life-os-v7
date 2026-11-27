@@ -1,6 +1,7 @@
 """a scheduled Jira rollover that keeps failing reaches the phone once it has not worked for three hours, then reminds,
 then says when it recovers.
 """
+
 import contextlib
 import io
 import unittest
@@ -20,7 +21,9 @@ Pushes = shared.Pushes
 def wrapped(db, pushes, outcome, live=True, now=T0):
     environ = {"NTFY_TOPIC": "topic-example", "JIRA_ROLLOVER_OUTCOME": outcome}
     with contextlib.redirect_stdout(io.StringIO()):
-        return watch.run(1, live, environ=environ, now=now.replace(tzinfo=timezone.utc), send=pushes, connect=lambda: db)
+        return watch.run(
+            1, live, environ=environ, now=now.replace(tzinfo=timezone.utc), send=pushes, connect=lambda: db
+        )
 
 
 class DecideTests(unittest.TestCase):
@@ -44,12 +47,17 @@ class DecideTests(unittest.TestCase):
     def test_a_success_closes_an_open_alert_and_says_so_once(self):
         state = {"last_ok": T0, "alert_open": True, "last_notified": T0 + timedelta(hours=3)}
         state, plan = watch.decide(state, True, T0 + timedelta(hours=5))
-        self.assertEqual(([k for k, _ in plan.notify], state["alert_open"], state["last_ok"]), (["resolved"], False, T0 + timedelta(hours=5)))
+        self.assertEqual(
+            ([k for k, _ in plan.notify], state["alert_open"], state["last_ok"]),
+            (["resolved"], False, T0 + timedelta(hours=5)),
+        )
         _, plan = watch.decide(state, True, T0 + timedelta(hours=6))
         self.assertEqual(plan.notify, [])
 
     def test_a_blip_followed_by_a_success_never_pages(self):
-        state, plan = watch.decide({"last_ok": T0, "alert_open": False, "last_notified": None}, False, T0 + timedelta(hours=1))
+        state, plan = watch.decide(
+            {"last_ok": T0, "alert_open": False, "last_notified": None}, False, T0 + timedelta(hours=1)
+        )
         self.assertEqual(plan.notify, [])
         state, plan = watch.decide(state, True, T0 + timedelta(hours=2))
         self.assertEqual((plan.notify, state["alert_open"]), ([], False))
@@ -62,9 +70,14 @@ class RunTests(unittest.TestCase):
     def test_a_failing_rollover_pages_the_phone_with_counts_only_then_does_not_repeat(self):
         db, pushes = FakeDb(self.stuck_row()), Pushes()
         out = wrapped(db, pushes, "failure")
-        (topic, title, body, severity), = pushes.sent
-        self.assertEqual((topic, severity, title), ("topic-example", alerts.PAGE, "Jira sprint rollover has not worked for 4 hours"))
-        self.assertEqual(body, "A board kept its old sprint. Next: open the domains run (jira job, rollover step) and look for the JIRA_ code")  # fixed words: no board, project or issue name
+        ((topic, title, body, severity),) = pushes.sent
+        self.assertEqual(
+            (topic, severity, title), ("topic-example", alerts.PAGE, "Jira sprint rollover has not worked for 4 hours")
+        )
+        self.assertEqual(
+            body,
+            "A board kept its old sprint. Next: open the domains run (jira job, rollover step) and look for the JIRA_ code",
+        )  # fixed words: no board, project or issue name
         self.assertEqual((out["recorded"], out["alert_open"], out["sent"]), (True, True, 1))
         wrapped(db, pushes, "failure", now=T0 + timedelta(hours=1))
         self.assertEqual(len(pushes.sent), 1)  # still failing, reminder not due
@@ -103,6 +116,7 @@ class RunTests(unittest.TestCase):
 
     def test_the_stage_is_registered(self):
         from lifeos import run as entry
+
         self.assertEqual(entry.STAGES["jira-rollover-watch"].target, ("lifeos.jira.watch", "run"))
 
 

@@ -1,6 +1,7 @@
 """the Job Ledger's First Surfaced and Last Seen are Jim's calendar day in US Central, so the 'Today' view turns over at
 midnight CT, not at 7 PM CT.
 """
+
 import unittest
 from datetime import date, datetime, timezone
 
@@ -19,7 +20,9 @@ class CentralDay(unittest.TestCase):
         self.assertIsNone(ledger.ct_day(None))
 
     def test_last_seen_uses_the_central_day(self):
-        self.assertEqual(repost.sync_props(datetime(2026, 10, 30, 2, 0), False)["Last Seen"], {"date": {"start": "2026-10-29"}})
+        self.assertEqual(
+            repost.sync_props(datetime(2026, 10, 30, 2, 0), False)["Last Seen"], {"date": {"start": "2026-10-29"}}
+        )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 """the one clock a test may read."""
+
 import datetime as dt
 import os
 
@@ -36,8 +37,20 @@ class FrozenDateTime(dt.datetime):
     @classmethod
     def now(cls, tz=None):
         moment = now(tz)
-        return cls(moment.year, moment.month, moment.day, moment.hour, moment.minute, moment.second, moment.microsecond, tzinfo=moment.tzinfo) if tz is not None \
+        return (
+            cls(
+                moment.year,
+                moment.month,
+                moment.day,
+                moment.hour,
+                moment.minute,
+                moment.second,
+                moment.microsecond,
+                tzinfo=moment.tzinfo,
+            )
+            if tz is not None
             else cls(*naive_utc().timetuple()[:6])
+        )
 
     @classmethod
     def utcnow(cls):

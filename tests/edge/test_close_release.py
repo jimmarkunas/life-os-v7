@@ -1,4 +1,5 @@
 """S2 release verification and fail-closed Serve reading."""
+
 import json
 import os
 import tempfile
@@ -15,8 +16,6 @@ def real_edge(app=b"CLOSURE = ()\n"):
     return {**{p: open(os.path.join(ROOT, p), "rb").read() for p in rel.EDGE if p != rel.APP}, rel.APP: app}
 
 
-
-
 class Stage(unittest.TestCase):
     def dest(self):
         return os.path.join(tempfile.mkdtemp(), "tree")
@@ -26,15 +25,22 @@ class Stage(unittest.TestCase):
         rel.stage(C, d, github(), importer=lambda p: None)
         rel.check(d)
         self.assertEqual(open(os.path.join(d, "MANIFEST")).readline().strip(), f"commit {C}")
-        self.assertEqual(sorted(os.path.relpath(os.path.join(r, n), d) for r, _, ns in os.walk(d) for n in ns if n != "MANIFEST"), sorted(FILES))
+        self.assertEqual(
+            sorted(os.path.relpath(os.path.join(r, n), d) for r, _, ns in os.walk(d) for n in ns if n != "MANIFEST"),
+            sorted(FILES),
+        )
 
     def test_every_untrusted_release_is_refused_before_anything_is_written(self):
         bad_closure = {**FILES, rel.APP: b'CLOSURE = ("../etc/passwd",)\n'}
-        cases = [("NOT_A_COMMIT", "abc", github()), ("NOT_ON_MAIN", C, github(status="diverged")),
-                 ("ENTRY_POINT_MISSING", C, github({k: v for k, v in FILES.items() if k != rel.APP})),
-                 ("NO_CLOSURE", C, github({**FILES, rel.APP: b"x = 1\n"})), ("UNSAFE_CLOSURE", C, github(bad_closure)),
-                 ("NOT_A_REGULAR_FILE", C, github(mode="120000")),  # a symlink in the commit
-                 ("NOT_A_REGULAR_FILE", C, github({k: v for k, v in FILES.items() if k != "lifeos/hiring/close.py"}))]  # incomplete
+        cases = [
+            ("NOT_A_COMMIT", "abc", github()),
+            ("NOT_ON_MAIN", C, github(status="diverged")),
+            ("ENTRY_POINT_MISSING", C, github({k: v for k, v in FILES.items() if k != rel.APP})),
+            ("NO_CLOSURE", C, github({**FILES, rel.APP: b"x = 1\n"})),
+            ("UNSAFE_CLOSURE", C, github(bad_closure)),
+            ("NOT_A_REGULAR_FILE", C, github(mode="120000")),  # a symlink in the commit
+            ("NOT_A_REGULAR_FILE", C, github({k: v for k, v in FILES.items() if k != "lifeos/hiring/close.py"})),
+        ]  # incomplete
         for code, commit, fetch in cases:
             d = self.dest()
             with self.assertRaises(rel.Refused) as caught:
@@ -42,7 +48,9 @@ class Stage(unittest.TestCase):
             self.assertTrue(str(caught.exception).startswith(code), (code, str(caught.exception)))
             self.assertFalse(os.path.exists(d))
         swapped = github()
-        tampered = lambda url: b"# evil\n" if url.endswith("/lifeos/hiring/close.py") else swapped(url)  # content differs from the commit's tree
+        tampered = lambda url: (
+            b"# evil\n" if url.endswith("/lifeos/hiring/close.py") else swapped(url)
+        )  # content differs from the commit's tree
         with self.assertRaises(rel.Refused) as caught:
             rel.stage(C, self.dest(), tampered, importer=lambda p: None)
         self.assertTrue(str(caught.exception).startswith("CONTENT_MISMATCH"))
@@ -56,7 +64,9 @@ class Stage(unittest.TestCase):
 
     def test_the_real_import_check_leaves_the_staged_tree_exactly_as_the_manifest_says(self):
         app = open(os.path.join(ROOT, rel.APP), "rb").read()
-        files = {p: open(os.path.join(ROOT, p), "rb").read() for p in rel.closure(app)}  # the real Career application and its whole closure
+        files = {
+            p: open(os.path.join(ROOT, p), "rb").read() for p in rel.closure(app)
+        }  # the real Career application and its whole closure
         d = self.dest()
         rel.stage(C, d, github(files))
         rel.check(d)  # ...
@@ -64,9 +74,11 @@ class Stage(unittest.TestCase):
         self.assertEqual([n for _, dirs, _ in os.walk(d) for n in dirs if n == "__pycache__"], [])
 
     def test_check_refuses_an_extra_file_a_changed_file_or_a_symlink(self):
-        for damage in (lambda d: open(os.path.join(d, "lifeos", "extra.py"), "w").write("x"),
-                       lambda d: open(os.path.join(d, "lifeos", "hiring", "close.py"), "w").write("# changed"),
-                       lambda d: os.symlink("/etc/passwd", os.path.join(d, "lifeos", "link"))):
+        for damage in (
+            lambda d: open(os.path.join(d, "lifeos", "extra.py"), "w").write("x"),
+            lambda d: open(os.path.join(d, "lifeos", "hiring", "close.py"), "w").write("# changed"),
+            lambda d: os.symlink("/etc/passwd", os.path.join(d, "lifeos", "link")),
+        ):
             d = self.dest()
             rel.stage(C, d, github(), importer=lambda p: None)
             damage(d)
@@ -78,12 +90,21 @@ class ServeState(unittest.TestCase):
 
     def test_only_a_well_formed_status_can_say_free(self):
         gateway = {"TCP": {"443": {"HTTPS": True}, "47341": {"TCPForward": "127.0.0.1:47342", "ProxyProtocol": 2}}}
-        cases = [("", "unknown"), ("not json", "unknown"), ("[]", "unknown"), ('{"TCP": []}', "unknown"),
-                 (json.dumps(gateway), "free"), (json.dumps({"TCP": {**gateway["TCP"], "47443": self.OURS}}), "ours"),
-                 (json.dumps({"TCP": {"47443": {**self.OURS, "TCPForward": "127.0.0.1:9999"}}}), "other"),  # foreign owner
-                 (json.dumps({"TCP": {"47443": {"TCPForward": "127.0.0.1:47344", "ProxyProtocol": 2}}}), "other"),  # no TLS termination
-                 (json.dumps({"TCP": {"47443": self.OURS}, "AllowFunnel": {"edge.example.ts.net:47443": True}}), "other"),
-                 (json.dumps({"Web": {"edge.example.ts.net:47443": {}}}), "other")]
+        cases = [
+            ("", "unknown"),
+            ("not json", "unknown"),
+            ("[]", "unknown"),
+            ('{"TCP": []}', "unknown"),
+            (json.dumps(gateway), "free"),
+            (json.dumps({"TCP": {**gateway["TCP"], "47443": self.OURS}}), "ours"),
+            (json.dumps({"TCP": {"47443": {**self.OURS, "TCPForward": "127.0.0.1:9999"}}}), "other"),  # foreign owner
+            (
+                json.dumps({"TCP": {"47443": {"TCPForward": "127.0.0.1:47344", "ProxyProtocol": 2}}}),
+                "other",
+            ),  # no TLS termination
+            (json.dumps({"TCP": {"47443": self.OURS}, "AllowFunnel": {"edge.example.ts.net:47443": True}}), "other"),
+            (json.dumps({"Web": {"edge.example.ts.net:47443": {}}}), "other"),
+        ]
         for text, want in cases:
             self.assertEqual(rel.serve_state(text), want, text)
 
@@ -101,7 +122,9 @@ class IsolatedTree(unittest.TestCase):
         return real_edge()
 
     def test_the_edge_closure_alone_imports_and_builds_the_get_client(self):
-        rel.stage(C, os.path.join(tempfile.mkdtemp(), "tree"), github(self.real()))  # the real isolated import + dry client construction
+        rel.stage(
+            C, os.path.join(tempfile.mkdtemp(), "tree"), github(self.real())
+        )  # the real isolated import + dry client construction
 
     def test_a_tree_without_the_notion_transport_or_limits_is_incomplete(self):
         for missing in ("lifeos/platform/limits.py", "lifeos/platform/notion_client.py"):
@@ -116,24 +139,57 @@ class IsolatedTree(unittest.TestCase):
 
 class AutoRelease(unittest.TestCase):
     """the hourly data run is reported and never blocks."""
-    RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/pr-tests.yml", "event": "push", "status": "completed", "conclusion": "success", "id": 1, "run_attempt": 1}
-    HOURLY = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "event": "workflow_dispatch", "status": "completed", "conclusion": "failure", "id": 9, "run_attempt": 1}
+
+    RUN = {
+        "head_sha": C,
+        "head_branch": "main",
+        "path": ".github/workflows/pr-tests.yml",
+        "event": "push",
+        "status": "completed",
+        "conclusion": "success",
+        "id": 1,
+        "run_attempt": 1,
+    }
+    HOURLY = {
+        "head_sha": C,
+        "head_branch": "main",
+        "path": ".github/workflows/hourly.yml",
+        "event": "workflow_dispatch",
+        "status": "completed",
+        "conclusion": "failure",
+        "id": 9,
+        "run_attempt": 1,
+    }
 
     FLAG_URL = f"https://api.github.com/repos/{rel.REPO}/issues?state=open&labels=release-paused&per_page=30"
 
     def fetch(self, sha=C, runs=(RUN,), hourly=(), flag=()):
-        urls = {self.FLAG_URL: json.dumps(list(flag)).encode(),
-                f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
-                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/pr-tests.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(runs)}).encode(),
-                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(hourly)}).encode()}
+        urls = {
+            self.FLAG_URL: json.dumps(list(flag)).encode(),
+            f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
+            f"https://api.github.com/repos/{rel.REPO}/actions/workflows/pr-tests.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps(
+                {"workflow_runs": list(runs)}
+            ).encode(),
+            f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps(
+                {"workflow_runs": list(hourly)}
+            ).encode(),
+        }
         return urls.__getitem__
 
     def test_only_a_head_with_green_ci_on_main_releases(self):
         R = self.RUN
         self.assertEqual(rel.latest(self.fetch()), C)
-        refused = [dict(runs=()), dict(runs=({**R, "conclusion": "failure"},)), dict(runs=({**R, "conclusion": "cancelled"},)), dict(runs=({**R, "status": "in_progress", "conclusion": None},)),
-                   dict(runs=({**R, "head_branch": "feature"},)), dict(runs=({**R, "head_sha": "b" * 40},)), dict(runs=({**R, "path": ".github/workflows/other.yml"},)),
-                   dict(runs=(R, {**R, "id": 2, "conclusion": "failure"})), dict(runs=(R, {**R, "id": 2, "status": "queued", "conclusion": None}))]
+        refused = [
+            dict(runs=()),
+            dict(runs=({**R, "conclusion": "failure"},)),
+            dict(runs=({**R, "conclusion": "cancelled"},)),
+            dict(runs=({**R, "status": "in_progress", "conclusion": None},)),
+            dict(runs=({**R, "head_branch": "feature"},)),
+            dict(runs=({**R, "head_sha": "b" * 40},)),
+            dict(runs=({**R, "path": ".github/workflows/other.yml"},)),
+            dict(runs=(R, {**R, "id": 2, "conclusion": "failure"})),
+            dict(runs=(R, {**R, "id": 2, "status": "queued", "conclusion": None})),
+        ]
         for kw in refused:
             with self.assertRaises(rel.Refused, msg=str(kw)):
                 rel.latest(self.fetch(**kw))
@@ -159,13 +215,24 @@ class AutoRelease(unittest.TestCase):
         """
         good = self.fetch()
         full_page = json.dumps([{**self.PAUSED, "number": n, "pull_request": {"url": "x"}} for n in range(30)]).encode()
-        for answer in (OSError("down"), TimeoutError("slow"), b"not json", b"{}", b'{"message": "API rate limit exceeded"}', b"[1, 2]", b"null", full_page):
+        for answer in (
+            OSError("down"),
+            TimeoutError("slow"),
+            b"not json",
+            b"{}",
+            b'{"message": "API rate limit exceeded"}',
+            b"[1, 2]",
+            b"null",
+            full_page,
+        ):
+
             def fetch(url, answer=answer):
                 if url != self.FLAG_URL:
                     return good(url)
                 if isinstance(answer, Exception):
                     raise answer
                 return answer
+
             with self.assertRaises(rel.Refused, msg=repr(answer)[:40]) as held:
                 rel.latest(fetch)
             self.assertEqual(str(held.exception), "PROOF_STATE_UNREADABLE", repr(answer)[:40])
@@ -180,14 +247,20 @@ class AutoRelease(unittest.TestCase):
         import io
         from contextlib import redirect_stderr
         from unittest import mock
+
         for code, status in (("PROOF_PAUSED", 3), ("PROOF_STATE_UNREADABLE", 4)):
             err = io.StringIO()
-            with mock.patch.object(rel, "latest", side_effect=rel.Refused(code)), redirect_stderr(err), self.assertRaises(SystemExit) as out:
+            with (
+                mock.patch.object(rel, "latest", side_effect=rel.Refused(code)),
+                redirect_stderr(err),
+                self.assertRaises(SystemExit) as out,
+            ):
                 rel.main(["latest"])
             self.assertEqual((out.exception.code, err.getvalue().strip()), (status, f"REFUSED: {code}"))
 
     def test_the_flag_label_is_the_one_the_proof_run_writes(self):
         from lifeos.platform import release_proof
+
         self.assertEqual(rel.FLAG_LABEL, release_proof.FLAG_LABEL)
         self.assertEqual(rel.PROOF_EXIT, {"PROOF_PAUSED": 3, "PROOF_STATE_UNREADABLE": 4})
 
@@ -197,7 +270,12 @@ class AutoRelease(unittest.TestCase):
 
     def test_a_red_hourly_run_does_not_block_a_green_ci_head_and_is_only_reported(self):
         red, running = self.HOURLY, {**self.HOURLY, "status": "in_progress", "conclusion": None}
-        for hourly, said in (((red,), "red"), ((running,), "running"), ((), "none"), (({**red, "conclusion": "success"},), "green")):
+        for hourly, said in (
+            ((red,), "red"),
+            ((running,), "running"),
+            ((), "none"),
+            (({**red, "conclusion": "success"},), "green"),
+        ):
             fetch = self.fetch(hourly=hourly)
             self.assertEqual(rel.latest(fetch), C, said)  # the hourly result never decides the deploy
             self.assertEqual(rel.hourly_report(C, fetch), said)
@@ -222,6 +300,7 @@ class AutoRelease(unittest.TestCase):
     def test_the_stall_command_prints_the_marker_and_the_verdict_for_the_shell(self):
         import io
         from contextlib import redirect_stdout
+
         out = io.StringIO()
         with redirect_stdout(out):
             rel.main(["wait", "9000", "1000"])
@@ -229,7 +308,9 @@ class AutoRelease(unittest.TestCase):
 
     def test_the_updater_still_clears_both_markers_as_soon_as_a_green_head_is_read(self):
         text = open(os.path.join(os.path.dirname(rel.__file__), "install-close.sh")).read()
-        self.assertLess(text.index('rm -f "$ETC/auto.waiting"'), text.index('if read -r held _ 2>/dev/null < "$ETC/auto.hold"'))  # cleared as soon as a green head is read
+        self.assertLess(
+            text.index('rm -f "$ETC/auto.waiting"'), text.index('if read -r held _ 2>/dev/null < "$ETC/auto.hold"')
+        )  # cleared as soon as a green head is read
 
     def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
         a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")
@@ -247,7 +328,13 @@ class AutoRelease(unittest.TestCase):
 
     def test_the_install_script_knows_the_settings_credential_and_loads_it_into_the_unit(self):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
-        for text in ("bwsalerts)", "bwsalerts-off)", "ghvars-off)", "LoadCredentialEncrypted=bwsalerts:$CREDS/lifeos-close.bwsalerts", "LIFE OS ALERTS only"):
+        for text in (
+            "bwsalerts)",
+            "bwsalerts-off)",
+            "ghvars-off)",
+            "LoadCredentialEncrypted=bwsalerts:$CREDS/lifeos-close.bwsalerts",
+            "LIFE OS ALERTS only",
+        ):
             self.assertIn(text, script)
 
     def test_the_auto_step_restores_the_live_tree_and_never_updates_the_updater(self):
@@ -268,7 +355,9 @@ class AutoRelease(unittest.TestCase):
         install = script.split("  install)", 1)[1].split("  auto)", 1)[0]
         self.assertNotIn("export", install)
         self.assertIn('"${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ]', install)
-        self.assertIn('remember "$OPT/current"', script.split("  rollback)", 1)[1])  # rolled-back code was live: never brought back
+        self.assertIn(
+            'remember "$OPT/current"', script.split("  rollback)", 1)[1]
+        )  # rolled-back code was live: never brought back
         self.assertIn('"$0" verify && remember "$dest"', install)  # every install remembers what went live
         self.assertIn('if seen "$probe"; then', auto)
         uninstall = script.split("  uninstall)", 1)[1]

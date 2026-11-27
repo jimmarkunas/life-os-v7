@@ -1,5 +1,5 @@
-"""a no-board Scale-Up sponsor's job that passes the Scale-Up rules is posted from its listing page (Review, never Admit)
-"""
+"""a no-board Scale-Up sponsor's job that passes the Scale-Up rules is posted from its listing page (Review, never Admit)"""
+
 import unittest
 from datetime import datetime
 
@@ -12,6 +12,7 @@ URL = "https://talents.example.test/job/product-manager-sixfold-123"
 
 class Cursor:
     """Returns `rows` for the one SELECT and records every other statement"""
+
     def __init__(self, rows, rowcount=1):
         self.rows, self.rowcount, self.sql = rows, rowcount, []
 
@@ -34,7 +35,9 @@ class Promote(unittest.TestCase):
     def test_a_london_job_with_a_clean_title_is_posted_from_its_listing_with_the_snippet(self):
         cur = Cursor([job()])
         counts = dj.promote_leads(cur, {URL: "Lead the product team in London"}, NOW)
-        self.assertEqual(counts, {"promoted": 1, "not_london": 0, "title_excluded": 0, "sponsor_directory": 0, "not_a_job": 0})
+        self.assertEqual(
+            counts, {"promoted": 1, "not_london": 0, "title_excluded": 0, "sponsor_directory": 0, "not_a_job": 0}
+        )
         update = next(args for sql, args in cur.sql if sql.startswith("UPDATE"))
         self.assertEqual((update[0], update[1]), (URL, lanes.LISTING_PROOF))
         self.assertIn("apply_kind='aggregator'", next(sql for sql, _ in cur.sql if sql.startswith("UPDATE")))
@@ -56,7 +59,9 @@ class Promote(unittest.TestCase):
         self.assertEqual(cur.kinds(), ["SELECT"])  # no write at all
 
     def test_a_hard_title_exclusion_is_never_posted(self):
-        cur = Cursor([job(1, title="Enterprise Sales Executive"), job(2, title="Nursery Assistant")])  # the default hard rules
+        cur = Cursor(
+            [job(1, title="Enterprise Sales Executive"), job(2, title="Nursery Assistant")]
+        )  # the default hard rules
         counts = dj.promote_leads(cur, {}, NOW)
         self.assertEqual((counts["promoted"], counts["title_excluded"]), (0, 2))
         self.assertEqual(cur.kinds(), ["SELECT"])
@@ -88,9 +93,27 @@ DIRECTORY_ROWS = [
     ("Product Manager", "https://atlaspriorityservices.com/jobs/1"),
     ("Engineer", "https://sub.jobvisaai.com/x"),  # a subdomain of a directory host
 ]
-NOT_JOB_TITLES = ["UK Sponsor Licence Status", "LegitSponsors", "Sama Talent Group", "licensed sponsor in London", "Quantum Group Jobs", "MyVisaJobs",
-                  "TikTok LIVE Presenter / Host", "Jobs", "Sixfold Bioscience Limited", "Sponsor Licence Directory Manager"]
-REAL_TITLES = ["Product Manager", "Senior Backend Engineer", "Head of Growth", "Data Analyst", "Operations Lead", "Founding Designer", "VP Engineering"]
+NOT_JOB_TITLES = [
+    "UK Sponsor Licence Status",
+    "LegitSponsors",
+    "Sama Talent Group",
+    "licensed sponsor in London",
+    "Quantum Group Jobs",
+    "MyVisaJobs",
+    "TikTok LIVE Presenter / Host",
+    "Jobs",
+    "Sixfold Bioscience Limited",
+    "Sponsor Licence Directory Manager",
+]
+REAL_TITLES = [
+    "Product Manager",
+    "Senior Backend Engineer",
+    "Head of Growth",
+    "Data Analyst",
+    "Operations Lead",
+    "Founding Designer",
+    "VP Engineering",
+]
 
 
 class NotPosted(unittest.TestCase):
@@ -99,7 +122,9 @@ class NotPosted(unittest.TestCase):
             cur = Cursor([job(n, url=url, title=title)])
             counts = dj.promote_leads(cur, {}, NOW)
             self.assertEqual((counts["promoted"], counts["sponsor_directory"]), (0, 1), (title, url))
-            self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"], (title, url))  # one guarded exclusion, no description row
+            self.assertEqual(
+                cur.kinds(), ["SELECT", "UPDATE"], (title, url)
+            )  # one guarded exclusion, no description row
             sql, args = cur.sql[1]
             self.assertIn("status='EXCLUDED_FIT'", sql)
             self.assertIn("status='HOLD'", sql)
@@ -123,17 +148,24 @@ class NotPosted(unittest.TestCase):
     def test_real_listings_still_post_exactly_as_before(self):
         for n, title in enumerate(REAL_TITLES, 1):
             self.assertFalse(dj.is_not_a_job(title, "Sixfold Bioscience Limited"), title)
-        cur = Cursor([job(n, url=f"https://talents.example.test/job/{n}", title=t) for n, t in enumerate(REAL_TITLES, 1)])
+        cur = Cursor(
+            [job(n, url=f"https://talents.example.test/job/{n}", title=t) for n, t in enumerate(REAL_TITLES, 1)]
+        )
         counts = dj.promote_leads(cur, {}, NOW)
-        self.assertEqual((counts["promoted"], counts["sponsor_directory"], counts["not_a_job"]), (len(REAL_TITLES), 0, 0))
+        self.assertEqual(
+            (counts["promoted"], counts["sponsor_directory"], counts["not_a_job"]), (len(REAL_TITLES), 0, 0)
+        )
 
     def test_the_two_rules_run_before_the_place_and_title_rules_so_a_directory_row_is_one_reason_only(self):
-        cur = Cursor([job(1, url="https://legitsponsors.co.uk/x", title="Enterprise Sales Executive", place="Manchester, UK")])
+        cur = Cursor(
+            [job(1, url="https://legitsponsors.co.uk/x", title="Enterprise Sales Executive", place="Manchester, UK")]
+        )
         counts = dj.promote_leads(cur, {}, NOW)
         self.assertEqual((counts["sponsor_directory"], counts["not_london"], counts["title_excluded"]), (1, 0, 0))
 
     def test_both_reasons_are_registered(self):
         from lifeos.platform import codes
+
         for reason in ("sponsor_directory", "not_a_job"):
             self.assertIn(reason, codes.REASONS)
 
@@ -141,7 +173,11 @@ class NotPosted(unittest.TestCase):
 class Place(unittest.TestCase):
     def test_london_and_uk_wide_remote_get_a_place_and_other_places_do_not(self):
         def got(snippet):
-            return dj.candidates("Sixfold Bioscience Limited", [{"url": URL, "title": "Product Manager at Sixfold Bioscience | talents", "snippet": snippet}])[0]
+            return dj.candidates(
+                "Sixfold Bioscience Limited",
+                [{"url": URL, "title": "Product Manager at Sixfold Bioscience | talents", "snippet": snippet}],
+            )[0]
+
         self.assertEqual(got("Product Manager, London")["location"], "London, UK")
         self.assertEqual(got("Remote: UK, full time")["location"], "London, UK")
         self.assertEqual(got("Manchester, hybrid")["location"], "")
@@ -151,8 +187,20 @@ class Place(unittest.TestCase):
 
 class Lane(unittest.TestCase):
     def facts(self, **kw):
-        return lanes.Facts(**{"fit": 85, "market": "UK", "work_mode": "onsite", "posted": datetime(2026, 11, 14).date(), "route": {"Scale-up": lanes.POSITIVE},
-                              "geography": lanes.POSITIVE, "located": True, "kept": True, "listing": True, **kw})
+        return lanes.Facts(
+            **{
+                "fit": 85,
+                "market": "UK",
+                "work_mode": "onsite",
+                "posted": datetime(2026, 11, 14).date(),
+                "route": {"Scale-up": lanes.POSITIVE},
+                "geography": lanes.POSITIVE,
+                "located": True,
+                "kept": True,
+                "listing": True,
+                **kw,
+            }
+        )
 
     def test_a_listing_lead_that_passes_the_scale_up_rules_is_review_never_admit(self):
         decision = lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(), datetime(2026, 11, 15).date())
@@ -161,7 +209,9 @@ class Lane(unittest.TestCase):
 
     def test_a_low_fit_does_not_exclude_a_listing_lead_but_a_wrong_place_still_does(self):
         today = datetime(2026, 11, 15).date()
-        self.assertEqual(lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(fit=40), today).status, lanes.REVIEW)  # the Scale-Up rules only, no Fit exclusion
+        self.assertEqual(
+            lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(fit=40), today).status, lanes.REVIEW
+        )  # the Scale-Up rules only, no Fit exclusion
         wrong = lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(geography=lanes.UNRESOLVED), today)
         self.assertEqual((wrong.status, wrong.reason), (lanes.EXCLUDE, "not in London"))
 

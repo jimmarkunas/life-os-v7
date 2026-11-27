@@ -1,6 +1,7 @@
 """AC10: the permanent manual runs go through the one existing entry point, `python -m lifeos.run jira-rollover
 [--live]`, and each mode is pinned here.
 """
+
 import unittest
 from unittest.mock import patch
 

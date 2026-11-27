@@ -1,4 +1,5 @@
 """the proof run after every deploy: pass is recorded with its commit and says nothing"""
+
 import datetime as dt
 import io
 import unittest
@@ -15,7 +16,13 @@ def at(minutes_ago):
 
 
 def run(run_id, minutes_ago, status="completed", conclusion="success"):
-    return {"id": run_id, "created_at": at(minutes_ago), "updated_at": at(minutes_ago - 2), "status": status, "conclusion": conclusion}
+    return {
+        "id": run_id,
+        "created_at": at(minutes_ago),
+        "updated_at": at(minutes_ago - 2),
+        "status": status,
+        "conclusion": conclusion,
+    }
 
 
 def archive(files):
@@ -44,7 +51,9 @@ class Pass(unittest.TestCase):
         self.assertEqual((d.dispatch.commit, d.dispatch.status, d.dispatch.previous), (B, rp.PENDING, A))
         self.assertIsNone(d.failed)
         self.assertIsNone(d.flag)
-        self.assertEqual(rp.decide(NOW, B, A, list(d.entries), [], False).dispatch, None)  # the next watch starts nothing more
+        self.assertEqual(
+            rp.decide(NOW, B, A, list(d.entries), [], False).dispatch, None
+        )  # the next watch starts nothing more
 
     def test_a_passing_proof_is_recorded_with_its_commit_and_raises_nothing(self):
         pending = rp.Entry(B, rp.PENDING, at(10), previous=A)
@@ -66,7 +75,9 @@ class Pass(unittest.TestCase):
 class Fail(unittest.TestCase):
     def test_a_failing_proof_raises_one_page_with_both_commits_the_code_and_the_revert(self):
         pending = rp.Entry(B, rp.PENDING, at(10), previous=A)
-        d = rp.decide(NOW, B, A, [pending], [run(11, 9, conclusion="failure")], False, lambda run_id: "TICK/PICK_FAILED")
+        d = rp.decide(
+            NOW, B, A, [pending], [run(11, 9, conclusion="failure")], False, lambda run_id: "TICK/PICK_FAILED"
+        )
         self.assertEqual((d.failed.commit, d.failed.code, d.flag), (B, "TICK/PICK_FAILED", True))
         title, body = rp.failure_text(d.failed)
         self.assertIn(B[:12], title)
@@ -77,7 +88,9 @@ class Fail(unittest.TestCase):
     def test_the_alert_is_raised_once_while_the_pause_stays(self):
         failed = rp.Entry(B, rp.FAIL, at(30), at(28), 11, A, rp.CODE_FAILED)
         d = rp.decide(NOW, B, A, [failed], [run(11, 29, conclusion="failure")], True)
-        self.assertEqual((d.failed, d.flag, d.dispatch), (None, True, None))  # no second page, no new run yet (under an hour)
+        self.assertEqual(
+            (d.failed, d.flag, d.dispatch), (None, True, None)
+        )  # no second page, no new run yet (under an hour)
 
     def test_a_failed_proof_without_a_log_falls_back_to_the_fixed_code(self):
         pending = rp.Entry(B, rp.PENDING, at(10))
@@ -90,7 +103,10 @@ class Fail(unittest.TestCase):
         lost = rp.Entry(B, rp.PENDING, at(rp.WAIT_MINUTES + 1))
         self.assertEqual(rp.decide(NOW, B, A, [lost], [], False).failed.code, rp.CODE_NOT_FOUND)
         stuck = rp.Entry(B, rp.PENDING, at(rp.WAIT_MINUTES + 1))
-        self.assertEqual(rp.decide(NOW, B, A, [stuck], [run(11, rp.WAIT_MINUTES, "in_progress", None)], False).failed.code, rp.CODE_TIMED_OUT)
+        self.assertEqual(
+            rp.decide(NOW, B, A, [stuck], [run(11, rp.WAIT_MINUTES, "in_progress", None)], False).failed.code,
+            rp.CODE_TIMED_OUT,
+        )
         self.assertIsNone(rp.decide(NOW, B, A, [rp.Entry(B, rp.PENDING, at(rp.WAIT_MINUTES - 1))], [], False).failed)
 
 
@@ -99,7 +115,9 @@ class Pause(unittest.TestCase):
         failed = rp.Entry(B, rp.FAIL, at(61), at(59), 11, A, rp.CODE_FAILED)
         d = rp.decide(NOW, B, A, [failed], [], True)
         self.assertEqual((d.dispatch.commit, d.flag), (B, None))
-        self.assertEqual(rp.decide(NOW, B, A, [failed], [], False).dispatch, None)  # not paused: a failed commit is not retried
+        self.assertEqual(
+            rp.decide(NOW, B, A, [failed], [], False).dispatch, None
+        )  # not paused: a failed commit is not retried
 
     def test_a_paused_release_needs_no_new_deploy_to_re_proof_and_a_pass_lifts_the_flag(self):
         """Same deployed commit throughout (nothing is deployed while paused): after 60 minutes a proof is dispatched,
@@ -117,8 +135,12 @@ class Pause(unittest.TestCase):
     def test_the_failure_text_says_the_proof_runs_on_mains_current_head_and_how_the_pause_ends(self):
         failed = rp.Entry(B, rp.FAIL, at(5), at(3), 11, A, rp.CODE_FAILED)
         body = rp.failure_text(failed)[1]
-        for needle in ("at most every hour on main's current head", "if a fix is on main it passes and the pause lifts without anyone deploying", "if main still fails it stays paused (no second page)",
-                       "close this issue on GitHub (one click) if you judged it safe"):
+        for needle in (
+            "at most every hour on main's current head",
+            "if a fix is on main it passes and the pause lifts without anyone deploying",
+            "if main still fails it stays paused (no second page)",
+            "close this issue on GitHub (one click) if you judged it safe",
+        ):
             self.assertIn(needle, body)
 
     def test_the_first_pass_lifts_the_pause_with_one_recovered_push(self):
@@ -152,7 +174,13 @@ class TwoDeploys(unittest.TestCase):
 
 class FailingCode(unittest.TestCase):
     def test_the_failing_stage_and_code_come_from_the_job_log_and_nothing_else_is_kept(self):
-        data = archive({"1_lint.txt": "all fine", "2_tick.txt": "noise\nTICK FAILED: PICK_FAILED extra words and data\n", "readme.md": "x"})
+        data = archive(
+            {
+                "1_lint.txt": "all fine",
+                "2_tick.txt": "noise\nTICK FAILED: PICK_FAILED extra words and data\n",
+                "readme.md": "x",
+            }
+        )
         self.assertEqual(rp.failing_code_in(data), "TICK/PICK_FAILED")
         self.assertEqual(rp.failing_code_in(archive({"1_a.txt": "ok"})), "")
 

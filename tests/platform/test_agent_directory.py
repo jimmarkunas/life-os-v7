@@ -59,23 +59,34 @@ class Catalog(unittest.TestCase):
         self.assertNotIn("routable-verified", status.values())
         self.assertTrue(set(status.values()) <= set(D.STATUSES))
         self.assertEqual({s for a, s in status.items() if a.startswith("surface_")}, {"manual-only"})
-        self.assertEqual({s for a, s in status.items() if a.startswith("bot_hermes_") or a.startswith("orca_")}, {"configured-untested"})
+        self.assertEqual(
+            {s for a, s in status.items() if a.startswith("bot_hermes_") or a.startswith("orca_")},
+            {"configured-untested"},
+        )
         self.assertEqual({s for a, s in status.items() if a.startswith("buzz_lifeos_")}, {"not-reachable"})
-        self.assertEqual(status["buzz_persona_council-auditor"], "manual-only")  # a persona is never an addressable agent
+        self.assertEqual(
+            status["buzz_persona_council-auditor"], "manual-only"
+        )  # a persona is never an addressable agent
 
     def test_one_hermes_runtime_six_profiles_match_the_repo_table(self):
         text = (ROOT / "hermes" / "connector-allowlists.txt").read_text()
-        self.assertEqual(sorted(D.hermes_profiles(text)), ["claude-hermes", "developer", "librarian", "main", "research", "writer"])
+        self.assertEqual(
+            sorted(D.hermes_profiles(text)), ["claude-hermes", "developer", "librarian", "main", "research", "writer"]
+        )
         self.assertEqual(D.check_hermes(build(), text), [])
         self.assertEqual({e.host for e in build().entries if e.platform == "Hermes"}, {"Oracle"})
-        rows = [r for r in F.rows() if r["Agent ID"] != "bot_hermes_writer"] + [row("bot_hermes_main", **{"Agent ID": "bot_hermes_ghost", "Identity Alias": "ghost"})]
+        rows = [r for r in F.rows() if r["Agent ID"] != "bot_hermes_writer"] + [
+            row("bot_hermes_main", **{"Agent ID": "bot_hermes_ghost", "Identity Alias": "ghost"})
+        ]
         self.assertEqual(D.check_hermes(build(rows), text), ["bot_hermes_ghost", ("missing", "writer")])
 
     def test_a_display_name_never_merges_identities(self):
         d = build()
         self.assertEqual(resolve(d, agent_id="buzz_lifeos_hermes").entry.platform, "Buzz")
         self.assertEqual(resolve(d, agent_id="bot_hermes_main").entry.platform, "Hermes")
-        self.assertEqual(resolve(d, alias="Hermes").reason, "unknown_agent")  # a display word is not an alias of either identity
+        self.assertEqual(
+            resolve(d, alias="Hermes").reason, "unknown_agent"
+        )  # a display word is not an alias of either identity
 
 
 class FailClosed(unittest.TestCase):
@@ -85,7 +96,11 @@ class FailClosed(unittest.TestCase):
         self.assertEqual(c.exception.reason, "duplicate_agent_id")
 
     def test_missing_or_bad_workspace_refuses(self):
-        for space, reason in (("[]", "missing_workspace"), ("", "missing_workspace"), ('["Elsewhere"]', "bad_workspace")):
+        for space, reason in (
+            ("[]", "missing_workspace"),
+            ("", "missing_workspace"),
+            ('["Elsewhere"]', "bad_workspace"),
+        ):
             with self.assertRaises(D.DirectoryError) as c:
                 build([row("bot_hermes_main", Space=space)])
             self.assertEqual(c.exception.reason, reason)
@@ -108,7 +123,13 @@ class FailClosed(unittest.TestCase):
         self.assertNotIn(npub, json.dumps(D.snapshot(d, NOW)))
 
     def test_bad_rows_and_unknown_record_types_refuse(self):
-        for patch in ({"Record Type": "Robot"}, {"Platform": "Gemini"}, {"Agent ID": "Bad ID!"}, {"date:Last Checked:start": "yesterday"}, {"date:Last Checked:start": ""}):
+        for patch in (
+            {"Record Type": "Robot"},
+            {"Platform": "Gemini"},
+            {"Agent ID": "Bad ID!"},
+            {"date:Last Checked:start": "yesterday"},
+            {"date:Last Checked:start": ""},
+        ):
             with self.assertRaises(D.DirectoryError):
                 build([row("bot_hermes_main", **patch)])
         for rows in ([], None, "x"):
@@ -116,17 +137,25 @@ class FailClosed(unittest.TestCase):
                 D.build(rows, "fixture", NOW)
 
     def test_one_bad_row_is_skipped_with_its_number_and_reason_and_the_rest_still_resolve(self):
-        bad = [row("bot_hermes_main", **{"Agent ID": ""}), row("buzz_lifeos_codex", Notes="key " + "nsec1" + "q" * 58), row("bot_hermes_writer", **{"date:Last Checked:start": "yesterday"})]
+        bad = [
+            row("bot_hermes_main", **{"Agent ID": ""}),
+            row("buzz_lifeos_codex", Notes="key " + "nsec1" + "q" * 58),
+            row("bot_hermes_writer", **{"date:Last Checked:start": "yesterday"}),
+        ]
         with self.assertLogs("lifeos.agent_directory", "WARNING") as logged:
             d = build(F.rows() + bad[:1])
         self.assertEqual(d.skipped, ((len(F.rows()) + 1, "bad_agent_id"),))
         self.assertEqual(len(d.entries), len(build().entries))
         self.assertEqual(resolve(d, agent_id="buzz_lifeos_hermes").decision, "allow")
-        self.assertEqual(logged.records[0].getMessage(), "agent directory: row %d skipped: bad_agent_id" % (len(F.rows()) + 1))
+        self.assertEqual(
+            logged.records[0].getMessage(), "agent directory: row %d skipped: bad_agent_id" % (len(F.rows()) + 1)
+        )
         with self.assertLogs("lifeos.agent_directory", "WARNING") as logged:
             d = build(F.rows() + bad[1:])
         self.assertEqual([r for _, r in d.skipped], ["secret_material", "bad_last_checked"])
-        self.assertNotIn("nsec1", " ".join(r.getMessage() for r in logged.records))  # the reason word only, never a row's text
+        self.assertNotIn(
+            "nsec1", " ".join(r.getMessage() for r in logged.records)
+        )  # the reason word only, never a row's text
         self.assertEqual(build().skipped, ())
 
     def test_a_duplicate_among_good_rows_and_a_directory_with_no_good_row_are_still_refused(self):
@@ -138,14 +167,20 @@ class FailClosed(unittest.TestCase):
         self.assertEqual(c.exception.reason, "bad_agent_id")
 
     def test_meta_is_a_platform_so_the_muse_row_resolves_and_an_unknown_platform_is_still_refused(self):
-        d = build([row("surface_chatgpt_chat_web", **{"Agent ID": "muse", "Platform": "Meta", "Space": '["Personal"]'})])
-        self.assertEqual((d.skipped, resolve(d, agent_id="muse").decision, resolve(d, agent_id="muse").entry.platform), ((), "allow", "Meta"))
+        d = build(
+            [row("surface_chatgpt_chat_web", **{"Agent ID": "muse", "Platform": "Meta", "Space": '["Personal"]'})]
+        )
+        self.assertEqual(
+            (d.skipped, resolve(d, agent_id="muse").decision, resolve(d, agent_id="muse").entry.platform),
+            ((), "allow", "Meta"),
+        )
         with self.assertRaises(D.DirectoryError):
             build([row("surface_chatgpt_chat_web", **{"Platform": "Gemini"})])
 
     def test_unavailable_notion_raises_and_nothing_is_cached(self):
         def boom():
             raise RuntimeError("503 token=abcdefghijkl")
+
         with self.assertRaises(D.DirectoryError) as c:
             D.load(boom, POLICY, READER, NOW)
         self.assertEqual(c.exception.reason, "directory_unavailable")
@@ -155,15 +190,23 @@ class FailClosed(unittest.TestCase):
 
     def test_grant_is_checked_before_any_read_and_again_on_every_resolve(self):
         calls = []
-        for policy, principal in ((POLICY, STRANGER), (None, READER), (A.load(json.dumps({"version": 1, "default": {}, "agents": {READER: {"notion": "off"}}})), READER)):
+        for policy, principal in (
+            (POLICY, STRANGER),
+            (None, READER),
+            (A.load(json.dumps({"version": 1, "default": {}, "agents": {READER: {"notion": "off"}}})), READER),
+        ):
             with self.assertRaises(D.DirectoryError) as c:
                 D.load(lambda: calls.append(1) or F.rows(), policy, principal, NOW)
             self.assertEqual(c.exception.reason, "grant_denied")
         self.assertEqual(calls, [])
         d = D.load(F.rows, POLICY, READER, NOW)
         revoked = A.load(json.dumps({"version": 1, "default": {}, "agents": {READER: {"notion": "off"}}}))
-        self.assertEqual(D.resolve(d, NOW, revoked, READER, agent_id="bot_hermes_main", workspace="Personal").reason, "grant_denied")
-        self.assertEqual(D.resolve(d, NOW, POLICY, STRANGER, agent_id="bot_hermes_main", workspace="Personal").reason, "grant_denied")
+        self.assertEqual(
+            D.resolve(d, NOW, revoked, READER, agent_id="bot_hermes_main", workspace="Personal").reason, "grant_denied"
+        )
+        self.assertEqual(
+            D.resolve(d, NOW, POLICY, STRANGER, agent_id="bot_hermes_main", workspace="Personal").reason, "grant_denied"
+        )
 
     def test_stale_rows_are_not_reachable_and_state_is_not_kept_across_restarts(self):
         later = NOW + timedelta(days=8)
@@ -171,7 +214,9 @@ class FailClosed(unittest.TestCase):
         self.assertEqual((e.decision, e.status, e.reason), ("allow", "not-reachable", "stale_data"))
         self.assertEqual(resolve(agent_id="bot_hermes_main").status, "configured-untested")
         future = build([row("bot_hermes_main", **{"date:Last Checked:start": "2026-12-30"})])
-        self.assertEqual(resolve(future, agent_id="bot_hermes_main").reason, "stale_data")  # a future check time is not trusted
+        self.assertEqual(
+            resolve(future, agent_id="bot_hermes_main").reason, "stale_data"
+        )  # a future check time is not trusted
 
     def test_retired_is_never_reachable(self):
         d = build([row("bot_hermes_main", **{"Discovery State": "Retired"})])
@@ -188,27 +233,49 @@ class Routing(unittest.TestCase):
         d = build([claimed("bot_hermes_main")])
         ok = resolve(d, agent_id="bot_hermes_main", proofs=[proof("bot_hermes_main", "Oracle")])
         self.assertEqual(ok.status, "routable-verified")
-        cases = {"proof_wrong_host": proof("bot_hermes_main", "Mac"), "proof_expired": proof("bot_hermes_main", "Oracle", NOW - timedelta(hours=2)),
-                 "proof_incomplete": proof("bot_hermes_main", "Oracle", receipt=""), "row_claim_without_proof": proof("bot_hermes_writer", "Oracle")}
+        cases = {
+            "proof_wrong_host": proof("bot_hermes_main", "Mac"),
+            "proof_expired": proof("bot_hermes_main", "Oracle", NOW - timedelta(hours=2)),
+            "proof_incomplete": proof("bot_hermes_main", "Oracle", receipt=""),
+            "row_claim_without_proof": proof("bot_hermes_writer", "Oracle"),
+        }
         for reason, p in cases.items():
             r = resolve(d, agent_id="bot_hermes_main", proofs=[p])
             self.assertEqual((r.status, r.reason), ("configured-untested", reason), reason)
-        self.assertEqual(resolve(d, agent_id="bot_hermes_main", proofs=[proof("bot_hermes_main", "Oracle", receipt="token=abcdefgh1234")]).status, "configured-untested")
+        self.assertEqual(
+            resolve(
+                d, agent_id="bot_hermes_main", proofs=[proof("bot_hermes_main", "Oracle", receipt="token=abcdefgh1234")]
+            ).status,
+            "configured-untested",
+        )
 
     def test_candidates_surfaces_and_personas_are_never_routable_even_with_a_proof(self):
-        for aid, host in (("buzz_lifeos_unknown-jr3", "Cloud"), ("buzz_persona_council-auditor", "Cloud"), ("surface_claude_code_web", "Cloud")):
+        for aid, host in (
+            ("buzz_lifeos_unknown-jr3", "Cloud"),
+            ("buzz_persona_council-auditor", "Cloud"),
+            ("surface_claude_code_web", "Cloud"),
+        ):
             d = build([claimed(aid, **{"Space": '["Personal"]'})])
             r = resolve(d, agent_id=aid, proofs=[proof(aid, host)])
             self.assertNotEqual(r.status, "routable-verified", aid)
         d = build([claimed("buzz_lifeos_codex")])  # a truncated npub is not an identity
-        self.assertEqual(resolve(d, agent_id="buzz_lifeos_codex", proofs=[proof("buzz_lifeos_codex", "Cloud")]).reason, "identity_partial")
+        self.assertEqual(
+            resolve(d, agent_id="buzz_lifeos_codex", proofs=[proof("buzz_lifeos_codex", "Cloud")]).reason,
+            "identity_partial",
+        )
 
     def test_a_proof_for_an_unlisted_agent_creates_nothing(self):
         r = resolve(agent_id="agent_not_listed", proofs=[proof("agent_not_listed", "Oracle")])
         self.assertEqual((r.decision, r.reason), ("deny", "unknown_agent"))
 
     def test_no_broadcast_wildcard_or_two_selectors(self):
-        for kw in ({"agent_id": "*"}, {"agent_id": "all"}, {"alias": "@everyone"}, {"agent_id": "a,b"}, {"alias": "x|y"}):
+        for kw in (
+            {"agent_id": "*"},
+            {"agent_id": "all"},
+            {"alias": "@everyone"},
+            {"agent_id": "a,b"},
+            {"alias": "x|y"},
+        ):
             self.assertEqual(resolve(**kw).reason, "broadcast_refused", kw)
         self.assertEqual(resolve().reason, "bad_request")
         self.assertEqual(resolve(agent_id="bot_hermes_main", alias="main").reason, "bad_request")
@@ -218,7 +285,9 @@ class Routing(unittest.TestCase):
         d = build()
         self.assertEqual(resolve(d, alias="  LIBRARIAN ").entry.agent_id, "bot_hermes_librarian")
         self.assertEqual(resolve(d, alias="lib").reason, "unknown_agent")
-        clash = build(F.rows() + [row("bot_hermes_main", **{"Agent ID": "bot_hermes_main2", "Identity Alias": "Librarian"})])
+        clash = build(
+            F.rows() + [row("bot_hermes_main", **{"Agent ID": "bot_hermes_main2", "Identity Alias": "Librarian"})]
+        )
         self.assertEqual(resolve(clash, alias="librarian").reason, "ambiguous_alias")
         self.assertEqual(resolve(clash, agent_id="bot_hermes_librarian").decision, "allow")  # the stable id still works
 
@@ -227,9 +296,13 @@ class Routing(unittest.TestCase):
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace=None).reason, "missing_workspace")
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace="TGP").reason, "workspace_not_granted")
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace="Unknown").reason, "workspace_not_granted")
-        self.assertEqual(resolve(agent_id="surface_claude_code_web", workspace="Personal").reason, "cross_space_denied")  # a surface whose space is Unknown is nobody's
+        self.assertEqual(
+            resolve(agent_id="surface_claude_code_web", workspace="Personal").reason, "cross_space_denied"
+        )  # a surface whose space is Unknown is nobody's
         tgp = build([row("bot_hermes_main", Space='["TGP"]')])
-        self.assertEqual(resolve(tgp, agent_id="bot_hermes_main", workspace="TGP").reason, "workspace_not_granted")  # a TGP label is not a TGP grant
+        self.assertEqual(
+            resolve(tgp, agent_id="bot_hermes_main", workspace="TGP").reason, "workspace_not_granted"
+        )  # a TGP label is not a TGP grant
         self.assertEqual(resolve(tgp, agent_id="bot_hermes_main", workspace="Personal").reason, "cross_space_denied")
 
     def test_resolving_authorizes_nothing(self):
@@ -261,7 +334,19 @@ class Boundaries(unittest.TestCase):
     def test_the_module_reaches_nothing(self):
         source = (ROOT / "lifeos" / "platform" / "agent_directory.py").read_text()
         code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("#"))
-        for banned in ("requests", "urllib", "subprocess", "socket", "http.client", "sched", "threading", "sqlite3", "open(", "os.environ", "sleep"):
+        for banned in (
+            "requests",
+            "urllib",
+            "subprocess",
+            "socket",
+            "http.client",
+            "sched",
+            "threading",
+            "sqlite3",
+            "open(",
+            "os.environ",
+            "sleep",
+        ):
             self.assertNotIn(banned, code, banned)
 
 

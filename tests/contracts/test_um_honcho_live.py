@@ -1,4 +1,5 @@
 """the live entry point's gate fails closed."""
+
 import base64
 import json
 import pathlib
@@ -21,7 +22,11 @@ def jwt(**claims):
 
 
 def good_env(**over):
-    env = {"UM_T2_RELEASE": live.RELEASE, "UM_T2_SCOPE": "um-t2-test", "UM_T2_TOKEN": jwt(w="um-t2-fixture-v1", exp=NOW + 7000)}
+    env = {
+        "UM_T2_RELEASE": live.RELEASE,
+        "UM_T2_SCOPE": "um-t2-test",
+        "UM_T2_TOKEN": jwt(w="um-t2-fixture-v1", exp=NOW + 7000),
+    }
     env.update(over)
     return env
 
@@ -46,8 +51,14 @@ class Gate(unittest.TestCase):
         self.check(good_env(UM_T2_TOKEN="not-a-jwt"), (False, "token_missing_or_not_jwt"))
 
     def test_a_token_that_is_not_scoped_to_exactly_this_workspace_is_refused(self):
-        for claims in ({"ad": True, "exp": NOW + 7000}, {"w": "personal", "exp": NOW + 7000}, {"w": "um-t2-fixture-v1", "p": "agent-a", "exp": NOW + 7000},
-                       {"w": "um-t2-fixture-v1", "s": "s1", "exp": NOW + 7000}, {"w": "um-t2-fixture-v1", "ad": True, "exp": NOW + 7000}, {"exp": NOW + 7000}):
+        for claims in (
+            {"ad": True, "exp": NOW + 7000},
+            {"w": "personal", "exp": NOW + 7000},
+            {"w": "um-t2-fixture-v1", "p": "agent-a", "exp": NOW + 7000},
+            {"w": "um-t2-fixture-v1", "s": "s1", "exp": NOW + 7000},
+            {"w": "um-t2-fixture-v1", "ad": True, "exp": NOW + 7000},
+            {"exp": NOW + 7000},
+        ):
             self.check(good_env(UM_T2_TOKEN=jwt(**claims)), (False, "token_not_workspace_scoped"))
 
     def test_the_token_lifetime_must_be_between_five_minutes_and_two_hours(self):
@@ -62,19 +73,23 @@ class Main(unittest.TestCase):
     def test_a_closed_gate_builds_nothing_and_prints_one_word(self):
         import io
         from contextlib import redirect_stdout
+
         built = []
         buf = io.StringIO()
         with redirect_stdout(buf):
             code = live.main(["--live"], env={}, host="lifeos-edge-01", now=NOW, builder=lambda env: built.append(1))
         self.assertEqual((code, built, buf.getvalue().strip()), (2, [], "not_released"))
         with redirect_stdout(io.StringIO()):
-            self.assertEqual(live.main([], env=good_env(), host="lifeos-edge-01", now=NOW, builder=lambda env: built.append(1)), 2)
+            self.assertEqual(
+                live.main([], env=good_env(), host="lifeos-edge-01", now=NOW, builder=lambda env: built.append(1)), 2
+            )
         self.assertEqual(built, [])
 
     def test_an_open_gate_builds_once_and_never_prints_the_token(self):
         import io
         import tempfile
         from contextlib import redirect_stdout
+
         built = []
         env = good_env()
 
@@ -87,10 +102,13 @@ class Main(unittest.TestCase):
         def builder(e):
             built.append(1)
             raise RuntimeError("stop here: the build is not the unit under test")
+
         buf = io.StringIO()
         with redirect_stdout(buf), tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(RuntimeError):
-                live.main(["--live", "--evidence", tmp + "/e.json"], env=env, host="lifeos-edge-01", now=NOW, builder=builder)
+                live.main(
+                    ["--live", "--evidence", tmp + "/e.json"], env=env, host="lifeos-edge-01", now=NOW, builder=builder
+                )
         self.assertEqual(built, [1])
         self.assertNotIn(env["UM_T2_TOKEN"], buf.getvalue())
 

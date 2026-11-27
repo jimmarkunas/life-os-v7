@@ -1,5 +1,5 @@
-"""(synthetic): Todoist (Personal only) and Asana (Bytalos programme work only) are read-only, scoped, and fail alone
-"""
+"""(synthetic): Todoist (Personal only) and Asana (Bytalos programme work only) are read-only, scoped, and fail alone"""
+
 import ast
 import unittest
 from pathlib import Path
@@ -10,25 +10,64 @@ from tests.inbox import fixtures as F
 from tests.kit.readers import opener
 
 APPROVED, TGP = "p-prog", "p-client"
-FORBIDDEN = ("complete_task", "close_task", "add_task", "update_task", "delete_task", "create_task", "post", "put", "request", "update", "delete", "insert", "TodoistAPI", "Client", "from_env")
+FORBIDDEN = (
+    "complete_task",
+    "close_task",
+    "add_task",
+    "update_task",
+    "delete_task",
+    "create_task",
+    "post",
+    "put",
+    "request",
+    "update",
+    "delete",
+    "insert",
+    "TodoistAPI",
+    "Client",
+    "from_env",
+)
 
 
 def task(id="t1", project="proj-a", completed=False, due=None):
-    return {"id": id, "url": f"https://todo.example.test/{id}", "content": f"{F.SAME_TITLE} {F.CANARY}", "is_completed": completed, "project_id": project, "created_at": "2026-11-14T13:30:00Z",
-            "due": due}
+    return {
+        "id": id,
+        "url": f"https://todo.example.test/{id}",
+        "content": f"{F.SAME_TITLE} {F.CANARY}",
+        "is_completed": completed,
+        "project_id": project,
+        "created_at": "2026-11-14T13:30:00Z",
+        "due": due,
+    }
 
 
 def asana(gid="a1", projects=(APPROVED,), assignee="u-jim", completed=False):
-    return {"gid": gid, "permalink_url": f"https://work.example.test/{gid}", "name": f"{F.SAME_TITLE} {F.CANARY}", "completed": completed, "assignee": {"gid": assignee} if assignee else None,
-            "projects": [{"gid": p} for p in projects], "modified_at": "2026-11-14T19:30:00.000Z", "due_on": "2026-11-16"}
+    return {
+        "gid": gid,
+        "permalink_url": f"https://work.example.test/{gid}",
+        "name": f"{F.SAME_TITLE} {F.CANARY}",
+        "completed": completed,
+        "assignee": {"gid": assignee} if assignee else None,
+        "projects": [{"gid": p} for p in projects],
+        "modified_at": "2026-11-14T19:30:00.000Z",
+        "due_on": "2026-11-16",
+    }
 
 
 def todoist(workspace="personal", rows=None, error=None, projects=("proj-a",)):
-    return sources.TodoistSource(workspace, f"jim-{workspace}", "jim", projects, open_reader=opener([task()] if rows is None else rows, error))
+    return sources.TodoistSource(
+        workspace, f"jim-{workspace}", "jim", projects, open_reader=opener([task()] if rows is None else rows, error)
+    )
 
 
 def asana_src(workspace="bytalos", rows=None, error=None):
-    return sources.AsanaSource(workspace, f"jim-{workspace}", "u-jim", (APPROVED,), open_reader=opener([asana()] if rows is None else rows, error))
+    return sources.AsanaSource(
+        workspace,
+        f"jim-{workspace}",
+        "u-jim",
+        (APPROVED,),
+        open_reader=opener([asana()] if rows is None else rows, error),
+    )
 
 
 def run(srcs, **kw):
@@ -37,12 +76,31 @@ def run(srcs, **kw):
 
 class TodoistReads(unittest.TestCase):
     def test_selected_personal_tasks_normalize_and_other_projects_stay_out(self):
-        result = run([todoist(rows=[task("t1"), task("t2", project="proj-other"), task("t3", due={"datetime": "2026-11-14T09:00:00", "timezone": "America/Chicago"})])])
+        result = run(
+            [
+                todoist(
+                    rows=[
+                        task("t1"),
+                        task("t2", project="proj-other"),
+                        task("t3", due={"datetime": "2026-11-14T09:00:00", "timezone": "America/Chicago"}),
+                    ]
+                )
+            ]
+        )
         self.assertEqual([h.state for h in result.health], ["ok"])
         self.assertEqual(sorted(r.native_id for r in result.records), ["t1", "t3"])
         one = next(r for r in result.records if r.native_id == "t3")
-        self.assertEqual((one.record_id, one.url, one.source_status, one.due_tz, one.presentation, one.flags), ("todoist:personal:jim-personal:t3", "https://todo.example.test/t3", "open", "America/Chicago",
-                                                                                                                  "needs_me", frozenset({"personal_task"})))
+        self.assertEqual(
+            (one.record_id, one.url, one.source_status, one.due_tz, one.presentation, one.flags),
+            (
+                "todoist:personal:jim-personal:t3",
+                "https://todo.example.test/t3",
+                "open",
+                "America/Chicago",
+                "needs_me",
+                frozenset({"personal_task"}),
+            ),
+        )
         self.assertEqual(one.retrieved_at, F.NOW)
 
     def test_a_completed_task_shows_the_source_word_and_is_never_inferred(self):
@@ -53,7 +111,10 @@ class TodoistReads(unittest.TestCase):
         bytalos = todoist("bytalos")
         bytalos._open = lambda ref: seen.append(ref)
         result = run([bytalos])
-        self.assertEqual((seen, result.records, [(h.state, h.reason) for h in result.health]), ([], (), [("unavailable", "todoist_personal_only")]))
+        self.assertEqual(
+            (seen, result.records, [(h.state, h.reason) for h in result.health]),
+            ([], (), [("unavailable", "todoist_personal_only")]),
+        )
 
 
 class AsanaReads(unittest.TestCase):
@@ -62,11 +123,19 @@ class AsanaReads(unittest.TestCase):
         self.assertEqual([h.state for h in result.health], ["ok"])
         by_id = {r.native_id: r for r in result.records}
         self.assertEqual(sorted(by_id), ["a1", "a2", "a3"])
-        self.assertEqual((by_id["a1"].record_id, by_id["a1"].presentation, by_id["a2"].presentation), ("asana:bytalos:jim-bytalos:a1", "needs_me", "upcoming"))
+        self.assertEqual(
+            (by_id["a1"].record_id, by_id["a1"].presentation, by_id["a2"].presentation),
+            ("asana:bytalos:jim-bytalos:a1", "needs_me", "upcoming"),
+        )
         self.assertEqual(by_id["a1"].due_tz, "America/Chicago")
 
     def test_tgp_and_client_projects_never_show(self):
-        rows = [asana("only-client", projects=(TGP,)), asana("mixed", projects=(APPROVED, TGP)), asana("none", projects=()), asana("ok")]
+        rows = [
+            asana("only-client", projects=(TGP,)),
+            asana("mixed", projects=(APPROVED, TGP)),
+            asana("none", projects=()),
+            asana("ok"),
+        ]
         result = run([asana_src(rows=rows)])
         self.assertEqual([r.native_id for r in result.records], ["ok"])  # the client-only task is out of scope
         self.assertEqual([(h.state, h.rejected) for h in result.health], [("degraded", 2)])
@@ -78,7 +147,10 @@ class AsanaReads(unittest.TestCase):
     def test_asana_is_bytalos_only(self):
         personal = asana_src("personal")
         result = run([personal])
-        self.assertEqual(([(h.state, h.reason) for h in result.health], result.records), ([("unavailable", "asana_bytalos_only")], ()))
+        self.assertEqual(
+            ([(h.state, h.reason) for h in result.health], result.records),
+            ([("unavailable", "asana_bytalos_only")], ()),
+        )
 
 
 class FailClosed(unittest.TestCase):
@@ -110,12 +182,21 @@ class FailClosed(unittest.TestCase):
 class ReadOnly(unittest.TestCase):
     def test_the_module_names_no_write_and_builds_no_client(self):
         tree = ast.parse(Path(sources.__file__).read_text())
-        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {
+            n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
+        }
         self.assertEqual(names & set(FORBIDDEN), set())
 
     def test_the_default_reader_refuses_and_nothing_live_is_reachable(self):
-        result = run([sources.TodoistSource("personal", "jim-personal", "jim", ("proj-a",)), sources.AsanaSource("bytalos", "jim-bytalos", "u-jim", (APPROVED,))])
-        self.assertEqual([(h.state, h.reason) for h in result.health], [("unavailable", "live_reads_not_authorized")] * 2)
+        result = run(
+            [
+                sources.TodoistSource("personal", "jim-personal", "jim", ("proj-a",)),
+                sources.AsanaSource("bytalos", "jim-bytalos", "u-jim", (APPROVED,)),
+            ]
+        )
+        self.assertEqual(
+            [(h.state, h.reason) for h in result.health], [("unavailable", "live_reads_not_authorized")] * 2
+        )
         self.assertEqual(result.records, ())
 
 

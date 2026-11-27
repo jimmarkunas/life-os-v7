@@ -1,9 +1,11 @@
 """M1/M2 synthetic exit (lifeos/sources/proofs/m1m2_proof.py), run exactly as the manual interview-proof dispatch runs
 it, on production-shaped fakes.
 """
+
 import os
 from lifeos.interview import notion as _notion
 from lifeos.platform import full_width as _full_width
+
 os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # pages come from the Full Width template
 _notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import copy
@@ -45,6 +47,7 @@ class Sources:
     """Notion data sources as the API answers them: create a database, read its schema, create / read / update its pages,
     filtered queries.
     """
+
     def __init__(self, base, refuse_databases=False):
         self.base, self.sources, self.rows, self.refuse = base, {}, {}, refuse_databases
 
@@ -52,7 +55,10 @@ class Sources:
         if self.refuse:
             raise NotionError("NOTION_HTTP_403")
         ds = f"{len(self.sources) + 1:032x}"
-        self.sources[ds] = {n: (next(iter(spec)), next(iter(spec.values()))) for n, spec in body["initial_data_source"]["properties"].items()}
+        self.sources[ds] = {
+            n: (next(iter(spec)), next(iter(spec.values())))
+            for n, spec in body["initial_data_source"]["properties"].items()
+        }
         return {"id": f"db{ds[2:]}", "data_sources": [{"id": ds}]}
 
     def schema(self, ds):
@@ -66,7 +72,16 @@ class Sources:
         pid = f"{0xD000 + len(self.rows) + 1:032x}"
         stored = {}
         for name, (kind, _) in self.sources[ds].items():
-            value = copy.deepcopy((props.get(name) or {}).get(kind, [] if kind in ("title", "rich_text", "multi_select", "relation") else False if kind == "checkbox" else None))
+            value = copy.deepcopy(
+                (props.get(name) or {}).get(
+                    kind,
+                    []
+                    if kind in ("title", "rich_text", "multi_select", "relation")
+                    else False
+                    if kind == "checkbox"
+                    else None,
+                )
+            )
             if kind in ("title", "rich_text"):
                 value = [{"type": "text", "plain_text": _plain([r]), "text": r.get("text", {})} for r in value]
             stored[name] = {"type": kind, kind: minutes(value) if kind == "date" else value}
@@ -80,13 +95,20 @@ class Sources:
         page = self.rows[pid]
         for name, value in props.items():
             kind = next(iter(value))
-            page["properties"][name] = {"type": kind, kind: minutes(copy.deepcopy(value[kind])) if kind == "date" else copy.deepcopy(value[kind])}
+            page["properties"][name] = {
+                "type": kind,
+                kind: minutes(copy.deepcopy(value[kind])) if kind == "date" else copy.deepcopy(value[kind]),
+            }
         return copy.deepcopy(page)
 
     def query(self, ds, body):
         if ds not in self.sources:
             raise NotionError("NOTION_HTTP_404")
-        rows = [p for p in self.rows.values() if p["parent"]["data_source_id"] == ds and self.match(p, (body or {}).get("filter"))]
+        rows = [
+            p
+            for p in self.rows.values()
+            if p["parent"]["data_source_id"] == ds and self.match(p, (body or {}).get("filter"))
+        ]
         return {"results": copy.deepcopy(rows), "has_more": False, "next_cursor": None}
 
     def match(self, page, where):
@@ -121,6 +143,7 @@ class QAWorkspace(NotionLike):
     """The QA workspace: the journey's Notion fake for pages, plus data sources on the same client (as the real token
     reaches both).
     """
+
     def __init__(self, refuse_databases=False):
         super().__init__()
         self.pages[QA_PARENT] = page("QA — Interview OS / Opportunity Parent")
@@ -138,7 +161,11 @@ class QAWorkspace(NotionLike):
             if method == "PATCH" and "properties" not in body:  # an icon on the row page
                 sources.rows[parts[1]]["icon"] = copy.deepcopy(body.get("icon"))
                 return copy.deepcopy(sources.rows[parts[1]])
-            return sources.update(parts[1], body["properties"]) if method == "PATCH" else copy.deepcopy(sources.rows[parts[1]])
+            return (
+                sources.update(parts[1], body["properties"])
+                if method == "PATCH"
+                else copy.deepcopy(sources.rows[parts[1]])
+            )
         if method == "POST" and path == "/pages" and body["parent"].get("type") == "data_source_id":
             return sources.create(body["parent"]["data_source_id"], body["properties"])
         return super().call(method, path, body)
@@ -171,8 +198,11 @@ def report_tree():
     tree.add("0000000000000000000000000000c001", "heading_3", "page-1", text=HM.TITLE)
     tree.table("0000000000000000000000000000c003", "page-1", [list(HM.HEADERS)])
     tree.add("0000000000000000000000000000c005", "divider", "page-1")
-    pins = {"JIRA_CARD_BLOCK_ID": "0000000000000000000000000000c004", "HIRING_CARD_BLOCK_ID": "0000000000000000000000000000c001",
-            "HIRING_TABLE_BLOCK_ID": "0000000000000000000000000000c003"}
+    pins = {
+        "JIRA_CARD_BLOCK_ID": "0000000000000000000000000000c004",
+        "HIRING_CARD_BLOCK_ID": "0000000000000000000000000000c001",
+        "HIRING_TABLE_BLOCK_ID": "0000000000000000000000000000c003",
+    }
     return tree, pins
 
 
@@ -182,7 +212,10 @@ class Scoped(unittest.TestCase):
         tree, pins = report_tree()
         real_pipeline = [dict(b) for b in client.blocks["root"]]
         # The proof's posting is dated at the pinned NOW
-        with patch.object(proof, "report_page", lambda c, container: pins), patch.object(enrich, "_now", lambda: NOW.astimezone(timezone.utc).replace(tzinfo=None)):
+        with (
+            patch.object(proof, "report_page", lambda c, container: pins),
+            patch.object(enrich, "_now", lambda: NOW.astimezone(timezone.utc).replace(tzinfo=None)),
+        ):
             counts = proof.run(M1M2, False, now=NOW, client=client, reader=client, report=tree)
         return counts, client, sources, tree, real_pipeline
 
@@ -214,11 +247,16 @@ class M1M2Proof(Scoped):
     def test_the_interview_step_routes_m1m2_to_this_proof_only(self):
         client, _ = workspace(refuse_databases=True)
         self.assertEqual(ev.run(20, False, environ=M1M2, client=client, now=NOW)["proof"], "blocked")
-        self.assertEqual(ev.run(20, False, environ={**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, client=qa_workspace())["proof"], "journey")
+        self.assertEqual(
+            ev.run(20, False, environ={**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, client=qa_workspace())["proof"],
+            "journey",
+        )
 
     def test_it_refuses_without_its_own_confirmation_or_with_actually_write_ticked(self):
         client = qa_workspace()
-        self.assertEqual(proof.run({**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, False, client=client)["code"], "proof_confirm_missing")
+        self.assertEqual(
+            proof.run({**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, False, client=client)["code"], "proof_confirm_missing"
+        )
         self.assertEqual(proof.run(M1M2, True, client=client)["code"], "proof_requires_dry_dispatch")
         self.assertEqual(client.posts, [])
 

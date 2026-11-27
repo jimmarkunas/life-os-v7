@@ -1,6 +1,7 @@
 """(ARCH-04), simplified by delivery flow v3: the readiness validator (three refusals, everything else a warning), proven
 through its real entrypoint.
 """
+
 import copy
 import json
 import shutil
@@ -12,15 +13,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-ISSUE = {"key": "LIFE-901", "owner": "Example Owner", "labels": ["lane-career-v7", "example-label"], "origin": {"parent": "LIFE-800", "approved": True},
-         "host": "isolated cloud worktree", "source": "docs/life-os-development-policy.md", "blockers": [{"key": "LIFE-900", "status": "Done"}],
-         "authorization": {"approved_by": "Example Owner", "provenance": "issue description"}, "permissions": ["repo:write"],
-         "acceptance": [{"given": "a ready issue", "when": "the validator runs", "then": "it reports ready"}]}
+ISSUE = {
+    "key": "LIFE-901",
+    "owner": "Example Owner",
+    "labels": ["lane-career-v7", "example-label"],
+    "origin": {"parent": "LIFE-800", "approved": True},
+    "host": "isolated cloud worktree",
+    "source": "docs/life-os-development-policy.md",
+    "blockers": [{"key": "LIFE-900", "status": "Done"}],
+    "authorization": {"approved_by": "Example Owner", "provenance": "issue description"},
+    "permissions": ["repo:write"],
+    "acceptance": [{"given": "a ready issue", "when": "the validator runs", "then": "it reports ready"}],
+}
 
 
 def entry(*args):
     """Run the real entrypoint in a fresh process from an unrelated cwd, exactly as an agent or CI does."""
-    done = subprocess.run([sys.executable, "-m", "lifeos.sources.devtools.readiness", *map(str, args)], cwd=ROOT, capture_output=True, text=True)
+    done = subprocess.run(
+        [sys.executable, "-m", "lifeos.sources.devtools.readiness", *map(str, args)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
     return done.returncode, done.stdout, done.stderr
 
 
@@ -88,7 +102,10 @@ class IssueEligibility(Fixture):
 
     def test_a_los_origin_is_no_origin_and_a_los_parent_is_unapproved(self):
         """LOS is retired."""
-        for origin, code in (({"los": "LOS-901", "approved": True}, "origin_missing"), ({"parent": "LOS-901", "approved": True}, "origin_unapproved")):
+        for origin, code in (
+            ({"los": "LOS-901", "approved": True}, "origin_missing"),
+            ({"parent": "LOS-901", "approved": True}, "origin_unapproved"),
+        ):
             with self.subTest(origin=origin):
                 status, out, err = self.issue(lambda d, o=origin: d.update(origin=o))
                 self.assertEqual((status, out), (0, "ready v1\n"))
@@ -102,7 +119,9 @@ class IssueEligibility(Fixture):
         """(a) key + one Done-when bullet + no blockers is ready"""
         base = {"key": "LIFE-902", "blockers": [], "acceptance": [{"done_when": "the cell holds the text"}]}
         self.assertEqual(entry("issue", self.write("a.json", base))[:2], (0, "ready v1\n"))
-        status, out, err = entry("issue", self.write("b.json", {**base, "blockers": [{"key": "LIFE-900", "status": "In Progress"}]}))
+        status, out, err = entry(
+            "issue", self.write("b.json", {**base, "blockers": [{"key": "LIFE-900", "status": "In Progress"}]})
+        )
         self.assertEqual((status, out), (2, ""))
         self.assertIn("refused v1 blocked_by_open blockers LIFE-900=In Progress", err)
         status, out, err = entry("issue", self.write("c.json", {**base, "acceptance": []}))
@@ -111,9 +130,19 @@ class IssueEligibility(Fixture):
 
     def test_a_ticket_missing_every_old_field_prints_warn_lines_and_still_exits_0(self):
         """Delivery flow v3 (d): only the key, one Done-when item and the blockers list remain."""
-        status, out, err = entry("issue", self.write("i.json", {"key": "LIFE-902", "blockers": [], "acceptance": [{"done_when": "the cell holds the text"}]}))
+        status, out, err = entry(
+            "issue",
+            self.write(
+                "i.json", {"key": "LIFE-902", "blockers": [], "acceptance": [{"done_when": "the cell holds the text"}]}
+            ),
+        )
         self.assertEqual((status, out), (0, "ready v1\n"))
-        for code in ("field_absent labels", "field_absent origin", "field_absent authorization", "field_absent permissions"):
+        for code in (
+            "field_absent labels",
+            "field_absent origin",
+            "field_absent authorization",
+            "field_absent permissions",
+        ):
             self.assertIn(f"warn v1 {code}", err)
         self.assertNotIn("refused", err)
 
@@ -128,13 +157,22 @@ class IssueEligibility(Fixture):
                 self.assertEqual(self.issue(mutate), (0, "ready v1\n", ""))
 
     def test_maintenance_cites_its_parent_and_an_unapproved_parent_only_warns(self):
-        self.assertEqual(self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": True})), (0, "ready v1\n", ""))
+        self.assertEqual(
+            self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": True})), (0, "ready v1\n", "")
+        )
         status, _, err = self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": False}))
         self.assertEqual(status, 0)
         self.assertIn("warn v1 origin_unapproved", err)
 
     def test_unreadable_input_fails_closed(self):
-        for args in (("issue", self.dir / "absent.json"), ("issue", self.write("bad.json", "{")), ("issue", self.write("list.json", "[]")), ("nonsense",), ("preflight", "a", "b"), ()):
+        for args in (
+            ("issue", self.dir / "absent.json"),
+            ("issue", self.write("bad.json", "{")),
+            ("issue", self.write("list.json", "[]")),
+            ("nonsense",),
+            ("preflight", "a", "b"),
+            (),
+        ):
             with self.subTest(args=args):
                 self.assertEqual(entry(*args)[0], 2)
 
@@ -152,13 +190,45 @@ class RepositoryIndex(Fixture):
 
     def test_invalid_repository_changes_are_rejected(self):
         for name, break_it, code in (
-                ("link", lambda r: (r / "docs" / "DECISIONS_INDEX.md").unlink(), "link_broken docs/DECISIONS_INDEX.md"),
-                ("owner", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("| Jim (change by reviewed PR; Q04) |", "|  |", 1)), "owner_or_authority_missing"),
-                ("size", lambda r: (r / "docs" / "life-os-development-policy.md").write_text("x" * 19000), "size_over_limit docs/life-os-development-policy.md"),
-                ("destination", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("[`AGENTS.md`](AGENTS.md)", "[`AGENTS.md`](docs/SETUP.md)", 1)), "link_destination_mismatch AGENTS.md docs/SETUP.md"),
-                ("stripped", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace(next(l for l in (r / "INDEX.md").read_text().splitlines() if l.startswith("| [`AGENTS.md`]")), "| [`AGENTS.md`](AGENTS.md) |")), "index_row_malformed INDEX.md [`AGENTS.md`]"),
-                ("index", lambda r: (r / "INDEX.md").write_text("# empty\n"), "index_empty"),
-                ("schema", lambda r: (r / "docs" / "jira" / "issue-schema.v1.json").write_text(json.dumps({"required": ["key"]})), "schema_fields_lost")):
+            ("link", lambda r: (r / "docs" / "DECISIONS_INDEX.md").unlink(), "link_broken docs/DECISIONS_INDEX.md"),
+            (
+                "owner",
+                lambda r: (r / "INDEX.md").write_text(
+                    (r / "INDEX.md").read_text().replace("| Jim (change by reviewed PR; Q04) |", "|  |", 1)
+                ),
+                "owner_or_authority_missing",
+            ),
+            (
+                "size",
+                lambda r: (r / "docs" / "life-os-development-policy.md").write_text("x" * 19000),
+                "size_over_limit docs/life-os-development-policy.md",
+            ),
+            (
+                "destination",
+                lambda r: (r / "INDEX.md").write_text(
+                    (r / "INDEX.md").read_text().replace("[`AGENTS.md`](AGENTS.md)", "[`AGENTS.md`](docs/SETUP.md)", 1)
+                ),
+                "link_destination_mismatch AGENTS.md docs/SETUP.md",
+            ),
+            (
+                "stripped",
+                lambda r: (r / "INDEX.md").write_text(
+                    (r / "INDEX.md")
+                    .read_text()
+                    .replace(
+                        next(l for l in (r / "INDEX.md").read_text().splitlines() if l.startswith("| [`AGENTS.md`]")),
+                        "| [`AGENTS.md`](AGENTS.md) |",
+                    )
+                ),
+                "index_row_malformed INDEX.md [`AGENTS.md`]",
+            ),
+            ("index", lambda r: (r / "INDEX.md").write_text("# empty\n"), "index_empty"),
+            (
+                "schema",
+                lambda r: (r / "docs" / "jira" / "issue-schema.v1.json").write_text(json.dumps({"required": ["key"]})),
+                "schema_fields_lost",
+            ),
+        ):
             with self.subTest(name=name):
                 repo = self.tree()
                 break_it(repo)
@@ -168,8 +238,13 @@ class RepositoryIndex(Fixture):
                 shutil.rmtree(repo)
 
     def test_the_agent_entrypoint_names_the_validator(self):
-        agents = (ROOT / "AGENTS.md").read_text() + (ROOT / "docs" / "agent-reference.md").read_text()  # boot page plus the full guide
-        for command in ("python -m lifeos.sources.devtools.readiness", "python -m lifeos.sources.devtools.readiness repo"):  # AGENTS.md names the real module
+        agents = (ROOT / "AGENTS.md").read_text() + (
+            ROOT / "docs" / "agent-reference.md"
+        ).read_text()  # boot page plus the full guide
+        for command in (
+            "python -m lifeos.sources.devtools.readiness",
+            "python -m lifeos.sources.devtools.readiness repo",
+        ):  # AGENTS.md names the real module
             self.assertIn(command, agents)
         self.assertNotIn("readiness preflight", agents)  # delivery flow v3: no claim file, no preflight
 

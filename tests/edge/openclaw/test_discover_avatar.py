@@ -1,4 +1,5 @@
 """the OpenClaw avatar discovery is READ-ONLY and never prints secret-shaped lines."""
+
 import hashlib
 import os
 import re
@@ -89,9 +90,24 @@ class Discover(unittest.TestCase):
 
     def test_the_script_contains_no_command_that_writes_or_restarts(self):
         code = "\n".join(l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#"))
-        for pattern in (r"\bsed\s+-i", r"\bcp\b", r"\bmv\b", r"\brm\b", r"\bchmod\b", r"\bchown\b", r"\btee\b", r"systemctl", r"\bkill\b", r"\bmkdir\b",
-                        r"\btouch\b", r"openclaw\s+(config|agents|gateway)", r">\s*[\"$/.\w]"):
-            self.assertIsNone(re.search(pattern, code.replace("2>/dev/null", "").replace(">&", "").replace("2>&1", "")), pattern)
+        for pattern in (
+            r"\bsed\s+-i",
+            r"\bcp\b",
+            r"\bmv\b",
+            r"\brm\b",
+            r"\bchmod\b",
+            r"\bchown\b",
+            r"\btee\b",
+            r"systemctl",
+            r"\bkill\b",
+            r"\bmkdir\b",
+            r"\btouch\b",
+            r"openclaw\s+(config|agents|gateway)",
+            r">\s*[\"$/.\w]",
+        ):
+            self.assertIsNone(
+                re.search(pattern, code.replace("2>/dev/null", "").replace(">&", "").replace("2>&1", "")), pattern
+            )
         self.assertEqual(subprocess.run(["bash", "-n", SCRIPT]).returncode, 0)
 
 

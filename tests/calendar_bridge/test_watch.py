@@ -1,6 +1,7 @@
 """a calendar sync that keeps failing reaches the phone, once it has failed for three hours, then reminds, then says when
 it recovers.
 """
+
 import contextlib
 import io
 import unittest
@@ -23,7 +24,9 @@ def wrapped(db, pushes, outcome, live=True, now=T0, environ=None):
     environ = {"NTFY_TOPIC": "topic-example", **(environ or {})}
     effect = {"side_effect": outcome} if isinstance(outcome, Exception) else {"return_value": outcome}
     with patch.object(sync, "run", **effect), contextlib.redirect_stdout(io.StringIO()):
-        return watch.run(1, live, environ=environ, now=now.replace(tzinfo=timezone.utc), send=pushes, connect=lambda: db)
+        return watch.run(
+            1, live, environ=environ, now=now.replace(tzinfo=timezone.utc), send=pushes, connect=lambda: db
+        )
 
 
 class DecideTests(unittest.TestCase):
@@ -47,7 +50,10 @@ class DecideTests(unittest.TestCase):
     def test_a_success_closes_an_open_alert_and_says_so_once(self):
         state = {"last_ok": T0, "alert_open": True, "last_notified": T0 + timedelta(hours=3)}
         state, plan = watch.decide(state, True, T0 + timedelta(hours=5))
-        self.assertEqual(([k for k, _ in plan.notify], state["alert_open"], state["last_ok"]), (["resolved"], False, T0 + timedelta(hours=5)))
+        self.assertEqual(
+            ([k for k, _ in plan.notify], state["alert_open"], state["last_ok"]),
+            (["resolved"], False, T0 + timedelta(hours=5)),
+        )
         _, plan = watch.decide(state, True, T0 + timedelta(hours=6))
         self.assertEqual(plan.notify, [])
 
@@ -61,8 +67,10 @@ class WrapperTests(unittest.TestCase):
         with self.assertRaises(BridgeError) as error:
             wrapped(db, pushes, BridgeError("CALENDAR_MASS_DELETE_GUARD"))
         self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")  # the sync's own error is untouched
-        (topic, title, body, severity), = pushes.sent
-        self.assertEqual((topic, severity, title), ("topic-example", alerts.PAGE, "Calendar sync has not worked for 4 hours"))
+        ((topic, title, body, severity),) = pushes.sent
+        self.assertEqual(
+            (topic, severity, title), ("topic-example", alerts.PAGE, "Calendar sync has not worked for 4 hours")
+        )
         self.assertIn("CALENDAR_MASS_DELETE_GUARD", body)
         with self.assertRaises(BridgeError):
             wrapped(db, pushes, BridgeError("CALENDAR_MASS_DELETE_GUARD"), now=T0 + timedelta(hours=1))
@@ -110,6 +118,7 @@ class WrapperTests(unittest.TestCase):
 
     def test_the_calendar_stage_runs_through_the_watch(self):
         from lifeos import run as entry
+
         self.assertEqual(entry.STAGES["calendar-sync"].target, ("lifeos.calendar_bridge.watch", "run"))
 
 

@@ -1,4 +1,5 @@
 """the Honcho memory token is renewed when 30 days or fewer are left"""
+
 import base64
 import json
 import os
@@ -15,7 +16,7 @@ DAY = 86400
 
 
 def jwt(exp, w="personal", tag="x"):
-    enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")           # noqa: E731
+    enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")  # noqa: E731
     return enc({"alg": "HS256"}) + "." + enc({"t": tag, "exp": exp, "w": w}) + ".SIGNATURE" + tag
 
 
@@ -41,13 +42,20 @@ class World:
             handle.write(f"BUZZ_URL_LIFE_OS=https://example.invalid\n{rt.KEY}={self.old}\nBUZZ_RELAY=on\n")
         os.chmod(self.path, 0o600)
         self.new = mint if mint is not None else jwt(NOW + 60 * DAY, tag="new")
-        self.accepts, self.mcp_active, self.mcp_code, self.after_swap_bad = accepts, mcp_active, mcp_code, after_swap_bad
+        self.accepts, self.mcp_active, self.mcp_code, self.after_swap_bad = (
+            accepts,
+            mcp_active,
+            mcp_code,
+            after_swap_bad,
+        )
         self.calls, self.printed, self.alerts, self.restarts = [], [], [], 0
 
     def run(self, cmd, **kw):
         self.calls.append(cmd)
         if cmd[0] == "docker":
-            return SimpleNamespace(returncode=0 if self.new else 1, stdout=(self.new + "\n") if self.new else "", stderr="")
+            return SimpleNamespace(
+                returncode=0 if self.new else 1, stdout=(self.new + "\n") if self.new else "", stderr=""
+            )
         if cmd[0] == "systemctl" and cmd[1] == "restart":
             self.restarts += 1
             return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -66,7 +74,9 @@ class World:
         raise urllib.error.HTTPError(request.full_url, self.mcp_code, "x", {}, None)
 
     def go(self):
-        code = rt.renew(now=NOW, path=self.path, run=self.run, opener=self.opener, sleep=lambda s: None, out=self.printed.append)
+        code = rt.renew(
+            now=NOW, path=self.path, run=self.run, opener=self.opener, sleep=lambda s: None, out=self.printed.append
+        )
         return code, rt.read_token(self.path)
 
 
@@ -123,7 +133,9 @@ class Renewal(unittest.TestCase):
         w = World(NOW + 12 * DAY)
         with open(w.path, "w") as handle:
             handle.write("BUZZ_RELAY=on\n")
-        self.assertEqual(rt.renew(now=NOW, path=w.path, run=w.run, opener=w.opener, sleep=lambda s: None, out=w.printed.append), 1)
+        self.assertEqual(
+            rt.renew(now=NOW, path=w.path, run=w.run, opener=w.opener, sleep=lambda s: None, out=w.printed.append), 1
+        )
         self.assertEqual((len(w.alerts), open(w.path).read()), (1, "BUZZ_RELAY=on\n"))
 
     def test_the_alert_has_no_token_text_in_it(self):

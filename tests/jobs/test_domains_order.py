@@ -1,6 +1,7 @@
 """a domains job that COMPARES other cards' regions before and after its own write must not overlap a job that writes one
 of those regions, or the other.
 """
+
 import pathlib
 import unittest
 
@@ -12,8 +13,15 @@ except ImportError:
 from lifeos.platform import router
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "domains.yml"
-WRITER = {router.JIRA_REGION: "jira", router.CALENDAR_REGION: "agenda", router.BILLS_REGION: "bills", router.AMAZON_REGION: "amazon", router.MAIL_ALERTS_REGION: "mail",
-          router.HIRING_REGION: "hiring", router.DCC_REGION: "dcc"}  # the job that writes each region
+WRITER = {
+    router.JIRA_REGION: "jira",
+    router.CALENDAR_REGION: "agenda",
+    router.BILLS_REGION: "bills",
+    router.AMAZON_REGION: "amazon",
+    router.MAIL_ALERTS_REGION: "mail",
+    router.HIRING_REGION: "hiring",
+    router.DCC_REGION: "dcc",
+}  # the job that writes each region
 # job -> the jobs whose regions it compares before and after its own write.
 COMPARES = {}
 
@@ -40,7 +48,12 @@ def waits_for(graph, job, other):
 
 
 def unordered_pairs(graph):
-    return sorted((c, w) for c, writers in COMPARES.items() for w in writers if not waits_for(graph, c, w) and not waits_for(graph, w, c))
+    return sorted(
+        (c, w)
+        for c, writers in COMPARES.items()
+        for w in writers
+        if not waits_for(graph, c, w) and not waits_for(graph, w, c)
+    )
 
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
@@ -63,10 +76,17 @@ class ComparingCardsAreOrdered(unittest.TestCase):
     def test_a_comparing_card_that_does_not_wait_for_what_it_compares_is_caught(self):
         graph = {k: set(v) for k, v in self.graph.items()}
         graph["hiring"] = {"gate"}
-        found = sorted((c, w) for c, writers in {"hiring": {"mail", "imessage"}}.items() for w in writers if not waits_for(graph, c, w) and not waits_for(graph, w, c))
+        found = sorted(
+            (c, w)
+            for c, writers in {"hiring": {"mail", "imessage"}}.items()
+            for w in writers
+            if not waits_for(graph, c, w) and not waits_for(graph, w, c)
+        )
         self.assertEqual(found, [("hiring", "imessage"), ("hiring", "mail")])
 
-    def test_interview_os_and_the_hiring_outcome_scan_run_beside_the_recruiters_mail_read_and_granola_waits_for_interview(self):
+    def test_interview_os_and_the_hiring_outcome_scan_run_beside_the_recruiters_mail_read_and_granola_waits_for_interview(
+        self,
+    ):
         """the Recruiters job had run the mail read, the hiring outcome scan and Interview OS in a row, which set the run
         time.
         """
@@ -75,9 +95,16 @@ class ComparingCardsAreOrdered(unittest.TestCase):
             self.assertFalse(waits_for(self.graph, job, "recruiters") or waits_for(self.graph, "recruiters", job), job)
         self.assertTrue(waits_for(self.graph, "granola", "interview"))
         steps = [s.get("id") for s in self.jobs["recruiters"]["steps"]]
-        self.assertEqual([i for i in steps if i in ("recruiters", "routreach", "jpoutreach", "houtcomes", "interview")], ["recruiters", "routreach", "jpoutreach"])
-        self.assertEqual([s.get("id") for s in self.jobs["interview"]["steps"] if s.get("id") == "interview"], ["interview"])
-        self.assertEqual([s.get("id") for s in self.jobs["hiring_outcomes"]["steps"] if s.get("id") == "houtcomes"], ["houtcomes"])
+        self.assertEqual(
+            [i for i in steps if i in ("recruiters", "routreach", "jpoutreach", "houtcomes", "interview")],
+            ["recruiters", "routreach", "jpoutreach"],
+        )
+        self.assertEqual(
+            [s.get("id") for s in self.jobs["interview"]["steps"] if s.get("id") == "interview"], ["interview"]
+        )
+        self.assertEqual(
+            [s.get("id") for s in self.jobs["hiring_outcomes"]["steps"] if s.get("id") == "houtcomes"], ["houtcomes"]
+        )
 
     def test_every_job_that_can_fail_is_named_by_the_report_job(self):
         self.assertTrue(set(self.jobs) - {"report", "chain"} <= self.graph["report"])

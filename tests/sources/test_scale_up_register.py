@@ -3,11 +3,13 @@ import unittest
 from lifeos.sources.discovery import scale_up_register as reg
 from tests.kit import shared
 
-CSV = ("Organisation Name,Town/City,County,Type & Rating,Route\n"
-       "ExampleCo Limited,London,Greater London,Worker (A rating),Scale-up\n"
-       "HeldCo Ltd,London,Greater London,Worker (A rating),Scale-up\n"
-       "NorthCo Ltd,Leeds,West Yorkshire,Worker (A rating),Scale-up\n"
-       "Skilled Ltd,London,Greater London,Worker (A rating),Skilled Worker\n")
+CSV = (
+    "Organisation Name,Town/City,County,Type & Rating,Route\n"
+    "ExampleCo Limited,London,Greater London,Worker (A rating),Scale-up\n"
+    "HeldCo Ltd,London,Greater London,Worker (A rating),Scale-up\n"
+    "NorthCo Ltd,Leeds,West Yorkshire,Worker (A rating),Scale-up\n"
+    "Skilled Ltd,London,Greater London,Worker (A rating),Skilled Worker\n"
+)
 
 
 Page = shared.Page
@@ -23,7 +25,17 @@ class Register(unittest.TestCase):
         entries, _ = reg.rows_of(CSV)
         held = {tuple(reg.names.core("HeldCo Ltd")), tuple(reg.names.core("Elsewhere Plc"))}
         counts, missing = reg.compare(entries, held)
-        self.assertEqual(counts, {"register_scale_up": 3, "london": 2, "london_held": 1, "london_missing": 1, "held_total": 2, "held_in_register": 1})
+        self.assertEqual(
+            counts,
+            {
+                "register_scale_up": 3,
+                "london": 2,
+                "london_held": 1,
+                "london_missing": 1,
+                "held_total": 2,
+                "held_in_register": 1,
+            },
+        )
         self.assertEqual([m[0] for m in missing], ["ExampleCo Limited"])
 
     def test_the_registry_file_loads_and_the_log_gets_counts_only(self):
@@ -32,12 +44,18 @@ class Register(unittest.TestCase):
         from tests.jobs.support import FakeClient, FakeStore, connect
         from lifeos.jobs import private_report, store
         from lifeos.platform import stored_pages
+
         self.enterContext(mock.patch.object(stored_pages, "STORE", FakeStore()))
         self.enterContext(mock.patch.object(store, "connect", connect))
-        pages = {reg.sponsor_register.PAGE: Page('{"x": "https://assets.publishing.service.gov.uk/media/a.csv"}'), "https://assets.publishing.service.gov.uk/media/a.csv": Page(CSV * 5)}
+        pages = {
+            reg.sponsor_register.PAGE: Page('{"x": "https://assets.publishing.service.gov.uk/media/a.csv"}'),
+            "https://assets.publishing.service.gov.uk/media/a.csv": Page(CSV * 5),
+        }
         client = FakeClient()
         entries = ["ExampleCo Limited"] + [f"Filler{i} Ltd" for i in range(12)]
-        text = "Organisation Name,Town/City,County,Type & Rating,Route\n" + "".join(f"{n},London,Greater London,Worker (A rating),Scale-up\n" for n in entries)
+        text = "Organisation Name,Town/City,County,Type & Rating,Route\n" + "".join(
+            f"{n},London,Greater London,Worker (A rating),Scale-up\n" for n in entries
+        )
         pages["https://assets.publishing.service.gov.uk/media/a.csv"] = Page(text)
         counts = reg.run(0, True, fetcher=lambda url, **kw: pages[url], client=client)
         self.assertEqual((counts["status"], counts["london"], counts["page"], counts["failed"]), ("OK", 13, "new", 0))

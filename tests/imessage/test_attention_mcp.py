@@ -21,12 +21,16 @@ def db(rows):
     """
     path = os.path.join(tempfile.mkdtemp(), "chat.db")
     con = sqlite3.connect(path)
-    con.execute("CREATE TABLE message (ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, handle_id INTEGER, date INTEGER, is_from_me INTEGER, is_read INTEGER, item_type INTEGER)")
+    con.execute(
+        "CREATE TABLE message (ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, handle_id INTEGER, date INTEGER, is_from_me INTEGER, is_read INTEGER, item_type INTEGER)"
+    )
     con.execute("CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT)")
     con.execute("INSERT INTO handle VALUES (1, ?)", (SECRET_HANDLE,))
     for age, mine, read, kind in rows:
-        con.execute("INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read, item_type) VALUES (?, ?, 1, ?, ?, ?, ?)",
-                    (SECRET_GUID, SECRET_TEXT, m._ticks(NOW - age), mine, read, kind))
+        con.execute(
+            "INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read, item_type) VALUES (?, ?, 1, ?, ?, ?, ?)",
+            (SECRET_GUID, SECRET_TEXT, m._ticks(NOW - age), mine, read, kind),
+        )
     con.commit()
     con.close()
     return path
@@ -47,7 +51,10 @@ class Snapshot(unittest.TestCase):
         self.assertIs(out["count_reliable"], False)
         self.assertEqual(out["sync"], "UNVERIFIED")  # a readable database never proves iCloud sync
         self.assertNotEqual(out["attention"], "CLEAR")
-        self.assertEqual((out["channel"], out["source"], out["observed_at"]), ("imessage", "Apple Messages / Mac Mini", "2026-10-14T15:00:00Z"))
+        self.assertEqual(
+            (out["channel"], out["source"], out["observed_at"]),
+            ("imessage", "Apple Messages / Mac Mini", "2026-10-14T15:00:00Z"),
+        )
         for secret in (SECRET_TEXT, SECRET_HANDLE, SECRET_GUID, "1", path):
             self.assertNotIn(secret, json.dumps({k: v for k, v in out.items() if k != "observed_at"}))
         return out["attention"], out["health"]
@@ -56,7 +63,9 @@ class Snapshot(unittest.TestCase):
         self.assertEqual(self.observe(db([(H, 0, 0, 0), (2 * H, 0, 1, 0)])), ("NEEDS_ATTENTION", "CURRENT"))
 
     def test_historical_unread_without_recent_activity_is_unknown_not_clear(self):
-        self.assertEqual(self.observe(db([(400 * D, 0, 0, 0), (30 * D, 0, 0, 0), (H, 0, 1, 0)])), ("UNKNOWN", "CURRENT"))
+        self.assertEqual(
+            self.observe(db([(400 * D, 0, 0, 0), (30 * D, 0, 0, 0), (H, 0, 1, 0)])), ("UNKNOWN", "CURRENT")
+        )
 
     def test_only_read_messages_is_unknown_because_sync_is_unverified(self):
         self.assertEqual(self.observe(db([(H, 0, 1, 0), (2 * H, 1, 0, 0), (3 * H, 0, 0, 2)])), ("UNKNOWN", "CURRENT"))
@@ -103,9 +112,14 @@ class Protocol(unittest.TestCase):
 
     def test_lists_exactly_the_five_read_only_tools(self):
         tools = m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
-        self.assertEqual([t["name"] for t in tools], ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation", "imessage_page"])
+        self.assertEqual(
+            [t["name"] for t in tools],
+            ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation", "imessage_page"],
+        )
         self.assertEqual(tools[0]["inputSchema"], {"type": "object", "properties": {}, "additionalProperties": False})
-        self.assertTrue(all(t["annotations"]["readOnlyHint"] and not t["annotations"]["destructiveHint"] for t in tools))
+        self.assertTrue(
+            all(t["annotations"]["readOnlyHint"] and not t["annotations"]["destructiveHint"] for t in tools)
+        )
 
     def test_approved_call_returns_the_contract(self):
         result = self.call({"name": "imessage_attention", "arguments": {}})["result"]
@@ -118,8 +132,14 @@ class Protocol(unittest.TestCase):
             self.assertEqual(self.call({"name": name, "arguments": {}})["error"]["code"], -32602)
 
     def test_any_arguments_paths_or_sql_are_refused_with_a_fixed_error(self):
-        for params in ({"name": "imessage_attention", "arguments": {"path": "/etc/passwd"}}, {"name": "imessage_attention", "arguments": {"query": "SELECT text FROM message"}},
-                       {"name": "imessage_attention", "arguments": "; rm -rf ~"}, {"name": "imessage_attention", "arguments": []}, ["imessage_attention"], "imessage_attention"):
+        for params in (
+            {"name": "imessage_attention", "arguments": {"path": "/etc/passwd"}},
+            {"name": "imessage_attention", "arguments": {"query": "SELECT text FROM message"}},
+            {"name": "imessage_attention", "arguments": "; rm -rf ~"},
+            {"name": "imessage_attention", "arguments": []},
+            ["imessage_attention"],
+            "imessage_attention",
+        ):
             reply = self.call(params)
             self.assertEqual(reply["error"], {"code": -32602, "message": "unsupported tool or arguments"})
 
@@ -128,16 +148,37 @@ class Protocol(unittest.TestCase):
         self.assertIsNone(m.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
 
     def test_stdio_server_survives_bad_input_and_fails_closed_without_messages_access(self):
-        lines = ["not json", "[1, 2]", json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
-                 json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": [1]}),
-                 json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "imessage_attention", "arguments": {}}})]
+        lines = [
+            "not json",
+            "[1, 2]",
+            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": [1]}),
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "imessage_attention", "arguments": {}},
+                }
+            ),
+        ]
         env = dict(os.environ, HOME=tempfile.mkdtemp())
-        run = subprocess.run([sys.executable, m.__file__], input="\n".join(lines) + "\n", capture_output=True, text=True, env=env, timeout=10)
+        run = subprocess.run(
+            [sys.executable, m.__file__],
+            input="\n".join(lines) + "\n",
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=10,
+        )
         replies = [json.loads(x) for x in run.stdout.splitlines()]
         self.assertEqual([r["id"] for r in replies], [1, 2, 3])
         self.assertEqual(replies[1]["error"]["code"], -32602)
         state = replies[2]["result"]["structuredContent"]
-        self.assertEqual((state["attention"], state["health"], state["sync"], state["count"]), ("UNKNOWN", "DISCONNECTED", "UNVERIFIED", None))
+        self.assertEqual(
+            (state["attention"], state["health"], state["sync"], state["count"]),
+            ("UNKNOWN", "DISCONNECTED", "UNVERIFIED", None),
+        )
         self.assertTrue(replies[2]["result"]["isError"])
         self.assertEqual((run.returncode, run.stderr), (0, ""))
 

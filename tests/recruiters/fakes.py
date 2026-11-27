@@ -1,28 +1,63 @@
-"""Synthetic Recruiters fakes: an in-memory Recruiters data source, and Gmail/Outlook clients that raise on any mutation.
-"""
+"""Synthetic Recruiters fakes: an in-memory Recruiters data source, and Gmail/Outlook clients that raise on any mutation."""
+
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
 
 CELL = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]
 
 
-def page(person, company="", role="", week="2026-10-11", last="2026-10-07T15:00:00+00:00", done=False, what="", client="", review=False, active=True, pid=None,
-         url=None, created_by="bot-1", edited_by="bot-1", action=None, follow_up=None):
-    return {"id": pid or f"page-{person}-{company}-{role}".replace(" ", "-"), "created_by": {"object": "user", "id": created_by},
-            "last_edited_by": {"object": "user", "id": edited_by}, "properties": {
-        "Recruiter": {"type": "title", "title": CELL(person)}, "Company": {"type": "rich_text", "rich_text": CELL(company)},
-        "Client": {"type": "rich_text", "rich_text": CELL(client)}, "Role": {"type": "rich_text", "rich_text": CELL(role)}, "Medium": {"type": "rich_text", "rich_text": CELL("Email")},
-        "What they want": {"type": "rich_text", "rich_text": CELL(what)}, "Last Contact": {"type": "date", "date": {"start": last}}, "Week Ending": {"type": "date", "date": {"start": week}},
-        "Done": {"type": "checkbox", "checkbox": done}, "Active": {"type": "checkbox", "checkbox": active}, "Needs review": {"type": "checkbox", "checkbox": review},
-        "Source URL": {"type": "url", "url": url}, "Action Status": {"type": "select", "select": {"name": action} if action else None},
-        "Follow-up Date": {"type": "date", "date": {"start": follow_up} if follow_up else None}}}
+def page(
+    person,
+    company="",
+    role="",
+    week="2026-10-11",
+    last="2026-10-07T15:00:00+00:00",
+    done=False,
+    what="",
+    client="",
+    review=False,
+    active=True,
+    pid=None,
+    url=None,
+    created_by="bot-1",
+    edited_by="bot-1",
+    action=None,
+    follow_up=None,
+):
+    return {
+        "id": pid or f"page-{person}-{company}-{role}".replace(" ", "-"),
+        "created_by": {"object": "user", "id": created_by},
+        "last_edited_by": {"object": "user", "id": edited_by},
+        "properties": {
+            "Recruiter": {"type": "title", "title": CELL(person)},
+            "Company": {"type": "rich_text", "rich_text": CELL(company)},
+            "Client": {"type": "rich_text", "rich_text": CELL(client)},
+            "Role": {"type": "rich_text", "rich_text": CELL(role)},
+            "Medium": {"type": "rich_text", "rich_text": CELL("Email")},
+            "What they want": {"type": "rich_text", "rich_text": CELL(what)},
+            "Last Contact": {"type": "date", "date": {"start": last}},
+            "Week Ending": {"type": "date", "date": {"start": week}},
+            "Done": {"type": "checkbox", "checkbox": done},
+            "Active": {"type": "checkbox", "checkbox": active},
+            "Needs review": {"type": "checkbox", "checkbox": review},
+            "Source URL": {"type": "url", "url": url},
+            "Action Status": {"type": "select", "select": {"name": action} if action else None},
+            "Follow-up Date": {"type": "date", "date": {"start": follow_up} if follow_up else None},
+        },
+    }
 
 
 class FakeRecruiters:
     source = "source-example"
 
     def __init__(self, pages=None, fail_query=False, drop_writes=False, schema=None):
-        self.pages, self.writes, self.queries, self.fail_query, self.drop_writes = list(pages or []), [], 0, fail_query, drop_writes
+        self.pages, self.writes, self.queries, self.fail_query, self.drop_writes = (
+            list(pages or []),
+            [],
+            0,
+            fail_query,
+            drop_writes,
+        )
         self.schema = {n: {"type": t} for n, t in store.SCHEMA.items()} | (schema or {})
 
     def call(self, method, path, body=None):
@@ -73,10 +108,19 @@ class FakeRecruiters:
             kind = next(iter(value))
             props[name] = {"type": kind, **value}
             if kind in ("title", "rich_text"):
-                props[name][kind] = [{"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}]
+                props[name][kind] = [
+                    {"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}
+                ]
         for name, kind in store.SCHEMA.items():
             props.setdefault(name, {"type": kind, kind: [] if kind in ("title", "rich_text") else None})
-        self.pages.append({"id": f"page-new-{len(self.pages)}", "created_by": {"id": "bot-1"}, "last_edited_by": {"id": "bot-1"}, "properties": props})
+        self.pages.append(
+            {
+                "id": f"page-new-{len(self.pages)}",
+                "created_by": {"id": "bot-1"},
+                "last_edited_by": {"id": "bot-1"},
+                "properties": props,
+            }
+        )
         return {}
 
     def update_page_properties(self, page_id, properties):
@@ -88,15 +132,39 @@ class FakeRecruiters:
             kind = next(iter(value))
             target["properties"][name] = {"type": kind, **value}
             if kind in ("title", "rich_text"):
-                target["properties"][name][kind] = [{"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}]
+                target["properties"][name][kind] = [
+                    {"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}
+                ]
         target["last_edited_by"] = {"id": "bot-1"}
         return {}
 
 
-def mail(sender_name="Pat Example", address="pat@example.com", subject="Opportunity", body="", received="2026-10-07T15:00:00+00:00", provider="gmail", folder="INBOX",
-         bulk=False, auto=False, noreply=False, url="https://mail.example.com/m/1", ident="m1"):
-    return {"provider": provider, "id": ident, "received": received, "sender_name": sender_name, "sender_address": address, "subject": subject, "body": body, "folder": folder,
-            "markers": {"bulk": bulk, "auto": auto, "noreply": noreply}, "url": url}
+def mail(
+    sender_name="Pat Example",
+    address="pat@example.com",
+    subject="Opportunity",
+    body="",
+    received="2026-10-07T15:00:00+00:00",
+    provider="gmail",
+    folder="INBOX",
+    bulk=False,
+    auto=False,
+    noreply=False,
+    url="https://mail.example.com/m/1",
+    ident="m1",
+):
+    return {
+        "provider": provider,
+        "id": ident,
+        "received": received,
+        "sender_name": sender_name,
+        "sender_address": address,
+        "subject": subject,
+        "body": body,
+        "folder": folder,
+        "markers": {"bulk": bulk, "auto": auto, "noreply": noreply},
+        "url": url,
+    }
 
 
 class ReadOnlyGmail:
@@ -114,7 +182,14 @@ class ReadOnlyGmail:
             h["list-unsubscribe"] = "<mailto:x@example.com>"
         if r["markers"]["auto"]:
             h["auto-submitted"] = "auto-generated"
-        return {"id": r["id"], "received_at": r["received"], "headers": h, "body_text": r["body"], "label_ids": ["SPAM"] if r["folder"] == "JUNK" else ["INBOX"], "thread": "t1"}
+        return {
+            "id": r["id"],
+            "received_at": r["received"],
+            "headers": h,
+            "body_text": r["body"],
+            "label_ids": ["SPAM"] if r["folder"] == "JUNK" else ["INBOX"],
+            "thread": "t1",
+        }
 
     def __getattr__(self, name):
         if name in ("trash", "relabel", "apply_amazon", "label_id", "message_labels"):

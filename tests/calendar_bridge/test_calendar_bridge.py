@@ -25,9 +25,19 @@ ENV = {"OUTLOOK_CLIENT_ID": "cid"}
 
 
 def ev(uid, start="2026-10-08T15:00:00.0000000", end="2026-10-08T16:00:00.0000000", subject="Private subject", **over):
-    event = {"id": "o-" + uid, "iCalUId": uid, "subject": subject, "start": {"dateTime": start}, "end": {"dateTime": end},
-             "isAllDay": False, "isCancelled": False, "showAs": "busy", "responseStatus": {"response": "accepted"},
-             "location": {"displayName": "Private place"}, "webLink": "https://example.invalid/e"}
+    event = {
+        "id": "o-" + uid,
+        "iCalUId": uid,
+        "subject": subject,
+        "start": {"dateTime": start},
+        "end": {"dateTime": end},
+        "isAllDay": False,
+        "isCancelled": False,
+        "showAs": "busy",
+        "responseStatus": {"response": "accepted"},
+        "location": {"displayName": "Private place"},
+        "webLink": "https://example.invalid/e",
+    }
     event.update(over)
     return event
 
@@ -77,8 +87,11 @@ def day(uid, i):
 
 
 def go(events, g, live=True, token="R"):
-    with patch.object(sync.outlook_tokens, "ensure_schema"), patch.object(sync.outlook_tokens, "load", return_value=token), \
-            patch.object(sync.outlook_tokens, "save"):
+    with (
+        patch.object(sync.outlook_tokens, "ensure_schema"),
+        patch.object(sync.outlook_tokens, "load", return_value=token),
+        patch.object(sync.outlook_tokens, "save"),
+    ):
         return sync.run(1, live, environ=ENV, connect=connect, outlook_factory=FakeOutlook(events), gcal=g, now=NOW)
 
 
@@ -92,14 +105,18 @@ class MirrorTests(unittest.TestCase):
     def test_ids_are_deterministic_valid_google_ids_and_per_occurrence(self):
         one = sync.google_id("personal", "uid", "2026-10-08T15:00:00")
         self.assertEqual(one, sync.google_id("personal", "uid", "2026-10-08T15:00:00"))
-        self.assertNotEqual(one, sync.google_id("personal", "uid", "2026-10-15T15:00:00"))  # a series: one id per occurrence
+        self.assertNotEqual(
+            one, sync.google_id("personal", "uid", "2026-10-15T15:00:00")
+        )  # a series: one id per occurrence
         self.assertNotEqual(one, sync.google_id("work", "uid", "2026-10-08T15:00:00"))
         self.assertRegex(one, r"^[a-v0-9]{5,1024}$")
 
     def test_body_shapes_for_timed_all_day_free_and_tentative(self):
         _, timed = sync.to_google("personal", ev("t"))
         self.assertEqual(timed["start"], {"dateTime": "2026-10-08T15:00:00", "timeZone": "UTC"})
-        _, day = sync.to_google("personal", ev("d", "2026-10-09T00:00:00.0000000", "2026-10-10T00:00:00.0000000", isAllDay=True))
+        _, day = sync.to_google(
+            "personal", ev("d", "2026-10-09T00:00:00.0000000", "2026-10-10T00:00:00.0000000", isAllDay=True)
+        )
         self.assertEqual((day["start"], day["end"]), ({"date": "2026-10-09"}, {"date": "2026-10-10"}))
         _, free = sync.to_google("personal", ev("f", showAs="free"))
         self.assertEqual(free["transparency"], "transparent")
@@ -122,7 +139,9 @@ class SyncTests(unittest.TestCase):
         first = go([ev("a"), ev("b")], g)
         self.assertEqual((first["create"], first["applied"]), (2, 2))
         again = go([ev("a"), ev("b")], g)
-        self.assertEqual((again["create"], again["update"], again["delete"], again["same"], again["applied"]), (0, 0, 0, 2, 0))
+        self.assertEqual(
+            (again["create"], again["update"], again["delete"], again["same"], again["applied"]), (0, 0, 0, 2, 0)
+        )
 
     def test_a_changed_event_is_updated_and_a_vanished_one_is_deleted(self):
         g = FakeGcal()
@@ -154,8 +173,24 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(len(g.items), 8)
         self.assertEqual(printed.getvalue().split(":", 1)[0], "calendar-sync guard")
         line = json.loads(printed.getvalue().split(":", 1)[1])
-        self.assertEqual((line["outlook"], line["google"], line["delete"], line["create"], line["applied"]), (0, 8, 8, 0, 0))
-        self.assertEqual(set(line), {"outlook", "skipped", "google", "create", "update", "already_in_google", "delete", "same", "applied", "failed"})
+        self.assertEqual(
+            (line["outlook"], line["google"], line["delete"], line["create"], line["applied"]), (0, 8, 8, 0, 0)
+        )
+        self.assertEqual(
+            set(line),
+            {
+                "outlook",
+                "skipped",
+                "google",
+                "create",
+                "update",
+                "already_in_google",
+                "delete",
+                "same",
+                "applied",
+                "failed",
+            },
+        )
 
     def many(self, uids, count):
         return [day(f"{uids}{i}", i) for i in range(count)]
@@ -171,7 +206,9 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(len(g.items), 14)
         out = go(self.many("new", 8), g)  # 8 answered (more than half of what is there)
         self.assertEqual((out["delete"], out["create"], out["same"], out["applied"], out["failed"]), (14, 8, 0, 22, 0))
-        self.assertEqual(set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)})  # only the new copies remain
+        self.assertEqual(
+            set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)}
+        )  # only the new copies remain
 
     def test_events_v7_did_not_write_are_never_edited_or_deleted(self):
         g = FakeGcal()
@@ -182,10 +219,20 @@ class SyncTests(unittest.TestCase):
 
     def test_an_invite_that_already_reached_google_another_way_is_not_copied_again(self):
         g = FakeGcal()
-        g.foreign = [{"id": "from-gmail", "iCalUID": "dup", "start": {"dateTime": "2026-10-08T10:00:00-05:00"}},
-                     {"id": "all-day", "iCalUID": "day", "start": {"date": "2026-10-09"}}]
-        out = go([ev("dup"), ev("new"), ev("day", "2026-10-09T00:00:00.0000000", "2026-10-10T00:00:00.0000000", isAllDay=True),
-                  ev("dup", start="2026-10-15T15:00:00.0000000", end="2026-10-15T16:00:00.0000000")], g, live=False)
+        g.foreign = [
+            {"id": "from-gmail", "iCalUID": "dup", "start": {"dateTime": "2026-10-08T10:00:00-05:00"}},
+            {"id": "all-day", "iCalUID": "day", "start": {"date": "2026-10-09"}},
+        ]
+        out = go(
+            [
+                ev("dup"),
+                ev("new"),
+                ev("day", "2026-10-09T00:00:00.0000000", "2026-10-10T00:00:00.0000000", isAllDay=True),
+                ev("dup", start="2026-10-15T15:00:00.0000000", end="2026-10-15T16:00:00.0000000"),
+            ],
+            g,
+            live=False,
+        )
         # 10:00-05:00 is 15:00Z: the first occurrence and the all-day event are already there
         self.assertEqual((out["already_in_google"], out["create"]), (2, 2))
 
@@ -200,7 +247,9 @@ class GcalClientTests(unittest.TestCase):
     KEY = json.dumps({"client_email": "service-account-name", "private_key": "KEY"})
 
     def client(self, **kw):
-        return GoogleCalendar(self.KEY, "calendar-id", sleep=lambda s: None, sign=lambda key, msg: b"SIG", clock=lambda: 1000, **kw)
+        return GoogleCalendar(
+            self.KEY, "calendar-id", sleep=lambda s: None, sign=lambda key, msg: b"SIG", clock=lambda: 1000, **kw
+        )
 
     def test_config_errors_are_fixed_codes(self):
         for bad in (("not json", "c"), (json.dumps({"client_email": "x"}), "c"), (self.KEY, "")):
@@ -259,6 +308,7 @@ class GcalClientTests(unittest.TestCase):
     def test_auth_failure_is_a_fixed_code(self):
         def bad(request, timeout=0):
             raise urllib.error.HTTPError(request.full_url, 400, "secret", {}, None)
+
         with patch("urllib.request.urlopen", side_effect=bad):
             with self.assertRaises(GcalError) as error:
                 self.client().list_events("a", "b")
@@ -285,9 +335,24 @@ class WorkflowTests(unittest.TestCase):
     def test_manual_only_with_only_the_calendar_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
-        self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),
-                         sorted(["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
+        self.assertEqual(
+            sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),
+            sorted(
+                ["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"]
+                + [
+                    f"LIFEOS_ACQ_{n}"
+                    for n in (
+                        "SSH_PRIVATE_KEY",
+                        "DB_PASSWORD",
+                        "SSH_HOST",
+                        "SSH_USER",
+                        "SSH_KNOWN_HOSTS",
+                        "DB_NAME",
+                        "DB_USER",
+                    )
+                ]
+            ),
+        )
 
     def test_no_address_in_tracked_bridge_code(self):
         for path in list((ROOT / "lifeos" / "calendar_bridge").glob("*.py")) + [ROOT / "lifeos/platform/gcal.py"]:
@@ -299,7 +364,7 @@ class HourlyJobTests(unittest.TestCase):
     text = wftext.text(ROOT / ".github/workflows/domains.yml")
 
     def job(self):
-        return self.text[self.text.index("\n  outlook:\n"):self.text.index("\n  bills:\n")]
+        return self.text[self.text.index("\n  outlook:\n") : self.text.index("\n  bills:\n")]
 
     def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
@@ -312,12 +377,42 @@ class HourlyJobTests(unittest.TestCase):
         job = self.job()
         head, steps = job.split("    steps:")
         self.assertNotIn("secrets.", head)
-        for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON", "HIRING_PIPELINE_PAGE_ID"):
+        for name in (
+            "NOTION_API_TOKEN",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "TINYFISH_API_KEY",
+            "FIT_PROFILE_JSON",
+            "HIRING_PIPELINE_PAGE_ID",
+        ):
             self.assertNotIn(name, job, name)  # no Jobs secret is even named in this workflow
         direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
-        self.assertEqual(sorted((direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))) - {"V7_RUNTIME_CONFIG_SOURCE_ID"}),
-                         sorted(["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")]))
+        self.assertEqual(
+            sorted((direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))) - {"V7_RUNTIME_CONFIG_SOURCE_ID"}),
+            sorted(
+                [
+                    "OUTLOOK_CLIENT_ID",
+                    "NOTION_JIRA_TOKEN",
+                    "NTFY_TOPIC",
+                    "TAILSCALE_OAUTH_CLIENT_ID",
+                    "TAILSCALE_OAUTH_CLIENT_SECRET",
+                ]
+                + [
+                    f"LIFEOS_ACQ_{n}"
+                    for n in (
+                        "SSH_PRIVATE_KEY",
+                        "DB_PASSWORD",
+                        "SSH_HOST",
+                        "SSH_USER",
+                        "SSH_KNOWN_HOSTS",
+                        "DB_NAME",
+                        "DB_USER",
+                        "SSH_JUMP_KEY",
+                        "SSH_JUMP_HOST",
+                        "SSH_JUMP_KNOWN_HOSTS",
+                    )
+                ]
+            ),
+        )
 
 
 if __name__ == "__main__":

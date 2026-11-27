@@ -1,6 +1,7 @@
 """the Honcho backup-failed unit and the meter's budget stop reach the Agent Inbox through the one honcho-alert command,
 and an alert problem can never.
 """
+
 import pathlib
 import re
 import unittest
@@ -23,7 +24,11 @@ class Units(unittest.TestCase):
         self.assertTrue(second.endswith("--urgency Today"))
 
     def test_the_budget_stop_alert_is_started_by_the_exhausted_file_the_meter_writes(self):
-        (path_line,) = [ln for ln in (DIR / "lifeos-honcho-meter-alert.path").read_text().splitlines() if ln.startswith("PathChanged=")]
+        (path_line,) = [
+            ln
+            for ln in (DIR / "lifeos-honcho-meter-alert.path").read_text().splitlines()
+            if ln.startswith("PathChanged=")
+        ]
         self.assertEqual(path_line, "PathChanged=" + meter_proxy.STATE_DIR.rstrip("/") + "/EXHAUSTED")
         (call,) = lines("lifeos-honcho-meter-alert.service")
         self.assertTrue(call.startswith("ExecStart=-" + ALERT + ' "Honcho budget stopped (EXHAUSTED)" '), call)
@@ -38,8 +43,15 @@ class Units(unittest.TestCase):
         timer = (DIR / "lifeos-honcho-token-renew.timer").read_text()
         self.assertIn("OnCalendar=*-*-* 03:45:00 America/Chicago", timer)
         unit = (DIR / "lifeos-honcho-token-renew.service").read_text()
-        self.assertEqual(lines("lifeos-honcho-token-renew.service"), ["ExecStart=/usr/bin/python3 -I /opt/lifeos-honcho/renew_token.py"])
-        self.assertIsNone(re.search(r"claude|agent run|openclaw", "\n".join(ln for ln in unit.splitlines() if not ln.startswith("#")), re.I))
+        self.assertEqual(
+            lines("lifeos-honcho-token-renew.service"),
+            ["ExecStart=/usr/bin/python3 -I /opt/lifeos-honcho/renew_token.py"],
+        )
+        self.assertIsNone(
+            re.search(
+                r"claude|agent run|openclaw", "\n".join(ln for ln in unit.splitlines() if not ln.startswith("#")), re.I
+            )
+        )
 
     def test_no_secret_or_credential_text_is_in_any_alert_line(self):
         for name in ("lifeos-honcho-backup-failed.service", "lifeos-honcho-meter-alert.service"):

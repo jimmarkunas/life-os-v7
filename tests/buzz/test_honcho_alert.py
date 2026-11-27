@@ -1,4 +1,5 @@
 """deploy/buzz-mcp/honcho-alert with a fake systemd-creds and an in-process fake MCP service."""
+
 import base64
 import hashlib
 import json
@@ -13,8 +14,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy/buzz-mcp/honcho-alert"
-FAKE_CREDS = ('#!/bin/sh\ncase "$1" in\n encrypt) out="$4"; python3 -c "import sys,base64; sys.stdout.write(\'ENC:\'+base64.b64encode(sys.stdin.buffer.read()).decode())" > "$out";;\n'
-              ' decrypt) f="$3"; python3 -c "import sys,base64; d=open(sys.argv[1]).read(); sys.stdout.write(base64.b64decode(d[4:]).decode())" "$f";;\nesac\n')
+FAKE_CREDS = (
+    '#!/bin/sh\ncase "$1" in\n encrypt) out="$4"; python3 -c "import sys,base64; sys.stdout.write(\'ENC:\'+base64.b64encode(sys.stdin.buffer.read()).decode())" > "$out";;\n'
+    ' decrypt) f="$3"; python3 -c "import sys,base64; d=open(sys.argv[1]).read(); sys.stdout.write(base64.b64decode(d[4:]).decode())" "$f";;\nesac\n'
+)
 
 
 class FakeMcp(ThreadingHTTPServer):
@@ -52,7 +55,14 @@ class HonchoAlert(unittest.TestCase):
         self.cred = self.tmp / "etc/honcho_alerts_mcp.cred"
 
     def run_script(self, *args, server=None, unit_dir=None):
-        env = {**os.environ, "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}", "HONCHO_ALERT_CRED_FILE": str(self.cred), "HONCHO_ALERT_URL": f"http://127.0.0.1:{server.server_address[1]}/mcp" if server else "http://127.0.0.1:9/mcp"}
+        env = {
+            **os.environ,
+            "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}",
+            "HONCHO_ALERT_CRED_FILE": str(self.cred),
+            "HONCHO_ALERT_URL": f"http://127.0.0.1:{server.server_address[1]}/mcp"
+            if server
+            else "http://127.0.0.1:9/mcp",
+        }
         env.pop("CREDENTIALS_DIRECTORY", None)
         if unit_dir:
             env["CREDENTIALS_DIRECTORY"] = str(unit_dir)
@@ -75,7 +85,10 @@ class HonchoAlert(unittest.TestCase):
 
     def test_send_calls_the_governed_tool_with_the_bearer_and_names_the_outcome_only(self):
         self.run_script("issue")
-        for reply, word in (({"ok": True, "data": {"created": 1}}, "alert created"), ({"ok": True, "data": {"updated": 1}}, "alert updated")):
+        for reply, word in (
+            ({"ok": True, "data": {"created": 1}}, "alert created"),
+            ({"ok": True, "data": {"updated": 1}}, "alert updated"),
+        ):
             server = FakeMcp((200, reply))
             self.addCleanup(server.stop)
             done = self.run_script("send", "Honcho backup failed", "see journal", "--urgency", "Now", server=server)
@@ -83,7 +96,10 @@ class HonchoAlert(unittest.TestCase):
             auth, args = server.seen[0]
             self.assertEqual(auth, "Bearer " + self.token())
             self.assertEqual(args["operation"], "send_to_jim")
-            self.assertEqual((args["arguments"]["subject"], args["arguments"]["urgency"], args["arguments"]["details"]), ("Honcho backup failed", "Now", "see journal"))
+            self.assertEqual(
+                (args["arguments"]["subject"], args["arguments"]["urgency"], args["arguments"]["details"]),
+                ("Honcho backup failed", "Now", "see journal"),
+            )
             self.assertNotIn("from", args["arguments"])
             self.assertNotIn(self.token(), done.stdout + done.stderr)
 
@@ -101,7 +117,10 @@ class HonchoAlert(unittest.TestCase):
         self.assertEqual(self.run_script("send", "x").stdout.strip(), "alert_failed no_credential")
         self.run_script("issue")
         self.assertEqual(self.run_script("send", "x").stdout.strip(), "alert_failed unreachable")
-        for code, reply, line in ((401, None, "alert_failed http_401"), (200, {"ok": False, "error": {"code": "not_granted"}}, "alert_failed not_granted")):
+        for code, reply, line in (
+            (401, None, "alert_failed http_401"),
+            (200, {"ok": False, "error": {"code": "not_granted"}}, "alert_failed not_granted"),
+        ):
             server = FakeMcp((code, reply))
             self.addCleanup(server.stop)
             done = self.run_script("send", "x", server=server)

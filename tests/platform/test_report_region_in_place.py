@@ -1,6 +1,7 @@
 """report_region.replace_text rewrites a card's text lines in place: the page never shows the old and the new card at
 once.
 """
+
 import unittest
 from unittest import mock
 
@@ -13,7 +14,11 @@ class Fail(Exception):
 
 
 def para(text):
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}}
+    return {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]},
+    }
 
 
 class Watched(MailRegions):
@@ -42,8 +47,18 @@ class Watched(MailRegions):
 
 def write(notion, lines, **kw):
     with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Jira": "same"}):
-        return report_region.replace_text(notion, "mail-callout", router.MAIL_ALERTS_REGION, router.OWNERS[router.MAIL_ALERTS_REGION],
-                                          [para(t) for t in lines], {"x": "unused"}, Fail, "test", True, **kw)
+        return report_region.replace_text(
+            notion,
+            "mail-callout",
+            router.MAIL_ALERTS_REGION,
+            router.OWNERS[router.MAIL_ALERTS_REGION],
+            [para(t) for t in lines],
+            {"x": "unused"},
+            Fail,
+            "test",
+            True,
+            **kw,
+        )
 
 
 class InPlace(unittest.TestCase):
@@ -53,7 +68,9 @@ class InPlace(unittest.TestCase):
     def test_same_count_rewrites_the_same_blocks_and_deletes_nothing(self):
         notion = Watched(["old status", "old detail"])
         _, removed = write(notion, ["new status", "new detail"])
-        self.assertEqual([k["id"] for k in self.kids(notion)], ["heading-mail-callout", "mail-old-0", "mail-old-1", "mail-table-old"])
+        self.assertEqual(
+            [k["id"] for k in self.kids(notion)], ["heading-mail-callout", "mail-old-0", "mail-old-1", "mail-table-old"]
+        )
         self.assertEqual([report_region.plain(k) for k in self.kids(notion)[1:3]], ["new status", "new detail"])
         self.assertEqual((removed, [m for m, _ in notion.log if m in ("DELETE", "APPEND")]), (0, []))
         self.assertEqual(max(notion.peaks), 2)  # never more lines than either version
@@ -61,7 +78,9 @@ class InPlace(unittest.TestCase):
     def test_more_lines_go_right_under_the_rewritten_ones_above_the_kept_block(self):
         notion = Watched(["old status"])
         write(notion, ["new status", "line two", "line three"])
-        self.assertEqual([report_region.plain(k) for k in self.kids(notion)[1:4]], ["new status", "line two", "line three"])
+        self.assertEqual(
+            [report_region.plain(k) for k in self.kids(notion)[1:4]], ["new status", "line two", "line three"]
+        )
         self.assertEqual((self.kids(notion)[1]["id"], self.kids(notion)[-1]["id"]), ("mail-old-0", "mail-table-old"))
         self.assertEqual(max(notion.peaks), 3)
 
@@ -85,6 +104,7 @@ class StampedHeading(unittest.TestCase):
     """a card may show its update time in its heading (`Mail Alerts (Updated 2:30 PM CT)`), the way Calendar, Jira and
     Hiring do.
     """
+
     STAMPED = "Mail Alerts (Updated 2:30 PM CT)"
 
     def heading(self, notion):
@@ -95,9 +115,13 @@ class StampedHeading(unittest.TestCase):
             notion = Watched(["old status"])
             if retype:
                 notion.children["mail-callout"][1]["type"] = "bulleted_list_item"
-                notion.children["mail-callout"][1]["bulleted_list_item"] = notion.children["mail-callout"][1].pop("paragraph")
+                notion.children["mail-callout"][1]["bulleted_list_item"] = notion.children["mail-callout"][1].pop(
+                    "paragraph"
+                )
             write(notion, ["new status"], heading=self.STAMPED)
-            self.assertEqual((self.heading(notion), notion.children["mail-callout"][0]["id"]), (self.STAMPED, "heading-mail-callout"))
+            self.assertEqual(
+                (self.heading(notion), notion.children["mail-callout"][0]["id"]), (self.STAMPED, "heading-mail-callout")
+            )
             self.assertEqual([report_region.plain(k) for k in notion.children["mail-callout"][1:-1]], ["new status"])
 
     def test_an_already_stamped_heading_is_accepted_and_a_later_run_rewrites_only_the_stamp(self):
@@ -106,7 +130,9 @@ class StampedHeading(unittest.TestCase):
         mark = len(notion.log)
         write(notion, ["new status"], heading="Mail Alerts (Updated 3:30 PM CT)")
         self.assertEqual(self.heading(notion), "Mail Alerts (Updated 3:30 PM CT)")
-        self.assertEqual({p.split("/")[2] for m, p in notion.log[mark:] if m == "PATCH"}, {"heading-mail-callout", "mail-old-0"})
+        self.assertEqual(
+            {p.split("/")[2] for m, p in notion.log[mark:] if m == "PATCH"}, {"heading-mail-callout", "mail-old-0"}
+        )
         write(notion, ["new status"], heading="Mail Alerts (Updated 3:30 PM CT)")
         self.assertEqual(self.heading(notion), "Mail Alerts (Updated 3:30 PM CT)")
 
@@ -117,7 +143,11 @@ class StampedHeading(unittest.TestCase):
         notion.children["mail-callout"][0] = notion._text_block("heading-mail-callout", "heading_3", self.STAMPED)
         with self.assertRaises(Fail):
             write(notion, ["new status"])
-        for bad in ("Amazon Orders (Updated 2:30 PM CT)", "Mail Alerts Updated 2:30 PM CT", "Mail Alerts"[:-1] + " (Updated 2:30 PM CT)"):
+        for bad in (
+            "Amazon Orders (Updated 2:30 PM CT)",
+            "Mail Alerts Updated 2:30 PM CT",
+            "Mail Alerts"[:-1] + " (Updated 2:30 PM CT)",
+        ):
             fresh = Watched(["old status"])
             with self.assertRaises(Fail):
                 write(fresh, ["new status"], heading=bad)

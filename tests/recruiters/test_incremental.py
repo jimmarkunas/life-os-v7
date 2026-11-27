@@ -1,6 +1,7 @@
 """the Recruiters mail step reads only mail new to the system (fake mailboxes, fake ledger), and the first read after
 09:00 CT is the old full scan.
 """
+
 import contextlib
 import io
 import json
@@ -22,7 +23,13 @@ AFTERNOON = datetime(2026, 10, 8, 20, 30, tzinfo=timezone.utc)  # 3:30 PM CDT
 
 class FakeLedger:
     def __init__(self, keys=(), last_read=None, kind=None, last_full=None, fail_read=False, fail_commit=False):
-        self.keys, self.state, self.fail_read, self.fail_commit, self.commits = set(keys), (last_read, kind, last_full), fail_read, fail_commit, []
+        self.keys, self.state, self.fail_read, self.fail_commit, self.commits = (
+            set(keys),
+            (last_read, kind, last_full),
+            fail_read,
+            fail_commit,
+            [],
+        )
 
     def read(self):
         if self.fail_read:
@@ -53,7 +60,17 @@ def go(records, ledger, live=False, notion=None, now=AFTERNOON, environ=None, ou
     gmail = CountingGmail(records)
     notion = notion or FakeRecruiters()
     with contextlib.redirect_stdout(io.StringIO()):
-        counts = stage.run(0, live, environ=environ or {}, gmail=gmail, outlook_accounts=outlook or [], notion=notion, now=now, ledger=ledger, chores=False)
+        counts = stage.run(
+            0,
+            live,
+            environ=environ or {},
+            gmail=gmail,
+            outlook_accounts=outlook or [],
+            notion=notion,
+            now=now,
+            ledger=ledger,
+            chores=False,
+        )
     return counts, gmail, notion
 
 
@@ -71,13 +88,18 @@ class PlanTests(unittest.TestCase):
         yesterday = MORNING - timedelta(days=1)
         action, kind, _ = scan.plan(MORNING, ROW, (MORNING - timedelta(hours=1), seen.NEW_MAIL, yesterday), True)
         self.assertEqual((action, kind), ("read", seen.FULL_SCAN))
-        self.assertEqual(scan.plan(AFTERNOON, ROW, (MORNING, seen.FULL_SCAN, MORNING), False)[:2], ("read", seen.NEW_MAIL))  # after today's scan: new mail again
+        self.assertEqual(
+            scan.plan(AFTERNOON, ROW, (MORNING, seen.FULL_SCAN, MORNING), False)[:2], ("read", seen.NEW_MAIL)
+        )  # after today's scan: new mail again
 
     def test_a_scheduled_tick_inside_three_hours_is_skipped_and_a_manual_run_never_is(self):
         state = (AFTERNOON - timedelta(hours=1), seen.NEW_MAIL, MORNING)
         self.assertEqual(scan.plan(AFTERNOON, ROW, state, True)[0], "skip")
         self.assertEqual(scan.plan(AFTERNOON, ROW, state, False)[:2], ("read", seen.NEW_MAIL))
-        self.assertEqual(scan.plan(AFTERNOON, ROW, (AFTERNOON - timedelta(hours=2, minutes=50), seen.NEW_MAIL, MORNING), True)[0], "read")  # 15 minutes of slack, as the due table
+        self.assertEqual(
+            scan.plan(AFTERNOON, ROW, (AFTERNOON - timedelta(hours=2, minutes=50), seen.NEW_MAIL, MORNING), True)[0],
+            "read",
+        )  # 15 minutes of slack, as the due table
 
     def test_the_row_is_in_the_due_table_and_hourly_since_life_630(self):
         self.assertEqual(scan.step_row(), {"every_hours": 1, "full_scan_ct": ["09:00"]})
@@ -86,15 +108,25 @@ class PlanTests(unittest.TestCase):
 class IncrementalTests(unittest.TestCase):
     def test_only_mail_new_to_the_system_is_read_and_the_log_counts_scanned_and_new(self):
         ledger = after_a_full_scan_at_9(["old1", "old2"])
-        counts, gmail, notion = go([signed("old1"), signed("old2"), signed("new1", received="2026-10-08T15:00:00+00:00")], ledger, live=True)
+        counts, gmail, notion = go(
+            [signed("old1"), signed("old2"), signed("new1", received="2026-10-08T15:00:00+00:00")], ledger, live=True
+        )
         self.assertEqual(gmail.fetched, ["new1"])  # a message already recorded is not read again
-        self.assertEqual((counts["scan"], counts["scanned"], counts["new"], counts["messages"], counts["ledger"]), ("new mail", 3, 1, 1, "ok"))
+        self.assertEqual(
+            (counts["scan"], counts["scanned"], counts["new"], counts["messages"], counts["ledger"]),
+            ("new mail", 3, 1, 1, "ok"),
+        )
         self.assertEqual(counts["created"], 1)
 
     def test_the_manual_full_rescan_switch_reads_all_14_days_even_right_after_a_full_scan(self):
         """after a classifier fix, mail already seen must be read again today, not at the next 9 AM scan"""
         ledger = after_a_full_scan_at_9(["old1", "old2"])
-        counts, gmail, _ = go([signed("old1"), signed("old2"), signed("new1", received="2026-10-08T15:00:00+00:00")], ledger, live=True, environ={"RECRUITERS_FULL_SCAN": "on"})
+        counts, gmail, _ = go(
+            [signed("old1"), signed("old2"), signed("new1", received="2026-10-08T15:00:00+00:00")],
+            ledger,
+            live=True,
+            environ={"RECRUITERS_FULL_SCAN": "on"},
+        )
         self.assertEqual(sorted(gmail.fetched), ["new1", "old1", "old2"])  # the seen list is ignored
         self.assertEqual((counts["scan"], counts["scan_why"]), (seen.FULL_SCAN, "manual full scan"))
         self.assertEqual(ledger.commits[0][1], seen.FULL_SCAN)  # recorded as a 14-day scan, like the 9 AM one
@@ -122,7 +154,19 @@ class IncrementalTests(unittest.TestCase):
     def test_a_failed_write_records_nothing_so_the_message_is_read_again(self):
         ledger = after_a_full_scan_at_9()
         notion = FakeRecruiters(drop_writes=True)
-        failed_run(lambda: stage.run(0, True, environ={}, gmail=CountingGmail([signed("n1")]), outlook_accounts=[], notion=notion, now=AFTERNOON, ledger=ledger, chores=False))
+        failed_run(
+            lambda: stage.run(
+                0,
+                True,
+                environ={},
+                gmail=CountingGmail([signed("n1")]),
+                outlook_accounts=[],
+                notion=notion,
+                now=AFTERNOON,
+                ledger=ledger,
+                chores=False,
+            )
+        )
         self.assertEqual(ledger.commits, [])
 
     def test_a_ledger_that_cannot_be_saved_is_reported_and_the_run_still_succeeds(self):
@@ -143,30 +187,50 @@ class IncrementalTests(unittest.TestCase):
     def test_the_ledger_holds_no_id_only_a_hash(self):
         self.assertNotIn("abc123", seen.key("gmail", "abc123"))
         self.assertEqual(len(seen.key("gmail", "abc123")), 64)
-        self.assertNotEqual(seen.key("gmail", "x"), seen.key("outlook", "x"))  # the same text in two mailboxes is two messages
+        self.assertNotEqual(
+            seen.key("gmail", "x"), seen.key("outlook", "x")
+        )  # the same text in two mailboxes is two messages
 
 
 class NineAmScanTests(unittest.TestCase):
-    RECORDS = lambda self: [signed("m1"), signed("m2", sender_name="Sam Sample", address="sam@example.com", received="2026-10-07T10:00:00+00:00")]          # noqa: E731
+    RECORDS = lambda self: [
+        signed("m1"),
+        signed("m2", sender_name="Sam Sample", address="sam@example.com", received="2026-10-07T10:00:00+00:00"),
+    ]  # noqa: E731
 
     def test_the_nine_am_scan_gives_the_same_rows_as_the_old_full_scan_on_a_replayed_mailbox(self):
         old_notion, new_notion = FakeRecruiters(), FakeRecruiters()
-        go(self.RECORDS(), None, live=True, notion=old_notion, now=MORNING)  # today's behaviour: no ledger, everything read
+        go(
+            self.RECORDS(), None, live=True, notion=old_notion, now=MORNING
+        )  # today's behaviour: no ledger, everything read
         yesterday = MORNING - timedelta(days=1)
-        ledger = FakeLedger({seen.key("gmail", "m1"), seen.key("gmail", "m2")}, last_read=MORNING - timedelta(hours=18), kind=seen.NEW_MAIL, last_full=yesterday)
-        counts, gmail, _ = go(self.RECORDS(), ledger, live=True, notion=new_notion, now=MORNING)  # the 9 AM scan, with every message already recorded
-        self.assertEqual((counts["scan"], gmail.fetched), ("14-day scan", ["m1", "m2"]))  # it reads them all again, as the old scan did
-        rows = lambda n: sorted(json.dumps(w[1], sort_keys=True) for w in n.writes)                              # noqa: E731
+        ledger = FakeLedger(
+            {seen.key("gmail", "m1"), seen.key("gmail", "m2")},
+            last_read=MORNING - timedelta(hours=18),
+            kind=seen.NEW_MAIL,
+            last_full=yesterday,
+        )
+        counts, gmail, _ = go(
+            self.RECORDS(), ledger, live=True, notion=new_notion, now=MORNING
+        )  # the 9 AM scan, with every message already recorded
+        self.assertEqual(
+            (counts["scan"], gmail.fetched), ("14-day scan", ["m1", "m2"])
+        )  # it reads them all again, as the old scan did
+        rows = lambda n: sorted(json.dumps(w[1], sort_keys=True) for w in n.writes)  # noqa: E731
         self.assertEqual(rows(new_notion), rows(old_notion))
         self.assertEqual(ledger.commits[0][1], seen.FULL_SCAN)
 
 
 class SkipTests(unittest.TestCase):
     def test_a_scheduled_tick_inside_three_hours_reads_no_mail_and_reports_the_last_read(self):
-        ledger = FakeLedger({seen.key("gmail", "a")}, last_read=AFTERNOON - timedelta(hours=1), kind=seen.NEW_MAIL, last_full=MORNING)
+        ledger = FakeLedger(
+            {seen.key("gmail", "a")}, last_read=AFTERNOON - timedelta(hours=1), kind=seen.NEW_MAIL, last_full=MORNING
+        )
         with tempfile.TemporaryDirectory() as folder, unittest.mock.patch.object(scan, "step_row", lambda: ROW):
             out = Path(folder) / "out"
-            counts, gmail, notion = go([signed("a")], ledger, environ={"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_OUTPUT": str(out)})
+            counts, gmail, notion = go(
+                [signed("a")], ledger, environ={"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_OUTPUT": str(out)}
+            )
             text = out.read_text()
         self.assertEqual((counts["scan"], gmail.calls, notion.queries, notion.writes), ("skipped", [], 0, []))
         self.assertIn("scan_kind=new mail", text)
@@ -189,7 +253,9 @@ class OutlookIncrementalTests(unittest.TestCase):
                 super().__init__(inbox=inbox)
                 self.gets, self.field_sets = [], []
 
-            def messages(self, folder="inbox", since=None, limit=5000, fields=None, time_field="receivedDateTime", prefer=""):
+            def messages(
+                self, folder="inbox", since=None, limit=5000, fields=None, time_field="receivedDateTime", prefer=""
+            ):
                 self.field_sets.append((folder, fields))
                 return super().messages(folder, since, limit, fields, time_field, prefer)
 
@@ -198,8 +264,18 @@ class OutlookIncrementalTests(unittest.TestCase):
                 ident = url.rsplit("/", 1)[1]
                 return next(m for m in self.inbox if m["id"] == ident)
 
-        box = [{"id": f"o{i}", "receivedDateTime": "2026-10-07T15:00:00Z", "from": {"emailAddress": {"name": "Lee Outlook", "address": "lee@example.com"}}, "subject": "Opportunity",
-                "body": {"content": SIGNED.replace("Pat Example", "Lee Outlook")}, "webLink": f"https://mail.example.com/o/{i}", "internetMessageHeaders": []} for i in range(count_new + 1)]
+        box = [
+            {
+                "id": f"o{i}",
+                "receivedDateTime": "2026-10-07T15:00:00Z",
+                "from": {"emailAddress": {"name": "Lee Outlook", "address": "lee@example.com"}},
+                "subject": "Opportunity",
+                "body": {"content": SIGNED.replace("Pat Example", "Lee Outlook")},
+                "webLink": f"https://mail.example.com/o/{i}",
+                "internetMessageHeaders": [],
+            }
+            for i in range(count_new + 1)
+        ]
         return Graph(box)
 
     def test_only_new_outlook_messages_are_read_one_by_one_after_an_ids_only_listing(self):
@@ -241,7 +317,11 @@ class LedgerStorageTests(unittest.TestCase):
                 return (tables,)
 
             def fetchall(self):
-                return [(r,) for r in rows] if "key_hash" in self.last else [("full", datetime(2026, 10, 8, 14, 0)), ("incremental", datetime(2026, 10, 8, 18, 0))]
+                return (
+                    [(r,) for r in rows]
+                    if "key_hash" in self.last
+                    else [("full", datetime(2026, 10, 8, 14, 0)), ("incremental", datetime(2026, 10, 8, 18, 0))]
+                )
 
         class Connection:
             def __enter__(self):
@@ -279,6 +359,7 @@ class LedgerStorageTests(unittest.TestCase):
     def test_a_database_failure_is_a_fixed_code(self):
         def boom():
             raise RuntimeError("tunnel down with secret-looking text")
+
         with self.assertRaises(seen.LedgerError) as caught:
             seen.Ledger(boom).read()
         self.assertEqual(str(caught.exception), "MAIL_LEDGER_UNREADABLE")

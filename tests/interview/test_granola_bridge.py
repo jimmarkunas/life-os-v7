@@ -19,8 +19,25 @@ def reply(request, **fields):
 def oracle(meetings, transcript=None, fail=None, sink=None):
     """A fake `gran1` server: answers by op, records the ops it saw."""
     sink = sink if sink is not None else []
-    shown = transcript if transcript is not None else json.dumps({"transcript": [
-        {"id": "s0", "document_id": UUID, "text": "hello", "start_timestamp": "2026-10-13T17:30:00Z", "end_timestamp": "2026-10-13T17:30:05Z", "source": "microphone", "is_final": True}]})
+    shown = (
+        transcript
+        if transcript is not None
+        else json.dumps(
+            {
+                "transcript": [
+                    {
+                        "id": "s0",
+                        "document_id": UUID,
+                        "text": "hello",
+                        "start_timestamp": "2026-10-13T17:30:00Z",
+                        "end_timestamp": "2026-10-13T17:30:05Z",
+                        "source": "microphone",
+                        "is_final": True,
+                    }
+                ]
+            }
+        )
+    )
 
     def send(host, data):
         op = json.loads(data.split(b"\n", 1)[1])["op"]
@@ -29,8 +46,14 @@ def oracle(meetings, transcript=None, fail=None, sink=None):
             nonce = json.loads(data.split(b"\n", 1)[1])["nonce"]
             body = json.dumps({"ok": False, "code": fail[1], "nonce": nonce}).encode()
             return b"gran1 %d\n" % len(body) + body
-        extra = {"sync": {"documents": 7, "transcripts": 7}, "list": {"meetings": meetings}, "show": {"json": shown}, "purge": {"purged": 1}}[op]
+        extra = {
+            "sync": {"documents": 7, "transcripts": 7},
+            "list": {"meetings": meetings},
+            "show": {"json": shown},
+            "purge": {"purged": 1},
+        }[op]
         return reply(data, **extra)[0]
+
     return send
 
 
@@ -39,8 +62,12 @@ ROW = granola_match.Round(ROUND, DAY, "Becton Dickinson", "Senior Technical Prog
 
 
 def go_run(send, client, live=True, rounds=(ROW,), only_day=DAY):
-    with mock.patch.object(gb, "rounds", lambda *a: list(rounds)), mock.patch.object(gb.notion, "target_check", lambda *a: "target_ok"), \
-            mock.patch.object(gb.notion, "ownership", lambda *a: Ownership.MACHINE), mock.patch.object(gb.create, "link_transcript", lambda *a: "transcript_linked"):
+    with (
+        mock.patch.object(gb, "rounds", lambda *a: list(rounds)),
+        mock.patch.object(gb.notion, "target_check", lambda *a: "target_ok"),
+        mock.patch.object(gb.notion, "ownership", lambda *a: Ownership.MACHINE),
+        mock.patch.object(gb.create, "link_transcript", lambda *a: "transcript_linked"),
+    ):
         return gb.run(live, only_day, environ=ENV, send=send, client=client)
 
 
@@ -56,7 +83,11 @@ class Client(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "GRAN_BAD_OP")
 
     def test_no_host_no_reply_and_a_bad_length_are_fixed_codes(self):
-        for host, raw, code in (("", b"x", "GRAN_NO_HOST"), ("h", b"", "GRAN_NO_REPLY"), ("h", b"gran1 5\n{}", "GRAN_REPLY_INVALID")):
+        for host, raw, code in (
+            ("", b"x", "GRAN_NO_HOST"),
+            ("h", b"", "GRAN_NO_REPLY"),
+            ("h", b"gran1 5\n{}", "GRAN_REPLY_INVALID"),
+        ):
             with self.assertRaises(go.OracleError) as ctx:
                 go.call(host, "sync", send=lambda h, d, raw=raw: raw)
             self.assertEqual(ctx.exception.code, code)
@@ -69,10 +100,12 @@ class Client(unittest.TestCase):
 
     def test_oracles_known_code_passes_through_and_an_unknown_one_does_not(self):
         for given, expect in (("GRAN_AUTH_EXPIRED", "GRAN_AUTH_EXPIRED"), ("SOMETHING_ELSE", "GRAN_REPLY_INVALID")):
+
             def send(host, data, given=given):
                 nonce = json.loads(data.split(b"\n", 1)[1])["nonce"]
                 body = json.dumps({"ok": False, "code": given, "nonce": nonce}).encode()
                 return b"gran1 %d\n" % len(body) + body
+
             with self.assertRaises(go.OracleError) as ctx:
                 go.call("h", "sync", send=send)
             self.assertEqual(ctx.exception.code, expect)
@@ -82,7 +115,10 @@ class Bridge(unittest.TestCase):
     def test_the_happy_path_writes_reads_back_then_purges_once(self):
         seen, notion = [], FakeNotion()
         out = go_run(oracle([MEETING], sink=seen), notion)
-        self.assertEqual((out["code"], out["counts"]["readback_ok"], out["counts"]["purged"], out["counts"]["linked"]), ("TRANSCRIPT_WRITTEN", 1, 1, 1))
+        self.assertEqual(
+            (out["code"], out["counts"]["readback_ok"], out["counts"]["purged"], out["counts"]["linked"]),
+            ("TRANSCRIPT_WRITTEN", 1, 1, 1),
+        )
         self.assertEqual(seen, ["sync", "list", "show", "purge"])
 
     def test_a_replay_finds_the_same_page_and_still_purges(self):
@@ -100,7 +136,10 @@ class Bridge(unittest.TestCase):
         self.assertNotIn("purge", seen)
 
     def test_zero_or_two_meetings_on_the_pinned_day_stops_before_any_fetch(self):
-        for meetings in ([], [MEETING, dict(MEETING, id="2f2a1c6e-1b7a-4c1e-9d55-0a1b2c3d4e5f", start="2026-10-13T19:00:00Z")]):
+        for meetings in (
+            [],
+            [MEETING, dict(MEETING, id="2f2a1c6e-1b7a-4c1e-9d55-0a1b2c3d4e5f", start="2026-10-13T19:00:00Z")],
+        ):
             seen = []
             out = go_run(oracle(meetings, sink=seen), FakeNotion())
             self.assertEqual(out["code"], "GRAN_PIN_NOT_ONE_MEETING")
@@ -113,39 +152,73 @@ class Bridge(unittest.TestCase):
         self.assertEqual(seen, ["sync", "list"])
 
     def test_a_stop_at_the_match_carries_diagnostic_counts_not_text(self):
-        out = go_run(oracle([MEETING]), FakeNotion(), rounds=(granola_match.Round("other", DAY, "Elsewhere Inc", "Unrelated Role", ""),))
+        out = go_run(
+            oracle([MEETING]),
+            FakeNotion(),
+            rounds=(granola_match.Round("other", DAY, "Elsewhere Inc", "Unrelated Role", ""),),
+        )
         self.assertEqual(out["code"], "MATCH_NONE")
-        self.assertEqual({k: out["counts"][k] for k in ("rounds_on_day", "signal_company", "signal_role", "signal_interviewer", "signal_domain")},
-                         {"rounds_on_day": 1, "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0})
+        self.assertEqual(
+            {
+                k: out["counts"][k]
+                for k in ("rounds_on_day", "signal_company", "signal_role", "signal_interviewer", "signal_domain")
+            },
+            {"rounds_on_day": 1, "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0},
+        )
         self.assertNotIn("Elsewhere", json.dumps(out))
 
     def test_rounds_counts_what_it_scanned_including_undated_rounds(self):
         from lifeos.interview.models import Child, Parent, Scan
+
         parent = Parent("pp", "Acme Corp — Program Manager", True)
         kids = Scan((Child("c1", "pp", "2026-10-13", None, 1, True), Child("c2", "pp", None, None, 2, True)), True)
         counts = {}
-        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((parent,), True)), mock.patch.object(gb.notion, "child_scan", lambda *a: kids):
+        with (
+            mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((parent,), True)),
+            mock.patch.object(gb.notion, "child_scan", lambda *a: kids),
+        ):
             found = gb.rounds(None, {"HIRING_PIPELINE_PAGE_ID": "x"}, None, counts)
         self.assertEqual((len(found), counts), (1, {"opportunities": 1, "rounds_undated": 1}))
 
     def test_rounds_of_a_ledger_row_carry_its_company_and_role(self):
         """GWT-IP-1: a Ledger row with two round child pages gives both rounds"""
         from lifeos.interview.models import Child, Parent, Scan
-        kids = Scan((Child("c1", "row", "2026-10-13", None, 1, True), Child("c2", "row", "2026-10-20", None, 2, True)), True)
+
+        kids = Scan(
+            (Child("c1", "row", "2026-10-13", None, 1, True), Child("c2", "row", "2026-10-20", None, 2, True)), True
+        )
         env = {"HIRING_PIPELINE_PAGE_ID": "x", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc"}
-        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((), True)), \
-                mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((Parent("row", "Acme Corp - Program Manager", True),), True)), \
-                mock.patch.object(gb.notion, "child_scan", lambda *a: kids):
+        with (
+            mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((), True)),
+            mock.patch.object(
+                gb.notion,
+                "parents_from_ledger",
+                lambda *a: Scan((Parent("row", "Acme Corp - Program Manager", True),), True),
+            ),
+            mock.patch.object(gb.notion, "child_scan", lambda *a: kids),
+        ):
             found = gb.rounds(None, env, None)
-        self.assertEqual([(r.page_id, r.company, r.role) for r in found], [("c1", "Acme Corp", "Program Manager"), ("c2", "Acme Corp", "Program Manager")])
-        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((Parent("pp", "Acme Corp — Program Manager", True),), True)), \
-                mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((), True)), mock.patch.object(gb.notion, "child_scan", lambda *a: kids):
+        self.assertEqual(
+            [(r.page_id, r.company, r.role) for r in found],
+            [("c1", "Acme Corp", "Program Manager"), ("c2", "Acme Corp", "Program Manager")],
+        )
+        with (
+            mock.patch.object(
+                gb.notion, "parent_scan", lambda *a: Scan((Parent("pp", "Acme Corp — Program Manager", True),), True)
+            ),
+            mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((), True)),
+            mock.patch.object(gb.notion, "child_scan", lambda *a: kids),
+        ):
             self.assertEqual(len(gb.rounds(None, env, None)), 2)
 
     def test_an_incomplete_ledger_scan_stops_the_bridge(self):
         from lifeos.interview.models import Scan
+
         env = {"HIRING_PIPELINE_PAGE_ID": "x", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc"}
-        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((), True)), mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((), False)):
+        with (
+            mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((), True)),
+            mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((), False)),
+        ):
             with self.assertRaises(gb.Stop) as ctx:
                 gb.rounds(None, env, None)
         self.assertEqual(ctx.exception.code, "GRAN_PIPELINE_INCOMPLETE")
@@ -179,11 +252,17 @@ class Bridge(unittest.TestCase):
 
 class Stage(unittest.TestCase):
     def test_the_stage_reports_the_code_and_counts_and_fails_on_any_stop(self):
-        with mock.patch.object(gb, "run", lambda live, day, environ=None: {"code": "MATCH_NONE", "counts": {"meetings": 7}}):
-            self.assertEqual(gb.stage(1, True, environ={"GRAN_PIN_DAY": " 2026-10-13 "}), {"code": "MATCH_NONE", "failed": 1, "meetings": 7})
+        with mock.patch.object(
+            gb, "run", lambda live, day, environ=None: {"code": "MATCH_NONE", "counts": {"meetings": 7}}
+        ):
+            self.assertEqual(
+                gb.stage(1, True, environ={"GRAN_PIN_DAY": " 2026-10-13 "}),
+                {"code": "MATCH_NONE", "failed": 1, "meetings": 7},
+            )
         with mock.patch.object(gb, "run", lambda live, day, environ=None: {"code": "TRANSCRIPT_WRITTEN", "counts": {}}):
             self.assertEqual(gb.stage(1, True, environ={})["failed"], 0)
 
     def test_the_stage_is_registered(self):
         from lifeos import run
+
         self.assertIn("granola", run.STAGES)

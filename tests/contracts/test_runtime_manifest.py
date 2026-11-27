@@ -1,4 +1,5 @@
 """lifeos/platform/runtime.json is the one place that says which module runs where."""
+
 import json
 import re
 import sys
@@ -20,7 +21,10 @@ def load():
 
 def render(data):
     rows = ["| Module | Runs on | Installed as | Activated by |", "|---|---|---|---|"]
-    rows += ["| %s | %s | %s | %s |" % (m["module"], ", ".join(m["host"]), m.get("installed", ""), m.get("unit", "")) for m in data["modules"]]
+    rows += [
+        "| %s | %s | %s | %s |" % (m["module"], ", ".join(m["host"]), m.get("installed", ""), m.get("unit", ""))
+        for m in data["modules"]
+    ]
     return "\n".join([BEGIN, *rows, END])
 
 
@@ -29,7 +33,11 @@ def block(text):
 
 
 def units():
-    return {"lifeos/" + p.name for p in (ROOT / "lifeos").iterdir() if p.name not in ("__init__.py", "__pycache__") and (p.is_dir() or p.suffix == ".py")}
+    return {
+        "lifeos/" + p.name
+        for p in (ROOT / "lifeos").iterdir()
+        if p.name not in ("__init__.py", "__pycache__") and (p.is_dir() or p.suffix == ".py")
+    }
 
 
 class RuntimeManifest(unittest.TestCase):
@@ -51,16 +59,28 @@ class RuntimeManifest(unittest.TestCase):
 
     def test_drift_surfaces_equal_the_rows_that_name_a_surface(self):
         wanted = {(m["surface"], m["module"], m["installed"], m["unit"]) for m in load()["modules"] if "surface" in m}
-        self.assertEqual({(s.name, s.repo_path, s.installed, s.unit) for s in drift.SURFACES}, wanted, "drift.SURFACES (first set) and runtime.json (second set) disagree")
+        self.assertEqual(
+            {(s.name, s.repo_path, s.installed, s.unit) for s in drift.SURFACES},
+            wanted,
+            "drift.SURFACES (first set) and runtime.json (second set) disagree",
+        )
 
     def test_the_installer_modules_equal_the_platform_files_the_ticker_runs_on_oracle(self):
         installer = set(re.search(r'^MODULES="([^"]+)"', INSTALLER.read_text(), re.M).group(1).split())
-        wanted = {m["module"].rsplit("/", 1)[1] for m in load()["modules"] if m.get("surface", "").startswith("ticker/") and m["module"].startswith("lifeos/platform/")}
-        self.assertEqual(installer, wanted, "install-ticker.sh MODULES (first set) and runtime.json (second set) disagree")
+        wanted = {
+            m["module"].rsplit("/", 1)[1]
+            for m in load()["modules"]
+            if m.get("surface", "").startswith("ticker/") and m["module"].startswith("lifeos/platform/")
+        }
+        self.assertEqual(
+            installer, wanted, "install-ticker.sh MODULES (first set) and runtime.json (second set) disagree"
+        )
 
 
 if __name__ == "__main__":
     if "--write" in sys.argv:
-        INVENTORY.write_text(block(INVENTORY.read_text()).string.replace(block(INVENTORY.read_text()).group(0), render(load())))
+        INVENTORY.write_text(
+            block(INVENTORY.read_text()).string.replace(block(INVENTORY.read_text()).group(0), render(load()))
+        )
     else:
         unittest.main()

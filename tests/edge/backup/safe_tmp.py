@@ -1,4 +1,5 @@
 """temp folders whose whole path is clear of the backup secret guard (offsite_backup.denied)."""
+
 import os
 import tempfile
 

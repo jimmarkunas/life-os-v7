@@ -5,12 +5,14 @@ from lifeos.jobs.lanes import NEGATIVE, POSITIVE, UNRESOLVED
 from lifeos.platform.http import Fetched
 from lifeos.sources.discovery import sponsor_register as reg
 
-CSV = ("Organisation Name,Town/City,County,Type & Rating,Route\n"
-       "Monzo Bank Limited,London,,Worker (A rating),Skilled Worker\n"
-       "Acme Widgets Ltd,Leeds,,Worker (A rating),Skilled Worker\n"
-       "Acme Widgets Ltd,Leeds,,Temporary Worker (A rating),Temporary Worker\n"
-       "Downgraded Co,London,,Worker (B rating),Skilled Worker\n"
-       "Care Home Group,Hull,,Worker (A rating),Health and Care Worker\n")
+CSV = (
+    "Organisation Name,Town/City,County,Type & Rating,Route\n"
+    "Monzo Bank Limited,London,,Worker (A rating),Skilled Worker\n"
+    "Acme Widgets Ltd,Leeds,,Worker (A rating),Skilled Worker\n"
+    "Acme Widgets Ltd,Leeds,,Temporary Worker (A rating),Temporary Worker\n"
+    "Downgraded Co,London,,Worker (B rating),Skilled Worker\n"
+    "Care Home Group,Hull,,Worker (A rating),Health and Care Worker\n"
+)
 
 
 class Names(unittest.TestCase):
@@ -46,7 +48,10 @@ class Register(unittest.TestCase):
 class Refresh(unittest.TestCase):
     def test_csv_link_comes_from_the_content_api(self):
         page = '{"details": {"attachments": [{"url": "https://assets.publishing.service.gov.uk/media/abc/2026-10-01_Worker.csv"}]}}'
-        self.assertEqual(reg.csv_url(lambda url, **kw: Fetched(url, 200, page)), ("https://assets.publishing.service.gov.uk/media/abc/2026-10-01_Worker.csv", None))
+        self.assertEqual(
+            reg.csv_url(lambda url, **kw: Fetched(url, 200, page)),
+            ("https://assets.publishing.service.gov.uk/media/abc/2026-10-01_Worker.csv", None),
+        )
         self.assertEqual(reg.csv_url(lambda url, **kw: Fetched(url, 200, "{}"))[1], "no_csv_link")
         self.assertEqual(reg.csv_url(lambda url, **kw: Fetched(url, 403, ""))[1], "http_403")
 
@@ -57,6 +62,7 @@ class LoadUsesTheConnectionContextManager(unittest.TestCase):
     def test_load_reads_the_register_through_store_connect(self):
         from unittest import mock
         from tests.kit.db import FakeConn
+
         conn = FakeConn()
         conn.cur.fetchall = lambda: [("Monzo Bank Limited",), ("Acme Widgets Ltd",)]
         with mock.patch.object(sponsors.store, "connect", return_value=conn):
@@ -68,6 +74,7 @@ class TheStageThroughItsContract(unittest.TestCase):
     """pilot: the sponsors stage called through reg.CONTRACT, in dry-run and in write mode, gives the same counts as
     calling run and does exactly what the.
     """
+
     NOW = __import__("datetime").datetime(2026, 11, 12, 20, 0)
 
     class Store:
@@ -117,6 +124,7 @@ class TheStageThroughItsContract(unittest.TestCase):
 
     def call(self, live, through_contract=True):
         from unittest import mock
+
         store = self.Store()
         fake = mock.patch.multiple(reg.store, connect=store.connect, ensure_schema=store.ensure_schema)
         with fake:
@@ -141,5 +149,6 @@ class TheStageThroughItsContract(unittest.TestCase):
     def test_the_contract_declares_what_the_stage_returns_and_is_what_the_registry_runs(self):
         self.assertEqual(set(reg.CONTRACT.outputs) - set(self.call(False)[0]), set())
         from lifeos import run
+
         self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT"))
         self.assertTrue(reg.CONTRACT.dry_run and reg.CONTRACT.write)

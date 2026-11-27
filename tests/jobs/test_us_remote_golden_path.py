@@ -1,6 +1,7 @@
 """US_REMOTE_GOLDEN_PATH: employer-board vacancies and a job-alert newsletter through the REAL shared V7 Jobs stages to
 the Job Ledger.
 """
+
 from datetime import date, datetime, timedelta
 import json
 from unittest import mock
@@ -12,13 +13,22 @@ from lifeos.sources.web import boards, lister
 from tests.jobs import test_newsletter_golden_path as gate
 
 NOW = datetime.now().replace(microsecond=0)
-BOARD = {"id": "gh-acme", "company": "Acme", "tier": "employer", "kind": "greenhouse", "status": "ready", "enabled": True, "slug": "acme",
-         "refresh_hours": 6, "hot_hours": 1, "quiet": True}
+BOARD = {
+    "id": "gh-acme",
+    "company": "Acme",
+    "tier": "employer",
+    "kind": "greenhouse",
+    "status": "ready",
+    "enabled": True,
+    "slug": "acme",
+    "refresh_hours": 6,
+    "hot_hours": 1,
+    "quiet": True,
+}
 
 
 def board_pass():
-    """One tick's employer-board work: the backfill reads the board the first time, the hourly pass every later due read.
-    """
+    """One tick's employer-board work: the backfill reads the board the first time, the hourly pass every later due read."""
     boards.backfill(40, True, NOW, lister_fn=listing, sources=[BOARD], environ={"BOARDS_BACKFILL": "on"})
     return boards.run(40, True, NOW, lister_fn=listing, sources=[BOARD])
 
@@ -27,24 +37,65 @@ SHARED = gate.VACANCIES["v1"][2]
 
 # board job id -> (title, place, url, page body or None for an employer page that is gone)
 LISTED = {
-    "7001": ("Senior Technical Program Manager", "Remote - US", "https://boards.greenhouse.io/acme/jobs/7001", gate.PM_BODY),  # qualifies
-    "7002": ("Staff Software Engineer", "Remote - US", "https://boards.greenhouse.io/acme/jobs/7002", gate.ENGINEER_BODY),  # not the profession
-    "7003": ("Technical Program Manager", "Remote", "https://boards.greenhouse.io/acme/jobs/7003", gate.PM_BODY),  # US eligibility unknown
+    "7001": (
+        "Senior Technical Program Manager",
+        "Remote - US",
+        "https://boards.greenhouse.io/acme/jobs/7001",
+        gate.PM_BODY,
+    ),  # qualifies
+    "7002": (
+        "Staff Software Engineer",
+        "Remote - US",
+        "https://boards.greenhouse.io/acme/jobs/7002",
+        gate.ENGINEER_BODY,
+    ),  # not the profession
+    "7003": (
+        "Technical Program Manager",
+        "Remote",
+        "https://boards.greenhouse.io/acme/jobs/7003",
+        gate.PM_BODY,
+    ),  # US eligibility unknown
     "7004": ("Senior Program Manager", "Remote, US", SHARED, gate.PM_BODY),  # also in the newsletter
-    "7005": ("Delivery Program Manager", "Remote - US", "https://boards.greenhouse.io/acme/jobs/7005", None),  # no employer evidence
+    "7005": (
+        "Delivery Program Manager",
+        "Remote - US",
+        "https://boards.greenhouse.io/acme/jobs/7005",
+        None,
+    ),  # no employer evidence
 }
 
 
 def listing(source):
-    jobs = [{"id": i, "title": t, "location": where, "url": url, "posted": date.today() - timedelta(days=2), "content": None, "company": None}
-            for i, (t, where, url, _) in LISTED.items()]
+    jobs = [
+        {
+            "id": i,
+            "title": t,
+            "location": where,
+            "url": url,
+            "posted": date.today() - timedelta(days=2),
+            "content": None,
+            "company": None,
+        }
+        for i, (t, where, url, _) in LISTED.items()
+    ]
     return lister.Listing(lister.COMPLETE, jobs)
 
 
 def fetch(url, **kwargs):
     for ident, (title, _, page_url, body) in LISTED.items():
         if url == f"https://boards-api.greenhouse.io/v1/boards/acme/jobs/{ident}" and body:
-            return Fetched(url, 200, json.dumps({"title": title, "content": body, "absolute_url": page_url, "first_published": date.today().isoformat()}))
+            return Fetched(
+                url,
+                200,
+                json.dumps(
+                    {
+                        "title": title,
+                        "content": body,
+                        "absolute_url": page_url,
+                        "first_published": date.today().isoformat(),
+                    }
+                ),
+            )
     for company, title, final, body in gate.VACANCIES.values():
         if url == final:
             return Fetched(url, 200, gate.page(title, company, body))
@@ -71,9 +122,11 @@ class UsRemoteGoldenPath(unittest.TestCase):
         return board, enrich, published
 
     def row(self, url):
-        return self.j.db.raw.execute("SELECT j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL, f.admission, f.admission_reason,"
-                                     " j.location_text, j.final_apply_url FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.dedupe_key=?",
-                                     (identity.url_hash(url),)).fetchone()
+        return self.j.db.raw.execute(
+            "SELECT j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL, f.admission, f.admission_reason,"
+            " j.location_text, j.final_apply_url FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.dedupe_key=?",
+            (identity.url_hash(url),),
+        ).fetchone()
 
     def pages(self):
         return {p["props"]["Apply URL"]["url"]: p["props"] for p in self.j.ledger.pages.values()}
@@ -81,10 +134,15 @@ class UsRemoteGoldenPath(unittest.TestCase):
     def test_a_qualifying_board_vacancy_reaches_the_ledger_with_its_employer_link_key_fit_and_read_back(self):
         self.run_all()
         status, _, has_page, verified, admission, _, place, final = self.row(LISTED["7001"][2])
-        self.assertEqual((status, has_page, verified, admission, final), ("PUBLISHED", True, True, "ADMIT", LISTED["7001"][2]))
+        self.assertEqual(
+            (status, has_page, verified, admission, final), ("PUBLISHED", True, True, "ADMIT", LISTED["7001"][2])
+        )
         props = self.pages()[LISTED["7001"][2]]
         self.assertEqual(props["Stable Job Key"]["rich_text"][0]["plain_text"], identity.url_hash(LISTED["7001"][2]))
-        self.assertEqual((props["Admission Status"]["select"]["name"], props["Visible Lane"]["select"]["name"]), ("Admitted", "US Remote"))
+        self.assertEqual(
+            (props["Admission Status"]["select"]["name"], props["Visible Lane"]["select"]["name"]),
+            ("Admitted", "US Remote"),
+        )
         self.assertGreaterEqual(props["LIFE OS Fit"]["number"], 72)
 
     def test_an_irrelevant_profession_is_never_stored_and_never_published(self):
@@ -120,7 +178,10 @@ class UsRemoteGoldenPath(unittest.TestCase):
         gate.fit_stage.run(100, True, gate.ENV)
         gate.publish.run(60, True, gate.ENV)
         self.j.tick()
-        self.assertEqual((self.j.db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], len(self.j.ledger.pages)), (jobs, pages))
+        self.assertEqual(
+            (self.j.db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], len(self.j.ledger.pages)),
+            (jobs, pages),
+        )
 
 
 if __name__ == "__main__":
@@ -128,7 +189,10 @@ if __name__ == "__main__":
 
 
 # M6: the vacancy's ATS id is its identity.
-REQS = {i: ("Senior Technical Program Manager", "Remote - US", f"https://boards.greenhouse.io/acme/jobs/{i}", gate.PM_BODY) for i in ("8001", "8002", "8003")}
+REQS = {
+    i: ("Senior Technical Program Manager", "Remote - US", f"https://boards.greenhouse.io/acme/jobs/{i}", gate.PM_BODY)
+    for i in ("8001", "8002", "8003")
+}
 EMBED_8001 = "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=8001"
 
 
@@ -138,7 +202,12 @@ class VacancyIdentity(unittest.TestCase):
         for p in (mock.patch.object(enrich, "fetch", fetch), mock.patch.dict(LISTED, REQS, clear=True)):
             p.start()
             self.addCleanup(p.stop)
-        self.j.resolved["https://jobright.ai/jobs/info/v2"] = {"outcome": "landed", "url": EMBED_8001, "kind": "ats", "via": "original_post"}
+        self.j.resolved["https://jobright.ai/jobs/info/v2"] = {
+            "outcome": "landed",
+            "url": EMBED_8001,
+            "kind": "ats",
+            "via": "original_post",
+        }
 
     def run_all(self):
         self.j.tick()
@@ -148,17 +217,27 @@ class VacancyIdentity(unittest.TestCase):
         return gate.publish.run(60, True, gate.ENV)
 
     def pages_for(self, ident):
-        return [p for p in self.j.ledger.pages.values() if identity.vacancy_id(p["props"]["Apply URL"]["url"]) == "greenhouse:" + ident]
+        return [
+            p
+            for p in self.j.ledger.pages.values()
+            if identity.vacancy_id(p["props"]["Apply URL"]["url"]) == "greenhouse:" + ident
+        ]
 
     def test_one_vacancy_from_the_newsletter_and_the_board_is_one_page(self):
         self.run_all()
         self.assertEqual(len(self.pages_for("8001")), 1)
-        board_row = self.j.db.raw.execute("SELECT status, unresolved_reason FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8001"][2]),)).fetchone()
+        board_row = self.j.db.raw.execute(
+            "SELECT status, unresolved_reason FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8001"][2]),)
+        ).fetchone()
         self.assertEqual(tuple(board_row), ("DUPLICATE", "in_ledger"))
+
     def test_two_requisitions_with_one_company_and_title_are_two_pages(self):
         self.run_all()
         self.assertEqual((len(self.pages_for("8002")), len(self.pages_for("8003"))), (1, 1))
-        rows = self.j.db.raw.execute("SELECT status FROM v7_jobs WHERE dedupe_key IN (?, ?)", tuple(identity.url_hash(REQS[i][2]) for i in ("8002", "8003"))).fetchall()
+        rows = self.j.db.raw.execute(
+            "SELECT status FROM v7_jobs WHERE dedupe_key IN (?, ?)",
+            tuple(identity.url_hash(REQS[i][2]) for i in ("8002", "8003")),
+        ).fetchall()
         self.assertEqual(sorted(r[0] for r in rows), ["PUBLISHED", "PUBLISHED"])
 
     def test_a_replay_keeps_three_vacancies_on_three_pages(self):
@@ -172,6 +251,7 @@ class VacancyIdentity(unittest.TestCase):
         and proves nothing).
         """
         from lifeos.jobs import audit
+
         trashed, real = [], self.j.ledger.call
 
         def call(method, path, body=None):
@@ -179,28 +259,68 @@ class VacancyIdentity(unittest.TestCase):
                 trashed.append(path.rsplit("/", 1)[1])
                 return {}
             return real(method, path, body)
+
         for page_id, page in self.j.ledger.pages.items():
-            page["props"].update({"Applied": {"checkbox": page_id in applied}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}})
-        with mock.patch.object(self.j.ledger, "call", call), mock.patch.object(audit.notion_client, "Client", lambda environ: self.j.ledger):
+            page["props"].update(
+                {
+                    "Applied": {"checkbox": page_id in applied},
+                    "Applied On": {"date": None},
+                    "Saturn Decision": {"select": None},
+                }
+            )
+        with (
+            mock.patch.object(self.j.ledger, "call", call),
+            mock.patch.object(audit.notion_client, "Client", lambda environ: self.j.ledger),
+        ):
             counts = audit.run(500, True, gate.ENV)
         return counts, trashed
 
     def published_copy(self, url, page_id, source="web:x"):
-        """Another published row and page, with 8002's stored description, so only identity can make the audit act on it.
-        """
-        self.j.ledger.pages[page_id] = {"props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": page_id}]}}, "archived": False}
-        self.j.db.insert("v7_jobs", dedupe_key=identity.url_hash(url), status="PUBLISHED", title=REQS["8002"][0], company="Acme", source=source, source_url=url,
-                         final_apply_url=url, first_seen=NOW, last_seen=NOW, updated_at=NOW, lane="US Remote", notion_page_id=page_id)
-        new_id = self.j.db.raw.execute("SELECT id FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(url),)).fetchone()[0]
-        old_id = self.j.db.raw.execute("SELECT id FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8002"][2]),)).fetchone()[0]
-        cols = [r[1] for r in self.j.db.raw.execute("PRAGMA table_info(v7_job_descriptions)").fetchall() if r[1] not in ("job_id", "id")]
-        self.j.db.raw.execute(f"INSERT INTO v7_job_descriptions (job_id, {', '.join(cols)}) SELECT ?, {', '.join(cols)} FROM v7_job_descriptions WHERE job_id=?", (new_id, old_id))
+        """Another published row and page, with 8002's stored description, so only identity can make the audit act on it."""
+        self.j.ledger.pages[page_id] = {
+            "props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": page_id}]}},
+            "archived": False,
+        }
+        self.j.db.insert(
+            "v7_jobs",
+            dedupe_key=identity.url_hash(url),
+            status="PUBLISHED",
+            title=REQS["8002"][0],
+            company="Acme",
+            source=source,
+            source_url=url,
+            final_apply_url=url,
+            first_seen=NOW,
+            last_seen=NOW,
+            updated_at=NOW,
+            lane="US Remote",
+            notion_page_id=page_id,
+        )
+        new_id = self.j.db.raw.execute(
+            "SELECT id FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(url),)
+        ).fetchone()[0]
+        old_id = self.j.db.raw.execute(
+            "SELECT id FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8002"][2]),)
+        ).fetchone()[0]
+        cols = [
+            r[1]
+            for r in self.j.db.raw.execute("PRAGMA table_info(v7_job_descriptions)").fetchall()
+            if r[1] not in ("job_id", "id")
+        ]
+        self.j.db.raw.execute(
+            f"INSERT INTO v7_job_descriptions (job_id, {', '.join(cols)}) SELECT ?, {', '.join(cols)} FROM v7_job_descriptions WHERE job_id=?",
+            (new_id, old_id),
+        )
 
     def status(self, url):
-        return self.j.db.raw.execute("SELECT status, unresolved_reason, repost_of, fuzzy_key FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(url),)).fetchone()
+        return self.j.db.raw.execute(
+            "SELECT status, unresolved_reason, repost_of, fuzzy_key FROM v7_jobs WHERE dedupe_key=?",
+            (identity.url_hash(url),),
+        ).fetchone()
 
     def test_two_requisitions_are_kept_apart_at_intake_by_repost_and_tombstone_and_by_the_audit(self):
         from lifeos.jobs import tombstone
+
         self.run_all()
         a, b = self.status(REQS["8002"][2]), self.status(REQS["8003"][2])
         self.assertNotEqual(a[3], b[3])  # intake: two fuzzy keys, no repost link
@@ -217,7 +337,9 @@ class VacancyIdentity(unittest.TestCase):
     def test_a_second_page_for_one_vacancy_is_trashed_unless_a_human_is_pursuing_it(self):
         self.run_all()
         original = self.status(REQS["8002"][2])
-        for n, url in enumerate(("https://www.acme.example/careers?gh_jid=8002", "https://job-boards.greenhouse.io/acme/jobs/8002?gh_src=x")):
+        for n, url in enumerate(
+            ("https://www.acme.example/careers?gh_jid=8002", "https://job-boards.greenhouse.io/acme/jobs/8002?gh_src=x")
+        ):
             self.published_copy(url, f"dup{n}")
         counts, trashed = self.audit(applied={"dup1"})
         self.assertEqual((trashed, counts["protected"].get("applied")), (["dup0"], 1))  # the pursued page stays
@@ -232,4 +354,5 @@ class VacancyIdentity(unittest.TestCase):
         self.assertEqual((counts["by_reason"].get("duplicate_page", 0), trashed), (0, []))
         self.j.ledger.pages["li"]["props"].pop("Saturn Decision")
         from lifeos.jobs import guard
+
         self.assertEqual(guard.protection(self.j.ledger, "li", "Acme", REQS["8002"][0]), guard.UNREADABLE)
