@@ -1,9 +1,6 @@
   imessage:
-    # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the
-    # tailnet policy lets reach only Oracle's alert-METADATA endpoint (TCP 47341); Oracle reads and classifies privately and returns keyed event ids, severity and
-    # completeness only. State: the private v7_alerts table. Push: the existing ntfy topic, counts only. Off unless V7_IMESSAGE_ALERTS is 'true' (or run by hand).
-    # LIFE-613: it no longer follows the other writers. Its Communications and Oracle Cloud cards can write only the blocks they located (report_region.ScopedClient), checked before each write, so a write by
-    # another card at the same time is no longer mistaken for a violation.
+    # COMM-1.4b: urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the tailnet policy lets reach only
+    # Oracle's alert-METADATA endpoint (TCP 47341)
     needs: [gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.early == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
@@ -19,7 +16,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "200"
-      # why: Load the iMessage alert credentials from Bitwarden (exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_imessage
         name: Load the iMessage alert credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -28,21 +24,18 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: imessage
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
       - name: Join the tailnet as an ephemeral tag:v7-runner node
         uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)
       - id: imsg
         continue-on-error: true
         name: IMessage urgent alerts
@@ -63,7 +56,6 @@
       - name: iMessage alerts warning (does not fail the run)
         if: ${{ always() && steps.imsg.outcome == 'failure' }}
         run: echo "::warning title=iMessage alerts::the iMessage alert stage failed; no alert was lost (undelivered alerts stay queued)"
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden

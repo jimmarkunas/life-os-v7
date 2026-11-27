@@ -1,9 +1,6 @@
   last_seen_purge:
-    # LIFE-856 change 5 (Jim, Nov 25 2026, 5:48 PM CT: "any step that the dependency check shows doesn't feed later work may move without asking"): Step 8 (Last Seen sync) and Step 8b (retention purge) used to run after the
-    # tick inside the hourly `finish` job (about 14 s and 10 s p50), so the hourly run, and the chain, waited for them. Dependency check: the Last Seen sync reads PUBLISHED v7_jobs rows the tick has finished writing and
-    # writes only the Notion Last Seen property and v7_jobs.notion_synced_at / ghost_flag; the purge writes only its own marker rows in v7_alerts (status RESOLVED, which the alerts stage never reads) and removes rows
-    # older than 30 / 90 / 365 days; the `alerts` and `lanes` steps that stay in `finish` read job statuses and OPEN alerts, never what these two write. So they run here, after the tick, beside the other late jobs, in
-    # this one job (the sync first, then the purge, as before). One run per tick (pipeline gate: only when the tick's `finish` job ran). A manual maintenance dispatch of hourly.yml keeps its own steps there.
+    # Dependency check: the Last Seen sync reads PUBLISHED v7_jobs rows the tick has finished writing and writes only the Notion Last Seen property and
+    # v7_jobs.notion_synced_at / ghost_flag; the purge writes only its own.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_last_seen_purge == 'true' }}
     runs-on: ubuntu-24.04
@@ -19,7 +16,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_last_seen_purge
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -28,14 +24,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: last-seen-purge
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -43,7 +37,6 @@
           oauth-client-id: ${{ steps.bws_last_seen_purge.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_last_seen_purge.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden

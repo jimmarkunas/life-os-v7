@@ -1,8 +1,6 @@
   granola:
-    # LIFE-122 (Jim, Oct 26 2026: "Approved, go"): the Granola bridge, automatic. After every tick it carries each synced meeting that has not been carried before into its Interview OS
-    # round (lifeos/sources/granola_auto.py): Full Transcript page written and read back, catalogued in Hostinger, and only then purged whole from Oracle. A meeting that matches no round is left
-    # on Oracle and counted. It writes only when the run is live AND the repository variable GRANOLA_AUTO is "on" (Jim's switch); otherwise it is a dry run that changes nothing.
-    # It waits for the Interview job (LIFE-632), which holds the one-writer group of the Interview OS pages.
+    # the Granola bridge, automatic. After every tick it carries each synced meeting that has not been carried before into its Interview OS round
+    # (lifeos/sources/granola_auto.py): Full Transcript page written and read back.
     needs: [interview, gate]
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.late == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
     runs-on: ubuntu-24.04
@@ -21,7 +19,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
-      # why: Load the Granola credentials from Bitwarden (exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_granola
         name: Load the Granola credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -30,14 +27,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: granola
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden for the V7 settings page
@@ -47,14 +42,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: settings
-      # why: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 22 and 47341)
       - name: Join the tailnet as an ephemeral tag:v7-runner node
         uses: ./.github/actions/tailscale
         with:
           oauth-client-id: ${{ steps.bws_granola.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_granola.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)
       - id: gran
         continue-on-error: true
         name: Granola auto
@@ -62,7 +55,7 @@
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           LIFEOS_NOTION_IDS: ""
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-360 (Jim approved Nov 7, 4:17 PM CT): the readers take opportunities from Ledger rows first (read-only, Interview token)
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_granola.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
           LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_granola.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}

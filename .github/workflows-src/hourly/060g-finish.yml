@@ -1,4 +1,3 @@
-      # why: Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)
       - id: holds
         continue-on-error: true
         name: Step 7a - exclude jobs that have sat on HOLD for 7 days

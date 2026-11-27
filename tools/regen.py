@@ -43,6 +43,7 @@ HOURLY = ROOT / ".github/workflows/hourly.yml"
 HOURLY_PARTS = ROOT / ".github/workflows-src/hourly"
 V3_PAGES = ROOT / ".github/workflows/v3-pages.yml"
 WORKFLOW_DOC = ROOT / "docs/workflows.md"
+WHY = ROOT / ".github/workflows-src/why.yml"
 DOCSTYLE = ROOT / "lifeos/platform/docstyle.py"
 RUNTIME = ROOT / "lifeos/platform/runtime.json"
 DEFAULT_BASIS = "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values"
@@ -65,13 +66,9 @@ def hourly_text():
 
 
 def workflow_doc_text():
-    """LIFE-1010: docs/workflows.md from the `# why:` lines of every source part and of the hand-written v3-pages.yml."""
-    parts = (
-        [("domains", path.name, path.read_text()) for path in sorted(DOMAINS_PARTS.glob("*.yml"))]
-        + [("hourly", path.name, path.read_text()) for path in sorted(HOURLY_PARTS.glob("*.yml"))]
-        + [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
-    )
-    return wfsrc.docs_text(wfsrc.why_rows(parts))
+    """docs/workflows.md from .github/workflows-src/why.yml (the source parts' history) and the `# why:` lines of the hand-written v3-pages.yml."""
+    v3 = [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
+    return wfsrc.docs_text(wfsrc.why_file_rows(WHY.read_text()) + wfsrc.why_rows(v3))
 
 
 def workflow_steps():

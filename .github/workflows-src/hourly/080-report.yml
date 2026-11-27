@@ -1,6 +1,6 @@
   report:
     needs: [prep, unit-tests, jobright, linkedin, lensa, finish]
-    if: ${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}   # LIFE-328: also when an automatic run's prep fails (unit tests, credentials): nothing ran or reached Notion (Nov 3-4 2026: 21 silent hours); a failed manual prep has a person watching and loads no credential
+    if: ${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}  # a failed manual prep has a person watching and loads no credential
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -10,12 +10,10 @@
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-      # why: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
       - name: Bitwarden helper from a saved, fingerprint-checked copy
         uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "100"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_report
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -24,7 +22,6 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: report
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:

@@ -30,7 +30,7 @@
         timeout-minutes: 10
         name: Employer boards acceptance preview (dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'boards-preview' }}
-        env:                                   # the store (read only) and the private Fit profile (in memory)
+        env:  # the store (read only) and the private Fit profile (in memory)
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -43,7 +43,7 @@
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -m lifeos.run boards-preview --limit 600     # the whole seed-99 benchmark sample (run.py defaults to 40)
+        run: python -m lifeos.run boards-preview --limit 600  # the whole seed-99 benchmark sample (run.py defaults to 40)
       - id: probe
         continue-on-error: true
         name: Probe - source shapes (dispatch only, counts only)

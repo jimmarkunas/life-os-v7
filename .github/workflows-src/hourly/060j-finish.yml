@@ -1,4 +1,3 @@
-      # why: Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)
       - id: explain
         continue-on-error: true
         name: Explain (dispatch only; company names, counts, hashes)
@@ -27,7 +26,6 @@
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run explain
-      # why: Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)
       - id: boardcheck
         continue-on-error: true
         name: Board check

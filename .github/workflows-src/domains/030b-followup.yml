@@ -1,4 +1,3 @@
-      # why: Followup lane (LIFE-757; LIVE on a scheduled or tick run while V7_LIVE is on, otherwise a dry run that writes nothing; reads only sources that have a credential and an expiry row)
       - id: followup
         continue-on-error: true
         name: Followup lane
@@ -14,7 +13,7 @@
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH: ${{ steps.bws_followup.outputs.FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH }}
           FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_followup.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}
-          FOLLOWUP_WIRING: ""              # lifeos/platform/switches.json decides (off) unless the repository variable says "off" (kill switch) or "on"
+          FOLLOWUP_WIRING: ""  # lifeos/platform/switches.json decides (off) unless the repository variable says "off" (kill switch) or "on"
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_DB_USER }}
@@ -26,7 +25,6 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_followup.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run followup $([ "$LIVE" = "true" ] && echo --live)
-      # why: A failed stage step makes this job red after the stage has run (LIFE-649), so the report job pushes the phone
       - name: Fail the job if any stage step failed
         if: ${{ always() && (steps.bws_followup.outcome == 'failure' || steps.followup.outcome == 'failure') }}
         run: echo "::error title=followup::a stage step failed in the followup job (see the step marked failed above)"; exit 1

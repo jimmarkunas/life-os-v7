@@ -1,8 +1,7 @@
 name: domains
 run-name: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'domains (after tick)' || 'domains (manual)' }}
-# The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
-# touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
-# (isolation by construction, not by blanking). A failed stage step is a warning while the stages run, then its job ends red (LIFE-649) and the report job pushes the phone. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
+# The V7 domain jobs: Jira, Outlook (calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none touches
+# the Jobs pipeline, so they live apart from hourly.yml: this workflow.
 on:
   workflow_run:
     workflows: ["hourly"]

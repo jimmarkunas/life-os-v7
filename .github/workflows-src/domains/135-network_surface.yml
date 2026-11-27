@@ -1,7 +1,6 @@
   network_surface:
-    # LIFE-856 change 4 (Jim, Nov 25 2026, 4:36 PM CT: "856 move NL CF"): Step 7c Network Leads used to run after the tick inside the hourly `finish` job, so the hourly run, and with it the whole chain, waited for it (p50 109 s).
-    # It reads the Ledger pages and the store the tick has finished writing; nothing in the tick or after it reads what it writes (its own v7_network_* tables and the owned block on each page), so it runs here, in the after-tick run,
-    # beside the other late jobs. One run per tick (pipeline gate: only when the tick's `finish` job ran), same step, same limit, same secrets.
+    # Reads the Ledger pages and the store the tick has finished writing; nothing in the tick or after it reads what it writes
+    # (its own v7_network_* tables and the owned block on each page), so it runs after the tick.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_network_surface == 'true' }}
     runs-on: ubuntu-24.04
@@ -17,7 +16,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 18; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_network_surface
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -26,14 +24,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: network-surface
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -41,7 +37,6 @@
           oauth-client-id: ${{ steps.bws_network_surface.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_network_surface.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden

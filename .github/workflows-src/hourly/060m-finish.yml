@@ -1,4 +1,3 @@
-      # why: Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)
       - id: alerts
         continue-on-error: true
         name: Alerts - detect, dedupe and push to the phone

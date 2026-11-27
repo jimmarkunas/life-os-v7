@@ -14,6 +14,7 @@ GENERATED_MAX = 130 * 1024
 PART_MAX = 6 * 1024
 NAME_MAX = 60
 RATCHET = {"domains.yml": 125_000, "hourly.yml": 65_000}              # LIFE-1013: reached 112,341 and 56,549 bytes (240,853 and 123,939 before the lean passes); room for growth on purpose
+PARTS_TOTAL_MAX = 255_000                                              # LIFE-1016: the parts of domains and hourly were 297,690 bytes before the history moved to why.yml and the comments lost their ticket notes
 BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 
@@ -29,12 +30,18 @@ def problems(flows, src, ratchet=RATCHET):
         for name, job in (yaml.safe_load(path.read_text()).get("jobs") or {}).items():
             out += [f"{path.name} {name}: step name of {len(s['name'])} characters: {s['name'][:40]}" for s in job.get("steps") or [] if len(str(s.get("name", ""))) > NAME_MAX]
     for part in sorted(pathlib.Path(src).rglob("*.yml")):
+        if part.name == "why.yml":                                       # the history table docs/workflows.md is built from, not a part
+            continue
         if len(part.read_bytes()) > PART_MAX:
             out.append(f"{part.name} is {len(part.read_bytes())} bytes, over {PART_MAX}")
     return out
 
 
 class Budget(unittest.TestCase):
+    def test_the_parts_together_stay_at_least_fifteen_percent_under_what_they_were(self):
+        total = sum(len(p.read_bytes()) for p in SRC.glob("*/*.yml"))
+        self.assertLessEqual(total, PARTS_TOTAL_MAX)
+
     def test_the_workflows_stay_inside_the_size_budget(self):
         self.assertEqual(problems(FLOWS, SRC), [])
 
