@@ -23,8 +23,12 @@ CONTENT_MAX, COMMENT_MAX = 500, 2000
 UPDATE_FIELDS = ("content", "description", "due_string")
 
 
-class GovernedError(RuntimeError):
-    """The message is always a fixed lower-case code."""
+class GovernedError(ValueError):
+    """The message and `reason` are always the same fixed lower-case code (the MCP shows a ValueError's reason to the caller)."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
 
 
 OPS = {
