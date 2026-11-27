@@ -6,6 +6,7 @@ prefix. Output is counts and names, never content. Exit 0 only when the prefix h
 database passes and no member was unsafe. Codes: RESTORE_UNSAFE_PATH, RESTORE_TOO_BIG, RESTORE_NOTHING_UNDER_PREFIX,
 RESTORE_DB_CORRUPT, RESTORE_DB_UNCHECKED (the check cannot run here: not proof of damage), RESTORE_UNREADABLE.
 """
+
 import os
 import shutil
 import sqlite3
@@ -39,7 +40,14 @@ def safe_members(tar):
         yield member
 
 
-MODULE_HINTS = ("no such module", "no such tokenizer", "unknown tokenizer", "no such function", "not authorized", "unsupported")
+MODULE_HINTS = (
+    "no such module",
+    "no such tokenizer",
+    "unknown tokenizer",
+    "no such function",
+    "not authorized",
+    "unsupported",
+)
 
 
 def _open(path):
@@ -77,7 +85,9 @@ def tables(path):
         if result != [("ok",)]:
             raise RestoreError("RESTORE_DB_CORRUPT", "; ".join(str(r[0]) for r in result[:3]))
         out = {}
-        for (name,) in db.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name").fetchall():
+        for (name,) in db.execute(
+            "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name"
+        ).fetchall():
             try:
                 out[name] = db.execute('select count(*) from "%s"' % name.replace('"', '""')).fetchone()[0]
             except sqlite3.DatabaseError:
@@ -116,8 +126,10 @@ def verify(archive, prefix="hermes/", min_files=1, work=None):
                         failures.append((member.name, str(error), error.detail))
             if failures:
                 first = failures[0][1]
-                raise RestoreError(first if len({f[1] for f in failures}) == 1 else "RESTORE_DB_CORRUPT",
-                                   " | ".join("%s: %s (%s)" % (n, c, d or "no detail") for n, c, d in failures))
+                raise RestoreError(
+                    first if len({f[1] for f in failures}) == 1 else "RESTORE_DB_CORRUPT",
+                    " | ".join("%s: %s (%s)" % (n, c, d or "no detail") for n, c, d in failures),
+                )
         return {"files": len(wanted), "databases": databases}
     finally:
         if own:
@@ -152,7 +164,10 @@ def main(argv=None, out=None):
         return 1
     out.write("files under %s: %d; databases: %d\n" % (prefix, report["files"], len(report["databases"])))
     for name, counts in sorted(report["databases"].items()):
-        out.write("  %s: integrity ok; rows %s\n" % (name, ", ".join("%s=%s" % (t, "n/a" if c is None else c) for t, c in counts.items()) or "no tables"))
+        out.write(
+            "  %s: integrity ok; rows %s\n"
+            % (name, ", ".join("%s=%s" % (t, "n/a" if c is None else c) for t, c in counts.items()) or "no tables")
+        )
     out.write("OK: restore check passed; the check folder was removed.\n")
     return 0
 

@@ -4,6 +4,7 @@
 
 The unit comes from `git show <commit>:lifeos/whatsapp/oracle/lifeos-whatsapp-attention.service` (default HEAD); the steps and helper files are the ones in lifeos/edge/whatsapp/pack/.
 `--root-prefix` is for tests only: every host path in the pack moves under DIR."""
+
 import json
 import shutil
 import subprocess
@@ -30,10 +31,13 @@ def build(out, commit="HEAD", prefix=""):
     (out / "files" / "lifeos-whatsapp-attention.service").write_bytes(git("show", f"{commit}:{UNIT_REPO_PATH}"))
     if prefix:
         (out / "files" / "ROOT").write_text(prefix + "\n")
-    manifest = {"schema": 1, "ticket": "LIFE-643",
-                "steps": ["steps/10-preflight.sh", "steps/20-apply.sh", "steps/30-readback.sh"],
-                "restore": {"files": [prefix + UNIT_HOST_PATH], "services": ["lifeos-whatsapp-attention.service"]},
-                "step_timeout_seconds": 300}
+    manifest = {
+        "schema": 1,
+        "ticket": "LIFE-643",
+        "steps": ["steps/10-preflight.sh", "steps/20-apply.sh", "steps/30-readback.sh"],
+        "restore": {"files": [prefix + UNIT_HOST_PATH], "services": ["lifeos-whatsapp-attention.service"]},
+        "step_timeout_seconds": 300,
+    }
     (out / "pack.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return sha
 

@@ -4,6 +4,7 @@ optional or peer-only (the sharp / @img image libraries), drop them from the hid
 links. `slim.py verify DIR LOCKFILE`: exit 0 only if the package list equals the lockfile's non-optional, non-peer
 packages and no image library is left. Prints fixed words and counts only.
 """
+
 import json
 import os
 import shutil
@@ -11,11 +12,16 @@ import sys
 
 
 def expected(lock):
-    return sorted(name for name, meta in lock["packages"].items() if name and not meta.get("optional") and not meta.get("peer"))
+    return sorted(
+        name for name, meta in lock["packages"].items() if name and not meta.get("optional") and not meta.get("peer")
+    )
 
 
 def omitted(lock):
-    return sorted((name for name, meta in lock["packages"].items() if name and (meta.get("optional") or meta.get("peer"))), key=lambda n: -n.count("/"))
+    return sorted(
+        (name for name, meta in lock["packages"].items() if name and (meta.get("optional") or meta.get("peer"))),
+        key=lambda n: -n.count("/"),
+    )
 
 
 def load(lockfile):
@@ -27,13 +33,13 @@ def prune(build, lockfile):
     lock = load(lockfile)
     modules = os.path.join(build, "node_modules")
     gone = 0
-    for name in omitted(lock):                                    # deepest paths first; name is "node_modules/<package>" as in the lockfile
+    for name in omitted(lock):  # deepest paths first; name is "node_modules/<package>" as in the lockfile
         path = os.path.join(build, name)
         if os.path.isdir(path) and not os.path.islink(path):
             shutil.rmtree(path)
             gone += 1
     scope_dirs = [os.path.join(modules, d) for d in os.listdir(modules) if d.startswith("@")]
-    for scope in scope_dirs:                                      # an emptied scope folder (@img) goes too
+    for scope in scope_dirs:  # an emptied scope folder (@img) goes too
         if os.path.isdir(scope) and not os.listdir(scope):
             os.rmdir(scope)
     hidden = os.path.join(modules, ".package-lock.json")
@@ -70,7 +76,11 @@ def verify(build, lockfile):
     except (OSError, ValueError, KeyError):
         print("no_hidden_lockfile")
         return 1
-    if os.path.exists(os.path.join(modules, "sharp")) or os.path.exists(os.path.join(modules, "@img")) or any("sharp" in n or "@img" in n for n in have):
+    if (
+        os.path.exists(os.path.join(modules, "sharp"))
+        or os.path.exists(os.path.join(modules, "@img"))
+        or any("sharp" in n or "@img" in n for n in have)
+    ):
         print("image_library_present")
         return 1
     if any(os.path.exists(os.path.join(build, name)) for name in omitted(lock)):
@@ -89,4 +99,6 @@ def verify(build, lockfile):
 
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) == 4 else ""
-    sys.exit({"prune": prune, "verify": verify}[command](sys.argv[2], sys.argv[3]) if command in ("prune", "verify") else 2)
+    sys.exit(
+        {"prune": prune, "verify": verify}[command](sys.argv[2], sys.argv[3]) if command in ("prune", "verify") else 2
+    )

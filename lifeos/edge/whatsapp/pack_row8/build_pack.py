@@ -3,6 +3,7 @@
     python3 lifeos/edge/whatsapp/pack_row8/build_pack.py OUTDIR
 
 The pack declares no restore list on purpose: a restore would start the services again, which is the opposite of a kill switch."""
+
 import json
 import shutil
 import sys
@@ -17,7 +18,13 @@ def build(out):
         shutil.rmtree(out)
     shutil.copytree(HERE / "pack" / "steps", out / "steps")
     shutil.copytree(HERE / "pack" / "files", out / "files")
-    manifest = {"schema": 1, "ticket": "LIFE-643", "steps": ["steps/10-kill.sh"], "restore": {"files": [], "services": []}, "step_timeout_seconds": 120}
+    manifest = {
+        "schema": 1,
+        "ticket": "LIFE-643",
+        "steps": ["steps/10-kill.sh"],
+        "restore": {"files": [], "services": []},
+        "step_timeout_seconds": 120,
+    }
     (out / "pack.json").write_text(json.dumps(manifest, indent=1) + "\n")
 
 

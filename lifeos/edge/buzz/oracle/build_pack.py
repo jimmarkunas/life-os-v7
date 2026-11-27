@@ -4,6 +4,7 @@
 
 The files under files/tree come from `git show <commit>:path` (default HEAD): lifeos/__init__.py, lifeos/buzz/*.py, nothing else (LIFE-631: the old-name shims are gone; the unit the pack installs says `-m lifeos.buzz.mcp`).
 The release folder is named after the first 12 characters of the commit. `--root-prefix` is for tests only: every path in the pack moves under DIR."""
+
 import json
 import shutil
 import subprocess
@@ -26,7 +27,9 @@ def build(out, commit="HEAD", prefix=""):
         shutil.rmtree(out)
     (out / "files" / "tree" / "lifeos" / "buzz").mkdir(parents=True)
     wanted = ["lifeos/__init__.py"]
-    wanted += sorted(p for p in git("ls-tree", "-r", "--name-only", commit, "lifeos/buzz/").decode().split() if p.endswith(".py"))
+    wanted += sorted(
+        p for p in git("ls-tree", "-r", "--name-only", commit, "lifeos/buzz/").decode().split() if p.endswith(".py")
+    )
     for path in wanted:
         target = out / "files" / "tree" / path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -38,9 +41,16 @@ def build(out, commit="HEAD", prefix=""):
         (out / "files" / "ROOT").write_text(prefix + "\n")
     shutil.copytree(HERE / "pack" / "steps", out / "steps")
     base = f"{prefix}/opt/lifeos-buzz-mcp/releases/{sha[:12]}"
-    manifest = {"schema": 1, "ticket": "LIFE-590", "steps": ["steps/10-release.sh", "steps/20-switch.sh", "steps/30-readback.sh"],
-                "restore": {"files": [f"{prefix}/etc/systemd/system/lifeos-buzz-mcp.service"] + [f"{base}/{p}" for p in wanted], "services": ["lifeos-buzz-mcp.service"]},
-                "step_timeout_seconds": 120}
+    manifest = {
+        "schema": 1,
+        "ticket": "LIFE-590",
+        "steps": ["steps/10-release.sh", "steps/20-switch.sh", "steps/30-readback.sh"],
+        "restore": {
+            "files": [f"{prefix}/etc/systemd/system/lifeos-buzz-mcp.service"] + [f"{base}/{p}" for p in wanted],
+            "services": ["lifeos-buzz-mcp.service"],
+        },
+        "step_timeout_seconds": 120,
+    }
     (out / "pack.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return sha
 

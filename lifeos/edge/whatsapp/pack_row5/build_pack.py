@@ -5,6 +5,7 @@ without the optional and peer packages. Run from the repo root:
 
 package.json and package-lock.json come out of `git show <commit>:lifeos/whatsapp/oracle/...` (default HEAD). The shared shell helpers and the file helper are the row 1 ones (pack_row1/pack/files), copied in, not duplicated.
 `--root-prefix` is for tests only: every host path in the pack moves under DIR."""
+
 import json
 import shutil
 import subprocess
@@ -14,7 +15,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
 ROW1_FILES = HERE.parent / "pack_row1" / "pack" / "files"
-FROM_GIT = {"package.json": "lifeos/whatsapp/oracle/package.json", "package-lock.json": "lifeos/whatsapp/oracle/package-lock.json"}
+FROM_GIT = {
+    "package.json": "lifeos/whatsapp/oracle/package.json",
+    "package-lock.json": "lifeos/whatsapp/oracle/package-lock.json",
+}
 
 
 def git(*args):
@@ -34,10 +38,13 @@ def build(out, commit="HEAD", prefix=""):
         (out / "files" / name).write_bytes(git("show", f"{commit}:{path}"))
     if prefix:
         (out / "files" / "ROOT").write_text(prefix + "\n")
-    manifest = {"schema": 1, "ticket": "LIFE-643",
-                "steps": ["steps/10-preflight.sh", "steps/20-build.sh", "steps/30-swap.sh", "steps/40-readback.sh"],
-                "restore": {"files": [], "services": ["lifeos-wa-attention.socket", "lifeos-wa-attention.service"]},
-                "step_timeout_seconds": 600}
+    manifest = {
+        "schema": 1,
+        "ticket": "LIFE-643",
+        "steps": ["steps/10-preflight.sh", "steps/20-build.sh", "steps/30-swap.sh", "steps/40-readback.sh"],
+        "restore": {"files": [], "services": ["lifeos-wa-attention.socket", "lifeos-wa-attention.service"]},
+        "step_timeout_seconds": 600,
+    }
     (out / "pack.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return sha
 

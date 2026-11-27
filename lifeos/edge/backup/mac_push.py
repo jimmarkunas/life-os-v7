@@ -8,6 +8,7 @@ temporary folder (the private key is never on this machine); the plain archive i
 counts
 and fixed codes only. Stdlib plus `gpg` and `sftp`.
 """
+
 import datetime
 import hashlib
 import os
@@ -102,7 +103,11 @@ def snapshot(source, dest):
 
 
 def collect(work, home=HOME, sqlite=None, files=None, trees=None):
-    sqlite, files, trees = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees
+    sqlite, files, trees = (
+        SQLITE if sqlite is None else sqlite,
+        FILES if files is None else files,
+        TREES if trees is None else trees,
+    )
     out, missing = {}, 0
     for name, rel in sqlite:
         source = os.path.join(home, rel)
@@ -161,14 +166,37 @@ def encrypt(plain, dest, work, key_file=KEY_FILE, run=subprocess.run):
     fingerprints = [line.split(":")[9] for line in listing.splitlines() if line.startswith("fpr:")]
     if not fingerprints:
         raise PushError("mac_backup_key_unreadable")
-    command = base + ["--yes", "--trust-model", "always", "--output", dest, "--encrypt", "--recipient", fingerprints[0], plain]
+    command = base + [
+        "--yes",
+        "--trust-model",
+        "always",
+        "--output",
+        dest,
+        "--encrypt",
+        "--recipient",
+        fingerprints[0],
+        plain,
+    ]
     if run(command, capture_output=True, timeout=300).returncode != 0 or not os.path.isfile(dest):
         raise PushError("mac_backup_encrypt")
     return fingerprints[0]
 
 
 def sftp(batch, run=subprocess.run, ssh_key=SSH_KEY, remote=REMOTE):
-    command = ["sftp", "-i", ssh_key, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-b", "-", remote]
+    command = [
+        "sftp",
+        "-i",
+        ssh_key,
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=20",
+        "-b",
+        "-",
+        remote,
+    ]
     done = run(command, input=batch, capture_output=True, text=True, timeout=300)
     if done.returncode != 0:
         raise PushError("mac_backup_push_failed")
@@ -181,7 +209,9 @@ def push(sealed, run=subprocess.run, ssh_key=SSH_KEY, remote=REMOTE):
         raise PushError("mac_backup_bad_name")
     sftp("cd in\nput %s %s.part\nrename %s.part %s\n" % (sealed, name, name, name), run, ssh_key, remote)
     listing = sftp("cd in\nls -1\n", run, ssh_key, remote)
-    names = sorted(line.strip().split("/")[-1] for line in listing.splitlines() if NAME.match(line.strip().split("/")[-1]))
+    names = sorted(
+        line.strip().split("/")[-1] for line in listing.splitlines() if NAME.match(line.strip().split("/")[-1])
+    )
     if name not in names:
         raise PushError("mac_backup_push_unverified")
     stale = names[:-KEEP] if len(names) > KEEP else []
@@ -206,7 +236,11 @@ def main(argv=None, home=HOME, key_file=KEY_FILE, run=subprocess.run, clock=time
         result = {"files": count, "bytes": os.path.getsize(sealed), "recipient": fingerprint[-8:], **extra}
         if live:
             result.update(push(sealed, run))
-        print("mac_backup ok %s %s" % ("pushed" if live else "dry", " ".join("%s=%s" % kv for kv in sorted(result.items()))), file=out)
+        print(
+            "mac_backup ok %s %s"
+            % ("pushed" if live else "dry", " ".join("%s=%s" % kv for kv in sorted(result.items()))),
+            file=out,
+        )
         return 0
     except PushError as error:
         print("mac_backup failed %s" % error, file=out)

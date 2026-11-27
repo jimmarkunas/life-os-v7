@@ -6,6 +6,7 @@ runs `concord -C <repo> messages --json` with a short timeout, checks the shape 
 them; nothing else of the CLI's output leaves. Codes: CONCORD_BAD_FRAME, CONCORD_CLI_MISSING, CONCORD_READ_FAILED,
 CONCORD_TIMEOUT, CONCORD_BAD_OUTPUT. Stdlib only.
 """
+
 import json
 import os
 import subprocess
@@ -41,12 +42,14 @@ def answer(raw, run=subprocess.run, now=time.time, cli=CLI, repo=REPO):
         return {"ok": False, "code": "CONCORD_BAD_FRAME", "messages": 0, "at": int(now())}
     env = {"PATH": "/usr/bin:/bin", "HOME": os.path.dirname(repo), "CONCORD_TELEMETRY_DISABLED": "1"}
     try:
-        done = run([cli, "-C", repo, "messages", "--json"], capture_output=True, text=True, timeout=WAIT, env=env, check=False)
+        done = run(
+            [cli, "-C", repo, "messages", "--json"], capture_output=True, text=True, timeout=WAIT, env=env, check=False
+        )
     except FileNotFoundError:
         return {"ok": False, "code": "CONCORD_CLI_MISSING", "messages": 0, "at": int(now())}
     except subprocess.TimeoutExpired:
         return {"ok": False, "code": "CONCORD_TIMEOUT", "messages": 0, "at": int(now())}
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {"ok": False, "code": "CONCORD_READ_FAILED", "messages": 0, "at": int(now())}
     if done.returncode != 0:
         return {"ok": False, "code": "CONCORD_READ_FAILED", "messages": 0, "at": int(now())}

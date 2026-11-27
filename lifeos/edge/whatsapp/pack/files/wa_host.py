@@ -1,6 +1,7 @@
 """Helper for the WhatsApp pack steps (python3 standard library only, so the same file runs on Oracle and in the
 tests). Prints names, modes and counts only; it never opens a session file (only the unit file is hashed).
 """
+
 import hashlib
 import json
 import os
@@ -26,7 +27,11 @@ def cmd_check(owner, trees):
         if info.st_uid != int(owner):
             print("owner")
             return 1
-        if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode) or (stat.S_ISSOCK(info.st_mode) and os.path.basename(path) == "attention.sock")):
+        if not (
+            stat.S_ISREG(info.st_mode)
+            or stat.S_ISDIR(info.st_mode)
+            or (stat.S_ISSOCK(info.st_mode) and os.path.basename(path) == "attention.sock")
+        ):
             print("odd_type")
             return 1
     return 0
@@ -43,7 +48,9 @@ def cmd_holders(procdir, owner, trees):
         try:
             if os.stat(base).st_uid in (0, int(owner)):
                 continue
-            links = [os.path.join(base, "cwd")] + [os.path.join(base, "fd", f) for f in os.listdir(os.path.join(base, "fd"))]
+            links = [os.path.join(base, "cwd")] + [
+                os.path.join(base, "fd", f) for f in os.listdir(os.path.join(base, "fd"))
+            ]
         except OSError:
             continue
         for link in links:
@@ -70,7 +77,11 @@ def cmd_counts(trees):
 
 def cmd_record(listing, trees):
     """The names-and-modes list that lets the step put every mode back (root-only file, no contents)."""
-    rows = [json.dumps([stat.S_IMODE(info.st_mode), path]) for path, info in walk(trees) if stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)]
+    rows = [
+        json.dumps([stat.S_IMODE(info.st_mode), path])
+        for path, info in walk(trees)
+        if stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)
+    ]
     tmp = listing + ".tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as handle:

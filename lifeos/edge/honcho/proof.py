@@ -5,6 +5,7 @@ proxy (cap $0.90) and this program stops asking at $0.80. Prints one JSON result
 recall /20 at reasoning_level minimal and medium, planted-fact extraction, top-3 retrieval, embeddings latency p50/p95
 and the proxy's spend.
 """
+
 import json
 import sys
 import time
@@ -80,7 +81,14 @@ QUESTIONS = [
     (BETA, "ines", "Where does Ines plan to travel in October?", ["kyoto"], [], "direct"),
     (BETA, "ines", "Which instrument is Ines learning?", ["oboe"], [], "direct"),
     (BETA, "tobias", "Which choir does Tobias sing in?", ["larch"], [], "direct"),
-    (ALPHA, "maple", "Which instrument does Maple play and where does she travel to play it?", ["cello", "lisbon"], [], "deep"),
+    (
+        ALPHA,
+        "maple",
+        "Which instrument does Maple play and where does she travel to play it?",
+        ["cello", "lisbon"],
+        [],
+        "deep",
+    ),
     (ALPHA, "tobias", "What does Tobias do for work and what is he afraid of?", ["lighthouse", "ferr"], [], "deep"),
     (BETA, "ines", "What does Ines run and what is her starter called?", ["crumb", "gerald"], [], "deep"),
     (BETA, "tobias", "What does Tobias do for work and what does he sing in?", ["quarry", "larch"], [], "deep"),
@@ -88,12 +96,57 @@ QUESTIONS = [
     (ALPHA, "maple", "What is Ines's sourdough starter called?", [], ["gerald"], "isolation"),
 ]
 
-PLANTED = {ALPHA: ["pickle", "cashew", "tallinn", "cello", "lisbon", "fennel", "marmalade", "walt", "212", "lighthouse", "ferr", "odette", "lapsang", "chess", "hrw-481", "mushroom", "cass"],
-           BETA: ["crumb", "gerald", "thursday", "rafael", "penicillin", "gdansk", "scooter", "kyoto", "oboe", "shelter", "quarry", "larch", "half marathon", "biscuit", "bus", "tomato", "accordion", "teal", "finnish"]}
+PLANTED = {
+    ALPHA: [
+        "pickle",
+        "cashew",
+        "tallinn",
+        "cello",
+        "lisbon",
+        "fennel",
+        "marmalade",
+        "walt",
+        "212",
+        "lighthouse",
+        "ferr",
+        "odette",
+        "lapsang",
+        "chess",
+        "hrw-481",
+        "mushroom",
+        "cass",
+    ],
+    BETA: [
+        "crumb",
+        "gerald",
+        "thursday",
+        "rafael",
+        "penicillin",
+        "gdansk",
+        "scooter",
+        "kyoto",
+        "oboe",
+        "shelter",
+        "quarry",
+        "larch",
+        "half marathon",
+        "biscuit",
+        "bus",
+        "tomato",
+        "accordion",
+        "teal",
+        "finnish",
+    ],
+}
 
 
 def call(base, method, path, body=None, timeout=300):
-    request = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, method=method, headers={"Content-Type": "application/json"})
+    request = urllib.request.Request(
+        base + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(request, timeout=timeout) as reply:
         raw = reply.read()
     return json.loads(raw) if raw else None
@@ -116,7 +169,12 @@ def ingest():
             call(HONCHO, "POST", f"/v3/workspaces/{workspace}/peers", {"id": peer})
         call(HONCHO, "POST", f"/v3/workspaces/{workspace}/sessions", {"id": "chat", "peers": {p: {} for p in peers}})
         for start in range(0, len(messages), 5):
-            call(HONCHO, "POST", f"/v3/workspaces/{workspace}/sessions/chat/messages", {"messages": [{"peer_id": p, "content": c} for p, c in messages[start:start + 5]]})
+            call(
+                HONCHO,
+                "POST",
+                f"/v3/workspaces/{workspace}/sessions/chat/messages",
+                {"messages": [{"peer_id": p, "content": c} for p, c in messages[start : start + 5]]},
+            )
 
 
 def wait_for_derivation(limit_s=900):
@@ -136,7 +194,7 @@ def conclusions_text(workspace):
     texts = []
     try:
         page = call(HONCHO, "POST", f"/v3/workspaces/{workspace}/conclusions/list", {})
-    except Exception:                                                                    # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
     items = page.get("items") if isinstance(page, dict) else page
     for item in items or []:
@@ -151,10 +209,17 @@ def ask(depth):
             rows.append({"q": question, "skipped": "spend guard at $%.2f" % STOP_AT})
             continue
         began = time.time()
-        reply = call(HONCHO, "POST", f"/v3/workspaces/{workspace}/peers/{peer}/chat", {"query": question, "reasoning_level": depth})
+        reply = call(
+            HONCHO,
+            "POST",
+            f"/v3/workspaces/{workspace}/peers/{peer}/chat",
+            {"query": question, "reasoning_level": depth},
+        )
         text = str((reply or {}).get("content") or "").lower()
         ok = all(t in text for t in expect) and not any(t in text for t in forbid)
-        rows.append({"q": question, "kind": kind, "ok": ok, "seconds": round(time.time() - began, 1), "answer": text[:160]})
+        rows.append(
+            {"q": question, "kind": kind, "ok": ok, "seconds": round(time.time() - began, 1), "answer": text[:160]}
+        )
     return rows
 
 
@@ -174,9 +239,19 @@ def embeddings():
     times = []
     for n in range(30):
         began = time.time()
-        call(METER, "POST", "/v1/embeddings", {"model": "nomic-embed-text", "input": MESSAGES[ALPHA][n % 20][1]}, timeout=60)
+        call(
+            METER,
+            "POST",
+            "/v1/embeddings",
+            {"model": "nomic-embed-text", "input": MESSAGES[ALPHA][n % 20][1]},
+            timeout=60,
+        )
         times.append((time.time() - began) * 1000)
-    return {"calls": len(times), "p50_ms": round(percentile(times, 0.5), 1), "p95_ms": round(percentile(times, 0.95), 1)}
+    return {
+        "calls": len(times),
+        "p50_ms": round(percentile(times, 0.5), 1),
+        "p95_ms": round(percentile(times, 0.95), 1),
+    }
 
 
 def main(out_path):
@@ -187,20 +262,31 @@ def main(out_path):
     extraction = {}
     for workspace in MESSAGES:
         text = conclusions_text(workspace)
-        extraction[workspace] = None if text is None else {"found": sum(1 for t in PLANTED[workspace] if t in text), "of": len(PLANTED[workspace])}
+        extraction[workspace] = (
+            None
+            if text is None
+            else {"found": sum(1 for t in PLANTED[workspace] if t in text), "of": len(PLANTED[workspace])}
+        )
     result["planted_fact_extraction"] = extraction
     result["retrieval_top3"] = retrieval()
     result["embeddings"] = embeddings()
     for depth in ("minimal", "medium"):
         rows = ask(depth)
         scored = [r for r in rows if "ok" in r]
-        result["recall_" + depth] = {"correct": sum(1 for r in scored if r["ok"]), "asked": len(scored), "of": len(QUESTIONS), "rows": rows}
+        result["recall_" + depth] = {
+            "correct": sum(1 for r in scored if r["ok"]),
+            "asked": len(scored),
+            "of": len(QUESTIONS),
+            "rows": rows,
+        }
         result["spent_after_" + depth + "_usd"] = spent()
     result["spent_end_usd"] = spent()
     with open(out_path, "w") as handle:
         json.dump(result, handle, indent=1)
     brief = {k: v for k, v in result.items() if not k.startswith("recall_")}
-    brief.update({k: {kk: vv for kk, vv in v.items() if kk != "rows"} for k, v in result.items() if k.startswith("recall_")})
+    brief.update(
+        {k: {kk: vv for kk, vv in v.items() if kk != "rows"} for k, v in result.items() if k.startswith("recall_")}
+    )
     print(json.dumps(brief, indent=1))
 
 

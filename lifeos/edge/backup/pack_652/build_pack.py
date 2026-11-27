@@ -4,6 +4,7 @@
 
 offsite_backup.py comes out of `git show <commit>:lifeos/edge/backup/offsite_backup.py` (default HEAD). old.sha256 is the sha256 of the version that is installed today: the file as of the commit before the LIFE-652 fix (OLD_COMMIT).
 The manifest declares the installed file in the restore list, so the runner puts it back on any failure."""
+
 import hashlib
 import json
 import shutil
@@ -20,7 +21,9 @@ OLD_SHA256 = "817022e4c71bf49f8804e8b21017fc066c69521e78b20ecfefa56012081c4a2b"
 
 
 def build(out, commit="HEAD"):
-    sha = subprocess.run(["git", "rev-parse", commit], cwd=REPO, check=True, capture_output=True).stdout.decode().strip()
+    sha = (
+        subprocess.run(["git", "rev-parse", commit], cwd=REPO, check=True, capture_output=True).stdout.decode().strip()
+    )
     out = Path(out)
     if out.exists():
         shutil.rmtree(out)
@@ -29,7 +32,13 @@ def build(out, commit="HEAD"):
     data = subprocess.run(["git", "show", f"{commit}:{PATH}"], cwd=REPO, check=True, capture_output=True).stdout
     (out / "files" / "offsite_backup.py").write_bytes(data)
     (out / "files" / "old.sha256").write_text(OLD_SHA256 + "\n")
-    manifest = {"schema": 1, "ticket": "LIFE-652", "steps": ["steps/10-install.sh"], "restore": {"files": [HOST], "services": []}, "step_timeout_seconds": 600}
+    manifest = {
+        "schema": 1,
+        "ticket": "LIFE-652",
+        "steps": ["steps/10-install.sh"],
+        "restore": {"files": [HOST], "services": []},
+        "step_timeout_seconds": 600,
+    }
     (out / "pack.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return sha, hashlib.sha256(data).hexdigest()
 

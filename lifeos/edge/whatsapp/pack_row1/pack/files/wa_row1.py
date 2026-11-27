@@ -2,6 +2,7 @@
 Oracle and in the tests). Prints names, modes, ids and counts only. It copies session files without ever printing or
 inspecting what is in them; nothing here reads a session file's contents except to copy the bytes.
 """
+
 import hashlib
 import os
 import shutil
@@ -47,7 +48,11 @@ def cmd_check(owner, tree):
         if info.st_uid != int(owner):
             print("owner")
             return 1
-        if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode) or (stat.S_ISSOCK(info.st_mode) and os.path.basename(rel) == "attention.sock")):
+        if not (
+            stat.S_ISREG(info.st_mode)
+            or stat.S_ISDIR(info.st_mode)
+            or (stat.S_ISSOCK(info.st_mode) and os.path.basename(rel) == "attention.sock")
+        ):
             print("odd_type")
             return 1
     return 0
@@ -72,7 +77,10 @@ def cmd_counts(tree):
         if kind:
             key = "%s%o" % (kind, stat.S_IMODE(info.st_mode))
             modes[key] = modes.get(key, 0) + 1
-    print("files=%d dirs=%d bytes=%d modes: %s" % (files, dirs, size, " ".join("%s=%d" % item for item in sorted(modes.items()))))
+    print(
+        "files=%d dirs=%d bytes=%d modes: %s"
+        % (files, dirs, size, " ".join("%s=%d" % item for item in sorted(modes.items())))
+    )
     return 0
 
 
@@ -203,12 +211,20 @@ def cmd_canlist(path):
 
 def cmd_sockinfo(path):
     info = os.stat(path)
-    print("%d %d %o %s" % (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode), "socket" if stat.S_ISSOCK(info.st_mode) else "notsocket"))
+    print(
+        "%d %d %o %s"
+        % (
+            info.st_uid,
+            info.st_gid,
+            stat.S_IMODE(info.st_mode),
+            "socket" if stat.S_ISSOCK(info.st_mode) else "notsocket",
+        )
+    )
     return 0
 
 
 def cmd_procuid(procdir, pid):
-    with open(os.path.join(procdir, pid, "status")) as handle:        # kernel status of a process: ids and names only
+    with open(os.path.join(procdir, pid, "status")) as handle:  # kernel status of a process: ids and names only
         for line in handle:
             if line.startswith("Uid:"):
                 print(line.split()[1])
