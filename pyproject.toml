@@ -11,3 +11,5 @@ ignore = ["E501"]              # existing lines run to 661 characters
 [tool.ruff.format]
 quote-style = "preserve"
 skip-magic-trailing-comma = false
+# Files whose tests read their line layout (a line cap or a regex over the source) stay as written.
+exclude = ["lifeos/buzz/*.py", "lifeos/sources/apps/close_app.py", "lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py"]
