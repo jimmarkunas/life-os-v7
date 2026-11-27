@@ -14,7 +14,7 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(classify.apply_kind("https://acme.wd5.myworkdayjobs.com/en-US/x"), "ats")
         self.assertEqual(classify.apply_kind("https://www.linkedin.com/jobs/view/1"), "aggregator")
         self.assertEqual(classify.apply_kind("https://careers.acme.example/job/1"), "employer")
-        self.assertEqual(classify.apply_kind("https://notlinkedin.com/x"), "employer")   # suffix match needs a dot boundary
+        self.assertEqual(classify.apply_kind("https://notlinkedin.com/x"), "employer")  # suffix match needs a dot boundary
 
 
 class JsonLdTests(unittest.TestCase):

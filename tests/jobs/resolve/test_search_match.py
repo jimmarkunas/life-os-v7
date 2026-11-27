@@ -43,7 +43,7 @@ class OneSearchPerJob(unittest.TestCase):
             with mock.patch.object(search_match.tinyfish_search, "search", fake):
                 verdict = search_match.find("Acme Data", "Senior Data Engineer")
             self.assertEqual((verdict[0], verdict[2]), ("hit", result["url"]))
-        self.assertEqual(len(calls), 2)                                   # one search per job, not two
+        self.assertEqual(len(calls), 2)  # one search per job, not two
         self.assertTrue(all(domains is None for _, domains in calls))
 
     def test_a_miss_costs_one_search(self):
@@ -66,7 +66,9 @@ class OneSearchPerJob(unittest.TestCase):
 
 
 class FailedSearchIsNeverAMiss(unittest.TestCase):
-    """A search that failed (429, outage, a 202 or changed answer) is a Failed Search with its cause, not "nothing found": the job is not charged an attempt."""
+    """A search that failed (429, outage, a 202 or changed answer) is a Failed Search with its cause, not 'nothing
+    found': the job is not charged an attempt.
+    """
     def test_a_failed_search_names_its_cause_and_pages_that_fail_the_checks_are_no_fit(self):
         from unittest import mock
         from lifeos.platform.tinyfish import TinyFishError
@@ -131,7 +133,7 @@ class FailedSearchIsNeverAMiss(unittest.TestCase):
             out = linkedin.match_rows(rows, [{"outcome": "external_hidden"}, {"outcome": "external_hidden"}], budget={"left": 5})
         self.assertEqual([r["outcome"] for r in out], ["failed_search:rate_limited", "deferred"])
         from lifeos.jobs.resolve import stage
-        self.assertEqual(stage.why(out[0]), "failed_search")                                  # the run summary counts it as a Failed Search; the job keeps the cause
+        self.assertEqual(stage.why(out[0]), "failed_search")  # the run summary counts it as a Failed Search
         self.assertEqual(find.call_count, 1)
 
 

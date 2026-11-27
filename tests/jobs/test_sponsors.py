@@ -19,7 +19,7 @@ class Names(unittest.TestCase):
         self.assertTrue(names.same_employer("Acme Widgets Inc.", "ACME WIDGETS LTD"))
         self.assertFalse(names.same_employer("Smith", "Smith & Wesson"))
         self.assertFalse(names.same_employer("Apple", "Apple Tree Nursery"))
-        self.assertFalse(names.same_employer("Global Services", "Global Services Ltd"))     # nothing distinctive
+        self.assertFalse(names.same_employer("Global Services", "Global Services Ltd"))  # nothing distinctive
 
 
 class Register(unittest.TestCase):
@@ -37,8 +37,8 @@ class Register(unittest.TestCase):
         r = self.register
         self.assertEqual(r.state("Monzo"), POSITIVE)
         self.assertEqual(r.state("Acme Widgets Inc"), POSITIVE)
-        self.assertEqual(r.state("Downgraded Co"), NEGATIVE)               # not on the Skilled Worker, A-rated register
-        self.assertEqual(r.state("Hays Recruitment"), UNRESOLVED)           # a recruiter's licence cannot qualify an unresolved client
+        self.assertEqual(r.state("Downgraded Co"), NEGATIVE)  # not on the Skilled Worker, A-rated register
+        self.assertEqual(r.state("Hays Recruitment"), UNRESOLVED)
         self.assertEqual(r.state(""), UNRESOLVED)
         self.assertEqual(sponsors.Register([]).state("Monzo"), UNRESOLVED)  # no register loaded: Review, never NEGATIVE
 
@@ -52,7 +52,7 @@ class Refresh(unittest.TestCase):
 
 
 class LoadUsesTheConnectionContextManager(unittest.TestCase):
-    """Run 88 crashed fit here: store.connect() is a context manager, not a connection."""
+    """Run 88 crashed fit here: store.connect is a context manager, not a connection."""
 
     def test_load_reads_the_register_through_store_connect(self):
         from unittest import mock
@@ -65,7 +65,9 @@ class LoadUsesTheConnectionContextManager(unittest.TestCase):
 
 
 class TheStageThroughItsContract(unittest.TestCase):
-    """LIFE-589 pilot: the sponsors stage called through reg.CONTRACT, in dry-run and in write mode, gives the same counts as calling run() and does exactly what the contract declares."""
+    """pilot: the sponsors stage called through reg.CONTRACT, in dry-run and in write mode, gives the same counts as
+    calling run and does exactly what the.
+    """
     NOW = __import__("datetime").datetime(2026, 11, 12, 20, 0)
 
     class Store:
@@ -89,7 +91,7 @@ class TheStageThroughItsContract(unittest.TestCase):
                     outer.statements.append("INSERT:%d" % len(rows))
 
                 def fetchone(self_):
-                    return (None,)                                  # no earlier refresh: the register is due
+                    return (None,)  # no earlier refresh: the register is due
 
             class Conn:
                 def __enter__(self_):
@@ -126,7 +128,7 @@ class TheStageThroughItsContract(unittest.TestCase):
         counts, statements = self.call(False)
         self.assertEqual((counts["status"], counts["saved"]), ("OK", False))
         self.assertGreaterEqual(counts["sponsors"], reg.MIN_ROWS)
-        self.assertEqual(statements, ["SELECT"])                            # it only read the newest refresh time
+        self.assertEqual(statements, ["SELECT"])  # it only read the newest refresh time
         self.assertEqual(counts, self.call(False, through_contract=False)[0])
 
     def test_write_mode_through_the_contract_replaces_the_table_and_reports_the_same_counts(self):

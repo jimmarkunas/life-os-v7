@@ -55,4 +55,4 @@ class SeveralCompaniesTests(unittest.TestCase):
         sql, params = next((s, p) for s, p in conn.cur.statements if "FROM v7_jobs" in s) if conn.cur.statements and isinstance(conn.cur.statements[0], tuple) else (None, None)
         self.assertEqual(params[:-1], ("%wheely%", "%wheely%", "%hyperexponential%", "%hyperexponential%", "%plentific%", "%plentific%"))
         self.assertEqual(sql.count("j.company LIKE"), 3)
-        sql % tuple("x" for _ in params)                               # survives driver formatting
+        sql % tuple("x" for _ in params)  # survives driver formatting

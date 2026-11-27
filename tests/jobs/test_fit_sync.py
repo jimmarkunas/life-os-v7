@@ -58,7 +58,7 @@ class FitSync(unittest.TestCase):
             counts = fit_sync.run(client, True, gated=True)
         self.assertEqual((counts["due"], counts["synced"], counts["failed"]), (1, 1, 0))
         self.assertEqual((client.patches[0][0], client.patches[0][1]), ("PATCH", "/pages/page1"))
-        self.assertEqual(client.patches[0][2]["properties"]["Role"], {"rich_text": [{"type": "text", "text": {"content": "Product Owner (UX)"}}]})      # the Role column is the job title
+        self.assertEqual(client.patches[0][2]["properties"]["Role"], {"rich_text": [{"type": "text", "text": {"content": "Product Owner (UX)"}}]})  # the Role column is the job title
 
     def test_dry_run_counts_and_writes_nothing(self):
         client = Client()
@@ -71,11 +71,12 @@ class FitSync(unittest.TestCase):
         with mock.patch.object(fit_sync.store, "connect", side_effect=lambda: conn([ROW] * 5)):
             counts = fit_sync.run(client, True)
         self.assertEqual((counts["failed"], counts["synced"]), (3, 0))
-        self.assertEqual(counts["failed_why"], "NOTION_HTTP_500")                                  # the failing pages' reason reaches the log as a fixed code
+        self.assertEqual(counts["failed_why"], "NOTION_HTTP_500")
 
 
 class PageGone(unittest.TestCase):
-    """The two pages that failed every tick with a bare validation_error: a page in Notion's trash refuses every write."""
+    """The two pages that failed every tick with a bare validation_error: a page in Notion's trash refuses every write.
+    """
 
     class Refusing(Client):
         def __init__(self, page):
@@ -124,7 +125,9 @@ def jobs(rows):
 
 
 class RoleBackfill(unittest.TestCase):
-    """D247: a Ledger page's Role is its job's own title whether or not the job has a Fit score, a stored page id or a PUBLISHED status; nothing but the Role is written."""
+    """a Ledger page's Role is its job's own title whether or not the job has a Fit score, a stored page id or a
+    PUBLISHED status
+    """
 
     def run_backfill(self, client, rows, live=True, conns=None):
         def connect():
@@ -139,7 +142,7 @@ class RoleBackfill(unittest.TestCase):
         counts = self.run_backfill(client, [("aaaaaaaa000000000000000000000001", "k1", "Growth Partnerships Manager")])
         self.assertEqual((counts["role_due"], counts["role_filled"], counts["role_failed"]), (1, 1, 0))
         method, path, body = client.patches[0]
-        self.assertEqual((method, sorted(body["properties"])), ("PATCH", ["Role"]))                       # no Fit, Fit Authority, admission, lane or human field
+        self.assertEqual((method, sorted(body["properties"])), ("PATCH", ["Role"]))
         self.assertEqual(client.roles["aaaaaaaa-0000-0000-0000-000000000001"], "Growth Partnerships Manager")
 
     def test_a_scored_legacy_row_with_an_empty_role_is_filled_the_same_way(self):
@@ -149,7 +152,7 @@ class RoleBackfill(unittest.TestCase):
 
     def test_a_row_whose_page_id_was_cleared_is_found_by_the_pages_stable_job_key(self):
         client = Client(empty=[("page3", "k3")])
-        counts = self.run_backfill(client, [(None, "k3", "Head of Product (Wealth & Trading)")])           # the audit clears notion_page_id; the page and its key remain
+        counts = self.run_backfill(client, [(None, "k3", "Head of Product (Wealth & Trading)")])  # the audit clears notion_page_id
         self.assertEqual((counts["role_due"], counts["role_filled"], client.roles["page3"]), (1, 1, "Head of Product (Wealth & Trading)"))
 
     def test_the_job_query_does_not_require_a_published_status_or_a_stored_page_id(self):
@@ -161,10 +164,10 @@ class RoleBackfill(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertIn("dedupe_key IN", sent[0])
         self.assertIn("notion_page_id IN", sent[0])
-        self.assertNotIn("status", sent[0].lower())                                       # a kept page whose job the audit moved on still gets its Role
+        self.assertNotIn("status", sent[0].lower())
 
     def test_a_page_that_already_has_a_role_is_never_selected_or_written(self):
-        client = Client(empty=[], roles={"page5": "Head of Product (Wealth & Trading)"})                  # Notion's own filter returned nothing empty
+        client = Client(empty=[], roles={"page5": "Head of Product (Wealth & Trading)"})  # Notion's own filter returned nothing empty
         counts = self.run_backfill(client, [("page5", "k5", "A different title")])
         self.assertEqual((counts["role_empty"], counts["role_due"], counts["role_filled"], client.patches), (0, 0, 0, []))
 
@@ -181,12 +184,12 @@ class RoleBackfill(unittest.TestCase):
     def test_a_second_run_finds_nothing_once_the_role_reads_back(self):
         client = Client(empty=[("page8", "k8")])
         self.run_backfill(client, [("page8", "k8", "Product Designer (Platform)")])
-        client.empty = [p for p in client.empty if not client.roles.get(p[0])]                              # Notion no longer lists it as empty
+        client.empty = [p for p in client.empty if not client.roles.get(p[0])]
         self.assertEqual(self.run_backfill(client, [("page8", "k8", "Product Designer (Platform)")])["role_filled"], 0)
 
     def test_a_write_that_does_not_read_back_is_a_failure_not_a_fill(self):
         client = Client(empty=[("page9", "k9")])
-        client.call_once = lambda method, path, body=None: {}                                      # the write is lost
+        client.call_once = lambda method, path, body=None: {}  # the write is lost
         counts = self.run_backfill(client, [("page9", "k9", "Strategy & Operations Manager")])
         self.assertEqual((counts["role_filled"], counts["role_failed"]), (0, 1))
 
@@ -224,7 +227,9 @@ class RoleBackfill(unittest.TestCase):
 
 
 class NewestScoreFirst(unittest.TestCase):
-    """LIFE-212: after a lane-policy re-score marks every published page due, the pages scored last (the Cloud Fit batch's promotions) are synced first."""
+    """after a lane-policy re-score marks every published page due, the pages scored last (the Cloud Fit batch's
+    promotions) are synced first.
+    """
 
     def test_the_newest_scores_are_picked_first_on_the_production_sql(self):
         import datetime

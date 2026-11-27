@@ -1,6 +1,6 @@
-"""Fit v2 envelope (LIFE-41): the representative synthetic set, the static baseline beside a PROVISIONAL v2 outcome, and every way the capability's answer can be refused.
-Invented employers and a synthetic profile only (D16). The capability answers and target scores here are provisional test inputs, not model output and not approved ground truth:
-Jim has accepted none of them (cases J, K and L in particular await his judgment against real evidence). The envelope rules they exercise are the approved ones."""
+"""Fit v2 envelope: the representative synthetic set, the static baseline beside a PROVISIONAL v2 outcome, and every way
+the capability's answer can be.
+"""
 from datetime import date
 import json
 import unittest
@@ -132,20 +132,20 @@ Requirements
 • Hands-on experience with APIs and event-driven design
 """ + PAD)
 
-# PROVISIONAL, not approved: case -> (static baseline decision, a stand-in capability answer, the (score, decision) the envelope returns for it)
+# PROVISIONAL, not approved: case -> (static baseline decision, a stand-in capability answer, the (score.
 PROVISIONAL = {
     "A clear keyword match": ("Go", 94, (94, "Go")),
     "B paraphrased delivery lead": ("Go", 92, (92, "Go")),
     "C adjacent implementation role": ("Go", 78, (78, "Go")),
-    "D junior title, keywords stuffed": ("No-Go", 85, (55, "No-Go")),             # level cap
-    "E hands-on engineering mismatch": ("No-Go", 70, (40, "No-Go")),             # hard-family cap
-    "F title only": ("Unscorable", 90, (None, "Unscorable")),                    # never a percentage
+    "D junior title, keywords stuffed": ("No-Go", 85, (55, "No-Go")),  # level cap
+    "E hands-on engineering mismatch": ("No-Go", 70, (40, "No-Go")),  # hard-family cap
+    "F title only": ("Unscorable", 90, (None, "Unscorable")),  # never a percentage
     "G senior product, integration platform": ("Go", 82, (82, "Go")),
-    "H excluded domain": ("No-Go", 90, (90, "No-Go")),                           # the gate decides, the score stays visible
+    "H excluded domain": ("No-Go", 90, (90, "No-Go")),  # the gate decides, the score stays visible
     "I program manager, unrelated domain": ("No-Go", 20, (20, "No-Go")),
-    "J exec stretch": ("Go", 58, (58, "No-Go")),                                 # static overrates a VP stretch
-    "K paraphrase, no profile vocabulary": ("No-Go", 78, (78, "Go")),            # static misses a semantic transfer
-    "L solutions architect, adjacent craft": ("Go", 70, (70, "No-Go")),          # borderline, adjacent craft
+    "J exec stretch": ("Go", 58, (58, "No-Go")),  # static overrates a VP stretch
+    "K paraphrase, no profile vocabulary": ("No-Go", 78, (78, "Go")),  # static misses a semantic transfer
+    "L solutions architect, adjacent craft": ("Go", 70, (70, "No-Go")),  # borderline, adjacent craft
 }
 
 
@@ -185,10 +185,10 @@ class Envelope(unittest.TestCase):
     def test_an_unscorable_posting_never_gets_a_percentage_whatever_the_capability_says(self):
         base = evaluate("Technical Program Manager", "Litware", "", PROFILE, TODAY)
         sent = sent_for("Technical Program Manager", "")
-        self.assertIsNone(sent)                                                        # nothing is sent for a title-only posting
+        self.assertIsNone(sent)  # nothing is sent for a title-only posting
         got = judge.accept(answer(99), base, "Technical Program Manager", sent)
         self.assertEqual((got.score, got.decision), (None, "Unscorable"))
-        self.assertIsNone(judge.accept("not json at all", base, "x", sent).score)      # the answer is not even read
+        self.assertIsNone(judge.accept("not json at all", base, "x", sent).score)  # the answer is not even read
 
     def test_unusable_answers_fail_closed(self):
         for bad in ("", "nonsense", "[]", "null", answer(101), answer(-1), answer(72.5), json.dumps({"score": True, "rationale": "x", "confidence": "low"}),
@@ -218,7 +218,7 @@ class Envelope(unittest.TestCase):
         for leaked in ("hybrid", "Austin", "three days", "Salary", "$150,000", "401(k)", "Relocation", "visa", "authorized to work"):
             self.assertNotIn(leaked, description, leaked)
         for kept in ("steering forum", "remote engineering teams", "benefits realization", "10+ years leading complex"):
-            self.assertIn(kept, description, kept)                                     # legitimate responsibilities survive
+            self.assertIn(kept, description, kept)  # legitimate responsibilities survive
 
     def test_a_posting_that_is_mostly_policy_statements_sends_nothing(self):
         text = "Responsibilities\n" + "\n".join(f"• Salary range ${n}0,000, hybrid in Austin, 401(k) and health insurance" for n in range(1, 12)) + "\n"
@@ -245,21 +245,23 @@ class Envelope(unittest.TestCase):
             self.assertEqual(sent_for(title, self.text, location)["title"], kept, (title, location))
         text = self.text.replace("• Run the weekly steering forum and publish decisions", "• Run the weekly steering forum and publish decisions\n• Partner with the Chicago hub")
         self.assertNotIn("Chicago", sent_for(self.title, text, "Chicago, IL")["description"])
-        self.assertIn("Chicago hub", sent_for(self.title, text, None)["description"])          # no structured location, no structured removal (the residual limit)
+        self.assertIn("Chicago hub", sent_for(self.title, text, None)["description"])
 
     def test_a_title_that_cleans_to_nothing_is_ambiguous_and_sends_nothing(self):
         for title in ("Remote - Chicago", "(Hybrid) Austin", "", None):
             self.assertIsNone(sent_for(title, self.text, "Austin, TX"), title)
 
     def test_a_place_left_in_the_title_with_no_separator_sends_nothing(self):
-        """TL review of #339 (5567054574) closed the former RESIDUAL LIMIT: a place absent from the location field and unseparated in the title fails closed."""
+        """TL review of #339 (5567054574) closed the former RESIDUAL LIMIT: a place absent from the location field and
+        unseparated in the title fails closed.
+        """
         self.assertNotIn("RESIDUAL LIMIT", judge.__doc__)
         for title, location in (("Senior Technical Program Manager London", "Remote - United States"), ("Product Manager Chicago", None),
                                 ("Program Manager Toronto", "Remote"), ("Delivery Lead Berlin", ""), ("TPM California", None)):
             self.assertIsNone(sent_for(title, self.text, location), title)
             self.assertTrue(judge.title_place(judge.request_title(title, location)), title)
         for title in ("Senior Technical Program Manager", "Global Program Manager", "Product Owner, Platform", "Technical Program Manager - London"):
-            sent = sent_for(title, self.text, "Remote - United States")                                     # a clean role title (or a separated place, cut as before) is sent
+            sent = sent_for(title, self.text, "Remote - United States")
             self.assertIsNotNone(sent, title)
             self.assertFalse(judge.title_place(sent["title"]), title)
 
@@ -282,7 +284,7 @@ class Envelope(unittest.TestCase):
 
     def test_a_substantive_paraphrased_description_is_judged_even_when_the_static_scorer_recognises_nothing(self):
         base = evaluate("Launch Captain", "Initech", self.NARRATIVE, PROFILE, TODAY)
-        self.assertEqual((base.score, base.decision), (None, "Unscorable"))          # static vocabulary limit: nothing recognised
+        self.assertEqual((base.score, base.decision), (None, "Unscorable"))  # static vocabulary limit: nothing recognised
         sent = sent_for("Launch Captain", self.NARRATIVE)
         self.assertIsNotNone(sent)
         got = judge.accept(answer(79), base, "Launch Captain", sent)
@@ -292,10 +294,10 @@ class Envelope(unittest.TestCase):
         engineer = evaluate("Software Engineer", "Initech", self.NARRATIVE, PROFILE, TODAY)
         self.assertIsNone(engineer.score)
         got = judge.accept(answer(90), engineer, "Software Engineer", sent_for("Software Engineer", self.NARRATIVE))
-        self.assertEqual((got.score, got.decision), (40, "No-Go"))                   # hard-family cap, code-owned
+        self.assertEqual((got.score, got.decision), (40, "No-Go"))  # hard-family cap, code-owned
         gated = evaluate("Program Manager", "AcmeCorp", self.NARRATIVE, PROFILE, TODAY)
         got = judge.accept(answer(90), gated, "Program Manager", sent_for("Program Manager", self.NARRATIVE))
-        self.assertEqual((got.score, got.decision), (90, "No-Go"))                   # the private exclusion gate decides
+        self.assertEqual((got.score, got.decision), (90, "No-Go"))  # the private exclusion gate decides
 
 
 if __name__ == "__main__":

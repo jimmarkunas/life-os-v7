@@ -1,7 +1,6 @@
-"""LIFE-586 / LIFE-613: a domains job that COMPARES other cards' regions before and after its own write must not overlap a job that writes one of those regions, or the other card's legitimate write
-looks like a violation and fails it. This reads the real `needs:` graph of domains.yml and checks that every such pair is ordered (one transitively waits for the other). Every Daily Report card
-now writes through the write-scope guard (report_region.ScopedClient), which refuses a block that is not its own BEFORE the write is sent, so no card compares anything and none waits for another;
-only DCC, which builds from the other cards' callouts, still runs after them."""
+"""a domains job that COMPARES other cards' regions before and after its own write must not overlap a job that writes one
+of those regions, or the other.
+"""
 import pathlib
 import unittest
 
@@ -14,9 +13,8 @@ from lifeos.platform import router
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "domains.yml"
 WRITER = {router.JIRA_REGION: "jira", router.CALENDAR_REGION: "agenda", router.BILLS_REGION: "bills", router.AMAZON_REGION: "amazon", router.MAIL_ALERTS_REGION: "mail",
-          router.HIRING_REGION: "hiring", router.DCC_REGION: "dcc"}          # the job that writes each region
-# job -> the jobs whose regions it compares before and after its own write. Empty since LIFE-613: bills, agenda, imessage (Communications and Oracle Cloud) and hiring joined amazon, mail, attention
-# and dcc on the scope guard. A card that is added with a comparison puts its entry here and must then wait for what it compares.
+          router.HIRING_REGION: "hiring", router.DCC_REGION: "dcc"}  # the job that writes each region
+# job -> the jobs whose regions it compares before and after its own write.
 COMPARES = {}
 
 
@@ -69,8 +67,9 @@ class ComparingCardsAreOrdered(unittest.TestCase):
         self.assertEqual(found, [("hiring", "imessage"), ("hiring", "mail")])
 
     def test_interview_os_and_the_hiring_outcome_scan_run_beside_the_recruiters_mail_read_and_granola_waits_for_interview(self):
-        """LIFE-632: the Recruiters job had run the mail read, the hiring outcome scan and Interview OS in a row, which set the run time. The two now need only the gate; Recruiter Outreach still
-        follows the Recruiters step inside its own job; Granola, the other writer of the opportunity pages, waits for the Interview job."""
+        """the Recruiters job had run the mail read, the hiring outcome scan and Interview OS in a row, which set the run
+        time.
+        """
         for job in ("interview", "hiring_outcomes"):
             self.assertEqual(self.graph[job], {"gate"}, job)
             self.assertFalse(waits_for(self.graph, job, "recruiters") or waits_for(self.graph, "recruiters", job), job)
@@ -81,7 +80,7 @@ class ComparingCardsAreOrdered(unittest.TestCase):
         self.assertEqual([s.get("id") for s in self.jobs["hiring_outcomes"]["steps"] if s.get("id") == "houtcomes"], ["houtcomes"])
 
     def test_every_job_that_can_fail_is_named_by_the_report_job(self):
-        self.assertTrue(set(self.jobs) - {"report", "chain"} <= self.graph["report"])      # LIFE-904: chain only reads the Actions API and always ends green, so the report never waits for it
+        self.assertTrue(set(self.jobs) - {"report", "chain"} <= self.graph["report"])
 
 
 if __name__ == "__main__":

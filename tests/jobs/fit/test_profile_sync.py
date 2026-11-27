@@ -1,4 +1,6 @@
-"""The Fit profile sync: only an approved block is stored, the loader merges only a block that matches its own hash, and any failure leaves the stored row exactly as it was."""
+"""The Fit profile sync: only an approved block is stored, the loader merges only a block that matches its own hash, and
+any failure leaves the stored.
+"""
 import json
 import unittest
 
@@ -62,7 +64,7 @@ class AdoptionTests(unittest.TestCase):
             self.assertEqual((out["code"], vault.writes), ("SYNC_NOT_APPROVED", 0))
         edited = {"capabilities": [{**CAP, "terms": ["invented skill", "extra"]}], "functions": []}
         vault = Vault()
-        self.assertEqual(go(Page(json.dumps(edited), approved_for(BLOCK)), vault)["code"], "SYNC_NOT_APPROVED")     # approval is of the exact content
+        self.assertEqual(go(Page(json.dumps(edited), approved_for(BLOCK)), vault)["code"], "SYNC_NOT_APPROVED")  # approval is of the exact content
 
     def test_prose_that_merely_quotes_the_approval_line_is_not_an_approval(self):
         page = Page(json.dumps(BLOCK))
@@ -105,8 +107,8 @@ class RefusalTests(unittest.TestCase):
 
     def test_bad_blocks_are_refused_with_a_fixed_code_and_the_stored_row_is_untouched(self):
         self.refused("not json", "SYNC_BLOCK_NOT_JSON")
-        self.refused(json.dumps({"capabilities": [CAP], "exclusions": []}), "SYNC_BLOCK_KEYS")                  # the sync may not add exclusions
-        self.refused(json.dumps({"capabilities": [{**CAP, "id": "other"}]}), "SYNC_CAPABILITY_ID")             # it may not claim an id it does not own
+        self.refused(json.dumps({"capabilities": [CAP], "exclusions": []}), "SYNC_BLOCK_KEYS")  # the sync may not add exclusions
+        self.refused(json.dumps({"capabilities": [{**CAP, "id": "other"}]}), "SYNC_CAPABILITY_ID")  # it may not claim an id it does not own
         self.refused(json.dumps({"capabilities": [{**CAP, "class": "nope", "committed": False}]}), "SYNC_BLOCK_INVALID")
         self.refused(json.dumps({"capabilities": []}), "SYNC_BLOCK_SIZE")
         self.refused(json.dumps({"capabilities": [{**CAP, "terms": ["x" * 30000]}]}), "SYNC_BLOCK_TOO_LARGE")
@@ -123,7 +125,9 @@ class RefusalTests(unittest.TestCase):
 
 
 class StoreReadTests(unittest.TestCase):
-    """The real Store.read against a fake connection: a missing table is 'nothing synced', any other database error is not."""
+    """The real Store.read against a fake connection: a missing table is 'nothing synced', any other database error is
+    not.
+    """
 
     def store_with(self, error=None, row=None):
         from unittest import mock
@@ -179,7 +183,7 @@ class LoaderTests(unittest.TestCase):
         vault = Vault((ps.content_hash(block), block))
         merged = load(self.ENVIRON, ps.stored_block(self.ENVIRON, vault))
         self.assertEqual([c["id"] for c in merged.capabilities], ["kept", "nsync_example"])
-        self.assertNotEqual(merged.hash, load(self.ENVIRON).hash)                # a changed profile hash re-scores every job (D94)
+        self.assertNotEqual(merged.hash, load(self.ENVIRON).hash)  # a changed profile hash re-scores every job
 
     def test_nothing_synced_changes_nothing(self):
         self.assertIsNone(ps.stored_block(self.ENVIRON, Vault()))
