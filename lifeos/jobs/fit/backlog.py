@@ -1,5 +1,4 @@
-"""The Cloud Fit backlog batch: one manual bounded run of the Oracle fit1 path over jobs the tick's single canary
-call never reaches.
+"""The Cloud Fit backlog batch: a bounded run of the Oracle fit1 path beyond the tick canary.
 
 `python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX,
 BACKLOG_CALLS_MAX) jobs, V7_CLOUD_FIT_PARALLEL at a time, within V7_CLOUD_FIT_BACKLOG_BUDGET seconds. The MAX

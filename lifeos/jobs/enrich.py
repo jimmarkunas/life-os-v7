@@ -1,5 +1,4 @@
-"""Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match
-check.
+"""Enrich stage: read the FINAL page of RESOLVED rows for description, posting date, liveness and match.
 
 Description source order: ATS API (Greenhouse, Lever) -> schema.org JobPosting JSON-LD -> readable page text.
 Outcomes: READY | CLOSED | EXCLUDED_STALE (older than the job's lane policy allows) | back to NEW (page does not

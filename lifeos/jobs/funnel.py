@@ -1,6 +1,8 @@
-"""Pipeline funnel report: where each provider's jobs end up, and how Fit and the lane policy sort them. Read-only.
-For jobs first seen in the last 24 hours and 7 days: per source the count by status, Fit admission by score band
-and lane reason, and time since a job was last found and published. Sources, statuses and reasons are fixed codes.
+"""Pipeline funnel report: where each provider's jobs end up and how Fit and the lane policy sort them.
+
+Read-only. For jobs first seen in the last 24 hours and 7 days: per source the count by status, Fit admission by
+score band and lane reason, and time since a job was last found and published. Sources, statuses and reasons are
+fixed codes.
 """
 import json
 import re

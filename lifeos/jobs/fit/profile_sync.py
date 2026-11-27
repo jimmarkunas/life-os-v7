@@ -1,5 +1,6 @@
-"""Fit profile sync: the Notion page is the authority; this stage copies its approved evidence block into the private
-store table v7_fit_profile_sync, which profile.load merges in.
+"""Fit profile sync: copy the approved evidence block of the Notion page into the private store.
+
+The table is v7_fit_profile_sync, which profile.load merges in. The Notion page is the authority.
 
 Input: one JSON code block ({"capabilities": [...], "functions": [...]}, ids "nsync_*", every function "owner":
 "nsync") and one paragraph "APPROVED HASH: <16 hex>", the content hash of the approved block; a block whose hash

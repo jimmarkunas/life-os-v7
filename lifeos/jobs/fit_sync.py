@@ -1,5 +1,4 @@
-"""Fit sync: put the Fit on pages published before (or without) a score; updates only the page's machine-owned Fit
-fields.
+"""Fit sync: put the Fit on published pages; updates only the page's machine-owned Fit fields.
 
 Publish only creates; this updates a published page when its stored score is newer than the last sync: LIFE OS
 Fit, Why It Fits, Fit Authority and, with V7_FIT_GATE, the lane-policy fields. Never touches human state (Applied,

@@ -1,5 +1,6 @@
-"""Counts-only report of why Scale-Up jobs are EXCLUDED_FIT: reads v7_jobs and v7_job_fit, writes nothing. Splits the
-status by stored reason, Fit band and source; no title, link, company or text is printed.
+"""Counts-only report of why Scale-Up jobs are EXCLUDED_FIT; reads v7_jobs and v7_job_fit.
+
+Splits the status by stored reason, Fit band and source; no title, link, company or text is printed.
 """
 import re
 

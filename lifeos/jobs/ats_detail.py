@@ -1,5 +1,6 @@
-"""Direct readers for ATS job pages that are JavaScript shells: one public-JSON call per job, no browser. Input:
-read(url). Output: dict(title, html, posted) | {"closed": True} | None.
+"""Direct readers for ATS job pages that are JavaScript shells: one public-JSON call per job.
+
+Input: read(url). Output: dict(title, html, posted) | {"closed": True} | None.
 """
 import html as htmllib
 import json

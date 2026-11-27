@@ -1,5 +1,6 @@
-"""Daily counts per day and name (board reads and failures, search calls and failures, the HOLD pile), kept about two
-weeks for the monitors.
+"""Daily counts per day and name (board reads, search calls, the HOLD pile), kept about two weeks.
+
+These are the monitors' evidence.
 """
 # Counts only; no title, company or link. `record` is called by lifeos.run after a live stage and never raises: a
 # missed row costs a monitor one day of evidence, never a run. Days are UTC dates.
