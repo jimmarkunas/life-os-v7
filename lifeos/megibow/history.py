@@ -1,5 +1,4 @@
-"""MegIBOW history: the weeks before V7 took over, recorded from a Google Sheet and shown in their weeks, never added
-to Cumulative twice.
+"""MegIBOW history: the weeks before V7 took over, recorded from a Google Sheet and shown in their weeks, never added to Cumulative twice.
 
 Counts only: no names, no addresses.
 """

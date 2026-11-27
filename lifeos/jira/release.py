@@ -1,5 +1,4 @@
-"""Move tickets from To Do to Agent Go by themselves, in rank order, when their blockers are Done and their epic
-carries the label `auto-release`.
+"""Move tickets from To Do to Agent Go by themselves, in rank order, when their blockers are Done and their epic carries the label `auto-release`.
 
 A child also needs: never in Agent Go before, a Done-when line, a complete Jim must do first section, no `needs-jim`
 label; at most RELEASE_LIMIT per run. `gate` returns the fixed refusal reasons shared with promote and readiness. Dry

@@ -1,5 +1,4 @@
-"""Read-only Jira execution snapshot per board, kept in the private database for the report. Output: counts only;
-keys, summaries and sprint names are private."""
+"""Read-only Jira execution snapshot per board, kept in the private database for the report. Output: counts only; keys, summaries and sprint names are private."""
 import os
 import time
 from datetime import datetime

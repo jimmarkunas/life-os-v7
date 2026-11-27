@@ -1,6 +1,8 @@
-"""The MegIBOW block writer: edits only the machine-owned callout (MEGIBOW_BLOCK_ID) and its one table, in place, and
-reads every write back. Nothing around the block changes; a block of unexpected shape is DEGRADED and nothing is
-written."""
+"""The MegIBOW block writer: edits only the machine-owned callout (MEGIBOW_BLOCK_ID) and its one table, in place.
+
+Every write is read back. Nothing around the block changes; a block of unexpected shape is DEGRADED and nothing is
+written.
+"""
 from urllib.parse import quote
 
 from lifeos.platform import readback, report_region

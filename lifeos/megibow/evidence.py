@@ -1,5 +1,4 @@
-"""MegIBOW evidence readers: Gmail and Outlook sent mail, Google and Outlook calendar events -> the plain dicts
-classify expects. Read only, in memory only.
+"""MegIBOW evidence readers: Gmail and Outlook sent mail, Google and Outlook calendar events -> the plain dicts classify expects. Read only, in memory only.
 
 Bridged Google copies are skipped; a listing that cannot be proven complete raises.
 """

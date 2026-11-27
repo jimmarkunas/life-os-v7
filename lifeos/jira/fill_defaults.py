@@ -1,5 +1,4 @@
-"""Fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is
-never changed."""
+"""Fill the parent epic, Component and Fix Version of LIFE tickets by one set of rules; a value that is already set is never changed."""
 # Rules, in order: (1) Parent: keep it; else a Bug goes under BUGS_EPIC; else `action-inbox` goes to INBOX_EPIC and a
 # title "Stability n/7" to STABILITY_EPIC; else the container epic "LIFE one-off tasks" (found by its title alone,
 # created once when absent). (2) Component: keep it; else the parent epic's; else Platform / Core OS. (3) Fix Version:

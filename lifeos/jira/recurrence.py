@@ -1,5 +1,7 @@
-"""Recurring-series clones and closure counts of one board, shared by the daily reconcile and the rollover boundary.
-Writes go through injected writers and fail closed when unverified."""
+"""Recurring-series clones and closure counts of one board, shared by the daily reconcile and the rollover.
+
+Writes go through injected writers and fail closed when unverified.
+"""
 
 from datetime import timedelta
 

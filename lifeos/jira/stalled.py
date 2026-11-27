@@ -1,5 +1,7 @@
-"""Name LIFE tickets idle in In Progress (30 minutes) or Agent Go (2 hours) whose last comment is not `[waiting on]`.
-Read only, no phone push; `needs-jim` tickets are not stalled."""
+"""Name LIFE tickets idle in In Progress (30 minutes) or Agent Go (2 hours) with no `[waiting on]` last comment.
+
+Read only, no phone push; `needs-jim` tickets are not stalled.
+"""
 import os
 from datetime import datetime, timedelta, timezone
 

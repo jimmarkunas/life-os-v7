@@ -1,5 +1,4 @@
-"""May an agent move this ticket to Agent Go itself, or must it wait for Jim? A pure check on a fetched Jira issue: no
-network, no write."""
+"""May an agent move this ticket to Agent Go itself, or must it wait for Jim? A pure check on a fetched Jira issue: no network, no write."""
 # Agents promote on their own except for the scary list below (policy: docs/life-os-development-policy.md section 4).
 # The agent makes transition 17 (To Do to Agent Go) and posts the one comment, or `[waiting on] Jim: <the one thing>`.
 import re

@@ -1,5 +1,4 @@
-"""The Jira card in the Daily Report: the "JIRA Execution" Notion block (JIRA_CARD_BLOCK_ID), rendered from the
-private snapshot, never live Jira.
+"""The Jira card in the Daily Report: the "JIRA Execution" Notion block (JIRA_CARD_BLOCK_ID), rendered from the private snapshot, never live Jira.
 
 Tickets under the Global Talent Visa epic (JIRA_GTV_EPIC) are excluded; their own callout (GTV_CARD_BLOCK_ID) is
 filled in place. A snapshot older than STALE_HOURS changes only the status line, to STALE. Output: counts and fixed
