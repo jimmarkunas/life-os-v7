@@ -1,9 +1,11 @@
-"""Pure text for the V3 accountability regions (LIFE-671): no Notion, no Jira, no clock. Every line is plain text; a summary page is at most SUMMARY_MAX characters."""
+"""Pure text for the V3 accountability regions: no Notion, no Jira, no clock.
+
+A summary page is at most SUMMARY_MAX characters."""
 from lifeos.accountability import read
 from lifeos.platform import ct_stamp
 
 SUMMARY_MAX = 1000
-BODY_MAX = 1800                       # one Notion text item holds 2,000 characters
+BODY_MAX = 1800
 SHOWN = 12
 NO_EPICS = "No quarter epics yet for this quarter."
 ACCEPTED = "showing last accepted "
@@ -14,7 +16,6 @@ def stamp(now):
 
 
 def degraded_stamp(old, now, what="Jira"):
-    """DEGRADED keeps the last accepted stamp it replaces; a region never accepted says so."""
     text = (old or "").strip()
     if text.startswith("DEGRADED") and ACCEPTED in text:
         accepted = text.split(ACCEPTED, 1)[1]
@@ -38,7 +39,7 @@ GREEN, ORANGE, RED, GRAY = "green", "orange", "red", "gray"
 
 
 def bar(done, total):
-    """LIFE-918: the ten-block Progress cell as [(text, link, bold, color)]: filled blocks = Done / all, green at 70% or more, orange from 30% to 69%, red under 30%, the rest gray."""
+    """Ten-block Progress cell: filled blocks = Done / all; green at 70% or more, orange 30-69%, red under 30%."""
     share = done / total if total else 0.0
     filled = min(BAR, int(share * BAR + 0.5))
     color = GREEN if share >= 0.7 else ORANGE if share >= 0.3 else RED
@@ -46,24 +47,21 @@ def bar(done, total):
 
 
 def p(text, url=None, bold=False):
-    """One piece of a Notion paragraph: (text, link or None, bold)."""
     return (text, url, bold)
 
 
 NL = p("\n")
 SECTION_OPEN, SECTION_DONE = "In progress / To do", "Done"
 OPEN_SHOWN, DONE_SHOWN = 10, 8
-MAX_PARTS = 95                                    # Notion holds 100 text pieces in one paragraph
+MAX_PARTS = 95
 
 
 def _issue(row, site, flag="", indent=""):
-    """-> (parts, plain line) for "KEY summary (status)", the key linked to the Jira issue."""
     rest = f" {row['summary']} ({row['status']}{flag})"
     return [NL, p(indent + row["key"], read.issue_url(site, row["key"])), p(rest)], f"{indent}{row['key']}{rest}"
 
 
 def _group(title, rows, shown, site, more_url, flags=None, indent=None):
-    """A bold heading with a count, then the first `shown` rows as linked lines, then "…and N more in Jira" linked to the filtered Jira view."""
     parts, lines = [NL, p(f"{title} ({len(rows)})", bold=True)], [f"{title} ({len(rows)}):"]
     if not rows:
         return parts + [NL, p("Nothing.")], lines + ["Nothing."]
@@ -77,8 +75,6 @@ def _group(title, rows, shown, site, more_url, flags=None, indent=None):
 
 
 def _v3_week_view(week, today, site):
-    """LIFE-918 AC3: sprint commitments with Sub-tasks grouped under their parent, then blocked and overdue backlog apart, then Done this week.
-    Every key is in one section only; the heading counts commitments, never Sub-tasks."""
     open_rows, subtasks = week["open"], week["subtasks"]
     blocked, overdue, done_rows = week["blocked"], week["overdue"], week["done"]
     sub_count = sum(len(rows) for rows in subtasks.values())
@@ -109,7 +105,7 @@ def _v3_week_view(week, today, site):
 
 
 def week_view(week, today, site):
-    """Render the legacy JFM weekly view, MEJ's separated sprint/due view, or the LIFE-918 view both boards share."""
+    """Render the JFM weekly view, MEJ's sprint/due view, or the V3 view both boards share."""
     if week.get("v3"):
         return _v3_week_view(week, today, site)
     open_rows, done_rows = week["open"], week["done"]
@@ -133,7 +129,6 @@ def week_view(week, today, site):
         return ([p(head)] + active_parts + [NL] + due_parts + [NL] + done_parts,
                 [head] + active_lines + [""] + due_lines + [""] + done_lines)
 
-    # The previously approved JFM block and summary format are unchanged.
     overdue = {r["key"] for r in open_rows if r["due"] and r["due"] < today.isoformat()}
     blocked = [r for r in open_rows if r["status"].lower() == "blocked"]
     head = f"{len(open_rows)} open · {len(overdue)} overdue · {len(blocked)} blocked · {len(done_rows)} done this week"
@@ -150,7 +145,8 @@ REVIEWS_NONE = "Review pages are not indexed yet."
 
 
 def artifact_lines(items):
-    """-> (lines, plain lines, bulleted): one line per verified artifact, its title linked, in index order, as bullets; `None` (no index page) and an empty list give one plain message line (not bulleted)."""
+    """-> (lines, plain lines, bulleted): one linked line per verified artifact; None (no index) or empty gives one
+    plain message line."""
     if items is None:
         return [[p(NO_INDEX)]], [NO_INDEX], False
     if not items:
@@ -164,7 +160,6 @@ def combined_heading(person, year, n):
 
 
 def review_parts(links):
-    """-> the Quarterly Reviews toggle's paragraph: each review page linked, the current quarter first; None (no index) and an empty list say so plainly."""
     if not links:
         return [p(REVIEWS_NONE)]
     parts = []
@@ -174,7 +169,6 @@ def review_parts(links):
 
 
 def fit(parts):
-    """Notion holds MAX_PARTS pieces in one paragraph: drop whole trailing lines until it fits (a "…and N more" link already points at Jira)."""
     parts = list(parts)
     while len(parts) > MAX_PARTS:
         parts = parts[:max(i for i, part in enumerate(parts[:-1]) if part == NL)]

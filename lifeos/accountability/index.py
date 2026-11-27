@@ -1,8 +1,8 @@
-"""The two Notion index pages the V3 accountability stages read: the review index (child 02) and the artifact index (child 05) of the V3 master (LIFE-840).
+"""The two Notion index pages the stages read (reviews, artifacts); read only.
 
-A page is found by its V3 block ID register row (`index.reviews`, `index.artifacts`) and accepted only with its expected title; a missing row or page gives None and the stage says so. Reads only.
-Review bullet: `<Person> | <Qn YYYY> | current or past → <mention of the record page>`. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> | <verified, unresolved or excluded> | <date>`, the Google link on the Title.
-"""
+A page is found by its V3 block ID register row and accepted only with its expected title, else None. Review
+bullet: `<Person> | <Qn YYYY> | current or past → <record page>`. Artifact bullet: `<Owner> | <Title> | <file id> |
+<Jira keys> | <Doc or Sheet> | <verified, unresolved or excluded> | <date>`."""
 from urllib.parse import quote
 
 from lifeos.accountability import region
@@ -22,7 +22,6 @@ def _links(block):
 
 
 def rows(notion, key):
-    """-> [(cells, first link)] for every bullet of the index page `key`, or None when the register row or the page is missing or titled otherwise."""
     page_id = region.register_row(notion, key)
     if page_id is None:
         return None
@@ -37,7 +36,6 @@ def rows(notion, key):
 
 
 def reviews(notion, person):
-    """-> [(label, url)] of the person's review records, the current quarter first then older ones as indexed; None when the index is not set up."""
     found = rows(notion, "index.reviews")
     if found is None:
         return None
@@ -47,8 +45,8 @@ def reviews(notion, person):
 
 
 def artifacts(notion, person):
-    """-> ([{title, url, file_id, keys, kind, state}] verified artifacts in index order, unresolved count, {file ids marked excluded}) for the person; None when the index is not set up.
-    An excluded row is a file the person said is not a dashboard artifact: never shown, never counted as unresolved."""
+    """-> ([{title, url, file_id, keys, kind, state}] verified, unresolved count, {excluded file ids}); None when no
+    index."""
     found = rows(notion, "index.artifacts")
     if found is None:
         return None

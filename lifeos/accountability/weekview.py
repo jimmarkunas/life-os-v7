@@ -1,12 +1,7 @@
-"""LIFE-918 AC3: the V3 weekly sprint view as native Notion blocks, to the approved wireframe.
+"""The V3 weekly sprint view as native Notion blocks.
 
-Jim approved it Nov 25 2026, 3:19 AM CT; layout corrected 3:22 AM CT: Jim left, Matt right.
-
-Pure: no Notion, no Jira, no clock. `spec` gives a list of block specs; a spec is {"type", "rich": [(text, link, bold, color)], "children": [spec], "icon": emoji, "color": block colour}.
-`region.write_tree` turns a spec into blocks inside one person's week callout and reads it back. Blocks: a title line, a 2 x 2 grid of tile callouts (Sprint commitments and Overdue backlog left,
-Blocked outside sprint and Done this week right; one big number, one paragraph holding the bold label and a gray line), the grouped lists with Sub-tasks under their parent, a Done this week toggle and the
-gray "Next sprints" line of four short names (PROJECT W{week} {year}). Which side a board sits on is the V3 page's own layout (the Jim and Matt callouts are already paired Jim left, Matt right).
-`python -m lifeos.accountability.weekview --synthetic` prints it from fixtures with no network."""
+Pure: no Notion, no Jira, no clock. `spec` gives block specs {"type", "rich": [(text, link, bold, color)],
+"children": [spec], "icon": emoji, "color": block colour} for `region.write_tree`."""
 import sys
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -29,7 +24,6 @@ def node(kind, rich=(), children=(), **extra):
 
 
 def sprint_name(project, monday):
-    """The short sprint name of decision C: PROJECT W{iso week} {iso week-year}."""
     year, week = monday.isocalendar()[:2]
     return f"{project} W{week} {year}"
 
@@ -70,7 +64,6 @@ def _tile(icon, number, label, line, red=False):
 
 
 def spec(week, today, site, project, now):
-    """-> the weekly view of one board as a list of block specs, from `read.week(..., v3_week_view=True)`."""
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     open_rows, subtasks, blocked, overdue, done = week["open"], week["subtasks"], week["blocked"], week["overdue"], week["done"]
@@ -105,7 +98,6 @@ def spec(week, today, site, project, now):
 
 
 def plain(specs, depth=0):
-    """The text of a spec tree, one line per block, children indented: for the tests and `--synthetic`."""
     out = []
     for item in specs:
         text = "".join(piece[0] for piece in item["rich"])

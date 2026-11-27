@@ -1,4 +1,4 @@
-"""Process the Pay tag (Paid, Auto) against the configured Bill Tracker; output is counts only. The old Paid checkbox is no longer read (LIFE-978)."""
+"""Process the Pay tag (Paid, Auto) against the configured Bill Tracker; output is counts only."""
 import json
 import os
 from datetime import date, datetime
@@ -52,14 +52,14 @@ def _compact_page(page, source):
         raise PaidError("BILLS_PROPERTY_INVALID")
     pay = props.get("Pay")
     if not isinstance(pay, dict) or pay.get("type") != "select":
-        raise PaidError("BILLS_PAY_PROPERTY_INVALID")           # a missing or retyped Pay column is a schema change: the whole run stops with this code, nothing is written
+        # a missing or retyped Pay column is a schema change: stop, write nothing
+        raise PaidError("BILLS_PAY_PROPERTY_INVALID")
     item = pay.get("select")
     row["Pay"] = item.get("name") if isinstance(item, dict) else None
     return row
 
 
 def _flag(row, kind):
-    """True while the row still carries the trigger of this kind of payment: `paid` is the Pay tag Paid; `auto` is the Pay tag Auto (which stays on)."""
     return row.get("Pay") == ("Auto" if kind == "auto" else "Paid")
 
 
@@ -73,7 +73,7 @@ def _triggered(row, kind, today):
     return _auto_due(row, today) if kind == "auto" else _flag(row, "paid")
 
 
-ROW_CODES = ("BILLS_PAGE_INVALID", "BILLS_PROPERTY_INVALID")     # a bad row is skipped and counted; a wrong source, pagination or duplicate stays fatal
+ROW_CODES = ("BILLS_PAGE_INVALID", "BILLS_PROPERTY_INVALID")
 
 
 def _query(client, source):
@@ -127,7 +127,7 @@ def _write(client, page_id, properties, counts):
         client.update_page_properties(page_id, properties)
         return True
     except Exception:
-        # A timed-out PATCH may have committed. The caller must inspect the row before retrying.
+        # A timed-out PATCH may have committed: inspect the row before retrying.
         return False
 
 
@@ -185,11 +185,12 @@ def _verify_source(client, page_id, source, entry, recurring, paid):
 
 def _process(client, connection, row, source, today, entry, counts, live, kind="paid"):
     if entry is not None and entry.get("step") == "complete" and entry.get("today") == today.isoformat():
-        counts["review"] += 1                       # D86: the Paid tag set again on the day it was processed is not a second payment; left tagged for a person
+        counts["review"] += 1
         return
     is_new = entry is None or entry.get("step") == "complete"
     is_resume = not is_new
-    kind = kind if is_new else entry.get("kind", "paid")      # LIFE-978: `auto` advances a due Auto bill and keeps the tag; `paid` (the Pay tag Paid) advances and resets the tag
+    # `auto` advances a due Auto bill and keeps the tag; `paid` advances and resets it
+    kind = kind if is_new else entry.get("kind", "paid")
     auto = kind == "auto"
     cycle = row.get("Cycle")
     recurring = cycle in state.SUPPORTED_CYCLES
@@ -205,7 +206,7 @@ def _process(client, connection, row, source, today, entry, counts, live, kind="
             return
         if live:
             try:
-                row, page = _fresh(client, row["page_id"], source)  # capture only from the exact current row
+                row, page = _fresh(client, row["page_id"], source)
             except Exception:
                 counts["failed"] += 1
                 return
@@ -216,7 +217,8 @@ def _process(client, connection, row, source, today, entry, counts, live, kind="
         if recurring and not captured_day:
             counts["review"] += 1
             return
-        if auto and not captured_day > _day(row.get("Due Date")):          # the formula must name a date after the due date, or nothing is advanced
+        # the formula must name a date after the due date, or nothing is advanced
+        if auto and not captured_day > _day(row.get("Due Date")):
             counts["review"] += 1
             return
         entry = {"page_id": row["page_id"], "captured_next_due": captured_day.isoformat() if captured_day else None,
@@ -225,7 +227,7 @@ def _process(client, connection, row, source, today, entry, counts, live, kind="
         if not live:
             counts["advanced" if recurring else "one_time"] += 1
             return
-        _ledger_save(connection, entry)                # write-ahead, before the first Notion mutation
+        _ledger_save(connection, entry)
     else:
         counts["resumed"] += 1
         if (not _day(entry.get("today")) or entry.get("cycle") != cycle
@@ -249,7 +251,6 @@ def _process(client, connection, row, source, today, entry, counts, live, kind="
             counts["failed"] += 1
             return
 
-    # Re-fetch the exact command row before any Notion write; on resume, retain the ledger date.
     if is_new:
         fresh = row
     else:
@@ -308,7 +309,7 @@ def _process(client, connection, row, source, today, entry, counts, live, kind="
     reset = {}
     if not auto:
         if fresh.get("Pay") == "Paid":
-            reset["Pay"] = PAY_UNPAID                           # the tag goes back to Unpaid, an Auto tag is never touched
+            reset["Pay"] = PAY_UNPAID
     if reset:
         _write(client, row["page_id"], reset, counts)
     try:
@@ -328,7 +329,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     source = _source_id(client)
     if len(source) != 32 or any(ch not in "0123456789abcdef" for ch in source):
         raise PaidError("BILLS_SOURCE_INVALID")
-    rows, invalid = _query(client, source)           # a partial answer is never interpreted as an empty queue; one malformed row never blocks the rest
+    rows, invalid = _query(client, source)
     now = now or datetime.now(LOCAL_TZ)
     today = _today(now)
     paid = [row for row in rows if _flag(row, "paid")]
@@ -372,7 +373,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
                     _process(client, connection, row, source, today, ledger.get(page_id), counts, True, kind)
                 except Exception:
                     counts["failed"] += 1
-            for row in [r for r in untagged if r["page_id"] not in queued][:cap]:      # an Active bill with no tag is tagged Unpaid (LIFE-978); Jim sets Auto himself
+            # an Active bill with no tag is tagged Unpaid; Auto is set by hand
+            for row in [r for r in untagged if r["page_id"] not in queued][:cap]:
                 if _write(client, row["page_id"], {"Pay": PAY_UNPAID}, counts):
                     counts["backfilled"] += 1
     return counts

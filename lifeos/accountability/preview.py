@@ -1,9 +1,8 @@
-"""LIFE-918 AC4 and AC5: the v2 quarterly preview, shown inside the existing Quarterly Goals & Review blocks. OFF BY DEFAULT.
+"""The v2 quarterly preview inside the Quarterly Goals & Review blocks.
 
-Through Q4 2026 the legacy (v1) figures stay official; this module only works out what v2 would say beside them. With the V2_QUARTER_SHADOW row exactly "on" the goals stage upgrades each person's own
-Quarterly Goals & Review table in place (Lane, Progress, Done / all, New count (preview), Status); there is no separate preview block and no address row for one (Jim, comment 14216). Matt shows the v2
-count per lane when an approved frozen quarter list exists, else a dash and a red reason: NEEDS Q1 MEMBER LIST while the list is not approved, DATA MISSING when the frozen list and Jira disagree. JFM and MEJ alike
-("918 uniform new", Jim, comment 14228). A v2 problem never fails the goals stage and nothing is invented. Pure except `reading`, which only reads Jira; `python -m lifeos.accountability.preview --synthetic` needs no network."""
+OFF BY DEFAULT; legacy (v1) figures stay official. With V2_QUARTER_SHADOW exactly "on" the goals table gains New
+count (preview) and Status columns: the v2 count when an approved frozen quarter list exists, else a dash and a red
+reason. A v2 problem never fails the goals stage."""
 import re
 import sys
 
@@ -17,13 +16,12 @@ DASH = "—"
 
 
 def _code(error):
-    """The fixed code of an error, or a generic one: an error text is never shown."""
     text = str(error)
     return text if CODE.match(text) else "ACCOUNTABILITY_DEGRADED"
 
 
 def reading(jira, person, mine, first, last):
-    """-> {"applies": bool, "counts": {epic key: (done, all)} or None, "code": fixed code or None}. Both boards have a v2; a read that fails closed gives counts None and the fixed code (legacy is not this module's to hide)."""
+    """-> {"applies": bool, "counts": {epic key: (done, all)} or None, "code": fixed code or None}."""
     if not mine:
         return {"applies": False, "counts": None, "code": None}
     try:
@@ -34,7 +32,8 @@ def reading(jira, person, mine, first, last):
 
 
 def cells(found, view):
-    """-> {lane: [progress, done / all, new count, status]} for the table: each cell [(text, link, bold, color)]. `found` is [(lane, done, all, epic key)]; legacy figures are the official ones."""
+    """-> {lane: [progress, done / all, new count, status]}, cells [(text, link, bold, color)]. `found` is [(lane,
+    done, all, epic key)]."""
     out = {}
     for lane, done, total, key in found:
         if not view["applies"]:
@@ -56,7 +55,6 @@ SYNTHETIC = {"Jim": ([("Career", 5, 26, "JFM-9"), ("LIFE OS", 6, 9, "JFM-102")],
 
 
 def main(argv):
-    """`--synthetic` prints the cells from fixed fixtures: no Jira, no Notion, no network, no write."""
     if list(argv) != ["--synthetic"]:
         print("usage: python -m lifeos.accountability.preview --synthetic")
         return 2

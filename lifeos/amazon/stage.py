@@ -9,11 +9,11 @@ from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import events, orders
 
-# D113: the sender allowlist is the only mailbox filter. Neither the Inbox nor the Amazon label is a processed boundary: a Gmail filter may
-# label mail on arrival, and a human may move it, so both would hide real orders. Idempotence belongs to LIFE OS (Source Message IDs on the order row).
+# The sender allowlist is the only mailbox filter: neither the Inbox nor the Amazon label marks a message processed.
+# Idempotence comes from Source Message IDs on the order row.
 SENDERS_QUERY = "{" + " ".join("from:" + address for address in events.SENDERS) + "}"
-OVERLAP = timedelta(days=3)                 # re-read window behind the last accepted event; replay-safe because merging is idempotent
-BOOTSTRAP = timedelta(days=45)              # used only when the canonical data source has no dated order yet
+OVERLAP = timedelta(days=3)
+BOOTSTRAP = timedelta(days=45)
 SCHEMA_TYPES = {
     "Order ID": "title", "Status": "select", "Ordered At": "date", "Latest Event At": "date",
     "Grand Total": "number", "Item Summary": "rich_text", "Item Count": "number",
@@ -135,7 +135,6 @@ def _write(client, source_id, existing, desired, review_only=False):
         with fixed(NotionError, AmazonError, "AMAZON_NOTION_WRITE_FAILED"):
             client.call_once("PATCH", f"/pages/{quote(page_id, safe='')}", {"properties": props})
     else:
-        # REVIEW rows contain identity and the two review fields only; no event fields are guessed.
         create_props = ({"Order ID": {"title": rich_text(desired["Order ID"])}, **props}
                         if review_only else props)
         body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": create_props}
@@ -163,7 +162,6 @@ def _readback_equal(actual, expected, review_only=False):
 
 
 def _review_readback_equal(actual, desired, before):
-    """A row frozen in REVIEW changes its two review fields and nothing else."""
     return _readback_equal(actual, desired, review_only=True) and orders.equal(
         actual, before, tuple(field for field in orders.FIELDS if field not in REVIEW_FIELDS), _minute, _raw)
 
@@ -183,7 +181,6 @@ def _config(environ):
 
 
 def _watermark(client, source_id):
-    """Latest accepted event time in the canonical data source (one sorted read), or None when no dated order exists."""
     body = {"page_size": 1, "sorts": [{"property": "Latest Event At", "direction": "descending"}]}
     with fixed(NotionError, AmazonError, "AMAZON_NOTION_QUERY_FAILED"):
         page = client.query_data_source(source_id, body)
@@ -194,15 +191,15 @@ def _watermark(client, source_id):
 
 
 def window_query(watermark, now, since=None, until=None):
-    """The bounded Gmail search: allowlisted senders after (last accepted state - overlap), and before `until` when a backfill window closes. Never mailbox-wide."""
+    """Bounded Gmail search: allowlisted senders after (last accepted state - overlap), and before `until` when a
+    backfill window closes. Never mailbox-wide."""
     start = since or ((watermark - OVERLAP) if watermark else (now - BOOTSTRAP))
-    # An explicit start (a backfill or a recovery) also reads the Trash: retention moves recorded mail there, and a mail whose total was not readable yet must stay re-readable.
+    # An explicit start (backfill or recovery) also reads the Trash, where retention moves recorded mail.
     return f"{SENDERS_QUERY} after:{int(start.timestamp())}" + (f" before:{int(until.timestamp())}" if until else "") + (" in:anywhere" if since else "")
 
 
 def _gmail_ids(gmail, limit, query):
     try:
-        # The Gmail search has an exact sender allowlist; message headers are checked again before extraction.
         return gmail.list_ids_complete(query, limit)
     except GmailError as error:
         code = str(error)
@@ -212,18 +209,15 @@ def _gmail_ids(gmail, limit, query):
 
 
 def parsed_sender(message):
-    """The allowlisted sender's kind (never an address): ORDERED, SHIPPED, DELIVERED, RETURN or OTHER."""
     return events.SENDERS.get(events._sender(message.get("sender")), "OTHER")
 
 
 def tally(counts, key, n=1, group=None):
-    """counts[key] += n, or counts[group][key] += n; a counter that does not exist yet starts at 0."""
     bucket = counts if group is None else counts.setdefault(group, {})
     bucket[key] = bucket.get(key, 0) + n
 
 
 def _note_conflict(counts, cause, existing, received, now):
-    """Counts only: why an order went to REVIEW, whether it already held data (a flip) or was created empty, and whether its mail is recent (30 days)."""
     tally(counts, cause, group="conflict_why")
     tally(counts, "review_flipped" if existing and existing.get("Latest Event At") else "review_created_empty" if not existing else "review_already_empty")
     newest = max((r for r in received if r), default=None)
@@ -232,7 +226,6 @@ def _note_conflict(counts, cause, existing, received, now):
 
 
 def _read_messages(gmail, message_ids, skip_unreadable, counts):
-    """READ: the entire bounded census before any write. An incomplete read leaves the mailbox untouched."""
     messages = []
     for message_id in message_ids:
         try:
@@ -240,25 +233,24 @@ def _read_messages(gmail, message_ids, skip_unreadable, counts):
         except GmailError as error:
             if not skip_unreadable:
                 raise AmazonError("AMAZON_GMAIL_READ_FAILED_" + error_code(error)) from None
-            tally(counts, "unreadable")       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
+            tally(counts, "unreadable")
             continue
         messages.append(message)
     return messages
 
 
 def _sort_events(messages, counts):
-    """-> (accepted events by order id, review messages by order id, accepted message ids by order id). Counts the review reasons (fixed codes only)."""
     events_by_order, review_by_order, accepted_ids = {}, {}, {}
     for message in messages:
-        for parsed in events.extract_all(message):                         # one event, or one per order for a message whose every order is one of its own links
+        for parsed in events.extract_all(message):
             if parsed.get("status") == "REVIEW":
                 counts["review"] += 1
-                tally(counts, parsed.get("reason") or "UNKNOWN", group="review_why")       # fixed reason codes only: the mail itself is never described
-                if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":                  # counts only: how many orders, how many links, which sender
+                tally(counts, parsed.get("reason") or "UNKNOWN", group="review_why")
+                if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":
                     tally(counts, f"{events.ambiguity_shape(message)},from={parsed_sender(message)}", group="ambiguous_shape")
                     days = counts.setdefault("ambiguous_days", [])
                     if len(days) < 6 and parsed_sender(message) == "ORDERED":
-                        days.append((message.get("received_at") or "")[:16])               # a date only, so Jim can open an example; never content
+                        days.append((message.get("received_at") or "")[:16])
                 if parsed.get("order_id"):
                     review_by_order.setdefault(parsed["order_id"], []).append(message)
                 continue
@@ -270,7 +262,8 @@ def _sort_events(messages, counts):
 
 
 def decide_order(order_id, existing, order_events, order_reviews, now):
-    """PURE: what one order row should hold. -> (desired row, conflict flag, cause code). A conflict freezes the row in REVIEW with no event fields guessed."""
+    """PURE: what one order row should hold. -> (desired row, conflict flag, cause code). A conflict freezes the row
+    in REVIEW."""
     conflict = bool(order_reviews)
     cause = ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in order_reviews])) if conflict else None
     desired = _review_desired(order_id) if conflict else None
@@ -280,13 +273,12 @@ def decide_order(order_id, existing, order_events, order_reviews, now):
         if conflict:
             desired = _review_desired(order_id)
             cause = reason
-            if reason == "ORDER_ALREADY_REVIEW":                   # the row was frozen earlier: would these messages alone conflict? (FRESH_NONE = they would not)
+            if reason == "ORDER_ALREADY_REVIEW":
                 cause = "FRESH_" + (orders.reconcile(order_events, None, now)[1] or "NONE")
     return desired, conflict, cause
 
 
 def _plan_orders(notion, source_id, events_by_order, review_by_order, accepted_ids, now, counts):
-    """READ each order row, DECIDE it, and count. -> [(order id, existing row, desired row, review only, message ids to file)]."""
     plans = []
     for order_id in sorted(set(events_by_order) | set(review_by_order)):
         found = _query_order(notion, source_id, order_id)
@@ -315,7 +307,8 @@ def _plan_orders(notion, source_id, events_by_order, review_by_order, accepted_i
 
 
 def _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, review_by_order, counts):
-    """APPLY each order (write, then CONFIRM by the Notion read-back), then file its mail (confirmed by a Gmail read-back). Failures are collected and raised once."""
+    """APPLY each order (write, then Notion read-back), then file its mail (then Gmail read-back). Failures are
+    collected and raised once."""
     failures, filed_now = [], set()
     for order_id, existing, desired, review_only, file_ids in plans:
         try:
@@ -347,7 +340,7 @@ def _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, revie
                 if label_id not in labels or "INBOX" in labels or "TRASH" in labels:
                     raise AmazonError("AMAZON_GMAIL_READBACK_MISMATCH")
                 counts["filed"] += 1
-                filed_now.add(message_id)                                      # a message that carries several orders is filed once
+                filed_now.add(message_id)
         except AmazonError as error:
             failures.append(str(error))
             counts["failed"] += max(1, len(file_ids) or len(review_by_order.get(order_id, [])))
@@ -380,8 +373,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
             raise
         counts["listed"] = len(message_ids)
         messages = _read_messages(gmail, message_ids, skip_unreadable, counts)
-        # A message that is already under the Amazon label and out of the Inbox needs no filing; it still counts as an event so replay is verified.
-        already_filed = {m["id"] for m in messages if ("TRASH" in m["label_ids"]) or (label_id in m["label_ids"] and "INBOX" not in m["label_ids"])}     # trashed mail is read, never re-filed
+        # A message already under the Amazon label and out of the Inbox needs no filing; it still counts as an event
+        # so replay is verified.
+        already_filed = {m["id"] for m in messages if ("TRASH" in m["label_ids"]) or (label_id in m["label_ids"] and "INBOX" not in m["label_ids"])}
         events_by_order, review_by_order, accepted_ids = _sort_events(messages, counts)
         if not events_by_order and not review_by_order:
             return counts
@@ -402,7 +396,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         raise AmazonError("AMAZON_FAILED:1of0:AMAZON_INTERNAL_FAILED") from None
 
 
-CONTRACT = stage_contract.Contract(      # LIFE-623: the stage declared; run() = read (_read_messages, _plan_orders), decide (decide_order, pure), _apply_plans (write, then read-back)
+CONTRACT = stage_contract.Contract(
     name="amazon-orders", run=run,
     inputs=("Gmail messages from the allowlisted Amazon senders since the newest accepted event minus 3 days (or AMAZON_SINCE)", "the Amazon Orders data source: its schema, its newest event, and each order's row"),
     outputs=("listed", "accepted", "review", "orders_new", "orders_updated", "orders_same", "filed", "already_filed", "failed"),

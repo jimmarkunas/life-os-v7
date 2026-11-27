@@ -1,6 +1,6 @@
-"""NIP-98 request signing for the Buzz relay: BIP-340 Schnorr over secp256k1 for event kind 27235. Stdlib only.
+"""NIP-98 request signing for the Buzz relay: BIP-340 Schnorr over secp256k1 for event kind 27235.
 
-Inputs: the request fields and a key passed in by the caller. Outputs: the signed authorization value. Nothing is stored or logged; no key is read from disk or the environment."""
+Stdlib only. Nothing is stored or logged; no key is read from disk or the environment."""
 import base64, hashlib, json, os, time, uuid
 
 P = 2**256 - 2**32 - 977
@@ -34,7 +34,6 @@ def _tagged(tag, *parts):
 
 
 def secret_from(value):
-    """Hex or bech32 `nsec1...` to a 32-byte secret. Raises ValueError without echoing the input."""
     v = value.strip().lower()
     if v.startswith("nsec1"):
         data = [B32.index(c) for c in v[5:]]
