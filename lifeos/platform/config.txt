@@ -78,6 +78,7 @@ LIFEOS_ACQ_SSH_PORT secret Connection detail for the Hostinger job store (read a
 LIFEOS_ACQ_SSH_PRIVATE_KEY secret Connection detail for the Hostinger job store (read at run time through db.py)
 LIFEOS_ACQ_SSH_USER secret Connection detail for the Hostinger job store (read at run time through db.py)
 LIFEOS_ACQ_SSH_VIA flag Set to oracle to send the store connection through Oracle
+LIFEOS_GMAIL_GATE flag Set to off to skip the shared Gmail budget and lease (an incident, or unit tests that fake Gmail); never set in production
 LIFEOS_NOTION_IDS secret Mapping of private Notion ids, passed whole to stages that read ids
 LIFEOS_RACE_DB_HOST workflow_only:workflow Host of the throwaway MariaDB service container the mariadb-race workflow races against; the test refuses anything but 127.0.0.1 or localhost (LIFE-903)
 LIFEOS_RACE_DB_NAME workflow_only:workflow Database name of that throwaway container (race_ledger); the test refuses any name not starting race_ (LIFE-903)
