@@ -152,6 +152,26 @@ class Governed(unittest.TestCase):
         )
         self.assertEqual(len([t for t in fake.tasks.values()]), 1)
 
+    def test_simultaneous_identical_creates_make_exactly_one_task(self):
+        import threading
+        import time
+
+        class Slow(Fake):
+            def route(self, method, path, body, url):
+                if method == "POST" and path == "/tasks":
+                    time.sleep(0.05)  # widen the window between the duplicate check and the create
+                return super().route(method, path, body, url)
+
+        fake, results = Slow(), []
+
+        def go():
+            results.append(code("todoist_task_create", {"content": "Buy salt", "project_id": "p1"}, state(fake)))
+
+        threads = [threading.Thread(target=go) for _ in range(4)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual((sorted(r or "ok" for r in results), len(fake.tasks)), (["duplicate_found"] * 3 + ["ok"], 1))
+
     def test_update_move_complete_reopen_comment_are_each_verified(self):
         fake = Fake([{"id": "1", "content": "a", "project_id": "p1", "checked": False}])
         st = state(fake)
