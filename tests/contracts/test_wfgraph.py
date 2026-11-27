@@ -40,7 +40,7 @@ jobs:
         with:
           token: ${{ secrets.D }}
           names: A_NAME,B_NAME
-          bitwarden: ${{ toJSON(steps.bws_a.outputs) }}
+          bitwarden: '{}'
       - run: echo go   # comment
 """
 NEW = """

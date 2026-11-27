@@ -48,7 +48,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: JIRA_API_TOKEN,JIRA_EMAIL
-          bitwarden: ${{ toJSON(steps.bws_readiness.outputs) }}
+          bitwarden: '{}'
       - id: bws_settings
         continue-on-error: true
         name: Notion token from Bitwarden for the V7 settings page
@@ -67,7 +67,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
+          bitwarden: '{}'
       - name: V7 settings page for the Jira address (LIFE-703; names and counts only; an unreadable page changes nothing)
         continue-on-error: true
         env:

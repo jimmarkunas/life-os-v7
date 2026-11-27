@@ -46,7 +46,7 @@ def expand(step, sets=None):
             "with": {
                 "token": with_["doppler_compare"],
                 "names": ",".join(parity_names(with_.get("secrets"))),
-                "bitwarden": "${{ toJSON(steps.%s.outputs) }}" % step["id"],
+                "bitwarden": "{}",
             },
         }
         return [load, parity]

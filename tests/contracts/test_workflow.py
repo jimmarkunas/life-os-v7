@@ -1525,7 +1525,9 @@ class DopplerParityTests(unittest.TestCase):
                 for i, step in enumerate(steps):
                     with_ = step.get("with") or {}
                     if step.get("uses") == "./.github/actions/bws-load" and step.get("id") and "LIFEOS_BWS_RUNTIME_TOKEN" in str(with_.get("access_token")):
-                        old = next((s for s in steps[i + 1:] if is_parity(s) and f"steps.{step['id']}.outputs" in str((s.get("with") or {}).get("bitwarden"))), None)
+                        later = steps[i + 1:]
+                        stop = next((k for k, s in enumerate(later) if s.get("uses") == "./.github/actions/bws-load"), len(later))
+                        old = next((s for s in later[:stop] if is_parity(s)), None)                                 # by position: the first compare after its loader and before the next loader
                         out.append((name, job, step, step if with_.get("doppler_compare") else old))      # LIFE-1010: the compare is the loader's own doppler_compare input in domains, hourly and v3-pages; the other workflows still carry the separate step
         return out
 
@@ -1541,7 +1543,7 @@ class DopplerParityTests(unittest.TestCase):
             names = [line.split(">")[1].strip() for line in str(loader["with"]["secrets"]).splitlines() if ">" in line]
             self.assertEqual(str(compare["with"]["names"]).split(","), names, (name, job))
             self.assertEqual(compare["with"]["token"], "${{ secrets.DOPPLER_TOKEN }}", (name, job))
-            self.assertEqual(compare["with"]["bitwarden"], f"${{{{ toJSON(steps.{loader['id']}.outputs) }}}}", (name, job))
+            self.assertEqual(compare["with"]["bitwarden"], "{}", (name, job))                              # an empty object: no step output is ever passed as an action input
             self.assertTrue(compare.get("continue-on-error") is True, (name, job))
             self.assertEqual(compare.get("if"), f"${{{{ steps.{loader['id']}.outcome == 'success' }}}}", (name, job))
 

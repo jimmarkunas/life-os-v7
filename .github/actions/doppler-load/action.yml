@@ -5,7 +5,7 @@ inputs:
   project: {description: "Doppler project", default: "life-os"}
   config: {description: "Doppler config", default: "prd"}
   names: {description: "Comma list of the secret names to compare", required: true}
-  bitwarden: {description: "JSON object name -> value from the masked Bitwarden step outputs (toJSON(steps.<id>.outputs))", required: true}
+  bitwarden: {description: "JSON object name -> value of the Bitwarden values to compare; callers pass an empty object and never a step output", required: true}
 outputs:
   code: {value: "${{ steps.compare.outputs.code }}"}
   matched: {value: "${{ steps.compare.outputs.matched }}"}
