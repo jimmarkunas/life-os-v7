@@ -6,6 +6,7 @@ offered are the job page's own Network Leads, signed into the form so a tampered
 typed name. The employer is typed or the one the chosen lead's own line states, never guessed. Outputs: fixed codes
 only.
 """
+
 from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D
@@ -20,10 +21,19 @@ PATH = "Daily Report / Job Outreach / Mark as Sent"
 PEOPLE_MAX = 10
 STATUS_PATH = "Job Ledger / Outreach / Record reply or referral"
 OUTREACH_TITLE = "🤝 Outreach"
-CHOICES = (("Replied", "They replied"), ("Referral Offered", "They offered to refer me (not yet confirmed)"),
-           ("Referral Confirmed", "The referral is confirmed (submitted by them)"), ("Declined", "They declined"))
+CHOICES = (
+    ("Replied", "They replied"),
+    ("Referral Offered", "They offered to refer me (not yet confirmed)"),
+    ("Referral Confirmed", "The referral is confirmed (submitted by them)"),
+    ("Declined", "They declined"),
+)
 RELOAD = "Reload the job from its link."
-JOB_CHANGED = ("Conflict", "Job changed", "The job changed since this form was opened.", "No write attempted. Reload the job and review it again.")
+JOB_CHANGED = (
+    "Conflict",
+    "Job changed",
+    "The job changed since this form was opened.",
+    "No write attempted. Reload the job and review it again.",
+)
 _stop = stopper("A Mark as Sent counts only after the canonical record is read back.", PATH, "Mark as Sent")
 
 
@@ -36,7 +46,13 @@ def job(client, config, pid):
     parent = (page.get("parent") or {}).get("data_source_id") or ""
     props = page.get("properties") or {}
     company, role = D._text(props.get("Company"), "rich_text"), D._text(props.get("Job"), "title")
-    if page.get("archived") or page.get("in_trash") or O._id(parent) != O._id(config.get("ledger")) or not company or not role:
+    if (
+        page.get("archived")
+        or page.get("in_trash")
+        or O._id(parent) != O._id(config.get("ledger"))
+        or not company
+        or not role
+    ):
         raise D.fail("NOT_FOUND")
     decision = props.get(D.DECISION)
     if not isinstance(decision, dict) or decision.get("type") != "select":
@@ -47,8 +63,10 @@ def job(client, config, pid):
 
 
 def _job_section(j):
-    return (f'<section class="section"><div class="eyebrow">Exact job</div><div class="jobhead"><div><h2>{e(j["role"])}</h2><div class="company">{e(j["company"])}</div></div>'
-            '<span class="status">Job Ledger</span></div></section>')
+    return (
+        f'<section class="section"><div class="eyebrow">Exact job</div><div class="jobhead"><div><h2>{e(j["role"])}</h2><div class="company">{e(j["company"])}</div></div>'
+        '<span class="status">Job Ledger</span></div></section>'
+    )
 
 
 def _people_fields(secret, login, pid, st, exp, people):
@@ -69,28 +87,44 @@ def _people(form):
 def _form(j, fields, people=(), choice="", person="", notice="", employer=""):
     warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
     picked = choice or ("" if people else "other")
-    options = "".join(f'<label class="reason"><input type="radio" name="who" value="lead:{i}" required{" checked" if picked == f"lead:{i}" else ""}>'
-                      f'<span><strong>{e(name)}</strong>{f"""<span class="fine">{e(why)}</span>""" if why else ""}</span></label>' for i, (name, why) in enumerate(people))
+    options = "".join(
+        f'<label class="reason"><input type="radio" name="who" value="lead:{i}" required{" checked" if picked == f"lead:{i}" else ""}>'
+        f'<span><strong>{e(name)}</strong>{f"""<span class="fine">{e(why)}</span>""" if why else ""}</span></label>'
+        for i, (name, why) in enumerate(people)
+    )
     options += f'<label class="reason"><input type="radio" name="who" value="other" required{" checked" if picked == "other" else ""}><span><strong>Other</strong></span></label>'
-    return S.page("Mark as Sent", "Confirm only after you have sent the message yourself. LIFE OS never sends it.", _job_section(j) + (
-        f'<form method="post" action="/sent">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Mark as Sent</div>'
-        f'<fieldset><legend class="step-title">Who did you message about this job? <span aria-label="Required">*</span></legend><div class="people">{options}</div></fieldset>'
-        '<label class="fieldname" for="person">Other — their name <span class="fine inl">(only when Other is chosen)</span></label>'
-        f'<textarea id="person" name="person" maxlength="{O.PERSON_MAX}">{e(person)}</textarea>'
-        '<label class="fieldname" for="employer">Their employer <span class="fine inl">(optional; a chosen lead\'s current employer is used when left blank)</span></label>'
-        f'<textarea id="employer" name="employer" maxlength="{O.PERSON_MAX}">{e(employer)}</textarea>{warn}'
-        '<div class="notice">This records one tracked conversation for this exact job, sets it to Waiting and schedules a follow-up two business days out.</div></section>'
-        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'),
-        PATH, "Mark as Sent")
+    return S.page(
+        "Mark as Sent",
+        "Confirm only after you have sent the message yourself. LIFE OS never sends it.",
+        _job_section(j)
+        + (
+            f'<form method="post" action="/sent">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Mark as Sent</div>'
+            f'<fieldset><legend class="step-title">Who did you message about this job? <span aria-label="Required">*</span></legend><div class="people">{options}</div></fieldset>'
+            '<label class="fieldname" for="person">Other — their name <span class="fine inl">(only when Other is chosen)</span></label>'
+            f'<textarea id="person" name="person" maxlength="{O.PERSON_MAX}">{e(person)}</textarea>'
+            '<label class="fieldname" for="employer">Their employer <span class="fine inl">(optional; a chosen lead\'s current employer is used when left blank)</span></label>'
+            f'<textarea id="employer" name="employer" maxlength="{O.PERSON_MAX}">{e(employer)}</textarea>{warn}'
+            '<div class="notice">This records one tracked conversation for this exact job, sets it to Waiting and schedules a follow-up two business days out.</div></section>'
+            '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'
+        ),
+        PATH,
+        "Mark as Sent",
+    )
 
 
 def _review(j, fields, person, employer):
-    return S.page("Review Mark as Sent", "Your confirmation is required before anything is recorded.", (
-        f'<form method="post" action="/sent">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review action</div>'
-        f'<dl class="review"><dt>Company</dt><dd>{e(j["company"])}</dd><dt>Role</dt><dd>{e(j["role"])}</dd><dt>Messaged</dt><dd>{e(person)}</dd><dt>Their employer</dt><dd>{e(employer) or "Not recorded"}</dd></dl>'
-        '<div class="notice alert">Confirming records the conversation as Waiting; it is shown as done only after the canonical record is read back.</div></section>'
-        '<div class="actions"><button class="btn" name="step" value="edit" formnovalidate>← Edit</button><button class="btn primary" name="step" value="confirm">Confirm Mark as Sent</button></div></form>'),
-        PATH, "Mark as Sent")
+    return S.page(
+        "Review Mark as Sent",
+        "Your confirmation is required before anything is recorded.",
+        (
+            f'<form method="post" action="/sent">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review action</div>'
+            f'<dl class="review"><dt>Company</dt><dd>{e(j["company"])}</dd><dt>Role</dt><dd>{e(j["role"])}</dd><dt>Messaged</dt><dd>{e(person)}</dd><dt>Their employer</dt><dd>{e(employer) or "Not recorded"}</dd></dl>'
+            '<div class="notice alert">Confirming records the conversation as Waiting; it is shown as done only after the canonical record is read back.</div></section>'
+            '<div class="actions"><button class="btn" name="step" value="edit" formnovalidate>← Edit</button><button class="btn primary" name="step" value="confirm">Confirm Mark as Sent</button></div></form>'
+        ),
+        PATH,
+        "Mark as Sent",
+    )
 
 
 def _fp(j):
@@ -100,17 +134,40 @@ def _fp(j):
 def _get(req, who, secrets):
     pid = D._page_id(req["query"].get("j"))
     if not pid:
-        return _stop(400, "Invalid link", "No job selected", "Open this screen from a Job Ledger job.", "Nothing was changed.")
+        return _stop(
+            400, "Invalid link", "No job selected", "Open this screen from a Job Ledger job.", "Nothing was changed."
+        )
     j = job(secrets["reader"], secrets["config"], pid)
-    people = [(O.valid_person(lead["name"]), lead["reason"]) for lead in N.leads_on_page(secrets["reader"], j["id"], PEOPLE_MAX) if O.valid_person(lead["name"])]
+    people = [
+        (O.valid_person(lead["name"]), lead["reason"])
+        for lead in N.leads_on_page(secrets["reader"], j["id"], PEOPLE_MAX)
+        if O.valid_person(lead["name"])
+    ]
     exp = str(int(_now().timestamp()) + TTL)
     st = _fp(j)
-    fields = {"j": j["id"], "co": j["company"], "ro": j["role"], "exp": exp, "st": st, "t": _mac(secrets["link"], "s", who["login"], j["id"], st, exp)}
-    return 200, HTML, _form(j, {**fields, **_people_fields(secrets["link"], who["login"], j["id"], st, exp, people)}, people), ()
+    fields = {
+        "j": j["id"],
+        "co": j["company"],
+        "ro": j["role"],
+        "exp": exp,
+        "st": st,
+        "t": _mac(secrets["link"], "s", who["login"], j["id"], st, exp),
+    }
+    return (
+        200,
+        HTML,
+        _form(j, {**fields, **_people_fields(secrets["link"], who["login"], j["id"], st, exp, people)}, people),
+        (),
+    )
 
 
 def _ledger(secrets):
-    return Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": secrets["config"]["ledger"]})
+    return Client(
+        {
+            "NOTION_API_TOKEN": secrets["notion"].decode(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": secrets["config"]["ledger"],
+        }
+    )
 
 
 def _post(req, who, secrets):
@@ -120,9 +177,14 @@ def _post(req, who, secrets):
         return early
     shown = {"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}
     people = _people(form)
-    if not _same(_fp(shown), st) or not _same(form.get("lm"), _people_fields(secret, login, pid, st, exp, people)["lm"]):
+    if not _same(_fp(shown), st) or not _same(
+        form.get("lm"), _people_fields(secret, login, pid, st, exp, people)["lm"]
+    ):
         return invalid(_stop, RELOAD)
-    fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_fields(secret, login, pid, st, exp, people)}
+    fields = {
+        **{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")},
+        **_people_fields(secret, login, pid, st, exp, people),
+    }
     choice = form.get("who") or ("" if people else "other")
     employer = O.valid_person(form.get("employer"))
     if step == "review":
@@ -133,33 +195,73 @@ def _post(req, who, secrets):
     else:
         person = O.valid_person(form.get("person"))
     if step == "edit":
-        return 200, HTML, _form(shown, fields, people, choice, person if choice == "other" else "", employer=employer), ()
+        return (
+            200,
+            HTML,
+            _form(shown, fields, people, choice, person if choice == "other" else "", employer=employer),
+            (),
+        )
     if not person:
         ask = "Choose who you messaged, or choose Other and enter their name" if people else "Enter the person's name"
-        return 400, HTML, _form(shown, fields, people, choice, "", f"{ask} (up to {O.PERSON_MAX} characters).", employer), ()
+        return (
+            400,
+            HTML,
+            _form(shown, fields, people, choice, "", f"{ask} (up to {O.PERSON_MAX} characters).", employer),
+            (),
+        )
     sign = _mac(secret, "m", login, pid, st, exp, person, employer)
     if step == "review":
-        return 200, HTML, _review(shown, {**fields, "who": choice, "person": person, "employer": employer, "c": sign}, person, employer), ()
+        return (
+            200,
+            HTML,
+            _review(
+                shown, {**fields, "who": choice, "person": person, "employer": employer, "c": sign}, person, employer
+            ),
+            (),
+        )
     if not _same(form.get("c"), sign):
         return invalid(_stop, "Review it again.", "This confirmation is not valid")
     config = secrets["config"]
     current = job(_ledger(secrets), config, pid)
     if _fp(current) != st:
         return _stop(409, *JOB_CHANGED)
-    done, early = written(_stop, lambda: O.mark_sent(_recruiters(secrets), current, person, _now(), config["ledger"], employer), "Could not verify Mark as Sent",
-                          ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING"), ("Mark as Sent was not recorded", "Job Outreach is not enabled for this record yet, or it is ambiguous."))
+    done, early = written(
+        _stop,
+        lambda: O.mark_sent(_recruiters(secrets), current, person, _now(), config["ledger"], employer),
+        "Could not verify Mark as Sent",
+        ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING"),
+        ("Mark as Sent was not recorded", "Job Outreach is not enabled for this record yet, or it is ambiguous."),
+    )
     if early:
         return early
     head = f"{current['company']} — {current['role']} · {person}" + (f" ({employer})" if employer else "")
     if done["status"] == "recorded":
         secrets.get("after", []).append("recruiters")
-        return _stop(200, "Recorded", "Marked as sent", "The canonical record was written and read back.", f"{head} · Waiting · follow-up {done['follow_up']}.", "ok")
+        return _stop(
+            200,
+            "Recorded",
+            "Marked as sent",
+            "The canonical record was written and read back.",
+            f"{head} · Waiting · follow-up {done['follow_up']}.",
+            "ok",
+        )
     if done["state"] == "closed":
-        return _stop(409, "Not changed", "This conversation is already closed", "It was recorded before and is no longer open.",
-                     f"{head} · {done['action'] or 'no status'} · nothing was changed.")
+        return _stop(
+            409,
+            "Not changed",
+            "This conversation is already closed",
+            "It was recorded before and is no longer open.",
+            f"{head} · {done['action'] or 'no status'} · nothing was changed.",
+        )
     follow = f" · follow-up {done['follow_up']}" if done["follow_up"] else ""
-    return _stop(200, "Already recorded", "Already marked as sent", "This conversation was recorded before; nothing was changed.",
-                 f"{head} · currently {done['action'] or 'no status'}{follow}.", "")
+    return _stop(
+        200,
+        "Already recorded",
+        "Already marked as sent",
+        "This conversation was recorded before; nothing was changed.",
+        f"{head} · currently {done['action'] or 'no status'}{follow}.",
+        "",
+    )
 
 
 handle = handler(_get, _post, _stop, "This job cannot be marked here")
@@ -171,9 +273,16 @@ def conversations_on_page(client, page_id):
     """
     top = N.children(client, page_id)
     for i, block in enumerate(top):
-        if block.get("type") == "heading_3" and N._plain(block).startswith(OUTREACH_TITLE) and i + 1 < len(top) and top[i + 1].get("type") == "table":
+        if (
+            block.get("type") == "heading_3"
+            and N._plain(block).startswith(OUTREACH_TITLE)
+            and i + 1 < len(top)
+            and top[i + 1].get("type") == "table"
+        ):
             rows = N.children(client, top[i + 1]["id"])[1:]
-            first = lambda row: (((row.get("table_row") or {}).get("cells") or [[]])[0] or [{}])[0].get("plain_text", "")      # noqa: E731 - the bold person line
+            first = lambda row: (((row.get("table_row") or {}).get("cells") or [[]])[0] or [{}])[0].get(
+                "plain_text", ""
+            )  # noqa: E731 - the bold person line
             people = [O.valid_person(first(row)) for row in rows]
             return [p for p in people if p][:PEOPLE_MAX]
     return []
@@ -181,27 +290,48 @@ def conversations_on_page(client, page_id):
 
 def _status_form(j, fields, people, notice="", picked="", status=""):
     warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
-    who = "".join(f'<label class="reason"><input type="radio" name="who" value="{i}" required{" checked" if picked == str(i) else ""}><span><strong>{e(name)}</strong></span></label>' for i, name in enumerate(people))
-    what = "".join(f'<label class="reason"><input type="radio" name="status" value="{e(value)}" required{" checked" if status == value else ""}><span><strong>{e(label)}</strong></span></label>' for value, label in CHOICES)
-    return S.page("Record reply or referral", "Record only what you have seen. LIFE OS never contacts anyone and never marks the job Applied.", _job_section(j) + (
-        f'<form method="post" action="/referral">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Outreach status</div>'
-        f'<fieldset><legend class="step-title">Which conversation? <span aria-label="Required">*</span></legend><div class="people">{who}</div></fieldset>'
-        f'<fieldset><legend class="step-title">What happened? <span aria-label="Required">*</span></legend><div class="people">{what}</div></fieldset>{warn}'
-        '<div class="notice">An offered referral stays Offered until you confirm it. Confirming stops redundant referral prompts; applying is still yours to mark.</div></section>'
-        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'),
-        STATUS_PATH, "Record reply or referral")
+    who = "".join(
+        f'<label class="reason"><input type="radio" name="who" value="{i}" required{" checked" if picked == str(i) else ""}><span><strong>{e(name)}</strong></span></label>'
+        for i, name in enumerate(people)
+    )
+    what = "".join(
+        f'<label class="reason"><input type="radio" name="status" value="{e(value)}" required{" checked" if status == value else ""}><span><strong>{e(label)}</strong></span></label>'
+        for value, label in CHOICES
+    )
+    return S.page(
+        "Record reply or referral",
+        "Record only what you have seen. LIFE OS never contacts anyone and never marks the job Applied.",
+        _job_section(j)
+        + (
+            f'<form method="post" action="/referral">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Outreach status</div>'
+            f'<fieldset><legend class="step-title">Which conversation? <span aria-label="Required">*</span></legend><div class="people">{who}</div></fieldset>'
+            f'<fieldset><legend class="step-title">What happened? <span aria-label="Required">*</span></legend><div class="people">{what}</div></fieldset>{warn}'
+            '<div class="notice">An offered referral stays Offered until you confirm it. Confirming stops redundant referral prompts; applying is still yours to mark.</div></section>'
+            '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'
+        ),
+        STATUS_PATH,
+        "Record reply or referral",
+    )
 
 
 def _status_review(j, fields, person, status):
-    return S.page("Review outreach status", "Your confirmation is required before anything is recorded.", (
-        f'<form method="post" action="/referral">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review action</div>'
-        f'<dl class="review"><dt>Company</dt><dd>{e(j["company"])}</dd><dt>Role</dt><dd>{e(j["role"])}</dd><dt>Conversation</dt><dd>{e(person)}</dd><dt>Record</dt><dd>{e(status)}</dd></dl>'
-        '<div class="notice alert">Confirming updates the recorded conversation; it is shown as done only after the canonical record is read back.</div></section>'
-        '<div class="actions"><button class="btn" name="step" value="edit" formnovalidate>← Edit</button><button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'),
-        STATUS_PATH, "Record reply or referral")
+    return S.page(
+        "Review outreach status",
+        "Your confirmation is required before anything is recorded.",
+        (
+            f'<form method="post" action="/referral">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review action</div>'
+            f'<dl class="review"><dt>Company</dt><dd>{e(j["company"])}</dd><dt>Role</dt><dd>{e(j["role"])}</dd><dt>Conversation</dt><dd>{e(person)}</dd><dt>Record</dt><dd>{e(status)}</dd></dl>'
+            '<div class="notice alert">Confirming updates the recorded conversation; it is shown as done only after the canonical record is read back.</div></section>'
+            '<div class="actions"><button class="btn" name="step" value="edit" formnovalidate>← Edit</button><button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'
+        ),
+        STATUS_PATH,
+        "Record reply or referral",
+    )
 
 
-_status_stop = stopper("A status counts only after the canonical record is read back.", STATUS_PATH, "Record reply or referral")
+_status_stop = stopper(
+    "A status counts only after the canonical record is read back.", STATUS_PATH, "Record reply or referral"
+)
 
 
 def _people_sign(secret, login, pid, st, exp, people):
@@ -211,14 +341,34 @@ def _people_sign(secret, login, pid, st, exp, people):
 def _status_get(req, who, secrets):
     pid = D._page_id(req["query"].get("j"))
     if not pid:
-        return _status_stop(400, "Invalid link", "No job selected", "Open this screen from a Job Ledger job.", "Nothing was changed.")
+        return _status_stop(
+            400, "Invalid link", "No job selected", "Open this screen from a Job Ledger job.", "Nothing was changed."
+        )
     j = job(secrets["reader"], secrets["config"], pid)
     people = conversations_on_page(secrets["reader"], j["id"])
     if not people:
-        return _status_stop(409, "Nothing to update", "No recorded conversation", "Mark someone as sent on this job first.", "Nothing was changed.")
+        return _status_stop(
+            409,
+            "Nothing to update",
+            "No recorded conversation",
+            "Mark someone as sent on this job first.",
+            "Nothing was changed.",
+        )
     exp, st = str(int(_now().timestamp()) + TTL), _fp(j)
-    fields = {"j": j["id"], "co": j["company"], "ro": j["role"], "exp": exp, "st": st, "t": _mac(secrets["link"], "r", who["login"], j["id"], st, exp)}
-    return 200, HTML, _status_form(j, {**fields, **_people_sign(secrets["link"], who["login"], j["id"], st, exp, people)}, people), ()
+    fields = {
+        "j": j["id"],
+        "co": j["company"],
+        "ro": j["role"],
+        "exp": exp,
+        "st": st,
+        "t": _mac(secrets["link"], "r", who["login"], j["id"], st, exp),
+    }
+    return (
+        200,
+        HTML,
+        _status_form(j, {**fields, **_people_sign(secrets["link"], who["login"], j["id"], st, exp, people)}, people),
+        (),
+    )
 
 
 def _status_post(req, who, secrets):
@@ -232,34 +382,77 @@ def _status_post(req, who, secrets):
         people.append(form[f"l{len(people)}"])
     if not _same(_fp(shown), st) or not _same(form.get("lm"), _people_sign(secret, login, pid, st, exp, people)["lm"]):
         return invalid(_status_stop, RELOAD)
-    fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_sign(secret, login, pid, st, exp, people)}
+    fields = {
+        **{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")},
+        **_people_sign(secret, login, pid, st, exp, people),
+    }
     index, status = form.get("who", ""), form.get("status", "")
     person = people[int(index)] if index.isdigit() and int(index) < len(people) else ""
     if step == "edit":
         return 200, HTML, _status_form(shown, fields, people, picked=index, status=status), ()
     if not person or status not in [value for value, _ in CHOICES]:
-        return 400, HTML, _status_form(shown, fields, people, "Choose the conversation and what happened.", index, status), ()
+        return (
+            400,
+            HTML,
+            _status_form(shown, fields, people, "Choose the conversation and what happened.", index, status),
+            (),
+        )
     sign = _mac(secret, "u", login, pid, st, exp, person, status)
     if step == "review":
-        return 200, HTML, _status_review(shown, {**fields, "who": index, "status": status, "c": sign}, person, status), ()
+        return (
+            200,
+            HTML,
+            _status_review(shown, {**fields, "who": index, "status": status, "c": sign}, person, status),
+            (),
+        )
     if not _same(form.get("c"), sign):
         return invalid(_status_stop, "Review it again.", "This confirmation is not valid")
     config = secrets["config"]
     current = job(_ledger(secrets), config, pid)
     if _fp(current) != st:
         return _status_stop(409, *JOB_CHANGED)
-    done, early = written(_status_stop, lambda: O.set_conversation(_recruiters(secrets), current, person, status, config["ledger"]), "Could not verify the status",
-                          ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING", "OUTREACH_STATUS_UNAVAILABLE", "OUTREACH_NOT_RECORDED"),
-                          ("Status was not recorded", "This status is not enabled yet, or the conversation is not recorded."))
+    done, early = written(
+        _status_stop,
+        lambda: O.set_conversation(_recruiters(secrets), current, person, status, config["ledger"]),
+        "Could not verify the status",
+        (
+            "OUTREACH_SCHEMA_MISSING",
+            "OUTREACH_AMBIGUOUS",
+            "NOTION_CONFIG_MISSING",
+            "OUTREACH_STATUS_UNAVAILABLE",
+            "OUTREACH_NOT_RECORDED",
+        ),
+        ("Status was not recorded", "This status is not enabled yet, or the conversation is not recorded."),
+    )
     if early:
         return early
     head = f"{current['company']} — {current['role']} · {person}"
     if done["status"] == "recorded":
         secrets.get("after", []).append("recruiters")
-        return _status_stop(200, "Recorded", f"Recorded: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
+        return _status_stop(
+            200,
+            "Recorded",
+            f"Recorded: {status}",
+            "The canonical record was written and read back.",
+            f"{head} · {status}.",
+            "ok",
+        )
     if done["status"] == "already_recorded":
-        return _status_stop(200, "Already recorded", "Already recorded", "This status was recorded before; nothing was changed.", f"{head} · {done['action']}.", "")
-    return _status_stop(409, "Not changed", "Nothing was changed", "The conversation is closed, or already further along than this status.", f"{head} · currently {done['action'] or 'no status'}.")
+        return _status_stop(
+            200,
+            "Already recorded",
+            "Already recorded",
+            "This status was recorded before; nothing was changed.",
+            f"{head} · {done['action']}.",
+            "",
+        )
+    return _status_stop(
+        409,
+        "Not changed",
+        "Nothing was changed",
+        "The conversation is closed, or already further along than this status.",
+        f"{head} · currently {done['action'] or 'no status'}.",
+    )
 
 
 handle_status = handler(_status_get, _status_post, _status_stop, "This job cannot be updated here")
@@ -267,4 +460,10 @@ handle_status = handler(_status_get, _status_post, _status_stop, "This job canno
 
 def _recruiters(secrets):
     config = secrets["config"]
-    return Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_RECRUITERS_DATA_SOURCE_ID": config.get("recruiters") or ""}, source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+    return Client(
+        {
+            "NOTION_API_TOKEN": secrets["notion"].decode(),
+            "NOTION_RECRUITERS_DATA_SOURCE_ID": config.get("recruiters") or "",
+        },
+        source_name="NOTION_RECRUITERS_DATA_SOURCE_ID",
+    )

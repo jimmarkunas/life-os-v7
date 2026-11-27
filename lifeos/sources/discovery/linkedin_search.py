@@ -6,6 +6,7 @@ page allowance; the first refusal stops it and is named (`rate_limited_429`, `bl
 `network`, `unreadable_page`). A card is admitted only as a target-family job in the US (or plain remote) with no
 office requirement; each rejection reason is counted.
 """
+
 from datetime import date, datetime, timezone
 import html as htmllib
 import re
@@ -25,9 +26,11 @@ PAGE = 10
 
 CARD = re.compile(r'<li>(.*?)</li>', re.S)
 JOB_ID = re.compile(r'urn:li:jobPosting:(\d{6,})')
-FIELD = {"title": re.compile(r'base-search-card__title">\s*(.*?)\s*<', re.S),
-         "company": re.compile(r'base-search-card__subtitle">\s*(?:<a[^>]*>)?\s*(.*?)\s*<', re.S),
-         "location": re.compile(r'job-search-card__location">\s*(.*?)\s*<', re.S)}
+FIELD = {
+    "title": re.compile(r'base-search-card__title">\s*(.*?)\s*<', re.S),
+    "company": re.compile(r'base-search-card__subtitle">\s*(?:<a[^>]*>)?\s*(.*?)\s*<', re.S),
+    "location": re.compile(r'job-search-card__location">\s*(.*?)\s*<', re.S),
+}
 POSTED = re.compile(r'datetime="(\d{4}-\d{2}-\d{2})"')
 
 
@@ -54,8 +57,14 @@ def parse(markup):
             continue
         text = {k: htmllib.unescape(re.sub(r"\s+", " ", m.group(1))).strip() if m else "" for k, m in got.items()}
         posted = POSTED.search(block)
-        cards.append({"id": jid.group(1), "url": "https://www.linkedin.com/jobs/view/" + jid.group(1), **text,
-                      "posted": date.fromisoformat(posted.group(1)) if posted else None})
+        cards.append(
+            {
+                "id": jid.group(1),
+                "url": "https://www.linkedin.com/jobs/view/" + jid.group(1),
+                **text,
+                "posted": date.fromisoformat(posted.group(1)) if posted else None,
+            }
+        )
     return cards
 
 
@@ -119,14 +128,23 @@ def run(limit, live, now=None, fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SE
     cards, counts = read(fetcher, pause)
     counts["cards"] = len(cards)
     reasons = {c["id"]: screen(c) for c in cards}
-    wanted = sorted((c for c in cards if reasons[c["id"]].startswith("admitted_")), key=lambda c: reasons[c["id"]] != "admitted_remote_in_location")
-    counts.update(screen={r: list(reasons.values()).count(r) for r in sorted(set(reasons.values()))}, new=0, already_known=0, tombstoned=0,
-                  over_allowance=0, saved=bool(live))
+    wanted = sorted(
+        (c for c in cards if reasons[c["id"]].startswith("admitted_")),
+        key=lambda c: reasons[c["id"]] != "admitted_remote_in_location",
+    )
+    counts.update(
+        screen={r: list(reasons.values()).count(r) for r in sorted(set(reasons.values()))},
+        new=0,
+        already_known=0,
+        tombstoned=0,
+        over_allowance=0,
+        saved=bool(live),
+    )
     if not live or not wanted:
         counts["would_add"] = len(wanted) if not live else 0
         return counts
     room = min(limit, limits.LINKEDIN_SEARCH_NEW_PER_RUN)
-    with (connection or store.connect()) as conn:
+    with connection or store.connect() as conn:
         if connection is None:
             store.ensure_schema(conn)
         with conn.cursor() as cursor:
@@ -138,10 +156,24 @@ def run(limit, live, now=None, fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SE
                 if counts["new"] >= room:
                     counts["over_allowance"] += 1
                     continue
-                _, is_new = intake.add_job(cursor, {
-                    "url": card["url"], "status": "NEW", "title": card["title"], "company": card["company"] or "Unknown",
-                    "location": card["location"], "salary": None, "source": SOURCE, "provider": "LinkedIn Jobs", "lane": LANE,
-                    "age_days": (now.date() - card["posted"]).days if card["posted"] else None, "received": now, "provider_score": None,
-                    "posted": card["posted"]}, now)
+                _, is_new = intake.add_job(
+                    cursor,
+                    {
+                        "url": card["url"],
+                        "status": "NEW",
+                        "title": card["title"],
+                        "company": card["company"] or "Unknown",
+                        "location": card["location"],
+                        "salary": None,
+                        "source": SOURCE,
+                        "provider": "LinkedIn Jobs",
+                        "lane": LANE,
+                        "age_days": (now.date() - card["posted"]).days if card["posted"] else None,
+                        "received": now,
+                        "provider_score": None,
+                        "posted": card["posted"],
+                    },
+                    now,
+                )
                 counts["new" if is_new else "tombstoned"] += 1
     return counts

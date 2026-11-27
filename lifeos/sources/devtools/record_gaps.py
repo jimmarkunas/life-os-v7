@@ -6,6 +6,7 @@ FILE is {"LIFE-nnn": [[ISO time, text], ...]}: every comment and status move of 
 entry to the next (the last to --now) and is EXPLAINED when the entry that opens it starts with `[waiting on]`,
 else UNEXPLAINED. Prints keys, CT times and minutes only.
 """
+
 import argparse
 import datetime as dt
 import json
@@ -18,7 +19,11 @@ from lifeos.sources.devtools.profile_tickets import when
 def stretches(entries, now, limit=60):
     ordered = sorted((when(time), text) for time, text in entries)
     ends = [time for time, _ in ordered[1:]] + [now]
-    return [(start, round((end - start).total_seconds() / 60), text.startswith("[waiting on]")) for (start, text), end in zip(ordered, ends) if end - start >= dt.timedelta(minutes=limit)]
+    return [
+        (start, round((end - start).total_seconds() / 60), text.startswith("[waiting on]"))
+        for (start, text), end in zip(ordered, ends)
+        if end - start >= dt.timedelta(minutes=limit)
+    ]
 
 
 def main(argv=None, out=sys.stdout):

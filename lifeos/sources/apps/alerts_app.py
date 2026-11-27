@@ -6,6 +6,7 @@ Bitwarden items (project LIFE OS ALERTS) read back as sent. Inputs: ALERTS_ENABL
 ALERT_SETTINGS (lifeos/platform/alert_settings.py) from Bitwarden; the optional `bwsalerts` credential, passed by
 the Edge gate to this path only (without it the screen changes nothing). Outputs: the screen or a fixed code.
 """
+
 import hashlib
 import json
 import subprocess
@@ -37,21 +38,43 @@ table.alerts input[type=checkbox]{width:20px;height:20px;accent-color:var(--acce
 
 
 def _shell(html):
-    return (html.replace(b'<link rel="stylesheet" href="/close.css">', b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/alerts.css">')
-            .replace(b"Hiring \xc2\xb7 Opportunity actions", b"Alerts \xc2\xb7 Settings")
-            .replace(b"LIFE OS \xc2\xb7 Closing a LinkedIn contact is separate from closing a hiring opportunity.", b"LIFE OS \xc2\xb7 Saved in Bitwarden; the next run uses them."))
+    return (
+        html.replace(
+            b'<link rel="stylesheet" href="/close.css">',
+            b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/alerts.css">',
+        )
+        .replace(b"Hiring \xc2\xb7 Opportunity actions", b"Alerts \xc2\xb7 Settings")
+        .replace(
+            b"LIFE OS \xc2\xb7 Closing a LinkedIn contact is separate from closing a hiring opportunity.",
+            b"LIFE OS \xc2\xb7 Saved in Bitwarden; the next run uses them.",
+        )
+    )
 
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
     return status, C.HTML, _shell(S.result(eyebrow, title, text, detail, css)), ()
 
 
-NO_ANSWER = (503, "Unavailable", "Bitwarden did not answer", "The settings could not be read.", "Nothing was changed.", "danger")
+NO_ANSWER = (
+    503,
+    "Unavailable",
+    "Bitwarden did not answer",
+    "The settings could not be read.",
+    "Nothing was changed.",
+    "danger",
+)
 RELOAD = "Reload Alert settings."
 
 
 def _unsaved(why):
-    return _stop(500, "Unavailable", "Could not verify the save", "Do not assume the settings were saved or left unchanged. Open Alert settings again.", f"Status: DEGRADED · {why}", "danger")
+    return _stop(
+        500,
+        "Unavailable",
+        "Could not verify the save",
+        "Do not assume the settings were saved or left unchanged. Open Alert settings again.",
+        f"Status: DEGRADED · {why}",
+        "danger",
+    )
 
 
 def _forced(spec, channels):
@@ -81,8 +104,14 @@ def model(values, now):
     except ValueError:
         pass
     saved = settings.parse(values.get(DOC) or "")
-    chosen = {key: (tuple(saved[key]) if key in saved else tuple(spec.channels)) for key, spec in registry.REGISTRY.items()}
-    return {"enabled": settings.enabled({SWITCH: values.get(SWITCH) or ""}), "mute": mute, "channels": {key: _forced(registry.REGISTRY[key], c_) for key, c_ in chosen.items()}}
+    chosen = {
+        key: (tuple(saved[key]) if key in saved else tuple(spec.channels)) for key, spec in registry.REGISTRY.items()
+    }
+    return {
+        "enabled": settings.enabled({SWITCH: values.get(SWITCH) or ""}),
+        "mute": mute,
+        "channels": {key: _forced(registry.REGISTRY[key], c_) for key, c_ in chosen.items()},
+    }
 
 
 def from_form(form):
@@ -112,18 +141,26 @@ def digest(state):
 def changes(old, new):
     out = []
     if old["enabled"] != new["enabled"]:
-        out.append("Alerts will be turned " + ("ON: pushes reach your phone from the next run." if new["enabled"] else "OFF: nothing is sent."))
+        out.append(
+            "Alerts will be turned "
+            + ("ON: pushes reach your phone from the next run." if new["enabled"] else "OFF: nothing is sent.")
+        )
     if old["mute"] != new["mute"]:
         out.append("Mute " + (f"until {new['mute'].replace('T', ' ')} Central." if new["mute"] else "cleared."))
     for key, spec in registry.REGISTRY.items():
         if tuple(old["channels"][key]) != tuple(new["channels"][key]):
-            out.append(f"{key.replace('_', ' ').replace('*', '(each)')}: " + (", ".join(LABELS[c] for c in new["channels"][key]) or "no channel"))
+            out.append(
+                f"{key.replace('_', ' ').replace('*', '(each)')}: "
+                + (", ".join(LABELS[c] for c in new["channels"][key]) or "no channel")
+            )
     return out
 
 
 def _switch(name, label, note, on):
-    return (f'<div class="switchrow"><div><strong>{e(label)}</strong><small>{e(note)}</small></div><label class="sw"><input type="checkbox" name="{e(name)}" value="1"'
-            f'{" checked" if on else ""}><i></i></label></div>')
+    return (
+        f'<div class="switchrow"><div><strong>{e(label)}</strong><small>{e(note)}</small></div><label class="sw"><input type="checkbox" name="{e(name)}" value="1"'
+        f'{" checked" if on else ""}><i></i></label></div>'
+    )
 
 
 def fixed(channel, spec):
@@ -134,30 +171,47 @@ def _rows(state):
     by_owner = {}
     for key, spec in registry.REGISTRY.items():
         by_owner.setdefault(spec.owner, []).append((key, spec))
-    html = ['<table class="alerts"><thead><tr><th>Alert</th>' + "".join(f'<th class="ch">{e(LABELS[c])}</th>' for c in registry.CHANNELS) + "</tr></thead><tbody>"]
+    html = [
+        '<table class="alerts"><thead><tr><th>Alert</th>'
+        + "".join(f'<th class="ch">{e(LABELS[c])}</th>' for c in registry.CHANNELS)
+        + "</tr></thead><tbody>"
+    ]
     for owner in sorted(by_owner):
         html.append(f'<tr class="group"><td colspan="{1 + len(registry.CHANNELS)}">{e(owner)}</td></tr>')
         for key, spec in sorted(by_owner[owner]):
             chosen = state["channels"][key]
             cells = "".join(
                 f'<td class="ch"><input type="checkbox" name="ch:{e(key)}:{c}" value="1" aria-label="{e(LABELS[c])} for {e(key)}"{" checked" if (c in chosen or fixed(c, spec)) else ""}'
-                f'{" disabled" if fixed(c, spec) else ""}></td>' for c in registry.CHANNELS)
-            html.append(f'<tr><td><strong>{e(key.replace("_", " ").replace("*", "(each)"))}</strong> <span class="badge {e(spec.severity)}">{e(spec.severity.upper())}</span>'
-                        f'<div class="meaning">{e(spec.meaning)}</div></td>{cells}</tr>')
+                f'{" disabled" if fixed(c, spec) else ""}></td>'
+                for c in registry.CHANNELS
+            )
+            html.append(
+                f'<tr><td><strong>{e(key.replace("_", " ").replace("*", "(each)"))}</strong> <span class="badge {e(spec.severity)}">{e(spec.severity.upper())}</span>'
+                f'<div class="meaning">{e(spec.meaning)}</div></td>{cells}</tr>'
+            )
     html.append("</tbody></table>")
     return "".join(html)
 
 
 def _credentials(now):
     rows = credentials.rows(now.date())
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in ("OK", "Warning", "Expired", "No fixed expiry", "Unknown")}
-    html = [f'<p class="lead">{len(rows)} credentials. Warned ahead through the alert gateway: {credentials.WARN_AHEAD_DAYS} days before a date. '
-            f'OK {counts["OK"]}, Warning {counts["Warning"]}, Expired {counts["Expired"]}, no fixed expiry {counts["No fixed expiry"]}, no date to check {counts["Unknown"]}.</p>',
-            '<table class="alerts"><thead><tr><th>Credential</th><th>Days left</th><th>Source</th></tr></thead><tbody>']
-    for r in sorted(rows, key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0, r["credential"])):
+    counts = {
+        s: sum(1 for r in rows if r["status"] == s) for s in ("OK", "Warning", "Expired", "No fixed expiry", "Unknown")
+    }
+    html = [
+        f'<p class="lead">{len(rows)} credentials. Warned ahead through the alert gateway: {credentials.WARN_AHEAD_DAYS} days before a date. '
+        f'OK {counts["OK"]}, Warning {counts["Warning"]}, Expired {counts["Expired"]}, no fixed expiry {counts["No fixed expiry"]}, no date to check {counts["Unknown"]}.</p>',
+        '<table class="alerts"><thead><tr><th>Credential</th><th>Days left</th><th>Source</th></tr></thead><tbody>',
+    ]
+    for r in sorted(
+        rows,
+        key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0, r["credential"]),
+    ):
         days = "-" if r["days_left"] is None else str(r["days_left"])
-        html.append(f'<tr><td><strong>{e(r["credential"])}</strong><div class="meaning">{e(r["provider"])}: {e(r["used_for"])}</div></td><td>{e(days)}</td>'
-                    f'<td>{e(r["source"])}</td></tr>')
+        html.append(
+            f'<tr><td><strong>{e(r["credential"])}</strong><div class="meaning">{e(r["provider"])}: {e(r["used_for"])}</div></td><td>{e(days)}</td>'
+            f'<td>{e(r["source"])}</td></tr>'
+        )
     html.append("</tbody></table>")
     return "".join(html)
 
@@ -174,21 +228,34 @@ def _fields(state):
 def _page(state, secret, login, now, notice=""):
     exp = str(int(now.timestamp()) + C.TTL)
     token = C._mac(secret, "alerts", login, exp)
-    body = (f'<form method="post" action="/alerts"><input type="hidden" name="exp" value="{exp}"><input type="hidden" name="t" value="{token}">'
-            f'<section class="section"><div class="eyebrow">Master switches</div>'
-            + _switch("enabled", "Alerts", "Off means nothing is sent to any channel. It also stays off if this setting is ever missing.", state["enabled"])
-            + f'<div class="switchrow"><div><strong>Mute until</strong><small>Central time. Leave empty for no mute. A mute silences every channel.</small></div>'
-              f'<input type="datetime-local" name="mute" value="{e(state["mute"])}"></div></section>'
-              f'<section class="section"><div class="eyebrow">Channels by alert</div><p class="lead">Tick where each alert should go. A PAGE alert always reaches the phone.</p>{_rows(state)}</section>'
-              f'<section class="section"><div class="eyebrow">Credentials</div>{_credentials(now)}</section>'
-              f'{notice}<div class="actions"><button class="btn primary" name="step" value="review">Review changes →</button></div></form>')
+    body = (
+        f'<form method="post" action="/alerts"><input type="hidden" name="exp" value="{exp}"><input type="hidden" name="t" value="{token}">'
+        f'<section class="section"><div class="eyebrow">Master switches</div>'
+        + _switch(
+            "enabled",
+            "Alerts",
+            "Off means nothing is sent to any channel. It also stays off if this setting is ever missing.",
+            state["enabled"],
+        )
+        + f'<div class="switchrow"><div><strong>Mute until</strong><small>Central time. Leave empty for no mute. A mute silences every channel.</small></div>'
+        f'<input type="datetime-local" name="mute" value="{e(state["mute"])}"></div></section>'
+        f'<section class="section"><div class="eyebrow">Channels by alert</div><p class="lead">Tick where each alert should go. A PAGE alert always reaches the phone.</p>{_rows(state)}</section>'
+        f'<section class="section"><div class="eyebrow">Credentials</div>{_credentials(now)}</section>'
+        f'{notice}<div class="actions"><button class="btn primary" name="step" value="review">Review changes →</button></div></form>'
+    )
     return 200, C.HTML, _shell(S.page("Alert settings", "What gets sent, and where.", body, PATH, TAB)), ()
 
 
 def _get(req, who, secrets, run):
     token = secrets.get("bwsalerts")
     if not token:
-        return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot read or save settings yet.", "Nothing was changed.")
+        return _stop(
+            503,
+            "Not set up",
+            "The settings credential is not installed",
+            "This screen cannot read or save settings yet.",
+            "Nothing was changed.",
+        )
     try:
         values = read(token, run)
     except Exception:  # noqa: BLE001 - fixed text only
@@ -200,7 +267,13 @@ def _post(req, who, secrets, run):
     form, secret, login, token = req["form"], secrets["link"], who["login"], secrets.get("bwsalerts")
     exp, now = form.get("exp", ""), C._now()
     if not token:
-        return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot save settings yet.", "Nothing was changed.")
+        return _stop(
+            503,
+            "Not set up",
+            "The settings credential is not installed",
+            "This screen cannot save settings yet.",
+            "Nothing was changed.",
+        )
     state = from_form(form)
     if form.get("step") == "cancel" and state is not None:
         return _page(state, secret, login, now)
@@ -212,28 +285,48 @@ def _post(req, who, secrets, run):
             return invalid(_stop, RELOAD)
         try:
             current = model(read(token, run), now)
-        except Exception:                                                          # noqa: BLE001
+        except Exception:  # noqa: BLE001
             return _stop(*NO_ANSWER)
         lines = changes(current, state)
         fields = _fields(state) | {"exp": exp, "t": C._mac(secret, "alerts-confirm", login, exp, digest(state))}
         shown = "".join(f"<li>{e(line)}</li>" for line in lines) or "<li>No change.</li>"
-        return 200, C.HTML, _shell(S.page("Review changes", "Nothing is saved until you confirm.", (
-            f'<form method="post" action="/alerts">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review</div><ul class="lead">{shown}</ul>'
-            '<div class="notice alert">Confirming saves these in Bitwarden; the next run uses them. The change is shown as done only after Bitwarden reports the same values back.</div></section>'
-            '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
-            f'<button class="btn primary" name="step" value="confirm"{" disabled" if not lines else ""}>Save</button></div></form>'), PATH, TAB)), ()
+        return (
+            200,
+            C.HTML,
+            _shell(
+                S.page(
+                    "Review changes",
+                    "Nothing is saved until you confirm.",
+                    (
+                        f'<form method="post" action="/alerts">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review</div><ul class="lead">{shown}</ul>'
+                        '<div class="notice alert">Confirming saves these in Bitwarden; the next run uses them. The change is shown as done only after Bitwarden reports the same values back.</div></section>'
+                        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
+                        f'<button class="btn primary" name="step" value="confirm"{" disabled" if not lines else ""}>Save</button></div></form>'
+                    ),
+                    PATH,
+                    TAB,
+                )
+            ),
+            (),
+        )
     if step != "confirm" or not C._same(form.get("t"), C._mac(secret, "alerts-confirm", login, exp, digest(state))):
         return invalid(_stop, RELOAD)
     want = values_for(state)
     try:
         write(token, want, run)
         got = read(token, run)
-    except Exception:                                                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return _unsaved("Bitwarden error")
     if any((got.get(name) or "") != value for name, value in want.items()):
         return _unsaved("not read back")
-    return _stop(200, "Saved", "Alert settings saved", "Bitwarden reports the same values back; the next run uses them.",
-                 f"Alerts {'ON' if state['enabled'] else 'OFF'} · {('muted until ' + state['mute'].replace('T', ' ') + ' Central') if state['mute'] else 'no mute'}.", "ok")
+    return _stop(
+        200,
+        "Saved",
+        "Alert settings saved",
+        "Bitwarden reports the same values back; the next run uses them.",
+        f"Alerts {'ON' if state['enabled'] else 'OFF'} · {('muted until ' + state['mute'].replace('T', ' ') + ' Central') if state['mute'] else 'no mute'}.",
+        "ok",
+    )
 
 
 def handle(req, who, secrets, run=subprocess.run):

@@ -6,6 +6,7 @@ another session took the number first, the push is rejected and the next is trie
 an unused claim leaves a harmless gap. `duplicates` lists numbers used twice; `show D139` prints one decision's
 section. Fixed error codes only.
 """
+
 # Each claim is its own annotated tag object (random claim id in its message), so a repeat claim never looks like an
 # up-to-date push of the same tag.
 import re
@@ -18,7 +19,9 @@ from pathlib import Path
 PREFIX = "decision-claim/D"
 HEADING = re.compile(r"^## D(\d+)\b(.*)$", re.M)
 INDEX_ENTRY = re.compile(r"^- D(\d+)\b(.*)$", re.M)
-FOLLOW_UP = re.compile(r"^\s*(amendment|advice)\b", re.I)  # "## D12 amendment ...", "## D6 advice ...": the same decision, continued
+FOLLOW_UP = re.compile(
+    r"^\s*(amendment|advice)\b", re.I
+)  # "## D12 amendment ...", "## D6 advice ...": the same decision, continued
 TRIES = 10
 
 
@@ -49,7 +52,7 @@ def section(text, number):
     for i, head in enumerate(heads):
         if int(head.group(1)) == number:
             end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-            out.append(text[head.start():end].rstrip("\n"))
+            out.append(text[head.start() : end].rstrip("\n"))
     return "\n\n".join(out)
 
 
@@ -71,8 +74,10 @@ def highest(remote="origin", cwd=None, branch="main"):
 
 
 def _claim_object(n, sha, cwd=None):
-    body = (f"object {sha}\ntype commit\ntag {PREFIX}{n}\ntagger LIFE OS decisions <decisions@example.com> {int(time.time())} +0000\n\n"
-            f"LIFE-89 decision number claim {uuid.uuid4().hex}\n")
+    body = (
+        f"object {sha}\ntype commit\ntag {PREFIX}{n}\ntagger LIFE OS decisions <decisions@example.com> {int(time.time())} +0000\n\n"
+        f"LIFE-89 decision number claim {uuid.uuid4().hex}\n"
+    )
     made = _git("hash-object", "-t", "tag", "-w", "--stdin", cwd=cwd, data=body)
     if made.returncode != 0:
         raise ClaimError("DECISION_CLAIM_TAG_NOT_MADE")
@@ -102,8 +107,13 @@ def main(argv=None):
             return 1
     if argv == ["duplicates"]:
         docs = Path(__file__).resolve().parents[3] / "docs"
-        found = {**{f"DECISIONS.md D{n}": t for n, t in duplicates((docs / "DECISIONS.md").read_text()).items()},
-                 **{f"DECISIONS_INDEX.md D{n}": t for n, t in duplicates((docs / "DECISIONS_INDEX.md").read_text(), INDEX_ENTRY).items()}}
+        found = {
+            **{f"DECISIONS.md D{n}": t for n, t in duplicates((docs / "DECISIONS.md").read_text()).items()},
+            **{
+                f"DECISIONS_INDEX.md D{n}": t
+                for n, t in duplicates((docs / "DECISIONS_INDEX.md").read_text(), INDEX_ENTRY).items()
+            },
+        }
         for where, titles in found.items():
             print(f"{where}: {' | '.join(titles)}")
         return 1 if found else 0

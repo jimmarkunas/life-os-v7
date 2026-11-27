@@ -4,6 +4,7 @@ Only mail whose From address is exactly the vendor's no-reply address is touched
 read back. Dry run unless live. Runs after the read-only lifeos.physmail package, which reads by sender and is
 unaffected by labels. Counts and fixed codes only.
 """
+
 import os
 from email.utils import getaddresses
 
@@ -53,7 +54,13 @@ def run(limit, live, environ=os.environ, gmail=None):
         # one message that cannot be filed is that message's failure, recorded by its fixed code; the others are still
         # filed,
         # and the stage fails only if every message failed
-        done = isolate.run_items(ids, file_one, code_of=lambda error: "PHYSMAIL_FILING_READBACK_MISMATCH" if isinstance(error, _Readback) else "PHYSMAIL_FILING_MOVE_FAILED")
+        done = isolate.run_items(
+            ids,
+            file_one,
+            code_of=lambda error: (
+                "PHYSMAIL_FILING_READBACK_MISMATCH" if isinstance(error, _Readback) else "PHYSMAIL_FILING_MOVE_FAILED"
+            ),
+        )
         for _, code in done.failures:
             fail(code)
         isolate.record(counts, done)

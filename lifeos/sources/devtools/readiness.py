@@ -6,6 +6,7 @@ item, a release-gate reason, or unreadable input. Anything else prints `warn v1 
 Usage: python -m lifeos.sources.devtools.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE
 KEY | open-gaps | open-gaps-mcp FILE | epic-review FILE | epic-review-key KEY | repo [ROOT]
 """
+
 import json
 import re
 import sys
@@ -30,8 +31,20 @@ def text(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-HARD = {"issue_unreadable", "key_invalid", "blockers_unreadable", "blocked_by_open", "gwt_missing", "jim_first_open",
-        "no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread", "epic_unreviewed"}
+HARD = {
+    "issue_unreadable",
+    "key_invalid",
+    "blockers_unreadable",
+    "blocked_by_open",
+    "gwt_missing",
+    "jim_first_open",
+    "no_readiness_label",
+    "two_readiness_labels",
+    "not_ready_label",
+    "epic_scoping",
+    "epic_status_unread",
+    "epic_unreviewed",
+}
 HARD_FIELDS = {"key", "blockers", "acceptance"}
 
 
@@ -51,7 +64,11 @@ def findings(issue):
     if "owner" in issue and not text(issue["owner"]):
         out.append(refuse("owner_missing", "owner"))
     if "labels" in issue:
-        lanes = [x for x in issue["labels"] if isinstance(x, str) and x.startswith("lane-")] if isinstance(issue["labels"], list) else []
+        lanes = (
+            [x for x in issue["labels"] if isinstance(x, str) and x.startswith("lane-")]
+            if isinstance(issue["labels"], list)
+            else []
+        )
         if not lanes:
             out.append(refuse("lane_missing", "labels"))
         elif len(lanes) > 1 or lanes[0] not in LANES:
@@ -66,18 +83,35 @@ def findings(issue):
         if not isinstance(blockers, list):
             out.append(refuse("blockers_unreadable", "blockers"))
         else:
-            out += [refuse("blocked_by_open", "blockers", f"{b.get('key')}={b.get('status')}") for b in blockers if not (isinstance(b, dict) and b.get("status") == "Done")]
+            out += [
+                refuse("blocked_by_open", "blockers", f"{b.get('key')}={b.get('status')}")
+                for b in blockers
+                if not (isinstance(b, dict) and b.get("status") == "Done")
+            ]
     if "authorization" in issue:
         auth = issue["authorization"]
         if isinstance(auth, dict) and auth.get("denied") is True:
             out.append(refuse("authorization_denied", "authorization"))
-        elif not (isinstance(auth, dict) and text(auth.get("approved_by")) and text(auth.get("provenance")) and auth.get("denied", False) is False):
+        elif not (
+            isinstance(auth, dict)
+            and text(auth.get("approved_by"))
+            and text(auth.get("provenance"))
+            and auth.get("denied", False) is False
+        ):
             out.append(refuse("authorization_missing", "authorization"))
-    if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
+    if "permissions" in issue and not (
+        isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])
+    ):
         out.append(refuse("permissions_missing", "permissions"))
     if "gate" in issue:
         why = issue["gate"]
-        if why in ("no_readiness_label", "two_readiness_labels", "not_ready_label", "epic_scoping", "epic_status_unread"):
+        if why in (
+            "no_readiness_label",
+            "two_readiness_labels",
+            "not_ready_label",
+            "epic_scoping",
+            "epic_status_unread",
+        ):
             out.append(refuse(why, "gate"))
     if "jim_first" in issue:
         jf = issue["jim_first"]
@@ -91,7 +125,16 @@ def findings(issue):
             if not isinstance(rows, list):
                 out.append(refuse(f"{name}_unreadable", name))
             else:
-                out += [refuse(code, name, f"item {i + 1}") for i, r in enumerate(rows) if not (isinstance(r, dict) and text(r.get("what")) and text(r.get("proof")) and r.get("status") == "done")]
+                out += [
+                    refuse(code, name, f"item {i + 1}")
+                    for i, r in enumerate(rows)
+                    if not (
+                        isinstance(r, dict)
+                        and text(r.get("what"))
+                        and text(r.get("proof"))
+                        and r.get("status") == "done"
+                    )
+                ]
     if "requirement" in issue:
         req = issue["requirement"]
         if not (isinstance(req, dict) and isinstance(req.get("pages"), list)):
@@ -101,16 +144,30 @@ def findings(issue):
         if not (isinstance(items, list) and items):
             out.append(refuse("gwt_missing", "acceptance"))
         else:
-            out += [refuse("gwt_incomplete", "acceptance", f"item {i + 1}") for i, c in enumerate(items) if not (isinstance(c, dict) and (text(c.get("done_when")) or all(text(c.get(k)) for k in GWT)))]
-    if str(issue.get("key", "")).startswith("LIFE-") and isinstance(issue.get("description_chars"), int) and issue["description_chars"] > DESCRIPTION_LIMIT:
-        out.append(refuse("description_long", "description", f"{issue['description_chars']} characters, limit {DESCRIPTION_LIMIT}"))
+            out += [
+                refuse("gwt_incomplete", "acceptance", f"item {i + 1}")
+                for i, c in enumerate(items)
+                if not (isinstance(c, dict) and (text(c.get("done_when")) or all(text(c.get(k)) for k in GWT)))
+            ]
+    if (
+        str(issue.get("key", "")).startswith("LIFE-")
+        and isinstance(issue.get("description_chars"), int)
+        and issue["description_chars"] > DESCRIPTION_LIMIT
+    ):
+        out.append(
+            refuse(
+                "description_long", "description", f"{issue['description_chars']} characters, limit {DESCRIPTION_LIMIT}"
+            )
+        )
     return out
 
 
 def check_issue(issue):
     refusals, warnings = [], []
     for f in findings(issue):
-        (refusals if f["code"] in HARD or (f["code"] == "field_absent" and f["field"] in HARD_FIELDS) else warnings).append(f)
+        (
+            refusals if f["code"] in HARD or (f["code"] == "field_absent" and f["field"] in HARD_FIELDS) else warnings
+        ).append(f)
     return refusals, warnings
 
 
@@ -142,8 +199,12 @@ def check_repo(root):
         if is_global and not (row[1] and row[3]):
             out.append(refuse("owner_or_authority_missing", link.group(1)))
     sized = [root / n for n in ("INDEX.md", "AGENTS.md", "CLAUDE.md", "docs/life-os-development-policy.md")]
-    out += [refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size)) for f in sized
-            if f.is_file() and f.stat().st_size > (POLICY_LIMIT if f.name == "life-os-development-policy.md" else SIZE_LIMIT)]
+    out += [
+        refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size))
+        for f in sized
+        if f.is_file()
+        and f.stat().st_size > (POLICY_LIMIT if f.name == "life-os-development-policy.md" else SIZE_LIMIT)
+    ]
     if not set(("key", "acceptance_criteria", "owner", "authorization")) <= set(schema.get("required", [])):
         out.append(refuse("schema_fields_lost", "docs/jira/issue-schema.v1.json"))
     return out
@@ -151,7 +212,10 @@ def check_repo(root):
 
 def jira_issue(mode, arg):
     from lifeos.jira import readiness_record as rr
-    from lifeos.jira import fill_defaults  # a live read first fills the parent, Component and Fix Version; a failed Jira write is the one `fill_failed` refusal
+    from lifeos.jira import (
+        fill_defaults,
+    )  # a live read first fills the parent, Component and Fix Version; a failed Jira write is the one `fill_failed` refusal
+
     try:
         if mode == "issue-key":
             client = rr.Jira.from_env()
@@ -171,16 +235,21 @@ MCP_MAX_AGE = 15 * 60
 
 
 def mcp_issue(path, key):
-    """-> (refusals, warnings, gap, fields used). The file cannot be proven unmodified; the caller states that limit.
-    """
+    """-> (refusals, warnings, gap, fields used). The file cannot be proven unmodified; the caller states that limit."""
     from lifeos.jira import readiness_record as rr
+
     p, shown = Path(path), None
     try:
         stale = time.time() - p.stat().st_mtime > MCP_MAX_AGE
         raw = rr.from_mcp(json.loads(p.read_text()), key)
         shown = rr.used(raw)
         refusals, warnings = check_issue(rr.normalize(raw))
-        return refusals, ([refuse("stale_read", "file", "saved more than 15 minutes ago")] if stale else []) + warnings, None, shown
+        return (
+            refusals,
+            ([refuse("stale_read", "file", "saved more than 15 minutes ago")] if stale else []) + warnings,
+            None,
+            shown,
+        )
     except Exception as exc:  # noqa: BLE001  fixed code only
         code = str(exc) if str(exc).startswith(("INCOMPLETE:", "KEY_MISMATCH")) else type(exc).__name__
         return [], [], f"QUEUE_NOT_READY — {code}", shown
@@ -191,6 +260,7 @@ REVIEW = re.compile(r"^[#*\s]*ChatGPT review:\s*(pass|changes)\b", re.I)
 
 def moment(value):
     from datetime import datetime
+
     try:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
@@ -205,6 +275,7 @@ def epic_review(bundle):
     if (bundle.get("status") or "") != "Ready":
         return None
     from lifeos.jira.readiness_record import lines
+
     found = []
     for c in bundle.get("comments") or []:
         first = next(iter(lines(c.get("body"))), "")
@@ -231,11 +302,20 @@ GAPS_FIELDS = "parent,components,fixVersions,labels"
 
 def open_gaps(issues):
     from lifeos.jira.release import READINESS
+
     out = []
     for issue in issues:
         f = issue.get("fields") or {}
-        missing = [name for name, absent in (("parent", not f.get("parent")), ("component", not f.get("components")), ("fix_version", not f.get("fixVersions")),
-                                             ("readiness_label", not any(x in READINESS for x in f.get("labels") or []))) if absent]
+        missing = [
+            name
+            for name, absent in (
+                ("parent", not f.get("parent")),
+                ("component", not f.get("components")),
+                ("fix_version", not f.get("fixVersions")),
+                ("readiness_label", not any(x in READINESS for x in f.get("labels") or [])),
+            )
+            if absent
+        ]
         if missing:
             out.append((issue.get("key", "?"), missing))
     return out
@@ -275,6 +355,7 @@ def run(argv):
                 bundle = json.loads(Path(argv[1]).read_text())
             else:
                 from lifeos.jira import readiness_record as rr
+
                 bundle = rr.epic_bundle(argv[1])
             if not isinstance(bundle, dict):
                 raise ValueError("INCOMPLETE:bundle")
@@ -288,6 +369,7 @@ def run(argv):
             if argv[0] == "open-gaps":
                 from lifeos.jira import readiness_record as rr
                 from lifeos.jira.search import search
+
                 issues = search(rr.Jira.from_env(), GAPS_JQL, GAPS_FIELDS)
             else:
                 nodes = ((json.loads(Path(argv[1]).read_text()) or {}).get("issues") or {}).get("nodes")
@@ -304,13 +386,18 @@ def run(argv):
         if gap:
             print(gap, file=sys.stderr)
             if "_MISSING:" in gap:
-                print("hint: no Jira settings here? Read the ticket with the Atlassian MCP, save the result and run: python -m lifeos.sources.devtools.readiness issue-mcp FILE KEY", file=sys.stderr)
+                print(
+                    "hint: no Jira settings here? Read the ticket with the Atlassian MCP, save the result and run: python -m lifeos.sources.devtools.readiness issue-mcp FILE KEY",
+                    file=sys.stderr,
+                )
             return 2
         return report(refusals, warnings)
     try:
         mode, args = argv[0], argv[1:]
-        checks = {"issue": lambda: check_issue(json.loads(Path(args[0]).read_text())),
-                  "repo": lambda: (check_repo(args[0] if args else Path(__file__).resolve().parents[3]), [])}
+        checks = {
+            "issue": lambda: check_issue(json.loads(Path(args[0]).read_text())),
+            "repo": lambda: (check_repo(args[0] if args else Path(__file__).resolve().parents[3]), []),
+        }
         refusals, warnings = checks[mode]()
     except Exception:  # noqa: BLE001  any error is a refusal, never a pass
         refusals, warnings = [refuse("input_unreadable", "argv")], []
