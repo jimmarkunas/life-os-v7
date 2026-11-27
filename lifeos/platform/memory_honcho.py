@@ -25,7 +25,7 @@ HINT = "Rephrase without the personal detail, or ask Jim. Nothing was stored."
 NOTICE = (
     "This is memory, not a canonical fact. If Notion, Jira or GitHub holds the same fact, the canonical source wins."
 )
-# LIFE-1064: recall ranks by topic, so a hit can share the topic and still not answer. The reading agent decides; this
+# Recall ranks by topic, so a hit can share the topic and still not answer. The reading agent decides; this
 # exact text is also the rule the judge evaluation (tools/um_judge_eval.py) measures.
 ANSWER_RULE = (
     "These items are candidates ranked by topic, not answers. Use an item only if its text states the specific thing "

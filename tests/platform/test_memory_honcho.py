@@ -541,7 +541,7 @@ class Ask(unittest.TestCase):
 
 
 class AnswerRule(unittest.TestCase):
-    """LIFE-1064: recall hands the reading agent candidates ranked by topic; the agent decides, so every recall says so."""
+    """Recall hands the reading agent candidates ranked by topic; the agent decides, so every recall says so."""
 
     def test_recall_carries_the_answer_rule_and_its_description_states_it(self):
         out = run("memory_recall", {"workspace": "Personal", "query": "anything"}, FakeHoncho())
