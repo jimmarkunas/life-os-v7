@@ -11,8 +11,8 @@ from tests.platform.test_settings import FakeStore, connect
 
 ROOT = Path(__file__).resolve().parents[2]
 OTHER = "[removed]"
-ID = "[removed]"
-ID2 = "[removed]"
+ID = "00000000-0000-0000-0000-000000000102"
+ID2 = "00000000-0000-0000-0000-000000000103"
 
 
 NEW_ROWS = [

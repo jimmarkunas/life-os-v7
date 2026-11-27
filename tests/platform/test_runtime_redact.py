@@ -46,7 +46,7 @@ class Redact(unittest.TestCase):
         self.assertEqual(set(out.values()), {redact.REDACTED})
 
     def test_notion_ids_in_text_and_unknown_objects(self):
-        out = redact.redact("page [removed] failed")
+        out = redact.redact("page 00000000-0000-0000-0000-000000000108 failed")
         self.assertNotIn("3d63c5a0", out)
         self.assertEqual(redact.redact(object()), "object")
         self.assertEqual(redact.redact(b"raw"), redact.REDACTED)

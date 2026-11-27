@@ -11,7 +11,7 @@ from lifeos import run
 from lifeos.network import inspect, source
 from lifeos.network.errors import NetworkError
 
-PAGE = "[removed]"
+PAGE = "00000000-0000-0000-0000-000000000106"
 OK_URL = "https://prod-files-secure.s3.us-west-2.amazonaws.com/x/y/LI_Connections_20260907.csv?sig=1"
 CSV = (
     "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"

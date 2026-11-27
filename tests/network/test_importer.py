@@ -11,7 +11,7 @@ from lifeos.network.errors import NetworkError
 from tests.kit.mysqlite import MySQLite
 from tests.network.test_source_and_inspect import FakeClient, Response, file_block, page
 
-PAGE = "[removed]"
+PAGE = "00000000-0000-0000-0000-000000000106"
 ENV = {"NETWORK_HANDOFF_PAGE_ID": PAGE, "NOTION_API_TOKEN": "t"}
 HEAD = ["First Name", "Last Name", "URL", "Email Address", "Company", "Position", "Connected On"]
 URL = "https://www.linkedin.com/in/"

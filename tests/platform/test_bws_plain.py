@@ -40,7 +40,7 @@ class LastFourSwitches(unittest.TestCase):
     for Bitwarden's plain-switch path.
     """
 
-    PAGE = "[removed]"
+    PAGE = "00000000000000000000000000000107"
 
     def test_the_pipeline_switch_unreadable_parks_the_tick(self):
         exports, report, failures = run("V7_PIPELINE", None)
@@ -75,7 +75,7 @@ class LastFourSwitches(unittest.TestCase):
             run("V7_CLOUD_FIT_BACKLOG_PAGE", {"V7_CLOUD_FIT_BACKLOG_PAGE": self.PAGE})[0],
             {"V7_CLOUD_FIT_BACKLOG_PAGE": self.PAGE},
         )
-        dashed = "[removed]"
+        dashed = "00000000-0000-0000-0000-000000000107"
         self.assertEqual(
             run("V7_CLOUD_FIT_BACKLOG_PAGE", {"V7_CLOUD_FIT_BACKLOG_PAGE": dashed})[0],
             {"V7_CLOUD_FIT_BACKLOG_PAGE": self.PAGE},

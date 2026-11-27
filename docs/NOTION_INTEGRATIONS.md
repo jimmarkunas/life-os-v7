@@ -1,6 +1,6 @@
 # Notion integrations (connections) — canonical map
 
-What each Notion connection in Jim's workspace (The Austin Consulting…) is, which V7 credential holds its token, what uses it, and which Notion objects it must be
+What each Notion connection in Jim's workspace (Jim's LLC…) is, which V7 credential holds its token, what uses it, and which Notion objects it must be
 shared with. Read this before asking Jim to share a page: name the exact connection from this table, never "the integration whose token is X".
 
 Sources: Jim's Notion **Settings → Connections** list (screenshot, Oct 20 2026) and the token consumers in `.github/workflows/*.yml` on main `5a6549b`. Notion

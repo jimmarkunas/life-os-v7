@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.accountability import official_setter as o, promotion
 
-SOURCE = "[removed]"
+SOURCE = "00000000-0000-0000-0000-000000000101"
 
 
 def page(name, value, revision=1, active=True, pid=None):

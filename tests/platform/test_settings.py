@@ -12,7 +12,7 @@ from lifeos.platform import settings
 from tests.platform.settings_fixture import ENV, SOURCE, Source, from_lines, row  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]
-ID = "[removed]"
+ID = "00000000-0000-0000-0000-000000000102"
 
 # Every GitHub secret or variable the workflows use.
 FROZEN = frozenset({"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"})
@@ -244,7 +244,7 @@ class ShadowRule(unittest.TestCase):
             "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE,
             "NOTION_INTERVIEW_TOKEN": "i",
             "GRANOLA_AUTO": "",
-            "AMAZON_CARD_BLOCK_ID": "[removed]",
+            "AMAZON_CARD_BLOCK_ID": "00000000000000000000000000000109",
         }
         with mock.patch("lifeos.platform.notion_client.Client", factory):
             out = settings.apply(env)
@@ -267,7 +267,7 @@ class ShadowRule(unittest.TestCase):
             "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE,
             "NOTION_INTERVIEW_TOKEN": "i",
             "NOTION_API_TOKEN": "a",
-            "AMAZON_CARD_BLOCK_ID": "[removed]",
+            "AMAZON_CARD_BLOCK_ID": "00000000000000000000000000000109",
         }
         with mock.patch("lifeos.platform.notion_client.Client", factory):
             out = settings.apply(env, connect=connect)

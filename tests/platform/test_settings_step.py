@@ -13,7 +13,7 @@ from lifeos.platform import settings
 from tests.platform.settings_fixture import ENV
 from tests.platform.test_settings import Page
 
-GOOD = "[removed]"
+GOOD = "00000000-0000-0000-0000-000000000102"
 
 
 class Step(unittest.TestCase):
