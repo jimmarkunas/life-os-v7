@@ -1,6 +1,7 @@
 """Minimal Gmail REST client (stdlib only): bounded listing, message reads and explicit label changes."""
 
 import base64
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 import json
@@ -14,7 +15,7 @@ import urllib.request
 from collections.abc import Iterable
 from typing import Any, Self
 
-from lifeos.platform import api_counts
+from lifeos.platform import api_counts, gmail_gate
 from lifeos.platform.fixed_code import fixed
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -90,12 +91,15 @@ class Gmail:
         for attempt in range(LIMITED_TRIES):
             api_counts.count("gmail")
             try:
-                with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                    raw = response.read()
+                with gmail_gate.GATE.spend(method, url) if auth else nullcontext():
+                    with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                        raw = response.read()
                 return json.loads(raw) if raw else {}
             except urllib.error.HTTPError as error:
                 reason = _reason(error)
                 limited = error.code == 429 or reason in RATE_LIMITED
+                if limited:
+                    gmail_gate.GATE.slow()
                 transient = limited or error.code in (500, 502, 503, 504) or reason in RATE_REASONS
                 if transient and attempt < (LIMITED_TRIES if limited else TRIES) - 1:
                     self.retries += 1
