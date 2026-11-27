@@ -1,5 +1,4 @@
-"""Minimal Microsoft Graph mail client (stdlib only): delegated OAuth with refresh tokens, immutable ids, bounded
-enumeration.
+"""Minimal Microsoft Graph mail client (stdlib only): delegated OAuth, immutable ids, bounded enumeration.
 
 Device-code sign-in once, then silent refresh. Every error is a fixed code. Writes are limited to creating one mail
 folder and moving a message into it; nothing here deletes, sends or edits mail."""

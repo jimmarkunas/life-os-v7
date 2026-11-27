@@ -1,5 +1,4 @@
-"""Notion API transport: free API only, paced under 3 req/s, 429/529 retry per Retry-After, 409 conflict retry; fixed
-error codes, no job knowledge."""
+"""Notion API transport: paced under 3 req/s, retries 429/529 per Retry-After and 409 conflicts, fixed error codes."""
 from __future__ import annotations
 
 import json

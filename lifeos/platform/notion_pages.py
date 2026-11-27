@@ -1,5 +1,4 @@
-"""The one Notion paging loop: yields each page of a query or a block's children; anything short of a provably
-complete read raises a fixed code.
+"""The one Notion paging loop; anything short of a provably complete read raises a fixed code.
 
 `fail(code)` is the caller's error factory. Codes: `incomplete`, `repeat` (a cursor seen before), `capped` (more than
 `limit` pages) and `read` (the fetch raised NotionError); the last three default to `incomplete`. `limit=None` is

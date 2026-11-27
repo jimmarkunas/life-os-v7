@@ -1,5 +1,4 @@
-"""The Weekly Review's link to the governed Oracle Drive reader: one `drive1 <days>` line over the tailnet, one JSON
-line back.
+"""The Weekly Review's link to the governed Oracle Drive reader: `drive1 <days>` over the tailnet, one JSON line back.
 
 The runner holds no Google credential. Anything but a clean answer is a fixed code raised as OSError, which the Drive
 lane reports as its Degraded reason."""

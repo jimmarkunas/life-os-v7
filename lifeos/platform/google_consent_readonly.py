@@ -1,5 +1,4 @@
-"""Read-only Google sign-in helper: prints a sign-in link, catches the reply on loopback, writes the credential to a
-pipe.
+"""Read-only Google sign-in helper: sign-in link, loopback catcher, credential written only to a pipe.
 
 Reuses `google_consent`'s PKCE link builder and loopback catcher. Only the read-only scopes of ONE service, for an account
 on the allowlist; a refusal returns a machine-readable code and writes nothing to stdout or the pipe.

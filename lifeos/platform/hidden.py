@@ -1,5 +1,6 @@
-"""Machine ids that ride in a page without showing on it: a hidden ref is a zero-width character linked to a fixed
-address, and the ref is the link's last path segment. Pure; callers own what a ref means."""
+"""Machine ids that ride in a page unseen: a hidden ref is a zero-width character linked to a fixed address.
+
+The ref is the link's last path segment. Pure; callers own what a ref means."""
 from urllib.parse import quote, unquote
 
 BASE = "https://example.com/lifeos/"

@@ -1,5 +1,4 @@
-"""Fetch a page the way a real Chrome does (TLS fingerprint and headers) for first-party sites that refuse plain
-scripted requests.
+"""Fetch a page the way a real Chrome does (TLS fingerprint, headers) for sites that refuse plain scripts.
 
 Used only for registry sources that set `impersonate`. Returns the same Fetched facts as lifeos.platform.http."""
 import time

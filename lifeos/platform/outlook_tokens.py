@@ -1,5 +1,4 @@
-"""Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the
-token.
+"""Private storage for Outlook refresh tokens: one row per account label, replaced when Microsoft rotates it.
 
 The database is private; this repo and its logs are not (labels like 'personal' are not addresses)."""
 from datetime import datetime, timezone
