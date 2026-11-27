@@ -1,10 +1,10 @@
-"""LIFE-37 Step 2: which Interview OS round does a Granola meeting belong to? Pure, in memory, no I/O.
+"""Which Interview OS round does a Granola meeting belong to? Pure, no I/O.
 
-The rule is Jim's, approved Oct 26 2026 (LIFE-37 comments 11230 and 11231): the meeting falls on the same Central calendar day as the round's interview date AND at
-least one of (a) the hiring company's name is in the meeting title or description, (b) the round's requisition, or at least two distinctive words of its role, are,
-(c) an attendee matches the round's interviewer, (d) an attendee's email domain equals the company's domain, or the round's recruiter/agency domain when it names one.
-Exactly one round must match a meeting AND exactly one meeting must match that round; zero or several is no write and a fixed code, never a guess.
-Titles, names and addresses are compared here and never logged: callers get codes and counts only."""
+A meeting matches a round when it falls on the round's Central interview date AND at least one of: the company name
+is in the title or description; the requisition or two distinctive role words are; an attendee matches the
+interviewer; an attendee's email domain is the company's (or the recruiter/agency's). Exactly one round must match a
+meeting and exactly one meeting that round; anything else is no write and a fixed code. Titles, names and addresses
+are never logged."""
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -12,22 +12,22 @@ from zoneinfo import ZoneInfo
 from lifeos.platform.names import core, norm, tokens
 
 CENTRAL = ZoneInfo("America/Chicago")
-ROLE_STOP = {"and", "for", "the", "of", "to", "in", "at", "with", "senior", "sr", "lead", "manager", "principal"}      # words too common to identify a role
+ROLE_STOP = {"and", "for", "the", "of", "to", "in", "at", "with", "senior", "sr", "lead", "manager", "principal"}
 
 
 @dataclass(frozen=True)
 class Meeting:
     id: str
-    start: str                       # ISO 8601 with a zone, as Granola reports it
+    start: str
     title: str = ""
     description: str = ""
-    attendees: tuple = ()            # emails and/or display names
+    attendees: tuple = ()
 
 
 @dataclass(frozen=True)
 class Round:
     page_id: str
-    interview_date: str              # YYYY-MM-DD, Central
+    interview_date: str
     company: str
     role: str = ""
     interviewer: str = ""
@@ -37,7 +37,7 @@ class Round:
 
 
 def central_day(start):
-    """The Central calendar day (YYYY-MM-DD) of an ISO timestamp with a zone, or None when it is missing, naive or unreadable."""
+    """The Central calendar day of a zoned ISO timestamp, or None when missing, naive or unreadable."""
     try:
         moment = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
     except ValueError:
@@ -54,7 +54,7 @@ def _domains(attendees):
 
 
 def reasons(meeting, row):
-    """Which of the four approved signals (company, role, interviewer, domain) tie this meeting to this round. Empty = none."""
+    """Which signals (company, role, interviewer, domain) tie this meeting to this round."""
     text = norm(f"{meeting.title} {meeting.description}")
     found = set()
     if _has_all(core(row.company), text):
@@ -72,7 +72,9 @@ def reasons(meeting, row):
 
 
 def match(meetings, rounds):
-    """-> {meeting id: (code, round page id or None)}. Codes: MATCH, MATCH_NONE, MATCH_MANY_ROUNDS, MATCH_MANY_MEETINGS, MEETING_TIME_INVALID."""
+    """-> {meeting id: (code, round page id or None)}.
+
+    Codes: MATCH, MATCH_NONE, MATCH_MANY_ROUNDS, MATCH_MANY_MEETINGS, MEETING_TIME_INVALID."""
     day = {m.id: central_day(m.start) for m in meetings}
     hits = {m.id: [r for r in rounds if day[m.id] and r.interview_date == day[m.id] and reasons(m, r)] for m in meetings}
     taken = {}
@@ -95,7 +97,7 @@ def match(meetings, rounds):
 
 
 def explain(meeting, rounds):
-    """Counts only, for a stop: how many rounds fall on the meeting's Central day, and how many of those each approved signal ties to the meeting. Never a title, name or address."""
+    """Counts only, for a stop: rounds on the meeting's day, and how many each signal ties to it."""
     day = central_day(meeting.start)
     on_day = [r for r in rounds if day and r.interview_date == day]
     out = {"rounds_on_day": len(on_day), "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0}

@@ -1,5 +1,7 @@
-"""Counts-only shape probes for sources whose real pages the build sandbox cannot reach. Run from Actions; prints facts (status, sizes,
-key NAMES, counts) and never any posting text, URL or personal data. Result decides the next parser, nothing here writes anything."""
+"""Counts-only shape probes for sources the build sandbox cannot reach. Run from Actions.
+
+Prints facts (status, sizes, key names, counts) and never posting text, URLs or personal data. Nothing here writes.
+"""
 import json
 import os
 import re
@@ -47,7 +49,7 @@ def teamtailor(fetcher=fetch):
     return out
 
 
-DICE_SAMPLES = ("1dde497d-8758-4eed-8aac-816bed294b63",)             # a public job id from a Dice search the user shared
+DICE_SAMPLES = ("1dde497d-8758-4eed-8aac-816bed294b63",)             # a public job id used as a fixed sample
 
 
 def dice(fetcher=fetch):
@@ -70,7 +72,7 @@ def dice(fetcher=fetch):
 
 
 def hiring(environ=os.environ):
-    """Can the runner read the Hiring Pipeline page, and what does the tree look like (counts only)?"""
+    """Whether the runner can read the Hiring Pipeline page, and the shape of its tree (counts only)."""
     from lifeos.jobs import hiring_pipeline                                                  # noqa: PLC0415
     from lifeos.platform.notion_client import Client                                          # noqa: PLC0415
     page_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
@@ -83,7 +85,7 @@ def hiring(environ=os.environ):
 
 
 def ledger_target(environ=os.environ):
-    """Does the configured data source pass the Job Ledger target check? Property names that fail are schema, not content."""
+    """Whether the configured data source passes the Job Ledger target check. Failing property names are schema, not content."""
     from lifeos.jobs import ledger                                                           # noqa: PLC0415
     from lifeos.platform.notion_client import Client, NotionError                             # noqa: PLC0415
     client = Client(environ)

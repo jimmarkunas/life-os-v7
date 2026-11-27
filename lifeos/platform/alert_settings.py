@@ -1,15 +1,19 @@
-"""Alert settings (LIFE-75): what Jim set on the Alert settings page, read from the repository variables every run already receives as environment.
-ALERTS_ENABLED is the master switch (LIFE-71): alerts send only when it is exactly "on"; unset, empty or anything else means OFF. ALERT_SETTINGS is one small JSON document,
-{"v": 1, "channels": {"<registered alert key>": ["ntfy", "telegram", "whatsapp"]}}, that replaces an alert's default channels. An unreadable or invalid document, an unknown key and an
-unknown channel are ignored (the registry defaults apply), and a PAGE alert always keeps the phone: the page cannot untick it. The page that edits the document is served by the
-Close service on Oracle (lifeos/sources/apps/alerts_app.py); this module is the one reader of what it saves."""
+"""Alert settings: what was set on the Alert settings page, read from the repository variables every run receives as
+environment.
+
+ALERTS_ENABLED is the master switch: alerts send only when it is exactly "on". ALERT_SETTINGS is one small JSON
+document, {"v": 1, "channels": {"<registered alert key>": ["ntfy", "telegram", "whatsapp"]}}, that replaces an alert's
+default channels; an invalid document, unknown key or unknown channel is ignored, and a PAGE alert always keeps the
+phone. The page that edits it is served by the Close service (lifeos/sources/apps/alerts_app.py); this module is the
+one reader.
+"""
 import json
 import os
 
 from lifeos.platform import alert_registry as registry
 
 ENABLED_VARIABLE, SETTINGS_VARIABLE = "ALERTS_ENABLED", "ALERT_SETTINGS"
-MAX_BYTES = 8000                    # a repository variable holds 48 KB; the document stays far under it
+MAX_BYTES = 8000  # a repository variable holds 48 KB; the document stays far under it
 
 
 def enabled(environ=None):
@@ -18,7 +22,9 @@ def enabled(environ=None):
 
 
 def parse(raw):
-    """-> {registry key: tuple of channels} for the valid entries of one document; {} for anything unreadable. Channels come back in registry order."""
+    """-> {registry key: tuple of channels} for the valid entries of one document; {} for anything unreadable. Channels
+    come back in registry order.
+    """
     if not isinstance(raw, str) or not raw.strip() or len(raw) > MAX_BYTES:
         return {}
     try:
@@ -40,7 +46,9 @@ def load(environ=None):
 
 
 def channels(key, environ=None):
-    """-> the channels this alert reaches now: Jim's choice if he made one, else the registry default; always the phone for a PAGE alert; () for a key that is not registered."""
+    """-> the channels this alert reaches now: the saved choice if there is one, else the registry default; always the
+    phone for a PAGE alert; () for a key that is not registered.
+    """
     spec = registry.lookup(key)
     if spec is None:
         return ()
@@ -52,7 +60,9 @@ def channels(key, environ=None):
 
 
 def document(chosen):
-    """The JSON text to save for {registry key: channels}: only valid keys and channels, only entries that differ from the registry default, sorted; "" when nothing differs."""
+    """The JSON text to save for {registry key: channels}: only valid keys and channels, only entries that differ from
+    the registry default, sorted; "" when nothing differs.
+    """
     keep = {}
     for key, wanted in sorted(chosen.items()):
         spec = registry.REGISTRY.get(key)

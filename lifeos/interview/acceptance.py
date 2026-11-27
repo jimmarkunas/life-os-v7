@@ -1,9 +1,9 @@
-"""Manual-only private acceptance harness: one case from a secret, through LIFE-42 progression into the existing stage. Counts and fixed codes only.
+"""Manual-only private acceptance harness: one case from a secret, through progression into the stage.
 
-Two exact secret shapes. The dated shape (KEYS) is unchanged and reads no Ledger rows, so its link stays `unverified`. The Scheduling
-Pending shape (PENDING_KEYS, D231) is a request with no date yet: it adds the request link and the job's exact identifiers, and the
-Job Ledger rows for that company are read (read-only, LIFE OS Interview OS connection) so progression can confirm the exact job
-before Interview 1 is written. Any refusal is its fixed progression code; an unreadable Ledger is `ledger_unreadable`."""
+Counts and fixed codes only. Two exact secret shapes: the dated shape (KEYS) reads no Ledger rows, so its link stays
+`unverified`; the Scheduling Pending shape (PENDING_KEYS) has no date and reads the company's Job Ledger rows
+(read-only) so progression can confirm the exact job. A refusal is its fixed progression code; an unreadable Ledger
+is `ledger_unreadable`."""
 import json
 import os
 from lifeos.platform import names, notion_pages, notion_text
@@ -33,8 +33,7 @@ def _plain(prop, kind):
 
 
 def ledger_rows(company, environ=os.environ):
-    """Every live Job Ledger row whose Company contains the company's first word, read completely or refused. The Ledger has no
-    requisition column, so `stable_job_key` is the exact identifier it can confirm."""
+    """Live Job Ledger rows whose Company contains the company's first word, read completely or refused."""
     words = names.tokens(company)
     if not words:
         raise NotionError("INTERVIEW_LEDGER_UNREADABLE")
@@ -52,7 +51,6 @@ def ledger_rows(company, environ=os.environ):
 
 
 def _pending(data, read_rows):
-    """The Scheduling Pending shape: no date, round 1 or unnumbered, optional texts present or null."""
     who, ordinal = data["interviewer"], data["ordinal"]
     texts = (who, data["source"], data["requisition"], data["stable_job_key"])
     if not (_text(data["company"]) and _text(data["role"]) and data["confirmed_round"] is True and data["interview_date"] is None):
@@ -64,7 +62,7 @@ def _pending(data, read_rows):
 
 
 def resolve(raw, read_rows=None):
-    """The case's Progression, or None for anything but an exact contract. The dated shape reads no Ledger rows (`unverified`)."""
+    """The case's Progression, or None for anything but an exact contract."""
     try:
         data = json.loads(raw, object_pairs_hook=_object)
     except (TypeError, ValueError, RecursionError):
@@ -85,7 +83,6 @@ def resolve(raw, read_rows=None):
 
 
 def parse(raw):
-    """(ParentQuery, RoundQuery) or None for anything but the exact contract."""
     result = resolve(raw)
     return (result.parent, result.round) if result is not None and result.code == "ready" else None
 

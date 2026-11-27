@@ -1,8 +1,10 @@
-"""The private Close Opportunity service: shows one Job Ledger pursuit and closes it with one of six outcomes (LIFE-47 S2).
+"""The private Close Opportunity service: shows one Job Ledger pursuit and closes it with one of six outcomes.
 
-The application behind the Edge gate in lifeos/edge/close_gate.py (which calls `handle` from here); an app of the Close service (D17): the one place that composes the Ledger, the opportunity pages and the S1 decision rules. One exact pursuit is resolved by its Job Ledger row's page id (LIFE-353: the decision lives on the row; no page moves), shown,
-reviewed and closed; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency, conflict and read-back belong to lifeos.hiring.decision. GET and the review step never write.
-Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Outputs: fixed codes only. Pointer: D17, LIFE-47."""
+The application behind the Edge gate (lifeos/edge/close_gate.py calls `handle`). The pursuit is resolved by its Job
+Ledger row's page id; success is reported only after the read-back, and the decision rules live in
+lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records an opportunity
+page's primary action as done in its own fold; Manage and Reopen live in manage_app. Outputs: fixed codes only.
+"""
 import hashlib
 import importlib
 import re
@@ -22,9 +24,9 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
            "lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/apps/manage_app.py", "lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/alert_store.py", "lifeos/platform/redact.py",
            "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py", "lifeos/platform/fixed_code.py", "lifeos/platform/notion_text.py", "lifeos/platform/notion_pages.py")
-ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
-          "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
-KIND = "ledger"                                                                       # LIFE-353: the only record a decision is written on (signed into every form)
+ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"),
+          "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}
+KIND = "ledger"
 TTL, TZ = 900, ZoneInfo("America/Chicago")
 
 
@@ -37,10 +39,11 @@ def _stop(status, eyebrow, title, text, detail, css="alert"):
 
 
 def _state(client, root, pages=None):
-    """-> (Ledger pursuit rows in decision.route's shape, opportunity pages [{"id", "tree_id", "company", "role", "retired"}]); anything short of a complete read raises.
-    The pages are the Hiring Pipeline reader's (LIFE-352: Ledger pursuits first, page id = the row; the page tree for the rest); they locate an opportunity page, never a decision."""
+    """-> (Ledger pursuit rows in decision.route's shape, opportunity pages [{"id", "tree_id", "company", "role",
+    "retired"}]); anything short of a complete read raises.
+    """
     rows = D.rows(D.ledger_pages(client) if pages is None else pages)
-    found, status = hiring_pipeline.snapshot(client, root, rounds=False, ledger=client)      # decision.route never reads interview counts: skip one paced call per opportunity
+    found, status = hiring_pipeline.snapshot(client, root, rounds=False, ledger=client)
     if status != "ok":
         raise D.fail("PAGES_UNREADABLE")
     return rows, [{"id": o.page_id, "tree_id": o.tree_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
@@ -50,10 +53,9 @@ def _fingerprint(kind, pid, company, role, closed):
     return hashlib.sha256(norm(f"{kind}|{pid}|{company}|{role}|{closed}").encode()).hexdigest()[:16]
 
 
-# ---------- E05 Mark Complete (Jim, Oct 24): one opportunity page's one primary action, recorded in that page's own fold after two steps, read back ----------
 LEAD_ACTION = "Reply to the recruiter's message, or close this lead"
 FOLD, OPP_MARKER, COMPLETE_PATH = "⚙️ LIFE OS", "v7-interview:1;owner=machine;kind=opportunity", "Daily Report / Active Opportunities / Mark Complete"
-ACTION_LINE, DONE_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)"), re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")   # lifeos.interview.template's formats (contract-tested)
+ACTION_LINE, DONE_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)"), re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
 
 
 def _lines(client, block_id):
@@ -64,8 +66,9 @@ def _lines(client, block_id):
 
 
 def action(client, root, pid, key):
-    """The open opportunity page `pid` (a Ledger pursuit's row page, or an older page-tree page; LIFE-353: open or closed is read from the Ledger row when the pursuit has one) and its
-    fold's one primary action whose key is `key`, or a fixed refusal: not that page, not a LIFE OS page, or the action changed since the link was written. -> {id, company, role, key, text, fold, done}"""
+    """The open opportunity page `pid` and its fold's primary action `key`, or a fixed refusal (not that page, not a
+    LIFE OS page, or the action changed). -> {id, company, role, key, text, fold, done}
+    """
     pages = [p for p in _state(client, root)[1] if pid in (D._page_id(p["id"]), D._page_id(p["tree_id"]))]
     if len(pages) != 1:
         raise D.fail("NOT_FOUND" if not pages else "AMBIGUOUS")
@@ -100,7 +103,7 @@ def _complete_get(req, who, secrets):
         return _complete_stop(200, "Already done", "Already marked complete", f"Marked complete on {a['done']}.", "Nothing was changed.", "")
     exp, st = str(int(_now().timestamp()) + TTL), _complete_fp(a)
     fields = {"o": pid, "a": key, "exp": exp, "st": st, "t": _mac(secrets["link"], "m", who["login"], pid, key, st, exp)}
-    lead = a["text"].startswith(LEAD_ACTION)                                     # "Reply to the recruiter's message, or close this lead.": both outcomes are offered (Jim, Oct 24)
+    lead = a["text"].startswith(LEAD_ACTION)
     ask, cta = ("What happened with this lead?", "I replied \u2014 mark it done") if lead else (f'Mark \u201c{e(a["text"])}\u201d complete?', "Mark complete")
     close = ""
     return 200, HTML, S.page("Mark complete", "Your confirmation is required before anything is recorded.", (
@@ -122,7 +125,7 @@ def _complete_post(req, who, secrets):
     if step == "cancel":
         return _complete_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
     client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": secrets["config"]["ledger"]})
-    a = action(client, secrets["config"]["pipeline"], pid, key)                 # the write is authorized only by a fresh read of the page and its current action
+    a = action(client, secrets["config"]["pipeline"], pid, key)
     if _complete_fp(a) != st:
         return _complete_stop(409, "Conflict", "Opportunity changed", "The opportunity changed since this screen was opened.", "No write attempted. Reload it from the page.")
     head = f"{a['company']} — {a['role']} · {a['text']}"
@@ -143,17 +146,16 @@ handle_complete = handler(_complete_get, _complete_post, _complete_stop, "This a
 
 
 def handle(req, who, secrets):
-    """The Edge gate's application: (status, content type, body bytes, extra headers). Anything refused before a write says so and writes nothing."""
     try:
         if req["method"] == "GET" and req["path"] == "/close.css":
             return 200, "text/css; charset=utf-8", S.CSS.encode(), ()
-        if req["method"] == "GET" and req["path"] == "/close.js":                             # the buttons' busy spinner; nothing depends on it
+        if req["method"] == "GET" and req["path"] == "/close.js":
             return 200, "text/javascript; charset=utf-8", S.JS.encode(), ()
-        if req["path"] in ROUTES and req["method"] in ("GET", "POST"):                        # same gate, signing key and fresh read; each module is loaded only for its own path
+        if req["path"] in ROUTES and req["method"] in ("GET", "POST"):
             module, name = ROUTES[req["path"]]
             return getattr(importlib.import_module("lifeos.sources." + module), name)(req, who, secrets)
-        if req["path"] == "/complete" and req["method"] in ("GET", "POST"):                   # E05: Mark Complete, same gate, signing key and fresh read
+        if req["path"] == "/complete" and req["method"] in ("GET", "POST"):
             return handle_complete(req, who, secrets)
-        return _stop(404, "Not found", "Nothing here", "There is no screen at this address.", "Nothing was changed.")      # LIFE-973: the opportunity Close screen (/?o=) is retired
+        return _stop(404, "Not found", "Nothing here", "There is no screen at this address.", "Nothing was changed.")
     except NotionError as error:
         return _stop(409, "Not changed", "This opportunity cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")

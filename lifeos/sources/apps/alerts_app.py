@@ -1,11 +1,11 @@
-"""The Alert settings screen on the private Close service: GET /alerts, saved by a signed review and confirm (LIFE-75).
+"""The Alert settings screen on the private Close service: GET /alerts, saved by a signed review and confirm.
 
-Shows the master switch (alerts on or off), the mute, and one row per registered alert with a Page/Info badge and three channel boxes (Phone, Telegram, WhatsApp). Saving shows the proposed change against a fresh read, and the write is reported only after the three Bitwarden items (project LIFE OS ALERTS) read back as sent. A PAGE alert's
-phone box is fixed on.
-Inputs: the variables ALERTS_ENABLED ("on" or "off"), ALERTS_MUTED_UNTIL (a time, or "off") and ALERT_SETTINGS (lifeos/platform/alert_settings.py: only the choices that differ from the registry), read from Bitwarden; the optional `bwsalerts` credential (a Bitwarden machine-account token for LIFE OS ALERTS), passed by the Edge gate to this path only (without it the screen
-says so and changes nothing).
-Outputs: the screen, or a fixed code; no alert text, topic or token is shown. Pointer: LIFE-75."""
-# LIFE-75 (Jim, Oct 26 2026). Only Jim's iPhone and MBP are admitted by the Edge gate on the Oracle host. LIFE-733: `bwsalerts` is a Bitwarden access token that reaches the LIFE OS ALERTS project and nothing else the Close service uses; it replaced the GitHub `ghvars` token.
+One row per registered alert with a Page/Info badge and Phone, Telegram and WhatsApp boxes; a PAGE alert's phone
+box is fixed on. A save shows the proposed change against a fresh read and is reported only after the three
+Bitwarden items (project LIFE OS ALERTS) read back as sent. Inputs: ALERTS_ENABLED, ALERTS_MUTED_UNTIL and
+ALERT_SETTINGS (lifeos/platform/alert_settings.py) from Bitwarden; the optional `bwsalerts` credential, passed by
+the Edge gate to this path only (without it the screen changes nothing). Outputs: the screen or a fixed code.
+"""
 import hashlib
 import json
 import subprocess
@@ -37,7 +37,6 @@ table.alerts input[type=checkbox]{width:20px;height:20px;accent-color:var(--acce
 
 
 def _shell(html):
-    """The Close screens' page, with this screen's own stylesheet and its own words in the header and footer."""
     return (html.replace(b'<link rel="stylesheet" href="/close.css">', b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/alerts.css">')
             .replace(b"Hiring \xc2\xb7 Opportunity actions", b"Alerts \xc2\xb7 Settings")
             .replace(b"LIFE OS \xc2\xb7 Closing a LinkedIn contact is separate from closing a hiring opportunity.", b"LIFE OS \xc2\xb7 Saved in Bitwarden; the next run uses them."))
@@ -56,7 +55,6 @@ def _unsaved(why):
 
 
 def _forced(spec, channels):
-    """A PAGE alert always reaches the phone: ntfy first, then the other chosen channels."""
     return ("ntfy",) + tuple(c for c in channels if c != "ntfy") if spec.severity == registry.PAGE else tuple(channels)
 
 
@@ -65,17 +63,15 @@ def handle_css(req, who, secrets):
 
 
 def read(token, run=subprocess.run):
-    """-> {variable: value} for the three switches, from Bitwarden; any failure raises."""
     return alert_store.read(token, run)
 
 
 def write(token, values, run=subprocess.run):
-    """Save each value to its Bitwarden item."""
     alert_store.write(token, values, run)
 
 
 def model(values, now):
-    """The screen's state from the variables: {"enabled", "mute" (Central 'YYYY-MM-DDTHH:MM' or ''), "channels": {registry key: tuple}}."""
+    """The screen's state: {"enabled", "mute" (Central 'YYYY-MM-DDTHH:MM' or ''), "channels": {key: tuple}}."""
     mute = ""
     raw = (values.get(MUTE) or "").strip()
     try:
@@ -90,7 +86,6 @@ def model(values, now):
 
 
 def from_form(form):
-    """The proposed state from a posted form, or None when the mute is not a time."""
     mute = (form.get("mute") or "").strip()
     if mute:
         try:
@@ -104,7 +99,6 @@ def from_form(form):
 
 
 def values_for(state):
-    """The three variable values a state is saved as."""
     mute = "off"
     if state["mute"]:
         mute = datetime.strptime(state["mute"], "%Y-%m-%dT%H:%M").replace(tzinfo=CENTRAL).isoformat()
@@ -116,7 +110,6 @@ def digest(state):
 
 
 def changes(old, new):
-    """Plain-language lines for what a save would change."""
     out = []
     if old["enabled"] != new["enabled"]:
         out.append("Alerts will be turned " + ("ON: pushes reach your phone from the next run." if new["enabled"] else "OFF: nothing is sent."))
@@ -134,7 +127,6 @@ def _switch(name, label, note, on):
 
 
 def fixed(channel, spec):
-    """A PAGE alert's phone box is always on and cannot be unticked."""
     return channel == "ntfy" and spec.severity == registry.PAGE
 
 
@@ -157,8 +149,6 @@ def _rows(state):
 
 
 def _credentials(now):
-    """LIFE-528: a read-only list of the credentials LIFE OS uses and what is known of their expiry. It comes from the repo list on this machine, never from Notion; names, providers,
-    dates and a status only. A credential whose provider gives no date says so instead of pretending to be safe."""
     rows = credentials.rows(now.date())
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in ("OK", "Warning", "Expired", "No fixed expiry", "Unknown")}
     html = [f'<p class="lead">{len(rows)} credentials. Warned ahead through the alert gateway: {credentials.WARN_AHEAD_DAYS} days before a date. '
@@ -173,7 +163,6 @@ def _credentials(now):
 
 
 def _fields(state):
-    """Hidden copies of a proposed state, for the review step."""
     out = {"enabled": "1"} if state["enabled"] else {}
     out["mute"] = state["mute"]
     for key, chosen in state["channels"].items():
@@ -202,7 +191,7 @@ def _get(req, who, secrets, run):
         return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot read or save settings yet.", "Nothing was changed.")
     try:
         values = read(token, run)
-    except Exception:                                                              # noqa: BLE001 - fixed text only; never the token, URL or reply
+    except Exception:  # noqa: BLE001 - fixed text only
         return _stop(*NO_ANSWER)
     return _page(model(values, C._now()), secrets["link"], who["login"], C._now())
 
@@ -213,7 +202,7 @@ def _post(req, who, secrets, run):
     if not token:
         return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot save settings yet.", "Nothing was changed.")
     state = from_form(form)
-    if form.get("step") == "cancel" and state is not None:                         # Cancel goes back to the settings, keeping what was typed; nothing is written
+    if form.get("step") == "cancel" and state is not None:
         return _page(state, secret, login, now)
     if state is None or not (exp.isascii() and exp.isdigit()) or int(exp) < now.timestamp():
         return invalid(_stop, RELOAD)

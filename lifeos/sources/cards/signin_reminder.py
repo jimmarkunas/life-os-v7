@@ -1,9 +1,9 @@
-"""LIFE-993: the sign-in renewal reminder.
+"""The sign-in renewal reminder.
 
-Three days before an OpenClaw model sign-in (Usage meter, Cloud Fit) expires, or once it has lapsed, Jim gets ONE styled Agent Inbox item per profile per expiry.
-
-It reads the same `limits.signins` reading the System table already shows (a state word and an expiry time, nothing else). The key is per profile and per expiry, so the hourly repeat updates the same row and never adds a second;
-a new expiry (after Jim signs in) is a new key. Only Jim signs in: the item says so and the agent only starts the device-code flow on Oracle and reads the new expiry back. Counts and fixed words only; a failure never reaches the card."""
+Three days before an OpenClaw model sign-in (Usage meter, Cloud Fit) expires, or once it has lapsed, one Agent
+Inbox item is sent per profile per expiry. The key is per profile and per expiry, so the hourly repeat updates the
+same row. Counts and fixed words only; a failure never reaches the card.
+"""
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -15,7 +15,9 @@ PROFILES = {"meter": ("Usage meter", "usage meter"), "fit": ("Cloud Fit", "cloud
 
 
 def plan(signins, now):
-    """-> the list of inbox items due now. `signins`: {"meter"|"fit": {"state": "OK"|"EXPIRED"|..., "expires": ISO or None}}; `now`: an aware datetime."""
+    """-> the inbox items due now. `signins`: {"meter"|"fit": {"state": "OK"|"EXPIRED"|..., "expires": ISO or None}};
+    `now`: an aware datetime.
+    """
     items = []
     for key, (name, phrase) in PROFILES.items():
         entry = (signins or {}).get(key)
@@ -53,7 +55,7 @@ def plan(signins, now):
 
 
 def send_all(items, environ, deliver=None):
-    """-> {"sent": n, "failed": n}; one fixed reason word counted per failure, never content."""
+    """-> {"sent": n, "failed": n}; one fixed reason word counted per failure."""
     if deliver is None:
         from lifeos.inbox import send_to_jim
         deliver = lambda item: send_to_jim.deliver(item, environ=environ)             # noqa: E731

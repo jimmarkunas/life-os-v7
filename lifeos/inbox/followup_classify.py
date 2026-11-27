@@ -1,15 +1,16 @@
-"""LIFE-716: the bounded Followup classifier: an item Jim wrote becomes follow-up evidence only when its title carries an explicit marker."""
-# Evidence: the delta readers' minimal items (source, id, link, observed time, a title of at most 120 characters, and a due date only when the SOURCE holds one). No body, snippet, recipient or
-# attendee is read, so mail and calendar items are observation only: an unread message, a finished meeting, an open Jira ticket or a plain Todoist task never creates a loop. A loop exists only for
-# an item in Jim's own task or notes systems (Todoist, Jira, Notion, Interview OS) whose title STARTS with one of the markers below. The marker is Jim's explicit capture; the text after it is the outcome.
-# The due date the source holds is the source-backed checkpoint. No due date means a suggested checkpoint, which `followup.project` keeps in Review Needed and never counts.
-# Same outcome in several sources merges on the outcome text; the same person with a different outcome is a different key. Closing proof is not read from titles: a loop closes only through the
-# store's strong-proof path (`outcome_ended`, Jim's resolve), never because a task was completed, so completing the task never closes the outcome.
+"""The bounded Followup classifier: an item becomes evidence only when its title starts with a marker.
+
+Input is the delta readers' minimal items (source, id, link, observed time, a title of at most 120 characters, a due
+date only when the SOURCE holds one); no body or attendee is read. Only items in the user's own task or notes systems
+create a loop; mail, calendar, open Jira tickets and plain Todoist tasks are observation only. The text after the
+marker is the outcome and the source's due date is the checkpoint (none: a suggestion, never counted). A loop closes
+only through the store's strong-proof path (`outcome_ended`), never because a task was completed.
+"""
 import re
 
-ELIGIBLE = frozenset({"todoist", "jira", "notion", "interview_os"})          # Jim's own capture systems: mail and calendar need body or attendee access to mean anything
+ELIGIBLE = frozenset({"todoist", "jira", "notion", "interview_os"})
 MAX_KEY = 120
-MARKERS = (                                                                    # (pattern at the start of the title, evidence kind, owner)
+MARKERS = (
     (re.compile(r"^\s*(?:waiting\s+(?:on|for)\b|wfr\s*:)[\s:.\-]*", re.I), "waiting_on", "external"),
     (re.compile(r"^\s*(?:follow[\s\-]?up\b|fu\s*:)[\s:.\-]*", re.I), "jim_capture", "jim"),
     (re.compile(r"^\s*(?:i\s+owe\b|owe\b|promised\b|promise\s*:)[\s:.\-]*", re.I), "promise", "jim"),
@@ -20,13 +21,12 @@ _SPACE = re.compile(r"\s+")
 
 
 def outcome_of(title):
-    """The outcome text after the marker, whitespace collapsed and trailing punctuation dropped; None when it is too short or too long to be a store identity."""
+    """The outcome text after the marker, normalized; None when too short or too long to be a store identity."""
     text = _SPACE.sub(" ", str(title or "")).strip().rstrip(".,;:!").strip()
     return text if 3 <= len(text) <= MAX_KEY else None
 
 
 def classify(item):
-    """-> an evidence dict for `followup.project` (workspace is added by the stage), or None (observation only)."""
     if not isinstance(item, dict) or item.get("source") not in ELIGIBLE:
         return None
     title = str(item.get("title") or "")

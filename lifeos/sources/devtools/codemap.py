@@ -1,7 +1,9 @@
-"""The code map: one generated index of V7 (stages, packages, workflows, tables, decisions) so an agent finds things without reading the repo.
+"""The code map: one generated index of V7 (stages, packages, workflows, tables, decisions) for finding things fast.
 
-`python -m lifeos.sources.devtools.codemap` writes docs/CODEMAP.md and docs/codemap.json; `find <text>` builds the map in memory. Everything in it is derived from the code itself (module docstrings, the stage registry, the workflows, the CREATE TABLE statements, the decision index), so it cannot drift: the two files are
-generated on demand and not committed (LIFE-644; .gitignore). Names of things only; no data, no secrets, no values."""
+`python -m lifeos.sources.devtools.codemap` writes docs/CODEMAP.md and docs/codemap.json (generated, not
+committed); `find <text>` builds the map in memory. It is derived from the code itself, so it cannot drift. Names
+only; no data or secrets.
+"""
 import ast
 import json
 import re
@@ -63,11 +65,10 @@ def build():
     return {"stages": stages(), "packages": packages(), "workflows": workflows(), "tables": tables(), "decisions": decisions()}
 
 
-ROUTING_LIMIT = 15 * 1024                                              # LIFE-592: the routing page stays under this many bytes (a test fails above it)
+ROUTING_LIMIT = 15 * 1024  # the routing page stays under this many bytes (a test enforces it)
 
 
 def package_line(name, files):
-    """One line per package for the routing page: the package docstring's first sentence (or the first module's), and the module count."""
     init = ROOT / "lifeos" / name / "__init__.py"
     summary = first_line(init) if init.exists() else ""
     summary = summary or next((d for d in files.values() if d), "")
@@ -75,8 +76,6 @@ def package_line(name, files):
 
 
 def markdown(m):
-    """LIFE-592: a SHORT routing page. The full map (every module with its description, every workflow secret, every decision title) is docs/codemap.json; ask it for one thing with
-    `python -m lifeos.sources.devtools.codemap find <name>`."""
     lines = ["# V7 code map (generated: do not edit; run `python -m lifeos.sources.devtools.codemap`)", "",
              "A routing page. Find a stage here, then its module. For anything else ask one question instead of reading the whole map: "
              "`python -m lifeos.sources.devtools.codemap find <text>` (a package, module, stage, workflow, table or decision number/word; prints only the matching entries). "
@@ -94,7 +93,9 @@ def markdown(m):
 
 
 def find(m, text, limit=40):
-    """-> the lines of every map entry that matches `text` (case-insensitive substring; a bare D<number> matches that decision exactly). A package name lists all its modules."""
+    """-> the lines of every map entry matching `text` (case-insensitive substring; a bare D<number> matches that
+    decision exactly).
+    """
     needle = text.strip().lower()
     out = []
     if not needle:

@@ -1,7 +1,9 @@
-"""The employer-board pass: about 10,700 Greenhouse, Ashby and Lever boards read through the same web run as the priority boards (D202).
+"""The employer-board pass: Greenhouse, Ashby and Lever boards read through the shared web run.
 
-The board list is the Open Jobs list (CC0) plus the extras in boards.json. Same states, diff, FAILED-is-never-a-removal rule and admission as the priority boards. Differences, all bounded: more boards per run on fewer workers; a slower refresh unless the board lists a target job; a smaller admission budget; only shown targets
-stored (`screen` names every other job's reason, and a job screened out while its employer still lists it is not a removal); an ATS that answers 429 three times is not read again this run (its boards are FAILED `skipped_after_rate_limit_429` and retried later). Pointer: D202."""
+Same states, diff, FAILED-is-never-a-removal rule and admission as the priority boards, with bounds: more boards per run
+on fewer workers, a slower refresh unless the board lists a target job, a smaller admission budget, only targets stored
+(a job screened out while still listed is not a removal), and an ATS that keeps answering 429 is skipped for the rest
+of the run (`skipped_after_rate_limit_429`)."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 import os
@@ -17,16 +19,15 @@ from lifeos.platform import limits
 from lifeos.sources.web import lister, registry, run as web, suppress
 
 LANE = "US Remote"
-# The role screen (D202 review): pass every plausible role to the shared Fit, which holds the private profile, and name every title it does not pass.
-# Strong: the role itself is program, project, product, delivery, implementation, transformation or solutions leadership, whatever its domain word.
+# Role screen: pass every plausible role to the shared Fit and name every title it rejects.
+# Strong: program, project, product, delivery, implementation, transformation or solutions leadership.
 STRONG = re.compile(r"\b(program(?:me)? (?:manag\w*|lead|director|head)|(?:technical|engineering|product|ai|data|security|it|infrastructure|platform) program(?:me)?s?\b|"
                     r"tpm|project (?:manag\w*|lead|director)|delivery (?:manag\w*|lead|director|head)|head of (?:delivery|programs?|programmes?|product|pmo|transformation)|"
                     r"implementation (?:manag\w*|lead|director|consultant)|product (?:manag\w*|lead|owner|director|head)|(?:director|vp|vice president|head) of product(?! marketing| design)|"
                     r"chief of staff|transformation (?:lead|manag\w*|director|head|program)|pmo|engagement manager|solutions? (?:architect|consultant)|portfolio (?:manag\w*|lead|director)|"
                     r"release manag\w*)\b", re.I)
-# Adjacent: operations, strategy and transformation leadership, plausible only when no other profession or junior support word is in the title.
-# Product Marketing is NOT passed (Fit audit, Oct 17: Admitted Product Marketing scored up to 100 with "Gaps: none" on generic words such as
-# Cloud/SaaS; Fit cannot tell it from the target family yet, so passing it would admit it).
+# Adjacent: operations, strategy and transformation leadership, only when no other profession or support word appears.
+# Product Marketing is deliberately not passed: Fit cannot tell it from the target family.
 ADJACENT = re.compile(r"\b((?:business|strategy (?:and|&)|strategic|technical) operations|(?:director|vp|vice president|head|chief) of (?:operations|strategy)|"
                       r"operations (?:director|lead|manager|head)|strategy (?:and|&) operations|transformation|(?:director|head|vp|vice president)\b[^,]{0,25}\bstrategy|"
                       r"head of (?:technology|engineering) (?:&|and) product)\b", re.I)
@@ -37,10 +38,9 @@ NOT_A_ROLE = re.compile(r"\b(intern|internship|coach|mentor|tutor|instructor|tea
 
 
 def role(title):
-    """-> (tier, None) for a plausible role ("strong" or "adjacent"), else (None, reason)."""
     out = NOT_A_ROLE.search(title)
     if out:
-        return None, "not_a_role_" + out.group(1).lower().split()[0]                  # coaching, internships, talent-pool posts
+        return None, "not_a_role_" + out.group(1).lower().split()[0]
     if STRONG.search(title):
         return "strong", None
     hit = NOT_ROLE.search(title)
@@ -51,11 +51,10 @@ def role(title):
 
 US = re.compile(r"united states|\busa?\b|\bu\.s\.", re.I)
 REMOTE = re.compile(r"\bremote\b|\banywhere\b", re.I)
-WHOLE_US = re.compile(r"^\W*(?:united states(?: of america)?|usa?|u\.s\.(?:a\.)?)\W*$", re.I)                                        # the country, no city
+WHOLE_US = re.compile(r"^\W*(?:united states(?: of america)?|usa?|u\.s\.(?:a\.)?)\W*$", re.I)
 
 
-# Geography (D204 review): a place is non-US only when it NAMES somewhere outside the US and nothing in it is US; a US city without a state code,
-# or a place that names nothing, is not proof of anything either way: it is kept as `unresolved`, never promoted to verified US.
+# A place is non-US only when it names somewhere outside the US and nothing in it is US; otherwise unresolved.
 NON_US_NAMED = re.compile(r"\b(algeria|algiers|egypt|cairo|nigeria|lagos|kenya|nairobi|south africa|morocco|tunisia|saudi|riyadh|dubai|uae|qatar|turkey|istanbul|"
                           r"pakistan|karachi|lahore|bangladesh|dhaka|sri lanka|china|shanghai|beijing|shenzhen|hong kong|taiwan|taipei|korea|seoul|vietnam|hanoi|"
                           r"ho chi minh|thailand|bangkok|indonesia|jakarta|malaysia|kuala lumpur|colombia|bogot[a\u00e1]|argentina|buenos aires|brazil|s[a\u00e3]o paulo|"
@@ -68,25 +67,25 @@ NON_US_NAMED = re.compile(r"\b(algeria|algiers|egypt|cairo|nigeria|lagos|kenya|n
                           r"tel[- ]aviv)\b", re.I)
 
 
-INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anywhere)\b", re.I)     # a region that may include the US: unresolved, never non-US
+INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anywhere)\b", re.I)     # A region that may include the US: unresolved, never non-US.
 
 
 def geography(where):
-    """us | non_us | unresolved, from the place text alone."""
     where = where or ""
     us = US.search(where) or suppress.US.search(where) or WHOLE_US.match(where) or lanes.US_PLACES.search(where)
     if not us and INCLUDES_US.search(where):
         return "unresolved"
     if not us and (lanes.market_of(where) in ("UK", "OTHER") or suppress.NON_US.search(where) or NON_US_NAMED.search(where)):
         return "non_us"
-    return "us" if us else "unresolved"                                                   # M5: "Remote" alone names no market
+    return "us" if us else "unresolved"
 
 
 def screen(job):
-    """One named reason per listed job; a job is stored only when it starts with "kept_". The title must be a plausible role (`role`). D204: a US job is presumed workable remotely unless the employer
-    requires office attendance (lanes.detect_work_mode reads only mandatory words); kept jobs say which: remote stated in the place/title or the
-    description, or `kept_remote_assumed`. Geography: `geography` (a named non-US place
-    excludes; an unnamed one is kept as `_place_unresolved`). Last, the web pass's own cheap suppression (age is no reason)."""
+    """Return one named reason per listed job; only reasons starting with "kept_" are stored.
+
+    A US job is presumed remote unless the employer requires office attendance; an unnamed place is kept with
+    `_place_unresolved`.
+    """
     title, where, text = job["title"], job["location"] or "", job.get("content") or ""
     tier, why = role(title)
     if not tier:
@@ -97,17 +96,16 @@ def screen(job):
     tail = "_place_unresolved" if place == "unresolved" else ""
     mode = lanes.detect_work_mode(where, title, text)
     if mode in ("onsite", "hybrid"):
-        return "not_remote_" + mode                           # D204: only an employer requirement excludes
+        return "not_remote_" + mode
     why = suppress.reason(job, None, LANE, first_party=True)
     if why:
         return "suppressed_" + why
-    if mode == "unknown":                                     # D204: nothing required either way: remote presumed, kept apart from stated remote
+    if mode == "unknown":
         return "kept_remote_assumed" + tail
     return ("kept_remote_in_location" if lanes.detect_work_mode(where, title) == "remote" else "kept_remote_in_description") + tail
 
 
 class StopOnRateLimit:
-    """Wraps a lister: after `limit` rate_limited_429 answers from one ATS family, its remaining boards are not requested this run."""
 
     def __init__(self, lister_fn, limit=None):
         self.lister_fn, self.limit, self.hits, self.lock = lister_fn, limit or limits.BOARDS_RATE_LIMIT_STOP, {}, threading.Lock()
@@ -125,9 +123,11 @@ class StopOnRateLimit:
 
 
 def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=None, clock=time.monotonic):
-    """The board pass (D202, D217): re-reads boards already read once (plus the curated extras and a forced board); a board's first read is the backfill's. Since LIFE-854 it runs in the four daily board windows
-    (.github/workflows/boards.yml): the cap is the window's (BOARDS_PER_RUN) or, in a catch-up (BOARDS_MODE=catchup), BOARDS_CATCHUP_PER_RUN; boards are read oldest-due first, so what one window leaves comes first in the
-    next; BOARDS_DEADLINE_MINUTES stops new reads shortly before the step timeout, so the receipt is always written. The counts carry the window's `receipt`."""
+    """Re-read boards already read once (plus curated extras and a forced board); first reads are the backfill's.
+
+    The cap is BOARDS_PER_RUN, or BOARDS_CATCHUP_PER_RUN when BOARDS_MODE=catchup. Boards are read oldest-due first.
+    BOARDS_DEADLINE_MINUTES stops new reads early so the receipt is always written; counts carry it as `receipt`.
+    """
     environ = os.environ if environ is None else environ
     started = now or web._now()
     began = clock()
@@ -148,13 +148,16 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             with open(path, "a") as handle:
                 handle.write(receipt_markdown(counts["receipt"]))
         except OSError:
-            pass                                                                  # a summary is a convenience; never fail a window for it
+            pass
     return counts
 
 
 def tick(limit, live, now=None, environ=os.environ, running=boards_window.window_running, **kw):
-    """LIFE-905: the hourly due-only board pass inside the Jobs tick. It crawls only while the BOARDS_IN_TICK switch names the tick the owner (the windows stand down then) and no boards.yml run is queued or running;
-    otherwise it reads nothing and opens no store session. Same reader as a window: the due boards, oldest due first, the same caps, workers and provider protections; the soft deadline keeps the receipt inside the step budget."""
+    """The due-only board pass inside the Jobs tick.
+
+    Runs only while the BOARDS_IN_TICK switch makes the tick the owner and no board window run is queued or running;
+    otherwise it reads nothing and opens no store session.
+    """
     out = {"pass": "employer boards (tick)", "owner": boards_window.owner(environ)}
     if out["owner"] != "tick":
         return {**out, "skipped": True, "why": "windows_own"}
@@ -165,7 +168,6 @@ def tick(limit, live, now=None, environ=os.environ, running=boards_window.window
 
 
 def receipt_markdown(r):
-    """LIFE-854: the receipt as the job summary table (the same fields, in the order the ticket names them)."""
     rows = [("Window", f"{r['window'] or 'manual'} ({r['mode']}, cap {r['cap']})"), ("Started / finished", f"{r['started']} / {r['finished']}"), ("Due at start", r["due"]),
             ("Processed", r["processed"]), ("Deferred (carried forward)", f"{r['carry_forward']['boards']} to the {r['carry_forward']['next_window']} window"), ("Failed", r["failed"]),
             ("Backlog age at start (hours)", r["backlog_age_hours"]), ("Oldest carried board (hours overdue)", r["oldest_deferred_hours"]),
@@ -179,8 +181,7 @@ def receipt_markdown(r):
 
 
 def receipt(counts, environ, started, finished, cap, catchup):
-    """LIFE-854: the per-window receipt, counts and fixed codes only (public board ids never appear): what was due, read, left and failed, the age of the backlog, the freshness ceiling, the provider-limit answers,
-    when it started and finished (Central time), why it was late, and what it carries to the next window."""
+    """Build the per-window receipt: counts and fixed codes only, no board ids."""
     failed_why = counts.get("failed_why") or {}
     hits = {"rate_limited_429": failed_why.get("rate_limited_429", 0), "skipped_after_rate_limit_429": failed_why.get("skipped_after_rate_limit_429", 0)}
     aware = started.replace(tzinfo=timezone.utc)
@@ -198,18 +199,18 @@ def receipt(counts, environ, started, finished, cap, catchup):
            "carry_forward": {"boards": deferred, "oldest_overdue_hours": oldest, "next_window": boards_window.label(boards_window.next_slot(slot))}}
     if counts.get("stopped_at_deadline"):
         out["stopped_at_deadline"] = True
-    out["jd_reread"], out["fit_rescore_due"], out["cache_skips"] = counts.get("jd_reread", 0), counts.get("fit_rescore_due", 0), counts.get("cache_skips", 0)       # LIFE-902: descriptions rewritten (Fit re-scores each next) and boards skipped with zero per-posting work
+    out["jd_reread"], out["fit_rescore_due"], out["cache_skips"] = counts.get("jd_reread", 0), counts.get("fit_rescore_due", 0), counts.get("cache_skips", 0)
     if counts.get("timing"):
-        out["timing"] = counts["timing"]                                                   # LIFE-854: where the time went (wall, waiting for reads, saving, read and save p50/p95)
+        out["timing"] = counts["timing"]
     return out
 
 
 def backfill(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=os.environ):
-    """D217: the hibernatable first-pass drainer. Off (hibernated) unless BOARDS_BACKFILL=on: then it reads nothing and opens no store session. On, it is the
-    last bulk stage of a tick: at most BOARDS_BACKFILL_PER_RUN never-read boards, in id order (the resume cursor is "no v7_sources row yet", so an interrupted
-    run resumes where it stopped and nothing is read twice), through the same screen, diff, admission budget and FAILED rule as the hourly pass. A read board
-    (COMPLETE or FAILED) gets its state row and joins the hourly pass; once none is left it reports `drained` and reads nothing. Counts only."""
-    if not switches.state("BOARDS_BACKFILL", environ):                  # lifeos/platform/switches.json; a repository variable "off" is Jim's kill switch
+    """Read never-read boards, at most BOARDS_BACKFILL_PER_RUN in id order. Off unless BOARDS_BACKFILL=on.
+
+    "No v7_sources row yet" is the resume cursor. A read board joins the hourly pass; when none is left it reports `drained`.
+    """
+    if not switches.state("BOARDS_BACKFILL", environ):
         return {"pass": "employer boards backfill", "backfill": "off"}
     counts = web.run(min(limit, limits.BOARDS_BACKFILL_PER_RUN), live, now, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources,
                      LANE, cap=limits.BOARDS_BACKFILL_PER_RUN, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS, select="unread")
@@ -221,16 +222,16 @@ def backfill(limit, live, now=None, lister_fn=lister.list_source, repo=None, sou
 
 
 def acceptance_band(score):
-    """The acceptance cuts around the Fit floor of 72: lt60, 60_69, 70_71, 72_up (or unscored)."""
     if score is None:
         return "unscored"
     return next((name for edge, name in ((60, "lt60"), (70, "60_69"), (72, "70_71")) if score < edge), "72_up")
 
 
 def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sample=600, seed=99, connection=None):
-    """D202 acceptance, read-only, counts only (`live` is ignored): the same random sample of seed boards the review benchmark used (seed 99),
-    listed now, screened, and the kept jobs scored by the shared Fit and lane policy with the private profile in memory. The store is only read,
-    to tell a job it already holds (and whether that one is published) from a new one. Nothing is written anywhere."""
+    """Read-only preview, counts only (`live` ignored): screen a seeded sample of boards and score the kept jobs.
+
+    The store is read only to tell held and published jobs from new ones.
+    """
     from lifeos.jobs import funnel, identity, store                                             # noqa: PLC0415
     from lifeos.jobs.fit import profile as fit_profile, stage as fit_stage                    # noqa: PLC0415
     pick = random.Random(seed).sample(registry.boards(), min(sample, limit or sample))
@@ -244,7 +245,7 @@ def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sampl
         out["screen"][why] = out["screen"].get(why, 0) + 1
         if why.startswith("kept_"):
             kept.append((source, job, why))
-    kept = list({j["url"]: (s, j, w) for s, j, w in kept}.values())                             # one vacancy per URL
+    kept = list({j["url"]: (s, j, w) for s, j, w in kept}.values())
     today = date.today()
     rows = [(i, j["title"], j.get("company") or s["company"], j.get("content") or "", None, LANE, j["location"], None, j["posted"], today, None, "web:" + s["id"])
             for i, (s, j, _) in enumerate(kept)]
@@ -263,11 +264,11 @@ def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sampl
         out["reason"][code] = out["reason"].get(code, 0) + 1
         out["already_held"] += key in held
         out["already_published"] += bool(held.get(key))
-        out["new_admits"] += decision.status == lanes.ADMIT and key not in held       # would be a new Notion page, under the per-run publish cap
+        out["new_admits"] += decision.status == lanes.ADMIT and key not in held
         out["new_reviews"] += decision.status == lanes.REVIEW and key not in held
         cut = acceptance_band(result.score)
         out["fit_band"][cut] = out["fit_band"].get(cut, 0) + 1
-        cell = out["by_evidence"].setdefault(why[len("kept_"):], {})                          # remote stated vs assumed, place unresolved
+        cell = out["by_evidence"].setdefault(why[len("kept_"):], {})
         for name in (decision.status, "fit_" + cut):
             cell[name] = cell.get(name, 0) + 1
     return out

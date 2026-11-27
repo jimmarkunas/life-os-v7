@@ -1,10 +1,7 @@
-"""LIFE-37: the contract for one Granola transcript as `grans show <uuid> --transcript --json` returns it; validates and hashes it.
+"""Contract for one Granola transcript as `granz show <uuid> --transcript --json` returns it; validates and hashes it.
 
-Pure: no network, no Granola login, no Notion, no files. Failure codes: TRANSCRIPT_* (registered in lifeos/platform/codes.py).
-It does not move a transcript anywhere: how a transcript reaches V7 and where it is written is a separate, Jim-gated step on LIFE-37."""
-# Detail moved out of the docstring (LIFE-595):
-# LIFE-37 was approved by Jim's consent on Oct 25 2026. Ported from the LIFE-97 MEET-POC-1 prototype (19 tests).
-# Source inspected for the shape: dmwyatt/granz v2026.10.3, src/commands/meetings.rs, src/models.rs (TranscriptUtterance). Its --json export is {"transcript": [...]}.
+Pure: no network or files. Failure codes are TRANSCRIPT_* (lifeos/platform/codes.py). Input is `{"transcript":
+[...]}`."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -23,7 +20,6 @@ CHANNELS = {"microphone", "system", "unknown"}
 
 
 class ContractError(ValueError):
-    """Safe error with no source text, speaker names, or document identifiers."""
 
     def __init__(self, code: str):
         super().__init__(code)
@@ -79,7 +75,6 @@ class Envelope:
     source_content_sha256: str
 
     def public_receipt(self) -> dict[str, Any]:
-        """Intended for sanitized logging; excludes private content and source IDs."""
         return {
             "schema_version": self.schema_version,
             "transcript_status": self.transcript_status,
@@ -94,10 +89,9 @@ def _refuse(bad, code):
 
 
 def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
-    """Validate actual granz `show <uuid> --transcript --json` JSON shape.
-
-    Fail closed on malformed/unfinal/unsorted data. The CLI has no completeness
-    proof, so 'available' means segments retrieved, not full audio fidelity.
+    """Validate the JSON of granz `show <uuid> --transcript --json` into an Envelope; fails closed (ContractError) on
+    malformed, unfinal or unsorted data. The CLI gives no completeness proof, so "available" means segments were
+    retrieved, not full audio fidelity.
     """
     uid = _source_uuid(document_uuid)
     _refuse(not isinstance(raw_json, (str, bytes)) or len(raw_json) > MAX_BYTES, "TRANSCRIPT_PAYLOAD_TOO_LARGE_OR_INVALID")
@@ -152,8 +146,7 @@ def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
             is_final=final,
         ))
 
-    # Hash exact, ordered normalized source facts. No timestamps of ingestion or
-    # local filenames; duplicate replays calculate exactly the same content hash.
+    # hash only the ordered, normalized source facts, so a replay hashes identically
     canonical = json.dumps(
         [asdict(s) for s in result],
         ensure_ascii=False, sort_keys=True, separators=(",", ":"),

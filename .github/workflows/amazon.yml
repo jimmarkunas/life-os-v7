@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 330                 # a full backfill is one Notion write pass per month of mail; it is replay-safe, so a timeout is resumed by running it again
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -60,7 +60,7 @@ jobs:
           bitwarden: ${{ toJSON(steps.bws_amazon.outputs) }}
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -77,7 +77,7 @@ jobs:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
           bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
-      - name: Amazon Orders (Gmail to Notion; archive only after read-back)
+      - name: Amazon Orders (Gmail to Notion; archive after read-back)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_settings.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}

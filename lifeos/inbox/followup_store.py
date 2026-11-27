@@ -1,13 +1,12 @@
-"""LIFE-747: the minimal state store for Followup threads (D258), in the existing V7 MySQL store; synthetic only, nothing here creates a table or runs on a schedule."""
-# `FollowupStore(connect)`: `connect` is a context manager yielding a connection (`lifeos.platform.db.connect` in production, a sqlite shim in tests).
-# Five tables, all created only by `ensure_schema` (NOT run by anything: a production schema change needs Jim's go at release, D258):
-#   v7_followup_threads      one row per open-loop thread: identity hash, class, owner, derived state, checkpoint + basis, confidence, source links, evidence fingerprint, resolution
-#   v7_followup_checkpoints  one cursor per (workspace, account, source): advanced only after an accepted write
-#   v7_followup_overrides    a Jim checkpoint override per thread; it never edits a source due date
-#   v7_followup_suppressions fingerprints of dismissed or closed evidence, so the same evidence never reopens a thread
-#   v7_followup_payload      ONE component-state payload per (workspace, account) scope, replaced each live run and read back (Jim, complete build, Nov 16 2026); the Action Inbox reads it
-# One write path, `accept(batch)`: validate, write every thread and the cursor in ONE transaction, read every thread back and compare, commit; any failure rolls everything back and keeps the last known-good state.
-# Stored: hashes, fixed words, UTC times, bounded labels and source links. Never a mail body, a copied source payload, a credential or an exception text. TGP and unknown workspaces are refused first.
+"""State store for Followup threads in the V7 MySQL store.
+
+`FollowupStore(connect)`: `connect` is a context manager yielding a connection. Tables (created only by
+`ensure_schema`, which nothing runs automatically): v7_followup_threads, _checkpoints (one cursor per workspace,
+account and source), _overrides (user checkpoint overrides; never edit a source due date), _suppressions (evidence
+that must never reopen a thread) and _payload (ONE payload per scope). The one write path, `accept(batch)`, validates,
+writes threads and cursor in ONE transaction, reads back and compares, then commits; any failure rolls back. Stores
+hashes, fixed words, UTC times, bounded labels and https/concord links only; TGP and unknown workspaces are refused.
+"""
 import json
 
 from lifeos.inbox.ledger import digest, stamp
@@ -38,7 +37,7 @@ SCHEMA = (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
 TABLES = ("v7_followup_threads", "v7_followup_checkpoints", "v7_followup_overrides", "v7_followup_suppressions", "v7_followup_payload")
-SOURCES = ("gmail", "outlook", "calendar", "jira", "todoist", "notion", "interview_os")          # D258 first slice; Asana is excluded
+SOURCES = ("gmail", "outlook", "calendar", "jira", "todoist", "notion", "interview_os")
 CLASSES = ("waiting", "owed", "value_add", "outcome_thread")
 OWNERS = ("jim", "external", "ambiguous")
 STATES = ("needs_action", "waiting", "upcoming", "review")
@@ -46,10 +45,10 @@ BASES = ("source", "suggested", "")
 CONFIDENCE = ("low", "medium", "high")
 RESOLUTIONS = ("open", "closed", "dismissed")
 PAYLOAD_STATES = ("PASS", "DEGRADED")
-PAYLOAD_MAX = 1_000_000                                     # characters of JSON per payload; the column is MEDIUMTEXT (16 MB)
+PAYLOAD_MAX = 1_000_000  # characters of JSON per payload; the column is MEDIUMTEXT (16 MB)
 THREAD_COLUMNS = ("thread_id", "workspace", "account", "outcome", "klass", "owner", "state", "checkpoint_at", "checkpoint_basis", "confidence", "source_refs", "evidence_fp", "resolution", "version",
                   "first_seen", "last_accepted")
-CONTENT = ("outcome", "klass", "owner", "state", "checkpoint_at", "checkpoint_basis", "confidence", "source_refs", "evidence_fp")      # what a replay compares; time and version follow a change
+CONTENT = ("outcome", "klass", "owner", "state", "checkpoint_at", "checkpoint_basis", "confidence", "source_refs", "evidence_fp")
 
 
 class FollowupRejected(ValueError):
@@ -57,11 +56,10 @@ class FollowupRejected(ValueError):
 
 
 class FollowupStoreError(RuntimeError):
-    """`str(error)` is a fixed code (FOLLOWUP_STORE_UNAVAILABLE or FOLLOWUP_READBACK_MISMATCH); a driver message never leaves."""
+    """`str(error)` is a fixed code (FOLLOWUP_STORE_UNAVAILABLE or FOLLOWUP_READBACK_MISMATCH)."""
 
 
 def thread_id(workspace, account, identity_key):
-    """The stable identity: the same outcome in the same workspace and account is one thread, and a Personal id can never equal a Bytalos id."""
     return digest(f"{workspace}|{account}|{identity_key}")
 
 
@@ -77,7 +75,6 @@ def _scope(workspace, account):
 
 
 def normalize(workspace, account, item):
-    """-> the row a thread becomes, or FollowupRejected(reason). Free text is bounded and source links must be https or concord links; nothing else is kept."""
     _need(isinstance(item, dict), "thread_invalid")
     key = item.get("identity_key")
     _need(isinstance(key, str) and 0 < len(key) <= 200, "identity_invalid")
@@ -86,7 +83,7 @@ def normalize(workspace, account, item):
     _need(item.get("state") in STATES, "state_unknown")
     basis, checkpoint = item.get("checkpoint_basis", ""), item.get("checkpoint_at", "")
     _need(basis in BASES, "basis_unknown")
-    _need((checkpoint == "") == (basis == ""), "checkpoint_basis_mismatch")                # a checkpoint is always source-backed or visibly Suggested
+    _need((checkpoint == "") == (basis == ""), "checkpoint_basis_mismatch")
     _need(checkpoint == "" or (len(checkpoint) == 20 and checkpoint.endswith("Z")), "checkpoint_not_utc")
     _need(item.get("confidence") in CONFIDENCE, "confidence_unknown")
     outcome = item.get("outcome", "")
@@ -101,7 +98,6 @@ def normalize(workspace, account, item):
 
 
 def scope_key(workspace, account):
-    """The payload row key: one row per (workspace, account); a workspace name never contains the separator, so two scopes never share a key."""
     return f"{workspace}|{account}"
 
 
@@ -110,7 +106,6 @@ class FollowupStore:
         self._connect = connect
 
     def ensure_schema(self):
-        """NOT run by anything yet: creating these tables in production needs Jim's go (D258)."""
         with fixed(Exception, FollowupStoreError, "FOLLOWUP_STORE_UNAVAILABLE"), self._connect() as connection, connection.cursor() as cursor:
             for statement in SCHEMA:
                 cursor.execute(statement)
@@ -120,15 +115,16 @@ class FollowupStore:
             cursor.execute(sql, tuple(args))
             return cursor.fetchone() if fetch == "one" else cursor.fetchall()
 
-    # ---- the one write path -------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     def accept(self, workspace, account, source, items, cursor_value, now, complete=True):
-        """Validate, write every thread and (when `complete`) the source cursor in one transaction, read every thread back and compare, then commit.
-        -> {"written", "unchanged", "suppressed", "cursor_advanced"}. `complete=False` (a failed, denied or truncated source read) stores what was accepted but never advances the cursor."""
+        """Validate, write every thread and (when `complete`) the source cursor in one transaction, read back,
+        compare, commit. Returns {"written", "unchanged", "suppressed", "cursor_advanced"}. `complete=False` (a
+        failed, denied or truncated source read) never advances the cursor.
+        """
         _scope(workspace, account)
         _need(source in SOURCES, "source_not_approved")
         _need(isinstance(cursor_value, str) and len(cursor_value) <= 200, "cursor_invalid")
-        rows = [normalize(workspace, account, item) for item in items]                       # every item is validated before the first write
+        rows = [normalize(workspace, account, item) for item in items]
         _need(len({r["thread_id"] for r in rows}) == len(rows), "duplicate_thread")
         stamped = stamp(now)
         out = {"written": 0, "unchanged": 0, "suppressed": 0, "cursor_advanced": False}
@@ -141,7 +137,7 @@ class FollowupStore:
                         wanted = self._upsert(cursor, row, stamped, out)
                         if wanted:
                             expected.append(wanted)
-                    for wanted in expected:                                                    # read back and compare before anything is committed
+                    for wanted in expected:
                         cursor.execute(f"SELECT {', '.join(THREAD_COLUMNS)} FROM v7_followup_threads WHERE thread_id=%s AND workspace=%s AND account=%s",
                                        (wanted["thread_id"], workspace, account))
                         found = cursor.fetchone()
@@ -157,7 +153,6 @@ class FollowupStore:
         return out
 
     def _upsert(self, cursor, row, stamped, out):
-        """-> the row the thread must read back as, or None when evidence is suppressed. Replay of the same content changes nothing."""
         cursor.execute(f"SELECT {', '.join(THREAD_COLUMNS)} FROM v7_followup_threads WHERE thread_id=%s", (row["thread_id"],))
         found = cursor.fetchone()
         if not found:
@@ -169,10 +164,10 @@ class FollowupStore:
         reopen = False
         if current["resolution"] != "open":
             cursor.execute("SELECT 1 FROM v7_followup_suppressions WHERE thread_id=%s AND fingerprint=%s", (row["thread_id"], row["evidence_fp"]))
-            if cursor.fetchone():                                                              # the same evidence that closed or dismissed it never brings it back
+            if cursor.fetchone():
                 out["suppressed"] += 1
                 return None
-            reopen = True                                                                      # new authoritative evidence reopens it
+            reopen = True
         if not reopen and all(current[k] == row[k] for k in CONTENT):
             out["unchanged"] += 1
             return {**current}
@@ -182,7 +177,7 @@ class FollowupStore:
                        [changes[k] for k in ("outcome", "klass", "owner", "state", "checkpoint_at", "checkpoint_basis", "confidence", "source_refs", "evidence_fp", "resolution", "last_accepted",
                                              "version")] + [row["thread_id"], current["version"]])
         if cursor.rowcount != 1:
-            raise FollowupStoreError("FOLLOWUP_STORE_UNAVAILABLE")                             # a concurrent writer won: this batch rolls back whole
+            raise FollowupStoreError("FOLLOWUP_STORE_UNAVAILABLE")
         out["written"] += 1
         return {**current, **changes}
 
@@ -194,10 +189,8 @@ class FollowupStore:
         else:
             cursor.execute("INSERT INTO v7_followup_checkpoints (workspace, account, source, cursor_value, accepted_at) VALUES (%s,%s,%s,%s,%s)", (workspace, account, source, cursor_value, stamped))
 
-    # ---- resolution, override and reads -----------------------------------------------------------------------------------------------------------------------------------------------------
 
     def resolve(self, workspace, account, identity_key, resolution, evidence_fp, now):
-        """Record that a thread is closed or dismissed on strong proof or Jim's explicit word, and remember the evidence fingerprint so it cannot reopen the thread. True when the row changed."""
         _scope(workspace, account)
         _need(resolution in ("closed", "dismissed"), "resolution_unknown")
         _need(isinstance(evidence_fp, str) and len(evidence_fp) == 64, "evidence_fp_invalid")
@@ -217,7 +210,6 @@ class FollowupStore:
         return changed
 
     def set_override(self, workspace, account, identity_key, checkpoint_at, set_by, now):
-        """A Jim checkpoint override for one thread. It lives only here: no source due date is ever written."""
         _scope(workspace, account)
         _need(isinstance(checkpoint_at, str) and len(checkpoint_at) == 20 and checkpoint_at.endswith("Z"), "checkpoint_not_utc")
         tid = thread_id(workspace, account, identity_key)
@@ -233,7 +225,6 @@ class FollowupStore:
         return True
 
     def threads(self, workspace, account):
-        """The open and resolved threads of ONE workspace and account, each with its effective checkpoint (a Jim override wins). Another workspace is never visible here."""
         _scope(workspace, account)
         rows = self._read(f"SELECT {', '.join('t.' + c for c in THREAD_COLUMNS)}, o.checkpoint_at FROM v7_followup_threads t LEFT JOIN v7_followup_overrides o ON o.thread_id = t.thread_id "
                           "WHERE t.workspace=%s AND t.account=%s ORDER BY t.thread_id", (workspace, account))
@@ -252,12 +243,13 @@ class FollowupStore:
         row = self._read("SELECT cursor_value, accepted_at FROM v7_followup_checkpoints WHERE workspace=%s AND account=%s AND source=%s", (workspace, account, source), "one")
         return {"cursor": row[0], "accepted_at": row[1]} if row else None
 
-    # ---- the component-state payload (one row per scope) --------------------------------------------------------------------------------------------------------------------------------
 
     def save_payload(self, workspace, account, payload):
-        """Validate, write ONE row for this scope in a single statement (insert or replace its values) and read it back. -> True when the stored payload equals what was given.
-        Refused first, nothing written: TGP or an unknown workspace, a payload that is not a dict, names another scope, has a state other than PASS or DEGRADED, has no generated_at of at most 32
-        characters, is not JSON, or is over one million characters. A failed write is FOLLOWUP_STORE_UNAVAILABLE; a row that does not read back equal is FOLLOWUP_READBACK_MISMATCH."""
+        """Validate, write ONE row for this scope and read it back; True when it equals the payload. Refused with
+        nothing written: TGP or unknown workspace, a non-dict or another scope's payload, a state other than PASS
+        or DEGRADED, a missing or over-32-character generated_at, non-JSON, or over PAYLOAD_MAX. Failures raise
+        FOLLOWUP_STORE_UNAVAILABLE or FOLLOWUP_READBACK_MISMATCH.
+        """
         _scope(workspace, account)
         _need(isinstance(payload, dict), "payload_invalid")
         _need(payload.get("workspace") == workspace and payload.get("account") == account, "payload_scope_mismatch")
@@ -278,7 +270,6 @@ class FollowupStore:
         return True
 
     def load_payload(self, workspace, account):
-        """The stored payload of ONE scope, or None when none was saved. A row whose columns disagree with its own JSON is FOLLOWUP_READBACK_MISMATCH, never a guess."""
         _scope(workspace, account)
         row = self._read("SELECT payload, generated_at, state FROM v7_followup_payload WHERE scope_key=%s", (scope_key(workspace, account),), "one")
         if not row:

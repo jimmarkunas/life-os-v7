@@ -11,6 +11,10 @@ from lifeos.inbox.followup_store import FollowupStore
 from lifeos.inbox.ledger import Ledger
 from lifeos.platform import followup_fetchers as F, followup_readers as R
 from tests.kit.mysqlite import MySQLite
+import sys as _sys
+_sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
+import wfsets  # noqa: E402  (LIFE-1013: credential lists named with `set:`)
+
 
 UTC = timezone.utc
 T0 = datetime(2026, 11, 16, 20, 0, tzinfo=UTC)
@@ -291,7 +295,7 @@ class Job(unittest.TestCase):
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        text = (self.ROOT / ".github/workflows/domains.yml").read_text()
+        text = wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text())
         doc = yaml.safe_load(text)
         job = doc["jobs"]["followup"]
         self.assertEqual(doc["permissions"], {"contents": "read"})                       # unchanged
@@ -324,7 +328,7 @@ class Job(unittest.TestCase):
         except ImportError:
             self.skipTest("PyYAML not installed")
         from lifeos.platform.credential_list import CREDENTIALS
-        job = yaml.safe_load((self.ROOT / ".github/workflows/domains.yml").read_text())["jobs"]["followup"]
+        job = yaml.safe_load(wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text()))["jobs"]["followup"]
         loaded = next(step for step in job["steps"] if step.get("id") == "bws_followup")
         lines = [line.split() for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()]
         loaded_names = {parts[-1] for parts in lines}

@@ -1,5 +1,28 @@
+      - id: acard
+        continue-on-error: true
+        name: Agenda card (saved snapshot only; writes only when live)
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          CALENDAR_CARD_BLOCK_ID: ""
+          JIRA_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run agenda-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Agenda warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
+        run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=agenda::a stage step failed in the agenda job (see the step marked failed above)"; exit 1
 

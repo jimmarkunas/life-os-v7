@@ -1,10 +1,12 @@
-"""LIFE-736: a read-only resolver over the Agent Directory catalog (Notion): one exact lookup, a redacted snapshot, and an honest status for every row. No network."""
+"""Read-only resolver over the Agent Directory catalog (Notion): one exact lookup, a redacted snapshot, a status per row.
 
-# A row grants nothing and is never proof an agent is online. load() checks the access policy (service notion, read) before calling the caller's fetch(); resolve() returns ONE entry by exact
-# Agent ID or exact unique alias for one workspace (never a list, wildcard or broadcast) and re-checks the grant each call; snapshot() is the redacted machine-readable projection.
-# Fails closed with a fixed reason word: Notion unavailable, duplicate ID, no good row, stale data, partial identity, ambiguous alias, TGP. One bad row (bad record, no workspace, secret-looking value) is skipped and logged by number and reason (LIFE-985).
-# routable-verified needs a row claim AND a fresh same-host Proof from a live check handed in by the caller; a row, Candidate, surface or persona alone never qualifies. Nothing is cached.
-# Live discovery of the Mac, Oracle and Buzz is a separate approved step: docs/platform/agent-directory-discovery.md.
+A row grants nothing and never proves an agent is online. load() checks the access policy before fetching; resolve()
+returns ONE entry by exact Agent ID or unique alias in one workspace and re-checks the grant each call. Failures carry
+a fixed reason word; one bad row is skipped and logged, while no good row, a duplicate ID, stale data or an ambiguous
+alias refuses whole. routable-verified needs a row claim AND a fresh same-host Proof from a live check. Nothing is
+cached.
+"""
+
 import json
 import logging
 import re
@@ -16,13 +18,13 @@ from lifeos.platform import access_policy
 
 LOG = logging.getLogger("lifeos.agent_directory")
 CENTRAL = ZoneInfo("America/Chicago")
-MAX_AGE = timedelta(days=7)                       # a directory row last checked longer ago than this is stale
-PROOF_TTL = timedelta(hours=1)                    # a routing proof is a live observation: it expires quickly
+MAX_AGE = timedelta(days=7)
+PROOF_TTL = timedelta(hours=1)
 STATUSES = ("manual-only", "configured-untested", "not-reachable", "routable-verified")
 KINDS = {"Client Surface": "client_surface", "Community Identity": "agent_identity", "Bot Profile": "agent_identity", "Agent Session": "agent_session", "Persona": "persona"}
-PLATFORMS = ("Claude", "ChatGPT", "Buzz", "Orca", "Hermes", "Meta")             # Meta: Muse (LIFE-967; Jim, comment 14347, "muse platform meta")
+PLATFORMS = ("Claude", "ChatGPT", "Buzz", "Orca", "Hermes", "Meta")
 SPACES = ("Personal", "Bytalos", "TGP", "Unknown")
-GRANTABLE_SPACES = ("Personal", "Bytalos")        # TGP is never inferred or resolved from a label: it needs its own isolated grant that this module does not model
+GRANTABLE_SPACES = ("Personal", "Bytalos")  # TGP is never inferred from a label: it needs its own isolated grant
 AGENT_ID = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 FULL_NPUB = re.compile(r"npub1[02-9ac-hj-np-z]{58}")
 SECRET = re.compile(r"nsec1[02-9ac-hj-np-z]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|bws?_[A-Za-z0-9]{20,})\b|(?i:(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,})")
@@ -30,7 +32,6 @@ TEXT_FIELDS = ("Agent", "Identity Alias", "Invocation Route", "Permission Bounda
 
 
 class DirectoryError(ValueError):
-    """`reason` is a fixed word; no message from Notion or from a row is ever kept."""
 
     def __init__(self, reason):
         super().__init__(reason)
@@ -41,7 +42,7 @@ class DirectoryError(ValueError):
 class Entry:
     agent_id: str
     name: str
-    kind: str                     # agent_identity | client_surface | agent_session | persona
+    kind: str
     record_type: str
     platform: str
     host: str
@@ -58,16 +59,15 @@ class Entry:
 
 @dataclass(frozen=True)
 class Directory:
-    entries: tuple                # sorted by agent_id
+    entries: tuple
     source: str
     read_at: datetime
-    principal: str                # the 64-hex principal that read it (kept only as a short fingerprint in a snapshot)
-    skipped: tuple = ()           # LIFE-985: ((row number, fixed reason word), ...) for every row left out because that one row was bad; never a row's text
+    principal: str
+    skipped: tuple = ()  # ((row number, fixed reason word), ...) for each bad row; never a row's text
 
 
 @dataclass(frozen=True)
 class Proof:
-    """A receipt from an actual live check of one agent: who, where, which session, when. Handed in by the caller; the directory itself can never supply one."""
     agent_id: str
     host: str
     session_id: str
@@ -77,7 +77,7 @@ class Proof:
 
 @dataclass(frozen=True)
 class Resolution:
-    decision: str                 # allow | deny   ("allow" means only: this one catalog entry may be shown; it authorizes no send, run or write)
+    decision: str  # "allow" means only that this entry may be shown; it authorizes no send, run or write
     reason: str
     entry: object = None
     status: str = "not-reachable"
@@ -95,7 +95,7 @@ def _text(row, field):
 def _when(text):
     try:
         if len(text) == 10:
-            return datetime.combine(date.fromisoformat(text), datetime.min.time(), tzinfo=CENTRAL)      # a date-only "last checked" counts from the start of that Central day
+            return datetime.combine(date.fromisoformat(text), datetime.min.time(), tzinfo=CENTRAL)  # a date-only "last checked" counts from the start of that Central day
         when = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         raise DirectoryError("bad_last_checked") from None
@@ -122,7 +122,7 @@ def _entry(row):
         raise DirectoryError("bad_row")
     for field in TEXT_FIELDS:
         if SECRET.search(_text(row, field)):
-            raise DirectoryError("secret_material")                                       # this row is skipped (LIFE-985); the value is never echoed
+            raise DirectoryError("secret_material")
     agent_id = _text(row, "Agent ID")
     if not AGENT_ID.match(agent_id):
         raise DirectoryError("bad_agent_id")
@@ -138,8 +138,9 @@ def _entry(row):
 
 
 def build(rows, source, now, principal=""):
-    """Rows (native dicts) -> Directory. LIFE-985: ONE bad row (bad id, record, workspace, date or secret-looking text) is left out with its row number and fixed reason in `skipped` and one log line, so a single mistake in Notion
-    cannot take every lookup down; the other rows keep their own checks. A directory with no good row, or with a duplicate ID among the good rows (an ambiguous identity), is still refused whole."""
+    """Rows (native dicts) -> Directory. A bad row is left out with its number and reason in `skipped`; no good row, or a
+    duplicate ID, refuses the whole directory.
+    """
     if not isinstance(rows, (list, tuple)) or not rows:
         raise DirectoryError("empty_directory")
     entries, skipped = [], []
@@ -158,7 +159,9 @@ def build(rows, source, now, principal=""):
 
 
 def load(fetch, policy, principal, now, source="notion:life-os-agent-directory"):
-    """Read the directory once. `policy` is access_policy.load(...) (None when unreadable), `principal` the 64-hex Buzz key of the reader. A deny or a failed fetch raises; nothing is read before the grant."""
+    """Read the directory once. `policy` is access_policy.load(...) (None when unreadable), `principal` the reader's Buzz
+    key. A deny or a failed fetch raises; nothing is read before the grant.
+    """
     decision, _ = access_policy.decide(policy, principal, "notion", "read")
     if decision != "allow":
         raise DirectoryError("grant_denied")
@@ -170,7 +173,6 @@ def load(fetch, policy, principal, now, source="notion:life-os-agent-directory")
 
 
 def fetch_unavailable():
-    """The default reader: no Notion read is wired in until Jim approves the exact grant (docs/platform/agent-directory-discovery.md, section B)."""
     raise DirectoryError("directory_unavailable")
 
 
@@ -179,7 +181,6 @@ def is_stale(entry, now, max_age=MAX_AGE):
 
 
 def status_of(entry, now, proof=None, max_age=MAX_AGE):
-    """-> (status, reason). Honest by construction: a catalog row never reaches routable-verified on its own."""
     if entry.discovery_state == "Retired":
         return "not-reachable", "retired"
     if is_stale(entry, now, max_age):
@@ -190,7 +191,7 @@ def status_of(entry, now, proof=None, max_age=MAX_AGE):
         return "not-reachable", "candidate_identity_unresolved"
     if entry.reachability == "Verified" and entry.discovery_state == "Routable Verified":
         if "[partial]" in entry.alias or "…" in entry.alias:
-            return "configured-untested", "identity_partial"                           # a truncated public key names no one: it can never be routed to
+            return "configured-untested", "identity_partial"  # a truncated public key names no one: never routable
         problem = _proof_problem(entry, proof, now)
         return ("routable-verified", "proof_ok") if problem is None else ("configured-untested", problem)
     if entry.reachability == "Configured Untested":
@@ -213,7 +214,9 @@ def _proof_problem(entry, proof, now):
 
 
 def resolve(directory, now, policy, principal, agent_id=None, alias=None, workspace=None, proofs=(), max_age=MAX_AGE):
-    """Look up ONE entry. Exactly one of agent_id / alias; a workspace is required and must be one of the entry's own (Personal or Bytalos). Revocation is re-checked on every call."""
+    """Look up ONE entry by exactly one of agent_id / alias, in a workspace the entry belongs to. Revocation is
+    re-checked each call.
+    """
     decision, _ = access_policy.decide(policy, principal, "notion", "read")
     if decision != "allow":
         return Resolution("deny", "grant_denied")
@@ -227,7 +230,7 @@ def resolve(directory, now, policy, principal, agent_id=None, alias=None, worksp
     if workspace not in SPACES:
         return Resolution("deny", "missing_workspace")
     if workspace not in GRANTABLE_SPACES:
-        return Resolution("deny", "workspace_not_granted")                                # TGP and Unknown never resolve from a label
+        return Resolution("deny", "workspace_not_granted")
     if agent_id is not None:
         found = [e for e in directory.entries if e.agent_id == agent_id.strip()]
     else:
@@ -250,7 +253,6 @@ def _fold(text):
 
 
 def snapshot(directory, now, proofs=(), max_age=MAX_AGE):
-    """The redacted machine-readable projection: deterministic order, fixed keys, provenance and last-seen. It is a catalog view; `authorizes` is always empty."""
     out = []
     for entry in directory.entries:
         proof = next((p for p in proofs if isinstance(p, Proof) and p.agent_id == entry.agent_id), None)
@@ -263,7 +265,6 @@ def snapshot(directory, now, proofs=(), max_age=MAX_AGE):
 
 
 def hermes_profiles(allowlist_text):
-    """The profile names in hermes/connector-allowlists.txt (repo evidence for the Hermes rows): one Oracle runtime, several profiles."""
     names = []
     for line in allowlist_text.splitlines():
         line = line.split("#", 1)[0]
@@ -273,7 +274,9 @@ def hermes_profiles(allowlist_text):
 
 
 def check_hermes(directory, allowlist_text):
-    """-> sorted Agent IDs of Hermes bot-profile rows whose alias is NOT a profile in the repo allowlist table (a row with no repo backing), plus profiles the table has but the directory lacks, as ('missing', name)."""
+    """-> sorted Agent IDs of Hermes rows whose alias is not in the allowlist, plus allowlist profiles the directory
+    lacks, as ('missing', name).
+    """
     profiles = set(hermes_profiles(allowlist_text))
     rows = [e for e in directory.entries if e.platform == "Hermes" and e.record_type == "Bot Profile"]
     extra = sorted(e.agent_id for e in rows if e.alias not in profiles)

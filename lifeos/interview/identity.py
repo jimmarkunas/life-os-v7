@@ -13,7 +13,6 @@ def valid_date(value):
 
 
 def scheduling_pending(query):
-    """LIFE-42: a verified, source-linked first-interview request with no confirmed time yet is Interview 1 in Scheduling Pending."""
     source = query.source.strip() if isinstance(query.source, str) else ""
     return query.interview_date is None and query.ordinal == 1 and type(query.ordinal) is int and source.startswith("https://")
 
@@ -29,7 +28,7 @@ def resolve_parent(query, scan):
             continue
         company, role = split_title(parent.title)
         if not company.strip() or not role.strip():
-            # Missing role is never inferred; only relevant malformed evidence blocks this query.
+            # A missing role is never inferred; only relevant malformed evidence blocks this query.
             distinctive = set(core(query.company))
             if not distinctive or distinctive.issubset(set(norm(parent.title).split())):
                 return Resolution(State.BLOCKED, "identity_invalid")
@@ -46,7 +45,7 @@ def resolve_child(parent, query, scan, explicit=None):
         return Resolution(State.BLOCKED, parent.code)
     if not scan.complete:
         return Resolution(State.BLOCKED, "child_scan_incomplete")
-    candidates = list(scan.items)                      # LIFE-382 (D250-04): child_scan already proved each item's parent when it listed this parent's children; no second parent comparison
+    candidates = list(scan.items)
     if query.explicit_child_page_id:
         if explicit is not None and not same_notion_id(explicit.parent_id, parent.page_id):
             return Resolution(State.BLOCKED, "child_wrong_parent")
@@ -58,9 +57,9 @@ def resolve_child(parent, query, scan, explicit=None):
     else:
         if any(c.identity_valid is False for c in candidates):
             return Resolution(State.BLOCKED, "round_identity_incomplete")
-        numbered = [c for c in candidates if c.ordinal != 0]          # LIFE-958: a pre-screen (ordinal 0) is never Round 1, never ambiguous with it and never makes another round fail closed; only the same date still names it
+        numbered = [c for c in candidates if c.ordinal != 0]          # A pre-screen (ordinal 0) is never Round 1.
         if scheduling_pending(query):
-            # Interview 1 is the same child whether or not a time exists yet; a parent with unnumbered rounds is not guessed.
+            # Interview 1 is the same child whether or not a time exists yet; unnumbered rounds are not guessed.
             if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in numbered):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
             candidates = [c for c in numbered if c.ordinal == 1]

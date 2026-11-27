@@ -137,7 +137,7 @@ class TheCodeReachesThePush(unittest.TestCase):
         doc = yaml.safe_load((pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml").read_text())
         finish = doc["jobs"]["finish"]
         lanes = next(s for s in finish["steps"] if s.get("id") == "lanes")
-        report = next(s for s in doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+        report = next(s for s in doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
         self.assertEqual(finish["outputs"]["codes"], "${{ steps.lanes.outputs.codes }}")
         self.assertEqual(report["env"]["CODES"], "${{ needs.finish.outputs.codes }}")
         for step in ("tick", "fit", "fit_cloud_backlog"):

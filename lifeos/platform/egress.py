@@ -1,21 +1,23 @@
 """Other ways to reach a page that a plain request from the GitHub runner cannot; each returns lifeos.platform.http.Fetched facts.
 
-Counts and flags only; URLs are never logged. Used by probes first; a registry source opts in only after a probe proves the route."""
+Counts and flags only; URLs are never logged. Used by probes first; a registry source opts in only after a probe
+proves the route.
+"""
 import json
 from urllib.parse import quote
 
 from lifeos.platform.http import Fetched, fetch
 
-HONEST_UA = "Mozilla/5.0 (compatible; LIFE-OS-Scale-up/1.0; +https://github.com/jimmarkunas/life-os-automation)"   # what V1 sent: some sites prefer an announced bot
+HONEST_UA = "Mozilla/5.0 (compatible; LIFE-OS-Scale-up/1.0; +https://github.com/jimmarkunas/life-os-automation)"
 
 
 def honest(url, **kwargs):
-    """Plain fetch with the announced-bot user agent (V1's)."""
     return fetch(url, headers={"User-Agent": HONEST_UA, "Accept": "*/*"}, **kwargs)
 
 
 def reader_proxy(url, timeout=40):
-    """Jina Reader (r.jina.ai): a free public service that fetches the page from its own network and returns it. Rate limited; no key."""
+    """Jina Reader (r.jina.ai): a free public service that fetches the page from its own network. Rate limited; no key.
+    """
     return fetch("https://r.jina.ai/" + url, timeout=timeout, headers={"Accept": "text/plain", "X-Return-Format": "html"})
 
 

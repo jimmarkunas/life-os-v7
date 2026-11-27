@@ -1,10 +1,10 @@
-"""LIFE-791: the `inbox-view` stage: the Agent Inbox proof and tile recount (stage name kept for the registries)."""
-# python -m lifeos.run inbox-view [--live]. Modes (INBOX_VIEW_MODE, set by diag.yml, with INBOX_VIEW_CONFIRM = INBOX and --live; anything less is a dry run that touches no network):
-#   proof     send three TEST items through `send_to_jim` and write one more straight into the database the way a person or an agent with the Notion connector would, read the counts back, then move
-#             every test row to the trash and read the counts back again. Leaves no row behind.
-#   recount   write the five tile numbers from the database (what the hourly followup run does after a live read).
-#   (none)    the switch ACTION_INBOX_VIEW (switches.json): on, the same recount; off, a counts-only no-op.
-# Output is counts and fixed reason words only: no subject, sender, link, id or token ever reaches the log.
+"""The `inbox-view` stage: Agent Inbox proof and tile recount (`python -m lifeos.run inbox-view [--live]`).
+
+INBOX_VIEW_MODE selects `proof` (send three TEST items through `send_to_jim`, write one straight into the database,
+read counts, trash every test row, read counts again) or `recount` (write the five tile numbers from the database);
+with neither, the switch ACTION_INBOX_VIEW decides. A live run also needs INBOX_VIEW_CONFIRM=INBOX and --live;
+otherwise it is a dry run with no network. Output is counts and fixed reason words only.
+"""
 import os
 from datetime import datetime, timezone
 
@@ -54,7 +54,7 @@ def _proof(env, client, now):
 
 
 def run(limit, live, environ=None, client=None, clock=None):
-    """-> counts only. A refusal raises InboxError with a fixed reason word."""
+    """Returns counts only. A refusal raises InboxError with a fixed reason word."""
     env = os.environ if environ is None else environ
     now = (clock or (lambda: datetime.now(timezone.utc)))()
     mode = (env.get("INBOX_VIEW_MODE") or "").strip()
@@ -71,7 +71,6 @@ def run(limit, live, environ=None, client=None, clock=None):
 
 
 def refresh(env, client=None):
-    """The tile recount behind the switch, for the followup stage and the hourly path. Never raises: -> counts, or {"failed": 1} after one fixed-word line."""
     try:
         return agent_inbox.recount_page(client or send_to_jim._client(env))
     except (InboxError, NotionError) as error:

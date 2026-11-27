@@ -39,6 +39,6 @@
           export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
           python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=fit_cloud_backlog::a stage step failed in the fit_cloud_backlog job (see the step marked failed above)"; exit 1

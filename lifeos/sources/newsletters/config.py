@@ -3,12 +3,12 @@ import re
 
 NEWSLETTER_LABEL = "J Newsletters"
 PROCESSED_LABEL = "J Newsletters/Processed"
-DONE_LABEL = "J Newsletters/Done"                      # every job in the mail has an outcome (finalize)
+DONE_LABEL = "J Newsletters/Done"
 FINALIZE_QUERY = "label:j-newsletters-processed -label:j-newsletters-done newer_than:45d"
 # Gmail search syntax flattens nested label names; pending = in the folder, not yet Processed.
-RECONCILE_QUERY = "label:j-newsletters-processed {from:jobright.ai from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com} newer_than:5d"   # every live Gmail rule in SENDER_RULES (not the retired ones)
+RECONCILE_QUERY = "label:j-newsletters-processed {from:jobright.ai from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com} newer_than:5d"
 REOPEN_QUERY = "label:j-newsletters-done newer_than:5d"
-RETIRED_LABEL = "J Newsletters/Retired"                # D201: a retired sender's mail: closed unread, never Processed (Processed means every card was saved)
+RETIRED_LABEL = "J Newsletters/Retired"                # a retired sender's mail: closed unread, never Processed (Processed means every card was saved)
 PENDING_QUERY = "label:j-newsletters -label:j-newsletters-processed -label:j-newsletters-retired"
 
 # (name, regex matched against the bare lowercase sender address). Order is irrelevant.
@@ -18,8 +18,9 @@ SENDER_RULES = (
     ("linkedin-alerts", re.compile(r"^(jobalerts-noreply|jobs-noreply)@linkedin\.com$")),
 )
 
-# D201: senders whose mail is still swept out of the inbox but no longer read for jobs. Their mail gets RETIRED_LABEL at once with this count; no
-# card is parsed, and it is never marked Processed, so finalize, reconcile and repair never see it.
+# Senders whose mail is still swept out of the inbox but no longer read for jobs. Their mail gets RETIRED_LABEL at
+# once;
+# no card is parsed and it is never marked Processed, so finalize, reconcile and repair never see it.
 RETIRED_SENDERS = {"lensa": "retired_sender_lensa"}
 
 # Gmail does the sender matching server-side: one search per rule, no per-message fetches.

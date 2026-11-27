@@ -1,8 +1,7 @@
-"""LIFE-945: the six read-only lanes of the Weekly LIFE OS Review, and the fixed rules that turn them into a Decision Queue (no model call, no spend).
+"""The read-only lanes of the Weekly LIFE OS Review and the rules that turn them into a Decision Queue.
 
-Each lane returns a Lane: `health` Healthy or Degraded, the exact `reason` when Degraded, the CT time its source was last written, a few fact lines and its Decision Queue items. A lane never raises: a failed read is a
-Degraded lane with a fixed code. Jira, Calendar, Mail and Notion read the V7 cards on the Daily Report (what the hourly stages already wrote, with the existing Notion token); Automation reads the workflow runs
-through the GitHub API; Drive reads through the governed Oracle reader passed in as `drive`. Counts and fixed codes only."""
+A lane never raises: a failed read is a Degraded Lane with a fixed code. Jira, Calendar, Mail and Notion read the V7
+cards on the Daily Report, Automation reads GitHub runs, Drive uses the `drive` reader. Counts and codes only."""
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -12,7 +11,7 @@ from lifeos.platform import ct_stamp, router
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.notion_text import block_text
 
-JIRA_FRESH, CARD_FRESH = timedelta(minutes=30), timedelta(hours=3)      # the page's own gates: Jira at most 30 minutes old; the other cards use their own 3-hour STALE rule
+JIRA_FRESH, CARD_FRESH = timedelta(minutes=30), timedelta(hours=3)  # max card age
 HEADING_TIME = re.compile(r"\((STALE · last accepted )?(\d{1,2})/(\d{1,2}) · (\d{1,2}):(\d{2}) ([AP]M) CT\)")
 RANGE = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M)\s*[–-]\s*(\d{1,2}):(\d{2}) ([AP]M)")
 SOURCE_CARDS = re.compile(r"(\d+) of (\d+) source cards current")
@@ -30,13 +29,12 @@ class Lane:
 
 
 def _down(lane, reason):
-    if lane.health == "Healthy":                                       # the first reason is the one reported
+    if lane.health == "Healthy":
         lane.health, lane.reason = "Degraded", reason
     return lane
 
 
 def kids(client, block_id):
-    """Every child of a block, all pages; a loop or an unreadable page is a NotionError (the lane turns it into a fixed code)."""
     out, cursor = [], None
     for _ in range(50):
         path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100" + (f"&start_cursor={quote(cursor, safe='')}" if cursor else "")
@@ -54,7 +52,6 @@ CONTAINERS = ("callout", "column_list", "column", "toggle", "table")
 
 
 def _tree(client, block_id, depth=0, limit=5):
-    """[(block, [children...])] under a block, each block read once, containers followed `limit` levels down."""
     out = []
     for block in kids(client, block_id):
         sub = _tree(client, block["id"], depth + 1, limit) if block.get("has_children") and depth < limit and block.get("type") in CONTAINERS else []
@@ -79,14 +76,14 @@ def _regions_in(nodes, names, found):
         elif kind.startswith("heading"):
             text = block_text(block).strip()
             for name in names:
-                if text.startswith(name) and name not in found:                    # a floating region: its heading and the siblings up to the next heading
+                if text.startswith(name) and name not in found:
                     end = next((j for j in range(i + 1, len(nodes)) if nodes[j][0].get("type", "").startswith("heading")), len(nodes))
                     found[name] = (text, list(_flat(nodes[i + 1:end])))
         _regions_in(sub, names, found)
 
 
 def read_regions(client, page_id):
-    """-> ({region name: (heading text, [every block under it])}, [the first block texts of the page, for the source-card line]) for the V7 cards on the Daily Report page."""
+    """Returns ({region name: (heading, [blocks under it])}, leading page texts)."""
     names = (router.JIRA_REGION, router.CALENDAR_REGION, router.MAIL_ALERTS_REGION, router.RECRUITER_OUTREACH_REGION, router.HIRING_REGION)
     nodes = _tree(client, page_id)
     found = {}
@@ -96,7 +93,7 @@ def read_regions(client, page_id):
 
 
 def heading_time(head, now):
-    """-> (datetime or None, stale?) from a card heading like "Calendar (11/24 · 1:01 PM CT)" or "(STALE · last accepted ...)"."""
+    """Returns (datetime or None, stale?) from "Calendar (11/24 · 1:01 PM CT)"."""
     m = HEADING_TIME.search(head or "")
     if not m:
         return None, False
@@ -112,7 +109,7 @@ def heading_time(head, now):
 
 
 def _card(lane, regions, name, fresh, now):
-    """Fill the lane's time and health from one card heading; -> the card's text lines, or None when the card is missing."""
+    """Set the lane's time and health from a card heading; returns the card's blocks or None."""
     got = regions.get(name)
     if not got:
         _down(lane, "CARD_MISSING")
@@ -159,7 +156,7 @@ def calendar(regions, now):
     days, spans = [[]], 0
     for block in lines or []:
         if block.get("type", "").startswith("heading"):
-            days.append([])                                           # a day heading: overlaps are only ever within one day
+            days.append([])  # overlaps only count within a day
             continue
         for m in RANGE.findall(block_text(block))[:1]:
             days[-1].append((_minutes(*m[:3]), _minutes(*m[3:])))
@@ -209,7 +206,7 @@ def notion_hygiene(header, hub_readable, report_edited, now):
 
 
 def automation(runs, now):
-    """`runs` is {workflow file: [(conclusion, finished datetime)]} newest first, over the review week, or None when GitHub could not be read."""
+    """`runs`: {workflow file: [(conclusion, finished)]}, newest first; None if unreadable."""
     lane = Lane("Automation")
     if runs is None:
         return _down(lane, "GITHUB_UNREADABLE")
@@ -229,7 +226,7 @@ def automation(runs, now):
 
 
 def drive(read):
-    """`read` is the governed Oracle reader: a callable -> {"new", "changed", "unfiled", "duplicates", "missing_metadata"} or raising OSError, ValueError or TimeoutError with a fixed code."""
+    """`read` returns the Drive counts or raises OSError, ValueError or TimeoutError with a fixed code."""
     lane = Lane("Drive")
     try:
         got = read()
@@ -246,7 +243,6 @@ def drive(read):
 
 
 def decisions(lanes):
-    """The Decision Queue: every lane's items, in the page's fixed group order. -> [(group, text)]"""
     items = [item for lane in lanes for item in lane.items]
     return sorted(items, key=lambda item: GROUPS.index(item[0]))
 

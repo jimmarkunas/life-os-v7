@@ -1,13 +1,16 @@
-"""LIFE-945: the Weekly Review's Drive lane, read-only: counts of one Drive account's files made or changed in a window, plus unfiled and duplicate counts.
+"""The Weekly Review's Drive lane, read-only: counts of one Drive account's files made or changed in a window, plus unfiled and duplicate counts.
 
-One metadata listing (GET files with `modifiedTime` after the window start, never any file content), through the same read-only Google client the governed MCP uses (google_read.Google: the drive.readonly scope, the wrong-account check, GET only).
-Returns counts only: no name, id or link ever leaves this module. Unfiled means created in the window directly in My Drive's top level; a duplicate is a second file with the same content checksum."""
+One metadata listing (GET files with `modifiedTime` after the window start, never file content) through the read-only
+Google client the governed MCP uses (google_read.Google). Returns counts only: no name, id or link leaves this module.
+Unfiled means created in the window directly in My Drive's top level; a duplicate is a second file with the same
+content checksum.
+"""
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 try:
     from lifeos.platform import google_read
-except ImportError:                                             # installed beside the Oracle helper, outside the lifeos package
+except ImportError:  # installed beside the Oracle helper, outside the lifeos package
     import google_read
 
 PAGE, MAX_PAGES = 1000, 5
@@ -19,7 +22,9 @@ def _when(text):
 
 
 def summary(google, account, days, now=None):
-    """-> {"new", "changed", "unfiled", "duplicates", "missing_metadata", "complete"} for the last `days` days. Raises google_read.GoogleError with its fixed reason on any failure."""
+    """-> {"new", "changed", "unfiled", "duplicates", "missing_metadata", "complete"} for the last `days` days. Raises
+    google_read.GoogleError with its fixed reason on any failure.
+    """
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=days)
     google_read.check_account(account)

@@ -1,8 +1,7 @@
-"""LIFE-945: V7 writes the Weekly LIFE OS Review each Friday 10 PM CT, Saturday to Friday (Jim, Nov 24 2026); the retired ChatGPT generator no longer does (LIFE-933).
+"""The Weekly LIFE OS Review: one row per Week Ending, made by the first run after Friday 10 PM CT.
 
-On the first run at or after Friday 10:00 PM CT it makes one row in the Weekly Reviews database for that Friday (Week Ending), Status Generated, Current. One row per Week Ending, always: a rerun finds it and
-does nothing, except that a row still Degraded inside 48 hours of its first write is rebuilt from fresh reads. The six lanes (weekly_lanes.py) are read-only; the only writes are the row and its page body. The week ending Fri Nov 20 2026 is
-a one-time backfill, never Current once a newer week exists. Off unless the `WEEKLY_REVIEW` setting is on; a dry run (no --live) reads and reports and writes nothing. Reviewed and Applied stay Jim's. Counts and fixed codes only."""
+A rerun does nothing unless the row is still Degraded within REFRESH, when it is rebuilt. Off unless `WEEKLY_REVIEW`
+is on; a dry run writes nothing."""
 import os
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
@@ -13,9 +12,9 @@ from lifeos.platform import branches, oracle_drive
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 TZ = ZoneInfo("America/Chicago")
-FRIDAY, DUE_HOUR = 4, 22                                        # Friday 10:00 PM CT
-REFRESH = timedelta(hours=48)                                   # a Degraded row may be rebuilt, and a missed week caught up, this long after Friday 10 PM
-BACKFILL = (date(2026, 11, 20),)                                # Jim, Nov 24 2026 ("945 backfill yes"): the week ending Fri Nov 20, made once on the first production run
+FRIDAY, DUE_HOUR = 4, 22
+REFRESH = timedelta(hours=48)  # window after Friday 10 PM to rebuild a Degraded row or catch up a missed week
+BACKFILL = (date(2026, 11, 20),)  # weeks made once on the first run
 WORKFLOWS = ("hourly.yml", "domains.yml")
 
 
@@ -40,14 +39,14 @@ def due_moment(friday):
 
 
 def latest_friday(now):
-    """The most recent Friday whose 10:00 PM CT has passed."""
     back = (now.weekday() - FRIDAY) % 7
     friday = now.date() - timedelta(days=back)
     return friday - timedelta(days=7) if now < due_moment(friday) else friday
 
 
 def wanted(now, have):
-    """-> [(Friday, "natural" or "backfill")] this run should make: the latest Friday if missing and inside the 48-hour catch-up, plus any missing backfill week."""
+    """[(Friday, "natural" or "backfill")] to make: the latest Friday if missing and within REFRESH,
+    plus missing backfill weeks."""
     out = []
     friday = latest_friday(now)
     if friday not in have and now - due_moment(friday) <= REFRESH:
@@ -90,7 +89,6 @@ def _block(kind, content, **extra):
 
 
 def body(friday, lanes, queue, now, kind):
-    """The page body: the eight required sections in the page's order."""
     start, end = friday - timedelta(days=6), friday
     plan = (friday + timedelta(days=1), friday + timedelta(days=7))
     by = {lane.name: lane for lane in lanes}
@@ -125,7 +123,7 @@ def body(friday, lanes, queue, now, kind):
 
 
 def github_runs(environ, friday, opener=None):
-    """{workflow file: [(conclusion, finished at)]} for the review week, newest first, or None when GitHub cannot be read."""
+    """{workflow file: [(conclusion, finished at)]} for the review week; None if unreadable."""
     repo, token = environ.get("GITHUB_REPOSITORY"), environ.get("GITHUB_TOKEN")
     if not repo or not token:
         return None
@@ -162,7 +160,6 @@ def _row_date(row):
 
 
 def collect(client, environ, friday, now, drive_read, opener=None):
-    """Read the six lanes for one week. -> [Lane in the page's order]"""
     try:
         page = weekly_archive._page_of(client, weekly_archive._clean(environ.get("JIRA_CARD_BLOCK_ID")))
         regions, header = wl.read_regions(client, page)
@@ -181,7 +178,7 @@ def _unavailable():
 
 
 def write_week(client, source, environ, friday, kind, now, live, drive_read, existing=None, newest=True, opener=None):
-    """Make (or, when `existing` is a Degraded row inside 48 hours, rebuild) the row for one Friday. -> a small receipt dict."""
+    """Make the row for one Friday, or rebuild `existing`; returns a receipt."""
     lanes = collect(client, environ, friday, now, drive_read, opener)
     queue = wl.decisions(lanes)
     health = "Healthy" if all(lane.health == "Healthy" for lane in lanes) else "Degraded"

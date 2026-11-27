@@ -1,11 +1,11 @@
-"""How long ordinary tickets take from first commit to merge, read-only, from GitHub pull requests and Jira times (LIFE-556).
+"""How long ordinary tickets take from first commit to merge, read-only, from GitHub pull requests and Jira times.
 
   python -m lifeos.sources.devtools.profile_tickets --last 20 [--jira jira.json] [--json]
 
-Per merged pull request titled `[LIFE-nnn]`: files changed, lines added and removed, minutes from the first commit to the merge, number of `pr-tests` runs on the PR branch, how many failed before the first green on the final head, minutes from the first run to that first green, and (with a Jira file) the minutes from the Jira
-move "To Do -> Agent Go" (the start of agent work) to Done.
-The Jira file is {"LIFE-nnn": {"start": ISO time, "done": ISO time}}; Jira has no key in this repo, so a person (or an agent with Jira access) exports those two times per ticket.
-Outputs: numbers and issue keys only (no ticket text, log text or personal data); it calls `gh` for reads and writes to stdout, changing nothing."""
+Per merged PR titled `[LIFE-nnn]`: files and lines changed, minutes from first commit to merge, `pr-tests` runs,
+failures before the first green, and (with a Jira file {"LIFE-nnn": {"start": ISO, "done": ISO}}) minutes from
+Agent Go to Done. Numbers and issue keys only; it calls `gh` for reads.
+"""
 import argparse
 import datetime as dt
 import json
@@ -16,7 +16,7 @@ import sys
 
 KEY = re.compile(r"^\[(LIFE-\d+)\]")
 CI_WORKFLOW = "pr-tests.yml"
-GENERATED = ("docs/CODEMAP.md", "docs/codemap.json", "docs/test-index.json", "INDEX.md")           # files every PR regenerates; they say nothing about what the ticket changed
+GENERATED = ("docs/CODEMAP.md", "docs/codemap.json", "docs/test-index.json", "INDEX.md")
 
 
 def when(text):
@@ -28,7 +28,9 @@ def minutes(a, b):
 
 
 def scope(paths):
-    """The packages a PR touched, ignoring generated files: `lifeos/<pkg>/...` and `tests/<pkg>/...` count as <pkg>; `.github` as workflows; docs as docs; the rest as other."""
+    """The packages a PR touched, ignoring generated files: `lifeos/<pkg>/...` and `tests/<pkg>/...` count as <pkg>;
+    `.github` as workflows; docs as docs; the rest as other.
+    """
     out = set()
     for path in paths:
         if path in GENERATED:
@@ -46,7 +48,6 @@ def scope(paths):
 
 
 def profile(pr, detail, runs, jira=None):
-    """One row of numbers. pr: gh pr list item; detail: gh pr view item (commits, files, headRefOid); runs: gh run list items for the PR branch (pr-tests only)."""
     key = KEY.match(pr["title"]).group(1)
     final = detail["headRefOid"]
     ordered = sorted(runs, key=lambda r: r["createdAt"])
@@ -69,7 +70,7 @@ def summary(rows):
     for name in ("files", "added", "removed", "commit_to_merge_min", "ci_runs", "failed_before_green", "first_run_to_green_min"):
         values = sorted(r[name] for r in rows if r.get(name) is not None)
         out[name] = {"n": len(values), "median": statistics.median(values), "worst": values[-1]} if values else {"n": 0, "median": None, "worst": None}
-    tickets = {r["key"]: r["jira_start_to_done_min"] for r in rows if r.get("jira_start_to_done_min") is not None}         # one value per ticket: a ticket with 3 PRs counts once
+    tickets = {r["key"]: r["jira_start_to_done_min"] for r in rows if r.get("jira_start_to_done_min") is not None}
     values = sorted(tickets.values())
     out["jira_start_to_done_min_per_ticket"] = {"n": len(values), "median": statistics.median(values), "worst": values[-1]} if values else {"n": 0, "median": None, "worst": None}
     out["prs_with_a_failed_first_run"] = sum(1 for r in rows if r["failed_before_green"] > 0)
@@ -81,9 +82,9 @@ PARTS = ("queue_and_orientation_min", "building_min", "after_merge_to_done_min")
 
 
 def split(rows, jira):
-    """LIFE-598 -> {ticket: {queue_and_orientation_min, building_min, after_merge_to_done_min, total_min}} for tickets that have both Jira times and at least one PR.
-    Agent Go to the first commit (queueing and reading together: Jira has no In Progress move to separate them), first commit to the last merge (building and CI), last merge to Done
-    (verification, measurement runs, waiting for a person). A ticket with several PRs uses the earliest first commit and the latest merge."""
+    """-> {ticket: {queue_and_orientation_min, building_min, after_merge_to_done_min, total_min}} for tickets with
+    both Jira times and a PR: Agent Go to first commit, first commit to last merge, last merge to Done.
+    """
     by_ticket = {}
     for row in rows:
         by_ticket.setdefault(row["key"], []).append(row)
@@ -100,7 +101,6 @@ def split(rows, jira):
 
 
 def split_summary(tickets):
-    """The sum, median and share of each part over the tickets, and which part is largest by the sum of minutes."""
     if not tickets:
         return {"n": 0, "largest": None, "median_min": {}, "share_pct": {}, "sum_min": {}}
     sums = {part: round(sum(t[part] for t in tickets.values()), 1) for part in PARTS}
@@ -120,7 +120,7 @@ def table(rows):
 def gh(args, run=subprocess.run):
     done = run(["gh", *args], capture_output=True, text=True, timeout=120)
     if done.returncode != 0:
-        raise RuntimeError("gh failed")                                                   # a fixed message: gh's own text could carry a path or a name
+        raise RuntimeError("gh failed")
     return json.loads(done.stdout or "null")
 
 

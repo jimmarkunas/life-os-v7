@@ -1,4 +1,4 @@
-"""LIFE-1010: the size budget of the big workflows. A generated workflow is at most 130 KB, a source part at most 8 KB and a step name at most 80 characters, so an agent can read and edit one job without loading the whole file.
+"""LIFE-1010: the size budget of the big workflows. A generated workflow is at most 130 KB, a source part at most 6 KB and a step name at most 60 characters, so an agent can read and edit one job without loading the whole file.
 
 domains.yml is held at the size the lean pass reached (RATCHET), not the 130 KB: what is left in it is the per-step credential wiring, which this pass was forbidden to change. The number may only go down."""
 import pathlib
@@ -11,9 +11,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 FLOWS = ROOT / ".github/workflows"
 SRC = ROOT / ".github/workflows-src"
 GENERATED_MAX = 130 * 1024
-PART_MAX = 8 * 1024
-NAME_MAX = 80
-RATCHET = {"domains.yml": 165_000}                                   # reached 162,955 bytes (240,853 before); lower it when it shrinks, never raise it
+PART_MAX = 6 * 1024
+NAME_MAX = 60
+RATCHET = {"domains.yml": 140_000, "hourly.yml": 94_500}               # reached 139,192 and 93,683 bytes (240,853 and 123,939 before the lean passes); lower them when the files shrink, never raise
 BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 
@@ -53,9 +53,8 @@ class Budget(unittest.TestCase):
     def test_a_clean_tree_has_no_problem_and_the_ratchet_sits_just_above_the_reached_size(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(problems(tmp, tmp), [])
-        size = len((FLOWS / "domains.yml").read_bytes())
-        self.assertLess(RATCHET["domains.yml"] - size, 4000, "lower the ratchet to just above the new size")
-        self.assertLess(RATCHET["domains.yml"], GENERATED_MAX + 40_000)
+        for name, ceiling in RATCHET.items():
+            self.assertLess(ceiling - len((FLOWS / name).read_bytes()), 4000, f"lower the {name} ratchet to just above the new size")
 
 
 if __name__ == "__main__":

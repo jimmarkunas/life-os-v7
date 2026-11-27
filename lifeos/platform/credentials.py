@@ -1,12 +1,11 @@
-"""LIFE-528 outcome 2 (Jim, Nov 10 2026, comments 12547 and 12548): the list of provider credentials LIFE OS uses, and what is known about each one's expiry.
+"""The list of provider credentials LIFE OS uses, and what is known about each one's expiry.
 
-`credential_list.py` holds NAMES, providers, what each is used for, where it is read, and a date when one is known. Never a value, a secret id or a Bitwarden item id.
-expiry_source: provider_reported (the date came from the provider's own evidence) | manual (a person entered it, or the provider can report it but nothing reads it yet) |
-none ("No expiry exposed": the provider gives no date, so this screen cannot warn and says so) | no_expiry ("No fixed expiry": there is nothing that expires, for a stated reason in
-`source_label`; Jim's call or the provider's own page, never a guess).
-
-Warnings ride the existing path: lifeos/jobs/alerts.py turns every entry that has a date into the `expiry_*` alert (PAGE, 7 days ahead) through the alert gateway. The Alert settings screen
-reads this list on Oracle; it never reads Notion, so a Notion problem cannot silence a warning. The Token Expiry database in Notion is a read-only mirror of `rows()`."""
+`credential_list.py` holds NAMES, providers, purpose, where each is read and a date when known; never a value.
+expiry_source: provider_reported | manual | none ("No expiry exposed": the provider gives no date) | no_expiry ("No
+fixed expiry": nothing expires, for a reason in `source_label`). lifeos/jobs/alerts.py turns every entry with a date
+into the `expiry_*` alert (PAGE, 7 days ahead). The Alert settings screen reads this list on Oracle and never Notion,
+so a Notion problem cannot silence a warning.
+"""
 import copy
 import datetime as dt
 from pathlib import Path
@@ -16,17 +15,19 @@ from lifeos.platform.credential_list import CREDENTIALS, NOT_ENVIRONMENT, PATTER
 SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed", "no_expiry": "No fixed expiry"}
 WARN_AHEAD_DAYS = 7
 REQUIRED = ("key", "label", "provider", "used_for", "read_in", "expiry_source", "expires", "how_read", "renew")
-OPTIONAL = ("source_label",)                      # Nov 11 2026: the stated reason a "No fixed expiry" entry shows on the screen
+OPTIONAL = ("source_label",)
 
 
 def load():
-    """Every entry with the three keys most entries omit filled in: no expiry source, no date, nothing to renew."""
+    """Every entry with the keys most entries omit filled in: no expiry source, no date, nothing to renew."""
     return [{"expiry_source": "none", "expires": None, "renew": "", **copy.deepcopy(entry)} for entry in CREDENTIALS]
 
 
 def config(root=Path(__file__).resolve().parents[1]):
-    """LIFE-560: the environment-variable name registry (names, kind, owner, purpose; never a value). LIFE-644: each row is a line `NAME kind purpose` in its owner package's
-    lifeos/<package>/config.txt (`kind:owner` names an owner that is not a package, e.g. workflow); the groups that are not rows stay in credential_list.py."""
+    """The environment-variable name registry (names, kind, owner, purpose; never a value): each row is a line `NAME kind
+    purpose` in its owner package's lifeos/<package>/config.txt (`kind:owner` names an owner that is not a package);
+    the groups that are not rows stay in credential_list.py.
+    """
     rows = []
     for path in sorted(root.glob("*/config.txt")):
         for line in path.read_text().splitlines():
@@ -43,7 +44,6 @@ def days_left(entry, today):
 
 
 def status(entry, today):
-    """OK | Warning | Expired | No fixed expiry | Unknown (no date to check)."""
     days = days_left(entry, today)
     if days is None:
         return "No fixed expiry" if entry.get("expiry_source") == "no_expiry" else "Unknown"
@@ -51,7 +51,6 @@ def status(entry, today):
 
 
 def rows(today, credentials=None):
-    """One row per credential for a screen or a mirror: names, providers, dates and a status only."""
     out = []
     for entry in (load() if credentials is None else credentials):
         out.append({"key": entry["key"], "credential": entry["label"], "provider": entry["provider"], "used_for": entry["used_for"], "read_in": entry["read_in"],
@@ -61,5 +60,6 @@ def rows(today, credentials=None):
 
 
 def expiries(credentials=None):
-    """The entries that have a date, in the shape lifeos/jobs/alerts.py `detect` reads: {key: {label, expires, renew}}."""
+    """The entries that have a date, in the shape lifeos/jobs/alerts.py `detect` reads: {key: {label, expires, renew}}.
+    """
     return {e["key"]: {"label": e["label"], "expires": e["expires"], "renew": e["renew"]} for e in (load() if credentials is None else credentials) if e.get("expires")}

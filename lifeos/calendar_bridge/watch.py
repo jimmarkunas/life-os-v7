@@ -1,9 +1,7 @@
-"""Wraps `sync.run` for the `calendar-sync` stage so a sync that keeps failing reaches the phone (D173).
+"""Wraps `sync.run` so a persistently failing sync reaches the phone.
 
-A live success records the time and closes any open alert; a live failure pages the phone only once the sync has not worked for STUCK_HOURS, then reminds every 6 hours (platform alerts, D53) and says when it recovers.
-State is one private row. Counts and fixed codes only; alerting never changes the sync's own result or error."""
-# Why this exists (D173): the sync step is a warning by design (a provider hiccup never fails the run), so it refused every run for five days (CALENDAR_MASS_DELETE_GUARD, Oct 7 to 12) without
-# a word. One transient provider error is not an incident, hence STUCK_HOURS.
+A live failure pages only after STUCK_HOURS without success, then reminds every 6 hours and reports recovery. State is
+one private row; alerting never changes the sync's result or error."""
 import json
 import os
 from datetime import datetime, timezone
@@ -12,15 +10,15 @@ from lifeos.calendar_bridge import sync
 from lifeos.platform import alerts, db
 
 KEY = "calendar_sync_stuck"
-STUCK_HOURS = 3                    # three hourly runs without a success
+STUCK_HOURS = 3
 SCHEMA = """CREATE TABLE IF NOT EXISTS v7_calendar_sync (
         k VARCHAR(16) NOT NULL PRIMARY KEY, last_ok DATETIME NOT NULL, alert_open TINYINT NOT NULL DEFAULT 0, last_notified DATETIME NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
 
 
 def decide(state, ok, now, code=""):
-    """state: None or {"last_ok", "alert_open", "last_notified"}; now: naive UTC. -> (new state, alerts.Plan). The first time anything is seen counts as the last good moment, so a sync that was
-    already broken when this shipped pages after STUCK_HOURS, not instantly and not never."""
+    """Returns (new state, alerts.Plan) for the stored state (or None) and a naive-UTC `now`.
+    The first observation counts as the last good moment."""
     state = dict(state or {"last_ok": now, "alert_open": False, "last_notified": None})
     was_open = bool(state["alert_open"])
     known = {KEY: {"severity": alerts.PAGE, "last_notified": state["last_notified"]}} if was_open else {}
@@ -57,7 +55,7 @@ def _record(connect, environ, now, ok, code, send):
             state, plan = decide(_load(connection), ok, now, code)
             sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send)
             if plan.notify and sent["failed"] == 0 and state["alert_open"]:
-                state["last_notified"] = now                    # a push the phone service did not accept is retried next run
+                state["last_notified"] = now  # an unaccepted push is retried next run
             _save(connection, state)
         print("calendar-watch:", json.dumps({"alert_open": state["alert_open"], **sent}))
     except Exception:                                           # noqa: BLE001 - alerting must never change the sync's result

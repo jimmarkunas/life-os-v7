@@ -1,12 +1,11 @@
-"""LIFE-757: the production wiring of the followup stage (store, scopes, grants, fetchers, receipts, payload sink); off unless FOLLOWUP_WIRING is on."""
-# `build(environ, live)` returns the followup_stage.Wiring, or None while the switch is off (the stage is then a counts-only no-op). Jim, Nov 16 2026: every hourly tick is one full reconciliation of
-# every approved source; a complete build, all six sources, new credentials as needed. Nothing here holds a credential VALUE or an account identifier: a grant names a credential NAME that
-# `followup_fetchers` resolves from the job's environment, an account LABEL comes from the environment (FOLLOWUP_ACCOUNT_<SOURCE>_<WORKSPACE>[_N]), and the committed expiry table says when a credential
-# stops being a valid grant (no expiry row, no grant: that source shows DEGRADED). Which source serves which workspace is committed below (Jim's account map, Nov 16 2026).
-# A scope is one (workspace, account label): Jira is one Atlassian account split by project key into a Personal and a Bytalos scope (two credential names), Outlook is up to three Personal accounts
-# (one scope each), Todoist, Notion and Interview OS are Personal only. TGP is excluded everywhere: no TGP workspace, and an account label naming the TGP domain is refused, not read.
-# Receipts: every read is written to `v7_inbox_access` first (LIFE-707/712); if a receipt cannot be written nothing is read. The readers' request ids repeat across hourly runs, so the receipt id is the
-# digest of time, source, workspace, account and the reader's id. Dry run: store reads fall back to empty when the Followup tables do not exist yet; nothing is ever written.
+"""Production wiring of the followup stage; off unless FOLLOWUP_WIRING is on.
+
+`build(environ, live)` returns the followup_stage.Wiring, or None while the switch is off. No credential value or
+account identifier lives here: a grant names a credential NAME that `followup_fetchers` resolves from the job's
+environment, an account LABEL comes from FOLLOWUP_ACCOUNT_<SOURCE>_<WORKSPACE>[_N], and the committed expiry table
+says when a credential stops being a valid grant (no expiry row, no grant: that source shows DEGRADED). TGP is
+excluded. Every read writes a receipt to `v7_inbox_access` first; if that fails nothing is read.
+"""
 from datetime import datetime, timezone
 
 from lifeos.inbox import followup_classify, followup_stage as stage
@@ -21,18 +20,18 @@ PRINCIPAL = "followup-stage"
 RELEASED = tuple(w for w in WORKSPACES if w not in UNRELEASED_WORKSPACES)
 BOTH = ("personal", "bytalos")
 SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
-JIRA_SITE = "https://jimmarkunas.atlassian.net"                                     # the site hostname is not secret (it is in the docs and runbooks): a constant, so no GitHub value is read
-FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}   # Jira is not a credential Jim names: these scope labels are committed, not read from the environment
+JIRA_SITE = "https://jimmarkunas.atlassian.net"
+FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}
 DEFAULT_LABELS = {("calendar", "personal", 1): "personal calendar", ("calendar", "bytalos", 1): "bytalos calendar", ("gmail", "personal", 1): "personal inbox", ("gmail", "bytalos", 1): "bytalos inbox",
                   ("todoist", "personal", 1): "personal todoist", ("notion", "personal", 1): "personal notion", ("interview_os", "personal", 1): "interview os",
-                  ("outlook", "personal", 1): "personal outlook", ("outlook", "personal", 2): "work outlook"}   # not secrets and never an address: committed, so Jim creates no label item; an environment label still overrides
-# The credential inventory row (lifeos/platform/credential_list.py) whose expiry each credential follows; a credential with no row has no grant, so no read.
+                  ("outlook", "personal", 1): "personal outlook", ("outlook", "personal", 2): "work outlook"}
 INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token",
              "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "followup_gmail_bytalos_refresh", "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "followup_todoist_personal_token"}
-OUTLOOK_INVENTORY = "outlook_sign_in"                                               # an Outlook credential is an existing label (`personal`, `work`) whose token lives in the private store
-NO_EXPIRY = "2099-12-31"                                                          # an inventory row with no fixed expiry: a long date, withdrawn by removing the account or the name
-EXPIRES = {}                                                                      # {(source, workspace, slot): "YYYY-MM-DD"}: only for a credential with no inventory row
-NOT_CONNECTED = {("outlook", "personal", "school mailbox"): "its tenant needs an admin to approve the app; Jim chose not to request it (Nov 16 2026)"}   # tracked, not connected: no grant, no read, like TGP
+OUTLOOK_INVENTORY = "outlook_sign_in"
+NO_EXPIRY = "2099-12-31"
+EXPIRES = {}
+# Tracked, not connected: no grant, no read, like TGP
+NOT_CONNECTED = {("outlook", "personal", "school mailbox"): "its tenant needs an admin to approve the app; Jim chose not to request it (Nov 16 2026)"}
 TGP_DOMAINS = stage.TGP_DOMAINS
 
 
@@ -41,7 +40,6 @@ class WiringError(RuntimeError):
 
 
 def _fetchers():
-    """The fetchers module (LIFE-757), or None if it cannot be imported: then no source has a credential and every source shows DEGRADED, never a crash."""
     try:
         from lifeos.platform import followup_fetchers
     except ImportError:
@@ -54,17 +52,14 @@ def _keys(module, source, workspace):
 
 
 def account_env(source, workspace, slot=1):
-    """The environment name that holds this scope's account LABEL (the fetchers' ACCOUNT_NAMES)."""
     return (getattr(_fetchers(), "ACCOUNT_NAMES", {}) or {}).get((source, workspace, slot or 1), "")
 
 
 def credential_names():
-    """{(source, workspace, slot): the NAME a grant carries}: the fetchers' GRANT_REFS, so a grant can only point its own fetcher at its own credential."""
     return dict(getattr(_fetchers(), "GRANT_REFS", {}) or {})
 
 
 def _default_label(environ, key):
-    """The committed label, but only where the credential is there to read (a stored Outlook token is judged by the reader, which shows DEGRADED until the sign-in is done): no credential, no scope."""
     fetchers = _fetchers()
     name = (getattr(fetchers, "CREDENTIAL_NAMES", {}) or {}).get(key)
     stored = bool(fetchers) and key[0] in fetchers.STORED_TOKENS
@@ -72,7 +67,6 @@ def _default_label(environ, key):
 
 
 def accounts(environ, source, workspace):
-    """-> [(slot, label)]: Jira has its committed label; the others are the labels named in the environment, in slot order. A source that does not serve the workspace has none."""
     if workspace not in RELEASED or workspace not in SOURCE_WORKSPACES.get(source, ()):
         return []
     if (source, workspace) in FIXED_ACCOUNTS:
@@ -86,8 +80,9 @@ def accounts(environ, source, workspace):
 
 
 def configured(environ):
-    """-> {(workspace, label): [(source, slot), ...]}: one scope per workspace and account label. Sources the workspace serves but that have no account are added to the workspace's first scope so
-    they show DEGRADED (not provisioned) instead of vanishing from the payload."""
+    """Returns {(workspace, label): [(source, slot), ...]}; a served source with no account joins the first scope and
+    shows DEGRADED.
+    """
     scopes = {}
     for workspace in RELEASED:
         for source in SOURCES:
@@ -103,14 +98,13 @@ def configured(environ):
 
 
 def expiry_table():
-    """EXPIRES plus each credential's date from its inventory row (a row with no fixed expiry follows NO_EXPIRY)."""
     from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
     rows = {row.get("key"): row for row in CREDENTIALS}
     fetchers = _fetchers()
     stored = fetchers.STORED_TOKENS if fetchers else ()
     table = {}
     for key, raw in (getattr(fetchers, "CREDENTIAL_NAMES", {}) or {}).items():
-        row = rows.get(OUTLOOK_INVENTORY if key[0] in stored else INVENTORY.get(raw))      # a stored (label) token follows the outlook sign-in row
+        row = rows.get(OUTLOOK_INVENTORY if key[0] in stored else INVENTORY.get(raw))
         if row:
             table[key] = row.get("expires") or NO_EXPIRY
     table.update(EXPIRES)
@@ -118,15 +112,13 @@ def expiry_table():
 
 
 def grants_for(environ, names, expires=None):
-    """One Grant per configured (source, workspace, account) that has a credential NAME and an expiry; Asana, TGP and a source outside its workspaces never get one. Each scope has its own Grant even
-    where two scopes share a credential item."""
     expires = expiry_table() if expires is None else expires
     out = []
     for (workspace, label), members in sorted(configured(environ).items()):
         for source, slot in sorted(members, key=lambda m: (m[0], m[1] or 0)):
             key = (source, workspace, slot or 1)
             name, day = names.get(key), expires.get(key)
-            if not name or not day or (slot, label) not in accounts(environ, source, workspace):      # a source appended only to show DEGRADED has no account here: no grant
+            if not name or not day or (slot, label) not in accounts(environ, source, workspace):
                 continue
             out.append(readers.Grant(source, workspace, label, name, datetime.fromisoformat(day + "T23:59:59+00:00")))
     return tuple(out)
@@ -137,7 +129,9 @@ def receipt_id(receipt):
 
 
 def make_audit(ledger):
-    """audit(receipt) for the readers: allow and deny open a receipt, ok and degraded settle it. Raises WiringError when the ledger cannot write (the readers then read nothing)."""
+    """audit(receipt) for the readers. Raises WiringError when the ledger cannot write (the readers then read
+    nothing).
+    """
     def audit(receipt):
         request = receipt_id(receipt)
         try:
@@ -153,7 +147,6 @@ def make_audit(ledger):
 
 
 class DryStore:
-    """Reads fall back to empty when the Followup tables are not there yet; every write refuses. Used for a dry run, which never writes."""
 
     def __init__(self, store):
         self._store = store
@@ -175,17 +168,15 @@ class DryStore:
 
 
 def make_sink(store, clock):
-    """sink(payload): the one place the payload is published, once per scope, live only. A store without the payload table refuses with a fixed code."""
     def sink(payload):
         save = getattr(store, "save_payload", None)
         if save is None:
             raise WiringError("FOLLOWUP_PAYLOAD_STORE_MISSING")
-        save(payload["workspace"], payload["account"], payload)                       # FollowupStore.save_payload(workspace, account, payload): the payload carries its own generated_at
+        save(payload["workspace"], payload["account"], payload)
     return sink
 
 
 def payload_loader(store, workspace, account):
-    """The `load(credential_ref)` that `followup.payload_reader` wants: this scope's last published payload, or None (the reader then says unavailable)."""
     def load(_credential_ref):
         read = getattr(store, "load_payload", None)
         return read(workspace, account) if read else None
@@ -193,14 +184,12 @@ def payload_loader(store, workspace, account):
 
 
 def fetcher_environment(environ):
-    """The environment the fetchers see: the caller's, plus the Jira site (a constant, never a GitHub value) unless the caller set one. The Jira project split is fixed in the fetchers' code."""
     out = dict(environ)
     out.setdefault("JIRA_BASE_URL", JIRA_SITE)
     return out
 
 
 def build(environ, live=False, clock=None):
-    """-> the Wiring, or None while the switch is off or no source has a configured account."""
     if not switches.state(SWITCH, environ):
         return None
     scopes = configured(environ)

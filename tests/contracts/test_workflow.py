@@ -3,6 +3,10 @@ import re
 import unittest
 
 from lifeos.platform import due
+import sys as _sys
+_sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
+import wfsets  # noqa: E402  (LIFE-1013: credential lists named with `set:`)
+
 
 try:
     import yaml
@@ -64,7 +68,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(lane_result("publish"), (1, "FAILED STAGES: publish", "failed=publish"))
         self.assertEqual(lane_result("none"), (0, "", "failed="))
 
-        report = next(step for step in data["jobs"]["report"]["steps"] if "Resolver lanes" in step.get("name", ""))
+        report = next(step for step in data["jobs"]["report"]["steps"] if "finish job report" in step.get("name", ""))
         self.assertIn("finish", data["jobs"]["report"]["needs"])
         self.assertEqual(report["env"]["STAGES"], "${{ needs.finish.outputs.failed }}")
         self.assertIn("alerts push --key run_failed", report["run"])
@@ -408,7 +412,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own git fetch, token never stored)", "./.github/actions/python"])
+        self.assertEqual([s.get("name") or s.get("uses") for s in steps[:2]], ["Checkout the exact commit (own fetch, token never stored)", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         for k in (1, 2, 3, 4):                                               # Jim, Oct 26 2026: parallel shards of whole test modules (three since LIFE-705, four since LIFE-963, Nov 24 2026: the public runner has 4 vCPUs); tests/contracts/test_shards.py proves every test runs in exactly one
             self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
@@ -511,7 +515,7 @@ class UnitTestGateTests(unittest.TestCase):
                 self.assertNotIn("unit-tests", j.get("needs", []) if isinstance(j.get("needs"), list) else [j.get("needs")], name)   # nothing on the critical path waits for the tests
         report = self.doc["jobs"]["report"]
         self.assertIn("unit-tests", report["needs"])
-        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "Resolver lanes" in s.get("name", ""))["run"])   # a failing test is named in the red run and the push
+        self.assertIn("unit-tests=${{ needs.unit-tests.result }}", next(s for s in report["steps"] if "finish job report" in s.get("name", ""))["run"])   # a failing test is named in the red run and the push
 
     def test_chromium_is_cached_on_the_browser_lock_and_the_browser_step_is_its_own_timed_step(self):
         """LIFE-604 item 13: ONE shared composite action installs the browser; the finish job and the manual Jobright job both use it."""
@@ -751,7 +755,10 @@ def is_parity(step):
 
 def is_settings_loader(step):
     """The settings loader exactly as written: its id, the local loader, the one Notion token, nothing exported job-wide, and `continue-on-error` as its only extra key."""
-    return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and step.get("with") in settings_loader_withs()
+    with_ = step.get("with")
+    if isinstance(with_, dict) and "set" in with_:                                                       # LIFE-1013: the list is named in sets.yml
+        with_ = {**{k: v for k, v in with_.items() if k != "set"}, "secrets": wfsets.load()[with_["set"]]}
+    return (step.get("id") == SETTINGS_LOADER_ID and step.get("uses") == "./.github/actions/bws-load" and with_ in settings_loader_withs()
             and step.get("continue-on-error") is True and set(step) == {"id", "name", "uses", "with", "continue-on-error"})
 
 
@@ -971,8 +978,8 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertIn("reconcile", trigger["workflow_dispatch"]["inputs"]["jira"]["options"])
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
 
-    def test_v3_pages_runs_after_every_after_tick_domains_run_and_keeps_its_cron_fallback_and_live_rule(self):
-        """LIFE-1000: the V3 page is refreshed after each hourly domains run (GitHub fires the cron only about twice a day); only an after-tick domains run starts it, a manual one does not; live mode follows V7_LIVE exactly as a scheduled run."""
+    def test_v3_pages_runs_after_successful_after_tick_domains_runs_and_keeps_its_cron_fallback_and_live_rule(self):
+        """LIFE-1009: only a successful after-tick domains run starts the V3 page path; skipped/failed ticks do not, and the cron fallback and live rule remain."""
         path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/v3-pages.yml"
         text = path.read_text()
         data = yaml.safe_load(text)
@@ -980,7 +987,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(trigger["workflow_run"], {"workflows": ["domains"], "types": ["completed"]})
         self.assertEqual(trigger["schedule"], [{"cron": "40 * * * *"}])                                            # the fallback stays
         self.assertEqual(list(trigger["workflow_dispatch"]["inputs"]), ["live"])                                    # workflow_dispatch is unchanged
-        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run') }}")
+        self.assertEqual(data["jobs"]["v3pages"]["if"], "${{ github.event_name != 'workflow_run' || (github.event.workflow_run.display_title == 'domains (after tick)' && github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}")
         self.assertIn("live_mode: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'follow' }}", text)   # a workflow_run start follows V7_LIVE
         self.assertEqual(data["permissions"], {"contents": "read"})
         self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})     # overlapping starts queue, they never cancel a running write
@@ -1115,7 +1122,7 @@ class BitwardenConsumerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
-        cls.text = {p.stem: p.read_text() for p in sorted(root.glob("*.yml")) if p.stem not in SECRET_FREE}
+        cls.text = {p.stem: wfsets.expand_text(p.read_text()) for p in sorted(root.glob("*.yml")) if p.stem not in SECRET_FREE}
         cls.doc = {n: yaml.safe_load(t) for n, t in cls.text.items()}
 
     def loaders(self, name, job):
@@ -1163,7 +1170,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps, names = doc["jobs"][job]["steps"], self.loaded(name, job)
                 self.assertTrue(names and names <= set(UUIDS), (name, job))
                 self.assertTrue(names <= DOMAIN_SECRETS[job] | TS if name == "domains" else names == LOADED[name][job], (name, job, sorted(names)))
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch, token never stored)", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
@@ -1178,9 +1185,9 @@ class BitwardenConsumerTests(unittest.TestCase):
         """LIFE-631: D209 (Bitwarden's 429 / 5xx gets one retry after a jittered pause, and a failed retry fails the job) is written once, here, instead of in 45 jobs."""
         root = pathlib.Path(__file__).resolve().parents[2] / ".github"
         action = yaml.safe_load((root / "actions" / "bws-load" / "action.yml").read_text())
-        first, pause, retry, names, doppler = action["runs"]["steps"]
+        sets, first, pause, retry, names, doppler = action["runs"]["steps"]
         failed = "${{ steps.first.outcome == 'failure' }}"
-        passed = {"access_token": "${{ inputs.access_token }}", "secrets": "${{ inputs.secrets }}", "set_env": "${{ inputs.set_env }}"}
+        passed = {"access_token": "${{ inputs.access_token }}", "secrets": "${{ inputs.set != '' && steps.sets.outputs.list || inputs.secrets }}", "set_env": "${{ inputs.set_env }}"}   # LIFE-1013: the list is the named set, else the inline one
         self.assertEqual(action["runs"]["using"], "composite")
         self.assertEqual(first, {"id": "first", "continue-on-error": True, "uses": self.PINNED, "with": passed})
         self.assertEqual(pause, {"if": failed, "shell": "bash", "run": self.PAUSE})                              # a jittered pause, only when the first load failed
@@ -1261,7 +1268,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                 steps = self.doc[name]["jobs"][job]["steps"]
                 self.assertTrue(is_settings_loader(loader), (name, job))
                 self.assertTrue(all(i < at for i, _ in self.loaders(name, job)), (name, job))              # after the credential loader: that one is first and keeps its helper seed
-                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own git fetch, token never stored)", (name, job))
+                self.assertEqual(steps[0].get("name"), "Checkout the exact commit (own fetch, token never stored)", (name, job))
                 consumers = [s for s in steps if SETTINGS_CONSUMER in str((s.get("env") or {}).values())]
                 self.assertTrue(consumers, (name, job))                                                    # a loader nobody uses is not there
                 for step in consumers:
@@ -1367,7 +1374,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
     def test_the_report_job_names_a_failed_sweep_as_its_own_lane_and_pushes_once(self):
         import os
         import subprocess
-        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
         self.assertIn("sweep=${{ needs.prep.outputs.sweep }}", report["run"])
 
         def run(prep="success", sweep="success", finish="success"):
@@ -1470,7 +1477,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     def test_the_report_job_pushes_once_and_names_the_stages(self):
         import os
         import subprocess
-        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "Resolver lanes" in s.get("name", ""))
+        report = next(s for s in self.doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
 
         def run(stages):
             script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == "needs.finish.result" else "success", report["run"])

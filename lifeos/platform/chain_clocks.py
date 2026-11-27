@@ -1,10 +1,14 @@
-"""LIFE-904: the Jobs, career and full-platform clocks of one tick, printed as one `chain:` line.
+"""The Jobs, career and full-platform clocks of one tick, printed as one `chain:` line.
 
-    python3 -m lifeos.platform.chain_clocks     run by the `chain` job of domains.yml; env CHAIN_TICK_ID, CHAIN_ROLE, GITHUB_TOKEN, GITHUB_REPOSITORY
+    python3 -m lifeos.platform.chain_clocks     run by the `chain` job of domains.yml; env CHAIN_TICK_ID, CHAIN_ROLE,
+                                                GITHUB_TOKEN, GITHUB_REPOSITORY
 
-The correlation ID is the hourly tick's run ID: the early domains run gets it as `tick_run`, the run after the tick as `workflow_run.id`, and both gate jobs are named `gate (tick <id>)`.
-Clocks run from the tick's start. Jobs ends at the last publish stage that printed ok; career at the last Hiring, Recruiters or Interview job that succeeded; full platform at the last job of both runs, printed only once all have ended.
-Status OK, DEGRADED (a job failed or a stage was not ok) or UNVERIFIED (missing or running); a clock without a real end shows no time, never zero. Counts, CT times and fixed codes only; it never fails the run."""
+The correlation ID is the hourly tick's run ID: the early domains run gets it as `tick_run`, the run after the tick as
+`workflow_run.id`, and both gate jobs are named `gate (tick <id>)`. Clocks run from the tick's start: Jobs ends at the
+last publish stage that printed ok, career at the last Hiring, Recruiters or Interview job that succeeded, full
+platform at the last job of both runs. Status is OK, DEGRADED or UNVERIFIED (missing or running); a clock without a
+real end shows no time, never zero. It never fails the run.
+"""
 import datetime as dt
 import json
 import os
@@ -13,11 +17,11 @@ import sys
 
 from lifeos.platform import ct_stamp, due, gate
 
-JOBS_STAGES = ("publish", "publish-fresh")                       # the Ledger publish stages; each reads its pages back before it ends
+JOBS_STAGES = ("publish", "publish-fresh")
 CAREER_JOBS = ("hiring", "hiring_outcomes", "recruiters", "interview")
 BAD = ("failure", "cancelled", "timed_out", "startup_failure", "action_required")
-WINDOW_BEFORE = dt.timedelta(minutes=2)                           # the early run is created seconds after the tick starts
-WINDOW_AFTER = dt.timedelta(minutes=15)                           # the run after the tick is created when it completes
+WINDOW_BEFORE = dt.timedelta(minutes=2)
+WINDOW_AFTER = dt.timedelta(minutes=15)
 STAGE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?)Z\s+stage (\S+): (\w[\w ]*?) [\d.]+s\b", re.M)
 NAME = re.compile(r"gate \(tick (\d+)\)")
 
@@ -27,13 +31,11 @@ def _t(value):
 
 
 def _clock(origin, end, status, why, stage=None):
-    """One clock: status, the end as a CT stamp, elapsed seconds and minutes (None, never zero, when there is no end)."""
     seconds = max(round((end - origin).total_seconds()), 0) if end else None
     return {"status": status, "at": ct_stamp.stamp(end) if end else None, "seconds": seconds, "minutes": round(seconds / 60, 1) if seconds is not None else None, "why": sorted(set(why)), **({"stage": stage} if stage else {})}
 
 
 def stage_ends(log_text):
-    """-> {stage: (outcome, end time)} from a tick log: each `stage <name>: <outcome> <n>s` line is stamped by the runner when the stage ended. The last line per stage wins."""
     found = {}
     for stamp, name, outcome in STAGE.findall(log_text or ""):
         found[name] = (outcome, _t(stamp + "Z"))
@@ -41,7 +43,9 @@ def stage_ends(log_text):
 
 
 def jobs_clock(origin, stages):
-    """Jobs completion: the last publish stage that printed ok. publish-fresh not ok while publish was: DEGRADED at publish; nothing printed ok: UNVERIFIED."""
+    """Jobs completion: the last publish stage that printed ok; publish-fresh not ok while publish was: DEGRADED; none
+    ok: UNVERIFIED.
+    """
     ok = [(end, name) for name, (outcome, end) in ((n, stages[n]) for n in JOBS_STAGES if n in stages) if outcome == "ok"]
     why = [f"STAGE_{name.upper().replace('-', '_')}_{outcome.upper().replace(' ', '_')}" for name, (outcome, _) in ((n, stages[n]) for n in JOBS_STAGES if n in stages) if outcome != "ok"]
     if not stages:
@@ -53,18 +57,19 @@ def jobs_clock(origin, stages):
 
 
 def _jobs(runs):
-    """-> every job of every correlated run except the chain jobs themselves: (run id, name, status, conclusion, started, completed)."""
     rows = []
     for run in runs:
         for job in run["jobs"]:
-            if job.get("name") == "chain" or job.get("name", "").startswith("gate"):        # the receipt's own job and the gates (they end at the start) are not work
+            if job.get("name") == "chain" or job.get("name", "").startswith("gate"):  # the receipt's own job and the gates (they end at the start) are not work
                 continue
             rows.append((run["id"], job["name"], job.get("status"), job.get("conclusion"), job.get("started_at"), job.get("completed_at")))
     return rows
 
 
 def career_clock(origin, runs):
-    """Career completion: the end of the last relevant job that succeeded; a failed one is DEGRADED, one still running or missing UNVERIFIED. `skipped` (not due this tick) is neither."""
+    """Career completion: the end of the last relevant job that succeeded; a failed job is DEGRADED, a running or missing
+    one UNVERIFIED; `skipped` is neither.
+    """
     mine = [r for r in _jobs(runs) if r[1] in CAREER_JOBS]
     why, ends = [], []
     for _, name, status, conclusion, _, completed in mine:
@@ -84,15 +89,17 @@ def career_clock(origin, runs):
 
 
 def platform_clock(origin, tick, runs):
-    """Full platform: the end of the last job of the early and the after-tick run; only when the tick and both runs have ended. UNVERIFIED while anything is missing or running, DEGRADED when a job failed."""
+    """Full platform: the end of the last job of the early and after-tick runs, only once both have ended. UNVERIFIED
+    while anything is missing or running, DEGRADED when a job failed.
+    """
     why = []
     if tick.get("status") != "completed":
         why.append("TICK_RUNNING")
     kinds = {r["event"] for r in runs}
     if "workflow_run" not in kinds:
-        why.append("AFTER_TICK_RUN_MISSING")                      # not started yet (this is the early run) or never started
+        why.append("AFTER_TICK_RUN_MISSING")
     if "workflow_dispatch" not in kinds:
-        why.append("EARLY_RUN_ABSENT")                            # informational when the after-tick run did every job (the early dispatch failed); see `runs`
+        why.append("EARLY_RUN_ABSENT")  # informational when the after-tick run did every job (the early dispatch failed)
     pending, bad, ends = [], [], []
     for _, name, status, conclusion, _, completed in _jobs(runs):
         if status != "completed":
@@ -111,7 +118,6 @@ def platform_clock(origin, tick, runs):
 
 
 def receipt(tick_id, role, tick, tick_log, runs, run_id=None):
-    """The whole receipt for one tick: ID, role, the three clocks and the correlated runs (ID, event, conclusion). No private data."""
     origin = _t(tick.get("run_started_at") or tick["created_at"])
     return {"tick": str(tick_id), "role": role, "run": str(run_id or ""), "origin": ct_stamp.stamp(origin),
             "clocks": {"jobs": jobs_clock(origin, stage_ends(tick_log)), "career": career_clock(origin, runs), "platform": platform_clock(origin, tick, runs)},
@@ -119,7 +125,6 @@ def receipt(tick_id, role, tick, tick_log, runs, run_id=None):
 
 
 def correlated_runs(tick_id, tick, listing, jobs_of):
-    """The domains runs of this tick: created near it, titled as a tick's run, with a gate job named for this tick ID. Each with its jobs."""
     start = _t(tick.get("run_started_at") or tick["created_at"]) - WINDOW_BEFORE
     stop = _t(tick["updated_at"]) + WINDOW_AFTER if tick.get("status") == "completed" else None
     found = []

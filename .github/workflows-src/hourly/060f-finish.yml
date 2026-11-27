@@ -1,10 +1,9 @@
-      - id: web_scale_up
+      - id: audit
         continue-on-error: true
-        name: Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
+        name: Step 6b - precision audit (before publish)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish) }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -25,15 +24,13 @@
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
-      # why: Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)
-      - id: titlewatch
+        run: python -m lifeos.run audit $([ "$LIVE" = "true" ] && echo --live)
+      - id: publish
         continue-on-error: true
-        name: Step 5d - Scale-Up title watch
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
+        name: Step 7 - publish READY jobs to Notion
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
@@ -54,32 +51,4 @@
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run web-titlewatch $([ "$LIVE" = "true" ] && echo --live)
-      - id: sponsors
-        continue-on-error: true
-        name: Step 5e - UK sponsor register (weekly refresh; forced when dispatched)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sponsors }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          SPONSORS_FORCE: ${{ inputs.sponsors && 'true' || '' }}
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run publish --limit 60 $([ "$LIVE" = "true" ] && echo --live)

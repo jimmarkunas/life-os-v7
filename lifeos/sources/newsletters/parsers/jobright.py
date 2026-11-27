@@ -1,6 +1,8 @@
 """Jobright alert emails: the parser (card link jobright.ai/jobs/info/<id>).
 
-Text nodes, in order: [company, industry, '. seniority', match, '%', TITLE, salary?, location?, experience, 'N minutes ago', ...]. The provider's match % is stored as evidence only (provider_score); it counts zero toward fit until Phase 2 decides a weight."""
+Text nodes, in order: [company, industry, '. seniority', match, '%', TITLE, salary?, location?, experience,
+'N minutes ago', ...]. The provider's match % is stored as evidence only (provider_score) and counts zero toward fit.
+"""
 import re
 
 from lifeos.sources.newsletters.parsers import _anchors

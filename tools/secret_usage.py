@@ -196,7 +196,8 @@ def analyse(docs, graph=None):
 
 def load_docs(root=ROOT):
     import yaml
-    return {p.name: yaml.safe_load(p.read_text()) for p in sorted((root / ".github" / "workflows").glob("*.yml"))}
+    import wfsets
+    return {p.name: yaml.safe_load(wfsets.expand_text(p.read_text(), wfsets.load(root / wfsets.SETS.relative_to(wfsets.ROOT)))) for p in sorted((root / ".github" / "workflows").glob("*.yml"))}   # LIFE-1013: `set:` is read as the list it names
 
 
 def main(argv=None):

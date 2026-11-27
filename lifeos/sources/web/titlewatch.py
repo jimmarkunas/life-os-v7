@@ -1,8 +1,8 @@
-"""Title watch: roles a company's own careers site lists but its board listing does not carry (D123).
+"""Title watch: roles a company's own careers site lists but its board listing does not carry.
 
-For each registry source with `title_watch`, search the company's own site (free TinyFish Search, restricted to its domains) for each watched title, keep the result pages that are job pages on that site, whose title matches a watched title and that V7 does not already hold, and add them to Jobs OS.
-The page text of such a role usually cannot be read from the runner (403), so the title and the search snippet are stored and the role is marked by its source (`web:titlewatch:<source id>`): Fit scores the title, the lane never lets it be a Go, and it reaches the board as Review ("found by title search; description not read")
-for Jim to decide from the link. A role not seen by the search for EXPIRE_DAYS is closed. Outputs: counts only in the log."""
+For each registry source with `title_watch`, search the company's own domains for each watched title and add matching,
+not-yet-stored job pages. The page text usually cannot be read (403), so the title and search snippet are stored under
+source `web:titlewatch:<source id>`; the lane never makes such a role a Go. A role unseen for EXPIRE_DAYS closes."""
 from datetime import datetime, timedelta, timezone
 import os
 import re
@@ -14,7 +14,7 @@ from lifeos.sources.web import registry
 
 LANE = "Scale-Up"
 PREFIX = "web:titlewatch:"
-MAX_QUERIES_PER_RUN = 14                  # the search key is shared (500 an hour; LinkedIn uses 100, Lensa is retired, D201): pairs rotate by the hour
+MAX_QUERIES_PER_RUN = 14
 MAX_NEW_PER_RUN = 10
 EXPIRE_DAYS = 10
 DEFAULT_TITLES = ("Product Owner", "Head of Product", "Product Manager", "Program Manager", "Project Manager", "Campaign Creative Lead",
@@ -31,7 +31,6 @@ def watched(sources):
 
 
 def pairs(sources):
-    """[(source, title)] in a fixed order."""
     out = []
     for source in sorted(watched(sources), key=lambda s: s["id"]):
         for title in source["title_watch"].get("titles") or DEFAULT_TITLES:
@@ -40,7 +39,6 @@ def pairs(sources):
 
 
 def forced(all_pairs, force):
-    """A dispatch that names companies (the Hourly `report` input, as for the board reads) searches ALL of their titles now, not just this hour's slice."""
     force = (force or "").strip().lower()
     force = force[len("board:"):] if force.startswith("board:") else force
     names = [n.strip() for n in force.split(",") if len(n.strip()) >= 3 and n.strip() != "funnel"]
@@ -48,7 +46,6 @@ def forced(all_pairs, force):
 
 
 def window(all_pairs, now, size=MAX_QUERIES_PER_RUN):
-    """The pairs searched this hour: a rotating slice, so every pair is searched in turn within the key's budget."""
     if len(all_pairs) <= size:
         return list(all_pairs)
     start = (int(now.replace(tzinfo=timezone.utc).timestamp() // 3600) * size) % len(all_pairs)
@@ -61,8 +58,7 @@ def matches(title, titles):
 
 
 def role_title(raw, titles):
-    """The role title out of a search result title ("Product Owner (Crypto) | Revolut", "Revolut - Careers: Head of Product"): the first part that names a
-    watched title, so the brand and generic words around it never matter."""
+    """The first part of a search result title (like "Product Owner (Crypto) | Revolut") naming a watched title."""
     for part in re.split(r"\s[|–—-]\s|:\s", raw or ""):
         if part.strip() and matches(part, titles):
             return part.strip()[:200]
@@ -70,7 +66,6 @@ def role_title(raw, titles):
 
 
 def token(url):
-    """What identifies the role inside its URL: the uuid when there is one, else the last path segment."""
     found = UUID.findall(url or "")
     if found:
         return found[-1].lower()
@@ -79,7 +74,6 @@ def token(url):
 
 
 def candidates(source, results):
-    """[(url, title, snippet)] job pages on the company's own domains, whose title matches a watched title."""
     cfg = source["title_watch"]
     titles = cfg.get("titles") or DEFAULT_TITLES
     out = []
@@ -108,7 +102,6 @@ def _location(title, snippet):
 
 
 def admit(connection, source, url, title, snippet, now):
-    """One found role into Jobs OS as a title-only READY job. -> True when it is new."""
     with connection.cursor() as cursor:
         key, is_new = intake.add_job(cursor, {
             "url": url, "status": "RESOLVED", "title": title, "company": source["company"], "location": _location(title, snippet), "salary": None,

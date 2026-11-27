@@ -1,9 +1,12 @@
-"""Hiring Pipeline stage (HIRE-1.2, no mail): compose the Ledger Applied state, Hiring Pipeline pages and Calendar evidence into the Daily Report region.
+"""Hiring Pipeline stage (no mail): compose Ledger, Pipeline pages and Calendar evidence into the Daily Report region.
 
-Composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar evidence into the pure compiler, keeps one private prior-state row and writes the floating Daily Report region. Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only.
-Read-only toward every source except the Hiring Decision action (D194 / LIFE-353, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the
-last accepted state, never an empty table.
-Outputs: counts and fixed codes only. Pointer: D194."""
+Read-only toward every source except `confirm_rejected`, the only Ledger write (two properties of one confirmed row).
+A
+source read that is not provably complete counts as unavailable and the run shows DEGRADED with the last accepted
+state,
+never an empty table. Lives under sources because it may read the Jobs reader; `lifeos/hiring` imports platform only.
+Outputs: counts and fixed codes only.
+"""
 import contextlib
 import os
 from datetime import datetime, timedelta
@@ -17,8 +20,8 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.notion_text import plain
 
 TZ = ZoneInfo("America/Chicago")
-CALENDAR_PAGES = 40                                               # the same page cap as the Calendar client's own listing
-PAST_DAYS, FUTURE_DAYS = 30, 45                                  # the Calendar window the compiler may use as evidence
+CALENDAR_PAGES = 40
+PAST_DAYS, FUTURE_DAYS = 30, 45
 MAX_PAGES = 40
 
 
@@ -27,7 +30,8 @@ def _text(prop, kind):
 
 
 def read_applied(client, stats=None):
-    """Every Job Ledger row with Applied ticked: [{"company", "role", "applied_on"}]. Anything short of a provably complete read raises (the caller marks the Ledger unavailable)."""
+    """Every Job Ledger row with Applied ticked: [{"company", "role", "applied_on"}]. Anything short of a provably
+    complete read raises."""
     if ledger.verify(client) != ledger.OK:
         raise NotionError("HIRING_LEDGER_TARGET")
     out = []
@@ -36,8 +40,8 @@ def read_applied(client, stats=None):
             props = row.get("properties") or {}
             when = ((props.get("Applied On") or {}).get("date") or {}).get("start")
             out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None,
-                        "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name"),            # D194: the stable row id and a confirmed Hiring Decision, read only
-                        "hand": M.hand_lines(_text(props.get(decision.HAND_SET), "rich_text"))})                                       # LIFE-111: a hand-set hold, once the Ledger has the property
+                        "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name"),
+                        "hand": M.hand_lines(_text(props.get(decision.HAND_SET), "rich_text"))})
     if stats is not None:
         stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
     return [r for r in out if r["company"] and r["role"]]
@@ -52,9 +56,13 @@ def _day(value):
 
 
 def read_parents(client, root_id, ledger_client=None):
-    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed.
-    LIFE-352: with `ledger_client`, pursuits come from Job Ledger rows with Stage set first (the page tree fills in the rest); a Ledger pursuit keeps its matching page-tree page id as "id"
-    (the page the report links) and its own row page id as "row_id" (LIFE-353: the record the decision writers act on). Without it, the page tree alone, exactly as before."""
+    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds",
+    "retired"}].
+
+    With `ledger_client`, pursuits come from Ledger rows with Stage set first, the page tree filling in the rest; "id"
+    is the
+    page-tree page, "row_id" the Ledger row page.
+    """
     found, status = hiring_pipeline.snapshot(client, root_id, ledger=ledger_client)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
@@ -62,8 +70,7 @@ def read_parents(client, root_id, ledger_client=None):
 
 
 def _with_deleted(calendar, time_min, time_max):
-    """The window's single events including cancelled ones (showDeleted), read completely through the Calendar client's own request, or refused.
-    The shared client's list_events leaves cancelled events out; this reader needs them to tell a cancelled invite from one outside the window."""
+    """The window's single events including cancelled ones (showDeleted), read completely, or refused."""
     params, out = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "orderBy": "startTime", "maxResults": 250, "showDeleted": "true"}, []
     for _ in range(CALENDAR_PAGES):
         page = calendar.request("GET", "/events", params)
@@ -80,9 +87,11 @@ def _with_deleted(calendar, time_min, time_max):
 
 
 def read_events(calendar, now, cancelled=None):
-    """Accepted events in the window: not cancelled, not declined, timed (an all-day event is no interview time). -> [{"id", "title", "start"}], plus "meeting" when the invite carries joining details.
-    With a `cancelled` list (LIFE-46 E07), the window is read with deleted events and each cancelled one that still names a title is added to it
-    as {"id", "title"}; the accepted list is the same."""
+    """Accepted events in the window (not cancelled, not declined, timed) -> [{"id", "title", "start"}], plus
+    "meeting" when joining details exist.
+
+    With a `cancelled` list, cancelled events that still name a title are added to it as {"id", "title"}.
+    """
     window = ((now - timedelta(days=PAST_DAYS)).isoformat(), (now + timedelta(days=FUTURE_DAYS)).isoformat())
     raw = calendar.list_events(*window) if cancelled is None else _with_deleted(calendar, *window)
     if not isinstance(raw, list):
@@ -103,18 +112,17 @@ def read_events(calendar, now, cancelled=None):
         if not isinstance(start, str) or not isinstance(event.get("id"), str):
             continue
         events.append({"id": event["id"], "title": (event.get("summary") or "").strip(), "start": datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(TZ).isoformat()})
-        try:                                                          # LIFE-111: when the invite last changed, the evidence time a hand-set hold is compared with
+        try:                                                          # when the invite last changed: compared with a hand-set hold
             events[-1]["updated"] = datetime.fromisoformat(event["updated"].replace("Z", "+00:00")).astimezone(TZ).isoformat()
         except (KeyError, AttributeError, TypeError, ValueError):
-            pass                                                      # no readable time: never evidence newer than a hold
+            pass
         if joining := meeting(event):
             events[-1]["meeting"] = joining
     return events
 
 
 def meeting(event):
-    """E10: an accepted invite's own joining details, (join link, location), or None when it carries neither. The join link is the invite's video entry point,
-    else its Meet link, https only; the location is the invite's own text. Nothing is read from the description or guessed."""
+    """An accepted invite's joining details, (join link, location), or None when it carries neither."""
     points = [p.get("uri") for p in (event.get("conferenceData") or {}).get("entryPoints") or [] if isinstance(p, dict) and p.get("entryPointType") == "video"]
     join = next((u for u in points + [event.get("hangoutLink")] if isinstance(u, str) and u.startswith("https://")), None)
     place = " ".join(str(event.get("location") or "").split())[:200] or None
@@ -122,7 +130,8 @@ def meeting(event):
 
 
 def _stale_hours(environ):
-    """The outcome-mail staleness limit: the real one, or a smaller whole number of hours from the manual LIFE-19 proof input. It can only tighten the limit, never loosen it; anything else is ignored."""
+    """The outcome-mail staleness limit: the real one, or a smaller number of hours from a manual proof input; it can
+    only tighten."""
     raw = (environ.get("HIRING_OUTCOME_STALE_HOURS") or "").strip()
     return int(raw) if raw.isdigit() and int(raw) < outcome_mail.STALE_HOURS else outcome_mail.STALE_HOURS
 
@@ -141,7 +150,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         if not root:
             raise NotionError("HIRING_PAGES_UNREADABLE")
         pipeline_client = pipeline_client or _pipeline_client(environ)
-        parents = read_parents(pipeline_client, root, ledger_client)               # LIFE-352: Ledger rows with Stage first, the page tree for the rest
+        parents = read_parents(pipeline_client, root, ledger_client)
     except Exception:
         ok["parents"] = False
     try:
@@ -154,26 +163,26 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         prior = snapshot.load(conn)
         outcome_reasons, unread = [], []
         try:
-            heard, scanned, *rest = outcome_mail.load(conn)           # D190: what the mail scan last found; unavailable never stops the pipeline
-            contacts = rest[0] if rest else {}                         # LIFE-26: each row's last direct contact (a scan saved before LIFE-26 has none)
-            unread = rest[1] if len(rest) > 1 else []                  # LIFE-648: the fixed names of the sources the last scan could not read in full
+            heard, scanned, *rest = outcome_mail.load(conn)
+            contacts = rest[0] if rest else {}
+            unread = rest[1] if len(rest) > 1 else []
             if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=_stale_hours(environ))):
-                outcome_reasons.append("OUTCOME_MAIL_STALE")          # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
+                outcome_reasons.append("OUTCOME_MAIL_STALE")          # a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
             if unread:
-                outcome_reasons.append("OUTCOME_MAIL_PARTIAL")        # LIFE-648: the last scan read some sources and not others: DEGRADED, naming the unread source
+                outcome_reasons.append("OUTCOME_MAIL_PARTIAL")
         except Exception:                                             # noqa: BLE001
             heard, contacts, outcome_reasons, unread = {}, {}, ["OUTCOME_MAIL_UNREADABLE"], []
         result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard, contacts=contacts)
-        if outcome_reasons:                                           # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
+        if outcome_reasons:
             result["reasons"] = sorted({*result["reasons"], *outcome_reasons})
             result["outcome_unread"] = unread
         auto = {"due": 0, "closed": [], "refused": {}, "switch": False}
-        if all(ok.values()) and not result["reasons"] and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only when every source was read and nothing is degraded
+        if all(ok.values()) and not result["reasons"] and result["rows"]:     # a known rejection closes itself only when every source was read and nothing is degraded
             auto = auto_close.run(result["rows"], environ, live, now, ledger_client, _day)
             gone = {e["key"] for e in auto["closed"]}
             result["rows"], result["closed"] = [r for r in result["rows"] if r["key"] not in gone], result["closed"] + len(gone)
         recent = auto_close.shown(prior, auto["closed"], now, [r["key"] for r in result["rows"] or []])
-        _text, cells, counts = render.render(result, prior, now, (None, {}))          # LIFE-973: counts only; the Daily Report card is a live Job Ledger view now, nothing here writes it
+        _text, cells, counts = render.render(result, prior, now, (None, {}))
         if cells is not None:
             counts["rows"] += len(auto_close.cells(recent, _day)[:max(0, render.MAX_ROWS - len(cells))])
         counts["auto_close"] = {"due": auto["due"], "closed": len(auto["closed"]), "refused": auto["refused"], "switch": auto["switch"], "shown": len(recent)}
@@ -183,7 +192,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         if new is not None:
             new["auto_closed"] = recent
         if live and new is not None:
-            snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched
+            snapshot.save(conn, new)
             counts["saved"] = 1
-    counts["decision_sync"] = decision_sync.run(ledger_client, live, now)      # LIFE-973: a Hiring Decision Jim set by hand gets its Decision On, history line and Closed freshness
+    counts["decision_sync"] = decision_sync.run(ledger_client, live, now)
     return counts

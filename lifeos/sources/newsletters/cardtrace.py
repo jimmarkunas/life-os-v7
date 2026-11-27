@@ -1,10 +1,13 @@
-"""LIFE-64 live cause check: why a Newsletter message's saved vacancies are fewer than the cards parsed from it. Read-only, counts and fixed codes only.
+"""Why a Newsletter message's saved vacancies are fewer than its parsed cards. Read-only; counts and fixed codes.
 
-Given ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id), it finds that message in Gmail by hashing the ids of the recent Newsletter mail, parses its cards with the
-real parser, and for each card reads the Jobs store: is there a job row, does THIS message own a source row for it, do other messages own it, is it tombstoned (by its URL or only by its
-opening: same company, title and location), and would a posting date newer than the retirement have let it back in. Each card gets one class: owned, collision (the job exists and only other
-mail owns it: the unique-URL defect), orphan (a job nobody owns), suppressed_url / suppressed_opening (no job; an active tombstone), or missing (no job and no tombstone: unexplained).
-Gmail is reached only through _ReadOnly (list ids, read one message) and the store only through a SELECT guard. No title, company, URL, sender or id is printed."""
+Given ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id), it finds the message, parses its cards
+with the real parser, and for each card reads the Jobs store. Each card gets one class: owned, collision (only other
+mail
+owns the job), orphan (a job nobody owns), suppressed_url / suppressed_opening (no job; an active tombstone), or
+missing
+(no job and no tombstone: unexplained). Gmail is reached only through _ReadOnly and the store only through a SELECT
+guard. No title, company, URL, sender or id is printed.
+"""
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone

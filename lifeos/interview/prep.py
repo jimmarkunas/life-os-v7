@@ -1,6 +1,8 @@
-"""Deterministic, append-once Interview Derived content (LIFE-88).
+"""Deterministic, append-once Interview Derived content.
 
-On a UI 4 interview page it is the Prepare tab, written once from its not-run state; its hashes sit in the collapsed LIFE OS toggle instead of on the page. Older pages keep "Derived"."""
+On a current-layout interview page it is the Prepare tab, written once from its not-run state; its hashes sit in the
+collapsed LIFE OS toggle. Older pages keep a "Derived" section.
+"""
 import hashlib
 import json
 from lifeos.platform.notion_client import NotionError, rich_text
@@ -62,7 +64,7 @@ def render(normalized, current_hash=None):
 
 
 def prepare(client, page_id):
-    """UI 4: (Prepare pane, its blocks, LIFE OS toggle, its lines, top blocks), or None for a page that keeps "Derived"."""
+    """Current layout: (Prepare pane, its blocks, LIFE OS toggle, its lines, top blocks), or None if older."""
     tops = notion.children(client, page_id, [notion.MAX_CALLS])
     if not tops or tops[0].get("type") != "toggle" or notion.text(tops[0]) != notion.ROUND_FOLD:
         return None
@@ -248,7 +250,7 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         after_state, after_hash, _ = _read_derived(client, child.page_id, identity.ordinal)
         if after_state != "marker" or after_hash != (current_hash, expected): return finish("derived_readback_failed")
         page = client.call("GET", f"/pages/{child.page_id}")
-        if page.get("archived") or page.get("in_trash"):                       # LIFE-382 (D250-03): no parent comparison here; the identity check below compares the whole re-read child (its parent included) with the one the scan proved
+        if page.get("archived") or page.get("in_trash"):                       # the identity check below compares the whole re-read child, parent included
             return finish("derived_readback_failed")
         if notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE or notion.ownership(client, child.page_id, "round") != Ownership.MACHINE:
             return finish("derived_readback_failed")
@@ -259,7 +261,7 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         return finish("derived_created")
     except (OverflowError, ValueError, TypeError, NotionError, DeadlineExceeded, KeyError, AttributeError) as error:
         if out["writes"]:
-            return finish("derived_readback_failed")          # whatever failed after the append, the page is unverified
+            return finish("derived_readback_failed")
         if isinstance(error, OverflowError): return finish("prep_too_large")
         if isinstance(error, (ValueError, TypeError)): return finish("prep_invalid")
         if isinstance(error, NotionError) and str(error) != "INTERVIEW_DERIVED_MISSING": return finish("derived_readback_failed")

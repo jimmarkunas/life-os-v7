@@ -4,7 +4,7 @@
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout the exact commit (own git fetch, token never stored)
+      - name: Checkout the exact commit (own fetch, token never stored)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -22,21 +22,7 @@
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
-          secrets: |
-            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
-            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
-            46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
-            8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
-            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
-            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
-            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
-            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
-            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
-            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
-            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
-            192db2d1-be66-4fca-b9b5-b4e900240507 > LIFEOS_ACQ_SSH_JUMP_KEY
-            4d0c7449-ed0a-46c1-9c2c-b503015f8d54 > LIFEOS_ACQ_SSH_JUMP_HOST
-            82efa413-6b9c-4c5c-b0d2-b503015f8e3d > LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
+          set: amazon-retention
       # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
@@ -47,15 +33,13 @@
       # why: Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)
       - id: bws_settings
         continue-on-error: true
-        name: Notion token from Bitwarden so this job can read the V7 settings page
+        name: Notion token from Bitwarden for the V7 settings page
         uses: ./.github/actions/bws-load
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
-          secrets: |
-            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
-            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+          set: settings
       # why: Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)
       - id: aretain
         continue-on-error: true
@@ -84,7 +68,7 @@
         if: ${{ always() && steps.aretain.outcome == 'failure' }}
         run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
       # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
-      - name: A failed stage step makes this job red after every stage has run
+      - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=amazon_retention::a stage step failed in the amazon_retention job (see the step marked failed above)"; exit 1
 
