@@ -208,6 +208,15 @@ class Guard:
             spent = self._settled()
             exposure = budget.tranche_worst(len(batch))
             self._inputs_ok(batch)
+            try:
+                existing = self.hon.explicit_count()
+            except Unauthorized:
+                raise Stop("token_expired") from None
+            except HonchoError:
+                raise Stop("honcho_unreadable") from None
+            if existing + 2 * len(batch) > budget.EXPLICIT_MAX:
+                self._log("seed_limit", sent=sent, explicit=existing)
+                break  # fewer messages, never more conclusions than the automatic dream threshold allows
             if not budget.can_arm(spent, exposure, budget.dream_worst(), self.ceiling):
                 raise Stop("budget_before_tranche_%d" % (i // self.tranche + 1)) from None
             if not budget.admissible(spent, self.cap):
