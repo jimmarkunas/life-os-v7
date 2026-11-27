@@ -17,6 +17,7 @@ Rows the contract tests mirror from code (this writes the missing ones and drops
     python tools/regen.py --check    change nothing; exit 1 when something is missing (for CI or a quick look)
 
 A stage whose module loops over external items with no try inside is not classified here: that needs a human verdict (docs/platform/stage-isolation.md); the script says which."""
+
 import json
 import pathlib
 import re
@@ -27,10 +28,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import wfsrc  # noqa: E402
-from lifeos import run                                                    # noqa: E402
-from lifeos.platform import stages as manifest_stages                       # noqa: E402
-from lifeos.jobs import tick                                               # noqa: E402
-from tests.contracts import test_runtime_manifest as manifest, test_stage_isolation as isolation   # noqa: E402
+from lifeos import run  # noqa: E402
+from lifeos.platform import stages as manifest_stages  # noqa: E402
+from lifeos.jobs import tick  # noqa: E402
+from tests.contracts import test_runtime_manifest as manifest, test_stage_isolation as isolation  # noqa: E402
 
 BUDGETS = ROOT / "lifeos/platform/stage_budgets.json"
 STAGES = ROOT / "lifeos/platform/stages.json"
@@ -51,38 +52,57 @@ GUARDED_WHY = "Loops over its items with error handling inside; one failed item 
 
 def domains_text():
     """LIFE-764: the whole of domains.yml, joined from its fragments (000-header.yml, then one file per job, a long job in lettered continuation files) in file-name order; LIFE-1010: without comments (the history lives in docs/workflows.md) and with repeats as YAML anchors and aliases (LIFE-1013)."""
-    return wfsrc.compress(wfsrc.strip_comments("".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml")))))
+    return wfsrc.compress(
+        wfsrc.strip_comments("".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml"))))
+    )
 
 
 def hourly_text():
     """LIFE-1010: the whole of hourly.yml, joined from `.github/workflows-src/hourly` the same way, without comments."""
-    return wfsrc.compress(wfsrc.strip_comments("".join(path.read_text() for path in sorted(HOURLY_PARTS.glob("*.yml")))))
+    return wfsrc.compress(
+        wfsrc.strip_comments("".join(path.read_text() for path in sorted(HOURLY_PARTS.glob("*.yml"))))
+    )
 
 
 def workflow_doc_text():
     """LIFE-1010: docs/workflows.md from the `# why:` lines of every source part and of the hand-written v3-pages.yml."""
-    parts = [("domains", path.name, path.read_text()) for path in sorted(DOMAINS_PARTS.glob("*.yml"))] + [("hourly", path.name, path.read_text()) for path in sorted(HOURLY_PARTS.glob("*.yml"))] + [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
+    parts = (
+        [("domains", path.name, path.read_text()) for path in sorted(DOMAINS_PARTS.glob("*.yml"))]
+        + [("hourly", path.name, path.read_text()) for path in sorted(HOURLY_PARTS.glob("*.yml"))]
+        + [("v3-pages", V3_PAGES.name, V3_PAGES.read_text())]
+    )
     return wfsrc.docs_text(wfsrc.why_rows(parts))
 
 
 def workflow_steps():
     """{stage: [(job limit in seconds, step has continue-on-error)]} from every `lifeos.run <stage>` step in the workflows."""
     import yaml
+
     found = {}
     for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
         for job in (yaml.safe_load(path.read_text()).get("jobs") or {}).values():
             for step in job.get("steps") or []:
                 for token in (step.get("run") or "").split("lifeos.run ")[1:]:
                     if token.split():
-                        found.setdefault(token.split()[0], []).append((int(job.get("timeout-minutes", 0)) * 60, bool(step.get("continue-on-error"))))
+                        found.setdefault(token.split()[0], []).append(
+                            (int(job.get("timeout-minutes", 0)) * 60, bool(step.get("continue-on-error")))
+                        )
     return found
 
 
 def new_entry(name, steps, plan):
     if name in plan:
-        return {"basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage", "required": not plan[name].bulk, "seconds": plan[name].budget}
+        return {
+            "basis": "the Jobs tick plan (lifeos/jobs/tick.py): its own alarm per stage, optional when it is a bulk stage",
+            "required": not plan[name].bulk,
+            "seconds": plan[name].budget,
+        }
     limits = [limit for limit, _ in steps.get(name, [])]
-    return {"basis": DEFAULT_BASIS, "required": bool(steps.get(name)) and not all(flag for _, flag in steps[name]), "seconds": min(600, max(limits)) if limits else 600}
+    return {
+        "basis": DEFAULT_BASIS,
+        "required": bool(steps.get(name)) and not all(flag for _, flag in steps[name]),
+        "seconds": min(600, max(limits)) if limits else 600,
+    }
 
 
 def stage_manifest(changes, problems):
@@ -129,14 +149,23 @@ def isolation_entry(name, problems):
     module = stage.target[0]
     found = isolation.loops(module)
     if any(not guarded for guarded in found.values()):
-        problems.append(f"{name}: {module} loops over items with no try inside; fix it or review the loop in stage-isolation.md ('Reviewed loops')")
+        problems.append(
+            f"{name}: {module} loops over items with no try inside; fix it or review the loop in stage-isolation.md ('Reviewed loops')"
+        )
         return None
     status, why = ("guarded", GUARDED_WHY) if found else ("single", SINGLE_WHY)
-    return {"module": module.replace("lifeos.", "", 1), "status": status, "why": why, "exits_1": name in run.PARTIAL_FAILURE}
+    return {
+        "module": module.replace("lifeos.", "", 1),
+        "status": status,
+        "why": why,
+        "exits_1": name in run.PARTIAL_FAILURE,
+    }
 
 
 def docstyle_text():
-    packages = sorted(f"lifeos/{p.name}" for p in (ROOT / "lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists())
+    packages = sorted(
+        f"lifeos/{p.name}" for p in (ROOT / "lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists()
+    )
     quoted = [f'"{p}"' for p in packages]
     chunks, line = [], ""
     for item in quoted:
@@ -146,7 +175,13 @@ def docstyle_text():
         line += item + ", "
     chunks.append(line.rstrip().rstrip(","))
     text = DOCSTYLE.read_text()
-    new = re.sub(r"ENFORCED = \(.*?\)(   # every package with an __init__\.py)", lambda m: "ENFORCED = (" + ("\n            ".join(chunks)) + ")" + m.group(1), text, count=1, flags=re.S)
+    new = re.sub(
+        r"ENFORCED = \(.*?\)(   # every package with an __init__\.py)",
+        lambda m: "ENFORCED = (" + ("\n            ".join(chunks)) + ")" + m.group(1),
+        text,
+        count=1,
+        flags=re.S,
+    )
     return new, packages
 
 
@@ -169,7 +204,18 @@ def runtime_text(changes):
 
 # LIFE-765: `--commit` is what `sh tools/preflight.sh` runs, so nobody runs this by hand: on a clean tree it writes what a new stage needs, then commits exactly the files below (added by name) as one commit.
 def targets():
-    return (STAGES, BUDGETS, TIMEOUTS_DOC, ISOLATION_DOC, DOCSTYLE, RUNTIME, manifest.INVENTORY, DOMAINS, HOURLY, WORKFLOW_DOC)
+    return (
+        STAGES,
+        BUDGETS,
+        TIMEOUTS_DOC,
+        ISOLATION_DOC,
+        DOCSTYLE,
+        RUNTIME,
+        manifest.INVENTORY,
+        DOMAINS,
+        HOURLY,
+        WORKFLOW_DOC,
+    )
 
 
 def git(*args):
@@ -180,7 +226,15 @@ def commit_generated(changes):
     paths = [str(path.relative_to(ROOT)) for path in targets()]
     added = git("add", "--", *paths)
     key = re.search(r"LIFE-\d+", git("rev-parse", "--abbrev-ref", "HEAD").stdout)
-    done = git("commit", "-q", "-m", f"[{key.group(0) if key else 'regen'}] Registry rows written by tools/regen.py for a new or changed stage (run by preflight)\n\n" + "\n".join(changes), "--", *paths)
+    done = git(
+        "commit",
+        "-q",
+        "-m",
+        f"[{key.group(0) if key else 'regen'}] Registry rows written by tools/regen.py for a new or changed stage (run by preflight)\n\n"
+        + "\n".join(changes),
+        "--",
+        *paths,
+    )
     if added.returncode or done.returncode:
         print("regen: could not commit the generated files: " + (added.stderr + done.stderr).strip())
         return 1
@@ -198,15 +252,29 @@ def main(argv):
     data = stage_manifest(changes, problems)
     manifest_text = manifest_stages.dump(data)
     budget_text = manifest_stages.budgets_text(data)
-    doc_timeouts = table_rewrite(TIMEOUTS_DOC, "Stage budgets", manifest_stages.timeouts_rows(data), changes, "timeouts.md")
-    doc_timeouts = re.sub(r"has one row for each of the \d+ stages", f"has one row for each of the {len(data['stages'])} stages", doc_timeouts)
-    doc_isolation = table_rewrite(ISOLATION_DOC, "Every stage", manifest_stages.isolation_rows(data), changes, "stage-isolation.md")
-    for path, text, label in ((BUDGETS, budget_text, "stage_budgets.json"), (TIMEOUTS_DOC, doc_timeouts, "timeouts.md"), (ISOLATION_DOC, doc_isolation, "stage-isolation.md")):
+    doc_timeouts = table_rewrite(
+        TIMEOUTS_DOC, "Stage budgets", manifest_stages.timeouts_rows(data), changes, "timeouts.md"
+    )
+    doc_timeouts = re.sub(
+        r"has one row for each of the \d+ stages",
+        f"has one row for each of the {len(data['stages'])} stages",
+        doc_timeouts,
+    )
+    doc_isolation = table_rewrite(
+        ISOLATION_DOC, "Every stage", manifest_stages.isolation_rows(data), changes, "stage-isolation.md"
+    )
+    for path, text, label in (
+        (BUDGETS, budget_text, "stage_budgets.json"),
+        (TIMEOUTS_DOC, doc_timeouts, "timeouts.md"),
+        (ISOLATION_DOC, doc_isolation, "stage-isolation.md"),
+    ):
         if path.read_text() != text and not any(c.startswith(label) for c in changes):
             changes.append(f"{label}: rendered from stages.json")
     style, packages = docstyle_text()
-    if set(re.findall(r'"(lifeos/[^"]+)"', re.search(r"ENFORCED = \(.*?\)", DOCSTYLE.read_text(), re.S).group(0))) == set(packages):
-        style = DOCSTYLE.read_text()                                          # same packages: keep the file's own wrapping
+    if set(
+        re.findall(r'"(lifeos/[^"]+)"', re.search(r"ENFORCED = \(.*?\)", DOCSTYLE.read_text(), re.S).group(0))
+    ) == set(packages):
+        style = DOCSTYLE.read_text()  # same packages: keep the file's own wrapping
     else:
         changes.append("docstyle.py: ENFORCED updated")
     runtime = runtime_text(changes)
@@ -225,7 +293,18 @@ def main(argv):
     workflow_doc = workflow_doc_text()
     if not WORKFLOW_DOC.exists() or WORKFLOW_DOC.read_text() != workflow_doc:
         changes.append("workflows.md: rendered from the # why: lines")
-    rendered_files = ((STAGES, manifest_text), (BUDGETS, budget_text), (TIMEOUTS_DOC, doc_timeouts), (ISOLATION_DOC, doc_isolation), (DOCSTYLE, style), (RUNTIME, runtime), (manifest.INVENTORY, inventory), (DOMAINS, domains), (HOURLY, hourly), (WORKFLOW_DOC, workflow_doc))
+    rendered_files = (
+        (STAGES, manifest_text),
+        (BUDGETS, budget_text),
+        (TIMEOUTS_DOC, doc_timeouts),
+        (ISOLATION_DOC, doc_isolation),
+        (DOCSTYLE, style),
+        (RUNTIME, runtime),
+        (manifest.INVENTORY, inventory),
+        (DOMAINS, domains),
+        (HOURLY, hourly),
+        (WORKFLOW_DOC, workflow_doc),
+    )
     for path, text in rendered_files:
         if (not path.exists() or path.read_text() != text) and not check:
             path.write_text(text)

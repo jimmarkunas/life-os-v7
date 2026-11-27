@@ -1,5 +1,6 @@
 """LIFE-1003 (REQ-85 T2): the Honcho v3 client for the isolated experiment. Standard library only. The workspace-scoped token is held in memory by the caller and is never logged, printed or stored; every method is one HTTP
 call to the loopback API, and a 401 or 403 is raised as Unauthorized so the guard stops. Tenant answers come from the observed peer, so one tenant's question can only be answered from that tenant's conclusions."""
+
 import importlib.util
 import json
 import pathlib
@@ -31,14 +32,24 @@ def client_peer(row):
 
 class Http:
     def __init__(self, base, token, opener=None, timeout=30):
-        self.base, self._token, self.opener, self.timeout = base.rstrip("/"), token, opener or urllib.request.urlopen, timeout
+        self.base, self._token, self.opener, self.timeout = (
+            base.rstrip("/"),
+            token,
+            opener or urllib.request.urlopen,
+            timeout,
+        )
 
     def __repr__(self):
         return "Http(<token hidden>)"
 
     def call(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self.base + path, data=data, method=method, headers={"Authorization": "Bearer " + self._token, "Content-Type": "application/json"})
+        req = urllib.request.Request(
+            self.base + path,
+            data=data,
+            method=method,
+            headers={"Authorization": "Bearer " + self._token, "Content-Type": "application/json"},
+        )
         try:
             with self.opener(req, timeout=self.timeout) as answer:
                 raw = answer.read()
@@ -63,15 +74,40 @@ class Honcho:
 
     # ---- the free setup calls
     def create_workspace(self):
-        return self.http.call("POST", "/v3/workspaces", {"id": self.ws, "configuration": {"reasoning": {"enabled": False}, "dream": {"enabled": False}, "summary": {"enabled": False}}})
+        return self.http.call(
+            "POST",
+            "/v3/workspaces",
+            {
+                "id": self.ws,
+                "configuration": {
+                    "reasoning": {"enabled": False},
+                    "dream": {"enabled": False},
+                    "summary": {"enabled": False},
+                },
+            },
+        )
 
     def create_peers_and_session(self):
         for peer in (*TENANT_PEER.values(), *AGENTS):
             self.http.call("POST", self._p("/peers"), {"id": peer})
-        return self.http.call("POST", self._p("/sessions"), {"id": self.session, "peers": {p: {} for p in (*TENANT_PEER.values(), *AGENTS)}})
+        return self.http.call(
+            "POST",
+            self._p("/sessions"),
+            {"id": self.session, "peers": {p: {} for p in (*TENANT_PEER.values(), *AGENTS)}},
+        )
 
     def set_flags(self, reasoning, dream):
-        self.http.call("PUT", self._p(), {"configuration": {"reasoning": {"enabled": bool(reasoning)}, "dream": {"enabled": bool(dream)}, "summary": {"enabled": False}}})
+        self.http.call(
+            "PUT",
+            self._p(),
+            {
+                "configuration": {
+                    "reasoning": {"enabled": bool(reasoning)},
+                    "dream": {"enabled": bool(dream)},
+                    "summary": {"enabled": False},
+                }
+            },
+        )
 
     def get_flags(self):
         conf = (self.http.call("POST", "/v3/workspaces", {"id": self.ws}) or {}).get("configuration") or {}
@@ -83,13 +119,29 @@ class Honcho:
         for m in batch:
             row = {"peer_id": m["peer_id"], "content": m["content"], "metadata": {"source_ref": m["source_ref"]}}
             if armed:
-                row["configuration"] = {"reasoning": {"enabled": True}}                       # spending is switched on for these messages only; the workspace stays off
+                row["configuration"] = {
+                    "reasoning": {"enabled": True}
+                }  # spending is switched on for these messages only; the workspace stays off
             rows.append(row)
         self.http.call("POST", self._p(f"/sessions/{self.session}/messages"), {"messages": rows})
 
     def create_conclusions(self, rows):
         """Free seeding (no deriver): explicit conclusions with the fixture id in the text, observed and observed-by the tenant's peer, in the one session."""
-        self.http.call("POST", self._p("/conclusions"), {"conclusions": [{"content": r["content"], "observer_id": client_peer(r), "observed_id": client_peer(r), "session_id": self.session} for r in rows]})
+        self.http.call(
+            "POST",
+            self._p("/conclusions"),
+            {
+                "conclusions": [
+                    {
+                        "content": r["content"],
+                        "observer_id": client_peer(r),
+                        "observed_id": client_peer(r),
+                        "session_id": self.session,
+                    }
+                    for r in rows
+                ]
+            },
+        )
 
     def volume_chars(self):
         """All message and conclusion text in the workspace (what a deriver or dream call can be fed), measured, not assumed."""
@@ -103,7 +155,19 @@ class Honcho:
     def probe_oversize_message(self):
         """-> True when the API itself refuses a message above its limit (settings.MAX_MESSAGE_SIZE 25000): a free call that never reaches a model."""
         try:
-            self.http.call("POST", self._p(f"/sessions/{self.session}/messages"), {"messages": [{"peer_id": TENANT_PEER["alpha"], "content": "x" * 26_000, "metadata": {"source_ref": "FAKE-OVERSIZE-000"}}]})
+            self.http.call(
+                "POST",
+                self._p(f"/sessions/{self.session}/messages"),
+                {
+                    "messages": [
+                        {
+                            "peer_id": TENANT_PEER["alpha"],
+                            "content": "x" * 26_000,
+                            "metadata": {"source_ref": "FAKE-OVERSIZE-000"},
+                        }
+                    ]
+                },
+            )
         except guard.Unauthorized:
             raise
         except guard.HonchoError:
@@ -125,7 +189,9 @@ class Honcho:
 
     def conclusions(self, tenant, query, top_k):
         peer = TENANT_PEER[tenant]
-        out = self.http.call("POST", self._p("/conclusions/query"), {"query": query, "top_k": top_k, "filters": {"observed_id": peer}})
+        out = self.http.call(
+            "POST", self._p("/conclusions/query"), {"query": query, "top_k": top_k, "filters": {"observed_id": peer}}
+        )
         return out if isinstance(out, list) else out.get("items", [])
 
     def message_ref(self, message_id):
@@ -150,7 +216,16 @@ class Honcho:
     # ---- the dream
     def schedule_dream(self):
         self.dream_scheduled_at_runs = len(self.dreams())
-        self.http.call("POST", self._p("/schedule_dream"), {"observer": TENANT_PEER["alpha"], "observed": TENANT_PEER["alpha"], "dream_type": "omni", "session_id": self.session})
+        self.http.call(
+            "POST",
+            self._p("/schedule_dream"),
+            {
+                "observer": TENANT_PEER["alpha"],
+                "observed": TENANT_PEER["alpha"],
+                "dream_type": "omni",
+                "session_id": self.session,
+            },
+        )
 
     def dreams(self):
         out = self.http.call("POST", self._p("/dreams/list"), {})
@@ -158,7 +233,11 @@ class Honcho:
 
     def dream_finished(self):
         runs = self.dreams()
-        return self.queue_idle() and len(runs) > self.dream_scheduled_at_runs and runs[0].get("status") in ("success", "failed", "completed")
+        return (
+            self.queue_idle()
+            and len(runs) > self.dream_scheduled_at_runs
+            and runs[0].get("status") in ("success", "failed", "completed")
+        )
 
     def delete_conclusion(self, conclusion_id):
         self.http.call("DELETE", self._p(f"/conclusions/{conclusion_id}"))
