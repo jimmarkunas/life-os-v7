@@ -118,11 +118,11 @@ class History(unittest.TestCase):
 
 
 class Preview(unittest.TestCase):
-    def test_a_gap_goal_reads_baseline_gap_in_red_while_an_approved_goal_shows_its_count(self):
+    def test_a_gap_goal_reads_baseline_gap_in_red_and_the_new_count_is_never_shown(self):
         found = [("Career", 12, 15, "MEJ-1"), ("Creative", 3, 14, "MEJ-2")]
         view = {"applies": True, "counts": {"MEJ-1": (12, 29), "MEJ-2": None}, "code": None}
         rows = preview.plain(preview.cells(found, view))
-        self.assertEqual([r.split(" · ")[2:] for r in rows], [["12 / 29", "OK"], ["—", "BASELINE GAP"]])
+        self.assertEqual([r.split(" · ")[1:] for r in rows], [["12 / 15", "OK"], ["3 / 14", "BASELINE GAP"]])
 
 
 if __name__ == "__main__":

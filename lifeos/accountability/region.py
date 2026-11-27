@@ -397,20 +397,20 @@ def locate_combined(client, block_id):
 
 def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts, live, wide=None):
     """Write a person's Quarterly Goals & Review callout: title, Epic table (`lanes` {lane: (done / all, issue url or
-    None)}), note paragraph and "Quarterly Reviews" toggle. `wide` ({lane: [progress, done / all, new count, status
-    cells]}) makes it five columns, so a new table is created under the stamp and the old removed (Notion cannot
-    widen one)."""
+    None)}), note paragraph and "Quarterly Reviews" toggle. `wide` ({lane: [progress, done / all, status
+    cells]}) makes it four columns; a table of another width (the two-column original or the retired five-column
+    preview) is replaced by a new one under the stamp and the old removed (Notion cannot change a table's width)."""
     found = locate_combined(client, block_id)
     kinds = [b.get("type") for b in found["middle"]]
     width = (found["middle"][0].get("table") or {}).get("table_width") if kinds and kinds[0] == "table" else None
     if (
         kinds not in (["table"], ["table", "paragraph"], ["table", "paragraph", "toggle"])
         or width != (2 if wide is None else width)
-        or (wide is not None and width not in (2, 5))
+        or (wide is not None and width not in (2, TABLE_WIDTH, 5))
     ):
         raise fail("ACCOUNTABILITY_SHAPE")
     replaced = 0
-    if wide is not None and width == 2:
+    if wide is not None and width != TABLE_WIDTH:
         replaced = 1
         if live:
             old_rows = report_region.children(client, found["middle"][0]["id"], AccountabilityError)[1:]
@@ -423,7 +423,7 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
             client.call_once("DELETE", f"/blocks/{quote(found['middle'][0]['id'], safe='')}")
             found = locate_combined(client, block_id)
             kinds = [b.get("type") for b in found["middle"]]
-            if kinds[:1] != ["table"] or (found["middle"][0].get("table") or {}).get("table_width") != 5:
+            if kinds[:1] != ["table"] or (found["middle"][0].get("table") or {}).get("table_width") != TABLE_WIDTH:
                 raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     table, note = found["middle"][0], (found["middle"][1] if len(kinds) > 1 else None)
     toggle = found["middle"][2] if len(kinds) == 3 else None
@@ -550,11 +550,11 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
     return {"changed": changed}
 
 
-WIDE_HEADER = ("Lane", "Progress", "Done / all", "New count (preview)", "Status")
+WIDE_HEADER = ("Lane", "Progress", "Done / all", "Status")
+TABLE_WIDTH = len(WIDE_HEADER)
 _EMPTY_WIDE = (
     [("–", None, False, None)],
     [("–", None, False, None)],
-    [("—", None, False, None)],
     [("—", None, False, None)],
 )
 
@@ -585,7 +585,7 @@ def _table_payload(labels, lanes, wide):
     return {
         "object": "block",
         "type": "table",
-        "table": {"table_width": 5, "has_column_header": True, "has_row_header": False, "children": rows},
+        "table": {"table_width": TABLE_WIDTH, "has_column_header": True, "has_row_header": False, "children": rows},
     }
 
 
