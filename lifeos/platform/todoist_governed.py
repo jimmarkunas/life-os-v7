@@ -1,12 +1,9 @@
-"""Governed Todoist operations for the MCP (REQ-88 WP06): read tasks, projects and comments; create, update, move,
-complete, reopen and comment on tasks. Provider code only: it is not wired into the MCP, the capability catalog or any
-grant yet, and its writes stay off until the one activation (`state["writes_enabled"]`, default off).
+"""Governed Todoist read and write operations for the MCP (REQ-88 WP06), stdlib only, writes off until the one activation.
 
-Rules every call keeps: fixed lower-case codes (never a token, URL or body); a read uses the read token (`data:read`), a
-write uses the write token (`data:read_write`) and only when writes are enabled; no delete and no project or structure
-change exist here; create and move go only to a configured set of project ids; update touches only content,
-description and due text; a create that matches an existing task of the same text in that project is refused, not
-repeated; every write is read back and anything unproved is a failure, never a success."""
+Reads use the read token (`data:read`), writes the write token (`data:read_write`) and only when `state["writes_enabled"]` is on
+(default off). Create and move go only to configured project ids; a create that matches an existing task of the same text in
+that project is refused; update touches only content, description and due text; every write is read back and anything
+unproved fails; no delete or project call exists. Errors are fixed lower-case codes, never a token or body."""
 
 import json
 import re
