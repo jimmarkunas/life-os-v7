@@ -3,6 +3,7 @@
 Stateless and read-only: each run reads the last WINDOW_DAYS of shipping mail and folds it into packages (Amazon
 mail and Physical Mail FedEx notices are excluded). A package is "in transit" until a delivered mail for its
 tracking number (or, with none, its store) arrives or STALE_DAYS pass."""
+
 import re
 from datetime import datetime, timedelta
 from email.utils import parseaddr
@@ -14,17 +15,46 @@ WINDOW_DAYS = 30
 STALE_DAYS = 21
 DELIVERED_DAYS = 7
 LIMIT = 300
-SUBJECT_TERMS = ('"on its way"', '"on the way"', "shipped", '"has shipped"', "shipment", '"out for delivery"', "delivered", "tracking", '"has been delivered"')
+SUBJECT_TERMS = (
+    '"on its way"',
+    '"on the way"',
+    "shipped",
+    '"has shipped"',
+    "shipment",
+    '"out for delivery"',
+    "delivered",
+    "tracking",
+    '"has been delivered"',
+)
 FEDEX_FOLLOW = "TrackingUpdates" + chr(64) + "fedex" + ".com"
 EXCLUDED = ("amazon.com", "anytimemailbox.com")
-SHIPPED_SUBJECT = re.compile(r"\b(on (?:its|the) way|shipped|has shipped|shipment|tracking|out for delivery|dispatched)\b", re.I)
+SHIPPED_SUBJECT = re.compile(
+    r"\b(on (?:its|the) way|shipped|has shipped|shipment|tracking|out for delivery|dispatched)\b", re.I
+)
 DELIVERED_SUBJECT = re.compile(r"\b(?:has been |was |is )?delivered\b", re.I)
 NOT_DELIVERED = re.compile(r"\b(?:will be|to be|not|undeliver\w*|attempt\w*|delayed?|exception)\b", re.I)
-TABLE = re.compile(r"Provider\s+Tracking\s+Number(?:\s+(?:Date|Status|Shipped))?\s+((?:[A-Za-z][A-Za-z0-9&.]*\s+){0,2}[A-Za-z][A-Za-z0-9&.]*)\s+(\d[A-Za-z0-9-]{7,33})\b")
+TABLE = re.compile(
+    r"Provider\s+Tracking\s+Number(?:\s+(?:Date|Status|Shipped))?\s+((?:[A-Za-z][A-Za-z0-9&.]*\s+){0,2}[A-Za-z][A-Za-z0-9&.]*)\s+(\d[A-Za-z0-9-]{7,33})\b"
+)
 INLINE = re.compile(r"(?i)\btracking\s*(?:number|no\.?|#|id)\s*[:#]?\s*(\d[A-Za-z0-9-]{7,33})\b")
-CARRIERS = (("DHLECOMMERCE", "DHL eCommerce"), ("DHLGLOBALMAIL", "DHL eCommerce"), ("DHL", "DHL"), ("UPS", "UPS"), ("USPS", "USPS"), ("FEDEX", "FedEx"), ("ONTRAC", "OnTrac"), ("LASERSHIP", "LaserShip"), ("ROYALMAIL", "Royal Mail"))
-URLS = {"DHL": "https://www.dhl.com/us-en/home/tracking.html?tracking-id=", "DHL eCommerce": "https://www.dhl.com/us-en/home/tracking/tracking-ecommerce.html?submit=1&tracking-id=", "UPS": "https://www.ups.com/track?tracknum=", "USPS": "https://tools.usps.com/go/TrackConfirmAction?tLabels=",
-        "FedEx": "https://www.fedex.com/fedextrack/?trknbr="}
+CARRIERS = (
+    ("DHLECOMMERCE", "DHL eCommerce"),
+    ("DHLGLOBALMAIL", "DHL eCommerce"),
+    ("DHL", "DHL"),
+    ("UPS", "UPS"),
+    ("USPS", "USPS"),
+    ("FEDEX", "FedEx"),
+    ("ONTRAC", "OnTrac"),
+    ("LASERSHIP", "LaserShip"),
+    ("ROYALMAIL", "Royal Mail"),
+)
+URLS = {
+    "DHL": "https://www.dhl.com/us-en/home/tracking.html?tracking-id=",
+    "DHL eCommerce": "https://www.dhl.com/us-en/home/tracking/tracking-ecommerce.html?submit=1&tracking-id=",
+    "UPS": "https://www.ups.com/track?tracknum=",
+    "USPS": "https://tools.usps.com/go/TrackConfirmAction?tLabels=",
+    "FedEx": "https://www.fedex.com/fedextrack/?trknbr=",
+}
 
 
 SHAPES = ((re.compile(r"\b1Z[0-9A-Z]{16}\b"), "UPS"), (re.compile(r"\b9[2-5][0-9]{18,24}\b"), "USPS"))
@@ -32,7 +62,13 @@ SHAPES = ((re.compile(r"\b1Z[0-9A-Z]{16}\b"), "UPS"), (re.compile(r"\b9[2-5][0-9
 
 def query(now):
     terms = " ".join("subject:" + term for term in SUBJECT_TERMS)
-    return "{" + terms + "} " + " ".join("-from:" + domain for domain in EXCLUDED) + f" -from:{FEDEX_FOLLOW} after:{int((now - timedelta(days=WINDOW_DAYS)).timestamp())}"
+    return (
+        "{"
+        + terms
+        + "} "
+        + " ".join("-from:" + domain for domain in EXCLUDED)
+        + f" -from:{FEDEX_FOLLOW} after:{int((now - timedelta(days=WINDOW_DAYS)).timestamp())}"
+    )
 
 
 def carrier_name(raw):
@@ -84,14 +120,23 @@ def numbers(text):
 
 def extract(record):
     subject = record.get("subject") or ""
-    delivered = bool(DELIVERED_SUBJECT.search(subject)) and not NOT_DELIVERED.search(subject) and not re.search(r"out for delivery", subject, re.I)
+    delivered = (
+        bool(DELIVERED_SUBJECT.search(subject))
+        and not NOT_DELIVERED.search(subject)
+        and not re.search(r"out for delivery", subject, re.I)
+    )
     shipped = bool(SHIPPED_SUBJECT.search(subject)) and not delivered
     if not (delivered or shipped):
         return None
     found = numbers(record.get("body_text", ""))
     if shipped and not found:
         return None
-    return {"kind": "DELIVERED" if delivered else "SHIPPED", "at": record["received_at"], "store": store_name(record.get("sender")), "numbers": found}
+    return {
+        "kind": "DELIVERED" if delivered else "SHIPPED",
+        "at": record["received_at"],
+        "store": store_name(record.get("sender")),
+        "numbers": found,
+    }
 
 
 def _at(value):
@@ -103,7 +148,17 @@ def fold(extracted):
     for event in sorted((e for e in extracted if e), key=lambda e: e["at"]):
         if event["kind"] == "SHIPPED":
             for carrier, number in event["numbers"]:
-                pkg = packages.setdefault(number, {"key": number, "store": event["store"], "carrier": carrier, "number": number, "shipped_at": event["at"], "delivered_at": None})
+                pkg = packages.setdefault(
+                    number,
+                    {
+                        "key": number,
+                        "store": event["store"],
+                        "carrier": carrier,
+                        "number": number,
+                        "shipped_at": event["at"],
+                        "delivered_at": None,
+                    },
+                )
                 pkg["carrier"] = pkg["carrier"] or carrier
         else:
             closed = False
@@ -111,7 +166,14 @@ def fold(extracted):
                 if number in packages and not packages[number]["delivered_at"]:
                     packages[number]["delivered_at"], closed = event["at"], True
             if not closed and not event["numbers"]:
-                open_ = sorted((p for p in packages.values() if not p["delivered_at"] and p["store"] == event["store"] and p["shipped_at"] <= event["at"]), key=lambda p: p["shipped_at"])
+                open_ = sorted(
+                    (
+                        p
+                        for p in packages.values()
+                        if not p["delivered_at"] and p["store"] == event["store"] and p["shipped_at"] <= event["at"]
+                    ),
+                    key=lambda p: p["shipped_at"],
+                )
                 if open_:
                     open_[0]["delivered_at"] = event["at"]
     return list(packages.values())
@@ -125,9 +187,16 @@ def read(gmail, now):
 
 
 def split(packages, now):
-    transit = [p for p in packages if not p["delivered_at"] and _at(p["shipped_at"]) >= now - timedelta(days=STALE_DAYS)]
-    delivered = [p for p in packages if p["delivered_at"] and _at(p["delivered_at"]) >= now - timedelta(days=DELIVERED_DAYS)]
-    return (sorted(transit, key=lambda p: p["shipped_at"], reverse=True), sorted(delivered, key=lambda p: p["delivered_at"], reverse=True))
+    transit = [
+        p for p in packages if not p["delivered_at"] and _at(p["shipped_at"]) >= now - timedelta(days=STALE_DAYS)
+    ]
+    delivered = [
+        p for p in packages if p["delivered_at"] and _at(p["delivered_at"]) >= now - timedelta(days=DELIVERED_DAYS)
+    ]
+    return (
+        sorted(transit, key=lambda p: p["shipped_at"], reverse=True),
+        sorted(delivered, key=lambda p: p["delivered_at"], reverse=True),
+    )
 
 
 def safe_read(gmail, now):

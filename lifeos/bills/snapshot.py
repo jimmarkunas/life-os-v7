@@ -1,4 +1,5 @@
 """Read the complete Notion Bill Tracker into a private snapshot; logs contain counts only."""
+
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -114,10 +115,17 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     rows = query_all(client)
     snapshot = {"schema": SCHEMA_V, "taken_at": now.isoformat(), "timezone": LOCAL_TZ, "rows": rows}
     from . import state
+
     buckets = state.classify(rows, now.date())
-    counts = {"rows": len(rows), "active": sum(row["Status"] == "Active" for row in rows),
-              "paid": len(buckets["paid"]), "stale_due": len(buckets["stale_due"]),
-              "due_today": len(buckets["due_today"]), "due_7d": len(buckets["due_next_7_days"]), "saved": 0}
+    counts = {
+        "rows": len(rows),
+        "active": sum(row["Status"] == "Active" for row in rows),
+        "paid": len(buckets["paid"]),
+        "stale_due": len(buckets["stale_due"]),
+        "due_today": len(buckets["due_today"]),
+        "due_7d": len(buckets["due_next_7_days"]),
+        "saved": 0,
+    }
     if live:
         with fixed(Exception, BillsError, "BILLS_STORE_FAILED", keep=BillsError):
             with (connect or db.connect)() as connection:

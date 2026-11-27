@@ -1,4 +1,5 @@
 """Gmail to canonical Notion Amazon Orders; filing follows a verified durable write."""
+
 import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -15,10 +16,18 @@ SENDERS_QUERY = "{" + " ".join("from:" + address for address in events.SENDERS) 
 OVERLAP = timedelta(days=3)
 BOOTSTRAP = timedelta(days=45)
 SCHEMA_TYPES = {
-    "Order ID": "title", "Status": "select", "Ordered At": "date", "Latest Event At": "date",
-    "Grand Total": "number", "Item Summary": "rich_text", "Item Count": "number",
-    "Amazon Order URL": "url", "Source Message IDs": "rich_text", "Last Source Subject": "rich_text",
-    "Last Reconciled At": "date", "Needs Review": "checkbox",
+    "Order ID": "title",
+    "Status": "select",
+    "Ordered At": "date",
+    "Latest Event At": "date",
+    "Grand Total": "number",
+    "Item Summary": "rich_text",
+    "Item Count": "number",
+    "Amazon Order URL": "url",
+    "Source Message IDs": "rich_text",
+    "Last Source Subject": "rich_text",
+    "Last Reconciled At": "date",
+    "Needs Review": "checkbox",
 }
 STATUS_OPTIONS = {"ORDERED", "SHIPPED", "DELIVERED", "REVIEW"}
 REVIEW_FIELDS = ("Status", "Needs Review")
@@ -43,7 +52,9 @@ def _schema(client, source_id):
         if not isinstance(prop, dict) or prop.get("type") != expected:
             raise AmazonError("AMAZON_NOTION_SCHEMA_MISMATCH")
     options = props["Status"].get("select", {}).get("options")
-    if not isinstance(options, list) or not STATUS_OPTIONS.issubset({o.get("name") for o in options if isinstance(o, dict)}):
+    if not isinstance(options, list) or not STATUS_OPTIONS.issubset(
+        {o.get("name") for o in options if isinstance(o, dict)}
+    ):
         raise AmazonError("AMAZON_NOTION_SCHEMA_MISMATCH")
 
 
@@ -70,11 +81,17 @@ def _value(prop):
 
 
 def _row_from_page(page):
-    if not isinstance(page, dict) or not isinstance(page.get("id"), str) or not isinstance(page.get("properties"), dict):
+    if (
+        not isinstance(page, dict)
+        or not isinstance(page.get("id"), str)
+        or not isinstance(page.get("properties"), dict)
+    ):
         raise AmazonError("AMAZON_NOTION_ROW_INVALID")
     props = page["properties"]
-    if any(not isinstance(props.get(field), dict) or props[field].get("type") != kind
-           for field, kind in SCHEMA_TYPES.items()):
+    if any(
+        not isinstance(props.get(field), dict) or props[field].get("type") != kind
+        for field, kind in SCHEMA_TYPES.items()
+    ):
         raise AmazonError("AMAZON_NOTION_ROW_INVALID")
     row = {field: _value(props.get(field)) for field in SCHEMA_TYPES}
     row["page_id"] = page["id"]
@@ -84,8 +101,17 @@ def _row_from_page(page):
 def _query_order(client, source_id, order_id):
     rows = []
     body = {"page_size": 100, "filter": {"property": "Order ID", "title": {"equals": order_id}}}
-    for page in notion_pages.query(client, source_id, body, AmazonError, incomplete="AMAZON_NOTION_QUERY_INCOMPLETE", repeat="AMAZON_NOTION_PAGINATION_INVALID",
-                                   capped="AMAZON_NOTION_PAGINATION_INCOMPLETE", limit=MAX_QUERY_PAGES, read="AMAZON_NOTION_QUERY_FAILED"):
+    for page in notion_pages.query(
+        client,
+        source_id,
+        body,
+        AmazonError,
+        incomplete="AMAZON_NOTION_QUERY_INCOMPLETE",
+        repeat="AMAZON_NOTION_PAGINATION_INVALID",
+        capped="AMAZON_NOTION_PAGINATION_INCOMPLETE",
+        limit=MAX_QUERY_PAGES,
+        read="AMAZON_NOTION_QUERY_FAILED",
+    ):
         parsed = [_row_from_page(item) for item in page["results"]]
         if any(row.get("Order ID") != order_id for row in parsed):
             raise AmazonError("AMAZON_NOTION_QUERY_MISMATCH")
@@ -99,8 +125,10 @@ def _properties(row, partial=False):
         if len(value) > 200_000:
             raise AmazonError("AMAZON_NOTION_VALUE_TOO_LONG")
         return {"rich_text": rich_text(value)}
+
     def date(value):
         return {"date": {"start": value} if value else None}
+
     if partial:
         return {"Status": {"select": {"name": "REVIEW"}}, "Needs Review": {"checkbox": True}}
     total = row.get("Grand Total")
@@ -135,8 +163,7 @@ def _write(client, source_id, existing, desired, review_only=False):
         with fixed(NotionError, AmazonError, "AMAZON_NOTION_WRITE_FAILED"):
             client.call_once("PATCH", f"/pages/{quote(page_id, safe='')}", {"properties": props})
     else:
-        create_props = ({"Order ID": {"title": rich_text(desired["Order ID"])}, **props}
-                        if review_only else props)
+        create_props = {"Order ID": {"title": rich_text(desired["Order ID"])}, **props} if review_only else props
         body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": create_props}
         with fixed(NotionError, AmazonError, "AMAZON_NOTION_WRITE_FAILED"):
             result = client.call_once("POST", "/pages", body)
@@ -150,7 +177,11 @@ def _minute(value):
     if value in (None, ""):
         return None
     with fixed((TypeError, ValueError), AmazonError, "AMAZON_NOTION_ROW_INVALID"):
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc).replace(second=0, microsecond=0)
+        return (
+            datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            .astimezone(timezone.utc)
+            .replace(second=0, microsecond=0)
+        )
 
 
 def _raw(value):
@@ -163,7 +194,8 @@ def _readback_equal(actual, expected, review_only=False):
 
 def _review_readback_equal(actual, desired, before):
     return _readback_equal(actual, desired, review_only=True) and orders.equal(
-        actual, before, tuple(field for field in orders.FIELDS if field not in REVIEW_FIELDS), _minute, _raw)
+        actual, before, tuple(field for field in orders.FIELDS if field not in REVIEW_FIELDS), _minute, _raw
+    )
 
 
 def _review_desired(order_id):
@@ -175,7 +207,9 @@ def _config(environ):
     source = (environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip().replace("collection://", "")
     if not token or not source:
         raise AmazonError("AMAZON_CONFIG_MISSING")
-    if not source or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-" for char in source):
+    if not source or any(
+        char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-" for char in source
+    ):
         raise AmazonError("AMAZON_CONFIG_INVALID")
     return source, Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": source})
 
@@ -186,7 +220,11 @@ def _watermark(client, source_id):
         page = client.query_data_source(source_id, body)
     if not isinstance(page, dict) or not isinstance(page.get("results"), list):
         raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
-    stamps = [row["Latest Event At"] for row in (_row_from_page(item) for item in page["results"]) if row.get("Latest Event At")]
+    stamps = [
+        row["Latest Event At"]
+        for row in (_row_from_page(item) for item in page["results"])
+        if row.get("Latest Event At")
+    ]
     return max((_minute(stamp) for stamp in stamps), default=None)
 
 
@@ -195,7 +233,11 @@ def window_query(watermark, now, since=None, until=None):
     backfill window closes. Never mailbox-wide."""
     start = since or ((watermark - OVERLAP) if watermark else (now - BOOTSTRAP))
     # An explicit start (backfill or recovery) also reads the Trash, where retention moves recorded mail.
-    return f"{SENDERS_QUERY} after:{int(start.timestamp())}" + (f" before:{int(until.timestamp())}" if until else "") + (" in:anywhere" if since else "")
+    return (
+        f"{SENDERS_QUERY} after:{int(start.timestamp())}"
+        + (f" before:{int(until.timestamp())}" if until else "")
+        + (" in:anywhere" if since else "")
+    )
 
 
 def _gmail_ids(gmail, limit, query):
@@ -219,7 +261,14 @@ def tally(counts, key, n=1, group=None):
 
 def _note_conflict(counts, cause, existing, received, now):
     tally(counts, cause, group="conflict_why")
-    tally(counts, "review_flipped" if existing and existing.get("Latest Event At") else "review_created_empty" if not existing else "review_already_empty")
+    tally(
+        counts,
+        "review_flipped"
+        if existing and existing.get("Latest Event At")
+        else "review_created_empty"
+        if not existing
+        else "review_already_empty",
+    )
     newest = max((r for r in received if r), default=None)
     if newest and (now - datetime.fromisoformat(newest)).days <= 30:
         tally(counts, "review_recent")
@@ -247,7 +296,11 @@ def _sort_events(messages, counts):
                 counts["review"] += 1
                 tally(counts, parsed.get("reason") or "UNKNOWN", group="review_why")
                 if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":
-                    tally(counts, f"{events.ambiguity_shape(message)},from={parsed_sender(message)}", group="ambiguous_shape")
+                    tally(
+                        counts,
+                        f"{events.ambiguity_shape(message)},from={parsed_sender(message)}",
+                        group="ambiguous_shape",
+                    )
                     days = counts.setdefault("ambiguous_days", [])
                     if len(days) < 6 and parsed_sender(message) == "ORDERED":
                         days.append((message.get("received_at") or "")[:16])
@@ -265,7 +318,11 @@ def decide_order(order_id, existing, order_events, order_reviews, now):
     """PURE: what one order row should hold. -> (desired row, conflict flag, cause code). A conflict freezes the row
     in REVIEW."""
     conflict = bool(order_reviews)
-    cause = ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in order_reviews])) if conflict else None
+    cause = (
+        ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in order_reviews]))
+        if conflict
+        else None
+    )
     desired = _review_desired(order_id) if conflict else None
     if not conflict:
         desired, reason = orders.reconcile(order_events, existing, now)
@@ -285,9 +342,18 @@ def _plan_orders(notion, source_id, events_by_order, review_by_order, accepted_i
         if len(found) > 1:
             raise AmazonError("AMAZON_NOTION_DUPLICATE_ORDER")
         existing = found[0] if found else None
-        desired, conflict, cause = decide_order(order_id, existing, events_by_order.get(order_id, []), review_by_order.get(order_id, []), now)
+        desired, conflict, cause = decide_order(
+            order_id, existing, events_by_order.get(order_id, []), review_by_order.get(order_id, []), now
+        )
         if conflict:
-            _note_conflict(counts, cause, existing, [m["received_at"] for m in review_by_order.get(order_id, [])] + [e["received_at"] for e in events_by_order.get(order_id, [])], now)
+            _note_conflict(
+                counts,
+                cause,
+                existing,
+                [m["received_at"] for m in review_by_order.get(order_id, [])]
+                + [e["received_at"] for e in events_by_order.get(order_id, [])],
+                now,
+            )
             counts["accepted"] -= len(events_by_order.get(order_id, []))
             counts["review"] += len(events_by_order.get(order_id, []))
             if existing:
@@ -312,18 +378,24 @@ def _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, revie
     failures, filed_now = [], set()
     for order_id, existing, desired, review_only, file_ids in plans:
         try:
-            same = bool(existing) and (_readback_equal(existing, desired, review_only) if review_only
-                                       else orders.same(existing, desired))
+            same = bool(existing) and (
+                _readback_equal(existing, desired, review_only) if review_only else orders.same(existing, desired)
+            )
             if same and not review_only:
                 persisted = _get_page(notion, existing["page_id"])
                 if not _readback_equal(persisted, desired):
                     raise AmazonError("AMAZON_NOTION_READBACK_MISMATCH")
-            elif review_only and existing and existing.get("Status") == "REVIEW" and existing.get("Needs Review") is True:
+            elif (
+                review_only and existing and existing.get("Status") == "REVIEW" and existing.get("Needs Review") is True
+            ):
                 persisted = existing
             else:
                 persisted = _write(notion, source_id, existing, desired, review_only)
-                matches = (_review_readback_equal(persisted, desired, existing) if review_only and existing
-                           else _readback_equal(persisted, desired, review_only))
+                matches = (
+                    _review_readback_equal(persisted, desired, existing)
+                    if review_only and existing
+                    else _readback_equal(persisted, desired, review_only)
+                )
                 if not matches:
                     raise AmazonError("AMAZON_NOTION_READBACK_MISMATCH")
             if review_only:
@@ -351,19 +423,37 @@ def _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, revie
         raise AmazonError(f"AMAZON_FAILED:{counts['failed']}of{counts['listed']}:" + "+".join(sorted(set(failures))))
 
 
-def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None, skip_unreadable=False):
-    counts = {"listed": 0, "accepted": 0, "review": 0, "orders_new": 0, "orders_updated": 0,
-              "orders_same": 0, "filed": 0, "already_filed": 0, "failed": 0}
+def run(
+    limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None, skip_unreadable=False
+):
+    counts = {
+        "listed": 0,
+        "accepted": 0,
+        "review": 0,
+        "orders_new": 0,
+        "orders_updated": 0,
+        "orders_same": 0,
+        "filed": 0,
+        "already_filed": 0,
+        "failed": 0,
+    }
     try:
         gmail = gmail or Gmail.from_env()
-        source_id, notion = _config(environ) if notion is None else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
+        source_id, notion = (
+            _config(environ)
+            if notion is None
+            else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
+        )
         if not source_id:
             raise AmazonError("AMAZON_CONFIG_MISSING")
         label_id = gmail.label_id("Amazon", create=False)
         now = now or _now()
         _schema(notion, source_id)
         if since is None and (environ.get("AMAZON_SINCE") or "").strip():
-            since = _minute((environ.get("AMAZON_SINCE") or "").strip() + ("T00:00:00+00:00" if len((environ.get("AMAZON_SINCE") or "").strip()) == 10 else ""))
+            since = _minute(
+                (environ.get("AMAZON_SINCE") or "").strip()
+                + ("T00:00:00+00:00" if len((environ.get("AMAZON_SINCE") or "").strip()) == 10 else "")
+            )
         query = window_query(None if since else _watermark(notion, source_id), now, since, until)
         try:
             message_ids = _gmail_ids(gmail, limit, query)
@@ -375,7 +465,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         messages = _read_messages(gmail, message_ids, skip_unreadable, counts)
         # A message already under the Amazon label and out of the Inbox needs no filing; it still counts as an event
         # so replay is verified.
-        already_filed = {m["id"] for m in messages if ("TRASH" in m["label_ids"]) or (label_id in m["label_ids"] and "INBOX" not in m["label_ids"])}
+        already_filed = {
+            m["id"]
+            for m in messages
+            if ("TRASH" in m["label_ids"]) or (label_id in m["label_ids"] and "INBOX" not in m["label_ids"])
+        }
         events_by_order, review_by_order, accepted_ids = _sort_events(messages, counts)
         if not events_by_order and not review_by_order:
             return counts
@@ -397,8 +491,23 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
 
 
 CONTRACT = stage_contract.Contract(
-    name="amazon-orders", run=run,
-    inputs=("Gmail messages from the allowlisted Amazon senders since the newest accepted event minus 3 days (or AMAZON_SINCE)", "the Amazon Orders data source: its schema, its newest event, and each order's row"),
-    outputs=("listed", "accepted", "review", "orders_new", "orders_updated", "orders_same", "filed", "already_filed", "failed"),
+    name="amazon-orders",
+    run=run,
+    inputs=(
+        "Gmail messages from the allowlisted Amazon senders since the newest accepted event minus 3 days (or AMAZON_SINCE)",
+        "the Amazon Orders data source: its schema, its newest event, and each order's row",
+    ),
+    outputs=(
+        "listed",
+        "accepted",
+        "review",
+        "orders_new",
+        "orders_updated",
+        "orders_same",
+        "filed",
+        "already_filed",
+        "failed",
+    ),
     dry_run="reads the mail and the order rows and counts what a live run would create, update and file; changes nothing",
-    write="creates or updates one Amazon Orders row per order (a conflict freezes it in REVIEW), reads each back, then files the mail under the Amazon label and reads that back")
+    write="creates or updates one Amazon Orders row per order (a conflict freezes it in REVIEW), reads each back, then files the mail under the Amazon label and reads that back",
+)

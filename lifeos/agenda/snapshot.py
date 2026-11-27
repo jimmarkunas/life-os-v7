@@ -1,4 +1,5 @@
 """Read the complete Chicago today/tomorrow calendar window into a private snapshot."""
+
 import os
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -98,13 +99,24 @@ def compact(event, today, tomorrow):
     title = (title or "").strip() or "(no title)"
     private = _of(_of(event.get("extendedProperties") or {}, dict).get("private") or {}, dict)
     entry_points = _of(event.get("conferenceData") or {}, dict).get("entryPoints") or []
-    meeting = event.get("hangoutLink") or next((point.get("uri") for point in entry_points
-                                                if isinstance(point, dict) and isinstance(point.get("uri"), str)), None)
+    meeting = event.get("hangoutLink") or next(
+        (point.get("uri") for point in entry_points if isinstance(point, dict) and isinstance(point.get("uri"), str)),
+        None,
+    )
     location, html_link = _of(event.get("location"), str), _of(event.get("htmlLink"), str)
     calendar_link = html_link if html_link and html_link.startswith(("https://", "http://")) else None
-    return {"id": event_id, "title": title, "start": start_value, "end": end_value, "all_day": all_day,
-            "location": location or None, "meeting_link": meeting or None, "calendar_link": calendar_link,
-            "source": "bridge" if private.get("v7_src") else "native", "days": days}
+    return {
+        "id": event_id,
+        "title": title,
+        "start": start_value,
+        "end": end_value,
+        "all_day": all_day,
+        "location": location or None,
+        "meeting_link": meeting or None,
+        "calendar_link": calendar_link,
+        "source": "bridge" if private.get("v7_src") else "native",
+        "days": days,
+    }
 
 
 def build(calendar, now=None):
@@ -130,8 +142,14 @@ def build(calendar, now=None):
             raise AgendaError("AGENDA_LISTING_INVALID")
         seen.add(item["id"])
         events.append(item)
-    return {"schema": SCHEMA_V, "taken_at": now.isoformat(), "timezone": LOCAL_TZ,
-            "today": today.isoformat(), "tomorrow": tomorrow.isoformat(), "events": events}
+    return {
+        "schema": SCHEMA_V,
+        "taken_at": now.isoformat(),
+        "timezone": LOCAL_TZ,
+        "today": today.isoformat(),
+        "tomorrow": tomorrow.isoformat(),
+        "events": events,
+    }
 
 
 def load(connection):
@@ -143,10 +161,15 @@ def run(limit, live, environ=os.environ, calendar=None, now=None, connect=None):
     calendar = calendar or GoogleCalendar.from_env(environ)
     snapshot = build(calendar, now)
     events = snapshot["events"]
-    counts = {"events": len(events), "all_day": sum(event["all_day"] for event in events),
-              "today": sum(snapshot["today"] in event["days"] for event in events),
-              "tomorrow": sum(snapshot["tomorrow"] in event["days"] for event in events),
-              "saved": 0, "blocks_written": 0, "status": "fresh"}
+    counts = {
+        "events": len(events),
+        "all_day": sum(event["all_day"] for event in events),
+        "today": sum(snapshot["today"] in event["days"] for event in events),
+        "tomorrow": sum(snapshot["tomorrow"] in event["days"] for event in events),
+        "saved": 0,
+        "blocks_written": 0,
+        "status": "fresh",
+    }
     if live:
         with fixed(Exception, AgendaError, "AGENDA_STORE_FAILED", keep=AgendaError):
             with (connect or db.connect)() as connection:

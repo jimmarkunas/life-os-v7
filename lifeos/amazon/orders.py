@@ -1,11 +1,22 @@
 """Pure monotone reconciliation of Amazon order events."""
+
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 RANK = {"ORDERED": 1, "SHIPPED": 2, "DELIVERED": 3, "RETURNING": 4, "REFUNDED": 5, "REVIEW": 99}
 FIELDS = (
-    "Order ID", "Status", "Ordered At", "Latest Event At", "Grand Total", "Item Summary", "Item Count",
-    "Amazon Order URL", "Source Message IDs", "Last Source Subject", "Last Reconciled At", "Needs Review",
+    "Order ID",
+    "Status",
+    "Ordered At",
+    "Latest Event At",
+    "Grand Total",
+    "Item Summary",
+    "Item Count",
+    "Amazon Order URL",
+    "Source Message IDs",
+    "Last Source Subject",
+    "Last Reconciled At",
+    "Needs Review",
 )
 
 
@@ -47,8 +58,11 @@ def reconcile(events, existing=None, now=None):
     by_key = {}
     try:
         for event in events:
-            if (event.get("status") not in ("ORDERED", "SHIPPED", "DELIVERED", "RETURNING", "REFUNDED")
-                    or not isinstance(event.get("id"), str) or not event["id"]):
+            if (
+                event.get("status") not in ("ORDERED", "SHIPPED", "DELIVERED", "RETURNING", "REFUNDED")
+                or not isinstance(event.get("id"), str)
+                or not event["id"]
+            ):
                 return _conflict(existing), "EVENT_INVALID"
             event_time = _time(event.get("received_at"))
             if event_time is None:
@@ -106,11 +120,21 @@ def reconcile(events, existing=None, now=None):
     source_ids.update(event["id"] for event in unique)
     all_latest = max([latest_time] + ([existing_latest] if existing_latest else []))
     existing_subject = _text(existing.get("Last Source Subject"))
-    last_subject = existing_subject if existing_latest and existing_latest > latest_time else _text(latest_event.get("subject"))
+    last_subject = (
+        existing_subject if existing_latest and existing_latest > latest_time else _text(latest_event.get("subject"))
+    )
     # replaying an older month must not roll item text back over a newer event's
     newer_than_row = not (existing_latest and existing_latest > latest_time)
-    latest_summary = (_text(latest_event.get("item_summary")) if newer_than_row else "") or _text(existing.get("Item Summary")) or _text(latest_event.get("item_summary"))
-    latest_count = latest_event.get("item_count") if latest_event.get("item_count") is not None and newer_than_row else existing.get("Item Count")
+    latest_summary = (
+        (_text(latest_event.get("item_summary")) if newer_than_row else "")
+        or _text(existing.get("Item Summary"))
+        or _text(latest_event.get("item_summary"))
+    )
+    latest_count = (
+        latest_event.get("item_count")
+        if latest_event.get("item_count") is not None and newer_than_row
+        else existing.get("Item Count")
+    )
     total = next(iter(incoming_totals), prior_total)
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
@@ -147,7 +171,10 @@ def equal(left_row, right_row, fields, moment=_time, text=_text):
             pair = bool(left), bool(right)
         elif field in ("Grand Total", "Item Count"):
             try:
-                pair = tuple(None if value in (None, "") else _total(value) if field == "Grand Total" else int(value) for value in (left, right))
+                pair = tuple(
+                    None if value in (None, "") else _total(value) if field == "Grand Total" else int(value)
+                    for value in (left, right)
+                )
             except (TypeError, ValueError):
                 return False
         else:

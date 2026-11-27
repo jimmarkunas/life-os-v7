@@ -1,6 +1,7 @@
 """Clear Amazon Orders rows that never got a Grand Total: each moves to the Notion trash (recoverable for 30 days).
 
 Dry run unless live; at most 100 a run. A row with a total is never touched."""
+
 import os
 from urllib.parse import quote
 
@@ -10,22 +11,33 @@ from .stage import AmazonError, _config, _row_from_page, _schema
 
 MAX_ROWS = 100
 
+
 def _no_total(row):
     return row.get("Grand Total") in (None, "")
 
 
 def run(limit, live, environ=os.environ, notion=None):
     counts = {"rows": 0, "no_total": 0, "kept_with_total": 0, "trashed": 0, "failed": 0}
-    source_id, notion = _config(environ) if notion is None else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
+    source_id, notion = (
+        _config(environ) if notion is None else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
+    )
     if not source_id:
         raise AmazonError("AMAZON_CONFIG_MISSING")
     _schema(notion, source_id)
     pages, cursor, seen = [], None, set()
     for _ in range(20):
-        body = {"page_size": 100, "filter": {"property": "Grand Total", "number": {"is_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
+        body = {
+            "page_size": 100,
+            "filter": {"property": "Grand Total", "number": {"is_empty": True}},
+            **({"start_cursor": cursor} if cursor else {}),
+        }
         with fixed(NotionError, AmazonError, "AMAZON_NOTION_QUERY_FAILED"):
             page = notion.query_data_source(source_id, body)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
+        if (
+            not isinstance(page, dict)
+            or not isinstance(page.get("results"), list)
+            or not isinstance(page.get("has_more"), bool)
+        ):
             raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
         pages.extend(page["results"])
         if not page["has_more"]:
@@ -42,7 +54,7 @@ def run(limit, live, environ=os.environ, notion=None):
     counts["no_total"], counts["kept_with_total"] = len(empty), len(rows) - len(empty)
     if not live:
         return counts
-    for row in empty[:limit if limit and limit > 0 else MAX_ROWS]:
+    for row in empty[: limit if limit and limit > 0 else MAX_ROWS]:
         try:
             notion.call_once("PATCH", f"/pages/{quote(row['page_id'], safe='')}", {"in_trash": True})
             check = notion.call("GET", f"/pages/{quote(row['page_id'], safe='')}")
