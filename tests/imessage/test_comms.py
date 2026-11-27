@@ -446,19 +446,22 @@ class Card(unittest.TestCase):
         self.assertEqual((report.plain("extral"), report.plain("extrar")), ("Reminders (-)", "Todoist (-)"))
         self.assertEqual(counts["written"], 7)
 
-    def test_the_reminders_and_todoist_labels_may_link_to_their_own_launch_pages_and_are_left_exactly_as_they_are(self):
+    def test_the_reminders_label_and_the_todoist_link_are_left_exactly_as_they_are_and_only_the_todoist_count_text_changes(
+        self,
+    ):
         report = Report()
         report.add("div", "divider", "comms")
         self.add_row(report, "extra", own_links=True)
-        before = (copy.deepcopy(report.blocks["extral"]), copy.deepcopy(report.blocks["extrar"]))
-        counts, _ = self.run_card(report)
+        reminders = copy.deepcopy(report.blocks["extral"])
+        link = report.blocks["extrar"]["paragraph"]["rich_text"][0]["text"]["link"]
+        counts, _ = self.run_card(report)  # no Todoist credential: never zero, never a guess
         self.assertEqual(
-            [p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"]
-        )  # the channel rows are still written, nothing else
-        self.assertEqual(
-            (report.blocks["extral"], report.blocks["extrar"]), before
-        )  # label, icon-less text, count and link untouched
-        self.assertEqual(counts["written"], 7)
+            [p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head", "extrar"]
+        )  # the channel rows are still written, then only the Todoist label
+        self.assertEqual(report.blocks["extral"], reminders)
+        self.assertEqual(report.blocks["extrar"]["paragraph"]["rich_text"][0]["text"]["link"], link)
+        self.assertEqual((report.plain("extrar"), counts["todoist"]), ("Todoist (—)", "unavailable"))
+        self.assertEqual(counts["written"], 8)
 
     TODOIST_ENV = {"FOLLOWUP_TODOIST_PERSONAL_TOKEN": "unused"}
 
@@ -483,26 +486,70 @@ class Card(unittest.TestCase):
     def test_more_than_ninety_nine_open_tasks_read_99_plus_and_an_unchanged_count_writes_nothing_more(self):
         report = Report()
         self.todoist_row(report)
-        self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * (limit))
+        self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * 150)
         self.assertEqual(report.plain("extrar"), "Todoist (99+)")
         mark = len(report.patches)
-        counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * limit)
+        counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * 150)
         self.assertNotIn("extrar", [p[0] for p in report.patches[mark:]])
         self.assertEqual(counts["written"], 7)
 
-    def test_a_todoist_count_that_cannot_be_read_leaves_the_launcher_as_it_is_never_zero(self):
-        for env, tasks in (
-            (self.ENV, None),
-            ({**self.ENV, **self.TODOIST_ENV}, lambda limit: (_ for _ in ()).throw(RuntimeError("TODOIST_HTTP_401"))),
-        ):
+    def broken(self, limit):
+        raise RuntimeError("TODOIST_HTTP_401")
+
+    def test_before_any_verified_count_a_failed_read_shows_unavailable_never_zero_and_leaks_nothing(self):
+        for env, tasks in ((self.ENV, None), ({**self.ENV, **self.TODOIST_ENV}, self.broken)):
             report = Report()
             self.todoist_row(report)
             counts, log = self.run_card(report, env=env, tasks=tasks)
-            self.assertEqual(report.plain("extrar"), "Todoist (-)")
-            self.assertEqual(counts["todoist"], "unread" if tasks else "unread")
+            self.assertEqual(report.plain("extrar"), "Todoist (—)")
+            self.assertEqual(counts["todoist"], "unavailable")
             self.assertNotIn("unused", log)
         self.assertIn("TODOIST_UNREADABLE", log)
         self.assertNotIn("401", log)
+
+    def test_a_failed_read_keeps_the_last_verified_count_marked_stale_and_the_next_good_read_clears_it(self):
+        env = {**self.ENV, **self.TODOIST_ENV}
+        report = Report()
+        self.todoist_row(report)
+        self.run_card(report, env=env, tasks=lambda limit: [{}] * 14)
+        self.assertEqual(report.plain("extrar"), "Todoist (14)")
+        counts, _ = self.run_card(report, env=env, tasks=self.broken)
+        self.assertEqual((report.plain("extrar"), counts["todoist"]), ("Todoist (14 · STALE)", "stale"))
+        mark = len(report.patches)
+        counts, _ = self.run_card(report, env=env, tasks=self.broken)  # still failing: the same text is not rewritten
+        self.assertEqual(report.plain("extrar"), "Todoist (14 · STALE)")
+        self.assertNotIn("extrar", [p[0] for p in report.patches[mark:]])
+        counts, _ = self.run_card(report, env=env, tasks=lambda limit: [{}] * 15)
+        self.assertEqual((report.plain("extrar"), counts["todoist"]), ("Todoist (15)", 15))
+
+    def test_a_stale_overflow_keeps_99_plus_and_an_old_dash_or_hyphen_placeholder_is_never_a_count(self):
+        env = {**self.ENV, **self.TODOIST_ENV}
+        report = Report()
+        self.todoist_row(report)
+        self.run_card(report, env=env, tasks=lambda limit: [{}] * 150)
+        self.run_card(report, env=env, tasks=self.broken)
+        self.assertEqual(report.plain("extrar"), "Todoist (99+ · STALE)")
+        for label in ("Todoist (-)", "Todoist (—)", "Todoist", "Todoist (x · STALE)"):
+            self.assertIsNone(card.kept_count(label))
+
+    def test_only_top_level_tasks_count_subtasks_and_header_items_never_do(self):
+        rows = [
+            {"id": "1", "content": "Parent", "parent_id": None},
+            {"id": "2", "content": "Child", "parent_id": "1"},
+            {"id": "3", "content": "* Header line", "parent_id": None},
+            {"id": "4", "content": "Undated task"},
+            {"id": "5", "content": "Recurring", "due": {"is_recurring": True}},
+        ]
+        report = Report()
+        self.todoist_row(report)
+        counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: rows)
+        self.assertEqual((report.plain("extrar"), counts["todoist"]), ("Todoist (3)", 3))
+
+    def test_a_listing_that_filled_the_client_cap_is_truncated_so_it_is_stale_not_a_count(self):
+        report = Report()
+        self.todoist_row(report)
+        counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * limit)
+        self.assertEqual((report.plain("extrar"), counts["todoist"]), ("Todoist (—)", "unavailable"))
 
     def test_the_callout_is_found_in_another_column_than_the_calendar_card(self):
         report = Report()
