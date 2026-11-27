@@ -7,6 +7,7 @@ source keeps the last accepted state and its cursor does not advance. A created 
 label of at most 120 characters), so a stored row can be re-derived without a second identity column. TGP and Asana
 are never read.
 """
+
 import json
 import os
 import re
@@ -23,8 +24,21 @@ from lifeos.platform import isolate, switches
 
 COMPONENT = "followup"
 TGP_DOMAINS = ("tgpinternational.com",)
-STATE_OF = {"needs_action_today": "needs_action", "waiting_aging": "waiting", "upcoming": "upcoming", "review_needed": "review"}
-KLASS_OF = {"waiting_on": "waiting", "promise": "owed", "deliverable": "owed", "jim_capture": "owed", "implied_promise": "owed", "value_add": "value_add", "outcome_thread": "outcome_thread"}
+STATE_OF = {
+    "needs_action_today": "needs_action",
+    "waiting_aging": "waiting",
+    "upcoming": "upcoming",
+    "review_needed": "review",
+}
+KLASS_OF = {
+    "waiting_on": "waiting",
+    "promise": "owed",
+    "deliverable": "owed",
+    "jim_capture": "owed",
+    "implied_promise": "owed",
+    "value_add": "value_add",
+    "outcome_thread": "outcome_thread",
+}
 KIND_OF = {"waiting": "waiting_on", "owed": "deliverable", "value_add": "value_add", "outcome_thread": "outcome_thread"}
 KLASS_ORDER = ("waiting_on", "promise", "deliverable", "jim_capture", "implied_promise", "value_add", "outcome_thread")
 OBSERVED = "observed"
@@ -63,6 +77,7 @@ class Wiring:
 
 def production_wiring(environ=None, live=False):
     from lifeos.inbox import followup_wiring  # function-level import: followup_wiring imports this module
+
     return followup_wiring.build(os.environ if environ is None else environ, live)
 
 
@@ -73,10 +88,19 @@ def _utc(text):
 
 def _stored_evidence(thread):
     override = thread["checkpoint_basis_effective"] == "override"
-    return {"kind": KIND_OF[thread["klass"]], "outcome_key": thread["outcome"], "workspace": thread["workspace"], "owner": thread["owner"], "who": "", "title": thread["outcome"],
-            "link": thread["source_refs"][0], "checkpoint": thread["effective_checkpoint"] or None,
-            "checkpoint_source": "source" if thread["checkpoint_basis"] == "source" else "suggested", "override": thread["effective_checkpoint"] if override else None,
-            "observed_at": thread["last_accepted"]}
+    return {
+        "kind": KIND_OF[thread["klass"]],
+        "outcome_key": thread["outcome"],
+        "workspace": thread["workspace"],
+        "owner": thread["owner"],
+        "who": "",
+        "title": thread["outcome"],
+        "link": thread["source_refs"][0],
+        "checkpoint": thread["effective_checkpoint"] or None,
+        "checkpoint_source": "source" if thread["checkpoint_basis"] == "source" else "suggested",
+        "override": thread["effective_checkpoint"] if override else None,
+        "observed_at": thread["last_accepted"],
+    }
 
 
 def _group(evidence):
@@ -90,14 +114,31 @@ def _row(key, group, state):
     kinds = {i["kind"] for i in group}
     kind = next(k for k in KLASS_ORDER if k in kinds)
     lead = next((i for i in group if i["kind"] in followup.CREATES_LOOP), group[0])
-    dated = next((i for i in group if i["kind"] in followup.CREATES_LOOP and i.get("checkpoint") and i.get("checkpoint_source") == "source"), None)
+    dated = next(
+        (
+            i
+            for i in group
+            if i["kind"] in followup.CREATES_LOOP and i.get("checkpoint") and i.get("checkpoint_source") == "source"
+        ),
+        None,
+    )
     stamped = (dated or lead).get("checkpoint")
     basis = "source" if dated else "suggested" if stamped else ""
     links = sorted({i["link"] for i in group})[:5]
     owner = lead.get("owner") if lead.get("owner") in ("jim", "external", "ambiguous") else "ambiguous"
     confidence = "high" if dated else "medium" if kind != "implied_promise" else "low"
-    return {"identity_key": key, "outcome": key, "klass": KLASS_OF[kind], "owner": owner, "state": STATE_OF[state], "checkpoint_at": _utc(stamped) if stamped else "", "checkpoint_basis": basis,
-            "confidence": confidence, "source_refs": links, "evidence_fp": digest(json.dumps([links, _utc(stamped) if stamped else "", KLASS_OF[kind]], sort_keys=True))}
+    return {
+        "identity_key": key,
+        "outcome": key,
+        "klass": KLASS_OF[kind],
+        "owner": owner,
+        "state": STATE_OF[state],
+        "checkpoint_at": _utc(stamped) if stamped else "",
+        "checkpoint_basis": basis,
+        "confidence": confidence,
+        "source_refs": links,
+        "evidence_fp": digest(json.dumps([links, _utc(stamped) if stamped else "", KLASS_OF[kind]], sort_keys=True)),
+    }
 
 
 def _cursor(store, workspace, account, source):
@@ -110,25 +151,59 @@ _WORD = re.compile(r"[^A-Za-z0-9_-]+")
 
 def source_lines(workspace, report):
     clean = lambda value, width: _WORD.sub("_", str(value or "-"))[:width]
-    return [f"followup-source {clean(workspace, 20)} {clean(r.get('source'), 20)} {clean(r.get('status'), 12)} {clean(r.get('reason'), 60)}" for r in report]
+    return [
+        f"followup-source {clean(workspace, 20)} {clean(r.get('source'), 20)} {clean(r.get('status'), 12)} {clean(r.get('reason'), 60)}"
+        for r in report
+    ]
 
 
 def reconcile(wiring, scope, live, now):
     workspace, account = scope.workspace, scope.account
-    counts = {"written": 0, "unchanged": 0, "suppressed": 0, "closed": 0, "sources_ok": 0, "sources_degraded": 0, "threads": 0, "review": 0}
+    counts = {
+        "written": 0,
+        "unchanged": 0,
+        "suppressed": 0,
+        "closed": 0,
+        "sources_ok": 0,
+        "sources_degraded": 0,
+        "threads": 0,
+        "review": 0,
+    }
     wanted = [s for s in scope.sources if s != "asana"]
     since = {(s, workspace, account): _cursor(wiring.store, workspace, account, s) for s in wanted if s in SOURCES}
-    deltas = readers.read_all([(s, workspace, account) for s in wanted], wiring.grants, wiring.fetchers, wiring.audit, now, since, wiring.jira_base)
+    deltas = readers.read_all(
+        [(s, workspace, account) for s in wanted],
+        wiring.grants,
+        wiring.fetchers,
+        wiring.audit,
+        now,
+        since,
+        wiring.jira_base,
+    )
     evidence, report, degraded = list(wiring.captures(workspace, account)), [], False
     for (source, _, _), delta in deltas.items():
         ok = delta.status == "ok"
         degraded = degraded or not ok
         counts["sources_ok" if ok else "sources_degraded"] += 1
-        report.append({"source": source, "status": delta.status, "reason": delta.reason, "last_accepted": delta.last_accepted.isoformat() if delta.last_accepted else None})
+        report.append(
+            {
+                "source": source,
+                "status": delta.status,
+                "reason": delta.reason,
+                "last_accepted": delta.last_accepted.isoformat() if delta.last_accepted else None,
+            }
+        )
         for item in delta.items if ok else ():
             found = wiring.classify(item)
             if found:
-                evidence.append({**found, "workspace": workspace, "link": found.get("link") or item["link"], "observed_at": found.get("observed_at") or item["observed_at"]})
+                evidence.append(
+                    {
+                        **found,
+                        "workspace": workspace,
+                        "link": found.get("link") or item["link"],
+                        "observed_at": found.get("observed_at") or item["observed_at"],
+                    }
+                )
     stored = [t for t in wiring.store.threads(workspace, account) if t["resolution"] == "open"]
     evidence += [_stored_evidence(t) for t in stored]
     evidence = [e for e in evidence if e.get("outcome_key") and len(e["outcome_key"]) <= 120]
@@ -141,7 +216,11 @@ def reconcile(wiring, scope, live, now):
     if live:
         ok_sources = [r["source"] for r in report if r["status"] == "ok"]
         try:
-            for key in sorted(k for k, g in groups.items() if {i["kind"] for i in g} & followup.OUTCOME_ENDED and k in {t["outcome"] for t in stored}):
+            for key in sorted(
+                k
+                for k, g in groups.items()
+                if {i["kind"] for i in g} & followup.OUTCOME_ENDED and k in {t["outcome"] for t in stored}
+            ):
                 # Strong proof the OUTCOME ended: closed, and the same evidence never reopens it
                 proof = digest(json.dumps(sorted({i["link"] for i in groups[key]}) + ["closed"]))
                 shut = wiring.store.resolve(workspace, account, key, "closed", proof, now)
@@ -160,10 +239,28 @@ def reconcile(wiring, scope, live, now):
         except (FollowupRejected, FollowupStoreError) as error:
             failed = str(error)[:40]
             degraded = True
-    payload = {"component": COMPONENT, "state": "DEGRADED" if degraded else "PASS", "workspace": workspace, "account": account, "generated_at": now.isoformat(),
-               "last_accepted": max((r["last_accepted"] for r in report if r["last_accepted"]), default=None),
-               "counts": projection.counts, "threads": [{**t, "id": thread_id(workspace, account, t["id"]), "title": t["id"], "state": projection.states[t["id"]]} for t in projection.native], "review": projection.review, "closed": closed,
-               "sources": report, "provenance": {"store": "v7_followup", "readers": "lifeos.platform.followup_readers", "derived": "lifeos.inbox.followup.project", "write_error": failed}}
+    payload = {
+        "component": COMPONENT,
+        "state": "DEGRADED" if degraded else "PASS",
+        "workspace": workspace,
+        "account": account,
+        "generated_at": now.isoformat(),
+        "last_accepted": max((r["last_accepted"] for r in report if r["last_accepted"]), default=None),
+        "counts": projection.counts,
+        "threads": [
+            {**t, "id": thread_id(workspace, account, t["id"]), "title": t["id"], "state": projection.states[t["id"]]}
+            for t in projection.native
+        ],
+        "review": projection.review,
+        "closed": closed,
+        "sources": report,
+        "provenance": {
+            "store": "v7_followup",
+            "readers": "lifeos.platform.followup_readers",
+            "derived": "lifeos.inbox.followup.project",
+            "write_error": failed,
+        },
+    }
     return payload, counts
 
 
@@ -172,7 +269,8 @@ def deliver_loops(payloads, now, environ=None, deliver=None):
     if not switches.state("ACTION_INBOX_VIEW", env):
         return None
     if deliver is None:
-        from lifeos.inbox import followup_deliver                                  # noqa: PLC0415
+        from lifeos.inbox import followup_deliver  # noqa: PLC0415
+
         deliver = followup_deliver.deliver
     counts = deliver(payloads, now=now, environ=env)
     print("followup-inbox " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
@@ -184,7 +282,8 @@ def refresh_tiles(environ=None, refresh=None):
     if not switches.state("ACTION_INBOX_VIEW", env):
         return None
     if refresh is None:
-        from lifeos.inbox import agent_inbox_stage                                  # noqa: PLC0415
+        from lifeos.inbox import agent_inbox_stage  # noqa: PLC0415
+
         refresh = agent_inbox_stage.refresh
     return refresh(env)
 
@@ -192,12 +291,29 @@ def refresh_tiles(environ=None, refresh=None):
 def run(limit, live, wiring=None):
     """Returns counts only. No wiring: a no-op. Dry run: write nothing. One scope's failure never stops the other."""
     wiring = wiring or production_wiring(live=live)
-    totals = {"unwired": 0, "scopes": 0, "refused": 0, "published": 0, "written": 0, "unchanged": 0, "suppressed": 0, "closed": 0, "sources_ok": 0, "sources_degraded": 0, "threads": 0, "review": 0}
+    totals = {
+        "unwired": 0,
+        "scopes": 0,
+        "refused": 0,
+        "published": 0,
+        "written": 0,
+        "unchanged": 0,
+        "suppressed": 0,
+        "closed": 0,
+        "sources_ok": 0,
+        "sources_degraded": 0,
+        "threads": 0,
+        "review": 0,
+    }
     if wiring is None:
         totals["unwired"] = 1
         return totals
     now = wiring.clock()
-    allowed = [s for s in wiring.scopes if s.workspace in WORKSPACES and s.workspace not in UNRELEASED_WORKSPACES and not tgp_account(s.account)]
+    allowed = [
+        s
+        for s in wiring.scopes
+        if s.workspace in WORKSPACES and s.workspace not in UNRELEASED_WORKSPACES and not tgp_account(s.account)
+    ]
     totals["refused"] = len(wiring.scopes) - len(allowed)
 
     published = []
@@ -224,4 +340,14 @@ def run(limit, live, wiring=None):
     return isolate.record(totals, isolated)
 
 
-__all__ = ["Scope", "Wiring", "production_wiring", "deliver_loops", "refresh_tiles", "reconcile", "run", "observe", "tgp_account"]
+__all__ = [
+    "Scope",
+    "Wiring",
+    "production_wiring",
+    "deliver_loops",
+    "refresh_tiles",
+    "reconcile",
+    "run",
+    "observe",
+    "tgp_account",
+]

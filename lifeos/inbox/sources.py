@@ -4,6 +4,7 @@ A source has `.source .workspace .account .identity` and `.fetch(credential_ref)
 read callable (never a client), so no write is reachable; a test scans this file to keep it so. `open_reader` refuses
 while `LIVE_READS_ENABLED` is False.
 """
+
 from datetime import timedelta
 
 from lifeos.inbox.model import InboxError
@@ -26,7 +27,13 @@ def refuse_live(credential_ref):
 
 class _Source:
     def __init__(self, workspace, account, identity, open_reader=refuse_live, tz="America/Chicago"):
-        self.workspace, self.account, self.identity, self._open, self._tz = workspace, account, identity, open_reader, tz
+        self.workspace, self.account, self.identity, self._open, self._tz = (
+            workspace,
+            account,
+            identity,
+            open_reader,
+            tz,
+        )
 
     def fetch(self, credential_ref):
         out = []
@@ -56,8 +63,18 @@ class JiraSource(_Source):
     def _native(self, issue):
         fields = issue["fields"]
         who, url, status = fields.get("assignee") or {}, f"{self._base}/browse/{issue['key']}", fields["status"]["name"]
-        return {"key": issue["key"], "url": url, "summary": fields.get("summary"), "description": "", "assignee": who.get("accountId", ""), "status": status,
-                "updated": fields["updated"], "tz": self._tz, "due": fields.get("duedate"), "evidence": [url] if status == "Human UAT" else []}
+        return {
+            "key": issue["key"],
+            "url": url,
+            "summary": fields.get("summary"),
+            "description": "",
+            "assignee": who.get("accountId", ""),
+            "status": status,
+            "updated": fields["updated"],
+            "tz": self._tz,
+            "due": fields.get("duedate"),
+            "evidence": [url] if status == "Human UAT" else [],
+        }
 
 
 class CalendarSource(_Source):
@@ -75,14 +92,23 @@ class CalendarSource(_Source):
 
     def _native(self, event):
         start = event["start"]
-        return {"id": event["id"], "url": event["htmlLink"], "summary": event.get("summary"), "description": "", "status": event["status"], "updated": event["updated"],
-                "tz": start.get("timeZone") or self._tz, "start": start.get("dateTime") or start["date"]}
+        return {
+            "id": event["id"],
+            "url": event["htmlLink"],
+            "summary": event.get("summary"),
+            "description": "",
+            "status": event["status"],
+            "updated": event["updated"],
+            "tz": start.get("timeZone") or self._tz,
+            "start": start.get("dateTime") or start["date"],
+        }
 
 
 class TodoistSource(_Source):
     """Personal tasks from the approved projects only; `open_reader(credential_ref)` returns `() -> tasks`. The
     revision follows status and creation (no update time).
     """
+
     source = "todoist"
 
     def __init__(self, workspace, account, identity, projects, **kwargs):
@@ -104,8 +130,18 @@ class TodoistSource(_Source):
         if str(task["project_id"]) not in self._projects:
             return None
         due = task.get("due") or {}
-        return {"id": str(task["id"]), "url": task["url"], "content": task["content"], "description": "", "assignee": self.identity, "status": "completed" if task.get("is_completed") else "open",
-                "updated": task["created_at"], "tz": due.get("timezone") or self._tz, "due": due.get("datetime") or due.get("date"), "project_scope": "personal"}
+        return {
+            "id": str(task["id"]),
+            "url": task["url"],
+            "content": task["content"],
+            "description": "",
+            "assignee": self.identity,
+            "status": "completed" if task.get("is_completed") else "open",
+            "updated": task["created_at"],
+            "tz": due.get("timezone") or self._tz,
+            "due": due.get("datetime") or due.get("date"),
+            "project_scope": "personal",
+        }
 
 
 class AsanaSource(_Source):
@@ -113,6 +149,7 @@ class AsanaSource(_Source):
     only when every project it sits in is approved; an approved plus any other project (or none) is ambiguous and
     rejected.
     """
+
     source = "asana"
 
     def __init__(self, workspace, account, identity, projects, **kwargs):
@@ -141,5 +178,14 @@ class AsanaSource(_Source):
         if task.get("completed"):
             return None
         who = task.get("assignee") or {}
-        return {"gid": str(task["gid"]), "url": task["permalink_url"], "name": task["name"], "notes": "", "assignee": who.get("gid", ""), "status": "open", "updated": task["modified_at"],
-                "tz": self._tz, "due": task.get("due_at") or task.get("due_on")}
+        return {
+            "gid": str(task["gid"]),
+            "url": task["permalink_url"],
+            "name": task["name"],
+            "notes": "",
+            "assignee": who.get("gid", ""),
+            "status": "open",
+            "updated": task["modified_at"],
+            "tz": self._tz,
+            "due": task.get("due_at") or task.get("due_on"),
+        }

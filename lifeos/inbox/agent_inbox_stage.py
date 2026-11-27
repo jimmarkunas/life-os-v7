@@ -5,6 +5,7 @@ read counts, trash every test row, read counts again) or `recount` (write the fi
 with neither, the switch ACTION_INBOX_VIEW decides. A live run also needs INBOX_VIEW_CONFIRM=INBOX and --live;
 otherwise it is a dry run with no network. Output is counts and fixed reason words only.
 """
+
 import os
 from datetime import datetime, timezone
 
@@ -20,8 +21,17 @@ TESTS = (("proof-1", "Now", "Personal"), ("proof-2", "Today", "Bytalos"), ("proo
 
 def _items(now):
     stamp = now.strftime("%Y%m%d%H%M%S")
-    return [{"from": TEST_FROM, "subject": f"TEST only: inbox proof {n} (safe to ignore)", "urgency": urgency, "workspace": workspace, "key": f"{n}-{stamp}",
-             "details": "Test item written by the inbox proof; it is removed at the end of the run."} for n, urgency, workspace in TESTS], f"direct-{stamp}"
+    return [
+        {
+            "from": TEST_FROM,
+            "subject": f"TEST only: inbox proof {n} (safe to ignore)",
+            "urgency": urgency,
+            "workspace": workspace,
+            "key": f"{n}-{stamp}",
+            "details": "Test item written by the inbox proof; it is removed at the end of the run.",
+        }
+        for n, urgency, workspace in TESTS
+    ], f"direct-{stamp}"
 
 
 def _flat(prefix, counts):
@@ -40,8 +50,23 @@ def _proof(env, client, now):
                 raise InboxError(f"proof_send_{result['reason']}"[:60])
             keys.append(item["key"])
             out["sent"] = out.get("sent", 0) + 1
-        direct = agent_inbox.normalize({"from": TEST_FROM, "subject": "TEST only: direct Notion write (safe to ignore)", "urgency": "Today", "workspace": "Bytalos", "key": direct_key})
-        client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source}, "properties": agent_inbox.properties(direct)})
+        direct = agent_inbox.normalize(
+            {
+                "from": TEST_FROM,
+                "subject": "TEST only: direct Notion write (safe to ignore)",
+                "urgency": "Today",
+                "workspace": "Bytalos",
+                "key": direct_key,
+            }
+        )
+        client.call_once(
+            "POST",
+            "/pages",
+            {
+                "parent": {"type": "data_source_id", "data_source_id": source},
+                "properties": agent_inbox.properties(direct),
+            },
+        )
         keys.append(direct_key)
         out["direct"] = 1
         out.update(_flat("before", agent_inbox.counts(client, source)))
@@ -62,7 +87,11 @@ def run(limit, live, environ=None, client=None, clock=None):
         if not (live and (env.get("INBOX_VIEW_CONFIRM") or "").strip() == "INBOX"):
             return {"dry_run": 1}
         try:
-            return _proof(env, client, now) if mode == "proof" else agent_inbox.recount_page(client or send_to_jim._client(env))
+            return (
+                _proof(env, client, now)
+                if mode == "proof"
+                else agent_inbox.recount_page(client or send_to_jim._client(env))
+            )
         except NotionError as error:
             raise InboxError(f"inbox_notion_{str(error).lower()[:40]}") from None
     if not switches.state("ACTION_INBOX_VIEW", env):

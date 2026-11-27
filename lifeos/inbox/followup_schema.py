@@ -4,6 +4,7 @@
 which tables exist, whether the account may create and write them, and whether the largest key (computed from the DDL)
 fits the row format. It creates nothing; the apply is `followup_apply`.
 """
+
 import re
 
 from lifeos.inbox import followup_store
@@ -16,7 +17,6 @@ _COLUMN = re.compile(r"(\w+)\s+(CHAR|VARCHAR)\((\d+)\)")
 _KEY = re.compile(r"\bKEY\s*(?:\w+\s*)?\(([^)]*)\)")
 
 
-
 def plan():
     return list(followup_store.SCHEMA)
 
@@ -26,7 +26,7 @@ def _table(statement):
 
 
 def _parts(statement):
-    body = statement[statement.index("(") + 1: statement.rindex(")")]
+    body = statement[statement.index("(") + 1 : statement.rindex(")")]
     parts, depth, current = [], 0, ""
     for char in body:
         depth += (char == "(") - (char == ")")
@@ -71,28 +71,37 @@ def _grants(cursor):
 
 def check(cursor):
     largest = max(key_bytes().values())
-    out = {"server": None, "version": None, "row_format": None, "tables_present": [], "grants": None, "largest_key_bytes": largest, "key_limit_bytes": None, "keys_fit": None}
+    out = {
+        "server": None,
+        "version": None,
+        "row_format": None,
+        "tables_present": [],
+        "grants": None,
+        "largest_key_bytes": largest,
+        "key_limit_bytes": None,
+        "keys_fit": None,
+    }
     try:
         version = str(_one(cursor, "SELECT VERSION()") or "")
         out["server"] = "mariadb" if "mariadb" in version.lower() else "mysql"
         found = re.match(r"(\d+)\.(\d+)", version)
         out["version"] = f"{found.group(1)}.{found.group(2)}" if found else None
-    except Exception:                                                # noqa: BLE001  a refused statement is a fixed None
+    except Exception:  # noqa: BLE001  a refused statement is a fixed None
         pass
     try:
         out["row_format"] = str(_one(cursor, "SELECT @@innodb_default_row_format")).lower()
         out["key_limit_bytes"] = KEY_LIMITS.get(out["row_format"])
         out["keys_fit"] = None if out["key_limit_bytes"] is None else largest <= out["key_limit_bytes"]
-    except Exception:                                                # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     try:
         cursor.execute("SHOW TABLES LIKE 'v7\\_followup\\_%'")
         out["tables_present"] = sorted(str(row[0]) for row in cursor.fetchall() if str(row[0]) in TABLES)
-    except Exception:                                                # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     try:
         out["grants"] = _grants(cursor)
-    except Exception:                                                # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     out["ready"] = bool(out["keys_fit"] and out["grants"] and all(out["grants"].values()))
     return out

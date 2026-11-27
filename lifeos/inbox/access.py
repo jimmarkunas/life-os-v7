@@ -5,6 +5,7 @@ grant's credential NAME. A refused request has a receipt and no read; if the rec
 read. A repeated request id is a replay and never reads again, even after a restart. Receipts hold ids and fixed words
 only.
 """
+
 from dataclasses import dataclass
 
 from lifeos.inbox import policy
@@ -26,8 +27,15 @@ def read_source(ledger, principal, source, now, request_id):
     """
     grant, reason = policy.read_grant(principal, source.source, source.workspace, source.account, now)
     decision = "allow" if grant else "deny"
-    fields = {"request_id": request_id, "principal_id": principal.principal_id, "source": source.source, "workspace": source.workspace, "account": source.account, "decision": decision,
-              "reason": "ok" if grant else reason}
+    fields = {
+        "request_id": request_id,
+        "principal_id": principal.principal_id,
+        "source": source.source,
+        "workspace": source.workspace,
+        "account": source.account,
+        "decision": decision,
+        "reason": "ok" if grant else reason,
+    }
     if not ledger.record_access(fields, now):
         return Access(decision, "replayed", replayed=True)
     if grant is None:

@@ -3,6 +3,7 @@
 Each (source, workspace, account) is read on its own with only its own grant's credential name and fails on its own,
 so one broken connector never hides the others. No credential, grant, memory scope or source identity is ever merged.
 """
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -44,7 +45,15 @@ def build_inbox(sources, principal, now):
         try:
             raws = list(src.fetch(grant.credential_ref))
         except Exception as error:  # noqa: BLE001 - a connector failure is shown as its type (or an InboxError's fixed reason word), never its message
-            health.append(SourceHealth(src.source, src.workspace, src.account, "unavailable", error.reason if isinstance(error, InboxError) else type(error).__name__.lower()))
+            health.append(
+                SourceHealth(
+                    src.source,
+                    src.workspace,
+                    src.account,
+                    "unavailable",
+                    error.reason if isinstance(error, InboxError) else type(error).__name__.lower(),
+                )
+            )
             continue
         kept, rejected = [], 0
         for raw in raws:
@@ -53,7 +62,16 @@ def build_inbox(sources, principal, now):
             except (InboxError, KeyError, ValueError, TypeError):
                 rejected += 1
         records.extend(kept)
-        health.append(SourceHealth(src.source, src.workspace, src.account, "degraded" if rejected else "ok", "records_rejected" if rejected else "ok", rejected))
+        health.append(
+            SourceHealth(
+                src.source,
+                src.workspace,
+                src.account,
+                "degraded" if rejected else "ok",
+                "records_rejected" if rejected else "ok",
+                rejected,
+            )
+        )
     records.sort(key=lambda r: (_ORDER[r.presentation], r.due or _FAR, r.workspace, r.source, r.record_id))
     return Inbox(tuple(records), tuple(health))
 

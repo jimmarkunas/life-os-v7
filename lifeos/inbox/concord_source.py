@@ -13,6 +13,7 @@ needs approval AND a resume request AND the requesting agent live in `concord wh
 `open_reader(credential_ref)` returns `() -> (messages, live_agent_ids or None)` and refuses while LIVE_READS_ENABLED
 is False. No write is reachable; a test scans the file.
 """
+
 import json
 
 from lifeos.inbox.model import InboxError
@@ -35,16 +36,24 @@ def _envelope(message):
 
 
 def _valid_message(m):
-    return isinstance(m, dict) and all(isinstance(m.get(k), str) for k in ("messageId", "senderAgentId", "recipientAgentId", "content", "createdAt", "status"))
+    return isinstance(m, dict) and all(
+        isinstance(m.get(k), str)
+        for k in ("messageId", "senderAgentId", "recipientAgentId", "content", "createdAt", "status")
+    )
 
 
 class ConcordSource(_Source):
     """One repository's Concord store for ONE workspace and account; envelopes naming another workspace are dropped."""
+
     source = "concord"
 
     def _read(self, read):
         messages, live = read()
-        if not isinstance(messages, list) or len(messages) > MAX_MESSAGES or not all(_valid_message(m) for m in messages):
+        if (
+            not isinstance(messages, list)
+            or len(messages) > MAX_MESSAGES
+            or not all(_valid_message(m) for m in messages)
+        ):
             raise InboxError("listing_incomplete")  # a partial or malformed answer is an error, never a smaller list
         self._live = frozenset(live) if isinstance(live, (list, tuple, set, frozenset)) else None
         return self._requests(messages)
@@ -54,7 +63,12 @@ class ConcordSource(_Source):
         decisions = {}
         for m in sorted(messages, key=lambda m: (m["createdAt"], m["messageId"])):
             env = _envelope(m)
-            if env and env.get("kind") == "approval_decision" and env.get("decision") in DECISIONS and m["senderAgentId"].startswith(HUMAN_PREFIX):
+            if (
+                env
+                and env.get("kind") == "approval_decision"
+                and env.get("decision") in DECISIONS
+                and m["senderAgentId"].startswith(HUMAN_PREFIX)
+            ):
                 parent = m.get("replyToMessageId")
                 if parent in by_id and by_id[parent]["senderAgentId"] != m["senderAgentId"]:
                     decisions[parent] = (m, env["decision"])
@@ -69,10 +83,26 @@ class ConcordSource(_Source):
         message, env, decision = item
         status = DECISIONS[decision[1]] if decision else "pending_approval"
         approved = status == "approved"
-        eligible = approved and env.get("resume_after_approval") is True and self._live is not None and message["senderAgentId"] in self._live
+        eligible = (
+            approved
+            and env.get("resume_after_approval") is True
+            and self._live is not None
+            and message["senderAgentId"] in self._live
+        )
         updated = (decision[0] if decision else message)["createdAt"]
-        return {"id": message["messageId"], "url": env["source_url"], "title": env.get("title"), "body": "", "agent": message["senderAgentId"], "status": status, "updated": updated,
-                "tz": "UTC", "evidence": list(env.get("evidence") or []) if status == "pending_approval" else [], "correlation_id": env.get("correlation_id"), "resume_eligible": eligible}
+        return {
+            "id": message["messageId"],
+            "url": env["source_url"],
+            "title": env.get("title"),
+            "body": "",
+            "agent": message["senderAgentId"],
+            "status": status,
+            "updated": updated,
+            "tz": "UTC",
+            "evidence": list(env.get("evidence") or []) if status == "pending_approval" else [],
+            "correlation_id": env.get("correlation_id"),
+            "resume_eligible": eligible,
+        }
 
 
 def concord_source(workspace, account, identity, open_reader=refuse_live):

@@ -6,6 +6,7 @@ create a loop; mail, calendar, open Jira tickets and plain Todoist tasks are obs
 marker is the outcome and the source's due date is the checkpoint (none: a suggestion, never counted). A loop closes
 only through the store's strong-proof path (`outcome_ended`), never because a task was completed.
 """
+
 import re
 
 ELIGIBLE = frozenset({"todoist", "jira", "notion", "interview_os"})
@@ -34,12 +35,21 @@ def classify(item):
         found = pattern.match(title)
         if not found:
             continue
-        outcome = outcome_of(title[found.end():])
+        outcome = outcome_of(title[found.end() :])
         if outcome is None:
             return None
         due = item.get("due")
-        return {"kind": kind, "outcome_key": outcome, "owner": owner, "who": "", "title": outcome, "link": item["link"], "checkpoint": due or None,
-                "checkpoint_source": "source" if due else "suggested", "observed_at": item["observed_at"]}
+        return {
+            "kind": kind,
+            "outcome_key": outcome,
+            "owner": owner,
+            "who": "",
+            "title": outcome,
+            "link": item["link"],
+            "checkpoint": due or None,
+            "checkpoint_source": "source" if due else "suggested",
+            "observed_at": item["observed_at"],
+        }
     return None
 
 
