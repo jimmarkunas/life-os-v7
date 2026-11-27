@@ -1,4 +1,4 @@
-"""LIFE-10 §2: the read-only sandbox access check. A fake client records every call; nothing real is reached."""
+"""§2: the read-only sandbox access check."""
 import contextlib
 import io
 import json
@@ -17,7 +17,7 @@ def refused(code, detail=""):
 
 
 class Fake:
-    """Answers the three reads; `refuse` maps a path prefix to the error that read raises. Any write method fails the test."""
+    """Answers the three reads"""
     def __init__(self, refuse=None, rows=1):
         self.refuse, self.rows, self.calls = refuse or {}, rows, []
 

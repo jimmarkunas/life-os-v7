@@ -1,4 +1,4 @@
-"""D202: the employer-board pass. The registry built from the seed and extras, the seed builder, and one bounded run over an in-memory repo."""
+"""the employer-board pass."""
 from datetime import datetime, timedelta
 import json
 import tempfile
@@ -29,8 +29,8 @@ class Registry(unittest.TestCase):
         rows = registry.boards()
         by = {(r["kind"], r["slug"]): r for r in rows}
         self.assertEqual(by[("ashby", "surge-ai")]["company"], "Surge AI")
-        self.assertEqual(by[("greenhouse", "keepersecurity")]["company"], "Keeper Security")     # the extra's name wins over the seed's slug
-        self.assertNotIn(("greenhouse", "affirm"), by)                                          # a priority board (us_remote.json) is read by the web pass only
+        self.assertEqual(by[("greenhouse", "keepersecurity")]["company"], "Keeper Security")  # the extra's name wins over the seed's slug
+        self.assertNotIn(("greenhouse", "affirm"), by)
         self.assertGreater(len(rows), 10_000)
         self.assertEqual(len({r["id"] for r in rows}), len(rows))
         self.assertTrue(all(len("web:" + r["id"]) <= 40 for r in rows))
@@ -50,24 +50,25 @@ class Registry(unittest.TestCase):
 
 
 class Screen(unittest.TestCase):
-    """A seed board is an unknown employer: a job is stored only when its title is in the family and remote is SHOWN (place, title or an
-    explicit description statement). Every other job gets a named reason."""
+    """A seed board is an unknown employer: a job is stored only when its title is in the family and remote is SHOWN
+    (place, title or an explicit.
+    """
 
     def test_each_job_gets_its_reason(self):
         remote_jd = "About the role. This is a fully remote position open to candidates across the US."
         cases = [("Senior Technical Program Manager", "Remote, US", None, "kept_remote_in_location"),
-                 ("Program Manager", "Remote", None, "kept_remote_in_location_place_unresolved"),          # M5: remote alone names no market
+                 ("Program Manager", "Remote", None, "kept_remote_in_location_place_unresolved"),  # M5: remote alone names no market
                  ("Senior Project Manager", "Austin/Remote within the US", None, "kept_remote_in_location"),
                  ("Technical Program Manager", "New York, NY", remote_jd, "kept_remote_in_description"),
                  ("Technical Program Manager", "United States", remote_jd, "kept_remote_in_description"),
-                 ("TPM", "United States", "Lead programs across teams.", "kept_remote_assumed"),      # D204: nothing required: presumed, labelled so
+                 ("TPM", "United States", "Lead programs across teams.", "kept_remote_assumed"),  # nothing required: presumed, labelled so
                  ("Technical Program Manager", "Austin, Texas, United States", None, "kept_remote_assumed"),
-                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed"),                 # M5: a US city (lanes.US_PLACES)
-                 ("Technical Program Manager", "RWC HQ", None, "kept_remote_assumed_place_unresolved"),          # names nothing known: unresolved
-                 ("Program Manager", "Espoo", None, "non_us"), ("Program Manager", "Abu Dhabi", None, "non_us"),   # foreign places seen in the M4 sample
+                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed"),  # M5: a US city (lanes.US_PLACES)
+                 ("Technical Program Manager", "RWC HQ", None, "kept_remote_assumed_place_unresolved"),  # names nothing known: unresolved
+                 ("Program Manager", "Espoo", None, "non_us"), ("Program Manager", "Abu Dhabi", None, "non_us"),  # foreign places seen in the M4 sample
                  ("Program Manager", "Calgary", None, "non_us"), ("Program Manager", "Wrocław", None, "non_us"),
                  ("Program Manager", "UT - Cottonwood Heights; FL - Jacksonville", None, "kept_remote_assumed"),
-                 ("Program Manager", "Hybrid - Remote, US", None, "kept_remote_in_location"),                 # remote offered alongside hybrid
+                 ("Program Manager", "Hybrid - Remote, US", None, "kept_remote_in_location"),  # remote offered alongside hybrid
                  ("Program Manager", "New York, NY", "This is a hybrid role: 3 days a week in our office.", "not_remote_hybrid"),
                  ("Program Manager", "Seattle, WA", "There is no onsite requirement for this role.", "kept_remote_assumed"),
                  ("Program Manager", "Algiers, Algeria", None, "non_us"), ("Program Manager", "Remote | North America or Europe", None, "kept_remote_in_location_place_unresolved"),
@@ -82,12 +83,12 @@ class Screen(unittest.TestCase):
 
 
 SOURCES = [{"id": f"gh-b{i}", "company": f"B{i}", "tier": "employer", "kind": "greenhouse", "status": "ready", "enabled": True, "slug": f"b{i}",
-            "refresh_hours": 24, "hot_hours": 6, "quiet": True, "extra": True} for i in range(3)]       # curated extras: the hourly pass reads them from their first read (D217)
+            "refresh_hours": 24, "hot_hours": 6, "quiet": True, "extra": True} for i in range(3)]
 SEED = [{**SOURCES[0], "id": f"gh-s{i}", "slug": f"s{i}", "extra": False} for i in range(5)]
 
 
 class DeadBoards(unittest.TestCase):
-    """Oct 25 2026: a board that keeps answering not_found is listed by id (counts only) for a skip-list review; nothing is skipped by the pass itself."""
+    """nothing is skipped by the pass itself."""
 
     def pass_at(self, repo, hours, reason, sources):
         def lister_fn(source):
@@ -97,7 +98,7 @@ class DeadBoards(unittest.TestCase):
     def test_a_board_is_listed_only_after_repeated_not_found(self):
         repo, sources = MemRepo(), SEED
         listed = []
-        for n in range(1, 8):                                                   # one read a day: the retry timer is capped at the 24 h refresh
+        for n in range(1, 8):
             out = self.pass_at(repo, 24 * n * 3, "not_found", sources) if n > 1 else None
             if n == 1:
                 boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.FAILED, reason="not_found") if s["id"] == "gh-s1" else lister.Listing(lister.COMPLETE, []),
@@ -105,30 +106,29 @@ class DeadBoards(unittest.TestCase):
                 continue
             listed.append((repo.state["gh-s1"]["failures"], out["dead_ids"]))
         self.assertEqual([(f, ids) for f, ids in listed if ids], [(limits.BOARDS_DEAD_AFTER, ["gh-s1"])])
-        self.assertTrue(all(ids == [] for f, ids in listed if f < limits.BOARDS_DEAD_AFTER))        # not before BOARDS_DEAD_AFTER failures in a row
-        self.assertEqual(sum(1 for _, ids in listed if ids), 1)                                       # LIFE-893: listed on the fifth failure; its retry is then weekly, so the daily passes after it do not read it again
+        self.assertTrue(all(ids == [] for f, ids in listed if f < limits.BOARDS_DEAD_AFTER))  # not before BOARDS_DEAD_AFTER failures in a row
+        self.assertEqual(sum(1 for _, ids in listed if ids), 1)  # listed on the fifth failure
 
     def test_other_failures_and_healthy_boards_are_never_listed(self):
         repo = MemRepo()
         boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
         repo.state["gh-s1"]["failures"] = 9
-        out = self.pass_at(repo, 24 * 3, "http_500", SEED)                                           # a long run of 500s, not not_found
+        out = self.pass_at(repo, 24 * 3, "http_500", SEED)  # a long run of 500s, not not_found
         self.assertEqual((out["failed"], out["dead_ids"]), (1, []))
 
     def test_the_list_is_capped_and_the_tick_no_longer_reads_boards(self):
         from lifeos.jobs import tick
         self.assertEqual(limits.BOARDS_DEAD_IDS_MAX, 600)
-        self.assertNotIn("boards", [s.name for s in tick.PLAN])                                      # LIFE-854: the four board windows (boards.yml) own the stage; the tick keeps the backfill
+        self.assertNotIn("boards", [s.name for s in tick.PLAN])  # the four board windows (boards.yml) own the stage
         self.assertIn("boards-backfill", [s.name for s in tick.PLAN])
 
 
 class StoppedPass(unittest.TestCase):
-    """Oct 25 2026 (#537 review): a pass stopped at its tick budget keeps every board it already read, and reads nothing after it is stopped."""
     def test_boards_read_before_the_stop_are_committed_and_the_rest_stay_due(self):
         from lifeos.jobs import tick
         repo = MemRepo()
 
-        def stop_at_third(pool, fn, items):                                        # the pool answers two boards, then the tick's alarm fires in the main thread
+        def stop_at_third(pool, fn, items):
             for n, item in enumerate(items):
                 if n == 2:
                     raise tick.StageTimeout()
@@ -137,18 +137,18 @@ class StoppedPass(unittest.TestCase):
         with mock.patch.object(run.ThreadPoolExecutor, "map", stop_at_third):
             with self.assertRaises(tick.StageTimeout):
                 boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
-        self.assertEqual(sorted(repo.state), ["gh-s0", "gh-s1"])                    # committed as they arrived, not lost with the stop
+        self.assertEqual(sorted(repo.state), ["gh-s0", "gh-s1"])  # committed as they arrived, not lost with the stop
 
     def test_a_window_has_time_for_its_cap_at_a_slow_boards_pace(self):
         from lifeos.platform import boards_window as bw
         for mode, cap in (("window", limits.BOARDS_PER_RUN), ("catchup", limits.BOARDS_CATCHUP_PER_RUN)):
             got = bw.plan(datetime(2026, 11, 22, 7), mode, "")
             self.assertEqual(got["limit"], cap)
-            self.assertLessEqual(cap * 0.4, got["deadline_minutes"] * 60)                            # Nov 22 2026: 1,036 boards took 172 s over one held store connection, 0.17 s a board; 0.4 s a board is the margin (it was 0.55 s a board with a connection per save)
+            self.assertLessEqual(cap * 0.4, got["deadline_minutes"] * 60)
 
 
 class Backfill(unittest.TestCase):
-    """D217: a seed board's first read belongs to the hibernatable backfill; the hourly pass only re-reads boards read before."""
+    """a seed board's first read belongs to the hibernatable backfill"""
     ON = {"BOARDS_BACKFILL": "on"}
 
     def read(self, seen):
@@ -160,7 +160,7 @@ class Backfill(unittest.TestCase):
     def test_off_by_default_it_reads_nothing_and_touches_no_store(self):
         seen = []
         for environ in ({}, {"BOARDS_BACKFILL": "off"}, {"BOARDS_BACKFILL": "yes"}):
-            got = boards.backfill(450, True, NOW, self.read(seen), repo=None, sources=SEED, environ=environ)     # repo None: a store session would fail here
+            got = boards.backfill(450, True, NOW, self.read(seen), repo=None, sources=SEED, environ=environ)  # repo None: a store session would fail here
             self.assertEqual(got, {"pass": "employer boards backfill", "backfill": "off"})
         self.assertEqual(seen, [])
 
@@ -172,14 +172,14 @@ class Backfill(unittest.TestCase):
     def test_it_drains_in_id_order_resumes_where_it_stopped_and_hands_boards_to_the_hourly_pass(self):
         seen, repo = [], MemRepo()
         first = boards.backfill(2, True, NOW, self.read(seen), repo, SEED, self.ON)
-        self.assertEqual(sorted(seen), ["gh-s0", "gh-s1"])                                      # the first two in id order (read in parallel)
+        self.assertEqual(sorted(seen), ["gh-s0", "gh-s1"])  # the first two in id order (read in parallel)
         self.assertEqual({k: first[k] for k in ("read", "errors", "remaining", "backfill")}, {"read": 2, "errors": 1, "remaining": 3, "backfill": "on"})
         rest = boards.backfill(450, True, NOW, self.read(seen), repo, SEED, self.ON)
-        self.assertEqual(sorted(seen[2:]), ["gh-s2", "gh-s3", "gh-s4"])                   # nothing read twice
+        self.assertEqual(sorted(seen[2:]), ["gh-s2", "gh-s3", "gh-s4"])  # nothing read twice
         self.assertEqual((rest["remaining"], rest["backfill"]), (0, "drained"))
         self.assertEqual(boards.backfill(450, True, NOW, self.read(seen), repo, SEED, self.ON)["read"], 0)
         later = boards.run(600, True, NOW + timedelta(days=2), self.read(seen), repo, SEED)
-        self.assertEqual(later["due"], 5)                                                  # the failed one is retried by the hourly pass too
+        self.assertEqual(later["due"], 5)  # the failed one is retried by the hourly pass too
         self.assertEqual(sorted(seen[5:]), [s["id"] for s in SEED])
 
     def test_a_dry_run_writes_nothing_and_reports_the_whole_backlog(self):
@@ -188,20 +188,19 @@ class Backfill(unittest.TestCase):
         self.assertEqual((got["read"], got["remaining"], repo.state), (2, 5, {}))
 
     def test_one_tick_reads_a_forced_known_board_once_and_still_drains_the_never_read_ones(self):
-        """TL gate on 9c366e5: known / unread is classified against the persisted state; forcing only overrides the due time. Both stages of the real
-        tick plan run in one tick with WEB_FORCE naming a board read before."""
+        """TL gate on 9c366e5: known / unread is classified against the persisted state"""
         from lifeos.jobs import tick
         seen, repo = [], MemRepo()
-        boards.backfill(450, True, NOW, self.read(seen), repo, SEED[:3], self.ON)               # gh-s0..s2 read before: known, not due for a day
+        boards.backfill(450, True, NOW, self.read(seen), repo, SEED[:3], self.ON)  # gh-s0..s2 read before: known, not due for a day
         del seen[:]
-        steps = (tick.Step("boards", 600, 600, bulk=True), next(s for s in tick.PLAN if s.name == "boards-backfill"))     # the plan has only the backfill since LIFE-854: the hourly pass is a stage a plan may still run
+        steps = (tick.Step("boards", 600, 600, bulk=True), next(s for s in tick.PLAN if s.name == "boards-backfill"))
         stages = {"boards": lambda limit, live: boards.run(limit, live, NOW + timedelta(hours=1), self.read(seen), repo, SEED),
                   "boards-backfill": lambda limit, live: boards.backfill(limit, live, NOW + timedelta(hours=1), self.read(seen), repo, SEED, self.ON)}
         with mock.patch.dict("os.environ", {"WEB_FORCE": "board:gh-s2"}):
             out = tick.tick(True, plan=steps, stages=stages)
         self.assertEqual(out, {"boards": "ok", "boards-backfill": "ok"})
-        self.assertEqual(sorted(seen[:2]), ["gh-s1", "gh-s2"])           # hourly: the forced known board and the failed one's 1 h retry
-        self.assertEqual(sorted(seen[2:]), ["gh-s3", "gh-s4"])           # backfill: only the never-read backlog
+        self.assertEqual(sorted(seen[:2]), ["gh-s1", "gh-s2"])
+        self.assertEqual(sorted(seen[2:]), ["gh-s3", "gh-s4"])  # backfill: only the never-read backlog
         self.assertEqual(seen.count("gh-s2"), 1)
         self.assertEqual(boards.backfill(450, False, NOW, self.read(seen), repo, SEED, self.ON)["remaining"], 0)
 
@@ -215,7 +214,7 @@ class OneRun(unittest.TestCase):
         got = boards.run(600, True, NOW, lambda s: listings[s["slug"]], repo, SOURCES)
         self.assertEqual((got["complete"], got["admit"], got["pass"]), (3, 1, "employer boards"))
         self.assertEqual(got["screen"], {"kept_remote_in_location": 1, "title_other_profession_engineer": 1, "title_other_profession_account_executive": 1, "non_us": 1})
-        self.assertEqual(repo.items_by["gh-b0"], {"1": repo.items_by["gh-b0"]["1"]})       # the engineer and the London role were never stored
+        self.assertEqual(repo.items_by["gh-b0"], {"1": repo.items_by["gh-b0"]["1"]})  # the engineer and the London role were never stored
         self.assertEqual(repo.items_by.get("gh-b1", {}), {})
         admitted = [o for o, _ in repo.commits if o.admit][0].admit[0]
         self.assertEqual(admitted["company"], "Board Zero Inc")
@@ -226,7 +225,7 @@ class OneRun(unittest.TestCase):
         repo = MemRepo()
         boards.run(600, True, NOW, lambda s: listings[s["slug"]], repo, SOURCES)
         hot, cold = repo.state["gh-b0"]["due_at"], repo.state["gh-b1"]["due_at"]
-        self.assertTrue(NOW + timedelta(hours=3) <= hot < NOW + timedelta(hours=9))          # D216: the board's fixed phase, at least half a period away
+        self.assertTrue(NOW + timedelta(hours=3) <= hot < NOW + timedelta(hours=9))
         self.assertTrue(NOW + timedelta(hours=12) <= cold < NOW + timedelta(hours=36))
         self.assertLess(hot, cold)
 
@@ -241,7 +240,7 @@ class OneRun(unittest.TestCase):
         got = [guard(s).reason for s in many]
         self.assertEqual(len(calls), 3)
         self.assertEqual(got, ["rate_limited_429"] * 3 + ["skipped_after_rate_limit_429"] * 3)
-        self.assertEqual(guard({**SOURCES[0], "kind": "ashby"}).reason, "rate_limited_429")       # another ATS is still read
+        self.assertEqual(guard({**SOURCES[0], "kind": "ashby"}).reason, "rate_limited_429")  # another ATS is still read
 
     def test_the_run_is_capped_by_the_boards_limit_not_the_priority_one(self):
         many = [{**SOURCES[0], "id": f"gh-d{i:02d}", "slug": f"d{i}"} for i in range(limits.WEB_BOARDS_PER_RUN + 5)]
@@ -298,7 +297,9 @@ class QuietRunRow(unittest.TestCase):
 
 
 class HeldConnection(unittest.TestCase):
-    """LIFE-854: a board pass reuses ONE store connection (a new one through the tunnel costs ~0.5 s, and the pass made one per board). Outside a pass every use still opens its own."""
+    """a board pass reuses ONE store connection (a new one through the tunnel costs ~0.5 s, and the pass made one per
+    board).
+    """
 
     class Cur:
         def __enter__(self):
@@ -390,7 +391,9 @@ class HeldConnection(unittest.TestCase):
 
 
 class TouchInChunks(unittest.TestCase):
-    """LIFE-677: touching a board's unchanged postings is one statement per 500 ids, not one per posting (each statement is a round trip through the store tunnel)."""
+    """touching a board's unchanged postings is one statement per 500 ids, not one per posting (each statement is a round
+    trip through the store tunnel).
+    """
 
     def test_twelve_hundred_unchanged_postings_are_three_statements_with_every_id_once(self):
         sent = []
@@ -404,7 +407,7 @@ class TouchInChunks(unittest.TestCase):
         self.assertEqual([i for _, a in sent for i in a[2:]], ids)
         self.assertTrue(all(sql.count("%s") == len(a) for sql, a in sent))
         run.update_in_chunks(Cur(), "UPDATE x SET y=%s WHERE z", (1,), [])
-        self.assertEqual(len(sent), 3)                                           # no ids: no statement
+        self.assertEqual(len(sent), 3)  # no ids: no statement
 
     def test_the_same_rows_are_touched_on_a_real_engine(self):
         from unittest import mock
@@ -418,12 +421,11 @@ class TouchInChunks(unittest.TestCase):
             later = NOW + timedelta(days=1)
             boards.run(600, True, later, lambda s: lister.Listing(lister.COMPLETE, full.jobs[:2] + [job(3, "Program Manager", "London, UK")]), None, board)
         self.assertTrue(spy.called)
-        self.assertEqual({str(v)[:19] for v in seen().values()}, {str(later)[:19]})       # the two untouched postings were touched by the chunked UPDATE, the changed one by its insert
+        self.assertEqual({str(v)[:19] for v in seen().values()}, {str(later)[:19]})
 
 
 class StillListedIsNotRemoved(unittest.TestCase):
-    """Production-shaped (the real SqlRepo statements over the in-memory Jobs store): a stored job that the screen no longer keeps while the
-    employer still lists it stays CURRENT; only a job gone from the complete listing is REMOVED."""
+    """only a job gone from the complete listing is REMOVED."""
 
     def test_a_classification_change_never_masquerades_as_a_removal(self):
         from unittest import mock
@@ -431,8 +433,8 @@ class StillListedIsNotRemoved(unittest.TestCase):
         db = JobsDB()
         board = [{**SOURCES[0], "id": "gh-still", "slug": "still"}]
         listings = [lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager"), job(2, "Program Manager")]),
-                    lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager", "London, UK"), job(2, "Program Manager")]),    # job 1 still listed, now screened out (non_us)
-                    lister.Listing(lister.COMPLETE, [job(2, "Program Manager")])]                                                  # job 1 gone from the board
+                    lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager", "London, UK"), job(2, "Program Manager")]),  # job 1 still listed, now screened out (non_us)
+                    lister.Listing(lister.COMPLETE, [job(2, "Program Manager")])]  # job 1 gone from the board
         state = lambda: dict(db.raw.execute("SELECT provider_job_id, state FROM v7_source_items WHERE source_id='gh-still'").fetchall())
         with mock.patch.object(run.store, "connect", return_value=db), mock.patch.object(run.store, "ensure_schema"):
             got = [boards.run(600, True, NOW + timedelta(days=d), lambda s, l=l: l, None, board) for d, l in enumerate(listings)]
@@ -441,8 +443,7 @@ class StillListedIsNotRemoved(unittest.TestCase):
 
 
 class ChangedDescription(unittest.TestCase):
-    """LIFE-902 (production-shaped: the real SqlRepo statements over the in-memory Jobs store): a stored board job whose description changed on the board gets its stored description rewritten, once, and
-    the Fit stage's own rule (a stored fingerprint that no longer matches its score) then re-scores it; an unchanged posting costs nothing; no status, link or Notion field is ever touched."""
+    """an unchanged posting costs nothing"""
     BODY = ("We are hiring a Technical Program Manager to lead cross-functional programs across engineering, product and operations. "
             "You will own roadmaps, manage dependencies, run planning cycles and report to executives. Requirements: 7 years of program management experience, "
             "strong communication, experience with cloud platforms and agile delivery. This is a fully remote role open to candidates in the United States. ")
@@ -463,7 +464,7 @@ class ChangedDescription(unittest.TestCase):
         from tests.jobs.fakes_jobsdb import JobsDB
         db = JobsDB()
         first = self.pass_(db, 0, self.BODY)
-        self.assertEqual(first["jd_reread"], 0)                                                   # a new job is enriched by the existing path, not counted as a re-read
+        self.assertEqual(first["jd_reread"], 0)
         (job_id, status, fp1), = self.stored(db)
         again = self.pass_(db, 2, self.BODY)
         self.assertEqual((again["jd_reread"], again["fit_rescore_due"]), (0, 0))
@@ -471,7 +472,7 @@ class ChangedDescription(unittest.TestCase):
         self.assertEqual((changed["jd_reread"], changed["fit_rescore_due"], changed["changed"]), (1, 1, 1))
         (_, status2, fp2), = self.stored(db)
         self.assertNotEqual(fp1, fp2)
-        self.assertEqual(status2, status)                                                         # no status is written by the refresh
+        self.assertEqual(status2, status)  # no status is written by the refresh
 
     def test_the_fit_stage_picks_the_job_up_because_its_stored_fingerprint_no_longer_matches_its_score(self):
         from tests.jobs.fakes_jobsdb import JobsDB
@@ -517,14 +518,13 @@ class ChangedDescription(unittest.TestCase):
 
 
 class MissedJobs(unittest.TestCase):
-    """The review's real cases (Oct 17), each as its employer board listed it: title, place and the work-mode sentence of its description."""
 
     def screen(self, title, where, text=None):
         return boards.screen({"title": title, "location": where, "posted": None, "content": text})
 
     def test_the_named_vacancies_are_kept(self):
         dave = ("Dave is building a better banking experience. " * 160 + "As a virtual-first company, team members can live and work anywhere in the "
-                "United States, except Hawaii. " + "Benefits. " * 20 + "#LI-REMOTE")                  # the tag ends a 7,900-character description
+                "United States, except Hawaii. " + "Benefits. " * 20 + "#LI-REMOTE")  # the tag ends a 7,900-character description
         spruce = "Technical Program Manager (TPM) (Remote but must be based in the continental US; Mountain/Central time zone preferred). We build identity software."
         cases = [("Dave", "Lead Technical Program Manager", "United States", dave, "kept_remote_in_description"),
                  ("SpruceID", "Technical Program Manager (TPM)", "United States", spruce, "kept_remote_in_description"),
@@ -543,7 +543,7 @@ class MissedJobs(unittest.TestCase):
         from lifeos.jobs import lanes
         self.assertEqual(lanes.work_mode_for_fit("United States", "Technical Program Manager (TPM)", "(Remote but must be based in the continental US)"), "remote")
         self.assertEqual(lanes.work_mode_for_fit("United States", "Lead Technical Program Manager", "x " * 4000 + "#LI-REMOTE"), "remote")
-        self.assertEqual(lanes.detect_work_mode("United States", "Program Manager", "About us. #LI-Hybrid"), "hybrid")      # the tag is read for every mode
+        self.assertEqual(lanes.detect_work_mode("United States", "Program Manager", "About us. #LI-Hybrid"), "hybrid")  # the tag is read for every mode
 
     def test_the_review_sample_roles_get_the_right_verdict(self):
         cases = [("Principal Product Manager", "strong"), ("Sr. Product Manager - Mortgage Lending Technology", "strong"), ("Product Owner - Revenue Systems", "strong"),
@@ -592,7 +592,7 @@ class Preview(unittest.TestCase):
             with self.subTest(reason=reason):
                 got = lanes.public_reason(reason)
                 self.assertEqual(got, code)
-                self.assertIn(got, {c for _, c in lanes.PUBLIC_REASONS} | {"none", "other"})     # only enumerated codes ever leave
+                self.assertIn(got, {c for _, c in lanes.PUBLIC_REASONS} | {"none", "other"})  # only enumerated codes ever leave
                 for word in ("acme", "Chicago", "secret", "Traceback", "must work"):
                     self.assertNotIn(word.casefold(), got.casefold())
 
@@ -615,7 +615,7 @@ class Preview(unittest.TestCase):
         self.assertEqual(sum(got["decision"].values()), 2)
         self.assertEqual(got["screen"]["title_other_profession_engineer"], 3)
         self.assertEqual(sum(got["fit_band"].values()), 2)
-        self.assertEqual(list(got["by_evidence"]), ["remote_in_location"])                  # decisions split by remote stated / assumed
+        self.assertEqual(list(got["by_evidence"]), ["remote_in_location"])  # decisions split by remote stated / assumed
         self.assertEqual(sum(v for k, v in got["by_evidence"]["remote_in_location"].items() if not k.startswith("fit_")), 2)
         self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], before)
 
@@ -625,7 +625,7 @@ def quiet(_source):
 
 
 class Window(unittest.TestCase):
-    """LIFE-854: one board window. The receipt says what was due, read, left and how old the oldest waiting board is; a catch-up has the larger cap; the soft deadline stops new reads and still writes the receipt."""
+    """one board window."""
     ENV = {"BOARDS_SLOT_CT": "1:00 AM CT", "BOARDS_MODE": "window", "BOARDS_LATE_REASON": "", "BOARDS_SLOT": "2026-10-17T06:00:00Z"}
 
     def waiting(self, hours):
@@ -644,7 +644,7 @@ class Window(unittest.TestCase):
         self.assertEqual((r["freshness_ceiling_hours"], r["carry_within_ceiling"]), (6, True))
         self.assertEqual((r["window"], r["mode"], r["late_reason"], r["cap"]), ("1:00 AM CT", "window", "", limits.BOARDS_PER_RUN))
         self.assertTrue(r["started"].endswith("CT") and r["finished"].endswith("CT"))
-        self.assertEqual(r["timing"]["boards"], 3)                                          # the receipt says where the time went, and so does its summary table
+        self.assertEqual(r["timing"]["boards"], 3)
         self.assertIn("Save s per board (p50, p95)", boards.receipt_markdown(r))
 
     def test_the_counts_say_where_the_time_went_reading_waiting_and_saving(self):
@@ -673,16 +673,16 @@ class Window(unittest.TestCase):
         def read(source):
             seen.append(source["id"])
             return lister.Listing(lister.COMPLETE, [])
-        boards.run(3, True, NOW, read, repo, SEED, self.ENV)                                         # an interrupted window: 3 of 5 read
+        boards.run(3, True, NOW, read, repo, SEED, self.ENV)  # an interrupted window: 3 of 5 read
         self.assertEqual(sorted(seen), ["gh-s0", "gh-s1", "gh-s2"])
         del seen[:]
-        later = boards.run(1800, True, NOW, read, repo, SEED, self.ENV)                              # the next window finds its leftovers (the two oldest of what is left) and nothing else due
+        later = boards.run(1800, True, NOW, read, repo, SEED, self.ENV)
         self.assertEqual(sorted(seen), ["gh-s3", "gh-s4"])
         self.assertEqual((later["receipt"]["due"], later["receipt"]["deferred"]), (2, 0))
 
     def test_the_soft_deadline_stops_new_reads_keeps_what_was_read_and_still_writes_the_receipt(self):
         repo = self.waiting((9, 7, 5, 3, 1))
-        ticks = iter([0, 0, 0, 100, 100, 100, 100, 100])                                             # the first two boards start inside the deadline, the third after it
+        ticks = iter([0, 0, 0, 100, 100, 100, 100, 100])
         got = boards.run(1800, True, NOW, quiet, repo, SEED, {**self.ENV, "BOARDS_DEADLINE_MINUTES": "1"}, clock=lambda: next(ticks))
         self.assertEqual(sorted(repo.state), sorted(s["id"] for s in SEED))
         r = got["receipt"]

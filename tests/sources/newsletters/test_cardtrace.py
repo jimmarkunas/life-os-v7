@@ -1,4 +1,6 @@
-"""LIFE-64: the read-only live cause check (diag.yml job `trace`, stage newsletter-trace): each parsed card of ONE message classified against the Jobs store, over the real SQL."""
+"""the read-only live cause check (diag.yml job `trace`, stage newsletter-trace): each parsed card of ONE message
+classified against the Jobs store.
+"""
 import ast
 import hashlib
 import json
@@ -48,11 +50,11 @@ class CardTraceTests(unittest.TestCase):
 
     def seed(self):
         c = self.cards
-        self.source_row(self.job(c[0], "PUBLISHED"), MID, "h1")                                       # v1 owned
-        self.source_row(self.job(c[1]), "other-mail", "h2")                                           # v2 the unique-URL collision: only another mail owns it
-        self.job(c[2])                                                                                # v3 a job nobody owns
-        self.tombstone(identity.url_hash(c[3].url), "a" * 64, 0)                                      # v4 retired today: suppressed by its URL, posted no later than the retirement
-        self.tombstone("b" * 64, identity.fuzzy_key(c[4].company, c[4].title, c[4].location_text), 10)  # v5 the same opening retired 10 days ago; the card says it was posted today
+        self.source_row(self.job(c[0], "PUBLISHED"), MID, "h1")  # v1 owned
+        self.source_row(self.job(c[1]), "other-mail", "h2")
+        self.job(c[2])  # v3 a job nobody owns
+        self.tombstone(identity.url_hash(c[3].url), "a" * 64, 0)
+        self.tombstone("b" * 64, identity.fuzzy_key(c[4].company, c[4].title, c[4].location_text), 10)  # v5 the same opening retired 10 days ago
         # v6: no job, no tombstone
 
     def trace(self, ref=REF, gmail=None):
@@ -67,8 +69,8 @@ class CardTraceTests(unittest.TestCase):
         by_n = {c["n"]: c for c in body["cards"]}
         self.assertEqual((by_n[1]["own_row"], by_n[1]["status"], by_n[1]["other_mails"]), (True, "PUBLISHED", 0))
         self.assertEqual((by_n[2]["own_row"], by_n[2]["other_mails"]), (False, 1))
-        self.assertEqual((by_n[4]["tombstone"], by_n[4]["relisted"]), ("url", False))                 # would stay suppressed: not posted after the retirement
-        self.assertEqual((by_n[5]["tombstone"], by_n[5]["relisted"]), ("opening", True))              # a newer posting of a retired opening: the case the posted-date bypass is for
+        self.assertEqual((by_n[4]["tombstone"], by_n[4]["relisted"]), ("url", False))
+        self.assertEqual((by_n[5]["tombstone"], by_n[5]["relisted"]), ("opening", True))
         self.assertEqual((by_n[6]["job"], by_n[6]["tombstone"], by_n[6]["relisted"]), (False, "none", None))
 
     def test_a_job_less_row_left_for_a_suppressed_card_is_counted_and_marks_the_card_accounted(self):
@@ -91,7 +93,7 @@ class CardTraceTests(unittest.TestCase):
         self.assertFalse(hasattr(cardtrace._ReadOnly(self.box), "relabel"))
         tree = ast.parse(Path(cardtrace.__file__).read_text())
         used = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-        self.assertFalse(used & {"relabel", "label_id", "send_message", "trash", "delete", "commit", "executemany"})       # no Gmail write and no store write is even named
+        self.assertFalse(used & {"relabel", "label_id", "send_message", "trash", "delete", "commit", "executemany"})  # no Gmail write and no store write is even named
         statements = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.lstrip().split(" ")[0].isupper()]
         self.assertTrue(statements and all(text.lstrip().startswith("SELECT") for text in statements if re.match(r"\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE)", text)))
 

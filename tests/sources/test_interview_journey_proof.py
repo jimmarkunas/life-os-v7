@@ -1,8 +1,9 @@
-"""The LIFE-78 journey proof module, run exactly as the manual domains dispatch runs it, on the production-shaped Notion fake."""
+"""The journey proof module, run exactly as the manual domains dispatch runs it, on the production-shaped Notion fake.
+"""
 import os
 from lifeos.interview import notion as _notion
 from lifeos.platform import full_width as _full_width
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages come from the Full Width template; the fakes apply it at once
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # pages come from the Full Width template
 _notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import json
 import unittest
@@ -33,19 +34,19 @@ class JourneyProof(unittest.TestCase):
         self.assertTrue(all(s["pass"] for s in counts["steps"]))
         self.assertEqual(counts["checks"], {"pipeline_complete": True, "opportunities": 2, "ledger_rows": 2, "exampleco_rounds": 1, "exampleco_round_dated": True,
                                             "exampleco_round_cancelled": True, "samplecorp_rounds": 0, "pass": True})
-        self.assertEqual(client.blocks["root"], real_pipeline)                         # the real Hiring Pipeline (here "root") is never touched
+        self.assertEqual(client.blocks["root"], real_pipeline)
         (container,) = [b for b in client.blocks[QA_PARENT] if b.get("type") == "child_page"]
         self.assertTrue(container["child_page"]["title"].endswith("(synthetic)"))
         posts = {p["parent"].get("page_id") or p["parent"]["data_source_id"] for p in client.posts}
-        self.assertNotIn("root", posts)                                                # every page this proof created sits inside its sandbox
-        self.assertIn(client.sandbox_source, posts)                                        # LIFE-361: the pursuits are rows of the sandbox's own Ledger
-        self.assertNotIn("ds-synthetic", posts)                                        # never the configured (real) Ledger
-        self.assertEqual(len(client.rows), 2)                                          # the two leads' own rows, real sandbox rows; the Interview step made no second row
-        (decision,) = [s for s in counts["steps"] if s["step"].startswith("D ")]        # LIFE-353 GWT-DW-1/2 on the sandbox row, each repeated as a no-op
+        self.assertNotIn("root", posts)
+        self.assertIn(client.sandbox_source, posts)  # the pursuits are rows of the sandbox's own Ledger
+        self.assertNotIn("ds-synthetic", posts)  # never the configured (real) Ledger
+        self.assertEqual(len(client.rows), 2)  # the two leads' own rows, real sandbox rows
+        (decision,) = [s for s in counts["steps"] if s["step"].startswith("D ")]
         self.assertEqual((decision["pass"], decision["writes"], decision["why"]), (True, 2, {"decision_already_recorded": 2, "decision_recorded": 2}))
         row = next(r for r in client.rows.values() if client._value(r["Company"]) == "ExampleCo")
         self.assertEqual((client._value(row["Hiring Decision"]), len(client._value(row["Hiring Decision History"]).splitlines())), (None, 2))
-        self.assertFalse([s["step"] for s in counts["steps"] if "network_unreadable" in s["why"]])     # every row page the readers open is a real page
+        self.assertFalse([s["step"] for s in counts["steps"] if "network_unreadable" in s["why"]])  # every row page the readers open is a real page
 
     def test_counts_only_never_names_ids_links_or_people(self):
         counts = proof.run({**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, False, now=NOW, client=qa_workspace())

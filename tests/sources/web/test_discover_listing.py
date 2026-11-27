@@ -1,4 +1,5 @@
-"""LIFE-723: a no-board Scale-Up sponsor's job that passes the Scale-Up rules is posted from its listing page (Review, never Admit); everything else stays held."""
+"""a no-board Scale-Up sponsor's job that passes the Scale-Up rules is posted from its listing page (Review, never Admit)
+"""
 import unittest
 from datetime import datetime
 
@@ -10,7 +11,7 @@ URL = "https://talents.example.test/job/product-manager-sixfold-123"
 
 
 class Cursor:
-    """Returns `rows` for the one SELECT and records every other statement; rowcount is what an UPDATE affected."""
+    """Returns `rows` for the one SELECT and records every other statement"""
     def __init__(self, rows, rowcount=1):
         self.rows, self.rowcount, self.sql = rows, rowcount, []
 
@@ -52,19 +53,19 @@ class Promote(unittest.TestCase):
         cur = Cursor([job(1, place=""), job(2, place="Manchester, UK"), job(3, place="Remote - Ireland")])
         counts = dj.promote_leads(cur, {}, NOW)
         self.assertEqual((counts["promoted"], counts["not_london"]), (0, 3))
-        self.assertEqual(cur.kinds(), ["SELECT"])                                                  # no write at all
+        self.assertEqual(cur.kinds(), ["SELECT"])  # no write at all
 
     def test_a_hard_title_exclusion_is_never_posted(self):
-        cur = Cursor([job(1, title="Enterprise Sales Executive"), job(2, title="Nursery Assistant")])      # the default hard rules; the private profile rules (junior titles) judge again in Fit
+        cur = Cursor([job(1, title="Enterprise Sales Executive"), job(2, title="Nursery Assistant")])  # the default hard rules
         counts = dj.promote_leads(cur, {}, NOW)
         self.assertEqual((counts["promoted"], counts["title_excluded"]), (0, 2))
         self.assertEqual(cur.kinds(), ["SELECT"])
 
     def test_a_job_that_left_hold_meanwhile_is_not_touched_again(self):
-        cur = Cursor([job()], rowcount=0)                                                          # the guarded UPDATE changed nothing
+        cur = Cursor([job()], rowcount=0)  # the guarded UPDATE changed nothing
         counts = dj.promote_leads(cur, {}, NOW)
         self.assertEqual(counts["promoted"], 0)
-        self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"])                                        # no description row for a job that did not move
+        self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"])  # no description row for a job that did not move
 
     def test_only_discover_no_match_holds_without_a_page_are_considered(self):
         cur = Cursor([])
@@ -77,7 +78,6 @@ class Promote(unittest.TestCase):
         self.assertEqual(cur.sql[0][1], (dj.SOURCE,))
 
 
-# LIFE-759: the real rows posted on Nov 15 (Public Web, Aggregator Link, Scale-Up, London UK): sponsor directories and pages that are not a job.
 DIRECTORY_ROWS = [
     ("UK Sponsor Licence Status", "https://www.legitsponsors.co.uk/status/acme"),
     ("LegitSponsors", "https://legitsponsors.co.uk/"),
@@ -85,8 +85,8 @@ DIRECTORY_ROWS = [
     ("licensed sponsor in London", "https://hirenza.com/licensed-sponsor-london"),
     ("Quantum Group Jobs", "https://www.getborderless.co.uk/quantum"),
     ("MyVisaJobs", "https://www.myvisajobs.co.uk/"),
-    ("Product Manager", "https://atlaspriorityservices.com/jobs/1"),                      # a job title on a directory host: the host alone excludes it
-    ("Engineer", "https://sub.jobvisaai.com/x"),                                           # a subdomain of a directory host
+    ("Product Manager", "https://atlaspriorityservices.com/jobs/1"),
+    ("Engineer", "https://sub.jobvisaai.com/x"),  # a subdomain of a directory host
 ]
 NOT_JOB_TITLES = ["UK Sponsor Licence Status", "LegitSponsors", "Sama Talent Group", "licensed sponsor in London", "Quantum Group Jobs", "MyVisaJobs",
                   "TikTok LIVE Presenter / Host", "Jobs", "Sixfold Bioscience Limited", "Sponsor Licence Directory Manager"]
@@ -99,7 +99,7 @@ class NotPosted(unittest.TestCase):
             cur = Cursor([job(n, url=url, title=title)])
             counts = dj.promote_leads(cur, {}, NOW)
             self.assertEqual((counts["promoted"], counts["sponsor_directory"]), (0, 1), (title, url))
-            self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"], (title, url))                      # one guarded exclusion, no description row
+            self.assertEqual(cur.kinds(), ["SELECT", "UPDATE"], (title, url))  # one guarded exclusion, no description row
             sql, args = cur.sql[1]
             self.assertIn("status='EXCLUDED_FIT'", sql)
             self.assertIn("status='HOLD'", sql)
@@ -161,7 +161,7 @@ class Lane(unittest.TestCase):
 
     def test_a_low_fit_does_not_exclude_a_listing_lead_but_a_wrong_place_still_does(self):
         today = datetime(2026, 11, 15).date()
-        self.assertEqual(lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(fit=40), today).status, lanes.REVIEW)       # the Scale-Up rules only, no Fit exclusion
+        self.assertEqual(lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(fit=40), today).status, lanes.REVIEW)  # the Scale-Up rules only, no Fit exclusion
         wrong = lanes.qualify(lanes.POLICIES["Scale-Up"], self.facts(geography=lanes.UNRESOLVED), today)
         self.assertEqual((wrong.status, wrong.reason), (lanes.EXCLUDE, "not in London"))
 

@@ -46,7 +46,7 @@ class NotionTests(unittest.TestCase):
         self.assertEqual(notion.readback(client, "p", "root", "opportunity", before), "readback_ok")
         client.blocks["p"][2] = block("changed", id="note")
         self.assertEqual(notion.readback(client, "p", "root", "opportunity", before), "readback_protected_changed")
-        self.assertEqual(notion.readback(client, "p", "elsewhere", "opportunity"), "readback_ok")           # LIFE-382 (D250-06): where the page sits is not checked; marker and protected content decide
+        self.assertEqual(notion.readback(client, "p", "elsewhere", "opportunity"), "readback_ok")  # where the page sits is not checked
         client.blocks["p"].pop()
         self.assertEqual(notion.readback(client, "p", "root", "opportunity"), "readback_protected_missing")
         client.blocks["p"][0] = block("human")
@@ -82,12 +82,12 @@ class NotionTests(unittest.TestCase):
         client = self.nested()
         found = notion.child_scan(client, "p", legacy=True)
         self.assertTrue(found.complete)
-        self.assertEqual([(c.page_id, c.ordinal, c.interview_date, c.legacy) for c in found.items], [("n1", 1, "2026-09-10", True)])    # n2 is not a round title; n3 sits under another block
-        self.assertEqual(notion.child_scan(client, "p").items, ())               # an unnamed pursuit's nested pages are never read as rounds
+        self.assertEqual([(c.page_id, c.ordinal, c.interview_date, c.legacy) for c in found.items], [("n1", 1, "2026-09-10", True)])  # n2 is not a round title
+        self.assertEqual(notion.child_scan(client, "p").items, ())
         self.assertTrue(all(method == "GET" for method, _ in client.calls))
 
     def test_a_listed_child_whose_parent_is_not_the_listed_page_makes_the_scan_incomplete(self):
-        """LIFE-382 (D250-04): the parent proof lives here, so resolve_child need not repeat it."""
+        """the parent proof lives here, so resolve_child need not repeat it."""
         client = Fake()
         client.blocks["p"].append({"id": "c", "type": "child_page", "child_page": {"title": "Interview 1"}})
         client.pages["c"] = page(parent="elsewhere")
@@ -106,7 +106,7 @@ def row(rid, company, job, stage, decision=None):
 
 
 class FakeLedger(Fake):
-    """The page tree of Fake plus a Job Ledger data source (LIFE-360)."""
+    """The page tree of Fake plus a Job Ledger data source."""
     def __init__(self, pages):
         super().__init__()
         self.pages_of_rows, self.queries = pages, []
@@ -144,8 +144,8 @@ class LedgerParentTests(unittest.TestCase):
         client.blocks["root"].append({"id": "q", "type": "child_page", "child_page": {"title": "Other — Analyst"}})
         scan = notion.parents(client, LENV)
         self.assertTrue(scan.complete)
-        self.assertEqual([p.page_id for p in scan.items], ["r1", "q"])                 # the tree page "Example — Program Manager" is the same pursuit as the row
-        self.assertEqual((scan.ledger, scan.tree_only), (1, 1))                         # evidence that the Ledger path ran
+        self.assertEqual([p.page_id for p in scan.items], ["r1", "q"])
+        self.assertEqual((scan.ledger, scan.tree_only), (1, 1))  # evidence that the Ledger path ran
 
     def test_without_a_ledger_source_the_page_tree_alone(self):
         client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])

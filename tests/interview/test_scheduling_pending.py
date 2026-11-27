@@ -1,6 +1,5 @@
-"""LIFE-42: a verified, source-linked first-interview request with no date yet is exactly one Interview 1 in Scheduling Pending.
-
-Everything is invented; the fake is the production-shaped page-parent Notion fake from test_create."""
+"""a verified, source-linked first-interview request with no date yet is exactly one Interview 1 in Scheduling Pending.
+"""
 import json
 import unittest
 from lifeos.interview import create, notion, stage
@@ -62,7 +61,7 @@ class SchedulingPending(unittest.TestCase):
         self.assertEqual((counts["writes"], counts["rounds_created"], counts["readback_ok"], counts["why"]), (1, 1, 1, {"round_created": 1}))
         (post,) = client.posts
         self.assertEqual((post["parent"]["page_id"], post["properties"]["title"]["title"][0]["text"]["content"]), ("opp", "Interview 1"))
-        blocks = client.blocks["created-1"]                                    # UI 4 (LIFE-46 10875), written in stages
+        blocks = client.blocks["created-1"]  # UI 4, written in stages
         self.assertEqual([b["type"] for b in blocks], ["toggle", "callout", "column_list"])
         self.assertEqual(notion.text(blocks[0]), notion.ROUND_FOLD)
         lines = client.blocks[blocks[0]["id"]]
@@ -78,12 +77,12 @@ class SchedulingPending(unittest.TestCase):
                       "Previous round: None — this is Interview 1", "Source Health — ExampleCo · Interview 1"):
             self.assertIn(shown, text)
         mentions = [r["mention"]["page"]["id"] for b in all_blocks(client, "created-1") for r in b[b["type"]].get("rich_text", []) if r.get("type") == "mention"]
-        self.assertEqual(mentions, ["opp", "root"])                            # Navigation: the opportunity and the Hiring Pipeline
-        self.assertNotIn("2026", text)                                               # no time is invented
-        self.assertEqual(notion.protected_snapshot(client, "opp"), before)              # Jim's parent notes untouched
+        self.assertEqual(mentions, ["opp", "root"])
+        self.assertNotIn("2026", text)  # no time is invented
+        self.assertEqual(notion.protected_snapshot(client, "opp"), before)  # Jim's parent notes untouched
 
     def test_the_page_carries_every_ui_4_section_and_label(self):
-        """UI 4 (LIFE-46 10874/10875): every section, tab, field and state toggle of the approved page is present."""
+        """UI 4: every section, tab, field and state toggle of the approved page is present."""
         client = opportunity()
         run(client, progress(REQUEST, [ROW]))
         text = "\n".join(tree_text(client, "created-1"))
@@ -132,7 +131,7 @@ class SchedulingPending(unittest.TestCase):
         run(client, progress(REQUEST, [ROW]))
         later = progress(Invite(COMPANY, ROLE, "2026-10-22", ordinal=1), [ROW])
         counts = run(client, later)
-        self.assertEqual((counts["writes"], counts["why"]), (0, {"round_identity_incomplete": 1}))   # updating the same child is the next package
+        self.assertEqual((counts["writes"], counts["why"]), (0, {"round_identity_incomplete": 1}))  # updating the same child is the next package
         self.assertEqual(len(client.posts), 1)
 
     def test_missing_date_needs_the_request_and_is_only_interview_1(self):
@@ -197,13 +196,13 @@ class SchedulingPending(unittest.TestCase):
 
 class ListingLag(unittest.TestCase):
     def test_a_new_round_missing_from_its_parents_listing_is_confirmed_by_its_own_id_and_the_replay_writes_nothing(self):
-        """LIFE-108: real Notion can leave a just-created page out of its parent's child listing for a few seconds."""
+        """real Notion can leave a just-created page out of its parent's child listing for a few seconds."""
         result = progress(REQUEST, [ROW, TWIN])
         client = opportunity()
         client.hide_created = True
         counts = run(client, result)
         self.assertEqual((counts["writes"], counts["rounds_created"], counts["readback_ok"], counts["why"]), (1, 1, 1, {"round_created": 1}))
-        client.blocks["opp"].append({"id": "created-1", "type": "child_page", "child_page": {"title": "Interview 1"}})   # the listing catches up
+        client.blocks["opp"].append({"id": "created-1", "type": "child_page", "child_page": {"title": "Interview 1"}})  # the listing catches up
         again = run(client, result)
         self.assertEqual((again["writes"], len(client.posts)), (0, 1))
 

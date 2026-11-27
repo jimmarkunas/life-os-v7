@@ -29,7 +29,7 @@ class Register(unittest.TestCase):
     def test_the_registry_file_loads_and_the_log_gets_counts_only(self):
         self.assertGreaterEqual(len(reg.held_keys()), 40)
         from unittest import mock
-        from tests.jobs.support import FakeClient, FakeStore, connect                                    # its fake models the Full Width template create (no children) and the append
+        from tests.jobs.support import FakeClient, FakeStore, connect
         from lifeos.jobs import private_report, store
         from lifeos.platform import stored_pages
         self.enterContext(mock.patch.object(stored_pages, "STORE", FakeStore()))

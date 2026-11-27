@@ -67,7 +67,7 @@ class Filing(unittest.TestCase):
 
 
 class OneBadMessageNeverFailsTheStage(unittest.TestCase):
-    """LIFE-689: a message that cannot be filed is that message's failure; the others are filed and the stage exits 0. Only when every message fails, or the vendor's mail cannot be listed, does it fail."""
+    """a message that cannot be filed is that message's failure"""
 
     def stage(self, gmail):
         return lambda limit, live: filing.run(limit, live, gmail=gmail)
@@ -81,7 +81,7 @@ class OneBadMessageNeverFailsTheStage(unittest.TestCase):
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(sorted(m for m, labels in gmail.labels.items() if labels == ["Label_pm"]), ["m0", "m1", "m3", "m4"])
         self.assertIn('"item_codes": {"PHYSMAIL_FILING_MOVE_FAILED": 1}', out)
-        self.assertIn('"why": {"PHYSMAIL_FILING_MOVE_FAILED": 1}', out)                    # the counts the stage always printed are unchanged
+        self.assertIn('"why": {"PHYSMAIL_FILING_MOVE_FAILED": 1}', out)  # the counts the stage always printed are unchanged
 
     def test_all_messages_failing_exit_one_with_the_fixed_code(self):
         gmail = FakeGmail({f"m{i}": VENDOR for i in range(5)})

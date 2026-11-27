@@ -7,7 +7,7 @@ from tests.kit.gmail import FakeGmail
 
 RESULTS = {
     config.GMAIL_QUERIES["lensa"]: ["1", "2"],
-    config.GMAIL_QUERIES["jobright"]: ["3", "2"],           # "2" also matched by lensa: counted once
+    config.GMAIL_QUERIES["jobright"]: ["3", "2"],  # "2" also matched by lensa: counted once
     config.GMAIL_QUERIES["linkedin-alerts"]: ["4"],
 }
 
@@ -20,7 +20,7 @@ class SweepTests(unittest.TestCase):
         self.assertIsNone(config.classify("updates" + chr(64) + "courses.reed.co.uk"))
         self.assertIsNone(config.classify("noreply@lensa.com.evil.example"))
         self.assertIsNone(config.classify("invitations@linkedin.com"))
-        self.assertIsNone(config.classify("abc-123-xyz@user.dice.com"))   # synthetic recruiter relay
+        self.assertIsNone(config.classify("abc-123-xyz@user.dice.com"))  # synthetic recruiter relay
 
     def test_queries_never_include_recruiter_or_message_senders(self):
         text = " ".join(config.GMAIL_QUERIES.values())

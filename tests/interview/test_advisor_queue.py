@@ -12,7 +12,7 @@ from lifeos.interview.models import PrepEvidence
 from lifeos.platform import full_width
 from lifeos.platform.notion_client import NotionError
 
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: every page is created from the Full Width template
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # every page is created from the Full Width template
 full_width.WAIT = 0
 
 
@@ -85,7 +85,7 @@ class FakeNotion:
             if self.pagination_incomplete:
                 return {"results": blocks[:1], "has_more": True, "next_cursor": None}
             return {"results": blocks, "has_more": False, "next_cursor": None}
-        if method == "POST":                                        # D16.1: the page comes from the Full Width template: no children in the create request, one empty filler paragraph on top
+        if method == "POST":
             self.posts += 1
             if self.post_error:
                 raise self.post_error
@@ -178,9 +178,9 @@ class AdvisorQueueTests(unittest.TestCase):
         replay = queue.ensure_request(client, "queue", bundle())
         self.assertEqual(first, replay); self.assertEqual(client.posts, 1)
         self.assertEqual(client.methods.count("POST"), 1)
-        self.assertEqual(client.template_pages, [first.page_id])                                             # D16.1: the page came from the Full Width template, and its filler paragraph is gone
+        self.assertEqual(client.template_pages, [first.page_id])
         self.assertNotIn(f"id-paragraph-filler-{first.page_id}", [b.get("id") for b in client.pages[first.page_id]["blocks"]])
-        self.assertEqual(client.methods.count("PATCH"), 1)                                                   # one append of the request blocks, nothing else
+        self.assertEqual(client.methods.count("PATCH"), 1)  # one append of the request blocks, nothing else
 
     def test_request_json_may_contain_quoted_reserved_marker_text(self):
         original = bundle()
@@ -247,7 +247,7 @@ class AdvisorQueueTests(unittest.TestCase):
         twin = page(f"Advisor Request {req.request_id}", "queue", [dict(b) for b in client.pages[req.page_id]["blocks"]], "twin-request")
         client.pages["twin-request"] = twin
         dup = block("child_page", title=twin["properties"]["Name"]["title"][0]["plain_text"]); dup["id"] = "twin-request"
-        client.pages["queue"]["blocks"].append(dup)                                  # two pages carry the same request marker (LIFE-383: identity is the marker)
+        client.pages["queue"]["blocks"].append(dup)  # two pages carry the same request marker
         with self.assertRaises(queue.AdvisorQueueError) as error:
             queue.ensure_request(client, "queue", bundle())
         self.assertEqual(error.exception.code, "advisor_queue_conflict")
@@ -267,7 +267,7 @@ class AdvisorQueueTests(unittest.TestCase):
         self.assertEqual(client.posts, 1)
 
     def test_queue_parent_and_marker_are_validated(self):
-        # LIFE-383 (D250): the queue page is held by its id; neither its parent nor its title is compared
+        # the queue page is held by its id
         client = FakeNotion(); client.pages["queue"]["parent"]["page_id"] = "elsewhere"
         self.assertTrue(queue.ensure_request(client, "queue", bundle()).request_id)
         client = FakeNotion(); client.pages["queue"]["properties"]["Name"]["title"] = rt("Wrong")
@@ -350,7 +350,7 @@ class AdvisorQueueTests(unittest.TestCase):
         response = response_page(req); response["blocks"].append(block("paragraph", "extra")); client.pages["response"] = response
         with self.assertRaises(queue.AdvisorQueueError): queue.read_response(client, req, "response")
         response = response_page(req); response["parent"]["page_id"] = "other"; client.pages["response"] = response
-        self.assertEqual(queue.read_response(client, req, "response").request_id, req.request_id)       # LIFE-383 (D250): the parent is not compared
+        self.assertEqual(queue.read_response(client, req, "response").request_id, req.request_id)  # the parent is not compared
 
     def test_response_malformed_draft_fields_and_refs_fail_closed(self):
         client = FakeNotion(); req = queue.ensure_request(client, "queue", bundle())
@@ -403,7 +403,7 @@ class AdvisorQueueTests(unittest.TestCase):
         for title in ("Unexpected", "expected"):
             client = FakeNotion(); req = queue.ensure_request(client, "queue", bundle())
             response = response_page(req)
-            response["blocks"][0] = block("paragraph", "bad" if title == "expected" else f"v7-interview-advisor-response:1;{'0' * 32};{'f' * 64}")      # LIFE-383 (D250): identity is the marker, not the title
+            response["blocks"][0] = block("paragraph", "bad" if title == "expected" else f"v7-interview-advisor-response:1;{'0' * 32};{'f' * 64}")  # identity is the marker, not the title
             client.pages["response"] = response
             child_title = f"Advisor Response {req.request_id}" if title == "expected" else title
             child = block("child_page", title=child_title); child["id"] = "response"

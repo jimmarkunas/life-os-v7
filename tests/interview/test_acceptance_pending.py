@@ -1,5 +1,6 @@
-"""D231: the manual acceptance stage's Scheduling Pending case reads the exact Job Ledger rows with the Interview token, then hands
-the same progression to the existing writer. Everything is invented; nothing real is reached."""
+"""the manual acceptance stage's Scheduling Pending case reads the exact Job Ledger rows with the Interview token, then
+hands the same progression to.
+"""
 import json
 import unittest
 from pathlib import Path
@@ -78,7 +79,7 @@ class PendingCase(unittest.TestCase):
             raise NotionError("NOTION_HTTP_404")
         with patch.object(acceptance.stage, "run", side_effect=AssertionError("must not delegate")):
             result = acceptance.run(1, True, environ=environ(), read_rows=broken)
-            missing = acceptance.run(1, True, environ=environ())          # no Ledger id configured: the real reader refuses
+            missing = acceptance.run(1, True, environ=environ())  # no Ledger id configured: the real reader refuses
         self.assertEqual((result["writes"], result["why"]), (0, {"ledger_unreadable": 1}))
         self.assertEqual((missing["writes"], missing["why"]), (0, {"ledger_unreadable": 1}))
 
@@ -113,21 +114,23 @@ class LedgerRead(unittest.TestCase):
 
 class WorkflowStep(unittest.TestCase):
     def test_the_stage_and_acceptance_steps_declare_the_ledger_id_for_the_page_to_fill_and_the_negative_case_never_runs_live(self):
-        """LIFE-699: the Ledger id is no longer a GitHub secret. The job blanks it, the three steps that read Ledger rows declare it empty, and the V7 settings page fills it with the step's own read-only Interview token (a fallback token never writes the page)."""
+        """The job blanks it, the three steps that read Ledger rows declare it empty, and the V7 settings page fills it
+        with the step's own read-only Interview.
+        """
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
         job = text[text.index("\n  interview:\n"):text.index("\n  report:\n")]
         self.assertNotIn("secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID", job)
-        self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)                       # blank for the whole job
-        self.assertEqual(job.count('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""'), 4)               # the job, plus the Interview stage step and the two acceptance steps
+        self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)  # blank for the whole job
+        self.assertEqual(job.count('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""'), 4)
         stage = job[job.index("id: irun\n"):job.index("id: iacc\n")]
         self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', stage)
         main = job[job.index("id: iacc\n"):job.index("id: iaccneg")]
         negative = job[job.index("id: iaccneg"):job.index("Interview warning")]
         for step in (main, negative):
             self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', step)
-            self.assertNotIn("NOTION_API_TOKEN", step)                                         # no Jobs Notion token: the step's own read-only Interview token is all it holds
+            self.assertNotIn("NOTION_API_TOKEN", step)
         self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
-        self.assertNotIn("--live", negative)                                                    # D233: the negative case can never write
+        self.assertNotIn("--live", negative)  # the negative case can never write
         self.assertNotIn("$LIVE", negative)
 
 

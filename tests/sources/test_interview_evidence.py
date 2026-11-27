@@ -1,4 +1,6 @@
-"""LIFE-88: Interview OS's normal path composes only verified evidence, fails each gap visibly and alone, and writes only on Jim's switch."""
+"""Interview OS's normal path composes only verified evidence, fails each gap visibly and alone, and writes only on Jim's
+switch.
+"""
 import contextlib
 import io
 import json
@@ -22,7 +24,7 @@ from tests.sources.support import mail, outreach
 URL = "https://example.test/thread/1"
 OTHER = "https://example.test/thread/2"
 ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root"}
-LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7"}                         # the writer switch: a run is live only with it
+LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7"}  # the writer switch: a run is live only with it
 ROW = {"page_id": "ledger-1", "company": "ExampleCo", "role": "Program Manager", "stable_job_key": "exampleco-r-1", "requisition": None}
 
 
@@ -33,7 +35,7 @@ class Calendar:
     def list_events(self, start, end):
         return [e for e in self.events if e.get("status") != "cancelled"]
 
-    def request(self, method, path, params=None):                          # the deleted-inclusive read (LIFE-46 E07)
+    def request(self, method, path, params=None):  # the deleted-inclusive read
         assert (method, path, params["showDeleted"]) == ("GET", "/events", "true")
         return {"items": list(self.events)}
 
@@ -45,7 +47,8 @@ def child(id="c1", date=None, who=None, ordinal=1):
 
 
 class Ledger:
-    """The Interview token's Ledger client: a page read returns the Stable Job Key and Apply URL of the row asked for."""
+    """The Interview token's Ledger client: a page read returns the Stable Job Key and Apply URL of the row asked for.
+    """
     def __init__(self, key="exampleco-r-1", url="https://example.test/jobs/12345"):
         self.props = {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": key}] if key else []}, "Apply URL": {"type": "url", "url": url}}
 
@@ -60,7 +63,7 @@ APPLIED = {"id": "ledger-1", "company": "ExampleCo", "role": "Program Manager", 
 
 
 
-NOTES_TOP = [{"id": "n", "type": "heading_2", "heading_2": {"rich_text": [{"plain_text": notion.JIM_NOTES}]}}]      # a page that already has the Jim's notes heading (UI 3b)
+NOTES_TOP = [{"id": "n", "type": "heading_2", "heading_2": {"rich_text": [{"plain_text": notion.JIM_NOTES}]}}]
 
 
 class Writer:
@@ -87,7 +90,7 @@ class Writer:
 
 
 class Run:
-    """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
+    """`stage.run` is captured, never executed."""
 
     def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True, gmail=None, stage_counts=None, connect=None):
         self.connect = connect
@@ -119,7 +122,7 @@ class Run:
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), self.complete)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage), \
-             patch.object(ev, "network_contacts", side_effect=lambda client, evidence: (evidence, False)):        # E10 contacts have their own tests
+             patch.object(ev, "network_contacts", side_effect=lambda client, evidence: (evidence, False)):  # E10 contacts have their own tests
             counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=self.ledger_rows,
                             ledger=self.ledger, records=self.records, writer=self.writer, gmail=self.gmail, connect=self.connect)
         return counts, captured
@@ -160,10 +163,10 @@ class DailyCounts:
 
 
 class SentMailFailure(unittest.TestCase):
-    """LIFE-657: a thread Gmail says is not found stays unreadable (the page says DEGRADED; nothing a retry fixes) and no longer fails the stage; every other Gmail error still does."""
+    """a thread Gmail says is not found stays unreadable (the page says DEGRADED)"""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     GMAIL_URL = "https://mail.google.com/mail/u/0/#all/18c0ffee12345678"
@@ -183,8 +186,8 @@ class SentMailFailure(unittest.TestCase):
 
     def counts(self, message):
         counts, got = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(message))()
-        self.assertEqual([q.sent_mail_state for _, q in got["evidence"]], ["unreadable"])         # the page still reads DEGRADED
-        self.assertEqual(counts["why"]["sent_mail_unreadable"], 1)                               # and the counts line still says so
+        self.assertEqual([q.sent_mail_state for _, q in got["evidence"]], ["unreadable"])  # the page still reads DEGRADED
+        self.assertEqual(counts["why"]["sent_mail_unreadable"], 1)  # and the counts line still says so
         return counts
 
     def test_a_thread_gmail_cannot_find_is_counted_on_its_own_and_exits_0(self):
@@ -201,7 +204,7 @@ class SentMailFailure(unittest.TestCase):
             self.assertEqual(self.exit_code(counts)[0], 1, message)
 
     def test_a_thread_unreadable_for_another_cause_is_failed_twice_then_permanent_and_resets(self):
-        """LIFE-664: a new unreadable thread fails its first runs; from the third it is counted `permanent` (still counted and printed); read again, it starts over."""
+        """a new unreadable thread fails its first runs"""
         store, flaky = DailyCounts(), "GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 503 "
         seen = []
         for run_number in (1, 2, 3, 4):
@@ -215,7 +218,7 @@ class SentMailFailure(unittest.TestCase):
         counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=Fine(), connect=store, environ=LIVE)()
         self.assertEqual((counts["failed"], counts["permanent"], "sent_mail_causes" in counts), (0, {}, False))
         counts, _ = Run(facts={"p1": ("exampleco-r-1", self.GMAIL_URL)}, gmail=self.gmail(flaky), connect=store, environ=LIVE)()
-        self.assertEqual((counts["failed"], counts["sent_mail_runs"]), (1, 1))                  # readable once: the next unreadable run is the first again
+        self.assertEqual((counts["failed"], counts["sent_mail_runs"]), (1, 1))
 
     def test_the_cause_is_a_fixed_code_and_carries_no_thread_id_or_message_text(self):
         for message, cause in (("GET https://gmail.googleapis.com/gmail/v1/users/me/threads/18c0ffee12345678 -> HTTP 429 rateLimitExceeded", "http_429"),
@@ -247,7 +250,7 @@ class SentMailFailure(unittest.TestCase):
         self.assertEqual((counts["failed"], counts["permanent"], counts["sent_mail_causes"]), (1, {"sent_mail_unreadable": 1}, {"http_404": 1, "http_503": 1}))
 
     def test_a_request_for_a_page_jim_wrote_is_counted_on_its_own_and_exits_0(self):
-        """LIFE-664: `human_page` (nothing is written to Jim's own page) is a state only Jim changes; it is counted `permanent`, not `failed`; any other block still fails."""
+        """`human_page` is a state only Jim changes"""
         counts, _ = Run(stage_counts={"blocked": 1, "blocked_why": {"human_page": 1}, "why": {"human_page": 1}})()
         self.assertEqual((counts["failed"], counts["permanent"]), (0, {"human_page": 1}))
         self.assertEqual(self.exit_code(counts)[0], 0)
@@ -255,12 +258,13 @@ class SentMailFailure(unittest.TestCase):
         self.assertEqual((counts["failed"], counts["permanent"], counts["blocked_why"]), (1, {"human_page": 1}, {"human_page": 1, "machine_region_edited": 1}))
 
     def test_a_blocked_page_still_counts_as_failed(self):
-        """A page whose structure is not recognisable (machine_region_edited) shows nothing on the page or card (only the log's counts), so it stays a failure."""
+        """A page whose structure is not recognisable (machine_region_edited) shows nothing on the page or card (only the
+        log's counts), so it stays a failure.
+        """
         counts, _ = Run(stage_counts={"blocked": 1, "why": {"machine_region_edited": 1}})()
         self.assertEqual((counts["failed"], counts["permanent"]), (1, {}))
 
     def test_a_repaired_page_is_counted_on_its_own_and_exits_0(self):
-        """LIFE-658: an edit in a machine region is preserved and repaired, the page shows it, and the step no longer fails for it."""
         counts, _ = Run(stage_counts={"blocked": 0, "repaired_edits": 2, "why": {"round_rescheduled": 1, "parent_refreshed": 1}})()
         self.assertEqual((counts["failed"], counts["repaired_edits"]), (0, 2))
         self.assertEqual(self.exit_code(counts)[0], 0)
@@ -269,7 +273,7 @@ class SentMailFailure(unittest.TestCase):
 class Ordinal(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_only_an_explicit_single_round_number_counts(self):
@@ -281,7 +285,7 @@ class Ordinal(unittest.TestCase):
 class Refresh(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts(self):
@@ -326,7 +330,7 @@ class Refresh(unittest.TestCase):
 class CalendarRounds(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_an_event_that_states_its_round_adds_that_round_before_the_refresh(self):
@@ -338,14 +342,14 @@ class CalendarRounds(unittest.TestCase):
 
     def test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages(self):
         counts, got = Run(kids={"p1": (child("c1", "2026-10-01", "Pat Example", 1),)}, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
-        self.assertEqual(len(got["evidence"]), 1)                              # only the refresh of the existing page
+        self.assertEqual(len(got["evidence"]), 1)  # only the refresh of the existing page
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
-        self.assertEqual(counts["where"], {"calendar_event_no_ordinal": 1})        # LIFE-78: the cause names WHICH check raised it, as a fixed word
+        self.assertEqual(counts["where"], {"calendar_event_no_ordinal": 1})
 
     def test_an_invite_for_the_pending_interview_1_dates_that_same_page(self):
         for title in ("ExampleCo Program Manager Interview", "ExampleCo Program Manager Interview 1"):
             counts, got = Run(calendar=Calendar(event(title)))()
-            (_, confirm), (_, refresh) = got["evidence"]                       # LIFE-46 E07: the pending child itself, named by its page id
+            (_, confirm), (_, refresh) = got["evidence"]
             self.assertEqual((confirm.explicit_child_page_id, confirm.interview_date, confirm.ordinal, confirm.stable_job_key), ("c1", "2026-10-28", 1, "exampleco-r-1"), title)
             self.assertEqual((refresh.interview_date, counts["failed"]), (None, 0), title)
 
@@ -375,13 +379,13 @@ class CalendarRounds(unittest.TestCase):
         (_, cancel), _ = got["evidence"]
         self.assertEqual((cancel.explicit_child_page_id, cancel.interview_date, cancel.cancelled, counts["failed"]), ("c2", "2026-10-21", True, 0))
         counts, got = self.moved(gone, recorded=("ffffffffffff", False))
-        self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))                  # someone else's cancelled event: nothing
+        self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))  # someone else's cancelled event: nothing
         counts, got = self.moved(gone, recorded=(ev.reference("ExampleCo Program Manager Interview"), True))
-        self.assertEqual(len(got["evidence"]), 1)                                           # already cancelled: no second write queued
+        self.assertEqual(len(got["evidence"]), 1)  # already cancelled: no second write queued
 
     def test_two_accepted_times_for_one_pending_round_choose_neither(self):
         counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview"), event("ExampleCo Program Manager Interview", start="2026-10-30T10:00:00-05:00")))()
-        self.assertEqual(len(got["evidence"]), 1)                              # only the refresh
+        self.assertEqual(len(got["evidence"]), 1)  # only the refresh
         self.assertEqual((counts["why"], counts["where"], counts["failed"]), ({"calendar_event_ambiguous": 1}, {"calendar_event_pending_round": 1}, 1))
 
     def test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure(self):
@@ -420,10 +424,12 @@ class CalendarRounds(unittest.TestCase):
 
 
 class SchedulingRequests(unittest.TestCase):
-    """E01a: a scheduling request in mail (a person's or an automated one) for a job Jim applied to becomes Interview 1, Scheduling Pending."""
+    """E01a: a scheduling request in mail (a person's or an automated one) for a job Jim applied to becomes Interview 1,
+    Scheduling Pending.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def run_with(self, *records, parents=(), **kw):
@@ -465,11 +471,11 @@ class SchedulingRequests(unittest.TestCase):
         self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"requisition_conflict": 1}, 1))
 
     def test_a_request_for_a_pursuit_jim_retired_never_brings_back_an_active_page(self):
-        counts, got = Run(parents=(), retired=["ExampleCo — Program Manager"], kids={}, roster=[APPLIED], records=[mail()])()     # Walmart, Oct 24: retired Oct 14, recreated from a September request
+        counts, got = Run(parents=(), retired=["ExampleCo — Program Manager"], kids={}, roster=[APPLIED], records=[mail()])()
         self.assertEqual((got["evidence"], counts["failed"], counts["retired_skipped"]), ([], 0, 1))
-        counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()])()                                             # the same request with no retired page still makes Interview 1
+        counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()])()
         self.assertEqual((len(got["evidence"]), counts["retired_skipped"]), (1, 0))
-        counts, got = Run(retired=["ExampleCo — Program Manager"], roster=[APPLIED], records=[mail()], owner=Ownership.HUMAN)()                # an Active page too (here not machine-keyed): never skipped as retired
+        counts, got = Run(retired=["ExampleCo — Program Manager"], roster=[APPLIED], records=[mail()], owner=Ownership.HUMAN)()
         self.assertEqual(counts["retired_skipped"], 0)
 
     def test_a_ledger_row_without_a_stable_job_key_is_not_guessed(self):
@@ -478,9 +484,9 @@ class SchedulingRequests(unittest.TestCase):
 
     def test_a_job_that_already_has_a_round_is_not_given_interview_1_again(self):
         same = mail(url=URL)
-        counts, got = Run(roster=[APPLIED], records=[same])()                 # the page's own request message: nothing new, the refresh runs
+        counts, got = Run(roster=[APPLIED], records=[same])()
         self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))
-        counts, got = Run(roster=[APPLIED], records=[mail()])()               # another message: its round number is unknown, so it is reported, not numbered
+        counts, got = Run(roster=[APPLIED], records=[mail()])()
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
         self.assertEqual(counts["where"], {"applied_row_other_request": 1})
         self.assertEqual([q.source for _, q in got["evidence"]], [URL])
@@ -504,17 +510,17 @@ class SchedulingRequests(unittest.TestCase):
 
 
 class Leads(unittest.TestCase):
-    """E01b: every recruiter outreach that names a role is a lead; with no posting link, only the employer's requisition gives it a Stable Job Key (LIFE-25, Jim 10851)."""
+    """E01b: every recruiter outreach that names a role is a lead"""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_a_recruiters_first_message_names_a_client_a_role_and_a_minted_key(self):
-        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, None, "https://example.test/thread/5"))      # no requisition, no posting: no key, never the role
+        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, None, "https://example.test/thread/5"))  # no requisition, no posting: no key, never the role
         company, role, req, key, _ = ev.lead_of(outreach(extra="Requisition 123456."))
         self.assertEqual((req, key), ("123456", "recruiter-exampleco-123456"))
-        self.assertEqual(ev.lead_of(outreach(client=""))[0], "Staffing Example Inc")             # no client named: the recruiter's company, as stated
+        self.assertEqual(ev.lead_of(outreach(client=""))[0], "Staffing Example Inc")
 
     def test_no_role_an_automated_sender_or_no_company_is_not_a_lead(self):
         noreply = {**outreach(), "markers": {"bulk": False, "auto": True, "noreply": True}, "sender_address": "no-reply.example"}
@@ -558,10 +564,12 @@ REQ_TEXT, REQ_KEY = "Requisition 123456.", "recruiter-exampleco-123456"
 
 
 class LeadRows(unittest.TestCase):
-    """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its page, once per Stable Job Key."""
+    """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its
+    page, once per Stable Job Key.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def go(self, writer, live=True, rows=(), extra=None):
@@ -589,7 +597,7 @@ class LeadRows(unittest.TestCase):
     def test_a_failed_wrong_target_or_unreadable_row_creates_no_page_and_is_degraded(self):
         from tests.jobs.fakes_jobsdb import claim_store
         for label, writer in (("create failed", Writer(fail=True)), ("not the Ledger", Writer(target=False)), ("read-back differs", Writer(lane="Scale-up"))):
-            _db, stop = claim_store()                                    # a failed create keeps its claim by design, so each case starts from a clean store
+            _db, stop = claim_store()
             self.addCleanup(stop)
             counts, got = self.go(writer)
             self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed"), counts["failed"] > 0), ([], 1, True), label)
@@ -600,10 +608,10 @@ class LeadRows(unittest.TestCase):
 
 
 class LeadRequisition(unittest.TestCase):
-    """LIFE-25 (Jim, comment 10851): a recruiter lead with no posting link creates a Ledger row only from the employer's requisition; anything less is REVIEW with no write."""
+    """a recruiter lead with no posting link creates a Ledger row only from the employer's requisition"""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def go(self, records, rows=(), writer=None):
@@ -651,10 +659,11 @@ class LeadRequisition(unittest.TestCase):
 
 
 class Exceptions(unittest.TestCase):
-    """Naming test pursuits never lengthens a live tick's mail read (run 907 hit the 20 minute job limit at 60 days)."""
+    """Naming test pursuits never lengthens a live tick's mail read (run 907 hit the 20 minute job limit at 60 days).
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     NOW = ev.datetime(2026, 10, 21, 12, tzinfo=ev.TZ)
@@ -667,7 +676,7 @@ class Exceptions(unittest.TestCase):
     def test_a_linkedin_sender_headline_names_the_employer(self):
         body = "You have a new message\n\nPat Example (Senior Recruiter at Example Corp | Hiring)\n(https://example.test/in/pat)\n\nThis email was intended for Jim (Engineer at Elsewhere)\n"
         self.assertEqual(ev.headline_company({"body": body}), "Example Corp")
-        self.assertEqual(ev.headline_company({"body": body.replace("Senior Recruiter at Example Corp | Hiring", "Recruiter")}), "")      # the footer describes Jim, never the sender
+        self.assertEqual(ev.headline_company({"body": body.replace("Senior Recruiter at Example Corp | Hiring", "Recruiter")}), "")  # the footer describes Jim, never the sender
 
 
 POSTING = "https://boards.greenhouse.io/exampleco/jobs/1234567"
@@ -677,10 +686,10 @@ Cursor = SqlLog
 
 
 class LinkLeads(unittest.TestCase):
-    """E01b: a recruiter's public posting link is a real job. It goes through Jobs OS (Enrich, Fit, Luna on the public posting, Publish); the email text never does."""
+    """E01b: a recruiter's public posting link is a real job."""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def message(self, *links):
@@ -693,7 +702,7 @@ class LinkLeads(unittest.TestCase):
         for label, links in (("two postings", (POSTING, "https://boards.greenhouse.io/exampleco/jobs/7654321")), ("not an ATS", ("https://www.example.com/jobs/1",)),
                              ("a listing, not one vacancy", ("https://boards.greenhouse.io/exampleco",)), ("no link", ())):
             self.assertIsNone(ev.posting_link(self.message(*links)), label)
-        self.assertIsNone(ev.lead_of(self.message())[3])                                  # no posting and no requisition: no key (LIFE-25)
+        self.assertIsNone(ev.lead_of(self.message())[3])  # no posting and no requisition: no key
 
     def test_a_new_lead_job_is_inserted_resolved_in_the_recruiter_lane_at_its_own_link(self):
         cursor = Cursor()
@@ -705,7 +714,7 @@ class LinkLeads(unittest.TestCase):
         self.assertEqual((update[0], update[1][0]), ("UPDATE", POSTING))
         again = Cursor(new=False)
         self.assertFalse(ev.lead_job("ExampleCo", "Program Manager", POSTING, outreach(), ev.datetime(2026, 10, 21, tzinfo=ev.TZ), connect=lambda: again))
-        self.assertEqual([kind for kind, _ in again.sql if kind == "UPDATE"], ["UPDATE"])      # only the seen-count bump of a link Jobs OS already holds; no new row, no link rewrite
+        self.assertEqual([kind for kind, _ in again.sql if kind == "UPDATE"], ["UPDATE"])
 
     def test_a_live_run_sends_a_link_lead_to_jobs_os_and_a_linkless_one_to_a_direct_row(self):
         writer = Writer()
@@ -726,10 +735,10 @@ NAMED = {**ENV, "INTERVIEW_TEST_COMPANIES": "Alpha, SH/FT"}
 
 
 class Conversion(unittest.TestCase):
-    """The pursuits Jim named are converted through the page's own adopt / upgrade path; a page of his without his adopt line is never written."""
+    """The pursuits Jim named are converted through the page's own adopt / upgrade path"""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def go(self, owner, title="SH/FT — Technical Program Manager", facts=None, environ=NAMED):
@@ -749,7 +758,7 @@ class Conversion(unittest.TestCase):
 
     def test_an_adopt_line_converts_any_page_but_a_page_nobody_named_without_one_is_never_touched(self):
         counts, got = self.go(Ownership.ADOPT, title="Gamma — Program Manager")
-        self.assertEqual((len(got["evidence"]), counts["convert"]["adopt"]), (1, 1))                    # Jim's own line is the opt-in
+        self.assertEqual((len(got["evidence"]), counts["convert"]["adopt"]), (1, 1))  # Jim's own line is the opt-in
         counts, got = self.go(Ownership.HUMAN, title="Gamma — Program Manager")
         self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}))
 
@@ -763,10 +772,10 @@ class Conversion(unittest.TestCase):
 
 
 class UiThreeBMigration(unittest.TestCase):
-    """A named pursuit's UI 3b page is migrated through the page's own refresh (create.refresh(migrate=True)); every other UI 3b page still waits."""
+    """A named pursuit's UI 3b page is migrated through the page's own refresh (create.refresh(migrate=True))"""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     KEY = "walmart-r-2612137"
@@ -820,7 +829,7 @@ class UiThreeBMigration(unittest.TestCase):
 class LegacyRounds(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_a_hand_made_round_title_states_its_number_interviewer_and_date(self):
@@ -836,7 +845,7 @@ class LegacyRounds(unittest.TestCase):
         from lifeos.interview import view
         legacy = Child("c1", "p1", "2026-09-10", "Pat Example", 1, None, True)
         self.assertEqual([(r.ordinal, r.date) for r in view.rounds_of(Scan((legacy,), True))], [(1, "2026-09-10")])
-        self.assertEqual(view.rounds_of(Scan((Child("c2", "p1", "2026-09-10", "Pat Example", 1),), True)), ())       # the same child without the flag is not a round
+        self.assertEqual(view.rounds_of(Scan((Child("c2", "p1", "2026-09-10", "Pat Example", 1),), True)), ())  # the same child without the flag is not a round
         self.assertTrue(notion.is_legacy_company(NAMED, "SH/FT") and notion.is_legacy_company(NAMED, "Alpha Group"))
         self.assertFalse(notion.is_legacy_company(NAMED, "Gamma") or notion.is_legacy_company({}, "SH/FT"))
         self.assertEqual(view.stage(view.Opportunity("SH/FT", "TPM", "k", None, None, "none", None, "root", rounds=view.rounds_of(Scan((legacy,), True))), "2026-10-21")[0],
@@ -844,7 +853,7 @@ class LegacyRounds(unittest.TestCase):
 
 
 def counts_only(value, path="counts"):
-    """Every leaf of a result is a number or a bool; the only strings are the fixed codes and the six-hex hashes used as keys."""
+    """Every leaf of a result is a number or a bool"""
     if isinstance(value, dict):
         for key, inner in value.items():
             assert isinstance(key, str) and re.fullmatch(r"[a-z0-9_]{1,40}", key), f"{path}: key {key!r}"
@@ -854,10 +863,10 @@ def counts_only(value, path="counts"):
 
 
 class LeadCorrelation(unittest.TestCase):
-    """Each lead carries its own message and ATS link through the live loop; a different message in the mailbox never lends it a link or a date."""
+    """Each lead carries its own message and ATS link through the live loop"""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     A = "https://boards.greenhouse.io/alphaco/jobs/1111111"
@@ -895,7 +904,7 @@ class LeadCorrelation(unittest.TestCase):
         writer = Writer()
         with patch.object(ev, "lead_job", return_value=True) as job:
             counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=[linkless, self.messages()[2]], environ=LIVE, writer=writer)()
-        self.assertEqual(job.call_count, 1)                                    # only the lead that has its own link
+        self.assertEqual(job.call_count, 1)  # only the lead that has its own link
         self.assertEqual((len(writer.created), counts["lead_rows"], counts["lead_jobs"]), (1, 1, 1))
         self.assertEqual(writer.created[0]["Apply URL"]["url"], "https://example.test/m/e")
 
@@ -904,16 +913,16 @@ class LeadCorrelation(unittest.TestCase):
         second = outreach(role="Alpha Role", client="AlphaCo", url="https://example.test/m/a2", received="2026-10-19T10:00:00Z", extra=self.B)
         calls, counts, got = self.go([first, second])
         self.assertEqual((len(calls), len(got["evidence"]), counts["failed"]), (1, 1, 0))
-        self.assertEqual(calls[0][2:], (self.B, "https://example.test/m/a2"))          # the newest message's own link
+        self.assertEqual(calls[0][2:], (self.B, "https://example.test/m/a2"))  # the newest message's own link
 
     def test_leads_stay_off_until_the_second_switch_is_on_even_when_the_writer_is_live(self):
         with patch.object(ev, "lead_job", return_value=True) as job:
             counts, got = Run(parents=(), kids={}, roster=[], records=self.messages(), environ={**ENV, "INTERVIEW_OS_WRITER": "v7"}, writer=Writer())()
         self.assertEqual((job.call_count, got["evidence"], counts["lead_jobs"], counts["lead_rows"]), (0, [], 0, 0))
-        self.assertEqual(counts["leads"], 3)                                             # still counted, so the dry numbers show what turning it on would do
+        self.assertEqual(counts["leads"], 3)
         with patch.object(ev, "lead_job", return_value=True) as job:
             counts, got = Run(parents=(), kids={}, roster=[], records=self.messages(), environ=ENV, live=False, writer=Writer())()
-        self.assertEqual((job.call_count, len(got["evidence"])), (0, 3))               # a dry run plans them and writes none
+        self.assertEqual((job.call_count, len(got["evidence"])), (0, 3))  # a dry run plans them and writes none
 
     def test_the_result_is_counts_only_with_a_ready_page_a_lead_a_conversion_and_a_request_in_one_run(self):
         records = [*self.messages(), mail()]
@@ -922,14 +931,16 @@ class LeadCorrelation(unittest.TestCase):
         text = json.dumps(counts)
         for private in ("ExampleCo", "AlphaCo", "Program Manager", "Alpha Role", "greenhouse", "example.test", "Pat Example"):
             self.assertNotIn(private, text)
-        self.assertIsInstance(counts["lead_rows"], int)                                  # the old collision made this the Ledger's own rows
+        self.assertIsInstance(counts["lead_rows"], int)  # the old collision made this the Ledger's own rows
 
 
 class StageClock(unittest.TestCase):
-    """Live run 39551231241: the mail read took minutes, the write stage inherited the clock started before it, and all four queued conversions failed pipeline_incomplete with zero writes."""
+    """Live run 39551231241: the mail read took minutes, the write stage inherited the clock started before it, and all
+    four queued conversions failed.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_the_write_stage_gets_a_clock_started_after_the_mail_has_been_read(self):
@@ -938,17 +949,17 @@ class StageClock(unittest.TestCase):
         with patch.object(ev.RunContext, "start", side_effect=lambda *a, **k: order.append("clock") or real(*a, **k)), \
              patch.object(ev, "read_mail", side_effect=lambda *a, **k: order.append("mail") or ([], 0)):
             counts, got = Run(records=None, roster=[])()
-        self.assertEqual(order, ["clock", "mail", "clock"])                                   # the early one for the scans, a fresh one for the writes
+        self.assertEqual(order, ["clock", "mail", "clock"])
         self.assertEqual(got["context"].timeout_seconds, ev.STAGE_SECONDS)
         self.assertGreater(got["context"].remaining_seconds(), ev.STAGE_SECONDS - 5)
-        self.assertEqual(ev.STAGE_SECONDS, 720)                                      # long enough for the page scans of five pursuits and their writes, and inside the 30-minute recruiters job
+        self.assertEqual(ev.STAGE_SECONDS, 720)
 
 
 
 class Window(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_a_longer_mail_window_is_for_a_dry_run_only_and_never_beyond_90_days(self):
@@ -958,10 +969,12 @@ class Window(unittest.TestCase):
 
 
 class Pursuits(unittest.TestCase):
-    """M1 (LIFE-25 handoff): a verified scheduling request for a V7 pursuit page that has no Applied Ledger row becomes that page's Interview 1, Scheduling Pending."""
+    """M1: a verified scheduling request for a V7 pursuit page that has no Applied Ledger row becomes that page's
+    Interview 1, Scheduling Pending.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_a_request_for_a_keyed_pursuit_page_is_its_interview_1_scheduling_pending(self):
@@ -973,30 +986,30 @@ class Pursuits(unittest.TestCase):
         counts_only(counts)
 
     def test_the_one_request_for_a_lead_page_whose_link_is_the_outreach_becomes_its_interview_1_request(self):
-        lead = {"p1": ("recruiter-exampleco-777777", "https://example.test/thread/5")}            # the page links the recruiter's outreach, not a request
+        lead = {"p1": ("recruiter-exampleco-777777", "https://example.test/thread/5")}
         rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
         request = mail(body="Please select a time for a call. Requisition 777777.")
         counts, got = Run(facts=lead, rows=rows, roster=[], records=[outreach(extra="Requisition 777777."), request])()
         self.assertEqual((counts["failed"], counts.get("where", {})), (0, {}))
-        self.assertEqual([q.source for _, q in got["evidence"]], [request["url"]])               # the refresh links the request on the opportunity
+        self.assertEqual([q.source for _, q in got["evidence"]], [request["url"]])  # the refresh links the request on the opportunity
         other = mail(subject="Schedule your interview - ExampleCo Program Manager (2)", body="Please select a time for a call.", url="https://example.test/thread/7")
         counts, _ = Run(facts={"p1": ("recruiter-exampleco-777777", other["url"])}, rows=rows, roster=[], records=[other, request])()
-        self.assertEqual(counts["where"], {"pursuit_other_request": 1})                         # the page already names another request: never guessed
+        self.assertEqual(counts["where"], {"pursuit_other_request": 1})
 
     def test_a_request_naming_another_requisition_than_the_pursuits_key_is_a_conflict(self):
         keyed = {"p1": ("recruiter-exampleco-777777", URL)}
         rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
         counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 999999.")])()
         self.assertEqual(([e for e in got["evidence"] if not e[1].refresh_only], counts["why"].get("requisition_conflict"), counts["where"]), ([], 1, {"pursuit_requisition": 1}))
-        self.assertEqual([e[1].refresh_only for e in got["evidence"]], [True])          # E05: the lead's page is still brought up to date, never given a round
+        self.assertEqual([e[1].refresh_only for e in got["evidence"]], [True])
         counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 777777.")])()
-        self.assertEqual([e[1].refresh_only for e in got["evidence"]], [False])        # the same requisition: Interview 1, and no second item for the page
+        self.assertEqual([e[1].refresh_only for e in got["evidence"]], [False])
 
     def test_the_replay_and_a_second_request_for_a_pursuit_that_already_has_its_round_write_nothing(self):
         same = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": ("exampleco-r-1", "https://example.test/thread/9")}, kids={"p1": (child(),)}, roster=[], records=[mail()])
         counts, got = same()
-        self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["failed"]), ([], 0))             # the round exists and names this same message
-        other = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": (child(),)}, roster=[], records=[mail()])       # the page's request link is another message
+        self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["failed"]), ([], 0))  # the round exists and names this same message
+        other = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": (child(),)}, roster=[], records=[mail()])  # the page's request link is another message
         counts, got = other()
         self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["why"].get("round_identity_incomplete")), ([], 1))
         self.assertEqual(counts["where"], {"pursuit_other_request": 1})
@@ -1005,13 +1018,13 @@ class Pursuits(unittest.TestCase):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, roster=[], records=[mail()], tops=NOTES_TOP)()
         self.assertEqual((got["evidence"], counts["pursuit_requests"]), ([], 0))
         self.assertEqual(sorted(counts["lead_requests"].values()), [1])
-        self.assertTrue(all(len(label) == 6 for label in counts["lead_requests"]))                  # a short hash, never a name
+        self.assertTrue(all(len(label) == 6 for label in counts["lead_requests"]))  # a short hash, never a name
 
     def test_a_request_naming_another_company_never_lands_on_this_page(self):
         other = mail(subject="Schedule your interview - OtherCo Program Manager", body="Please select a time for a call.", sender_name="Talent Team")
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[], records=[other])()
         self.assertEqual(([e for e in got["evidence"] if not e[1].refresh_only], counts["pursuit_requests"]), ([], 0))
-        self.assertEqual([(e[0].company, e[1].refresh_only) for e in got["evidence"]], [("ExampleCo", True)])   # E14 (Oct 25): its own page is still brought up to date, never given a round
+        self.assertEqual([(e[0].company, e[1].refresh_only) for e in got["evidence"]], [("ExampleCo", True)])
 
     def test_a_pursuit_that_is_also_an_applied_row_is_one_job_not_two(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[APPLIED], records=[mail()])()
@@ -1022,7 +1035,7 @@ class Pursuits(unittest.TestCase):
 class Facts(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def regions(self, request_links, renders=1):
@@ -1049,7 +1062,7 @@ class Facts(unittest.TestCase):
 class Registered(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched(self):
@@ -1065,10 +1078,12 @@ if __name__ == "__main__":
 
 
 class NetworkContacts(unittest.TestCase):
-    """E10 (Jim, Oct 24): an opportunity's LinkedIn contacts are its job page's own Network Leads (the exact Ledger row linked), read only."""
+    """E10: an opportunity's LinkedIn contacts are its job page's own Network Leads (the exact Ledger row linked), read
+    only.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
 
@@ -1086,7 +1101,7 @@ class NetworkContacts(unittest.TestCase):
         with patch("lifeos.network.surface.leads_on_page", side_effect=leads):
             out, failed = ev.network_contacts(object(), evidence)
         self.assertFalse(failed)
-        self.assertEqual(reads, [("row-1", ev.CONTACTS_SHOWN), ("row-2", ev.CONTACTS_SHOWN)])                 # one read per job page
+        self.assertEqual(reads, [("row-1", ev.CONTACTS_SHOWN), ("row-2", ev.CONTACTS_SHOWN)])  # one read per job page
         self.assertEqual([(q.contacts, q.contacts_state) for _, q in out],
                          [((("Pat Example", "Former colleague at ExampleCo"),), "linked")] * 2 + [((), "none"), ((), None)])
 

@@ -129,7 +129,7 @@ class Bridge(unittest.TestCase):
         self.assertEqual((len(found), counts), (1, {"opportunities": 1, "rounds_undated": 1}))
 
     def test_rounds_of_a_ledger_row_carry_its_company_and_role(self):
-        """LIFE-360 GWT-IP-1: a Ledger row with two round child pages gives both rounds; GWT-IP-2: with no Stage row the page tree answers as before."""
+        """GWT-IP-1: a Ledger row with two round child pages gives both rounds"""
         from lifeos.interview.models import Child, Parent, Scan
         kids = Scan((Child("c1", "row", "2026-10-13", None, 1, True), Child("c2", "row", "2026-10-20", None, 2, True)), True)
         env = {"HIRING_PIPELINE_PAGE_ID": "x", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc"}
