@@ -4,6 +4,7 @@ The round snapshot's Next action is written once as the Verify-scheduling senten
 Once the page reads Held, this module replaces exactly that sentence, and nothing else, with the page's own
 follow-up: the Recommended Follow-Up action, else a real `Follow-up owed / due` value, else `None`. Any other Next
 action is never touched, so a second run writes nothing."""
+
 from lifeos.platform.notion_client import NotionError, rich_text
 from . import notion
 from .template import VERIFY_SCHEDULING
@@ -30,14 +31,14 @@ def follow_up(client, page_id, context=None):
     texts = [notion.text(b).strip() for b in blocks]
     for index, line in enumerate(texts):
         if line.lower().strip("# *:") == FOLLOW_UP_HEADING:
-            for after in texts[index + 1:index + 4]:
+            for after in texts[index + 1 : index + 4]:
                 if after.lower().startswith("action:"):
-                    action = after[len("action:"):].strip()
+                    action = after[len("action:") :].strip()
                     if action:
                         return action[:LIMIT]
     for line in texts:
         if line.startswith(OWED):
-            value = line[len(OWED):].strip()
+            value = line[len(OWED) :].strip()
             if value and not value.startswith(UNSET) and "no task or deadline is created" not in value:
                 return value[:LIMIT]
     return NONE
@@ -50,7 +51,14 @@ def repair(client, page_id, live, counts, context=None):
         callouts = [b for b in tops[1:] if b.get("type") == "callout"]
         if not tops or not notion.is_fold(tops[0]) or not callouts:
             return "held_unreadable"
-        line = next((b for b in notion.children(client, callouts[0]["id"], [notion.MAX_CALLS], context) if notion.text(b) == NEXT + VERIFY_SCHEDULING), None)
+        line = next(
+            (
+                b
+                for b in notion.children(client, callouts[0]["id"], [notion.MAX_CALLS], context)
+                if notion.text(b) == NEXT + VERIFY_SCHEDULING
+            ),
+            None,
+        )
         if line is None:
             return "held_unchanged"
         value = follow_up(client, page_id, context)

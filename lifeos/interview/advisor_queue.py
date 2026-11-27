@@ -1,4 +1,5 @@
 """Immutable Request/Response handoff for the private Interview Advisor queue."""
+
 from dataclasses import dataclass, field, replace
 from enum import Enum
 import json
@@ -20,13 +21,40 @@ _MARKER = re.compile(r"^v7-interview-advisor-request:1;([0-9a-f]{32});([0-9a-f]{
 _RESPONSE_MARKER = re.compile(r"^v7-interview-advisor-response:1;([0-9a-f]{32});([0-9a-f]{64})$")
 _REQUEST_MAX = 180000
 _CALLS = 40
-_BUNDLE_KEYS = ("company", "role", "interview_date", "interviewer", "ordinal", "source_job_id", "manifest", "sources", "evidence")
-_DRAFT_KEYS = ("straight_line", "game_theory", "decision_criteria", "objections", "close_strategy", "focus",
-               "strongest_evidence_refs", "pressure_points", "questions")
+_BUNDLE_KEYS = (
+    "company",
+    "role",
+    "interview_date",
+    "interviewer",
+    "ordinal",
+    "source_job_id",
+    "manifest",
+    "sources",
+    "evidence",
+)
+_DRAFT_KEYS = (
+    "straight_line",
+    "game_theory",
+    "decision_criteria",
+    "objections",
+    "close_strategy",
+    "focus",
+    "strongest_evidence_refs",
+    "pressure_points",
+    "questions",
+)
 _ADVICE_KEYS = ("text", "source_refs")
-_CODES = {"advisor_queue_invalid", "advisor_queue_incomplete", "advisor_queue_conflict", "advisor_queue_too_large",
-          "advisor_queue_write_failed", "advisor_queue_readback_failed", "advisor_queue_response_invalid",
-          "advisor_queue_ambiguous", "advisor_queue_preview_mismatch"}
+_CODES = {
+    "advisor_queue_invalid",
+    "advisor_queue_incomplete",
+    "advisor_queue_conflict",
+    "advisor_queue_too_large",
+    "advisor_queue_write_failed",
+    "advisor_queue_readback_failed",
+    "advisor_queue_response_invalid",
+    "advisor_queue_ambiguous",
+    "advisor_queue_preview_mismatch",
+}
 _DEFINITE = {400, 401, 403, 404, 409, 429}
 
 
@@ -49,19 +77,40 @@ def _canonical(value):
 
 
 def _source_value(source):
-    return {"source_id": source.source_id, "kind": source.kind.value, "text": source.text,
-            "version": source.version, "source_round": source.source_round, "active": source.active}
+    return {
+        "source_id": source.source_id,
+        "kind": source.kind.value,
+        "text": source.text,
+        "version": source.version,
+        "source_round": source.source_round,
+        "active": source.active,
+    }
 
 
 def _bundle_value(bundle):
     _need(isinstance(bundle, advisor.AdvisorInputBundle))
     manifest = {name: getattr(bundle.manifest, name) for name in advisor.AdvisorManifest.__dataclass_fields__}
-    return {"company": bundle.company, "role": bundle.role, "interview_date": bundle.interview_date,
-            "interviewer": bundle.interviewer, "ordinal": bundle.ordinal, "source_job_id": bundle.source_job_id,
-            "manifest": manifest, "sources": [_source_value(source) for source in bundle.sources],
-            "evidence": [{"evidence_id": item.ref.evidence_id, "version": item.ref.version,
-                          "canonical_text": item.canonical_text, "source_ref": item.source_ref,
-                          "tags": list(item.tags), "active": item.active} for item in bundle.evidence]}
+    return {
+        "company": bundle.company,
+        "role": bundle.role,
+        "interview_date": bundle.interview_date,
+        "interviewer": bundle.interviewer,
+        "ordinal": bundle.ordinal,
+        "source_job_id": bundle.source_job_id,
+        "manifest": manifest,
+        "sources": [_source_value(source) for source in bundle.sources],
+        "evidence": [
+            {
+                "evidence_id": item.ref.evidence_id,
+                "version": item.ref.version,
+                "canonical_text": item.canonical_text,
+                "source_ref": item.source_ref,
+                "tags": list(item.tags),
+                "active": item.active,
+            }
+            for item in bundle.evidence
+        ],
+    }
 
 
 def serialize_bundle(bundle):
@@ -87,16 +136,40 @@ def parse_bundle(payload):
         sources = []
         for item in value["sources"]:
             item = _object(item, ("source_id", "kind", "text", "version", "source_round", "active"))
-            sources.append(advisor.AdvisorSource(item["source_id"], advisor.SourceKind(item["kind"]), item["text"],
-                                                   item["version"], item["source_round"], item["active"]))
+            sources.append(
+                advisor.AdvisorSource(
+                    item["source_id"],
+                    advisor.SourceKind(item["kind"]),
+                    item["text"],
+                    item["version"],
+                    item["source_round"],
+                    item["active"],
+                )
+            )
         evidence = []
         for item in value["evidence"]:
             item = _object(item, ("evidence_id", "version", "canonical_text", "source_ref", "tags", "active"))
             _need(isinstance(item["tags"], list))
-            evidence.append(advisor.CandidateEvidence(advisor.EvidenceRef(item["evidence_id"], item["version"]),
-                item["canonical_text"], item["source_ref"], tuple(item["tags"]), item["active"]))
-        result = advisor.AdvisorInputBundle(value["company"], value["role"], value["interview_date"],
-            value["interviewer"], value["ordinal"], value["source_job_id"], manifest, tuple(sources), tuple(evidence))
+            evidence.append(
+                advisor.CandidateEvidence(
+                    advisor.EvidenceRef(item["evidence_id"], item["version"]),
+                    item["canonical_text"],
+                    item["source_ref"],
+                    tuple(item["tags"]),
+                    item["active"],
+                )
+            )
+        result = advisor.AdvisorInputBundle(
+            value["company"],
+            value["role"],
+            value["interview_date"],
+            value["interviewer"],
+            value["ordinal"],
+            value["source_job_id"],
+            manifest,
+            tuple(sources),
+            tuple(evidence),
+        )
         _need(serialize_bundle(result) == payload)
         advisor.bundle_digest(result)
         return result
@@ -135,20 +208,30 @@ class QueueItem:
 
 def _plain(block):
     with fixed((KeyError, TypeError), AdvisorQueueError, "advisor_queue_incomplete"):
-        return "".join(x.get("plain_text", x.get("text", {}).get("content", ""))
-                       for x in block[block["type"]]["rich_text"])
+        return "".join(
+            x.get("plain_text", x.get("text", {}).get("content", "")) for x in block[block["type"]]["rich_text"]
+        )
 
 
 def _title(page):
     props = page.get("properties") or {}
     titles = [prop.get("title") for prop in props.values() if prop.get("type") == "title"]
-    return "".join(x.get("plain_text", x.get("text", {}).get("content", "")) for x in titles[0]) if len(titles) == 1 else ""
+    return (
+        "".join(x.get("plain_text", x.get("text", {}).get("content", "")) for x in titles[0])
+        if len(titles) == 1
+        else ""
+    )
 
 
 def _call(client, budget, method, path, body=None, once=False):
     _need(budget[0] > 0, "advisor_queue_incomplete")
     budget[0] -= 1
-    with fixed(Exception, AdvisorQueueError, "advisor_queue_incomplete", keep=(AdvisorQueueError, NotionError) if once else AdvisorQueueError):
+    with fixed(
+        Exception,
+        AdvisorQueueError,
+        "advisor_queue_incomplete",
+        keep=(AdvisorQueueError, NotionError) if once else AdvisorQueueError,
+    ):
         return (client.call_once if once else client.call)(method, path, body)
 
 
@@ -162,20 +245,27 @@ def _children(client, budget, page_id):
     def fetch(cursor):
         path = f"/blocks/{page_id}/children?page_size=100"
         return _call(client, budget, "GET", path + ("&start_cursor=" + quote(cursor, safe="") if cursor else ""))
-    return [block for data in notion_pages.pages(fetch, AdvisorQueueError, "advisor_queue_incomplete") for block in data["results"]]
+
+    return [
+        block
+        for data in notion_pages.pages(fetch, AdvisorQueueError, "advisor_queue_incomplete")
+        for block in data["results"]
+    ]
 
 
 def _queue(client, budget, queue_page_id):
     _page(client, budget, queue_page_id, _QUEUE_TITLE)
     first_data = _call(client, budget, "GET", f"/blocks/{queue_page_id}/children?page_size=1")
-    _need(isinstance(first_data, dict) and isinstance(first_data.get("results"), list),
-          "advisor_queue_incomplete")
+    _need(isinstance(first_data, dict) and isinstance(first_data.get("results"), list), "advisor_queue_incomplete")
     first = first_data["results"]
-    _need(isinstance(first, list) and first and first[0].get("type") == "paragraph"
-          and _plain(first[0]) == _QUEUE_MARKER, "advisor_queue_invalid")
+    _need(
+        isinstance(first, list) and first and first[0].get("type") == "paragraph" and _plain(first[0]) == _QUEUE_MARKER,
+        "advisor_queue_invalid",
+    )
     blocks = _children(client, budget, queue_page_id)
-    _need(blocks and blocks[0].get("type") == "paragraph" and _plain(blocks[0]) == _QUEUE_MARKER,
-          "advisor_queue_invalid")
+    _need(
+        blocks and blocks[0].get("type") == "paragraph" and _plain(blocks[0]) == _QUEUE_MARKER, "advisor_queue_invalid"
+    )
     return blocks
 
 
@@ -222,7 +312,7 @@ def _request_blocks(request):
 
 
 def _rich(text):
-    return [{"type": "text", "text": {"content": text[i:i + 1800]}} for i in range(0, max(1, len(text)), 1800)]
+    return [{"type": "text", "text": {"content": text[i : i + 1800]}} for i in range(0, max(1, len(text)), 1800)]
 
 
 def _para(text):
@@ -241,7 +331,7 @@ def ensure_request(client, queue_page_id, bundle):
         _need(block.get("type") == "child_page", "advisor_queue_invalid")
         pair = _marker_ids(client, budget, block.get("id"), _MARKER)
         _need(pair is not None, "advisor_queue_invalid")
-        _need(pair[1][:32] == pair[0], "advisor_queue_conflict")             # Tampered marker: fail closed.
+        _need(pair[1][:32] == pair[0], "advisor_queue_conflict")  # Tampered marker: fail closed.
         if pair[0] == request_id:
             candidates.append(block.get("id"))
     if len(candidates) > 1:
@@ -249,56 +339,89 @@ def ensure_request(client, queue_page_id, bundle):
     if candidates:
         existing, trailing = _read_request(client, budget, candidates[0], queue_page_id)
         _need(len(trailing) <= 1 and all(b.get("type") == "child_page" for b in trailing), "advisor_queue_conflict")
-        _need(existing.request_id == request_id and existing.bundle_hash == bundle_hash
-              and serialize_bundle(existing.bundle) == payload, "advisor_queue_conflict")
+        _need(
+            existing.request_id == request_id
+            and existing.bundle_hash == bundle_hash
+            and serialize_bundle(existing.bundle) == payload,
+            "advisor_queue_conflict",
+        )
         return existing
     request = QueueRequest(request_id, bundle_hash, bundle, "")
     try:
         page = full_width.create_page(client, queue_page_id, title, _request_blocks(request))
     except NotionError as error:
         status = re.fullmatch(r"NOTION_HTTP_(\d+)", str(error))
-        raise AdvisorQueueError("advisor_queue_write_failed" if status and int(status.group(1)) in _DEFINITE
-                                else "advisor_queue_readback_failed") from None
+        raise AdvisorQueueError(
+            "advisor_queue_write_failed"
+            if status and int(status.group(1)) in _DEFINITE
+            else "advisor_queue_readback_failed"
+        ) from None
     except Exception:
         raise AdvisorQueueError("advisor_queue_readback_failed") from None
     with fixed(Exception, AdvisorQueueError, "advisor_queue_readback_failed"):
         page_id = page.get("id")
-        _need(isinstance(page_id, str) and re.fullmatch(
-              r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", page_id),
-              "advisor_queue_readback_failed")
+        _need(
+            isinstance(page_id, str)
+            and re.fullmatch(
+                r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+                page_id,
+            ),
+            "advisor_queue_readback_failed",
+        )
         result, trailing = _read_request(client, budget, page_id, queue_page_id)
-        _need(not trailing and result.request_id == request_id and result.bundle_hash == bundle_hash
-              and serialize_bundle(result.bundle) == payload, "advisor_queue_readback_failed")
+        _need(
+            not trailing
+            and result.request_id == request_id
+            and result.bundle_hash == bundle_hash
+            and serialize_bundle(result.bundle) == payload,
+            "advisor_queue_readback_failed",
+        )
         return result
 
 
 def _draft_value(draft):
-    return {key: ([{"text": item.text, "source_refs": list(item.source_refs)} for item in getattr(draft, key)]
-                  if key != "strongest_evidence_refs" else list(draft.strongest_evidence_refs)) for key in _DRAFT_KEYS}
+    return {
+        key: (
+            [{"text": item.text, "source_refs": list(item.source_refs)} for item in getattr(draft, key)]
+            if key != "strongest_evidence_refs"
+            else list(draft.strongest_evidence_refs)
+        )
+        for key in _DRAFT_KEYS
+    }
 
 
 def _parse_draft(payload):
     with fixed(Exception, AdvisorQueueError, "advisor_queue_response_invalid", keep=AdvisorQueueError):
+
         def unique(pairs):
             result = {}
             for key, value in pairs:
                 _need(key not in result, "advisor_queue_response_invalid")
                 result[key] = value
             return result
+
         value = json.loads(payload, object_pairs_hook=unique)
         _need(type(value) is dict and set(value) == set(_DRAFT_KEYS), "advisor_queue_response_invalid")
         sections = {}
         for key in _DRAFT_KEYS:
             if key == "strongest_evidence_refs":
-                _need(isinstance(value[key], list) and all(isinstance(ref, str) for ref in value[key]), "advisor_queue_response_invalid")
+                _need(
+                    isinstance(value[key], list) and all(isinstance(ref, str) for ref in value[key]),
+                    "advisor_queue_response_invalid",
+                )
                 sections[key] = tuple(value[key])
             else:
                 _need(isinstance(value[key], list), "advisor_queue_response_invalid")
                 items = []
                 for item in value[key]:
-                    _need(type(item) is dict and set(item) == set(_ADVICE_KEYS)
-                          and isinstance(item["text"], str) and isinstance(item["source_refs"], list)
-                          and all(isinstance(ref, str) for ref in item["source_refs"]), "advisor_queue_response_invalid")
+                    _need(
+                        type(item) is dict
+                        and set(item) == set(_ADVICE_KEYS)
+                        and isinstance(item["text"], str)
+                        and isinstance(item["source_refs"], list)
+                        and all(isinstance(ref, str) for ref in item["source_refs"]),
+                        "advisor_queue_response_invalid",
+                    )
                     items.append(advisor.GroundedAdvice(item["text"], tuple(item["source_refs"])))
                 sections[key] = tuple(items)
         return advisor.AdvisorDraft(**sections)
@@ -353,9 +476,15 @@ def scan_queue(client, queue_page_id):
 
 
 def with_verified_preview(item, preview):
-    _need(isinstance(item, QueueItem) and item.state == QueueState.RESPONDED and item.response is not None,
-          "advisor_queue_preview_mismatch")
-    _need(isinstance(preview, VerifiedPreview) and preview.generation_id == item.request.request_id
-          and preview.bundle_hash == item.request.bundle_hash and preview.prep == item.response.prep,
-          "advisor_queue_preview_mismatch")
+    _need(
+        isinstance(item, QueueItem) and item.state == QueueState.RESPONDED and item.response is not None,
+        "advisor_queue_preview_mismatch",
+    )
+    _need(
+        isinstance(preview, VerifiedPreview)
+        and preview.generation_id == item.request.request_id
+        and preview.bundle_hash == item.request.bundle_hash
+        and preview.prep == item.response.prep,
+        "advisor_queue_preview_mismatch",
+    )
     return replace(item, state=QueueState.PREVIEWED)

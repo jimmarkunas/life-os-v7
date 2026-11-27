@@ -1,4 +1,5 @@
 """Bounded private Notion store and immutable Advisor preview pages."""
+
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -12,13 +13,38 @@ from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError
 
 _ROOT = "LIFE OS — Interview Advisor"
-_NAMES = ("Corpus Manifest", "Straight Line Doctrine", "Game Theory Doctrine",
-          "Candidate Evidence Bank", "Candidate Profile", "Advisor Inputs", "Advisor Queue", "Advisor Previews")
-_MARKERS = dict(zip(_NAMES, ("manifest", "straight_line_doctrine", "game_theory_doctrine",
-                              "evidence_bank", "candidate_profile", "inputs", "queue", "previews")))
+_NAMES = (
+    "Corpus Manifest",
+    "Straight Line Doctrine",
+    "Game Theory Doctrine",
+    "Candidate Evidence Bank",
+    "Candidate Profile",
+    "Advisor Inputs",
+    "Advisor Queue",
+    "Advisor Previews",
+)
+_MARKERS = dict(
+    zip(
+        _NAMES,
+        (
+            "manifest",
+            "straight_line_doctrine",
+            "game_theory_doctrine",
+            "evidence_bank",
+            "candidate_profile",
+            "inputs",
+            "queue",
+            "previews",
+        ),
+    )
+)
 _SRC, _BANK = "v7-interview-advisor-source:1;", "v7-interview-advisor-bank:1;"
-_META = {"Straight Line Doctrine": _SRC, "Game Theory Doctrine": _SRC, "Candidate Profile": _SRC,
-         "Candidate Evidence Bank": _BANK}
+_META = {
+    "Straight Line Doctrine": _SRC,
+    "Game Theory Doctrine": _SRC,
+    "Candidate Profile": _SRC,
+    "Candidate Evidence Bank": _BANK,
+}
 _CHILDREN = {"Advisor Inputs": ("Guidance", "Accepted Signals")}
 _RX = re.compile(r"^[0-9a-f]{32}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -27,9 +53,21 @@ _CODE = "advisor_store_invalid"
 
 class AdvisorStoreError(ValueError):
     def __init__(self, code=_CODE):
-        self.code = code if code in {"advisor_store_invalid", "advisor_store_incomplete", "advisor_store_hash_mismatch",
-                                    "advisor_store_unreadable", "advisor_preview_invalid", "advisor_preview_conflict",
-                                    "advisor_preview_readback_failed", "advisor_preview_write_failed"} else _CODE
+        self.code = (
+            code
+            if code
+            in {
+                "advisor_store_invalid",
+                "advisor_store_incomplete",
+                "advisor_store_hash_mismatch",
+                "advisor_store_unreadable",
+                "advisor_preview_invalid",
+                "advisor_preview_conflict",
+                "advisor_preview_readback_failed",
+                "advisor_preview_write_failed",
+            }
+            else _CODE
+        )
         super().__init__(self.code)
 
     def __str__(self):
@@ -62,7 +100,9 @@ def _plain(block):
 def _title(page):
     props = page.get("properties") or {}
     found = [prop.get("title") for prop in props.values() if isinstance(prop, dict) and prop.get("type") == "title"]
-    return "".join(p.get("plain_text", p.get("text", {}).get("content", "")) for p in found[0]) if len(found) == 1 else ""
+    return (
+        "".join(p.get("plain_text", p.get("text", {}).get("content", "")) for p in found[0]) if len(found) == 1 else ""
+    )
 
 
 def _page(client, page_id, expected_title=None, parent=None, code=_CODE):
@@ -80,8 +120,19 @@ def _blocks(client, page_id):
         return notion.children(client, page_id, [40])
 
 
-_TEXT_BLOCKS = ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item",
-                "quote", "callout", "toggle", "to_do", "code")
+_TEXT_BLOCKS = (
+    "paragraph",
+    "heading_1",
+    "heading_2",
+    "heading_3",
+    "bulleted_list_item",
+    "numbered_list_item",
+    "quote",
+    "callout",
+    "toggle",
+    "to_do",
+    "code",
+)
 
 
 def _marker_like(block):
@@ -92,12 +143,19 @@ def _marker_like(block):
 def _marked(client, page_id, kind, metadata_prefix=None):
     blocks = _blocks(client, page_id)
     marker = f"v7-interview-advisor:1;kind={kind}"
-    _need(bool(blocks) and blocks[0].get("type") == "paragraph" and _plain(blocks[0]) == marker,
-          "advisor_store_incomplete")
+    _need(
+        bool(blocks) and blocks[0].get("type") == "paragraph" and _plain(blocks[0]) == marker,
+        "advisor_store_incomplete",
+    )
     for index, block in enumerate(blocks[1:], start=1):
         if _marker_like(block):
-            _need(index == 1 and metadata_prefix is not None and block.get("type") == "paragraph"
-                  and _plain(block).startswith(metadata_prefix), "advisor_store_incomplete")
+            _need(
+                index == 1
+                and metadata_prefix is not None
+                and block.get("type") == "paragraph"
+                and _plain(block).startswith(metadata_prefix),
+                "advisor_store_incomplete",
+            )
     return blocks
 
 
@@ -106,8 +164,13 @@ def _first_marker(client, page_id, kind):
         data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
         blocks = data["results"]
         expected = f"v7-interview-advisor:1;kind={kind}"
-        _need(isinstance(blocks, list) and blocks and blocks[0].get("type") == "paragraph"
-              and _plain(blocks[0]) == expected, "advisor_store_incomplete")
+        _need(
+            isinstance(blocks, list)
+            and blocks
+            and blocks[0].get("type") == "paragraph"
+            and _plain(blocks[0]) == expected,
+            "advisor_store_incomplete",
+        )
 
 
 def _kind_of(client, page_id):
@@ -142,11 +205,19 @@ def _direct_pages(client, parent_id, allowed, kinds=None):
 
 def _body_text(block):
     kind = block.get("type")
-    _need(kind in ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"),
-          "advisor_store_invalid")
+    _need(
+        kind in ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"),
+        "advisor_store_invalid",
+    )
     _need(not block.get("has_children"), "advisor_store_invalid")
-    prefix = {"paragraph": "", "heading_1": "# ", "heading_2": "## ", "heading_3": "### ",
-              "bulleted_list_item": "- ", "numbered_list_item": "1. "}[kind]
+    prefix = {
+        "paragraph": "",
+        "heading_1": "# ",
+        "heading_2": "## ",
+        "heading_3": "### ",
+        "bulleted_list_item": "- ",
+        "numbered_list_item": "1. ",
+    }[kind]
     return prefix + _plain(block)
 
 
@@ -154,15 +225,17 @@ def _metadata(block, prefix, keys):
     _need(block.get("type") == "paragraph", "advisor_store_invalid")
     value = _plain(block)
     _need(value.startswith(prefix), "advisor_store_invalid")
-    return _json(value[len(prefix):], keys)
+    return _json(value[len(prefix) :], keys)
 
 
 def _source(client, page_id, kind, expected_marker):
     blocks = _marked(client, page_id, expected_marker, _SRC)
     _need(len(blocks) >= 3, "advisor_store_incomplete")
     meta = _metadata(blocks[1], "v7-interview-advisor-source:1;", ("source_id", "version"))
-    _need(isinstance(meta["source_id"], str) and type(meta["version"]) is int and meta["version"] > 0,
-          "advisor_store_invalid")
+    _need(
+        isinstance(meta["source_id"], str) and type(meta["version"]) is int and meta["version"] > 0,
+        "advisor_store_invalid",
+    )
     text = "\n".join(_body_text(b) for b in blocks[2:])
     _need(bool(text), "advisor_store_incomplete")
     with fixed(ValueError, AdvisorStoreError, "advisor_store_invalid"):
@@ -181,8 +254,15 @@ def _bank(client, page_id):
             _need(block.get("type") == "paragraph" and not block.get("has_children"), "advisor_store_invalid")
             data = _json(_plain(block), keys)
             _need(isinstance(data["tags"], list), "advisor_store_invalid")
-            records.append(advisor.CandidateEvidence(advisor.EvidenceRef(data["evidence_id"], data["version"]),
-                data["canonical_text"], data["source_ref"], tuple(data["tags"]), data["active"]))
+            records.append(
+                advisor.CandidateEvidence(
+                    advisor.EvidenceRef(data["evidence_id"], data["version"]),
+                    data["canonical_text"],
+                    data["source_ref"],
+                    tuple(data["tags"]),
+                    data["active"],
+                )
+            )
     _need(records and len({r.ref for r in records}) == len(records), "advisor_store_invalid")
     norm = [[r.ref.canonical(), r.canonical_text, r.source_ref, list(r.tags), r.active] for r in records]
     return meta["version"], tuple(records), hashlib.sha256(_canonical(norm).encode()).hexdigest()
@@ -190,14 +270,26 @@ def _bank(client, page_id):
 
 def _records(client, page_id, marker_kind, signal=False):
     blocks = _marked(client, page_id, marker_kind)
-    keys = ("source_id", "version", "source_round", "text", "active") if signal else ("source_id", "version", "text", "active")
+    keys = (
+        ("source_id", "version", "source_round", "text", "active")
+        if signal
+        else ("source_id", "version", "text", "active")
+    )
     out = []
     with fixed(ValueError, AdvisorStoreError, "advisor_store_invalid"):
         for block in blocks[1:]:
             _need(block.get("type") == "paragraph" and not block.get("has_children"), "advisor_store_invalid")
             data = _json(_plain(block), keys)
-            out.append(advisor.AdvisorSource(data["source_id"], advisor.SourceKind.ACCEPTED_SIGNAL if signal else advisor.SourceKind.GUIDANCE,
-                                             data["text"], data["version"], data.get("source_round"), data["active"]))
+            out.append(
+                advisor.AdvisorSource(
+                    data["source_id"],
+                    advisor.SourceKind.ACCEPTED_SIGNAL if signal else advisor.SourceKind.GUIDANCE,
+                    data["text"],
+                    data["version"],
+                    data.get("source_round"),
+                    data["active"],
+                )
+            )
     _need(len({(x.source_id, x.version) for x in out}) == len(out), "advisor_store_invalid")
     active = tuple(x for x in out if x.active)
     _need(len(active) <= (100 if signal else 3), "advisor_store_invalid")
@@ -234,11 +326,20 @@ def read_store(client, environ=os.environ):
                 _first_marker(client, page_id, "queue")
                 continue
             _marked(client, page_id, _MARKERS[name], _META.get(name))
-        sub = _direct_pages(client, pages["Advisor Inputs"], _CHILDREN["Advisor Inputs"], {"Guidance": "guidance", "Accepted Signals": "accepted_signals"})
+        sub = _direct_pages(
+            client,
+            pages["Advisor Inputs"],
+            _CHILDREN["Advisor Inputs"],
+            {"Guidance": "guidance", "Accepted Signals": "accepted_signals"},
+        )
         for name, page_id in sub.items():
             _marked(client, page_id, "guidance" if name == "Guidance" else "accepted_signals")
-        sl = _source(client, pages["Straight Line Doctrine"], advisor.SourceKind.STRAIGHT_LINE_DOCTRINE, "straight_line_doctrine")
-        gt = _source(client, pages["Game Theory Doctrine"], advisor.SourceKind.GAME_THEORY_DOCTRINE, "game_theory_doctrine")
+        sl = _source(
+            client, pages["Straight Line Doctrine"], advisor.SourceKind.STRAIGHT_LINE_DOCTRINE, "straight_line_doctrine"
+        )
+        gt = _source(
+            client, pages["Game Theory Doctrine"], advisor.SourceKind.GAME_THEORY_DOCTRINE, "game_theory_doctrine"
+        )
         profile = _source(client, pages["Candidate Profile"], advisor.SourceKind.CANDIDATE_PROFILE, "candidate_profile")
         manifest_blocks = _marked(client, pages["Corpus Manifest"], "manifest")
         keys = tuple(advisor.AdvisorManifest.__dataclass_fields__)
@@ -246,17 +347,28 @@ def read_store(client, environ=os.environ):
         m = _metadata(manifest_blocks[1], "", keys)
         manifest = advisor.AdvisorManifest(**m)
         bank_version, bank, bank_hash = _bank(client, pages["Candidate Evidence Bank"])
-        for version_key, expected in (("straight_line_version", str(sl.version)), ("game_theory_version", str(gt.version)),
-                                       ("candidate_profile_version", str(profile.version)), ("evidence_bank_version", str(bank_version))):
+        for version_key, expected in (
+            ("straight_line_version", str(sl.version)),
+            ("game_theory_version", str(gt.version)),
+            ("candidate_profile_version", str(profile.version)),
+            ("evidence_bank_version", str(bank_version)),
+        ):
             _need(getattr(manifest, version_key) == expected, "advisor_store_hash_mismatch")
-        for hash_key, text in (("straight_line_hash", sl.text), ("game_theory_hash", gt.text), ("candidate_profile_hash", profile.text)):
-            _need(getattr(manifest, hash_key) == hashlib.sha256(text.encode()).hexdigest(), "advisor_store_hash_mismatch")
+        for hash_key, text in (
+            ("straight_line_hash", sl.text),
+            ("game_theory_hash", gt.text),
+            ("candidate_profile_hash", profile.text),
+        ):
+            _need(
+                getattr(manifest, hash_key) == hashlib.sha256(text.encode()).hexdigest(), "advisor_store_hash_mismatch"
+            )
         _need(manifest.evidence_bank_hash == bank_hash, "advisor_store_hash_mismatch")
         guidance = _records(client, sub["Guidance"], "guidance")
         signals = _records(client, sub["Accepted Signals"], "accepted_signals", True)
         evidence = tuple(item for item in bank if item.active)
-        return AdvisorStoreSnapshot(manifest, sl, gt, profile, evidence, guidance, signals,
-                                    pages["Advisor Queue"], pages["Advisor Previews"])
+        return AdvisorStoreSnapshot(
+            manifest, sl, gt, profile, evidence, guidance, signals, pages["Advisor Queue"], pages["Advisor Previews"]
+        )
 
 
 def make_client(environ=os.environ):
@@ -267,7 +379,7 @@ def make_client(environ=os.environ):
 
 def _rich(content):
     _need(len(content) <= 180000, "advisor_preview_invalid")
-    return [{"type": "text", "text": {"content": content[i:i + 1800]}} for i in range(0, max(1, len(content)), 1800)]
+    return [{"type": "text", "text": {"content": content[i : i + 1800]}} for i in range(0, max(1, len(content)), 1800)]
 
 
 def _para(text):
@@ -278,10 +390,19 @@ def _heading(text):
     return {"object": "block", "type": "heading_2", "heading_2": {"rich_text": _rich(text)}}
 
 
-_FINDINGS = (("Straight Line", "straight_line"), ("Game Theory", "game_theory"),
-             ("Decision Criteria", "decision_criteria"), ("Objections", "objections"), ("Close Strategy", "close_strategy"))
-_PREP = (("Focus", "focus"), ("Strongest Evidence", "strongest_evidence"),
-         ("Pressure Points", "pressure_points"), ("Questions", "questions"))
+_FINDINGS = (
+    ("Straight Line", "straight_line"),
+    ("Game Theory", "game_theory"),
+    ("Decision Criteria", "decision_criteria"),
+    ("Objections", "objections"),
+    ("Close Strategy", "close_strategy"),
+)
+_PREP = (
+    ("Focus", "focus"),
+    ("Strongest Evidence", "strongest_evidence"),
+    ("Pressure Points", "pressure_points"),
+    ("Questions", "questions"),
+)
 
 
 def _human_lines(draft, prep):
@@ -313,8 +434,9 @@ def render_preview(generation_id, bundle, draft, prep=None):
         elif line.startswith("### "):
             blocks.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": _rich(line[4:])}})
         elif line.startswith("- "):
-            blocks.append({"object": "block", "type": "bulleted_list_item",
-                           "bulleted_list_item": {"rich_text": _rich(line[2:])}})
+            blocks.append(
+                {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _rich(line[2:])}}
+            )
         else:
             blocks.append(_para(line))
     _need(len(blocks) <= 100, "advisor_preview_invalid")
@@ -365,8 +487,12 @@ def _parse_preview_body(blocks):
                     pending_refs = True
                 else:
                     refs = text[6:].split(",") if text.startswith("refs: ") else []
-                    _need(pending_refs and bool(refs) and all(re.fullmatch(r"[A-Za-z0-9._-]+@[1-9][0-9]*", ref) for ref in refs),
-                          "advisor_preview_invalid")
+                    _need(
+                        pending_refs
+                        and bool(refs)
+                        and all(re.fullmatch(r"[A-Za-z0-9._-]+@[1-9][0-9]*", ref) for ref in refs),
+                        "advisor_preview_invalid",
+                    )
                     pending_refs = False
             elif kind == "bulleted_list_item":
                 key = dict((title, field) for title, field in _PREP).get(current)
@@ -384,21 +510,32 @@ def _parse_preview_body(blocks):
     with fixed(Exception, AdvisorStoreError, "advisor_preview_invalid"):
         result = PrepEvidence(**{key: tuple(value) for key, value in prep.items()})
         from .prep import normalize
+
         normalize(result)
     return "\n".join(lines), result
 
 
-def read_preview(client, preview_page_id, expected_previews_parent_id, expected_generation_id=None,
-                 expected_bundle_hash=None):
+def read_preview(
+    client, preview_page_id, expected_previews_parent_id, expected_generation_id=None, expected_bundle_hash=None
+):
     with fixed(Exception, AdvisorStoreError, "advisor_preview_invalid", keep=AdvisorStoreError):
-        _need(isinstance(preview_page_id, str) and preview_page_id and
-              isinstance(expected_previews_parent_id, str) and expected_previews_parent_id, "advisor_preview_invalid")
+        _need(
+            isinstance(preview_page_id, str)
+            and preview_page_id
+            and isinstance(expected_previews_parent_id, str)
+            and expected_previews_parent_id,
+            "advisor_preview_invalid",
+        )
         page = _page(client, preview_page_id, parent=expected_previews_parent_id, code="advisor_preview_invalid")
         blocks = _blocks(client, preview_page_id)
         _need(len(blocks) >= 2 and blocks[0].get("type") == "paragraph", "advisor_preview_invalid")
         _need(not blocks[0].get("has_children"), "advisor_preview_invalid")
-        _need(not any(_plain(b).startswith("v7-interview-advisor-preview") for b in blocks[1:]), "advisor_preview_invalid")
-        match = re.fullmatch(r"v7-interview-advisor-preview:1;([0-9a-f]{32});([0-9a-f]{64});([0-9a-f]{64})", _plain(blocks[0]))
+        _need(
+            not any(_plain(b).startswith("v7-interview-advisor-preview") for b in blocks[1:]), "advisor_preview_invalid"
+        )
+        match = re.fullmatch(
+            r"v7-interview-advisor-preview:1;([0-9a-f]{32});([0-9a-f]{64});([0-9a-f]{64})", _plain(blocks[0])
+        )
         _need(match is not None, "advisor_preview_invalid")
         gen, bundle_hash, body_hash = match.groups()
         _need(expected_generation_id is None or gen == expected_generation_id, "advisor_preview_invalid")
@@ -408,7 +545,14 @@ def read_preview(client, preview_page_id, expected_previews_parent_id, expected_
         return VerifiedPreview(gen, bundle_hash, body_hash, prep)
 
 
-_DEFINITE = ("NOTION_HTTP_400", "NOTION_HTTP_401", "NOTION_HTTP_403", "NOTION_HTTP_404", "NOTION_HTTP_409", "NOTION_HTTP_429")
+_DEFINITE = (
+    "NOTION_HTTP_400",
+    "NOTION_HTTP_401",
+    "NOTION_HTTP_403",
+    "NOTION_HTTP_404",
+    "NOTION_HTTP_409",
+    "NOTION_HTTP_429",
+)
 
 
 def create_preview(client, previews_page_id, generation_id, bundle, draft):
@@ -423,21 +567,30 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
     for b in existing:
         if b.get("type") == "child_page":
             first = _blocks(client, b.get("id"))[:1]
-            _need(not (first and first[0].get("type") == "paragraph" and _plain(first[0]).startswith(marker)), "advisor_preview_conflict")
+            _need(
+                not (first and first[0].get("type") == "paragraph" and _plain(first[0]).startswith(marker)),
+                "advisor_preview_conflict",
+            )
     # Never retry once POST begins: a transport error may follow a committed insert.
     try:
         page = full_width.create_page(client, previews_page_id, title, blocks, post=post)
     except NotionError as error:
         # Only a response proving Notion rejected the request means nothing was created.
-        raise AdvisorStoreError("advisor_preview_write_failed" if str(error) in _DEFINITE
-                                else "advisor_preview_readback_failed") from None
+        raise AdvisorStoreError(
+            "advisor_preview_write_failed" if str(error) in _DEFINITE else "advisor_preview_readback_failed"
+        ) from None
     except Exception:
         raise AdvisorStoreError("advisor_preview_readback_failed") from None
     with fixed(Exception, AdvisorStoreError, "advisor_preview_readback_failed"):
         page_id = page.get("id")
-        _need(isinstance(page_id, str) and re.fullmatch(
-              r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", page_id),
-              "advisor_preview_readback_failed")
+        _need(
+            isinstance(page_id, str)
+            and re.fullmatch(
+                r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+                page_id,
+            ),
+            "advisor_preview_readback_failed",
+        )
         verified = read_preview(client, page_id, previews_page_id, generation_id, digest)
         _need(verified.body_hash == body_hash and verified.prep == prep, "advisor_preview_readback_failed")
         return verified

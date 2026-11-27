@@ -3,6 +3,7 @@
 The page's FIRST block is `v7-transcript:1;accepted=<sha256>` (the envelope's content hash), as
 create.transcript_state reads. Absent: created. Same hash: NOOP. Another hash, or a page that is not ours: no write,
 a fixed code, because an existing transcript is never rewritten. Transcript text goes only to the private Notion page."""
+
 import hashlib
 from datetime import datetime
 
@@ -43,7 +44,7 @@ def digest(text_lines):
 
 
 def _chunks(text):
-    return [text[i:i + MAX_RUN] for i in range(0, len(text), MAX_RUN)] or [""]
+    return [text[i : i + MAX_RUN] for i in range(0, len(text), MAX_RUN)] or [""]
 
 
 def _heading(text):
@@ -51,7 +52,11 @@ def _heading(text):
 
 
 def _paragraph(line):
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [r for part in _chunks(line) for r in rich_text(part)]}}
+    return {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {"rich_text": [r for part in _chunks(line) for r in rich_text(part)]},
+    }
 
 
 def header_lines(header):
@@ -88,7 +93,13 @@ def write(client, round_id, envelope, live, header=()):
 
     Codes: TRANSCRIPT_WRITTEN, _NOOP, _PLANNED (not live), _CHANGED_NOT_REWRITTEN, _PAGE_UNVERIFIED, _PAGE_AMBIGUOUS,
     _WRITE_FAILED, _READBACK_MISMATCH."""
-    counts = {"segments": len(envelope.segments), "blocks_planned": 0, "blocks_written": 0, "readback_ok": 0, "readback_failed": 0}
+    counts = {
+        "segments": len(envelope.segments),
+        "blocks_planned": 0,
+        "blocks_written": 0,
+        "readback_ok": 0,
+        "readback_failed": 0,
+    }
     want = lines(envelope)
     state, page = create.transcript_state(client, round_id)
     if state == "ambiguous":
@@ -97,7 +108,11 @@ def write(client, round_id, envelope, live, header=()):
         return "TRANSCRIPT_PAGE_UNVERIFIED", counts
     if state == "accepted":
         marker, _, _ = _page_lines(client, page)
-        return ("TRANSCRIPT_NOOP", counts) if marker == f"{create.ACCEPTED}{envelope.source_content_sha256}" else ("TRANSCRIPT_CHANGED_NOT_REWRITTEN", counts)
+        return (
+            ("TRANSCRIPT_NOOP", counts)
+            if marker == f"{create.ACCEPTED}{envelope.source_content_sha256}"
+            else ("TRANSCRIPT_CHANGED_NOT_REWRITTEN", counts)
+        )
     body = blocks(envelope, header)
     counts["blocks_planned"] = len(body)
     want = header_lines(header) + want
@@ -112,7 +127,11 @@ def write(client, round_id, envelope, live, header=()):
         marker, got, total = _page_lines(client, made)
     except NotionError:
         return "TRANSCRIPT_READBACK_MISMATCH", counts
-    if marker == f"{create.ACCEPTED}{envelope.source_content_sha256}" and digest(got) == digest(want) and total == len(body):
+    if (
+        marker == f"{create.ACCEPTED}{envelope.source_content_sha256}"
+        and digest(got) == digest(want)
+        and total == len(body)
+    ):
         counts["readback_ok"] = 1
         return "TRANSCRIPT_WRITTEN", counts
     counts["readback_failed"] = 1

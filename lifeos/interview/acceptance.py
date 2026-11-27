@@ -4,6 +4,7 @@ Counts and fixed codes only. Two exact secret shapes: the dated shape (KEYS) rea
 `unverified`; the Scheduling Pending shape (PENDING_KEYS) has no date and reads the company's Job Ledger rows
 (read-only) so progression can confirm the exact job. A refusal is its fixed progression code; an unreadable Ledger
 is `ledger_unreadable`."""
+
 import json
 import os
 from lifeos.platform import names, notion_pages, notion_text
@@ -39,25 +40,47 @@ def ledger_rows(company, environ=os.environ):
         raise NotionError("INTERVIEW_LEDGER_UNREADABLE")
     client = Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
     rows = []
-    for page in notion_pages.query(client, None, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}}}, NotionError,
-                                   incomplete="INTERVIEW_LEDGER_UNREADABLE", limit=LEDGER_PAGES):
+    for page in notion_pages.query(
+        client,
+        None,
+        {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}}},
+        NotionError,
+        incomplete="INTERVIEW_LEDGER_UNREADABLE",
+        limit=LEDGER_PAGES,
+    ):
         for row in page["results"]:
             if row.get("archived") or row.get("in_trash"):
                 continue
             props = row.get("properties") or {}
-            rows.append({"page_id": row.get("id"), "company": _plain(props.get("Company"), "rich_text"), "role": _plain(props.get("Job"), "title"),
-                         "stable_job_key": _plain(props.get("Stable Job Key"), "rich_text"), "requisition": None})
+            rows.append(
+                {
+                    "page_id": row.get("id"),
+                    "company": _plain(props.get("Company"), "rich_text"),
+                    "role": _plain(props.get("Job"), "title"),
+                    "stable_job_key": _plain(props.get("Stable Job Key"), "rich_text"),
+                    "requisition": None,
+                }
+            )
     return rows
 
 
 def _pending(data, read_rows):
     who, ordinal = data["interviewer"], data["ordinal"]
     texts = (who, data["source"], data["requisition"], data["stable_job_key"])
-    if not (_text(data["company"]) and _text(data["role"]) and data["confirmed_round"] is True and data["interview_date"] is None):
+    if not (
+        _text(data["company"])
+        and _text(data["role"])
+        and data["confirmed_round"] is True
+        and data["interview_date"] is None
+    ):
         return None
-    if any(v is not None and not _text(v) for v in texts) or (ordinal is not None and (type(ordinal) is not int or ordinal != 1)):
+    if any(v is not None and not _text(v) for v in texts) or (
+        ordinal is not None and (type(ordinal) is not int or ordinal != 1)
+    ):
         return None
-    invite = Invite(data["company"], data["role"], None, who, ordinal, data["requisition"], data["stable_job_key"], data["source"])
+    invite = Invite(
+        data["company"], data["role"], None, who, ordinal, data["requisition"], data["stable_job_key"], data["source"]
+    )
     return progress(invite, read_rows(data["company"]))
 
 
@@ -72,8 +95,12 @@ def resolve(raw, read_rows=None):
     if not isinstance(data, dict) or set(data) != set(KEYS):
         return None
     who, ordinal = data["interviewer"], data["ordinal"]
-    if not (_text(data["company"]) and _text(data["role"]) and data["confirmed_round"] is True
-            and valid_date(data["interview_date"])):
+    if not (
+        _text(data["company"])
+        and _text(data["role"])
+        and data["confirmed_round"] is True
+        and valid_date(data["interview_date"])
+    ):
         return None
     if who is not None and not _text(who):
         return None

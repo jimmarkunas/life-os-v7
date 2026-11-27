@@ -5,6 +5,7 @@ is in the title or description; the requisition or two distinctive role words ar
 interviewer; an attendee's email domain is the company's (or the recruiter/agency's). Exactly one round must match a
 meeting and exactly one meeting that round; anything else is no write and a fixed code. Titles, names and addresses
 are never logged."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -60,10 +61,16 @@ def reasons(meeting, row):
     if _has_all(core(row.company), text):
         found.add("company")
     role = [t for t in tokens(row.role) if len(t) > 2 and t not in ROLE_STOP]
-    if (len(row.requisition.strip()) >= 4 and row.requisition.strip().lower() in f"{meeting.title} {meeting.description}".lower()) or (len(role) >= 2 and _has_all(role, text)):
+    if (
+        len(row.requisition.strip()) >= 4
+        and row.requisition.strip().lower() in f"{meeting.title} {meeting.description}".lower()
+    ) or (len(role) >= 2 and _has_all(role, text)):
         found.add("role")
     who = tokens(row.interviewer)
-    if who and any(_has_all(who, norm(a.split("@")[0].replace(".", " ").replace("_", " "))) or _has_all(who, norm(a)) for a in meeting.attendees):
+    if who and any(
+        _has_all(who, norm(a.split("@")[0].replace(".", " ").replace("_", " "))) or _has_all(who, norm(a))
+        for a in meeting.attendees
+    ):
         found.add("interviewer")
     wanted = {d.strip().lower() for d in (row.company_domain, row.agency_domain) if d and d.strip()}
     if wanted & _domains(meeting.attendees):
@@ -76,7 +83,9 @@ def match(meetings, rounds):
 
     Codes: MATCH, MATCH_NONE, MATCH_MANY_ROUNDS, MATCH_MANY_MEETINGS, MEETING_TIME_INVALID."""
     day = {m.id: central_day(m.start) for m in meetings}
-    hits = {m.id: [r for r in rounds if day[m.id] and r.interview_date == day[m.id] and reasons(m, r)] for m in meetings}
+    hits = {
+        m.id: [r for r in rounds if day[m.id] and r.interview_date == day[m.id] and reasons(m, r)] for m in meetings
+    }
     taken = {}
     for m in meetings:
         for r in hits[m.id]:
@@ -100,7 +109,13 @@ def explain(meeting, rounds):
     """Counts only, for a stop: rounds on the meeting's day, and how many each signal ties to it."""
     day = central_day(meeting.start)
     on_day = [r for r in rounds if day and r.interview_date == day]
-    out = {"rounds_on_day": len(on_day), "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0}
+    out = {
+        "rounds_on_day": len(on_day),
+        "signal_company": 0,
+        "signal_role": 0,
+        "signal_interviewer": 0,
+        "signal_domain": 0,
+    }
     for r in on_day:
         for name in reasons(meeting, r):
             out["signal_" + name] += 1
