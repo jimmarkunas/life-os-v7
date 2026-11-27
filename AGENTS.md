@@ -28,7 +28,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Buzz: post with `buzz_publish`, `community: "pilot"` (team channel `life-os-main`; ids in `buzz_capabilities`). Hosted `life-os` is read-only (LIFE-927), so `write_disabled` there is expected. Legacy `buzz_post_message` can't reach pilot.
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Notion views: A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change. (LIFE-989)
-- Jira: Atlassian connector only (tool names vary: docs/agent-reference.md); no Rovo. Pass `fields` on reads.
+- Jira connector: `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired. Pass `fields` on reads.
 - Times for Jim: Central Time, 12-hour, labeled CT.
 - Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
 - Routing: [docs/index.json](docs/index.json).
