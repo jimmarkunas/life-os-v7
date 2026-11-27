@@ -2,6 +2,7 @@
 
 The runner holds no Google credential. Anything but a clean answer is a fixed code raised as OSError, which the Drive
 lane reports as its Degraded reason."""
+
 import json
 import socket
 
@@ -24,6 +25,7 @@ def fetch(host, days, port=PORT, connect=socket.create_connection):
 
 def reader(host, days=7, fetcher=fetch):
     """-> a callable for weekly_review returning the Drive counts, or raising OSError with a fixed code."""
+
     def read():
         if not (host or "").strip():
             raise OSError("DRIVE_HOST_NOT_SET")
@@ -45,4 +47,5 @@ def reader(host, days=7, fetcher=fetch):
         if not all(type(doc.get(k)) is int and doc[k] >= 0 for k in KEYS):
             raise OSError("DRIVE_REPLY_OFF_CONTRACT")
         return {k: doc[k] for k in KEYS} | {"complete": doc.get("complete") is True}
+
     return read

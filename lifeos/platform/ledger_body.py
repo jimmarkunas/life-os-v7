@@ -4,13 +4,19 @@ v7.jd.2: a hidden marker paragraph (`v7-jd:N | key=<Stable Job Key>` in a zero-w
 Overview, Summary and a "Full job description" toggle on the left, the LinkedIn connections block on the right.
 v7.jd.1 pages are still read. Notion allows two levels of nesting per request, so `fill` appends the toggle's children
 afterwards."""
+
 from typing import Any
 
 from lifeos.platform import hidden, limits
 from lifeos.platform.notion_client import NotionError, rich_text
 
 MARK1, MARK2 = "v7-jd:1", "v7-jd:2"
-SECTIONS = (("summary", "Summary"), ("responsibilities", "Responsibilities"), ("requirements", "Requirements"), ("qualifications", "Qualifications"))
+SECTIONS = (
+    ("summary", "Summary"),
+    ("responsibilities", "Responsibilities"),
+    ("requirements", "Requirements"),
+    ("qualifications", "Qualifications"),
+)
 OVERVIEW, FULL = "Overview", "Full job description"
 LEFT, RIGHT = 0.4, 0.6
 
@@ -20,8 +26,16 @@ def _block(kind, content):
 
 
 def _plain(block):
-    inner = (block.get(block.get("type")) if block.get("type") else next((v for v in block.values() if isinstance(v, dict) and "rich_text" in v), None)) or {}
-    return "".join((p.get("plain_text") or (p.get("text") or {}).get("content") or "") for p in (inner.get("rich_text") or []) if isinstance(p, dict))
+    inner = (
+        block.get(block.get("type"))
+        if block.get("type")
+        else next((v for v in block.values() if isinstance(v, dict) and "rich_text" in v), None)
+    ) or {}
+    return "".join(
+        (p.get("plain_text") or (p.get("text") or {}).get("content") or "")
+        for p in (inner.get("rich_text") or [])
+        if isinstance(p, dict)
+    )
 
 
 def marker_text(block: dict[str, Any]) -> str:
@@ -31,7 +45,11 @@ def marker_text(block: dict[str, Any]) -> str:
 
 
 def is_marker(block: dict[str, Any], key: str | None = None) -> bool:
-    return block.get("type", "paragraph") == "paragraph" and marker_text(block).startswith(MARK1[:-1]) and (key is None or key in marker_text(block))
+    return (
+        block.get("type", "paragraph") == "paragraph"
+        and marker_text(block).startswith(MARK1[:-1])
+        and (key is None or key in marker_text(block))
+    )
 
 
 def marker_block(key: str, version: str = MARK2) -> dict[str, Any]:
@@ -44,7 +62,11 @@ def _lines(text, kind="paragraph"):
         line = line.strip()
         if not line:
             continue
-        out.append(_block("bulleted_list_item", line.lstrip("• ").strip() or "-") if line.startswith("•") else _block(kind, line))
+        out.append(
+            _block("bulleted_list_item", line.lstrip("• ").strip() or "-")
+            if line.startswith("•")
+            else _block(kind, line)
+        )
     return out
 
 
@@ -81,9 +103,15 @@ def full_blocks(description: dict[str, Any]) -> list[dict[str, Any]]:
 def column_list(description: dict[str, Any]) -> dict[str, Any]:
     """The two-column block: Overview with an empty Full job description toggle (left) and a blank paragraph
     (right)."""
-    left = [_block("heading_2", OVERVIEW), *_split(description)[0], {"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text(FULL)}}]
-    cols = [{"object": "block", "type": "column", "column": {"width_ratio": LEFT, "children": left}},
-            {"object": "block", "type": "column", "column": {"width_ratio": RIGHT, "children": [_block("paragraph", "")]}}]
+    left = [
+        _block("heading_2", OVERVIEW),
+        *_split(description)[0],
+        {"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text(FULL)}},
+    ]
+    cols = [
+        {"object": "block", "type": "column", "column": {"width_ratio": LEFT, "children": left}},
+        {"object": "block", "type": "column", "column": {"width_ratio": RIGHT, "children": [_block("paragraph", "")]}},
+    ]
     return {"object": "block", "type": "column_list", "column_list": {"children": cols}}
 
 
@@ -95,7 +123,9 @@ def build(key: str, description: dict[str, Any]) -> list[dict[str, Any]]:
 def _kids(client, block_id):
     out, cursor = [], None
     for _ in range(50):
-        page = client.call("GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else ""))
+        page = client.call(
+            "GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else "")
+        )
         if not isinstance(page, dict) or not isinstance(page.get("results"), list):
             raise NotionError("ledger_layout_unreadable")
         out += page["results"]
@@ -109,8 +139,10 @@ def _kids(client, block_id):
 
 def description_list(top: list[dict[str, Any]], key: str | None = None) -> dict[str, Any] | None:
     """The job description's column_list among a page's top-level blocks, or None."""
+
     def after(i):
         return top[i + 1] if i + 1 < len(top) and top[i + 1].get("type") == "column_list" else None
+
     if key:
         found = [after(i) for i, b in enumerate(top) if is_marker(b, key) and after(i)]
         return found[0] if found else None
@@ -126,7 +158,9 @@ def description_duplicates(top: list[dict[str, Any]], key: str | None) -> int:
     return max(0, sum(1 for b in top if is_marker(b, key)) - 1) if key else 0
 
 
-def find(client: Any, page_id: str, top: list[dict[str, Any]] | None = None, key: str | None = None) -> dict[str, Any] | None:
+def find(
+    client: Any, page_id: str, top: list[dict[str, Any]] | None = None, key: str | None = None
+) -> dict[str, Any] | None:
     """-> {"list", "left", "right", "toggle"} block ids of a v7.jd.2 page, or None for a page without the layout."""
     top = top if top is not None else _kids(client, page_id)
     found = description_list(top, key)
@@ -138,7 +172,12 @@ def find(client: Any, page_id: str, top: list[dict[str, Any]] | None = None, key
         return None
     left = _kids(client, columns[0]["id"])
     toggles = [b for b in left if b.get("type") == "toggle" and _plain(b) == FULL]
-    return {"list": lists[0]["id"], "left": columns[0]["id"], "right": columns[1]["id"], "toggle": toggles[0]["id"] if len(toggles) == 1 else None}
+    return {
+        "list": lists[0]["id"],
+        "left": columns[0]["id"],
+        "right": columns[1]["id"],
+        "toggle": toggles[0]["id"] if len(toggles) == 1 else None,
+    }
 
 
 def fill(client: Any, page_id: str, description: dict[str, Any], strict: bool = True) -> int:
@@ -152,7 +191,11 @@ def fill(client: Any, page_id: str, description: dict[str, Any], strict: bool = 
         return 0
     blocks = full_blocks(description)
     for start in range(0, len(blocks), limits.NOTION_MAX_CHILD_BLOCKS):
-        client.call("PATCH", f"/blocks/{where['toggle']}/children", {"children": blocks[start:start + limits.NOTION_MAX_CHILD_BLOCKS]})
+        client.call(
+            "PATCH",
+            f"/blocks/{where['toggle']}/children",
+            {"children": blocks[start : start + limits.NOTION_MAX_CHILD_BLOCKS]},
+        )
     return len(blocks)
 
 
@@ -171,7 +214,13 @@ def text_of(client: Any, page_id: str, top: list[dict[str, Any]] | None = None, 
     where = find(client, page_id, top)
     if where:
         left = _kids(client, where["left"])
-        take([b for b in left if b.get("type") != "toggle" and not (b.get("type") == "heading_2" and _plain(b) == OVERVIEW)])
+        take(
+            [
+                b
+                for b in left
+                if b.get("type") != "toggle" and not (b.get("type") == "heading_2" and _plain(b) == OVERVIEW)
+            ]
+        )
         if where["toggle"]:
             take(_kids(client, where["toggle"]))
     else:

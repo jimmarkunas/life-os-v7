@@ -1,6 +1,7 @@
 """Minimal Google Calendar client (stdlib plus the system openssl for the JWT signature).
 
 Service-account auth: the account sees only the calendar shared with it. Every error is a fixed code."""
+
 import base64
 import json
 import os
@@ -37,8 +38,9 @@ def openssl_sign(private_key_pem, message):
         os.write(handle, private_key_pem.encode())
         os.close(handle)
         os.chmod(path, 0o600)
-        return subprocess.run(["openssl", "dgst", "-sha256", "-sign", path], input=message, capture_output=True, check=True,
-                              timeout=20).stdout
+        return subprocess.run(
+            ["openssl", "dgst", "-sha256", "-sign", path], input=message, capture_output=True, check=True, timeout=20
+        ).stdout
     except (subprocess.SubprocessError, OSError):
         raise GcalError("GCAL_SIGN_FAILED") from None
     finally:
@@ -49,18 +51,37 @@ def openssl_sign(private_key_pem, message):
 
 
 class GoogleCalendar:
-    def __init__(self, service_account_json, calendar_id, timeout=30, sleep=time.sleep, sign=openssl_sign, clock=time.time, scope=SCOPE):
+    def __init__(
+        self,
+        service_account_json,
+        calendar_id,
+        timeout=30,
+        sleep=time.sleep,
+        sign=openssl_sign,
+        clock=time.time,
+        scope=SCOPE,
+    ):
         with fixed((ValueError, KeyError, TypeError), GcalError, "GCAL_CONFIG_INVALID"):
             info = json.loads(service_account_json)
             self._email, self._key = info["client_email"], info["private_key"]
         if not calendar_id:
             raise GcalError("GCAL_CONFIG_INVALID")
         self._calendar = urllib.parse.quote(calendar_id, safe="")
-        self._timeout, self._sleep, self._sign, self._clock, self._token, self._scope = timeout, sleep, sign, clock, None, scope
+        self._timeout, self._sleep, self._sign, self._clock, self._token, self._scope = (
+            timeout,
+            sleep,
+            sign,
+            clock,
+            None,
+            scope,
+        )
 
     @classmethod
     def from_env(cls, environ=os.environ, **kwargs):
-        raw, cal = (environ.get("GCAL_SERVICE_ACCOUNT_JSON") or "").strip(), (environ.get("GCAL_CALENDAR_ID") or "").strip()
+        raw, cal = (
+            (environ.get("GCAL_SERVICE_ACCOUNT_JSON") or "").strip(),
+            (environ.get("GCAL_CALENDAR_ID") or "").strip(),
+        )
         missing = [n for n, v in (("GCAL_SERVICE_ACCOUNT_JSON", raw), ("GCAL_CALENDAR_ID", cal)) if not v]
         if missing:
             raise GcalError("GCAL_CONFIG_MISSING:" + ",".join(missing))
@@ -70,30 +91,59 @@ class GoogleCalendar:
         if self._token is None:
             now = int(self._clock())
             head = _b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
-            body = _b64(json.dumps({"iss": self._email, "scope": self._scope, "aud": TOKEN_URL, "iat": now, "exp": now + 3000}).encode())
+            body = _b64(
+                json.dumps(
+                    {"iss": self._email, "scope": self._scope, "aud": TOKEN_URL, "iat": now, "exp": now + 3000}
+                ).encode()
+            )
             signing = head + b"." + body
             assertion = (signing + b"." + _b64(self._sign(self._key, signing))).decode()
-            request = urllib.request.Request(TOKEN_URL, method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"},
-                                             data=urllib.parse.urlencode({"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                                                                          "assertion": assertion}).encode())
-            with fixed((urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError), GcalError, "GCAL_AUTH_FAILED"):
+            request = urllib.request.Request(
+                TOKEN_URL,
+                method="POST",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data=urllib.parse.urlencode(
+                    {"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion}
+                ).encode(),
+            )
+            with fixed(
+                (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError), GcalError, "GCAL_AUTH_FAILED"
+            ):
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     self._token = json.loads(response.read())["access_token"]
         return self._token
 
     def request(self, method, path, params=None, body=None, ok=(200,)):
-        url = f"{API}/calendars/{self._calendar}{path}" + ("?" + urllib.parse.urlencode(params, doseq=True) if params else "")
+        url = f"{API}/calendars/{self._calendar}{path}" + (
+            "?" + urllib.parse.urlencode(params, doseq=True) if params else ""
+        )
         data = None if body is None else json.dumps(body).encode()
         attempts = 4 if method in ("GET", "PUT", "DELETE") else 2
-        build = lambda: urllib.request.Request(url, data=data, method=method, headers={
-            "Authorization": "Bearer " + self._access(), "Content-Type": "application/json", "User-Agent": "life-os-v7"})
-        return rest.call(build, GcalError, "GCAL", self._sleep, self._timeout, attempts=attempts, bad_json="BAD_RESPONSE")
+        build = lambda: urllib.request.Request(
+            url,
+            data=data,
+            method=method,
+            headers={
+                "Authorization": "Bearer " + self._access(),
+                "Content-Type": "application/json",
+                "User-Agent": "life-os-v7",
+            },
+        )
+        return rest.call(
+            build, GcalError, "GCAL", self._sleep, self._timeout, attempts=attempts, bad_json="BAD_RESPONSE"
+        )
 
     def list_events(self, time_min, time_max, private_property=None):
         """Every non-cancelled single event in the window, optionally only those carrying a private extended property
         k=v."""
-        params = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "orderBy": "startTime",
-                  "maxResults": 250, "showDeleted": "false"}
+        params = {
+            "timeMin": time_min,
+            "timeMax": time_max,
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": 250,
+            "showDeleted": "false",
+        }
         if private_property:
             params["privateExtendedProperty"] = private_property
         out = []
