@@ -2,6 +2,7 @@
 
 Pure: no I/O. Only populated fields are returned (a blank is better than a guess); never touches human state.
 """
+
 import re
 
 from lifeos.jobs import lanes
@@ -13,7 +14,10 @@ VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}
 META_VERSION = 2
 
 _AMOUNT = r"[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?"
-_RANGE = re.compile(rf"{_AMOUNT}\s*(?:-|–|—|to)\s*(?:[$£€]\s?)?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?(?:\s*(?:/|per|a|an)\s*(?:yr|year|annum|hr|hour)\b|\s*(?:USD|GBP|EUR)\b)?", re.I)
+_RANGE = re.compile(
+    rf"{_AMOUNT}\s*(?:-|–|—|to)\s*(?:[$£€]\s?)?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?(?:\s*(?:/|per|a|an)\s*(?:yr|year|annum|hr|hour)\b|\s*(?:USD|GBP|EUR)\b)?",
+    re.I,
+)
 _SINGLE = re.compile(rf"{_AMOUNT}\s*(?:/|per|a)\s*(?:yr|year|annum)\b|{_AMOUNT}\s*annually\b", re.I)
 
 
@@ -34,8 +38,7 @@ def pay_text(salary_text, full_text):
 
 
 def market_label(location):
-    """The Ledger's Market options are US and London. A UK location that is not London stays blank rather than guessed.
-    """
+    """The Ledger's Market options are US and London. A UK location that is not London stays blank rather than guessed."""
     market = lanes.market_of(location)
     if market == "US":
         return "US"

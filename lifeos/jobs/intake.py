@@ -1,4 +1,5 @@
 """The one way a producer adds a job to Jobs OS: a source emits a normalized job here and stops."""
+
 # Dedupe, repost linking and everything downstream (resolve, enrich, quality, publish) belong to Jobs OS.
 from lifeos.jobs import identity, repost, tombstone
 
@@ -20,9 +21,26 @@ def add_job(cursor, job, now):
         "INSERT IGNORE INTO v7_jobs (dedupe_key, status, title, company, location_text, source_url, salary_text,"
         " source, fuzzy_key, posted_age_days, mail_received_at, provider_score, first_seen, last_seen, updated_at,"
         " lane, provider) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-        (key, job["status"], job["title"][:300], job["company"][:200], (job["location"] or "")[:2000], job["url"],
-         (job["salary"] or "")[:80], job["source"], fuzzy, job["age_days"], job["received"], job["provider_score"],
-         now, now, now, job["lane"], job["provider"]))
+        (
+            key,
+            job["status"],
+            job["title"][:300],
+            job["company"][:200],
+            (job["location"] or "")[:2000],
+            job["url"],
+            (job["salary"] or "")[:80],
+            job["source"],
+            fuzzy,
+            job["age_days"],
+            job["received"],
+            job["provider_score"],
+            now,
+            now,
+            now,
+            job["lane"],
+            job["provider"],
+        ),
+    )
     is_new = bool(cursor.rowcount)
     if is_new:
         repost.link(cursor, key, fuzzy, now)

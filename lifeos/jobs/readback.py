@@ -22,8 +22,7 @@ def _text(prop, kind):
 
 
 def properties_match(page, key, url, fit):
-    """-> None when the page's stored properties match what was sent, else a fixed reason. Also used for the create response.
-    """
+    """-> None when the page's stored properties match what was sent, else a fixed reason. Also used for the create response."""
     if page.get("archived") or page.get("in_trash"):
         return "page_gone"
     props = page.get("properties") or {}
@@ -44,14 +43,28 @@ def _bare(page_id):
 
 def _query(client, body):
     """The pages of one Ledger query; a missing or repeated cursor is refused, never read as `no page`."""
-    return notion_pages.pages(lambda cursor: client.call("POST", f"/data_sources/{client.source}/query", {**body, **({"start_cursor": cursor} if cursor else {})}), NotionError, "ledger_lookup_unreadable")
+    return notion_pages.pages(
+        lambda cursor: client.call(
+            "POST", f"/data_sources/{client.source}/query", {**body, **({"start_cursor": cursor} if cursor else {})}
+        ),
+        NotionError,
+        "ledger_lookup_unreadable",
+    )
 
 
 def ledger_pages(client, keys):
     """{key: [page, ...]} as the Ledger holds them now. An unreadable answer raises (never read as `no page`)."""
     found = {key: [] for key in keys}
     for start in range(0, len(keys), KEY_CHUNK):
-        body = {"filter": {"or": [{"property": "Stable Job Key", "rich_text": {"equals": key}} for key in keys[start:start + KEY_CHUNK]]}, "page_size": 100}
+        body = {
+            "filter": {
+                "or": [
+                    {"property": "Stable Job Key", "rich_text": {"equals": key}}
+                    for key in keys[start : start + KEY_CHUNK]
+                ]
+            },
+            "page_size": 100,
+        }
         for data in _query(client, body):
             if any(not isinstance(page, dict) or not page.get("id") for page in data["results"]):
                 raise NotionError("ledger_lookup_unreadable")
@@ -84,9 +97,12 @@ def run(client, live, limit=BATCH):
     """Read back PUBLISHED jobs not yet verified, oldest first."""
     counts = {"checked": 0, "verified": 0, "failed": 0, "why": {}}
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT j.id, j.dedupe_key, j.final_apply_url, j.notion_page_id, f.score FROM v7_jobs j"
-                       " LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='PUBLISHED' AND j.verified_at IS NULL"
-                       " AND j.notion_page_id IS NOT NULL ORDER BY j.updated_at LIMIT %s", (limit,))
+        cursor.execute(
+            "SELECT j.id, j.dedupe_key, j.final_apply_url, j.notion_page_id, f.score FROM v7_jobs j"
+            " LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='PUBLISHED' AND j.verified_at IS NULL"
+            " AND j.notion_page_id IS NOT NULL ORDER BY j.updated_at LIMIT %s",
+            (limit,),
+        )
         rows = cursor.fetchall()
     unreadable = None
     try:
@@ -108,4 +124,3 @@ def run(client, live, limit=BATCH):
             with store.connect() as connection, connection.cursor() as cursor:
                 cursor.execute("UPDATE v7_jobs SET verified_at=%s WHERE id=%s", (_now(), job_id))
     return counts
-

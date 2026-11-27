@@ -2,6 +2,7 @@
 
 Precision first: an exact normalized title match, location-checked when several match; ambiguous or absent -> None.
 """
+
 import difflib
 import json
 import re
@@ -10,8 +11,29 @@ from concurrent.futures import ThreadPoolExecutor
 from lifeos.platform import limits
 from lifeos.platform.http import fetch
 
-SUFFIX = {"inc", "llc", "ltd", "corp", "corporation", "company", "co", "the", "group", "holdings", "technologies",
-          "technology", "solutions", "services", "limited", "plc", "gmbh", "lp", "llp", "usa", "us"}
+SUFFIX = {
+    "inc",
+    "llc",
+    "ltd",
+    "corp",
+    "corporation",
+    "company",
+    "co",
+    "the",
+    "group",
+    "holdings",
+    "technologies",
+    "technology",
+    "solutions",
+    "services",
+    "limited",
+    "plc",
+    "gmbh",
+    "lp",
+    "llp",
+    "usa",
+    "us",
+}
 KINDS = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee", "bamboohr", "breezy", "pinpoint")
 SUBDOMAIN_KINDS = ("recruitee", "bamboohr", "breezy", "pinpoint")
 SMARTRECRUITERS_PAGES = 5
@@ -33,7 +55,7 @@ def _json(url):
     try:
         page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
         return json.loads(page.html) if page.status == 200 else None
-    except (ValueError, OSError):            # bad hostname (UnicodeError is a ValueError), bad JSON, network
+    except (ValueError, OSError):  # bad hostname (UnicodeError is a ValueError), bad JSON, network
         return None
 
 
@@ -43,48 +65,76 @@ def board(kind, slug):
         return []
     if kind == "greenhouse":
         data = _json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
-        return [(j.get("title"), j.get("absolute_url"), (j.get("location") or {}).get("name"))
-                for j in (data or {}).get("jobs", [])]
+        return [
+            (j.get("title"), j.get("absolute_url"), (j.get("location") or {}).get("name"))
+            for j in (data or {}).get("jobs", [])
+        ]
     if kind == "ashby":
         data = _json(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
         return [(j.get("title"), j.get("jobUrl"), j.get("location")) for j in (data or {}).get("jobs", [])]
     if kind == "lever":
         data = _json(f"https://api.lever.co/v0/postings/{slug}?mode=json")
-        return [(j.get("text"), j.get("hostedUrl"), (j.get("categories") or {}).get("location"))
-                for j in data] if isinstance(data, list) else []
+        return (
+            [(j.get("text"), j.get("hostedUrl"), (j.get("categories") or {}).get("location")) for j in data]
+            if isinstance(data, list)
+            else []
+        )
     if kind == "smartrecruiters":
         rows = []
         for page in range(SMARTRECRUITERS_PAGES):
             data = _json(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset={page * 100}")
             part = (data or {}).get("content", [])
-            rows += [(j.get("name"), f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
-                      " ".join(filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("country")])))
-                     for j in part]
+            rows += [
+                (
+                    j.get("name"),
+                    f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
+                    " ".join(
+                        filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("country")])
+                    ),
+                )
+                for j in part
+            ]
             if len(part) < 100:
                 break
         return rows
     if kind == "workable":
         data = _json(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
-        return [(j.get("title"), f"https://apply.workable.com/{slug}/j/{j['shortcode']}/" if j.get("shortcode") else j.get("url"),
-                 " ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])))
-                for j in (data or {}).get("jobs", [])]
+        return [
+            (
+                j.get("title"),
+                f"https://apply.workable.com/{slug}/j/{j['shortcode']}/" if j.get("shortcode") else j.get("url"),
+                " ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])),
+            )
+            for j in (data or {}).get("jobs", [])
+        ]
     if kind == "recruitee":
         data = _json(f"https://{slug}.recruitee.com/api/offers/")
-        return [(j.get("title"), j.get("careers_url"), " ".join(filter(None, [j.get("city"), j.get("country")])))
-                for j in (data or {}).get("offers", [])]
+        return [
+            (j.get("title"), j.get("careers_url"), " ".join(filter(None, [j.get("city"), j.get("country")])))
+            for j in (data or {}).get("offers", [])
+        ]
     if kind == "bamboohr":
         data = _json(f"https://{slug}.bamboohr.com/careers/list")
-        return [(j.get("jobOpeningName"), f"https://{slug}.bamboohr.com/careers/{j.get('id')}",
-                 " ".join(filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("state")])))
-                for j in (data or {}).get("result", [])]
+        return [
+            (
+                j.get("jobOpeningName"),
+                f"https://{slug}.bamboohr.com/careers/{j.get('id')}",
+                " ".join(filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("state")])),
+            )
+            for j in (data or {}).get("result", [])
+        ]
     if kind == "breezy":
         data = _json(f"https://{slug}.breezy.hr/json")
-        return [(j.get("name"), j.get("url"), (j.get("location") or {}).get("name"))
-                for j in data] if isinstance(data, list) else []
+        return (
+            [(j.get("name"), j.get("url"), (j.get("location") or {}).get("name")) for j in data]
+            if isinstance(data, list)
+            else []
+        )
     if kind == "pinpoint":
         data = _json(f"https://{slug}.pinpointhq.com/postings.json")
-        return [(j.get("title"), j.get("url"), (j.get("location") or {}).get("name"))
-                for j in (data or {}).get("data", [])]
+        return [
+            (j.get("title"), j.get("url"), (j.get("location") or {}).get("name")) for j in (data or {}).get("data", [])
+        ]
     return []
 
 
@@ -92,7 +142,7 @@ def boards_for(company):
     """All jobs on every public board found for the company: [(kind, title, url, location)]. Never raises."""
     try:
         return _boards_for(company)
-    except Exception:                              # noqa: BLE001 - one odd company must not stop the stage
+    except Exception:  # noqa: BLE001 - one odd company must not stop the stage
         return []
 
 
@@ -116,7 +166,10 @@ def _location_ok(want, have):
     return bool(tokens & set(have.split())) or ("remote" in want and "remote" in have)
 
 
-_NOISE_PAREN = re.compile(r"\(\s*(?:fully\s+|100%\s+)?(?:remote|hybrid|work from home|wfh|us|usa|u\.s\.|united states|us only|remote\s*[-,]\s*(?:us|usa|united states))\s*\)", re.I)
+_NOISE_PAREN = re.compile(
+    r"\(\s*(?:fully\s+|100%\s+)?(?:remote|hybrid|work from home|wfh|us|usa|u\.s\.|united states|us only|remote\s*[-,]\s*(?:us|usa|united states))\s*\)",
+    re.I,
+)
 _REMOTE_WORD = re.compile(r"\b(?:fully\s+|100%\s+)?remote\b|\bwork from home\b", re.I)
 
 

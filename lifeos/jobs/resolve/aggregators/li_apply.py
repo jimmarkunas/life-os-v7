@@ -3,12 +3,20 @@
 The public guest posting page exposes which apply path a job uses (native Easy Apply vs external) and, for external
 jobs, the employer URL: in JSON-ish keys or wrapped in LinkedIn redirect links (/safety/go/?url=...).
 """
+
 import html as htmllib
 import re
 from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 GUEST_API = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/"
-KEYS = ("offsiteApplyUrl", "offsiteApplyTrackingUrl", "companyApplyUrl", "externalApplyUrl", "applyRedirectUrl", "applyUrl")
+KEYS = (
+    "offsiteApplyUrl",
+    "offsiteApplyTrackingUrl",
+    "companyApplyUrl",
+    "externalApplyUrl",
+    "applyRedirectUrl",
+    "applyUrl",
+)
 WRAPPER_PATHS = ("/safety/go/", "/safety/go", "/redir/redirect", "/redir/redirect/")
 MARKERS = ("/safety/go", "/redir/redirect", "externalApply")
 
@@ -23,7 +31,9 @@ def is_linkedin(url):
 
 
 def job_id(url):
-    match = re.search(r"/jobs/view/(?:[^/?#]*-)?(\d{6,})", url or "") or re.search(r"(\d{6,})/?$", urlsplit(url or "").path)
+    match = re.search(r"/jobs/view/(?:[^/?#]*-)?(\d{6,})", url or "") or re.search(
+        r"(\d{6,})/?$", urlsplit(url or "").path
+    )
     return match.group(1) if match else None
 
 
@@ -31,12 +41,12 @@ def unwrap(value):
     """External URL from a LinkedIn redirect wrapper (absolute OR relative href); other URLs pass through;
     LinkedIn-internal links -> None."""
     raw = htmllib.unescape(value or "").strip()
-    if raw.startswith("/"):                                   # relative href on the guest page
+    if raw.startswith("/"):  # relative href on the guest page
         raw = urljoin("https://www.linkedin.com", raw)
     parts = urlsplit(raw)
     if is_linkedin(raw):
         if parts.path in WRAPPER_PATHS:
-            inner = parse_qs(parts.query).get("url", [""])[0]        # parse_qs already percent-decodes once
+            inner = parse_qs(parts.query).get("url", [""])[0]  # parse_qs already percent-decodes once
             inner = unquote(inner) if inner.startswith("http%") else inner
             return inner if inner.startswith("http") and not is_linkedin(inner) else None
         return None
@@ -70,7 +80,11 @@ def external_urls(body):
 def quick_apply_signal(body):
     """True = native Easy/Quick Apply; False = external or unavailable; never inferred from absence."""
     raw = htmllib.unescape(body or "").casefold()
-    if "public_jobs_apply-link-offsite" in raw or "easy apply is not available" in raw or "quick apply is not available" in raw:
+    if (
+        "public_jobs_apply-link-offsite" in raw
+        or "easy apply is not available" in raw
+        or "quick apply is not available" in raw
+    ):
         return False
     if "public_jobs_apply-link-onsite" in raw:
         return True
@@ -78,12 +92,13 @@ def quick_apply_signal(body):
     return "easy apply" in text or "quick apply" in text
 
 
-CLOSED = re.compile(r"no longer accepting applications|no longer available|job (is )?closed|position has been filled", re.I)
+CLOSED = re.compile(
+    r"no longer accepting applications|no longer available|job (is )?closed|position has been filled", re.I
+)
 
 
 def read(body):
-    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None).
-    """
+    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None)."""
     if CLOSED.search(re.sub(r"<[^>]+>", " ", htmllib.unescape(body or ""))):
         return "closed", None
     urls = external_urls(body)

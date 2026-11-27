@@ -2,14 +2,32 @@
 
 Accept only when the result title contains the job title AND the company name appears in host/title/snippet.
 """
+
 from lifeos.jobs.resolve import ats_match
 from lifeos.jobs import classify, quality
 from lifeos.platform import tinyfish_search
 from lifeos.platform.tinyfish import TinyFishError
 
-ATS_DOMAINS = ("greenhouse.io", "lever.co", "ashbyhq.com", "myworkdayjobs.com", "icims.com", "smartrecruiters.com",
-               "workable.com", "jobvite.com", "bamboohr.com", "recruitee.com", "applytojob.com", "teamtailor.com",
-               "taleo.net", "successfactors.com", "oraclecloud.com", "paylocity.com", "ultipro.com", "dayforcehcm.com")
+ATS_DOMAINS = (
+    "greenhouse.io",
+    "lever.co",
+    "ashbyhq.com",
+    "myworkdayjobs.com",
+    "icims.com",
+    "smartrecruiters.com",
+    "workable.com",
+    "jobvite.com",
+    "bamboohr.com",
+    "recruitee.com",
+    "applytojob.com",
+    "teamtailor.com",
+    "taleo.net",
+    "successfactors.com",
+    "oraclecloud.com",
+    "paylocity.com",
+    "ultipro.com",
+    "dayforcehcm.com",
+)
 
 
 def _company_tokens(company):
@@ -34,13 +52,19 @@ def _good(result, company, title, need_host):
     return (not need_host) or tokens[0] in ats_match.norm(host).replace(" ", "")
 
 
-FAILED = {"tinyfish_search_http_429": "rate_limited", "tinyfish_search_network": "network", "tinyfish_search_unreadable": "unreadable_answer"}
+FAILED = {
+    "tinyfish_search_http_429": "rate_limited",
+    "tinyfish_search_network": "network",
+    "tinyfish_search_unreadable": "unreadable_answer",
+}
 
 
 def failed_cause(code):
     """The search error code -> the specific cause shown after `failed_search:`."""
     code = str(code).lower()
-    return FAILED.get(code) or (code.replace("tinyfish_search_", "") if code.startswith("tinyfish_search_http_") else "error")
+    return FAILED.get(code) or (
+        code.replace("tinyfish_search_", "") if code.startswith("tinyfish_search_http_") else "error"
+    )
 
 
 def find(company, title):

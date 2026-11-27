@@ -1,4 +1,5 @@
 """schema.org JobPosting extraction from a page: the most reliable public source of description + posting date."""
+
 from datetime import date, datetime
 import json
 import re
@@ -31,8 +32,7 @@ def job_posting(html):
 
 
 def hiring_organization(posting):
-    """The employer named by the posting's hiringOrganization (a name or an object with a name), cleaned, else None.
-    """
+    """The employer named by the posting's hiringOrganization (a name or an object with a name), cleaned, else None."""
     org = (posting or {}).get("hiringOrganization")
     if isinstance(org, list):
         org = org[0] if org else None
@@ -83,8 +83,16 @@ def posted_date(posting):
 
 
 NEXT_DATA = re.compile(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', re.S | re.I)
-DESCRIPTION_KEYS = {"description", "jobdescription", "job_description", "descriptionhtml", "fulldescription",
-                    "jobdescriptionhtml", "jobdetails", "jobcontent"}
+DESCRIPTION_KEYS = {
+    "description",
+    "jobdescription",
+    "job_description",
+    "descriptionhtml",
+    "fulldescription",
+    "jobdescriptionhtml",
+    "jobdetails",
+    "jobcontent",
+}
 
 
 def embedded_description(html, minimum=200):

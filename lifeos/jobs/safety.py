@@ -8,6 +8,7 @@ is reported as module:line:MySQL error number; a missing table is counted apart.
 decision each had on the capture date. `fit-golden` re-scores them with today's rules and reports how many decisions
 changed: run it after any rule change. `fit-capture` prints a fresh set to save.
 """
+
 import ast
 import json
 import os
@@ -44,8 +45,12 @@ def statements(root=ROOT):
         if path.name in SKIP_FILES or "__pycache__" in path.parts:
             continue
         tree = ast.parse(path.read_text())
-        inner = {id(child) for node in ast.walk(tree) if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add)
-                 for child in (node.left, node.right)}
+        inner = {
+            id(child)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add)
+            for child in (node.left, node.right)
+        }
         # the pieces of an f-string are not statements
         inner |= {id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values}
         for node in ast.walk(tree):
@@ -86,7 +91,7 @@ def sql_smoke(connection, items=None):
                 cursor.execute("EXPLAIN " + sql, _params(sql))
                 cursor.fetchall()
                 counts["ok"] += 1
-            except Exception as error:                                              # noqa: BLE001 - any driver error is a finding, reported by code only
+            except Exception as error:  # noqa: BLE001 - any driver error is a finding, reported by code only
                 code = error.args[0] if error.args and isinstance(error.args[0], int) else type(error).__name__
                 if code in SKIP_TABLE_ERRORS:
                     counts["missing_table"] += 1
@@ -97,39 +102,52 @@ def sql_smoke(connection, items=None):
 
 
 def run_sql_smoke(limit, live, environ=os.environ):
-    from lifeos.jobs import store                                                    # noqa: PLC0415
+    from lifeos.jobs import store  # noqa: PLC0415
+
     with store.connect() as connection:
         counts = sql_smoke(connection)
     if counts["failed"]:
-        raise SafetyError(f"SQL_SMOKE_FAILED:{counts['failed']}of{counts['statements']}:" + ",".join(counts["failures"][:8]))
+        raise SafetyError(
+            f"SQL_SMOKE_FAILED:{counts['failed']}of{counts['statements']}:" + ",".join(counts["failures"][:8])
+        )
     return counts
 
 
 def _rows(connection, ids):
     marks = ",".join(["%s"] * len(ids))
     with connection.cursor() as cursor:
-        cursor.execute("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source "
-                       "FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id IN (" + marks + ")", tuple(ids))
+        cursor.execute(
+            "SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source "
+            "FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id IN (" + marks + ")",
+            tuple(ids),
+        )
         return [tuple(r) for r in cursor.fetchall()]
 
 
 def _decisions(rows, environ, today):
-    from lifeos.jobs.fit import profile as fit_profile                               # noqa: PLC0415
-    from lifeos.jobs.fit.stage import score_rows                                      # noqa: PLC0415
-    from lifeos.jobs.fit import profile_sync                                         # noqa: PLC0415
+    from lifeos.jobs.fit import profile as fit_profile  # noqa: PLC0415
+    from lifeos.jobs.fit.stage import score_rows  # noqa: PLC0415
+    from lifeos.jobs.fit import profile_sync  # noqa: PLC0415
+
     profile = fit_profile.load(environ, profile_sync.stored_block(environ))
-    return {str(job_id): [result.decision, decision.status]
-            for job_id, _, result, decision, _, _, _ in score_rows(rows, profile, today)}
+    return {
+        str(job_id): [result.decision, decision.status]
+        for job_id, _, result, decision, _, _, _ in score_rows(rows, profile, today)
+    }
 
 
 def run_fit_capture(limit, live, environ=os.environ, today=None):
-    from lifeos.jobs import store                                                    # noqa: PLC0415
+    from lifeos.jobs import store  # noqa: PLC0415
+
     today = today or date.today()
     ids = []
     with store.connect() as connection, connection.cursor() as cursor:
         for decision, n in PER_DECISION.items():
-            cursor.execute("SELECT j.id FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id WHERE f.decision = %s "
-                           "ORDER BY CRC32(CONCAT(j.id, 'fit-golden')) LIMIT %s", (decision, n))
+            cursor.execute(
+                "SELECT j.id FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id WHERE f.decision = %s "
+                "ORDER BY CRC32(CONCAT(j.id, 'fit-golden')) LIMIT %s",
+                (decision, n),
+            )
             ids += [r[0] for r in cursor.fetchall()]
         rows = _rows(connection, ids)
     scored = _decisions(rows, environ, today)
@@ -142,13 +160,21 @@ def run_fit_golden(limit, live, environ=os.environ, rows=None, golden=None, toda
     if not expected:
         raise SafetyError("FIT_GOLDEN_EMPTY")
     if rows is None:
-        from lifeos.jobs import store                                                # noqa: PLC0415
+        from lifeos.jobs import store  # noqa: PLC0415
+
         with store.connect() as connection:
             rows = _rows(connection, [int(i) for i in expected])
     now = _decisions(rows, environ, today)
     changed = sorted(i for i in now if now[i] != expected[i])
-    counts = {"saved": len(expected), "checked": len(now), "missing": len(expected) - len(now), "same": len(now) - len(changed), "changed": len(changed),
-              "changed_ids": changed[:20], "flips": sorted({f"{expected[i][0]}/{expected[i][1]}->{now[i][0]}/{now[i][1]}" for i in changed})}
+    counts = {
+        "saved": len(expected),
+        "checked": len(now),
+        "missing": len(expected) - len(now),
+        "same": len(now) - len(changed),
+        "changed": len(changed),
+        "changed_ids": changed[:20],
+        "flips": sorted({f"{expected[i][0]}/{expected[i][1]}->{now[i][0]}/{now[i][1]}" for i in changed}),
+    }
     if changed:
         raise SafetyError(f"FIT_GOLDEN_CHANGED:{len(changed)}of{len(now)}:" + ",".join(counts["flips"][:6]))
     return counts

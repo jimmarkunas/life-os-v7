@@ -4,6 +4,7 @@ Per source, one fixed-code line per role: the URL-shape problem, the page status
 structured job posting or a Greenhouse embed, how many of the role's title words the page holds (bucketed), and the
 description problem. Prints no title, link or text.
 """
+
 # The buckets show whether a role is a wrong link, a page that lacks the role's words, or a page we cannot read.
 from lifeos.jobs import enrich, jd, jsonld, quality, store
 from lifeos.platform import impersonate
@@ -13,7 +14,17 @@ REASONS = ("link_mismatch", "jd_listing", "jd_template")
 
 
 def _bucket(share):
-    return "w0" if share == 0 else "w_lt40" if share < 0.4 else "w_lt60" if share < 0.6 else "w_lt80" if share < 0.8 else "w_80plus"
+    return (
+        "w0"
+        if share == 0
+        else "w_lt40"
+        if share < 0.4
+        else "w_lt60"
+        if share < 0.6
+        else "w_lt80"
+        if share < 0.8
+        else "w_80plus"
+    )
 
 
 def classify(url, title, fetch_page=fetch, impersonate_page=impersonate.fetch):
@@ -42,9 +53,11 @@ def classify(url, title, fetch_page=fetch, impersonate_page=impersonate.fetch):
 def run(limit, live, fetch_page=fetch, impersonate_page=impersonate.fetch):
     out = {"by_source": {}, "checked": 0}
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT source, title, COALESCE(final_apply_url, source_url), unresolved_reason FROM v7_jobs "
-                       "WHERE source LIKE 'web:su-%%' AND status='HOLD' AND (unresolved_reason IN ('link_mismatch','jd_listing','jd_template') OR unresolved_reason LIKE 'http_40%%') "
-                       "AND COALESCE(final_apply_url, source_url) IS NOT NULL LIMIT 60")
+        cursor.execute(
+            "SELECT source, title, COALESCE(final_apply_url, source_url), unresolved_reason FROM v7_jobs "
+            "WHERE source LIKE 'web:su-%%' AND status='HOLD' AND (unresolved_reason IN ('link_mismatch','jd_listing','jd_template') OR unresolved_reason LIKE 'http_40%%') "
+            "AND COALESCE(final_apply_url, source_url) IS NOT NULL LIMIT 60"
+        )
         rows = cursor.fetchall()
     for source, title, url, reason in rows:
         key = f"{reason}|" + classify(url, title or "", fetch_page, impersonate_page)
