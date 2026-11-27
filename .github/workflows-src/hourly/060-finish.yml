@@ -25,6 +25,12 @@
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-v1
+      - name: Pip download cache for the semantic layer (keyed on requirements-fit.lock)
+        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.cache/pip
+          key: pip-fit-${{ runner.os }}-${{ hashFiles('requirements-fit.lock') }}
       - name: Install semantic layer
         if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
         run: pip install --require-hashes -r requirements-fit.lock || echo "semantic layer unavailable (scoring unchanged)"
