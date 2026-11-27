@@ -40,6 +40,8 @@ def child(key, parent, done=False, kind="Task", resolved=None, field_date=None):
                    "statusCategory": {"key": "done" if done else "new"}},
         "statuscategorychangedate": field_date,
         "resolutiondate": resolved,
+        "resolution": {"name": "Done"} if done else None,
+        "labels": [],
     }}
 
 
@@ -211,7 +213,7 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
 
     def test_v1_issues_exactly_main_requests_and_never_reads_history_or_project_labels(self):
         """Parity with main: the default path asks Jira only for the quarter epics' children (main's field list) and the open-work scan; no changelog, no project-label search, for MEJ and JFM alike."""
-        self.assertEqual(read.CHILD_FIELDS, "status,parent,resolutiondate,issuetype")
+        self.assertEqual(read.CHILD_FIELDS, "status,parent,resolutiondate,issuetype,resolution,labels,statuscategorychangedate")
         for goals, project, keys in ((GOALS, "MEJ", {"MEJ-2"}), ([{"key": "JFM-2", "person": "Jim"}], "JFM", {"JFM-2"})):
             fake = Jira()
             fake.get_paths = []

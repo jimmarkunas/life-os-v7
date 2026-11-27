@@ -140,9 +140,10 @@ class Jira:
         return {"issues": [], "isLast": True}
 
 
-def child(key, parent, done, resolved=None, subtask=False):
+def child(key, parent, done, resolved=None, subtask=False, resolution="Done", labels=()):
     return {"key": key, "fields": {"parent": {"key": parent}, "issuetype": {"name": "Task", "subtask": subtask},
-                                   "status": {"statusCategory": {"key": "done" if done else "indeterminate"}}, "resolutiondate": resolved}}
+                                   "status": {"statusCategory": {"key": "done" if done else "indeterminate"}}, "resolutiondate": resolved,
+                                   "resolution": {"name": resolution} if done else None, "labels": list(labels)}}
 
 
 def epic(key, name):

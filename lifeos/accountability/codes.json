@@ -194,5 +194,19 @@
     false,
     "The V2_OFFICIAL write did not read back as written.",
     "Legacy stays official; Jim checks the row."
+  ],
+  "ACCOUNTABILITY_CLOSURE_EVIDENCE_MISSING": [
+    "accountability",
+    "blocked",
+    false,
+    "A closed issue lacks its resolution or labels, so cancellations cannot be told from delivered work.",
+    "Nothing was written; the region is stamped DEGRADED and keeps its last body until the evidence reads."
+  ],
+  "ACCOUNTABILITY_CLOSURE_EVIDENCE_CONTRADICTORY": [
+    "accountability",
+    "blocked",
+    false,
+    "A closed issue's resolution and labels contradict each other (superseded but resolved Done, or auto-closed but cancelled).",
+    "Nothing was written; the region is stamped DEGRADED until a person fixes the issue."
   ]
 }
