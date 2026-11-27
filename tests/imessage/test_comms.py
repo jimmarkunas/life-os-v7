@@ -551,6 +551,80 @@ class Card(unittest.TestCase):
         counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * limit)
         self.assertEqual((report.plain("extrar"), counts["todoist"]), ("Todoist (—)", "unavailable"))
 
+    DASH_ENV = {"DASHBOARD_TODOIST_BLOCK_ID": "dash"}
+
+    def dash_run(self, report, tasks, env=None):
+        return self.run_card(report, env={**self.ENV, **self.TODOIST_ENV, **self.DASH_ENV, **(env or {})}, tasks=tasks)
+
+    def test_the_dashboard_label_shows_the_same_count_keeps_its_icon_and_space_and_gets_the_launcher_link(self):
+        report = Report()
+        self.todoist_row(report)
+        report.add_dashboard()
+        icon = copy.deepcopy(report.blocks["dash"]["paragraph"]["rich_text"][0])
+        counts, _ = self.dash_run(report, lambda limit: [{}] * 13)
+        self.assertEqual((report.plain("dash"), report.plain("extrar")), (":todoist: Todoist (13)", "Todoist (13)"))
+        self.assertEqual(report.blocks["dash"]["paragraph"]["rich_text"][0], icon)
+        self.assertEqual(report.blocks["dash"]["paragraph"]["rich_text"][1]["plain_text"], " Todoist (13)")
+        self.assertEqual(report.blocks["dash"]["paragraph"]["rich_text"][1]["text"]["link"]["url"], LAUNCH % "todoist")
+        self.assertEqual((counts["dashboard"], counts["todoist"], counts["written"]), ("written", 13, 9))
+        mark = len(report.patches)
+        counts, _ = self.dash_run(report, lambda limit: [{}] * 13)  # an unchanged count and link write nothing more
+        self.assertNotIn("dash", [p[0] for p in report.patches[mark:]])
+
+    def test_both_labels_go_stale_together_and_recover_together(self):
+        report = Report()
+        self.todoist_row(report)
+        report.add_dashboard()
+        self.dash_run(report, lambda limit: [{}] * 14)
+        counts, _ = self.dash_run(report, self.broken)
+        self.assertEqual(
+            (report.plain("dash"), report.plain("extrar")),
+            (":todoist: Todoist (14 · STALE)", "Todoist (14 · STALE)"),
+        )
+        self.assertEqual(counts["dashboard"], "written")
+        self.dash_run(report, lambda limit: [{}] * 15)
+        self.assertEqual((report.plain("dash"), report.plain("extrar")), (":todoist: Todoist (15)", "Todoist (15)"))
+
+    def test_an_unset_dashboard_target_is_not_configured_and_nothing_on_it_is_read_or_written(self):
+        report = Report()
+        self.todoist_row(report)
+        report.add_dashboard()
+        before = copy.deepcopy(report.blocks["dash"])
+        counts, _ = self.run_card(report, env={**self.ENV, **self.TODOIST_ENV}, tasks=lambda limit: [{}] * 3)
+        self.assertEqual((counts["dashboard"], report.blocks["dash"]), ("not_configured", before))
+
+    def test_a_dashboard_target_of_the_wrong_shape_or_link_writes_nothing_there_and_the_run_is_degraded(self):
+        shapes = {
+            "heading": lambda r: r.add_dashboard(kind="heading_3"),
+            "two labels": lambda r: r.add_dashboard(extra=(text("Todoist (2)"),)),
+            "foreign link": lambda r: r.add_dashboard(link="https://example.com/elsewhere/"),
+            "no label": lambda r: r.add_dashboard(label=" something else"),
+        }
+        for name, build in shapes.items():
+            report = Report()
+            self.todoist_row(report)
+            build(report)
+            before = copy.deepcopy(report.blocks["dash"])
+            with self.assertRaises(card.CommsError, msg=name) as error:
+                self.dash_run(report, lambda limit: [{}] * 3)
+            self.assertEqual(str(error.exception), "COMMS_TODOIST_DIVERGED", name)
+            self.assertEqual(report.blocks["dash"], before, name)
+            self.assertEqual(report.plain("extrar"), "Todoist (3)", name)  # the Daily Report label is still written
+
+    def test_a_failed_dashboard_write_is_degraded_never_fresh(self):
+        class Failing(Report):
+            def call_once(self, method, path, body=None, **kw):
+                if path.strip("/").endswith("dash"):
+                    raise card.NotionError("NOTION_HTTP_500")
+                return super().call_once(method, path, body, **kw)
+
+        report = Failing()
+        self.todoist_row(report)
+        report.add_dashboard()
+        with self.assertRaises(card.CommsError) as error:
+            self.dash_run(report, lambda limit: [{}] * 3)
+        self.assertEqual(str(error.exception), "COMMS_TODOIST_DIVERGED")
+
     def test_the_callout_is_found_in_another_column_than_the_calendar_card(self):
         report = Report()
         report.add("col2", "column", "root")
