@@ -1,5 +1,4 @@
 """Precision guards: is this URL a single job page, and is this text a real job description? Pure functions."""
-# Found by the first live Notion batch: 2 of 3 pages were wrong (an apply-form template and a listing page).
 import re
 from urllib.parse import parse_qs, urlsplit
 
@@ -27,12 +26,14 @@ JOB_ID_PARAMS = {"gh_jid", "jid", "job_id", "jobid", "jobref", "job_ref", "job",
                  "requisition_id", "posting", "posting_id", "vacancy", "vacancy_id", "opening", "opening_id", "position_id", "positionid", "id"}
 
 
-HOST_ID_PARAMS = {"greenhouse.io": {"token"},                     # boards.greenhouse.io/embed/job_app?for=<board>&token=<job id>: Enrich reads this form
-                  "eightfold.ai": {"pid"}}                        # <company>.eightfold.ai/careers?pid=<position id>
+HOST_ID_PARAMS = {"greenhouse.io": {"token"},
+                  "eightfold.ai": {"pid"}}
 
 
 def _id_in_query(query, host=""):
-    """True when a query parameter that names a job carries an id (a digit, at least three characters): /careers?gh_jid=123 is one vacancy."""
+    """True when a query parameter that names a job carries an id (a digit, at least three characters):
+    /careers?gh_jid=123 is one vacancy.
+    """
     names = set(JOB_ID_PARAMS)
     for suffix, extra in HOST_ID_PARAMS.items():
         if host == suffix or host.endswith("." + suffix):
@@ -48,7 +49,7 @@ def url_problem(url):
     if any(k in query for k in ("p", "page", "q", "keyword", "keywords", "query", "search")):
         return "listing_url"
     if _id_in_query(query, (parts.hostname or "").lower()):
-        return None                                  # the id may live in the query (Greenhouse embeds on an employer's own /careers page)
+        return None  # the id may live in the query (Greenhouse embeds on an employer's own /careers page)
     if not segs:
         return "root"
     if segs[-1].lower() in GENERIC_LAST or "search" in (s.lower() for s in segs):
@@ -59,14 +60,18 @@ def url_problem(url):
     return None if (has_id or slug) else "no_job_id"
 
 
-AMBIGUOUS = ("listing_url", "no_job_id")        # shape cannot say: a vacancy or a portal page. Only the page itself can (title proof). A root never qualifies.
+# shape cannot say: a vacancy or a portal page; only the page itself can (title proof). A root never qualifies.
+AMBIGUOUS = ("listing_url", "no_job_id")
 
 WORKABLE_NO_ACCOUNT = re.compile(r"^https?://apply\.workable\.com/j/[^/]+/?$", re.I)
 
 
 def link_problem(url):
-    """None for a link that can be a single vacancy, else a fixed code. The same test Enrich opens with, so a link that would be rejected
-    there is never marked RESOLVED here (it would only bounce NEW -> RESOLVED -> NEW)."""
+    """None for a link that can be a single vacancy, else a fixed code.
+
+    The same test Enrich opens with, so a link rejected there is never marked RESOLVED here (it would only bounce
+    NEW -> RESOLVED -> NEW).
+    """
     url = canonical_job_url(url)
     if WORKABLE_NO_ACCOUNT.match(url or ""):
         return "workable_no_account"
