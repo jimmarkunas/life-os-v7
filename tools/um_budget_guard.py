@@ -202,7 +202,9 @@ class Guard:
             if not budget.can_arm(spent, exposure, budget.dream_worst(), self.ceiling):
                 raise Stop("budget_before_tranche_%d" % (i // self.tranche + 1)) from None
             if not budget.admissible(spent, self.cap):
-                raise Stop("admission_limit") from None  # one more reservation would not fit the scope: the meter would refuse
+                raise Stop(
+                    "admission_limit"
+                ) from None  # one more reservation would not fit the scope: the meter would refuse
             try:
                 self.hon.post_messages(batch, armed=True)
             except Unauthorized:
