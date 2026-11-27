@@ -1,10 +1,19 @@
 """Classify a board listing against the accepted state: new, changed, unchanged and (complete only) removed."""
+
 from hashlib import sha256
 
 
 def material_hash(job):
     """Hash of the material fields (title, location, url, content, posted date); crawl timestamps are excluded."""
-    raw = "\x1f".join([job["title"], job["location"], job["url"], job["content"] or "", job["posted"].isoformat() if job["posted"] else ""])
+    raw = "\x1f".join(
+        [
+            job["title"],
+            job["location"],
+            job["url"],
+            job["content"] or "",
+            job["posted"].isoformat() if job["posted"] else "",
+        ]
+    )
     return sha256(raw.encode()).hexdigest()
 
 

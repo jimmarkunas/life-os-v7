@@ -3,6 +3,7 @@
 Each reader takes the page HTML and returns job dicts (id, title, location, url, posted, content). A reader that cannot
 prove the inventory raises ValueError, which the lister turns into FAILED, never 'zero jobs'. Only a page that says
 explicitly it has no vacancies is an empty COMPLETE listing."""
+
 from html import unescape
 from html.parser import HTMLParser
 import hashlib
@@ -10,14 +11,36 @@ import json
 import re
 from urllib.parse import urljoin, urlparse
 
-IGNORE = re.compile(r"(privacy|login|sign.?in|cookie|benefit|culture|people|about|contact|connect|alert|talent.?community)", re.I)
-NON_JOB = re.compile(r"^(careers?|jobs?( explore jobs)?|current openings?|open positions?|see open positions?|view open roles?|view career openings?|view job|apply|apply now|join us|opportunities|get in touch\.?)$", re.I)
+IGNORE = re.compile(
+    r"(privacy|login|sign.?in|cookie|benefit|culture|people|about|contact|connect|alert|talent.?community)", re.I
+)
+NON_JOB = re.compile(
+    r"^(careers?|jobs?( explore jobs)?|current openings?|open positions?|see open positions?|view open roles?|view career openings?|view job|apply|apply now|join us|opportunities|get in touch\.?)$",
+    re.I,
+)
 JOBISH = re.compile(r"(job|career|position|vacanc|opening|role|apply)", re.I)
-ATS_HOSTS = ("ashbyhq.com", "greenhouse.io", "lever.co", "workdayjobs.com", "teamtailor.com", "join.com", "workable.com", "pinpointhq.com", "rippling.com")
+ATS_HOSTS = (
+    "ashbyhq.com",
+    "greenhouse.io",
+    "lever.co",
+    "workdayjobs.com",
+    "teamtailor.com",
+    "join.com",
+    "workable.com",
+    "pinpointhq.com",
+    "rippling.com",
+)
 
 
 def job(ident, title, location, url, content=None):
-    return {"id": str(ident), "title": (title or "").strip(), "location": (location or "").strip(), "url": url or "", "posted": None, "content": content}
+    return {
+        "id": str(ident),
+        "title": (title or "").strip(),
+        "location": (location or "").strip(),
+        "url": url or "",
+        "posted": None,
+        "content": content,
+    }
 
 
 def _sid(url):
@@ -92,6 +115,7 @@ def _jsonld_jobs(page, source):
         elif isinstance(value, list):
             for child in value:
                 walk(child)
+
     for raw in page.scripts:
         try:
             walk(json.loads(raw))
@@ -120,7 +144,15 @@ def _real(title):
 
 def _path_jobs(text, source, pattern, reject=None):
     rx = re.compile(pattern, re.I)
-    return _links(text, source, lambda url, href, title: title if rx.fullmatch(urlparse(url).path.rstrip("/")) and _real(title) and not (reject and reject.search(title)) else None)
+    return _links(
+        text,
+        source,
+        lambda url, href, title: (
+            title
+            if rx.fullmatch(urlparse(url).path.rstrip("/")) and _real(title) and not (reject and reject.search(title))
+            else None
+        ),
+    )
 
 
 STREAM_SLUG = re.compile(r"^(?P<role>.+)-(?P<city>london|new-york|arlington|manchester|dublin|edinburgh)-\d+$", re.I)
@@ -136,8 +168,8 @@ def _stream(text, source):
         city = m.group("city").replace("-", " ").title()
         label = row["title"]
         cut = re.search(r"\b" + re.escape(city) + r"\b", label, re.I)
-        if cut and label[:cut.start()].strip():
-            row["title"] = label[:cut.start()].strip(" -–—")
+        if cut and label[: cut.start()].strip():
+            row["title"] = label[: cut.start()].strip(" -–—")
         row["location"] = row["location"] or city
     return rows
 
@@ -152,12 +184,19 @@ def _generic(text, source):
         if host and base_host and host != base_host and not any(x in host for x in ATS_HOSTS):
             return None
         return title if len(title) >= 3 else None
+
     return _links(text, source, accept)
 
 
 def _join(text, source):
     base_path = urlparse(source["url"]).path.rstrip("/")
-    return _links(text, source, lambda url, href, title: title if urlparse(url).path.rstrip("/").startswith(base_path + "/") and _real(title) else None)
+    return _links(
+        text,
+        source,
+        lambda url, href, title: (
+            title if urlparse(url).path.rstrip("/").startswith(base_path + "/") and _real(title) else None
+        ),
+    )
 
 
 def _bluestonex(text, source):
@@ -165,13 +204,24 @@ def _bluestonex(text, source):
         if "full-time more information" not in title.casefold():
             return None
         return re.split(r"\s*full-time more information", title, flags=re.I)[0].strip()
+
     return _links(text, source, accept, jsonld=False)
 
 
 def _sixflow(text, source):
     plain = strip_html(text)
     zero = re.search(r"we don['’]?t have any live vacancies right now", plain, re.I)
-    rows = _links(text, source, lambda url, href, title: title if re.fullmatch(r"/careers/(?!future-opportunities$)[^/]+", urlparse(url).path.rstrip("/"), re.I) and _real(title) else None, jsonld=False)
+    rows = _links(
+        text,
+        source,
+        lambda url, href, title: (
+            title
+            if re.fullmatch(r"/careers/(?!future-opportunities$)[^/]+", urlparse(url).path.rstrip("/"), re.I)
+            and _real(title)
+            else None
+        ),
+        jsonld=False,
+    )
     if zero and rows:
         raise ValueError("contradictory zero and live vacancy evidence")
     return [] if zero else rows or _fail("inventory is ambiguous")
@@ -187,7 +237,14 @@ def _futuristic(text, source):
     rows, seen = [], set()
     for part in text.split('<div class="rjjobportal-job-item"')[1:]:
         title_m = re.search(r'rjjobportal-job-title">([^<]+)</span>', part, re.I)
-        meta = {strip_html(k): strip_html(v) for k, v in re.findall(r'rjjobportal-meta-label">([^<]+)</span>\s*<span class="rjjobportal-meta-val">(.*?)</span>', part, re.I | re.S)}
+        meta = {
+            strip_html(k): strip_html(v)
+            for k, v in re.findall(
+                r'rjjobportal-meta-label">([^<]+)</span>\s*<span class="rjjobportal-meta-val">(.*?)</span>',
+                part,
+                re.I | re.S,
+            )
+        }
         ref = meta.get("Job Reference Number")
         if not title_m or not ref or ref in seen:
             raise ValueError("vacancy item missing title or reference, or duplicate")
@@ -217,21 +274,30 @@ def _balanced_js_array(text, start):
         elif ch == "]":
             depth -= 1
             if depth == 0:
-                return text[start:i + 1]
+                return text[start : i + 1]
     raise ValueError("unterminated careers array")
 
 
 def _doubleword(text, source, fetch_text):
-    scripts = [urljoin(source["url"], s) for s in re.findall(r'<script[^>]+src=["\']([^"\']+)', text, re.I) if "/assets/index-" in s and s.endswith(".js")]
+    scripts = [
+        urljoin(source["url"], s)
+        for s in re.findall(r'<script[^>]+src=["\']([^"\']+)', text, re.I)
+        if "/assets/index-" in s and s.endswith(".js")
+    ]
     if len(scripts) != 1:
         raise ValueError("expected one first-party app bundle")
     js = fetch_text(scripts[0])
     q = r'"(?:\\.|[^"\\])*"'
-    head = re.search(rf'([A-Za-z_$][\w$]*)=\[\{{title:{q},slug:{q},department:{q},type:{q},seniority:{q},location:{q},compensation:', js)
+    head = re.search(
+        rf'([A-Za-z_$][\w$]*)=\[\{{title:{q},slug:{q},department:{q},type:{q},seniority:{q},location:{q},compensation:',
+        js,
+    )
     if not head or f"{head.group(1)}.map" not in js or "Open Positions" not in js:
         raise ValueError("Open Positions array not proven")
     raw = _balanced_js_array(js, js.find("[", head.start()))
-    rx = re.compile(rf"\{{title:(?P<title>{q}),slug:(?P<slug>{q}),department:(?P<department>{q}),type:(?P<type>{q}),seniority:(?P<seniority>{q}),location:(?P<location>{q}),compensation:(?P<compensation>{q}),applyEmail:(?P<applyEmail>{q})")
+    rx = re.compile(
+        rf"\{{title:(?P<title>{q}),slug:(?P<slug>{q}),department:(?P<department>{q}),type:(?P<type>{q}),seniority:(?P<seniority>{q}),location:(?P<location>{q}),compensation:(?P<compensation>{q}),applyEmail:(?P<applyEmail>{q})"
+    )
     rows, seen = [], set()
     for match in rx.finditer(raw):
         fields = {k: json.loads(match.group(k)) for k in match.groupdict()}
@@ -239,7 +305,15 @@ def _doubleword(text, source, fetch_text):
             raise ValueError("duplicate slug")
         seen.add(fields["slug"])
         pay = fields["compensation"]
-        rows.append(job(fields["slug"], fields["title"], fields["location"], urljoin(source["url"], f"/careers/{fields['slug']}"), f"Compensation: {pay}" if pay else None))
+        rows.append(
+            job(
+                fields["slug"],
+                fields["title"],
+                fields["location"],
+                urljoin(source["url"], f"/careers/{fields['slug']}"),
+                f"Compensation: {pay}" if pay else None,
+            )
+        )
     if not rows:
         raise ValueError("Open Positions parsed zero roles")
     return rows
@@ -258,7 +332,12 @@ def _revolut(text, source):
         if isinstance(value, dict):
             for key, child in value.items():
                 folded = str(key).casefold()
-                if isinstance(child, int) and not isinstance(child, bool) and ("count" in folded or "total" in folded) and any(t in folded for t in ("position", "job", "role", "open")):
+                if (
+                    isinstance(child, int)
+                    and not isinstance(child, bool)
+                    and ("count" in folded or "total" in folded)
+                    and any(t in folded for t in ("position", "job", "role", "open"))
+                ):
                     return child
                 found = total(child)
                 if found is not None:
@@ -269,8 +348,13 @@ def _revolut(text, source):
                 if found is not None:
                     return found
         return None
+
     plain = strip_html(text)
-    visible = re.search(r"(?:we have|currently have)\s+(\d+)\s+(?:open positions|open roles|positions)|showing\s+\d+\s*(?:[-–]\s*\d+\s+of\s+|of\s+)(\d+)\s+(?:jobs|roles|positions)", plain, re.I)
+    visible = re.search(
+        r"(?:we have|currently have)\s+(\d+)\s+(?:open positions|open roles|positions)|showing\s+\d+\s*(?:[-–]\s*\d+\s+of\s+|of\s+)(\d+)\s+(?:jobs|roles|positions)",
+        plain,
+        re.I,
+    )
     count = int(next(g for g in visible.groups() if g is not None)) if visible else total(payload)
     if count is None:
         raise ValueError("authoritative open-position count missing")
@@ -283,7 +367,12 @@ def _revolut(text, source):
         locs = p.get("locations")
         if not title or not isinstance(locs, list) or any(not isinstance(l, dict) or not l.get("name") for l in locs):
             raise ValueError("position lacks title or locations")
-        place = " | ".join(" · ".join(x for x in (strip_html(l.get("name")), strip_html(l.get("type")), strip_html(l.get("country"))) if x) for l in locs)
+        place = " | ".join(
+            " · ".join(
+                x for x in (strip_html(l.get("name")), strip_html(l.get("type")), strip_html(l.get("country"))) if x
+            )
+            for l in locs
+        )
         slug = re.sub(r"[^a-z0-9]+", "-", title.casefold()).strip("-")
         rows.append(job(p["id"], title, place, f"https://www.revolut.com/en-GB/careers/position/{slug}-{p['id']}/"))
     return rows
@@ -295,8 +384,15 @@ def _tg0(text, source):
     if start is None:
         raise ValueError("JOIN US section not found")
     offices = {"LONDON HQ", "BEIJING OFFICE", "HONG KONG OFFICE", "SINGAPORE OFFICE"}
-    roles = [v for tag, v in page.headings[start + 1:] if tag == "h3" and v.upper() not in offices and not NON_JOB.fullmatch(v)]
-    apply_url = next((urljoin(source["url"], h) for h, label in page.links if "submit your application" in label.casefold()), source["url"])
+    roles = [
+        v
+        for tag, v in page.headings[start + 1 :]
+        if tag == "h3" and v.upper() not in offices and not NON_JOB.fullmatch(v)
+    ]
+    apply_url = next(
+        (urljoin(source["url"], h) for h, label in page.links if "submit your application" in label.casefold()),
+        source["url"],
+    )
     if not roles:
         raise ValueError("JOIN US exposed no roles")
     return [job(_sid(v), v, "London / global offices", apply_url) for v in roles]
@@ -321,15 +417,24 @@ def _veramed(text, source, fetch_text):
     return rows
 
 
-PATH_KINDS = {"wttj_html": r"/jobs/[^/]+", "stream_html": r"/(?:[a-z]{2}(?:-[a-z]{2})?/)?careers/[^/]+", "popsa_html": r"/careers/[^/]+"}
+PATH_KINDS = {
+    "wttj_html": r"/jobs/[^/]+",
+    "stream_html": r"/(?:[a-z]{2}(?:-[a-z]{2})?/)?careers/[^/]+",
+    "popsa_html": r"/careers/[^/]+",
+}
 READERS = {
-    "static_complete_html": lambda t, s, f: _generic(t, s), "rippling_html": lambda t, s, f: _generic(t, s),
+    "static_complete_html": lambda t, s, f: _generic(t, s),
+    "rippling_html": lambda t, s, f: _generic(t, s),
     "wttj_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["wttj_html"]),
     "stream_html": lambda t, s, f: _stream(t, s),
     "popsa_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["popsa_html"]),
-    "join_html": lambda t, s, f: _join(t, s), "bluestonex_html": lambda t, s, f: _bluestonex(t, s),
-    "sixflow_html": lambda t, s, f: _sixflow(t, s), "futuristic_html": lambda t, s, f: _futuristic(t, s),
-    "doubleword_bundle": _doubleword, "revolut_html": lambda t, s, f: _revolut(t, s),
-    "tg0_html": lambda t, s, f: _tg0(t, s), "veramed_html": _veramed,
+    "join_html": lambda t, s, f: _join(t, s),
+    "bluestonex_html": lambda t, s, f: _bluestonex(t, s),
+    "sixflow_html": lambda t, s, f: _sixflow(t, s),
+    "futuristic_html": lambda t, s, f: _futuristic(t, s),
+    "doubleword_bundle": _doubleword,
+    "revolut_html": lambda t, s, f: _revolut(t, s),
+    "tg0_html": lambda t, s, f: _tg0(t, s),
+    "veramed_html": _veramed,
 }
 SELF_PROVING = {"sixflow_html", "futuristic_html", "doubleword_bundle", "revolut_html", "tg0_html", "veramed_html"}
