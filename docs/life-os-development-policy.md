@@ -67,7 +67,7 @@ Everything else is pre-approved, including workflow edits and test or registry e
 
 Also never, without Jim:
 - send or delete mail or calendar events;
-- run a metered Notion query (needs a yes per query). Reads go in this order: an exact page or data source fetch, a saved view, the repository's own Notion API path (`lifeos` readers through the V7 integration), and only then MCP rows or SQL queries, which count as metered;
+- run a metered Notion query (needs a yes per query). Reads go in this order: an exact fetch, a saved view, the repository's own Notion API path (`lifeos` readers), and only then MCP rows or SQL queries, which count as metered ([rules](notion-query-conservation-policy.md));
 - open a sign-in or account-picker page;
 - delete or rotate a credential (never covered by a blanket yes).
 
