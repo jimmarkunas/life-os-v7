@@ -1,11 +1,10 @@
-"""D194 Hiring Decision on the Job Ledger row (LIFE-353, REQ-5: the Ledger row is the job record; hiring status lives on it, D195 superseded).
+"""Hiring Decision on the Job Ledger row.
 
-Confirm Rejected (any closing outcome) and Reopen are each one bounded write to ONE exact Job Ledger row, found by its page id (`route`): `Hiring Decision` is set (or cleared on Reopen) together with
-one appended line in `Hiring Decision History`. `Applied`, `Applied On`, `Stage`, `Saturn Decision`, the row's page body and its interview children are never written (read before and after; any
-difference fails the read-back). No page is moved and no container is read. Detected mail is evidence, never authority: the request must say `confirmed`. Notion has no conditional write, so the
-row is read, re-read just before the write (a changed edit time, decision or history refuses it) and read back after it; the operation id in the history makes a retry a no-op, and a history line
-whose decision did not land is finished by the same operation, never written twice. Fixed codes only: no company, role, id or reason ever enters an error. The caller refreshes the Hiring
-Pipeline only after this returns."""
+Confirm Rejected (any closing outcome) and Reopen are each one bounded write to ONE Ledger row found by page id
+(`route`): `Hiring Decision` is set or cleared with one appended `Hiring Decision History` line, and nothing else on
+the row is written (read before and after; any difference fails the read-back). Detected mail is evidence, never
+authority: the request must say `confirmed`. Notion has no conditional write, so the row is re-read just before the
+write; the history's operation id makes a retry a no-op. Errors carry fixed codes only."""
 import json
 import re
 
@@ -16,7 +15,7 @@ from . import models as M
 
 ACTION, REOPEN, REJECTED, PASSED = "CONFIRM_REJECTED", "REOPEN", "Rejected", "Passed"
 DECISION, HISTORY, DISMISSED = "Hiring Decision", "Hiring Decision History", "Dismissed Outcome Ref"
-HISTORY_MAX, REASON_MAX, MAX_PAGES = 6000, 200, 40            # history longer than this is refused, never cut; a reason longer than this is refused, never shortened
+HISTORY_MAX, REASON_MAX, MAX_PAGES = 6000, 200, 40
 OP = re.compile(r"[A-Za-z0-9_-]{8,64}\Z")
 
 
@@ -38,7 +37,6 @@ def _page_id(value):
 
 
 def parse(request):
-    """The validated request, or a fixed code. Nothing is written for a request that is not an explicit, complete confirmation."""
     if not isinstance(request, dict) or request.get("action") not in (ACTION, REOPEN) or request.get("confirmed") is not True:
         raise fail("NOT_CONFIRMED")
     reason, outcome = request.get("reason"), request.get("outcome", REJECTED)
@@ -57,7 +55,6 @@ def check_schema(client, outcome=REJECTED):
 
 
 def _scan(client, flt):
-    """Every Ledger page matching a filter, read completely or not at all."""
     return [row for page in query(client, None, {"page_size": 100, "filter": flt}, fail, incomplete="LEDGER_INCOMPLETE", limit=MAX_PAGES) for row in page["results"]]
 
 
@@ -65,7 +62,7 @@ PURSUIT = {"or": [{"property": "Applied", "checkbox": {"equals": True}}, {"prope
 
 
 def ledger_pages(client):
-    """Every Job Ledger row that is a pursuit: Applied ticked, or Stage set (REQ-5; an interview pursuit's row has a Stage and may not be ticked Applied). Read completely or not at all."""
+    """Every Ledger row that is a pursuit (Applied ticked or Stage set), read completely or not at all."""
     return _scan(client, PURSUIT)
 
 
@@ -74,7 +71,6 @@ def _pursuit(props):
 
 
 def entries(text):
-    """The history as a list of entries; an unreadable line is refused, never skipped."""
     out = []
     for line in text.splitlines():
         try:
@@ -88,8 +84,6 @@ def entries(text):
 
 
 def current(page, want, source):
-    """The fetched page itself must still be the requested pursuit: a row of the canonical Ledger (its parent is that data source), this page id, not archived, a pursuit (Applied ticked or
-    Stage set), and company AND role as requested."""
     props, parent = page.get("properties") or {}, page.get("parent") or {}
     if parent.get("type") != "data_source_id" or not _page_id(parent.get("data_source_id")) or _page_id(parent["data_source_id"]) != _page_id(source):
         raise fail("NOT_LEDGER_ROW")
@@ -99,9 +93,8 @@ def current(page, want, source):
 
 
 def snapshot(page):
-    """What a read-back must find unchanged, and the decision and history as they stand."""
     props = page.get("properties") or {}
-    kept = {"Applied": (props.get("Applied") or {}).get("checkbox"), "Applied On": (props.get("Applied On") or {}).get("date"),      # the whole date object: start, end and time zone
+    kept = {"Applied": (props.get("Applied") or {}).get("checkbox"), "Applied On": (props.get("Applied On") or {}).get("date"),
             "Saturn Decision": ((props.get("Saturn Decision") or {}).get("select") or {}).get("name"),
             "Stage": ((props.get("Stage") or {}).get("select") or {}).get("name"), "Company": _text(props.get("Company"), "rich_text"), "Job": _text(props.get("Job"), "title"),
             "Stable Job Key": _text(props.get("Stable Job Key"), "rich_text"), DISMISSED: _text(props.get(DISMISSED), "rich_text")}
@@ -109,16 +102,16 @@ def snapshot(page):
 
 
 def rows(pages):
-    """The pursuit pages (`ledger_pages`) in the shape `route` reads: {"id", "company", "role", "decision"}; an unnamed row is not a pursuit."""
     out = [{"id": p.get("id"), "company": _text((p.get("properties") or {}).get("Company"), "rich_text"), "role": _text((p.get("properties") or {}).get("Job"), "title"),
             "decision": (((p.get("properties") or {}).get(DECISION) or {}).get("select") or {}).get("name")} for p in pages]
     return [r for r in out if r["company"] and r["role"] and _page_id(r["id"])]
 
 
 def route(rows, want):
-    """-> the ONE Job Ledger row that carries this pursuit's decision, or a fixed code and nothing written (REQ-5: the Ledger row is the job record; no page moves).
-    A request naming a row's page id resolves to that row, whose company AND role must still be the requested ones (`STALE_IDENTITY` otherwise). A request with no id, or an id that is not
-    a Ledger row (an older opportunity page's own id), resolves by company AND role: exactly one pursuit row, else `NO_MATCH` or `AMBIGUOUS`. Open or closed is the writer's check, not this one."""
+    """-> the ONE Ledger row carrying this pursuit's decision, or a fixed code. Nothing is written.
+
+    A page id resolves to that row (company AND role must still match, else `STALE_IDENTITY`); otherwise company AND
+    role must match exactly one pursuit, else `NO_MATCH` or `AMBIGUOUS`."""
     named = lambda r: not (want.get("company") or want.get("role")) or M.same(r["company"], r["role"], want.get("company", ""), want.get("role", ""))
     pid = _page_id(want.get("id"))
     mine = [r for r in rows if pid and _page_id(r.get("id")) == pid]
@@ -139,10 +132,11 @@ def route(rows, want):
 
 
 def confirm_rejected(client, request, live, now):
-    """-> {"status": dry_run | recorded | already_recorded, "verified": bool, "entries": n} or a DecisionError, on the ONE Ledger row whose page id the request names (`route` chose it).
-    Confirm sets Hiring Decision to the outcome; Reopen clears it (a Hired outcome only with `reopen_hired`). Either appends one history line carrying the operation id, in the same write.
-    States, read from the row: the operation's line absent = nothing written; its line present but the decision not yet the one it leaves = partially applied, and the same operation sets only
-    the decision (no second line); both = complete, a no-op. Never success from an HTTP response alone: the exact row is fetched again and compared."""
+    """-> {"status": dry_run | recorded | already_recorded, "verified": bool, "entries": n} or a DecisionError.
+
+    Confirm sets Hiring Decision; Reopen clears it (a Hired outcome only with `reopen_hired`); either appends one
+    history line carrying the op id. A history line without its decision (partial write) is finished, never repeated.
+    Success is never taken from the HTTP response alone: the row is fetched again and compared."""
     want = parse(request)
     reopen = want["action"] == REOPEN
     check_schema(client, want["outcome"])
@@ -150,24 +144,24 @@ def confirm_rejected(client, request, live, now):
     current(page, want, client.source)
     kept, decision, history = snapshot(page)
     log = entries(history)
-    ops, after = [e["op"] for e in log], None if reopen else want["outcome"]                  # `after`: the decision this operation leaves on the row
+    ops, after = [e["op"] for e in log], None if reopen else want["outcome"]
     mine = [e for e in log if e["op"] == want["op"]]
     if mine:
         if decision == after:
-            return {"status": "already_recorded", "verified": True, "entries": len(ops)}      # a retry of the same confirmed operation: nothing is written twice
-        before = mine[0].get("outcome") if reopen else None                                     # the decision this operation found on the row
+            return {"status": "already_recorded", "verified": True, "entries": len(ops)}
+        before = mine[0].get("outcome") if reopen else None
         if len(mine) > 1 or log[-1] is not mine[0] or mine[0].get("action") != want["action"] or decision != before:
-            raise fail("CONFLICT")                                                              # something happened after this operation: never overwritten by a retry
-        new = history                                                                           # partially applied: only the decision is missing
+            raise fail("CONFLICT")                                                              # something happened after this operation: a retry never overwrites it
+        new = history
     else:
-        if reopen:                                                                              # the recorded decision is cleared; its history stays
+        if reopen:
             was = decision
             if was not in M.OUTCOMES + (PASSED,):
                 raise fail("NOT_CLOSED")
             if was == "Hired" and not want["hired_ok"]:
-                raise fail("HIRED_REOPEN_UNCONFIRMED")                                          # reopening a Hired outcome needs its own explicit confirmation
+                raise fail("HIRED_REOPEN_UNCONFIRMED")
         elif decision is not None:
-            raise fail("CONFLICT")                                                              # another decision is already recorded: never replaced here
+            raise fail("CONFLICT")
         line = json.dumps({"op": want["op"], "action": want["action"], "at": now.isoformat(timespec="seconds"), "reason": want["reason"], "outcome": decision if reopen else want["outcome"]},
                           separators=(",", ":"), sort_keys=True)
         new = f"{history}\n{line}" if history else line
@@ -176,7 +170,7 @@ def confirm_rejected(client, request, live, now):
     if not live:
         return {"status": "dry_run", "verified": False, "entries": len(ops)}
     again = client.get_page(want["id"])
-    current(again, want, client.source)                                                         # still the requested pursuit immediately before the write
+    current(again, want, client.source)
     if again.get("last_edited_time") != page.get("last_edited_time") or snapshot(again) != (kept, decision, history):
         raise fail("CONCURRENT_CHANGE")
     with fixed(NotionError, fail, "WRITE_FAILED"):
@@ -188,20 +182,18 @@ def confirm_rejected(client, request, live, now):
     return {"status": "recorded", "verified": True, "entries": len(entries(new))}
 
 
-# ---------- LIFE-111 / LIFE-112 (Jim, Oct 25 2026): a hand-set hold (Paused, Waiting on employer, back to Active) or next action, on the opportunity's own record ----------
-HAND_SET = "LIFE OS Hand-Set"            # the Job Ledger rich_text property that carries them for a Ledger application. NOT in the live schema yet: until it is added, a Ledger set is DECISION_SCHEMA_MISSING
+HAND_SET = "LIFE OS Hand-Set"            # the Job Ledger rich_text property carrying them; absent from the schema = DECISION_SCHEMA_MISSING
 
 
 def _op(line):
     m = M.HOLD_LINE.fullmatch(line) or M.NEXT_LINE.fullmatch(line) or M.SENT_LINE.fullmatch(line)
     if m:
         return m.group(3)
-    m = M.UNSENT_LINE.fullmatch(line)                                    # LIFE-172: a removal carries its own op first, then the removed item's
+    m = M.UNSENT_LINE.fullmatch(line)
     return m.group(2) if m else None
 
 
 def _kept(lines, line):
-    """The Ledger property after `line`: the latest hold and next-action lines and the newest SENT_MAX sent-material lines (LIFE-114), the new line last."""
     kind = line.split(":", 1)[0]
     keep = {"v7-hold": 1, "v7-next": 1, "v7-sent": M.SENT_MAX, "v7-unsent": M.SENT_MAX}
     out = []
@@ -212,9 +204,9 @@ def _kept(lines, line):
 
 
 def set_hand(client, want, line, live):
-    """-> {"status": dry_run | recorded | already_recorded, "verified": bool} or a DecisionError: ONE hand-set line (models.hold_line / next_line) on the ONE open Ledger row whose page id
-    `want` names (`route` chose it). The HAND_SET property becomes _kept(...) (the latest of each other kind, LIFE-114 sent lines kept) plus this one, while the row has no decision.
-    The row is read, re-read just before the write (any change refuses it) and read back; the line's op makes a retry a no-op. Nothing else changes."""
+    """-> {"status": dry_run | recorded | already_recorded, "verified": bool} or a DecisionError.
+
+    Writes ONE hand-set line on the ONE open Ledger row `want` names; re-read before the write and read back after."""
     op = _op(line)
     if not op or not _page_id(want.get("id")):
         raise fail("REQUEST_INVALID")
@@ -228,7 +220,7 @@ def set_hand(client, want, line, live):
         current(page, want, client.source)
         text = _text((page.get("properties") or {}).get(HAND_SET), "rich_text")
         if snapshot(page)[1] is not None:
-            raise fail("CLOSED")                                                         # a decided pursuit is never paused or given a next action
+            raise fail("CLOSED")
         if text and list(M.hand_lines(text)) != text.splitlines():
             raise fail("HISTORY_UNREADABLE")                                              # text in the property that is not ours is never replaced
         return page, text
