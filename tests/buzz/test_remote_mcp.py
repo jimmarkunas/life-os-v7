@@ -1067,9 +1067,8 @@ class Credentials(Server):
                 community="not-granted",
                 arguments={"subject": "x", "urgency": "Today"},
             )
-            self.assertEqual(
-                (out.get("ok"), len(sent)), (False, 1)
-            )  # a community the client does not hold is still refused
+            self.assertFalse(out.get("ok"), out)  # a community the client does not hold is still refused
+            self.assertEqual(len(sent), 1)
 
     def test_honcho_alerts_may_send_to_jim_only_and_is_named_as_the_sender(self):
         """the alert client holds one grant, send_to_jim"""
