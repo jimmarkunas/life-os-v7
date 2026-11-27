@@ -1,8 +1,8 @@
-"""Google sign-in for the backup credential. Unlike lifeos/platform/google_consent.py (full `drive` scope) this
-asks only for `drive.file`, so the backup job sees and deletes only files it made, and a wider grant is refused. The sign-in
+"""Google sign-in for the backup credential. Unlike lifeos/platform/google_consent.py (full `drive` scope) this asks only
+for `drive.file`, so the backup job sees and deletes only files it made, and a wider grant is refused. The sign-in
 (PKCE link, loopback catcher, credential written only to a pipe) is google_consent's. Run once on the Mac:
-  python3 -m lifeos.edge.backup.consent --port 8765 | ssh opc@lifeos-edge-01 "sudo bash
-/opt/lifeos-offsite/install-offsite.sh credential"
+  python3 -m lifeos.edge.backup.consent --port 8765 | ssh opc@lifeos-edge-01 "sudo bash $INSTALL credential"
+  (INSTALL=/opt/lifeos-offsite/install-offsite.sh)
 """
 import functools
 import sys
