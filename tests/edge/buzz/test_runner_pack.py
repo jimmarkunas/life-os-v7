@@ -1,4 +1,6 @@
-"""LIFE-590: the Oracle install pack for the renamed Buzz modules, built from the repo and run through the REAL runner on a temp tree with fake systemctl and curl (no sudo, no host)."""
+"""the Oracle install pack for the renamed Buzz modules, built from the repo and run through the REAL runner on a temp
+tree with fake systemctl and curl.
+"""
 import os
 import shutil
 import stat
@@ -93,8 +95,8 @@ class PackTests(unittest.TestCase):
         self.assertEqual((result["outcome"], result["code"]), ("fail", code), result)
         self.assertEqual(self.current(), "releases/c423a4434c4c")
         self.assertEqual(self.unit(), OLD_UNIT)
-        self.assertEqual((self.prefix / "running-release").read_text().strip(), "releases/c423a4434c4c")          # the service was restarted on the old release
-        self.assertFalse((self.prefix / "opt" / "lifeos-buzz-mcp" / "releases" / self.release() / "lifeos" / "buzz" / "mcp.py").exists())       # the runner removed the new files
+        self.assertEqual((self.prefix / "running-release").read_text().strip(), "releases/c423a4434c4c")  # the service was restarted on the old release
+        self.assertFalse((self.prefix / "opt" / "lifeos-buzz-mcp" / "releases" / self.release() / "lifeos" / "buzz" / "mcp.py").exists())  # the runner removed the new files
 
     def test_a_failed_restart_puts_the_old_unit_and_release_back(self):
         (self.prefix / "fail-restart").touch()
@@ -125,7 +127,7 @@ class PackTests(unittest.TestCase):
 
 
 class ScratchPackTests(unittest.TestCase):
-    """The harmless first pack (ticket key LIFE-310): one scratch file, read back and removed."""
+    """The harmless first pack: one scratch file, read back and removed."""
 
     def test_the_scratch_pack_is_valid_and_leaves_nothing_behind_when_it_succeeds(self):
         pack = ROOT / "lifeos" / "edge" / "runner" / "scratch-pack"

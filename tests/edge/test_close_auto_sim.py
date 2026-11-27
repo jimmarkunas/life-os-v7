@@ -1,5 +1,4 @@
-"""Edge auto-release, run for real: install-close.sh `auto`, `install`, `rollback` against a temporary tree, with the host's tools (systemctl, tailscale, ss, ...)
-and close_release.py replaced by stubs whose behaviour each test sets. The real script, bash, flock and install(1) run; nothing outside the temporary tree is touched."""
+"""The real script, bash, flock and install(1) run"""
 import os
 import shutil
 import socket
@@ -52,7 +51,9 @@ ANSWERS = {"ok": b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n", "server
 
 
 class FakeService:
-    """Stands in for the socket-activated Close service on a loopback port: what it answers depends on which tree `current` points at, so a test can make one tree import fine and fail when asked."""
+    """Stands in for the socket-activated Close service on a loopback port: what it answers depends on which tree
+    `current` points at, so a test can make.
+    """
     def __init__(self, opt):
         self.opt, self.by_tree, self.default, self.requests = opt, {}, "ok", []
         self.sock = socket.socket()
@@ -71,7 +72,7 @@ class FakeService:
                 conn.settimeout(5)
                 try:
                     data = b""
-                    while not (b"GET" in data and data.endswith(b"\r\n\r\n")) and len(data) < 4096:      # bash may write the request in several pieces; the real gate reads exactly as much as it needs
+                    while not (b"GET" in data and data.endswith(b"\r\n\r\n")) and len(data) < 4096:  # bash may write the request in several pieces
                         chunk = conn.recv(4096)
                         if not chunk:
                             break
@@ -87,7 +88,7 @@ class FakeService:
 
     def close(self):
         try:
-            self.sock.shutdown(socket.SHUT_RDWR)                                                  # a thread blocked in accept() keeps a plain close() from refusing new connections
+            self.sock.shutdown(socket.SHUT_RDWR)
         except OSError:
             pass
         self.sock.close()
@@ -133,7 +134,7 @@ class AutoReleaseRun(unittest.TestCase):
         shutil.rmtree(self.sim, ignore_errors=True)
 
     def writable(self):
-        for root, dirs, files in os.walk(self.sim):                                            # installed trees are read-only, as on the Edge
+        for root, dirs, files in os.walk(self.sim):  # installed trees are read-only, as on the Edge
             for n in dirs + files:
                 path = os.path.join(root, n)
                 if not os.path.islink(path):
@@ -151,11 +152,11 @@ class AutoReleaseRun(unittest.TestCase):
         os.symlink(os.path.join(self.sim, "opt", target), path)
 
     def run_(self, *args, **env):
-        if env.get("HEAD"):                                                                       # what main is, and each commit's code, as the test has shown them
+        if env.get("HEAD"):
             self.main = env["HEAD"]
             self.bodies[env["HEAD"][:12]] = env.get("BODY", self.bodies.get(env["HEAD"][:12], "x lifeos/a.py"))
         if args[0] in ("install", "rollback") and "MAIN" not in env and getattr(self, "main", None):
-            env["MAIN"] = self.main                                                               # Jim acts while main is readable, unless a test says otherwise
+            env["MAIN"] = self.main
         env.setdefault("BODIES", ",".join(f"{k}={v}" for k, v in self.bodies.items()))
         done = subprocess.run(["bash", self.script, *args], env={**self.env, **env}, capture_output=True, text=True, timeout=60)
         return done.returncode, done.stdout + done.stderr
@@ -175,7 +176,7 @@ class AutoReleaseRun(unittest.TestCase):
         unit = os.path.join(self.sim, "units", "lifeos-close@.service")
         line = "LoadCredentialEncrypted=github:" + os.path.join(self.sim, "creds", "lifeos-close.github")
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
-        self.assertNotIn("github", open(unit).read())                                          # absent: the unit never names it, so it always starts
+        self.assertNotIn("github", open(unit).read())
         open(os.path.join(self.sim, "creds", "lifeos-close.github"), "w").write("x")
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         text = open(unit).read()
@@ -189,17 +190,17 @@ class AutoReleaseRun(unittest.TestCase):
     def test_the_drive_credential_is_piped_never_typed_loaded_only_while_it_exists_and_gdrive_off_removes_it(self):
         unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.gdrive")
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
-        self.assertNotIn("gdrive", open(unit).read())                                          # absent: the unit never names it
+        self.assertNotIn("gdrive", open(unit).read())  # absent: the unit never names it
         good = '{"client_id": "c", "client_secret": "s", "refresh_token": "r"}'
         done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=good, capture_output=True, text=True, timeout=60)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(open(stored).read(), good)
-        for bad in ("", "not json", '{"client_id": "c"}'):                                      # an aborted sign-in never replaces the working credential
+        for bad in ("", "not json", '{"client_id": "c"}'):
             done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=bad, capture_output=True, text=True, timeout=60)
             self.assertEqual(done.returncode, 1, bad)
             self.assertIn("unchanged", done.stdout)
             self.assertEqual(open(stored).read(), good)
-        self.assertNotIn('"r"', done.stdout + done.stderr)                                     # the value is never shown
+        self.assertNotIn('"r"', done.stdout + done.stderr)  # the value is never shown
         self.assertIn("systemd-creds encrypt --name=gdrive -", open(os.path.join(self.sim, "log")).read())
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         self.assertIn("LoadCredentialEncrypted=gdrive:" + stored, open(unit).read().splitlines())
@@ -209,7 +210,7 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertNotIn("gdrive", open(unit).read())
 
     def test_the_picker_credential_is_piped_shape_checked_loaded_only_while_it_exists_and_picker_off_removes_it(self):
-        """LIFE-217: the Drive picker's browser identifiers, piped as JSON; anything but exactly the three fields in their Google shapes is refused unchanged."""
+        """the Drive picker's browser identifiers, piped as JSON"""
         unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.picker")
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         self.assertNotIn("picker", open(unit).read())
@@ -233,11 +234,11 @@ class AutoReleaseRun(unittest.TestCase):
     def test_a_green_changed_commit_is_released_and_a_rerun_or_unchanged_commit_is_not(self):
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.checked")), (0, B[:12], A[:12], [B]), out)
-        self.assertFalse(os.path.exists(os.path.join(self.sim, "opt", P)))                       # only the live tree and its previous are kept
-        staged = self.stages()                                                                    # the probe, then install's own proven stage
+        self.assertFalse(os.path.exists(os.path.join(self.sim, "opt", P)))  # only the live tree and its previous are kept
+        staged = self.stages()  # the probe, then install's own proven stage
         self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)
-        self.assertEqual(self.stages(), staged)                                                   # the same commit again: nothing downloaded
-        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py")                                # the closure did not change
+        self.assertEqual(self.stages(), staged)  # the same commit again: nothing downloaded
+        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py")  # the closure did not change
         self.assertEqual((rc, self.at("current"), self.etc("auto.checked")), (0, B[:12], [C]), out)
 
     def test_a_failing_stage_is_retried_three_times_then_left(self):
@@ -259,7 +260,7 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertIn("[PASS] one request gets a fixed answer", out)
         self.assertEqual(len(self.service.requests), 1)
         sent = self.service.requests[0]
-        self.assertTrue(sent.startswith(b"\r\n\r\n\x00\r\nQUIT\n\x21\x11\x00\x0c"))              # a PROXY v2 header first, as the real gate requires
+        self.assertTrue(sent.startswith(b"\r\n\r\n\x00\r\nQUIT\n\x21\x11\x00\x0c"))  # a PROXY v2 header first, as the real gate requires
         self.assertIn(b"GET / HTTP/1.1", sent)
 
     def test_verify_fails_when_the_service_answers_with_a_server_error_garbage_or_nothing(self):
@@ -277,7 +278,9 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertIn("[FAIL] one request gets a fixed answer", out)
 
     def test_a_release_whose_tree_imports_but_fails_per_request_is_rolled_back(self):
-        """LIFE-604 item 5: every other check passes for this tree (the sim's manifest, ownership, socket, listener and Serve checks all pass); only the request fails."""
+        """item 5: every other check passes for this tree (the sim's manifest, ownership, socket, listener and Serve
+        checks all pass)
+        """
         self.service.by_tree[B[:12]] = "server_error"
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current"), self.at("previous")), (1, A[:12], P), out)
@@ -291,17 +294,19 @@ class AutoReleaseRun(unittest.TestCase):
     def test_the_stall_marker_is_written_after_the_decision_says_two_hours_and_not_before(self):
         import time
         wait_file = os.path.join(self.sim, "etc", "auto.waiting")
-        rc, out = self.run_("auto")                                                               # main not green: the wait starts
+        rc, out = self.run_("auto")  # main not green: the wait starts
         self.assertEqual((rc, self.etc("auto.stalled")), (0, None), out)
         self.assertTrue(self.etc("auto.waiting"))
-        open(wait_file, "w").write(str(int(time.time()) - 7300))                                  # the wait is now older than two hours
+        open(wait_file, "w").write(str(int(time.time()) - 7300))  # the wait is now older than two hours
         rc, out = self.run_("auto")
         self.assertEqual((rc, self.etc("auto.stalled")), (0, self.etc("auto.waiting")), out)
-        rc, out = self.run_("auto", HEAD=A, BODY="x lifeos/a.py")                                # green again: both markers go
+        rc, out = self.run_("auto", HEAD=A, BODY="x lifeos/a.py")  # green again: both markers go
         self.assertEqual((self.etc("auto.waiting"), self.etc("auto.stalled")), (None, None), out)
 
     def test_a_paused_release_deploys_nothing_and_is_not_a_ci_wait(self):
-        """LIFE-693: main is green but a failed proof run holds an open release-paused issue (the tool exits 3): nothing is staged or switched, no wait marker is started."""
+        """main is green but a failed proof run holds an open release-paused issue (the tool exits 3): nothing is staged
+        or switched, no wait marker is started.
+        """
         for name in ("auto.waiting", "auto.stalled", "auto.proof-unreadable"):
             open(os.path.join(self.sim, "etc", name), "w").write("1")
         before = self.at("current")
@@ -309,23 +314,23 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual((rc, self.at("current"), self.stages()), (0, before, 0), out)
         self.assertIn("paused", out)
         self.assertEqual([self.etc(n) for n in ("auto.waiting", "auto.stalled", "auto.proof-unreadable")], [None] * 3)
-        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")                                  # the flag is closed: the very same head is now released
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current")), (0, B[:12]), out)
 
     def test_a_flag_that_cannot_be_read_deploys_nothing_and_writes_one_marker_for_the_ticker(self):
-        """LIFE-693 fail safe (the tool exits 4): an unknown state never deploys; the marker is written once and the ticker's watch turns it into ONE page."""
+        """fail safe (the tool exits 4): an unknown state never deploys"""
         before = self.at("current")
         for _ in range(3):
             rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py", PAUSE="4")
             self.assertEqual((rc, self.at("current"), self.stages()), (0, before, 0), out)
         first = self.etc("auto.proof-unreadable")
         self.assertTrue(first and first[0].isdigit(), first)
-        self.assertEqual((self.etc("auto.waiting"), self.etc("auto.stalled")), (None, None))      # not a CI wait: no two-hour stall marker can come from it
+        self.assertEqual((self.etc("auto.waiting"), self.etc("auto.stalled")), (None, None))
         marker = os.path.join(self.sim, "etc", "auto.proof-unreadable")
         os.utime(marker, (1, 1))
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py", PAUSE="4")
-        self.assertEqual((self.etc("auto.proof-unreadable"), os.stat(marker).st_mtime), (first, 1))   # written once, never rewritten
-        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")                                  # readable again: the marker goes and the head is released
+        self.assertEqual((self.etc("auto.proof-unreadable"), os.stat(marker).st_mtime), (first, 1))  # written once, never rewritten
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current"), self.etc("auto.proof-unreadable")), (0, B[:12], None), out)
 
     def test_a_plain_not_green_head_still_starts_the_ci_wait_and_never_the_proof_marker(self):
@@ -339,9 +344,9 @@ class AutoReleaseRun(unittest.TestCase):
         self.link("previous", A[:12])
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
         open(os.path.join(self.sim, "etc", "auto.attempts"), "w").write(f"{B} 3\n")
-        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])              # main moved on, and B was the third attempt
+        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])  # main moved on, and B was the third attempt
         self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.pending")), (0, A[:12], P, None), out)
-        self.assertEqual(self.stages(), 0)                                                        # settled first; C waits for the next tick
+        self.assertEqual(self.stages(), 0)  # settled first
         self.assertIn("unverified after a cut-off run", out)
 
     def test_a_cut_off_release_that_verifies_stays(self):
@@ -373,40 +378,40 @@ class AutoReleaseRun(unittest.TestCase):
     def test_a_later_commit_carrying_the_rolled_back_code_is_not_released(self):
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.run_("rollback")
-        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py")                                # a docs-only commit on top of B: B's code again
+        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py")  # a docs-only commit on top of B: B's code again
         self.assertEqual((rc, self.at("current")), (0, A[:12]), out)
-        rc, out = self.run_("auto", HEAD=C[:-1] + "4", BODY="z lifeos/a.py")                    # a real fix changes the code: released
+        rc, out = self.run_("auto", HEAD=C[:-1] + "4", BODY="z lifeos/a.py")  # a real fix changes the code: released
         self.assertEqual(self.at("current"), C[:12], out)
 
     def test_every_rolled_back_code_stays_out_after_more_rollbacks(self):
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.run_("rollback")
-        self.run_("rollback")                                                                     # again, with current and previous the same tree: pins nothing new
+        self.run_("rollback")
         self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)
         self.assertEqual(self.at("current"), A[:12])
         D, E = "d" * 12 + "5" * 28, "e" * 12 + "6" * 28
-        self.run_("auto", HEAD=D, BODY="z lifeos/a.py")                                          # a fix is released, then rolled back too
+        self.run_("auto", HEAD=D, BODY="z lifeos/a.py")  # a fix is released, then rolled back too
         self.assertEqual(self.at("current"), D[:12])
         self.run_("rollback")
-        self.assertEqual(self.run_("auto", HEAD=E, BODY="y lifeos/a.py")[0], 0)                  # reverting the fix brings B's code back: still out
+        self.assertEqual(self.run_("auto", HEAD=E, BODY="y lifeos/a.py")[0], 0)  # reverting the fix brings B's code back: still out
         self.assertEqual(self.at("current"), A[:12])
 
     def test_jims_manual_install_is_not_undone_by_the_next_merge(self):
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
-        self.assertEqual(self.run_("install", A, BODY="x lifeos/a.py")[0], 0)                   # Jim goes back to A by hand
+        self.assertEqual(self.run_("install", A, BODY="x lifeos/a.py")[0], 0)  # Jim goes back to A by hand
         self.assertEqual(self.at("current"), A[:12])
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                  # a docs-only merge still carrying B's code
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)  # a docs-only merge still carrying B's code
         self.assertEqual(self.at("current"), A[:12])
         D = "d" * 12 + "5" * 28
-        self.run_("auto", HEAD=D, BODY="z lifeos/a.py")                                          # new code is released
+        self.run_("auto", HEAD=D, BODY="z lifeos/a.py")  # new code is released
         self.assertEqual(self.at("current"), D[:12])
 
     def test_code_that_was_ever_live_is_never_brought_back_however_jim_moved_away(self):
-        self.run_("install", B, BODY="y lifeos/a.py")                                           # Jim installs main's head himself
-        self.run_("install", A, BODY="x lifeos/a.py")                                           # and goes back by hand, not by rollback
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                  # a docs-only merge still carrying B's code
+        self.run_("install", B, BODY="y lifeos/a.py")  # Jim installs main's head himself
+        self.run_("install", A, BODY="x lifeos/a.py")
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)  # a docs-only merge still carrying B's code
         self.assertEqual(self.at("current"), A[:12])
-        self.tree(B[:12], B)                                                                      # a cut-off release of B that settles as verified
+        self.tree(B[:12], B)  # a cut-off release of B that settles as verified
         self.writable()
         open(os.path.join(self.sim, "opt", B[:12], "MANIFEST"), "w").write(f"commit {B}\nw lifeos/a.py\n")
         self.link("current", B[:12])
@@ -420,40 +425,40 @@ class AutoReleaseRun(unittest.TestCase):
     def test_a_release_that_went_live_and_failed_never_overrides_jim(self):
         for jim in (("rollback",), ("install", P)):
             self.setUp()
-            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])[0], 1)   # live, failed verify, restored
-            rc, out = self.run_(*jim, BODY="x lifeos/a.py")                                              # Jim reacts by hand
+            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])[0], 1)  # live, failed verify, restored
+            rc, out = self.run_(*jim, BODY="x lifeos/a.py")  # Jim reacts by hand
             chosen = self.at("current")
-            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)                      # B would now verify, but it was live once
+            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)  # B would now verify, but it was live once
             self.assertEqual(self.at("current"), chosen, jim)
 
     def test_jims_install_is_not_overridden_by_main_as_it_was_then_only_by_newer_code(self):
-        rc, out = self.run_("install", P, MAIN=B, BODY="x lifeos/a.py")                         # B is merged and green but not yet live; Jim picks P by hand
+        rc, out = self.run_("install", P, MAIN=B, BODY="x lifeos/a.py")  # B is merged and green but not yet live
         self.assertEqual(self.at("current"), P, out)
-        self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)                   # B itself: held
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                   # a docs-only C on top of B: B's code counts as seen
+        self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)  # B itself: held
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)  # a docs-only C on top of B: B's code counts as seen
         self.assertEqual(self.at("current"), P)
         D = "d" * 12 + "5" * 28
-        self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)                   # new code: released
+        self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)  # new code: released
         self.assertEqual(self.at("current"), D[:12])
 
     def test_a_rollback_while_main_is_unreadable_still_holds(self):
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         D = "d" * 12 + "5" * 28
-        self.assertEqual(self.run_("rollback", MAIN="")[0], 0)                                    # GitHub unreadable during the incident
+        self.assertEqual(self.run_("rollback", MAIN="")[0], 0)  # GitHub unreadable during the incident
         self.assertEqual(self.etc("auto.hold"), ["unknown"])
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="w lifeos/a.py")[0], 0)                   # C was merged meanwhile: held, not released
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="w lifeos/a.py")[0], 0)  # C was merged meanwhile: held, not released
         self.assertEqual(self.at("current"), A[:12])
-        self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)                   # newer code after that is released
+        self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)  # newer code after that is released
         self.assertEqual(self.at("current"), D[:12])
 
     def test_a_rollback_after_a_cut_off_between_the_links_has_its_target(self):
-        self.link("previous", A[:12])                                                             # cut off: install set previous to the live tree
+        self.link("previous", A[:12])  # cut off: install set previous to the live tree
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
         self.assertEqual(self.run_("rollback", MAIN=B)[0], 0)
         self.assertEqual(self.at("current"), P)
 
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
-        self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died
+        self.link("previous", A[:12])
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
         self.assertEqual(self.run_("auto", HEAD=B)[0], 0)
         self.assertEqual((self.at("current"), self.at("previous"), self.etc("auto.pending")), (A[:12], P, None))

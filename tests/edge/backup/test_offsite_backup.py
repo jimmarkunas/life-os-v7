@@ -25,7 +25,7 @@ HAVE_GPG = shutil.which("gpg") is not None
 
 
 def local_run(command, **kwargs):
-    """Stand-in for `runuser -u OWNER -- python3 ...`: the same snapshot code, run as the test's own user."""
+    """Stand-in for `runuser -u OWNER -- python3...`: the same snapshot code, run as the test's own user."""
     if command[0] == "runuser":
         command = [sys.executable] + command[command.index("python3") + 1:]
     return subprocess.run(command, **kwargs)
@@ -56,12 +56,12 @@ class Tmp(unittest.TestCase):
         (tree / "sub").mkdir(parents=True)
         (tree / "keep.md").write_text("keep")
         (tree / "sub" / "also.txt").write_text("also")
-        (tree / "old.json.bak-1").write_text("old")           # a leftover copy: not collected
-        (tree / "my-token.txt").write_text("secret")           # secret-shaped name: not collected
+        (tree / "old.json.bak-1").write_text("old")  # a leftover copy: not collected
+        (tree / "my-token.txt").write_text("secret")  # secret-shaped name: not collected
         os.symlink(self.src / "conf.json", tree / "link.json")
         vault = self.src / "vault"
         vault.mkdir()
-        (vault / "token-a.json").write_text("v1")             # credential material from the one chosen folder: collected
+        (vault / "token-a.json").write_text("v1")
         (vault / "auth-b.json").write_text("v2")
         os.symlink(self.src / "conf.json", vault / "link.json")
         return dict(secret_trees=(("v", str(vault)),), sqlite=(("db/a.sqlite", str(self.src / "a.sqlite"), "me", required),),
@@ -89,8 +89,8 @@ class Manifest(unittest.TestCase):
             self.assertFalse(ob.denied(name), name)
 
     def test_the_file_name_is_central_twelve_hour(self):
-        self.assertEqual(ob.now_central(lambda: 1793145932), "2026-10-27_0705PM_CT")      # daylight time
-        self.assertEqual(ob.now_central(lambda: 1797325800), "2026-12-15_0310AM_CT")      # standard time
+        self.assertEqual(ob.now_central(lambda: 1793145932), "2026-10-27_0705PM_CT")  # daylight time
+        self.assertEqual(ob.now_central(lambda: 1797325800), "2026-12-15_0310AM_CT")  # standard time
 
     def test_the_two_scope_constants_agree_and_are_narrow(self):
         self.assertEqual(ob.SCOPE, consent.SCOPE)
@@ -101,15 +101,15 @@ class Collect(Tmp):
     def test_collects_snapshots_files_and_clean_trees_only(self):
         entries, extra = ob.collect(str(self.work), local_run, **self.lists())
         self.assertEqual(sorted(entries), ["conf/conf.json", "db/a.sqlite", "t/keep.md", "t/sub/also.txt", "v/auth-b.json", "v/token-a.json"])
-        self.assertEqual(extra, {"missing": 0, "skipped": 2, "credentials": 2})                               # the token-named file and the leftover copy; the symlink is simply not a regular file
+        self.assertEqual(extra, {"missing": 0, "skipped": 2, "credentials": 2})  # the token-named file and the leftover copy
         copy = sqlite3.connect(entries["db/a.sqlite"])
         self.assertEqual(copy.execute("select count(*) from t").fetchone(), (3,))
         copy.close()
-        self.assertNotEqual(entries["db/a.sqlite"], str(self.src / "a.sqlite"))              # a copy, never the live file
+        self.assertNotEqual(entries["db/a.sqlite"], str(self.src / "a.sqlite"))  # a copy, never the live file
 
     def test_a_secret_folder_is_never_a_way_around_the_rest(self):
         entries, _ = ob.collect(str(self.work), local_run, **self.lists())
-        self.assertNotIn("t/my-token.txt", entries)                                          # a token file in an ordinary folder is still skipped
+        self.assertNotIn("t/my-token.txt", entries)
 
     def test_a_missing_required_source_stops_the_run(self):
         lists = self.lists()
@@ -140,7 +140,7 @@ class Collect(Tmp):
         self.assertIn(str(raised.exception), ("backup_db_corrupt", "backup_db_snapshot"))
 
     def fresh(self):
-        """lists() builds its folders once per test, so each case here starts in a new source/work pair."""
+        """lists builds its folders once per test, so each case here starts in a new source/work pair."""
         shutil.rmtree(self.src)
         shutil.rmtree(self.work)
         self.src.mkdir()
@@ -154,9 +154,9 @@ class Collect(Tmp):
             def hung(command, **kwargs):
                 raise subprocess.TimeoutExpired(command, 300)
             return hung
-        return lambda command, **kwargs: subprocess.CompletedProcess(command, 1)     # a locked database or a failing runuser: the snapshot program exits non-zero
+        return lambda command, **kwargs: subprocess.CompletedProcess(command, 1)
 
-    def test_an_optional_database_that_is_corrupt_locked_or_hung_is_counted_and_skipped_while_the_rest_is_still_collected(self):     # LIFE-652
+    def test_an_optional_database_that_is_corrupt_locked_or_hung_is_counted_and_skipped_while_the_rest_is_still_collected(self):
         for how in ("corrupt", "locked", "hung"):
             with self.subTest(how):
                 self.fresh()
@@ -164,8 +164,8 @@ class Collect(Tmp):
                 entries, extra = ob.collect(str(self.work), self.breaker(how), **lists)
                 self.assertEqual(extra["optional_db_failed"], 1)
                 self.assertNotIn("db/a.sqlite", entries)
-                self.assertIn("conf/conf.json", entries)                     # the other optional source and the trees are untouched
-                self.assertFalse(list(self.work.rglob("*.sqlite")))          # no half-made copy is left to be archived
+                self.assertIn("conf/conf.json", entries)
+                self.assertFalse(list(self.work.rglob("*.sqlite")))  # no half-made copy is left to be archived
 
     def test_a_required_database_that_fails_still_stops_the_run_with_the_same_codes(self):
         for how, expect in (("corrupt", ("backup_db_corrupt", "backup_db_snapshot")), ("locked", ("backup_db_snapshot",))):
@@ -176,7 +176,7 @@ class Collect(Tmp):
                     ob.collect(str(self.work), self.breaker(how), **lists)
                 self.assertIn(str(raised.exception), expect)
         self.fresh()
-        with self.assertRaises(subprocess.TimeoutExpired):                   # a hung required snapshot is not swallowed either (the run then records backup_unexpected)
+        with self.assertRaises(subprocess.TimeoutExpired):
             ob.collect(str(self.work), self.breaker("hung"), **self.lists(required=True))
 
     def test_a_good_database_adds_no_new_field_to_the_status_counts(self):
@@ -185,7 +185,7 @@ class Collect(Tmp):
         self.assertIn("db/a.sqlite", entries)
 
     def test_a_live_wal_database_is_copied_consistently(self):
-        live = make_db(self.src / "live.sqlite", rows=5)                                     # left OPEN, with its -wal in play
+        live = make_db(self.src / "live.sqlite", rows=5)  # left OPEN, with its -wal in play
         live.execute("insert into t values ('late')")
         live.commit()
         lists = self.lists()
@@ -274,12 +274,12 @@ class Response:
 
 
 class FakeDrive:
-    """A tiny Drive: records every request; answers the token, folder, resumable upload and list calls."""
+    """A tiny Drive: records every request"""
 
     def __init__(self, files=0, scope=ob.SCOPE, md5=None, status=None, folders=0):
         self.requests, self.scope, self.md5, self.status = [], scope, md5, status
         self.folders = [{"id": "folder-1"}] * folders
-        self.files = [{"id": f"f{i}", "name": f"n{i}"} for i in range(files)]           # newest first, as the real orderBy returns them
+        self.files = [{"id": f"f{i}", "name": f"n{i}"} for i in range(files)]  # newest first, as the real orderBy returns them
         self.sent, self.fields = b"", ""
 
     def __call__(self, request, timeout=None):
@@ -294,7 +294,7 @@ class FakeDrive:
         if method == "GET":
             return Response(json.dumps({"files": self.files}).encode())
         if method == "POST" and "uploadType=resumable" in url:
-            self.fields = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("fields", [""])[0].split(",")      # Drive answers the final PUT with only these
+            self.fields = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("fields", [""])[0].split(",")  # Drive answers the final PUT with only these
             return Response(b"{}", {"Location": "https://www.googleapis.com/upload/drive/v3/files?upload_id=u1"})
         if method == "POST":
             return Response(json.dumps({"id": "folder-1"}).encode())
@@ -320,7 +320,7 @@ class DriveClient(Tmp):
         folder = drive.folder()
         drive.upload(folder, "n.gpg", self.payload())
         self.assertEqual(fake.sent, b"sealed-bytes")
-        self.assertIn(("POST", ob.API), fake.requests)                                      # the folder was made
+        self.assertIn(("POST", ob.API), fake.requests)  # the folder was made
 
     def test_an_existing_folder_is_reused(self):
         fake = FakeDrive(folders=1)
@@ -369,7 +369,7 @@ class Retention(unittest.TestCase):
         kept, removed = ob.prune(ob.Drive(CRED, opener=fake), "folder-1")
         self.assertEqual((kept, removed), (14, 3))
         deleted = [u for m, u in fake.requests if m == "DELETE"]
-        self.assertEqual([u.rsplit("/", 1)[1] for u in deleted], ["f14", "f15", "f16"])      # the three oldest
+        self.assertEqual([u.rsplit("/", 1)[1] for u in deleted], ["f14", "f15", "f16"])  # the three oldest
 
     def test_nothing_is_removed_at_or_under_the_limit(self):
         fake = FakeDrive(files=14)
@@ -417,15 +417,15 @@ class Run(Tmp):
         self.assertEqual(json.loads(text), record)
         for private in (self.tmp, "keep.md", "a.sqlite", "not-a-real"):
             self.assertNotIn(private, text)
-        self.assertEqual(os.listdir(state), ["status.json"])                                 # the work folder, the snapshots and the plain archive are all gone
+        self.assertEqual(os.listdir(state), ["status.json"])
 
-    def test_a_corrupt_optional_database_still_gives_an_ok_night_that_names_the_skip_by_count(self):      # LIFE-652
+    def test_a_corrupt_optional_database_still_gives_an_ok_night_that_names_the_skip_by_count(self):
         fake = FakeDrive(files=15, folders=1)
         record, state = self.go(ob.Drive(CRED, opener=fake), required=False, corrupt_db=True)
         self.assertEqual((record["ok"], record["code"], record["optional_db_failed"]), (True, "ok", 1))
         self.assertEqual(json.loads((Path(state) / "status.json").read_text())["optional_db_failed"], 1)
-        self.assertEqual(record["files"], 5)                                                              # the six files of a good night, minus the skipped database
-        self.assertTrue([1 for m, _ in fake.requests if m == "PUT"])                                      # the copy was uploaded
+        self.assertEqual(record["files"], 5)
+        self.assertTrue([1 for m, _ in fake.requests if m == "PUT"])  # the copy was uploaded
 
     def test_a_corrupt_required_database_still_fails_the_night_and_uploads_nothing(self):
         fake = FakeDrive(files=15, folders=1)
@@ -470,7 +470,7 @@ class Run(Tmp):
 
 
 class MacCheck(unittest.TestCase):
-    """LIFE-542: the stale-Mac-backup warning in `verify`: 9 days, warning only."""
+    """the stale-Mac-backup warning in `verify`: 9 days, warning only."""
     def setUp(self):
         self.inbox = safe_tmp.mkdtemp()
         self.addCleanup(shutil.rmtree, self.inbox, True)
@@ -485,7 +485,7 @@ class MacCheck(unittest.TestCase):
         self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 3600), (True, "mac_backup_ok", 0))
         self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 9 * 86400), (True, "mac_backup_ok", 9))
         self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 9 * 86400 + 1), (False, "mac_backup_stale", 9))
-        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 36 * 3600 + 1)[1], "mac_backup_ok")      # the old 36 hour line no longer warns
+        self.assertEqual(ob.mac_check(self.inbox, lambda: 1000 + 36 * 3600 + 1)[1], "mac_backup_ok")
 
     def test_the_newest_archive_decides_and_other_files_are_ignored(self):
         self.put("mac-20261101-2308.tar.gz.gpg", 1000)
@@ -502,7 +502,7 @@ class MacCheck(unittest.TestCase):
         verify = text[text.index("  verify)"):text.index("  disable)")]
         self.assertIn("[WARN] Mac backup", verify)
         self.assertIn('mac-check', verify)
-        self.assertNotIn("ok=1", verify[verify.index("mac-check"):])                                        # the warning branch cannot flip the exit code
+        self.assertNotIn("ok=1", verify[verify.index("mac-check"):])  # the warning branch cannot flip the exit code
         self.assertTrue(verify.rstrip().endswith("exit $ok ;;"))
 
     def test_the_command_prints_a_code_and_days_only(self):

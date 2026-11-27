@@ -1,4 +1,4 @@
-"""LIFE-538: the nightly off-site job takes the newest archive the MacBook Pro pushed to the Oracle inbox."""
+"""the nightly off-site job takes the newest archive the MacBook Pro pushed to the Oracle inbox."""
 import os
 import unittest
 from pathlib import Path
@@ -25,7 +25,7 @@ class Inbox(unittest.TestCase):
         self.inbox.mkdir()
         for name in ("mac-20261101-0100.tar.gz.gpg", "mac-20261109-0100.tar.gz.gpg", "mac-20261109-0100.tar.gz.gpg.part", "other.txt", "mac-1.tar.gz.gpg"):
             (self.inbox / name).write_text("x")
-        os.symlink(self.work / "tree" / "keep.md", self.inbox / "mac-20261110-0100.tar.gz.gpg")           # a symlink is never followed
+        os.symlink(self.work / "tree" / "keep.md", self.inbox / "mac-20261110-0100.tar.gz.gpg")  # a symlink is never followed
         entries, extra = collect(str(self.inbox), self.work)
         self.assertEqual(sorted(entries), ["mac/mac-20261109-0100.tar.gz.gpg", "t/keep.md"])
         self.assertEqual(extra["missing"], 0)

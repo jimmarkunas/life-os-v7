@@ -1,6 +1,6 @@
-"""LIFE-643 cleanup pack, run on a fixture (fake systemctl for both managers, a real Unix socket answering like Attention, fake old and new folders under a temp dir, through the script's environment hooks). It proves: the gates
-stop it before anything changes, the consumer files are installed and a bad one is put back, the old copies are removed and the new session is untouched, a second run changes nothing, --dry-run changes nothing, a link is never
-followed, and a copy of the script without the gates deletes what the real one keeps (fail-then-pass). The pack builds and passes the runner's own check."""
+"""cleanup pack, run on a fixture (fake systemctl for both managers, a real Unix socket answering like Attention, fake
+old and new folders under a temp.
+"""
 import json
 import os
 import socket
@@ -103,7 +103,7 @@ class Fixture:
     def stop_server(self):
         if self.server is not None:
             try:
-                self.server.shutdown(socket.SHUT_RDWR)             # wakes the accept loop on Linux, where close() alone leaves the listener open
+                self.server.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
             self.server.close()
@@ -206,16 +206,16 @@ class CleanupTests(unittest.TestCase):
         self.assertIn("READBACK old_program=refused_link", done.stdout)
         self.assertEqual((target / "keep.txt").read_text(), "keep")
 
-    def test_a_copy_without_the_gates_deletes_what_the_real_script_keeps(self):                              # fail-then-pass
+    def test_a_copy_without_the_gates_deletes_what_the_real_script_keeps(self):  # fail-then-pass
         (self.fx.fake / "system/active-lifeos-wa-attention.service").unlink()
         run(SCRIPT, self.fx)
-        self.assertTrue(self.fx.home(".local/state/lifeos-whatsapp/auth/creds.json").exists())            # real script: kept
+        self.assertTrue(self.fx.home(".local/state/lifeos-whatsapp/auth/creds.json").exists())  # real script: kept
         text = SCRIPT.read_text()
         self.assertIn("|| fail new_service_not_active", text)
         mutated = self.fx.tmp / "mutated.sh"
         mutated.write_text(text.replace("|| fail new_service_not_active", "|| true"))
         run(mutated, self.fx)
-        self.assertFalse(self.fx.home(".local/state/lifeos-whatsapp").exists())                           # without the gate: gone
+        self.assertFalse(self.fx.home(".local/state/lifeos-whatsapp").exists())  # without the gate: gone
 
     def test_the_pack_builds_and_passes_the_runners_own_check_and_restores_only_the_two_consumer_files(self):
         out = self.fx.tmp / "pack"

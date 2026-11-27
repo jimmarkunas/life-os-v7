@@ -1,4 +1,6 @@
-"""LIFE-75: the Alert settings screen on the Close service: reads and saves the three Bitwarden items through a signed review and confirm, and the saved values are exactly what the senders read."""
+"""the Alert settings screen on the Close service: reads and saves the three Bitwarden items through a signed review and
+confirm, and the saved values.
+"""
 import datetime as dt
 import json
 import re
@@ -15,7 +17,9 @@ NOW = dt.datetime(2026, 10, 26, 9, 0, tzinfo=app.CENTRAL)
 
 
 class Bitwarden:
-    """A fake of the `bws` program: `secret get ID` and `secret edit ID --value V` on the three alert items (an item with no value reads as empty)."""
+    """A fake of the `bws` program: `secret get ID` and `secret edit ID --value V` on the three alert items (an item with
+    no value reads as empty).
+    """
 
     def __init__(self, variables=None, fail=False, drop_writes=False):
         self.vars, self.fail, self.drop, self.log = dict(variables or {}), fail, drop_writes, []
@@ -85,11 +89,11 @@ class Screen(unittest.TestCase):
         text = body.decode()
         self.assertEqual((status, ctype), (200, "text/html; charset=utf-8"))
         self.assertIn('/alerts.css', text)
-        self.assertNotIn('name="enabled" value="1" checked', text)                           # nothing saved: alerts OFF
+        self.assertNotIn('name="enabled" value="1" checked', text)  # nothing saved: alerts OFF
         for key, spec in registry.REGISTRY.items():
             with self.subTest(key=key):
                 self.assertIn(f'name="ch:{key}:telegram"', text)
-        self.assertIn('name="ch:run_failed:ntfy" value="1" aria-label="Phone for run_failed" checked disabled>', text)     # a PAGE alert's phone box is fixed on
+        self.assertIn('name="ch:run_failed:ntfy" value="1" aria-label="Phone for run_failed" checked disabled>', text)  # a PAGE alert's phone box is fixed on
         self.assertIn('name="ch:quiet_24h:ntfy" value="1" aria-label="Phone for quiet_24h" checked', text)
         self.assertNotRegex(text, r'name="ch:quiet_24h:telegram" value="1" aria-label="Telegram for quiet_24h" checked')
         self.assertNotIn("bws-token", text)
@@ -126,7 +130,7 @@ class Screen(unittest.TestCase):
         self.assertIn("Mute until 2026-10-27 08:00 Central.", text)
         self.assertIn("quiet 24h: Phone, Telegram", text)
         self.assertNotIn("run failed:", text)
-        self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])                       # review never writes
+        self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])  # review never writes
 
     def test_confirm_saves_the_three_variables_and_reports_only_after_they_read_back(self):
         review = self.post(self.propose(enabled=True, mute="2026-10-27T08:00", edit={"ch:quiet_24h:telegram": "1", "ch:stuck_jobs:ntfy": None}))
@@ -144,9 +148,9 @@ class Screen(unittest.TestCase):
         env = dict(self.gh.vars)
         self.assertTrue(settings.enabled(env))
         self.assertEqual(settings.channels("quiet_24h", env), ("ntfy", "telegram"))
-        self.assertEqual(settings.channels("run_failed", env), ("ntfy", "whatsapp"))           # Telegram unticked, the phone kept
-        self.assertTrue(alerts.muted(env, dt.datetime(2026, 10, 27, 12, 0, tzinfo=dt.timezone.utc)))        # 7 AM Central, before the 8 AM mute ends
-        self.assertFalse(alerts.muted(env, dt.datetime(2026, 10, 27, 14, 0, tzinfo=dt.timezone.utc)))       # 9 AM Central, after
+        self.assertEqual(settings.channels("run_failed", env), ("ntfy", "whatsapp"))  # Telegram unticked, the phone kept
+        self.assertTrue(alerts.muted(env, dt.datetime(2026, 10, 27, 12, 0, tzinfo=dt.timezone.utc)))  # 7 AM Central, before the 8 AM mute ends
+        self.assertFalse(alerts.muted(env, dt.datetime(2026, 10, 27, 14, 0, tzinfo=dt.timezone.utc)))  # 9 AM Central, after
 
     def test_the_pages_carry_no_inline_style_or_script_the_services_policy_would_block(self):
         for html in (page_text(self.get()), page_text(self.post(self.propose(enabled=True)))):
@@ -165,7 +169,7 @@ class Screen(unittest.TestCase):
                 self.assertEqual(result[0], 403)
         review = self.post(good)
         confirm = {**self.fields(page_text(review)), "enabled": "1", "step": "confirm"}
-        confirm.pop("enabled")                                                                  # the confirm no longer matches what was reviewed
+        confirm.pop("enabled")
         tampered = self.post(confirm)
         self.assertEqual(tampered[0], 403)
         self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])
@@ -173,7 +177,7 @@ class Screen(unittest.TestCase):
     def test_cancel_writes_nothing(self):
         result = self.post({**self.propose(enabled=True), "step": "cancel"})
         self.assertEqual(result[0], 200)
-        self.assertIn("Master switches", page_text(result))                                     # back on the settings screen, not an end page
+        self.assertIn("Master switches", page_text(result))  # back on the settings screen, not an end page
         self.assertNotIn("Cancelled", page_text(result))
         self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])
 

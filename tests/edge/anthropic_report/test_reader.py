@@ -1,4 +1,6 @@
-"""LIFE-921: the Anthropic report reader may call only the two report endpoints, prints numbers only, and turns every failure into nulls."""
+"""the Anthropic report reader may call only the two report endpoints, prints numbers only, and turns every failure into
+nulls.
+"""
 import io
 import json
 import os
@@ -70,9 +72,9 @@ class Reading(unittest.TestCase):
     def test_the_report_counts_from_the_start_of_the_current_credit_window(self):
         calls = []
         reader.reading(KEY, opener(calls=calls), now=NOW)
-        self.assertTrue(calls and all("starting_at=2026-11-06T00%3A00%3A00Z" in c.full_url for c in calls), [c.full_url for c in calls])      # Nov 5 6:00 PM CT = Nov 6 00:00 UTC
+        self.assertTrue(calls and all("starting_at=2026-11-06T00%3A00%3A00Z" in c.full_url for c in calls), [c.full_url for c in calls])
         calls.clear()
-        reader.reading(KEY, opener(calls=calls), now=datetime(2026, 12, 6, 0, 0, 1, tzinfo=timezone.utc))                                      # the new window: spend before it is not counted
+        reader.reading(KEY, opener(calls=calls), now=datetime(2026, 12, 6, 0, 0, 1, tzinfo=timezone.utc))  # the new window: spend before it is not counted
         self.assertTrue(calls and all("starting_at=2026-12-06T00%3A00%3A00Z" in c.full_url for c in calls))
 
     def test_no_spend_is_zero_dollars_not_unknown(self):
@@ -120,7 +122,7 @@ class Units(unittest.TestCase):
         self.assertIn("LoadCredentialEncrypted=anthropic_admin_key:/etc/lifeos-anthropic-report/anthropic_admin_key.cred", service)
         self.assertIn("DynamicUser=yes", service)
         self.assertIn("ListenStream=/run/lifeos-anthropic-report.sock", socket_unit)
-        self.assertNotRegex(socket_unit, r"ListenStream=\d|ListenStream=\[|0\.0\.0\.0|OnCalendar|OnBootSec")             # no TCP port, no clock
+        self.assertNotRegex(socket_unit, r"ListenStream=\d|ListenStream=\[|0\.0\.0\.0|OnCalendar|OnBootSec")  # no TCP port, no clock
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
-"""LIFE-307 / LIFE-293: the `hermes` stage, proved against a MOCKED Jira and a MOCKED Buzz relay with synthetic keys and invented issue keys.
-Nothing here touches a network. A passing run proves the planning, idempotency and refusal logic, not that a live Hermes answered."""
+"""the `hermes` stage, proved against a MOCKED Jira and a MOCKED Buzz relay with synthetic keys and invented issue keys.
+"""
 import unittest
 
 from lifeos.buzz import nip98
@@ -25,7 +25,7 @@ class FakeJira:
 
 def setup(live=True, may_address=True):
     fake = FakeRelay()
-    fake.check_auth = False                                                        # the signature checks are not what this file proves
+    fake.check_auth = False  # the signature checks are not what this file proves
     fake.events.append(nip98.event(KEY_ADMIN, 39002, [["d", CHAN], ["p", PK_HERMES]], ""))
     relay = Relay(URLS, {"life-os": KEY_A}, [("life-os", CHAN)] if live else [], fake, recipients={("life-os", "hermes"): PK_HERMES}, may_address=may_address)
     return fake, relay
@@ -46,7 +46,7 @@ def run(fake_jira, relay, live, limit=40):
 class Planning(unittest.TestCase):
     def test_a_dry_run_counts_what_is_new_and_writes_nothing(self):
         fake, relay = setup()
-        relay.post_message("life-os", CHAN, "seed", "seed1", recipient="hermes", etype="handoff_request", case=hr.case_of("LIFE-1"))   # one request already exists
+        relay.post_message("life-os", CHAN, "seed", "seed1", recipient="hermes", etype="handoff_request", case=hr.case_of("LIFE-1"))  # one request already exists
         before = len(writes(fake))
         counts = run(FakeJira(["LIFE-1", "LIFE-2", "LIFE-3"]), relay, live=False)
         self.assertEqual((counts["eligible"], counts["already"], counts["planned"], counts["posted"]), (3, 1, 2, 0))

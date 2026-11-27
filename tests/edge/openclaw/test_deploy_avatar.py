@@ -1,4 +1,4 @@
-"""LIFE-331: the OpenClaw avatar install. A fake `openclaw` stands in for the real program and logs what it was asked to do."""
+"""the OpenClaw avatar install."""
 import getpass
 import hashlib
 import json
@@ -118,14 +118,13 @@ class Deploy(unittest.TestCase):
         status, out = self.run_script()
         self.assertEqual(status, 0, out)
         self.assertIn("IDENTITY.md avatar line now: - Avatar: avatars/main.png", out)
-        self.assertEqual(open(idmd).read(), original)                                        # dry run writes nothing
+        self.assertEqual(open(idmd).read(), original)  # dry run writes nothing
         status, out = self.run_script("--apply")
         self.assertEqual(status, 0, out)
         self.assertEqual(open(idmd).read(), "# Identity\n- Name: OpenClaw\n- Avatar: avatars/openclaw.png\n- Emoji: x\n")
         self.assertEqual(os.stat(idmd).st_mode & 0o777, 0o640)
         self.assertEqual(open(os.path.join(self.backup, "IDENTITY.md")).read(), original)
         self.assertIn("ROLLBACK IDENTITY.md: cp -p %s %s" % (os.path.join(self.backup, "IDENTITY.md"), idmd), out)
-        # a second run finds the line already right: no new IDENTITY.md backup and no rollback line for it
         shutil.rmtree(self.backup)
         status, out = self.run_script("--apply")
         self.assertEqual(status, 0, out)
@@ -183,7 +182,7 @@ class Deploy(unittest.TestCase):
         self.assertEqual(status, 1)
 
     def test_a_failed_read_back_says_so_and_prints_the_rollback(self):
-        self.write(self.fake, b"#!/bin/bash\necho ran >> \"$FAKE_LOG\"\n")           # a command that changes nothing
+        self.write(self.fake, b"#!/bin/bash\necho ran >> \"$FAKE_LOG\"\n")  # a command that changes nothing
         status, out = self.run_script("--apply")
         self.assertEqual(status, 1, out)
         self.assertIn("READ-BACK FAILED", out)
@@ -193,7 +192,7 @@ class Deploy(unittest.TestCase):
         code = "\n".join(l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#"))
         for pattern in (r"systemctl", r"\bkill\b", r"\breboot\b", r"gateway\s+(restart|stop)", r"agents\s+(add|delete|remove)", r"config\s+set"):
             self.assertIsNone(re.search(pattern, code), pattern)
-        self.assertEqual(len(re.findall(r"set-identity", code)), 3)                # dry-run text, direct call, sudo call
+        self.assertEqual(len(re.findall(r"set-identity", code)), 3)  # dry-run text, direct call, sudo call
 
 
 if __name__ == "__main__":

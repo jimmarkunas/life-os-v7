@@ -10,7 +10,7 @@ from unittest import mock
 
 from lifeos.edge.secrets import lifeos_secret_use as su
 
-VALUE = "sk-TEST-0123456789abcdefghijklmnopqrstuvwxyz"       # a synthetic value; the real credential never appears in code or tests
+VALUE = "sk-TEST-0123456789abcdefghijklmnopqrstuvwxyz"  # a synthetic value
 HERE = os.path.dirname(su.__file__)
 
 
@@ -39,7 +39,7 @@ class Case(unittest.TestCase):
         self.reg, self.log = os.path.join(self.tmp, "purposes.d"), os.path.join(self.tmp, "use.jsonl")
         os.mkdir(self.reg)
         os.chmod(self.reg, 0o755)
-        for name in os.listdir(os.path.join(HERE, "purposes.d")):          # the registry files that ship with the program
+        for name in os.listdir(os.path.join(HERE, "purposes.d")):  # the registry files that ship with the program
             shutil.copy(os.path.join(HERE, "purposes.d", name), self.reg)
             os.chmod(os.path.join(self.reg, name), 0o644)
         self.fake = Fake()
@@ -69,9 +69,9 @@ class Working(Case):
     def test_key_info_returns_only_the_listed_fields(self):
         status, out = self.call(["openrouter_key_info"])
         self.assertEqual((status, out["ok"]), (0, True))
-        self.assertEqual(out["result"], {"data.limit": 100, "data.limit_remaining": 99.5, "data.usage": 0.5})     # "label" was in the reply and is not returned
+        self.assertEqual(out["result"], {"data.limit": 100, "data.limit_remaining": 99.5, "data.usage": 0.5})  # "label" was in the reply and is not returned
         self.assertEqual(self.fake.fetched, [("https://openrouter.ai/api/v1/key", True)])
-        self.assertEqual(self.fake.auths, ["bearer"])                           # the default is unchanged: OpenRouter still gets a bearer token
+        self.assertEqual(self.fake.auths, ["bearer"])
         self.assertNotIn(VALUE, json.dumps(out))
 
     def test_credential_check_returns_name_length_and_a_short_hash_never_the_value(self):
@@ -87,11 +87,11 @@ class Working(Case):
         self.assertEqual([r["result"] for r in rows], ["START", "OK"])
         last = rows[-1]
         self.assertEqual((last["caller"], last["purpose"], last["secret"]), ("opc", "openrouter_key_info", "openrouter_api_key"))
-        self.assertRegex(last["ct"], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (AM|PM) CT$")        # 12-hour Central Time, never UTC
+        self.assertRegex(last["ct"], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (AM|PM) CT$")  # 12-hour Central Time, never UTC
         self.assertGreater(last["bytes"], 0)
         with open(self.log) as handle:
             self.assertNotIn(VALUE, handle.read())
-        self.assertEqual(os.stat(self.log).st_mode & 0o007, 0)                  # created 0640: nothing for "other"
+        self.assertEqual(os.stat(self.log).st_mode & 0o007, 0)  # created 0640: nothing for "other"
 
 
 class Refusals(Case):
@@ -99,7 +99,7 @@ class Refusals(Case):
         status, out = self.call(["print_everything"])
         self.assertEqual((status, out), (1, {"ok": False, "code": "SECRET_UNKNOWN_PURPOSE"}))
         self.assertEqual(self.audit()[-1]["result"], "SECRET_UNKNOWN_PURPOSE")
-        self.assertEqual(self.fake.asked, [])                                  # no credential was touched
+        self.assertEqual(self.fake.asked, [])  # no credential was touched
 
     def test_anything_beyond_one_purpose_name_is_refused_a_name_a_url_a_command_a_value(self):
         for argv in ([], ["openrouter_key_info", "openrouter_api_key"], ["openrouter_key_info", "https://evil.example/"], ["openrouter_key_info", "NAME=groq_api_key"],
@@ -125,7 +125,7 @@ class Refusals(Case):
         status, out = self.call(["check_openrouter_credential"])
         self.assertEqual((status, out["code"]), (1, "SECRET_RATE_LIMITED"))
         self.assertEqual(len(self.fake.asked), asked)
-        self.now += 61                                                         # a minute later it works again
+        self.now += 61  # a minute later it works again
         self.assertTrue(self.call(["check_openrouter_credential"])[1]["ok"])
 
     def test_an_unwritable_audit_log_refuses_before_anything_is_used(self):
@@ -193,7 +193,7 @@ class Redaction(Case):
         old, built = su.Broker, self.broker()
         su.Broker = lambda: built
         try:
-            with mock.patch.dict(os.environ, {"SUDO_USER": "opc"}):                # the caller name comes from sudo
+            with mock.patch.dict(os.environ, {"SUDO_USER": "opc"}):  # the caller name comes from sudo
                 self.assertEqual(su.main(["check_openrouter_credential"], out), 0)
         finally:
             su.Broker = old
@@ -201,7 +201,7 @@ class Redaction(Case):
         self.assertNotIn(VALUE, out.getvalue())
 
 
-EMAIL = "tester@example.com"                                  # synthetic: never a real address or token in the repo
+EMAIL = "tester@example.com"
 TOKEN = "ATATT-TEST-0123456789abcd"
 PAIR = EMAIL + ":" + TOKEN
 CLOUD = "11111111-2222-3333-4444-555555555555"
@@ -211,7 +211,7 @@ ISSUE = {"key": "LIFE-696", "fields": {"summary": "Action Inbox", "status": {"na
 
 
 class Basic(Case):
-    """LIFE-754: a Basic purpose reads one fixed Jira issue with an `email:token` credential."""
+    """a Basic purpose reads one fixed Jira issue with an `email:token` credential."""
 
     def setUp(self):
         super().setUp()
@@ -238,7 +238,7 @@ class Basic(Case):
         self.assertEqual([(r["caller"], r["purpose"], r["secret"]) for r in done],
                          [("claude-svc", "jira_issue_read_claudecode", "jira_ro_claudecode"), ("codex-svc", "jira_issue_read_codex", "jira_ro_codex")])
         asked = len(self.fake.asked)
-        status, out = self.call(["jira_issue_read_codex"], caller="claude-svc")           # the other client's purpose is refused and its credential is not touched
+        status, out = self.call(["jira_issue_read_codex"], caller="claude-svc")
         self.assertEqual((status, out["code"]), (1, "SECRET_CALLER_NOT_ALLOWED"))
         self.assertEqual(len(self.fake.asked), asked)
 
@@ -257,7 +257,7 @@ class Basic(Case):
             self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[1]["code"], "SECRET_REGISTRY_UNSAFE", url)
         self.jira("jira_issue_read_claudecode", "jira_ro_claudecode", ["claude-svc"], url=good)
         self.assertEqual(self.call(["jira_issue_read_claudecode"], caller="claude-svc")[0], 0)
-        self.assertEqual(self.fake.asked, ["jira_ro_claudecode"])                              # only the last, valid call touched the credential
+        self.assertEqual(self.fake.asked, ["jira_ro_claudecode"])  # only the last, valid call touched the credential
 
     def test_an_unknown_auth_kind_is_refused_and_bearer_may_be_named(self):
         self.jira("jira_issue_read_claudecode", "jira_ro_claudecode", ["claude-svc"], auth="digest")
@@ -289,7 +289,7 @@ class Basic(Case):
                      json.dumps(TOKEN)[1:-1], PAIR, pair_b64, base64.urlsafe_b64encode(PAIR.encode()).decode().rstrip("="), urllib.parse.quote(PAIR, safe=""), PAIR.encode().hex(), header]
         for spelling in spellings:
             self.assertIn(spelling, su.secret_forms(PAIR, "basic"), spelling)
-        for spelling in [s for s in spellings if len(s) <= 100]:                                  # a longer string never reaches the scan: SECRET_FIELD_NOT_SCALAR
+        for spelling in [s for s in spellings if len(s) <= 100]:
             self.fake.reply = dict(ISSUE, fields=dict(ISSUE["fields"], summary=spelling))
             status, out = self.call(["jira_issue_read_claudecode"], caller="claude-svc")
             self.assertEqual((status, out), (1, {"ok": False, "code": "SECRET_OUTPUT_CONTAINS_SECRET"}), spelling)
@@ -300,7 +300,7 @@ class Basic(Case):
 
 
 class XApiKey(Case):
-    """LIFE-889: an "x-api-key" purpose reads the free Anthropic model list with one proof-only credential, and nothing else."""
+    """an 'x-api-key' purpose reads the free Anthropic model list with one proof-only credential, and nothing else."""
     URL = "https://api.anthropic.com/v1/models"
     KEY = "sk-ant-api03-TEST-0123456789abcdefghijklmnopqrstuvwxyz"
 
@@ -338,13 +338,12 @@ class XApiKey(Case):
         self.assertEqual(self.fake.asked, [])
 
     def test_a_bearer_purpose_keeps_its_generic_rules_and_sends_no_x_api_key(self):
-        self.purpose(auth="bearer")                       # unchanged: the generic https rule, a Bearer header
+        self.purpose(auth="bearer")  # unchanged: the generic https rule, a Bearer header
         self.assertEqual(self.call(["life889_honcho_proof"])[0], 0)
         self.assertEqual(self.fake.auths, ["bearer"])
 
 
 class Fetch(unittest.TestCase):
-    """The one real HTTPS call, with the network replaced."""
 
     def seen(self, secret, auth):
         captured = {}

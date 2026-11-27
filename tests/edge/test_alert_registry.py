@@ -1,4 +1,3 @@
-"""LIFE-75: every alert LIFE OS can send is in lifeos/platform/alert_registry.py, with the severity Jim approved, and nothing sends around it."""
 import ast
 import io
 import json
@@ -14,7 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 GATEWAY = "lifeos/platform/alerts.py"
 APPROVED_PAGE = {"source_stopped_*", "expiry_*", "jira_rollover_stuck", "calendar_sync_stuck", "imessage_action", "pipeline_stalled", "pipeline_failing", "megibow_stale",
                  "run_failed", "domain_jobs_failed", "purge_failed", "safety_failed", "test_push",
-                 "known_state_expired_*", "scheduled_red_*", "release_proof_failed", "release_pause_unreadable"}          # LIFE-693 (Jim, Nov 15 2026): the release timer cannot read the release-paused flag, so it deploys nothing: one PAGE per state change, no reminders. LIFE-692 (Jim's epic text, Nov 14 2026): a scheduled workflow that goes red pages once; LIFE-693 (Jim's epic text and ticket step 2): a failed proof run after a Close release raises one PAGE. Jim, Oct 25 2026 (LIFE-75 comment 11182); everything else is INFO. LIFE-690 (Jim's epic text, Nov 14 2026): the one PAGE for a known state still failing after 7 days
+                 "known_state_expired_*", "scheduled_red_*", "release_proof_failed", "release_pause_unreadable"}
 
 
 def sources():
@@ -25,7 +24,9 @@ _REPO_FINDINGS = []
 
 
 def repo_findings():
-    """findings() of the whole lifeos tree, computed once per process: three tests ask the same question of the same files (about 1 s each to parse)."""
+    """findings of the whole lifeos tree, computed once per process: three tests ask the same question of the same files
+    (about 1 s each to parse).
+    """
     if not _REPO_FINDINGS:
         _REPO_FINDINGS.append(findings(sources()))
     return _REPO_FINDINGS[0]
@@ -53,7 +54,7 @@ def severity_of(node):
 
 
 def findings(texts):
-    """-> (alert_calls, push_calls, ntfy_users): what the code builds. alert_calls: [(file, key, severity)]; push_calls: [(file, key)]; ntfy_users: [file]."""
+    """> (alert_calls, push_calls, ntfy_users): what the code builds."""
     alert_calls, push_calls, ntfy_users = [], [], []
     for name, text in texts.items():
         tree = ast.parse(text)
@@ -101,7 +102,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         for name, key, severity in alert_calls:
             with self.subTest(file=name, key=key):
                 self.assertIsNotNone(key, "an alert key must be a literal, a module constant or an f-string with a literal start")
-                spec = registry.REGISTRY.get(key) if key.endswith("*") else registry.lookup(key)         # an f-string key is a registered family: "source_stopped_{name}" is source_stopped_*
+                spec = registry.REGISTRY.get(key) if key.endswith("*") else registry.lookup(key)
                 self.assertIsNotNone(spec, f"{key} is not in lifeos/platform/alert_registry.py")
                 self.assertEqual(severity, spec.severity)
 
@@ -112,7 +113,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         for name, key in literal:
             with self.subTest(file=name, key=key):
                 self.assertIsNotNone(registry.lookup(key), f"{key} is not in lifeos/platform/alert_registry.py")
-        self.assertEqual(sorted(name for name, key in push_calls if key is None), ["lifeos/platform/gate.py"])      # the one with a computed key: checked by its own test below
+        self.assertEqual(sorted(name for name, key in push_calls if key is None), ["lifeos/platform/gate.py"])
 
     def test_no_module_but_the_gateway_references_alerts_ntfy(self):
         self.assertEqual(sorted(set(repo_findings()[2])), [])
@@ -121,7 +122,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         tree = ast.parse(sources()["lifeos/platform/gate.py"])
         rows = [tuple(e.value for e in n.elts) for n in ast.walk(tree) if isinstance(n, ast.Tuple) and len(n.elts) == 4 and all(isinstance(e, ast.Constant) for e in n.elts)
                 and n.elts[2].value in ("page", "info")]
-        self.assertEqual(len(rows), 6)                                      # stalled, failing, and (LIFE-580) stuck: an open and a recovered push each
+        self.assertEqual(len(rows), 6)
         for title, body, severity, key in rows:
             with self.subTest(key=key):
                 self.assertEqual(registry.severity(key), severity)
@@ -149,7 +150,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         alert_calls, push_calls, ntfy_users = findings(probe)
         self.assertEqual(alert_calls, [("lifeos/evil/watch.py", "brand_new_alert", "page"), ("lifeos/evil/watch.py", "source_stopped_*", "info")])
         self.assertIsNone(registry.lookup("brand_new_alert"))
-        self.assertNotEqual("info", registry.severity("source_stopped_dice"))              # a wrong severity is caught
+        self.assertNotEqual("info", registry.severity("source_stopped_dice"))  # a wrong severity is caught
         self.assertEqual(push_calls, [("lifeos/evil/watch.py", "another_new_one")])
         self.assertEqual(ntfy_users, ["lifeos/evil/watch.py"])
 
@@ -171,7 +172,7 @@ class Push(unittest.TestCase):
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertTrue(alerts.push("run_failed", "V7 run failed", "lane x", "topic", self.post))
             self.assertTrue(alerts.push("attention_new", "LIFE OS Attention", "2 new items", "topic", self.post))
-        self.assertEqual(self.sent, [("V7 run failed", "high"), ("LIFE OS Attention", "low")])          # PAGE is high priority, INFO low
+        self.assertEqual(self.sent, [("V7 run failed", "high"), ("LIFE OS Attention", "low")])  # PAGE is high priority, INFO low
 
     def test_an_unlisted_key_is_refused_and_nothing_is_sent(self):
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
@@ -181,7 +182,7 @@ class Push(unittest.TestCase):
     def test_the_mute_and_the_master_switch_still_apply(self):
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
             self.assertFalse(alerts.push("run_failed", "t", "b", "topic", self.post))
-        with mock.patch.dict("os.environ", {}, clear=True):                                   # the master switch unset: alerts are off
+        with mock.patch.dict("os.environ", {}, clear=True):  # the master switch unset: alerts are off
             self.assertFalse(alerts.push("run_failed", "t", "b", "topic", self.post))
         self.assertEqual(self.sent, [])
 
@@ -195,7 +196,7 @@ class Push(unittest.TestCase):
             self.assertEqual(alerts.main(["push", "--key", "no_such_alert", "--title", "x"]), 2)
         self.assertEqual(json.loads(out.getvalue()), {"push": "unregistered_key"})
         with self.assertRaises(SystemExit):
-            alerts.main(["push", "--title", "x"])                                           # --key is required
+            alerts.main(["push", "--title", "x"])  # key is required
 
 
 if __name__ == "__main__":

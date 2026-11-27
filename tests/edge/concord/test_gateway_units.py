@@ -1,4 +1,4 @@
-"""LIFE-987 (synthetic): the gateway's unit files, the bridge drop-in and the installer say exactly what Jim approved (comments 14334 and 14344). Text checks only; nothing is installed."""
+"""Text checks only"""
 import re
 import unittest
 from pathlib import Path
@@ -17,7 +17,7 @@ class Units(unittest.TestCase):
         rows = settings(ORACLE / "lifeos-concord-gateway.socket")
         for want in ("ListenStream=/run/lifeos-concord-gateway/orchestrator.sock", "SocketUser=concord", "SocketGroup=buzz-mcp", "SocketMode=0660", "DirectoryMode=0755", "Accept=yes"):
             self.assertIn(want, rows)
-        self.assertFalse([r for r in rows if re.match(r"ListenStream=(?!/run/)", r) or r.startswith(("ListenDatagram", "ListenFIFO"))])      # no TCP, no other listener
+        self.assertFalse([r for r in rows if re.match(r"ListenStream=(?!/run/)", r) or r.startswith(("ListenDatagram", "ListenFIFO"))])  # no TCP, no other listener
 
     def test_the_service_runs_as_concord_with_no_new_privileges_a_read_only_system_and_three_writable_paths(self):
         rows = settings(ORACLE / "lifeos-concord-gateway@.service")
@@ -32,8 +32,8 @@ class Units(unittest.TestCase):
         self.assertEqual([r for r in rows if r.startswith("RestrictAddressFamilies")], ["RestrictAddressFamilies=", "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX"])
         blocked = [r for r in rows if r.startswith("InaccessiblePaths=")][0].split("=", 1)[1].split()
         self.assertEqual(sorted(blocked), sorted(["-/run/dbus", "-/run/snapd.socket", "-/run/snapd-snap.socket", "-/run/tailscale", "-/run/tailscale-buzz", "-/run/tailscale-duet"]))
-        self.assertEqual(len(rows), 4)                                                                           # nothing else of the bridge unit is touched
-        self.assertNotIn("/run/systemd/resolve", DROPIN.read_text().replace("# ", "").split("InaccessiblePaths=")[1].splitlines()[0])      # blocking it would break the bridge's DNS
+        self.assertEqual(len(rows), 4)  # nothing else of the bridge unit is touched
+        self.assertNotIn("/run/systemd/resolve", DROPIN.read_text().replace("# ", "").split("InaccessiblePaths=")[1].splitlines()[0])  # blocking it would break the bridge's DNS
 
     def test_the_installer_has_the_four_commands_a_smoke_test_and_a_rollback_for_each(self):
         text = (ORACLE / "install-gateway.sh").read_text()

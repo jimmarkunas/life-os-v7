@@ -1,4 +1,4 @@
-"""LIFE-333: the guard installer. Everything happens in a temp folder; the real Buzz settings and guard are never touched."""
+"""the guard installer."""
 import hashlib
 import os
 import shutil

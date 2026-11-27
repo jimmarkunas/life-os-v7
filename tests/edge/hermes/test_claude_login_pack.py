@@ -1,4 +1,6 @@
-"""LIFE-518: the read-only Claude login check pack (lifeos/edge/hermes/pack), run through the REAL runner on a temp tree with a fake hand-off client (no sudo, no host, no Claude)."""
+"""the read-only Claude login check pack (lifeos/edge/hermes/pack), run through the REAL runner on a temp tree with a
+fake hand-off client.
+"""
 import json
 import re
 import shutil
@@ -13,7 +15,7 @@ from tests.edge.runner.test_runner import FakeSystemd
 ROOT = Path(__file__).resolve().parents[3]
 PACK = ROOT / "lifeos" / "edge" / "hermes" / "pack"
 TOKEN = "sk-ant-oat01-" + "Zx9" * 20
-EMAIL = "someone.private" + chr(64) + "example.org"      # built here: the privacy guard rejects a literal address
+EMAIL = "someone.private" + chr(64) + "example.org"
 FAKE_CLIENT = r"""#!/bin/bash
 # fake claude-handoff client: prints secrets on purpose, so the pack must keep them out of every READBACK line
 P="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -42,7 +44,7 @@ class LoginPackTests(unittest.TestCase):
         client.write_text(FAKE_CLIENT)
         client.chmod(client.stat().st_mode | stat.S_IEXEC)
         (self.fake / "tmp").mkdir()
-        fake_timeout = self.fake / "usr" / "bin" / "timeout"                  # the host has coreutils timeout; this stand-in just runs the command
+        fake_timeout = self.fake / "usr" / "bin" / "timeout"  # the host has coreutils timeout
         fake_timeout.parent.mkdir(parents=True)
         fake_timeout.write_text('#!/bin/bash\nshift\nexec "$@"\n')
         fake_timeout.chmod(fake_timeout.stat().st_mode | stat.S_IEXEC)
@@ -71,8 +73,8 @@ class LoginPackTests(unittest.TestCase):
         got = self.readback(result)
         self.assertEqual((got["expiry_before"], got["expiry_after"], got["expiry_changed"]), ("2026-12-04", "2026-12-04", "no"))
         self.assertEqual((got["message_ok"], got["message_exit"], got["method"]), ("yes", "0", "claude.ai/max"))
-        self.assertEqual(sum(1 for line in (self.fake / "calls.log").read_text().splitlines() if line.startswith("-p ")), 1)   # exactly one message
-        self.assertEqual(list((self.fake / "tmp").iterdir()), [])             # the scratch folder is gone
+        self.assertEqual(sum(1 for line in (self.fake / "calls.log").read_text().splitlines() if line.startswith("-p ")), 1)  # exactly one message
+        self.assertEqual(list((self.fake / "tmp").iterdir()), [])  # the scratch folder is gone
         self.assertEqual(self.staged.joinpath("pack.json").exists(), True)
 
     def test_a_renewed_expiry_is_reported_as_changed(self):

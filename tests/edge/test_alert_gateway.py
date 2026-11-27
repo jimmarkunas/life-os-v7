@@ -1,4 +1,4 @@
-"""LIFE-73: the one alert gateway (lifeos.platform.alerts.ntfy) mutes, caps and pauses; and nothing else may post to ntfy or send to Telegram or WhatsApp."""
+"""the one alert gateway (lifeos.platform.alerts.ntfy) mutes, caps and pauses"""
 import contextlib
 import datetime as dt
 import io
@@ -48,8 +48,8 @@ class Mute(GatewayCase):
 
     def test_a_future_time_mutes_and_a_time_with_no_zone_is_central(self):
         self.assertTrue(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T13:00:00Z"}, self.NOW))
-        self.assertTrue(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T08:00"}, self.NOW))        # 8 AM Central = 13:00Z, still ahead of 12:00Z
-        self.assertFalse(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T07:00"}, self.NOW))       # 7 AM Central = 12:00Z, reached
+        self.assertTrue(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T08:00"}, self.NOW))  # 8 AM Central = 13:00Z, still ahead of 12:00Z
+        self.assertFalse(alerts.muted({"ALERTS_MUTED_UNTIL": "2026-10-26T07:00"}, self.NOW))  # 7 AM Central = 12:00Z, reached
 
     def test_the_mute_ends_on_time(self):
         env = {"ALERTS_MUTED_UNTIL": "2026-10-26T13:00:00Z"}
@@ -85,7 +85,7 @@ class FloodBreaker(GatewayCase):
             results = self.send(50)
         self.assertEqual(results, [True] * alerts.SEND_CAP + [False] * (50 - alerts.SEND_CAP))
         titles = [title for title, _ in self.post.pushes]
-        self.assertEqual(len(titles), alerts.SEND_CAP + 1)                                  # the cap, plus ONE notice
+        self.assertEqual(len(titles), alerts.SEND_CAP + 1)  # the cap, plus ONE notice
         self.assertEqual(titles.count("Alerts paused: flood"), 1)
         self.assertEqual(titles[-1], "Alerts paused: flood")
 
@@ -102,7 +102,7 @@ class FloodBreaker(GatewayCase):
             self.assertEqual(self.send(2), [True, True])
 
     def test_alerts_off_sends_nothing_and_counts_nothing(self):
-        with mock.patch.dict("os.environ", {}, clear=True):                                    # no ALERTS_ENABLED: off
+        with mock.patch.dict("os.environ", {}, clear=True):  # no ALERTS_ENABLED: off
             self.assertEqual(self.send(20), [False] * 20)
         self.assertEqual(self.post.pushes, [])
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):

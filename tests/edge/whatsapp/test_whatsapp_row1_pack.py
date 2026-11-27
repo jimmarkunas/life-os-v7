@@ -1,6 +1,6 @@
-"""LIFE-643 row 1: the pack that moves WhatsApp Attention to its own user `lifeos-wa`, built from the repo and run through the REAL runner on a temp tree with fakes for systemctl (system and --user),
-useradd, getent, id, runuser, ss and node, and a real Unix socket (no sudo, no host, no session file). What a test cannot prove (real uids, real systemd sandboxing, real socket ownership) the pack's own
-step 3 checks on the host and the step-4 readback reports."""
+"""the pack that moves WhatsApp Attention to its own user `lifeos-wa`, built from the repo and run through the REAL
+runner on a temp tree with fakes for.
+"""
 import json
 import os
 import shutil
@@ -155,7 +155,8 @@ def sha(path):
 
 
 class Server(threading.Thread):
-    """Stands in for the attention process: answers one JSON snapshot per connection unless the `silent` flag exists."""
+    """Stands in for the attention process: answers one JSON snapshot per connection unless the `silent` flag exists.
+    """
     def __init__(self, path, silent):
         super().__init__(daemon=True)
         self.sock, self.silent = socket.socket(socket.AF_UNIX), silent
@@ -189,7 +190,7 @@ def tree_listing(tree):
 
 class Fixture(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(dir="/tmp"))               # short path: Unix socket names are limited to ~100 characters
+        self.tmp = Path(tempfile.mkdtemp(dir="/tmp"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.prefix = self.tmp / "r"
         p = self.prefix
@@ -225,7 +226,7 @@ class Fixture(unittest.TestCase):
         (self.old_app / "node_modules" / ".bin" / "baileys").symlink_to("../baileys/cli.js")
         for name in ("attention.mjs", "state.mjs"):
             (self.old_app / name).write_text("// old %s\n" % name)
-        for name in ("package.json", "package-lock.json"):                       # the old tree holds the same lock as the pack (built from the repo)
+        for name in ("package.json", "package-lock.json"):
             shutil.copy(ROOT / "lifeos" / "whatsapp" / "oracle" / name, self.old_app / name)
         self.endpoint.write_text("# old endpoint\n")
         self.endpoint.chmod(0o600)
@@ -283,14 +284,16 @@ class Fixture(unittest.TestCase):
         return (self.prefix / "fake" / name).exists()
 
     def assert_old_is_back(self):
-        """The old service is running and enabled, the new one is down, the new session copy is gone, the old folder is exactly as it was."""
+        """The old service is running and enabled, the new one is down, the new session copy is gone, the old folder is
+        exactly as it was.
+        """
         self.assertTrue(self.on("old-active") and self.on("old-enabled"))
         self.assertFalse(self.on("new-active") or self.on("sock-active") or self.on("enabled-lifeos-wa-attention.service"))
         self.assertFalse(self.new_state.exists())
         self.assertFalse((self.new_home / ".config" / "lifeos-whatsapp").exists())
         self.assertFalse(self.flag.exists())
         self.assertEqual(tree_listing(self.old_state), self.before_old)
-        self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")                  # the runner put the consumer files back
+        self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")  # the runner put the consumer files back
         self.assertEqual(self.stats.read_text(), "// old stats\n")
         self.assertEqual(self.old_unit.read_text(), OLD_UNIT)
 
@@ -299,7 +302,7 @@ class PackShapeTests(Fixture):
     def test_the_pack_is_valid_and_declares_exactly_what_it_changes(self):
         manifest = runner.load_manifest(str(self.pack))
         self.assertEqual(manifest["ticket"], "LIFE-643")
-        self.assertEqual(manifest["services"], ["lifeos-wa-attention.socket", "lifeos-wa-attention.service"])       # socket first: stopping it stops the service too
+        self.assertEqual(manifest["services"], ["lifeos-wa-attention.socket", "lifeos-wa-attention.service"])  # socket first: stopping it stops the service too
         self.assertEqual(manifest["files"], [str(self.endpoint), str(self.stats)])
         self.assertEqual(len(manifest["steps"]), 4)
         for name, repo in (("lifeos-wa-attention.service", UNIT), ("lifeos-wa-attention.socket", SOCKET_UNIT)):
@@ -348,7 +351,7 @@ class GoodRunTests(Fixture):
         # the new side
         self.assertTrue(self.on("new-active") and self.on("enabled-lifeos-wa-attention.service") and self.on("enabled-lifeos-wa-attention.socket"))
         copied, original = tree_listing(self.new_state), self.before_old
-        self.assertEqual({k: v[2:] for k, v in copied.items() if v[0] == "f"}, {k: v[2:] for k, v in original.items() if v[0] == "f"})      # same names and sizes
+        self.assertEqual({k: v[2:] for k, v in copied.items() if v[0] == "f"}, {k: v[2:] for k, v in original.items() if v[0] == "f"})  # same names and sizes
         self.assertEqual({v[1] for v in copied.values() if v[0] == "d"}, {0o700})
         self.assertEqual({v[1] for v in copied.values() if v[0] == "f"}, {0o600})
         self.assertEqual(stat.S_IMODE(self.new_home.stat().st_mode), 0o700)
@@ -359,7 +362,7 @@ class GoodRunTests(Fixture):
         self.assertEqual(tree_listing(self.old_state), self.before_old)
         self.assertEqual(self.old_unit.read_text(), OLD_UNIT)
         self.assertTrue((self.old_state / "attention.sock").exists())
-        # the program tree: root-owned layout, the pinned tree copied with its link and exec bit, new app files from the repo
+        # the program tree: root-owned layout, the pinned tree copied with its link and exec bit, new app files from.
         app = self.prefix / "opt" / "lifeos-wa"
         self.assertTrue((app / "bin" / "node").exists() and (app / "bin" / "resume-old.sh").exists())
         self.assertEqual((app / "app" / "attention.mjs").read_text(), (ROOT / "lifeos/whatsapp/oracle/attention.mjs").read_text())
@@ -453,7 +456,7 @@ class RollbackTests(Fixture):
         self.assertEqual((result["outcome"], result["code"]), ("fail", "E_STEP_2"), result)
         self.assertTrue(self.on("old-active") and self.on("old-enabled"))
         self.assertFalse([c for c in self.calls() if c.startswith("--user stop")])
-        self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")                  # nothing of the consumer was changed yet
+        self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")  # nothing of the consumer was changed yet
 
     def test_preflight_refusals_change_nothing(self):
         cases = {"gateway-down": "not_active", "user-has-shell": "new_user_has_shell", "user-in-groups": "new_user_in_other_groups"}
@@ -494,8 +497,7 @@ class RollbackTests(Fixture):
 
 
 class InterruptTests(Fixture):
-    """The runner kills a step's process group with SIGKILL on Ctrl-C or a timeout, so no trap in a step can run. These prove the pack's design: the flag file + ExecStopPost + the runner's own
-    restore of the declared units put the OLD service back when the kill lands after the new one has started."""
+    """The runner kills a step's process group with SIGKILL on Ctrl-C or a timeout, so no trap in a step can run."""
     def drive(self, flag):
         self.flag_on(flag)
         driver = ("import subprocess, sys; from lifeos.edge.runner import runner; fake = sys.argv[3]\n"
@@ -507,22 +509,22 @@ class InterruptTests(Fixture):
     def test_a_kill_after_the_new_service_started_brings_the_old_one_back(self):
         done = self.drive("interrupt")
         self.assertEqual((done.returncode, done.stdout, done.stderr), (1, "RESULT fail E_INTERRUPTED\n", ""))
-        self.assertTrue(self.on("old-active") and self.on("old-enabled"))             # resume-old.sh ran when the runner's restore stopped the new units
+        self.assertTrue(self.on("old-active") and self.on("old-enabled"))
         self.assertFalse(self.on("new-active") or self.on("sock-active"))
         self.assertFalse(self.flag.exists())
-        self.assertEqual(tree_listing(self.old_state), self.before_old)               # the old folder was never touched
-        self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")               # the runner restored the declared consumer files
+        self.assertEqual(tree_listing(self.old_state), self.before_old)  # the old folder was never touched
+        self.assertEqual(self.endpoint.read_text(), "# old endpoint\n")  # the runner restored the declared consumer files
         self.assertEqual(self.stats.read_text(), "// old stats\n")
-        self.assertTrue(self.new_state.exists())                                      # a killed step cannot clean up: the new copy stays (700, lifeos-wa's) and the next run wipes it first
+        self.assertTrue(self.new_state.exists())
 
     def test_a_kill_between_the_old_stop_and_the_new_start_leaves_the_old_service_stopped_but_intact_and_one_command_restarts_it(self):
         done = self.drive("interrupt-after-old-stop")
         self.assertEqual((done.returncode, done.stdout), (1, "RESULT fail E_INTERRUPTED\n"))
-        self.assertFalse(self.on("old-active"))                                       # the one window the pack cannot close by itself (a few seconds); documented in the receipt
-        self.assertTrue(self.on("old-enabled"))                                       # still enabled: a reboot would also bring it back
+        self.assertFalse(self.on("old-active"))
+        self.assertTrue(self.on("old-enabled"))  # still enabled: a reboot would also bring it back
         self.assertFalse(self.on("new-active"))
         self.assertEqual(tree_listing(self.old_state), self.before_old)
-        self.assertTrue(self.flag.exists())                                           # the flag shows the state; the recovery line is `systemctl --user start` for the old unit
+        self.assertTrue(self.flag.exists())  # the flag shows the state
         self.assertEqual(subprocess.run([self.fake, "--user", "start", "lifeos-whatsapp-attention.service"]).returncode, 0)
         self.assertTrue(self.on("old-active"))
 
@@ -563,7 +565,7 @@ class HelperTests(unittest.TestCase):
         self.assertFalse((dst / "attention.sock").exists())
         self.assertEqual(self.wa("same", str(self.src), str(dst)), (0, "same entries=4"))
         self.assertEqual({stat.S_IMODE(p.stat().st_mode) for p in dst.rglob("*") if p.is_file()}, {0o600})
-        self.assertEqual({stat.S_IMODE(p.stat().st_mode) for p in [dst, dst / "auth", dst.parent, dst.parent.parent]}, {0o700})   # parents made on the way are private too
+        self.assertEqual({stat.S_IMODE(p.stat().st_mode) for p in [dst, dst / "auth", dst.parent, dst.parent.parent]}, {0o700})  # parents made on the way are private too
         self.assertEqual(self.wa("copy-session", str(self.src), str(dst), str(os.getuid()), str(os.getgid())), (1, "dst_exists"))
         (dst / "chats.json").write_text("{}{}")
         self.assertEqual(self.wa("same", str(self.src), str(dst)), (1, "differ"))
@@ -605,7 +607,6 @@ class HelperTests(unittest.TestCase):
 
 
 class ConsumerTests(unittest.TestCase):
-    """The private endpoint (user ubuntu) tries the new socket first and still works on the old one (the rollback)."""
     def setUp(self):
         from lifeos.imessage import alerts_endpoint as ep
         self.ep = ep
@@ -619,7 +620,7 @@ class ConsumerTests(unittest.TestCase):
         self.addCleanup(server.sock.close)
         return path
 
-    def test_only_the_lifeos_wa_socket_is_tried_and_a_missing_one_is_unavailable_never_zero(self):          # LIFE-643 cleanup: the old per-user socket and its fallback are gone
+    def test_only_the_lifeos_wa_socket_is_tried_and_a_missing_one_is_unavailable_never_zero(self):
         new = self.serve("n.sock", SNAPSHOT)
         with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=new):
             self.assertEqual(self.ep.whatsapp("0" * 64)["health"], "CURRENT")
@@ -632,7 +633,7 @@ class ConsumerTests(unittest.TestCase):
         with unittest_patch(self.ep, WHATSAPP_SOCKET_WA=old):
             self.assertEqual(self.ep.whatsapp("0" * 64, str(self.tmp / "gone.sock"))["health"], "UNAVAILABLE")
 
-    def test_the_oracle_card_script_counts_only_the_lifeos_wa_unit(self):                                    # LIFE-643 cleanup: the old ubuntu user unit is gone
+    def test_the_oracle_card_script_counts_only_the_lifeos_wa_unit(self):  # cleanup: the old ubuntu user unit is gone
         text = (ROOT / "lifeos" / "oraclecloud" / "oracle" / "stats.mjs").read_text()
         self.assertIn('["is-active", "lifeos-wa-attention.service"]', text)
         self.assertNotIn("lifeos-whatsapp-attention", text)

@@ -1,5 +1,4 @@
-"""LIFE-577: temp folders whose whole path is clear of the backup secret guard (offsite_backup.denied). tempfile's random 8 characters once in a few thousand names hold a guarded word
-("key", "auth"), and the guard then refuses the run with backup_secret_path. These draw again until the path is clear."""
+"""temp folders whose whole path is clear of the backup secret guard (offsite_backup.denied)."""
 import os
 import tempfile
 

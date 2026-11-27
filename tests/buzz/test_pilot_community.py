@@ -1,4 +1,6 @@
-"""LIFE-870: the private relay pilot is one more community of the governed MCP service, only behind BUZZ_RELAY=pilot, with the production Relay client and a recording transport (no network)."""
+"""the private relay pilot is one more community of the governed MCP service, only behind BUZZ_RELAY=pilot, with the
+production Relay client and a.
+"""
 import json
 import unittest
 
@@ -37,11 +39,11 @@ class PilotCommunity(unittest.TestCase):
         self.assertEqual(calls[0][0], relay_choice.PILOT_URL + "/query")
         self.assertTrue(calls[0][1].startswith("Nostr "))
         self.assertEqual(rs["claude"].writes, {("pilot", CHANNEL)})
-        with self.assertRaises(BuzzError) as caught:                                     # ChatGPT has no pilot key yet: the community is there but it has no identity on it
+        with self.assertRaises(BuzzError) as caught:
             rs["chatgpt"].get_messages("pilot", CHANNEL)
         self.assertEqual(caught.exception.code, "community_not_authorized")
         calls.clear()
-        rs["claude"].get_messages("life-os", CHANNEL)                                    # a hosted community is untouched
+        rs["claude"].get_messages("life-os", CHANNEL)  # a hosted community is untouched
         self.assertEqual(calls[0][0], "https://x.communities.buzz.xyz/query")
 
     def test_a_bad_mode_or_channel_stops_the_service_naming_only_the_setting(self):
@@ -57,7 +59,7 @@ class PilotCommunity(unittest.TestCase):
         self.assertFalse(relay_choice.pilot_url_ok("http://127.0.0.1:3100"))
 
 class SeveralChannels(unittest.TestCase):
-    """LIFE-927: the four channels that match the hosted names are writable beside the pilot channel; a bad one in the list stops the service naming only the setting."""
+    """the four channels that match the hosted names are writable beside the pilot channel"""
     def test_a_comma_list_wires_every_channel_and_one_bad_entry_refuses_the_whole_setting(self):
         second = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
         relay = type("R", (), {"urls": {}, "keys": {}, "writes": set()})()

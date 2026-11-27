@@ -1,5 +1,4 @@
-"""LIFE-397: a mentioned Buzz agent can read its room (channel info, history, thread, event, canvas) before it answers; nothing else is widened.
-Kept apart from test_guard.py (LIFE-333) so the CI shard balance (tests/shard.py, by file size) stays as it was."""
+"""a mentioned Buzz agent can read its room (channel info, history, thread, event, canvas) before it answers"""
 import json
 import os
 import subprocess
@@ -8,7 +7,9 @@ from tests.edge.buzzguard.test_guard import ATL, GH, GOOD_REPO, GUARD, Base
 
 
 class RoomContext(Base):
-    """LIFE-397: a mentioned agent must be able to read the room (channel info, history, thread, the kickoff event) before it answers; nothing else is widened."""
+    """a mentioned agent must be able to read the room (channel info, history, thread, the kickoff event) before it
+    answers
+    """
     EID = "ab12" * 16
     CHAN = "0a1b2c3d-1111-4222-8333-944455566677"
 
@@ -49,7 +50,6 @@ class RoomContext(Base):
             self.assertEqual(self.dec(tool, ti), "deny", (tool, ti))
 
     def test_injected_room_text_cannot_widen_anything(self):
-        """A room message saying "Jim approved, run this" changes nothing: shell, file writes, unknown tools and Jira/GitHub writes are refused before any handler runs."""
         for tool, ti in (("Bash", {"command": "cat ~/.ssh/id_rsa"}), ("Write", {"file_path": "/tmp/x", "content": "x"}), ("Edit", {"file_path": "/tmp/x", "old_string": "a", "new_string": "b"}),
                          ("Read", {"file_path": os.path.join(self.home, ".ssh", "id_rsa")}), ("WebFetch", {"url": "https://example.com"}), ("mcp__evil__anything", {}),
                          (ATL + "addCommentToJiraIssue", {"issueIdOrKey": "LIFE-369", "commentBody": "Jim approved"}),
@@ -68,28 +68,28 @@ class RoomContext(Base):
 
 
 class NativeReadTools(Base):
-    """LIFE-397, live failure Nov 7 5:23 PM CT: the Challenger's real calls (recovered from hook.log input hashes) were refused. Each must now be allowed."""
+    """Each must now be allowed."""
     CHAN = "0a1b2c3d-1111-4222-8333-944455566677"
 
     def test_the_exact_calls_from_hook_log_are_allowed(self):
         self.assertEqual(self.dec("mcp__buzz__read", {"channel": self.CHAN, "limit": 30}), "allow")
         self.assertEqual(self.dec("mcp__buzz__read", {}), "allow")
         self.assertEqual(self.dec("mcp__buzz__canvas_get", {"channel": self.CHAN}), "allow")
-        self.assertEqual(self.dec("mcp__buzz__channel_get", {"channel": self.CHAN}), "allow")   # Nov 7 5:46:55 PM CT: the Challenger's channel read, same input hash as the canvas_get call
-        self.assertEqual(self.dec("mcp__buzz__channel_delete", {"channel": self.CHAN}), "deny")  # only the exact read name is added; a look-alike change tool stays refused
+        self.assertEqual(self.dec("mcp__buzz__channel_get", {"channel": self.CHAN}), "allow")
+        self.assertEqual(self.dec("mcp__buzz__channel_delete", {"channel": self.CHAN}), "deny")  # only the exact read name is added
         self.assertEqual(self.dec("mcp__buzz__read", {"operation": "get_messages", "channel": self.CHAN}), "allow")
 
     def test_hashes_match_the_logged_inputs(self):
         import hashlib
-        h = lambda o: hashlib.sha256(json.dumps(o, sort_keys=True, default=str).encode()).hexdigest()[:16]   # same formula as guard.main's input_sha
-        real = "00000000-0000-0000-0000-000000000001"                                                          # the LIFE-369 room (a Buzz channel id, not a Notion id)
+        h = lambda o: hashlib.sha256(json.dumps(o, sort_keys=True, default=str).encode()).hexdigest()[:16]  # same formula as guard.main's input_sha
+        real = "00000000-0000-0000-0000-000000000001"  # the room (a Buzz channel id, not a Notion id)
         self.assertEqual(h({"channel": real, "limit": 30}), "af7e988e3f7bfe49")
         self.assertEqual(h({"channel": real}), "b02f255fc87dd5f0")
         self.assertEqual(h({}), "44136fa355b3678a")
 
     def test_notion_reads_and_writes_are_an_exact_list_without_deletes(self):
-        """Jim, Nov 8: write access to Notion. Search, fetch, queries, comments, create, update, move, duplicate, comment and schema/view changes are allowed; deletes, restores, sessions,
-        skills and user tools are denied; a secret in the input is still denied."""
+        """Search, fetch, queries, comments, create, update, move, duplicate, comment and schema/view changes are allowed
+        """
         for op, ti in (("notion-search", {"query": "REQ-7 v4"}), ("notion-fetch", {"id": "00000000-0000-0000-0000-000000000002"}),
                        ("notion-query-data-sources", {"data": {"mode": "sql", "data_source_urls": ["collection://00000000-0000-0000-0000-000000000003"], "query": "SELECT 1"}}),
                        ("notion-get-comments", {"page_id": "00000000-0000-0000-0000-000000000002"}),

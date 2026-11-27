@@ -1,6 +1,6 @@
-"""LIFE-528: the Close service tree ships only the files its CLOSURE (and the gate's own list) names, so every lifeos module those files import must be in that set.
-The release tool's own import check only imports close_app and the gate, so a screen loaded later by name (the Alert settings screen) could ship without a module it needs: on Nov 10 2026
-`lifeos.platform.credentials` was missing and the screen answered 503. This test reads the imports of every shipped file statically and fails on a module that is not shipped."""
+"""the Close service tree ships only the files its CLOSURE (and the gate's own list) names, so every lifeos module those
+files import must be in that.
+"""
 import ast
 import unittest
 from pathlib import Path
@@ -9,7 +9,7 @@ from lifeos.edge.oracle import close_release as rel
 from lifeos.sources.apps import close_app
 
 ROOT = Path(__file__).resolve().parents[2]
-# Imports that are deliberately not shipped: each is wrapped so the screen answers a clear 503 instead of failing (close_app: "a screen this release does not ship yet").
+# Imports that are deliberately not shipped: each is wrapped so the screen answers a clear 503 instead of.
 NOT_SHIPPED_ON_PURPOSE = set()
 
 
@@ -18,7 +18,9 @@ def shipped(closure=None, edge=None):
 
 
 def lifeos_modules(source, known):
-    """Repo files a source file imports: `import lifeos.a.b`, `from lifeos.a import b` (b a module or a name) and `from lifeos.a.b import c`."""
+    """Repo files a source file imports: `import lifeos.a.b`, `from lifeos.a import b` (b a module or a name) and `from
+    lifeos.a.b import c`.
+    """
     found = set()
     for node in ast.walk(ast.parse(source)):
         names = []
@@ -60,7 +62,7 @@ class ClosureIsComplete(unittest.TestCase):
 
     def test_every_closure_path_is_a_python_file_the_release_tool_accepts(self):
         for path in shipped():
-            self.assertRegex(path, rel.PATH)                                                       # the release tool copies only .py files, so the list data lives in a .py module
+            self.assertRegex(path, rel.PATH)
             self.assertTrue((ROOT / path).is_file(), path)
 
 
