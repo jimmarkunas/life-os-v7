@@ -20,18 +20,25 @@ def read(*parts):
 
 
 class RoleFiles(unittest.TestCase):
-    def test_every_role_carries_the_recall_first_line_exactly_once(self):
-        """shared memory beats a profile's own notes, for every Hermes profile."""
-        line = 'Before answering about Jim, his preferences or his work, call lifeos-buzz buzz_read with operation "memory_recall" and arguments {"workspace": "Personal", "query": "<the question>"}; answer from it, not your own notes.'
+    def test_every_role_carries_the_approved_memory_lines_exactly_once_and_not_the_old_answer_from_it_line(self):
+        """Every Hermes profile recalls first and treats recalled items as candidates, not answers (Jim, Nov 27 2026)."""
+        lines = (
+            "At task start, recall relevant memory from the permitted workspace via buzz_capabilities and buzz_read/memory_recall.",
+            "Candidates, not answers: use only what explicitly answers; otherwise say nothing stored answers. Canonical sources win.",
+            "Store only explicitly approved non-sensitive owner decisions/preferences with provenance when granted. No automatic capture or metered ask by default.",
+            'Recall call: lifeos-buzz buzz_read with operation "memory_recall" and arguments {"workspace": "Personal", "query": "<the question>"}.',
+        )
         for name in ("main", "claude-hermes", "developer", "librarian", "research", "writer"):
             text = open(os.path.join(ROOT, "hermes", "roles", name, "SOUL.md")).read()
-            self.assertEqual(text.count(line), 1, name)
+            for line in lines:
+                self.assertEqual(text.count(line), 1, (name, line[:30]))
+            self.assertNotIn("answer from it, not your own notes", text, name)
 
     def test_every_role_file_exists_is_short_and_has_no_secret(self):
         for name in ROLES:
             text = read("roles", name, "SOUL.md")
             self.assertTrue(text.strip() and text.endswith("\n"), name)
-            self.assertLessEqual(len(text.encode()), 2600, name)  # the deploy script's own limit is 4096
+            self.assertLessEqual(len(text.encode()), 3000, name)  # the deploy script's own limit is 4096
             self.assertIsNone(SECRET.search(text), name)
 
     def test_the_librarian_points_at_the_notion_wiki_and_not_a_local_folder(self):

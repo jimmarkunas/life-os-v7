@@ -440,12 +440,24 @@ class SeededGrants(unittest.TestCase):
             ("denied_catalog_unknown_capability", [], "catalog_unknown_capability"),
         )
 
+    def test_codex_holds_personal_recall_and_discovery_only_expiring_within_ninety_days(self):
+        """Jim, Nov 27 2026: verified Codex, Personal recall only, up to 90 days; no store, ask, publish or Bytalos."""
+        access = M.load()
+        mine = [g for g in access.grants if g.principal.startswith("codex")]
+        self.assertEqual(
+            {(g.principal, g.tenant, g.tool, g.actions) for g in mine},
+            {("codex", "personal", "buzz_capabilities", ("read",)), ("codex", "personal", "memory_recall", ("read",))},
+        )
+        self.assertEqual({g.expires.date().isoformat() for g in mine}, {"2027-02-25"})
+        row = [c for c in access.credentials if c["id"] == "codex"][0]
+        self.assertEqual((row["buzz_identity"], row.get("write", False), row["expires"]), (None, False, "2027-02-25"))
+
     def test_the_five_memory_tools_are_granted_to_eight_clients_in_personal_only_with_the_personal_memory_purpose(self):
         """all governed agents share real non-sensitive Personal memory"""
         access = M.load()
         mine = [
-            g for g in access.grants if g.purpose == "personal-memory" and g.principal != "jira-capture"
-        ]  # the capture client is pinned by its own test
+            g for g in access.grants if g.purpose == "personal-memory" and g.principal not in ("jira-capture", "codex")
+        ]  # the capture client and Codex (recall only, 90 days) are pinned by their own tests
         self.assertEqual({(g.principal, g.tool) for g in mine}, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
         self.assertEqual(len(mine), 40)
         self.assertEqual(
@@ -484,13 +496,15 @@ class SeededGrants(unittest.TestCase):
         rows = {
             (c["principal"], c["tool"])
             for c in CATALOG["capabilities"]
-            if c["tool"].startswith("memory_") and c["principal"] != "jira-capture"
+            if c["tool"].startswith("memory_") and c["principal"] not in ("jira-capture", "codex")
         }
         self.assertEqual(rows, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
         synthetic = {
             (c["principal"], c["tool"])
             for c in CATALOG["capabilities"]
-            if c["tool"].startswith("memory_") and c["status"] == "synthetic" and c["principal"] != "jira-capture"
+            if c["tool"].startswith("memory_")
+            and c["status"] == "synthetic"
+            and c["principal"] not in ("jira-capture", "codex")
         }
         self.assertEqual(
             synthetic,

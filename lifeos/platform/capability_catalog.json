@@ -13,6 +13,7 @@
     {"id": "chatgpt-chat-bytalos", "kind": "agent", "workspace": "bytalos"},
     {"id": "claude-code-mac", "kind": "agent", "workspace": "personal"},
     {"id": "mac-claude-code", "kind": "agent", "workspace": "personal"},
+    {"id": "codex", "kind": "agent", "workspace": "personal"},
     {"id": "oracle-claude-code", "kind": "agent", "workspace": "personal"},
     {"id": "openclaw", "kind": "agent", "workspace": "personal"},
     {"id": "hermes-librarian", "kind": "agent", "workspace": "personal"},
@@ -134,6 +135,8 @@
     {"principal": "claude-chat", "tool": "agent_messages", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
     {"principal": "chatgpt-chat", "tool": "agent_status", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
     {"principal": "chatgpt-chat", "tool": "agent_dispatch", "action": "write", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
-    {"principal": "chatgpt-chat", "tool": "agent_messages", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"}
+    {"principal": "chatgpt-chat", "tool": "agent_messages", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/orchestrator.py", "as_of": "2026-11-25", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "codex", "tool": "buzz_capabilities", "action": "read", "provider": "buzz", "account_alias": null, "host": "oracle-edge", "source": "lifeos/buzz/mcp.py", "as_of": "2026-11-27", "max_age_days": 90, "status": "synthetic"},
+    {"principal": "codex", "tool": "memory_recall", "action": "read", "provider": "honcho", "account_alias": null, "host": "oracle-edge", "source": "lifeos/platform/memory_honcho.py", "as_of": "2026-11-27", "max_age_days": 90, "status": "synthetic"}
   ]
 }
