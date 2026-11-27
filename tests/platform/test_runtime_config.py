@@ -10,7 +10,7 @@ from tests.platform.settings_fixture import ENV, SECRET, SOURCE, Source, row
 from tests.platform.test_settings import FakeStore, connect
 
 ROOT = Path(__file__).resolve().parents[2]
-OTHER = "[removed]"
+OTHER = "00000000-0000-0000-0000-000000001038"
 ID = "00000000-0000-0000-0000-000000000102"
 ID2 = "00000000-0000-0000-0000-000000000103"
 

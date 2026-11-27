@@ -77,7 +77,7 @@ class Fake:
         return {"results": [], "has_more": False, "next_cursor": None}
 
 
-UUID = "3f2a1c6e-1b7a-4c1e-9d55-0a1b2c3d4e5f"
+UUID = "00000000-0000-0000-0000-000000001030"
 
 
 ROUND = "round-page"

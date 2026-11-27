@@ -17,7 +17,7 @@ class UrlTests(unittest.TestCase):
         for url in (
             "https://boards.greenhouse.io/acme/jobs/4250537009",
             "https://careers.homedepot.com/job/23915306/it-pm",
-            "https://jobs.lever.co/acme/2f1c9d3e-1111-4a2b-9c3d-123456789abc",
+            "https://jobs.lever.co/acme/00000000-0000-0000-0000-000000001037",
             "https://careers.acme.com/jobs/senior-data-engineer-remote",
         ):
             self.assertIsNone(quality.url_problem(url), url)

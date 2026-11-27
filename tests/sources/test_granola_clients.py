@@ -13,7 +13,7 @@ CLIENT_PERSON = "pat" + AT + gc.CLIENT_DOMAIN
 OWN_PERSON = "jim" + AT + gc.OWN_DOMAIN
 PERSONAL = "jim" + AT + "gmail.com"
 OTHER_CO = "sam" + AT + "othercompany.example"
-SECOND = "9c3d2e1f-0a1b-4c2d-8e3f-1a2b3c4d5e6f"
+SECOND = "00000000-0000-0000-0000-000000001039"
 THIRD = "00000000-0000-4000-8000-000000000009"
 
 

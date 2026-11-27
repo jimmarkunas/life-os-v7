@@ -10,8 +10,8 @@ from lifeos.sources.web import registry, titlewatch as tw
 from tests.kit.db import FakeConn
 
 NOW = datetime(2026, 10, 4, 20, 0)
-CRYPTO = "https://www.revolut.com/careers/position/c7078b70-e10b-4f47-b983-bbe6d08d098a/"
-CREATIVE = "https://www.revolut.com/careers/position/campaign-creative-lead-92db1b5f-56bc-4524-bc8b-5f1d2188ae1a/"
+CRYPTO = "https://www.revolut.com/careers/position/00000000-0000-0000-0000-00000000103a/"
+CREATIVE = "https://www.revolut.com/careers/position/campaign-creative-lead-00000000-0000-0000-0000-00000000103b/"
 SOURCE = {
     "id": "su-revolut-ltd",
     "company": "Revolut Ltd",
@@ -58,12 +58,12 @@ class ParsingTests(unittest.TestCase):
         self.assertIn("Credit Manager", titles)
         for default in tw.DEFAULT_TITLES:
             self.assertIn(default, titles)
-        url = "https://www.revolut.com/careers/position/credit-manager-product-92e04817-f950-4b94-8b2a-6f2cbbe6d054/"
+        url = "https://www.revolut.com/careers/position/credit-manager-product-00000000-0000-0000-0000-00000000103c/"
         found = tw.candidates(revolut, [hit(url, "Credit Manager (Product) | Revolut", "London")])
         self.assertEqual([(c[0], c[1]) for c in found], [(url, "Credit Manager (Product)")])
 
     def test_token_is_the_uuid_or_the_last_path_segment(self):
-        self.assertEqual(tw.token(CREATIVE), "92db1b5f-56bc-4524-bc8b-5f1d2188ae1a")
+        self.assertEqual(tw.token(CREATIVE), "00000000-0000-0000-0000-00000000103b")
         self.assertEqual(tw.token("https://truvi.com/careers/product-manager-london"), "product-manager-london")
 
     def test_the_rotation_covers_every_pair_within_the_budget_and_never_repeats_in_one_run(self):
@@ -272,7 +272,7 @@ class LaneTests(unittest.TestCase):
         self.assertFalse(lanes.title_watch_source("web:su-revolut-ltd"))
         self.assertFalse(lanes.title_watch_source(None))
         self.assertTrue(lanes.first_party_source("web:titlewatch:su-revolut-ltd"))
-        url = "https://www.revolut.com/careers/position/campaign-creative-lead-92db1b5f-56bc-4524-bc8b-5f1d2188ae1a/"
+        url = "https://www.revolut.com/careers/position/campaign-creative-lead-00000000-0000-0000-0000-00000000103b/"
         self.assertEqual(audit.judge(url, "short snippet"), "audit_jd_thin")
         self.assertIsNone(audit.judge(url, "short snippet", title_only=True))
         self.assertEqual(

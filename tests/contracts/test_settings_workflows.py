@@ -302,7 +302,7 @@ jobs:
         self.assertFalse(any("granola_auto" in p for p in problems))  # a settings step's switch output is allowed
 
 
-SOURCE_ID = "5a1c0e57-3b2d-4f6a-9c1d-0e2f3a4b5c6d"
+SOURCE_ID = "00000000-0000-0000-0000-000000001002"
 
 
 def _Page(lines):
