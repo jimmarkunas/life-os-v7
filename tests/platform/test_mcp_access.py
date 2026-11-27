@@ -321,6 +321,26 @@ MEMORY_CREDENTIALS = ("openclaw", "hermes-librarian", "mac-claude-code", "oracle
 
 
 ORCHESTRATOR_TOOLS = ("agent_status", "agent_dispatch", "agent_messages")
+TODOIST_TOOLS = (
+    "todoist_comment_add",
+    "todoist_comments",
+    "todoist_projects",
+    "todoist_task_complete",
+    "todoist_task_create",
+    "todoist_task_move",
+    "todoist_task_reopen",
+    "todoist_task_update",
+    "todoist_tasks",
+)
+TODOIST_CLIENTS = (  # seven named clients only: not Duet, Muse, Codex (recall and discovery only) or the alert and capture clients
+    "claude-chat",
+    "chatgpt-chat",
+    "claude-code-mac",
+    "mac-claude-code",
+    "oracle-claude-code",
+    "openclaw",
+    "hermes-librarian",
+)
 
 
 class SeededGrants(unittest.TestCase):
@@ -363,6 +383,7 @@ class SeededGrants(unittest.TestCase):
                 "memory_store",
                 "send_to_jim",
                 "source_read",
+                *TODOIST_TOOLS,
             ],
         )
         writes = [g for g in access.grants if "write" in g.actions]
@@ -409,10 +430,18 @@ class SeededGrants(unittest.TestCase):
             | {
                 (p, "agent_dispatch", "orchestrator-dispatch", "concord-gateway-socket")
                 for p in ("claude-chat", "chatgpt-chat")
+            }
+            | {
+                (p, op, "todoist-write", "todoist-access-token")
+                for p in TODOIST_CLIENTS
+                for op in TODOIST_TOOLS
+                if op not in ("todoist_tasks", "todoist_projects", "todoist_comments")
             },
         )
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 22 + 8 * 3)  # three memory writes for each of eight clients
+        self.assertEqual(
+            len(writes), 22 + 8 * 3 + 7 * 6
+        )  # three memory writes for each of eight clients; six Todoist writes for each of seven
         self.assertEqual(
             sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"),
             sorted(
@@ -566,7 +595,7 @@ class SeededGrants(unittest.TestCase):
         shape = lambda principal: sorted(
             (g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked)
             for g in access.grants
-            if g.principal.startswith(principal) and g.tool not in ORCHESTRATOR_TOOLS
+            if g.principal.startswith(principal) and g.tool not in ORCHESTRATOR_TOOLS + TODOIST_TOOLS
         )
         self.assertEqual(shape("duet-chat"), shape("claude-chat"))  # the same rows, the same scope, no widening
         self.assertEqual(
