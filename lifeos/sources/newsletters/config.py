@@ -1,4 +1,5 @@
 """Phase 1 configuration: which senders are job newsletters and where they go."""
+
 import re
 
 NEWSLETTER_LABEL = "J Newsletters"
@@ -8,7 +9,7 @@ FINALIZE_QUERY = "label:j-newsletters-processed -label:j-newsletters-done newer_
 # Gmail search syntax flattens nested label names; pending = in the folder, not yet Processed.
 RECONCILE_QUERY = "label:j-newsletters-processed {from:jobright.ai from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com} newer_than:5d"
 REOPEN_QUERY = "label:j-newsletters-done newer_than:5d"
-RETIRED_LABEL = "J Newsletters/Retired"                # a retired sender's mail: closed unread, never Processed (Processed means every card was saved)
+RETIRED_LABEL = "J Newsletters/Retired"  # a retired sender's mail: closed unread, never Processed (Processed means every card was saved)
 PENDING_QUERY = "label:j-newsletters -label:j-newsletters-processed -label:j-newsletters-retired"
 
 # (name, regex matched against the bare lowercase sender address). Order is irrelevant.

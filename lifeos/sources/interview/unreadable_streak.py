@@ -5,6 +5,7 @@ run;
 a thread read again is set to 0. A dry run never writes. Any store problem leaves the streaks empty, so a thread stays
 `failed` rather than going quiet.
 """
+
 import re
 from datetime import timedelta
 from hashlib import sha1
@@ -12,7 +13,7 @@ from hashlib import sha1
 from lifeos.jobs import daily, store
 
 PREFIX = "mailgone_"
-FAILED_RUNS = 2                                  # an unreadable thread is `failed` for its first two runs and `permanent` from the third
+FAILED_RUNS = 2  # an unreadable thread is `failed` for its first two runs and `permanent` from the third
 
 
 def label(thread):
@@ -25,9 +26,13 @@ def previous(connect=None, now=None):
     try:
         with (connect or store.connect)() as connection, connection.cursor() as cursor:
             rows = daily.read(cursor, since)
-    except Exception:                                                                            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
-    return {name: values[max(values)] for name, values in rows.items() if re.fullmatch(PREFIX + "[0-9a-f]{12}", name) and values}
+    return {
+        name: values[max(values)]
+        for name, values in rows.items()
+        if re.fullmatch(PREFIX + "[0-9a-f]{12}", name) and values
+    }
 
 
 def save(streaks, before, connect=None, now=None):
@@ -39,6 +44,6 @@ def save(streaks, before, connect=None, now=None):
             for name, n in {**reset, **streaks}.items():
                 daily.put(cursor, daily.today(now), name, n)
             connection.commit()
-    except Exception:                                                                            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return False
     return True

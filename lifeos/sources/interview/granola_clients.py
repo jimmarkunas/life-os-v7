@@ -6,6 +6,7 @@ Unfiled
 row that the owner files by hand. A row carrying a transcript that is not ours is never touched. The caller
 (granola_auto) owns the catalog, the purge and the per-run cap. Codes and counts only; never titles or names.
 """
+
 # A meeting leaves Oracle only after its row is written and read back and the catalog row is saved and read back.
 import re
 
@@ -16,8 +17,24 @@ from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
 
 DATA_SOURCE = notion_id("DATA_SOURCE")
-TITLE, DATE, STATUS, FILE_AS, FILED_TO, KEY, LINES = "Meeting", "Meeting date", "Status", "File as", "Filed to", "Source key", "Transcript lines"
-SCHEMA = {TITLE: "title", DATE: "date", STATUS: "select", FILE_AS: "select", FILED_TO: "select", KEY: "rich_text", LINES: "number"}
+TITLE, DATE, STATUS, FILE_AS, FILED_TO, KEY, LINES = (
+    "Meeting",
+    "Meeting date",
+    "Status",
+    "File as",
+    "Filed to",
+    "Source key",
+    "Transcript lines",
+)
+SCHEMA = {
+    TITLE: "title",
+    DATE: "date",
+    STATUS: "select",
+    FILE_AS: "select",
+    FILED_TO: "select",
+    KEY: "rich_text",
+    LINES: "number",
+}
 CLIENT, INTERNAL, PERSONAL = "TGP", "Bytalos", "Personal"
 UNFILED, FILED, DELETED = "Unfiled", "Filed", "Deleted"
 CLIENT_DOMAIN, OWN_DOMAIN = "tgpinternational.com", "bytalos.com"
@@ -58,7 +75,11 @@ def check(client):
     written columns."""
     try:
         props = client.call("GET", f"/data_sources/{DATA_SOURCE}").get("properties") or {}
-        return "target_ok" if all((props.get(name) or {}).get("type") == kind for name, kind in SCHEMA.items()) else "target_mismatch"
+        return (
+            "target_ok"
+            if all((props.get(name) or {}).get("type") == kind for name, kind in SCHEMA.items())
+            else "target_mismatch"
+        )
     except (NotionError, KeyError, TypeError, ValueError, AttributeError):
         return "target_unreadable"
 
@@ -83,7 +104,12 @@ def _state(status, filed_to=None, lines=None):
 
 def _props(meeting, key, status, filed_to=None, lines=None):
     day = central_day(meeting.start)
-    return {TITLE: {"title": rich_text(title_of(meeting))}, KEY: {"rich_text": rich_text(key)}, **_state(status, filed_to, lines), **({DATE: {"date": {"start": day}}} if day else {})}
+    return {
+        TITLE: {"title": rich_text(title_of(meeting))},
+        KEY: {"rich_text": rich_text(key)},
+        **_state(status, filed_to, lines),
+        **({DATE: {"date": {"start": day}}} if day else {}),
+    }
 
 
 def _plain(prop):
@@ -97,7 +123,9 @@ def _plain(prop):
 
 
 def find(client, key):
-    reply = client.query_data_source(DATA_SOURCE, {"page_size": 3, "filter": {"property": KEY, "rich_text": {"equals": key}}})
+    reply = client.query_data_source(
+        DATA_SOURCE, {"page_size": 3, "filter": {"property": KEY, "rich_text": {"equals": key}}}
+    )
     rows = reply.get("results") if isinstance(reply, dict) else None
     if not isinstance(rows, list) or len(rows) > 1:
         raise NotionError("MEETINGS_ROW_AMBIGUOUS")
@@ -107,14 +135,25 @@ def find(client, key):
 def rows_where(client, status, with_choice):
     """-> [(page id, key, File as)] for rows with this Status; with_choice keeps only rows with a File as picked.
     Complete or NotionError."""
-    flt = {"and": [{"property": STATUS, "select": {"equals": status}}, {"property": FILE_AS, "select": {"is_not_empty": True}}]} if with_choice else {"property": STATUS, "select": {"equals": status}}
+    flt = (
+        {
+            "and": [
+                {"property": STATUS, "select": {"equals": status}},
+                {"property": FILE_AS, "select": {"is_not_empty": True}},
+            ]
+        }
+        if with_choice
+        else {"property": STATUS, "select": {"equals": status}}
+    )
     out, cursor = [], None
     for _ in range(20):
         body = {"page_size": 100, "filter": flt, **({"start_cursor": cursor} if cursor else {})}
         reply = client.query_data_source(DATA_SOURCE, body)
         if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
             raise NotionError("MEETINGS_READ_INCOMPLETE")
-        out += [(r["id"], _plain(r["properties"].get(KEY)), _plain(r["properties"].get(FILE_AS))) for r in reply["results"]]
+        out += [
+            (r["id"], _plain(r["properties"].get(KEY)), _plain(r["properties"].get(FILE_AS))) for r in reply["results"]
+        ]
         if not reply.get("has_more"):
             return out
         cursor = reply.get("next_cursor")
@@ -126,7 +165,14 @@ def unfiled_row(client, meeting, key, live):
         return "exists"
     if not live:
         return "planned"
-    client.call("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE}, "properties": _props(meeting, key, UNFILED)})
+    client.call(
+        "POST",
+        "/pages",
+        {
+            "parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE},
+            "properties": _props(meeting, key, UNFILED),
+        },
+    )
     return "created"
 
 
@@ -149,7 +195,13 @@ def _read_back(client, page_id):
 def write(client, filed_to, meeting, key, envelope, live, header=()):
     """File one meeting's transcript on its Meetings row, creating the row if it has none. -> (code, counts), code
     being a TRANSCRIPT_* or CLIENT_PAGE_NOT_OURS constant."""
-    counts = {"segments": len(envelope.segments), "blocks_planned": 0, "blocks_written": 0, "readback_ok": 0, "readback_failed": 0}
+    counts = {
+        "segments": len(envelope.segments),
+        "blocks_planned": 0,
+        "blocks_written": 0,
+        "readback_ok": 0,
+        "readback_failed": 0,
+    }
     marker = f"{create.ACCEPTED}{envelope.source_content_sha256}"
     body = granola_write.blocks(envelope, header)
     body[0] = _marker_block(marker)
@@ -159,32 +211,45 @@ def write(client, filed_to, meeting, key, envelope, live, header=()):
     page = row["id"] if row else None
     if page:
         first, got, total, head = _read_back(client, page)
-        if first == marker:                                         # a page of ours counts as filed only if it reads back whole, never on the marker alone
+        if first == marker:  # a page of ours counts as filed only if it reads back whole, never on the marker alone
             if granola_write.digest(got) != granola_write.digest(want) or total != len(body):
                 counts["readback_failed"] = 1
                 return "TRANSCRIPT_READBACK_MISMATCH", counts
             if live and head is not None and not hidden.refs(head):
                 try:
-                    client.call_once("PATCH", f"/blocks/{head['id']}", {"paragraph": _marker_block(marker)["paragraph"]})
+                    client.call_once(
+                        "PATCH", f"/blocks/{head['id']}", {"paragraph": _marker_block(marker)["paragraph"]}
+                    )
                 except NotionError:
                     pass
             if live and _plain(row["properties"].get(STATUS)) != FILED:
                 set_status(client, page, FILED, filed_to, len(envelope.segments))
             return "TRANSCRIPT_NOOP", counts
         if total:
-            return "CLIENT_PAGE_NOT_OURS", counts                   # the page already holds something that is not this transcript: never touched
+            return (
+                "CLIENT_PAGE_NOT_OURS",
+                counts,
+            )  # the page already holds something that is not this transcript: never touched
     if not live:
         return "TRANSCRIPT_PLANNED", counts
     batch = granola_write.FIRST_BATCH
     try:
         if page is None:
-            page = client.call("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE}, "properties": _props(meeting, key, UNFILED), "children": body[:batch]})["id"]
+            page = client.call(
+                "POST",
+                "/pages",
+                {
+                    "parent": {"type": "data_source_id", "data_source_id": DATA_SOURCE},
+                    "properties": _props(meeting, key, UNFILED),
+                    "children": body[:batch],
+                },
+            )["id"]
             counts["blocks_written"] = min(len(body), batch)
             start = batch
         else:
             start = 0
         for at in range(start, len(body), batch):
-            client.call("PATCH", f"/blocks/{page}/children", {"children": body[at:at + batch]})
+            client.call("PATCH", f"/blocks/{page}/children", {"children": body[at : at + batch]})
             counts["blocks_written"] = min(len(body), at + batch)
     except NotionError:
         return "TRANSCRIPT_WRITE_FAILED", counts
