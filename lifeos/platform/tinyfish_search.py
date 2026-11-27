@@ -22,8 +22,10 @@ def _key():
 
 
 def search(query, include_domains=None, timeout=30):
-    """[{url,title,snippet,site_name}] (possibly empty). Raises TinyFishError('TINYFISH_SEARCH_HTTP_<code>'), and TINYFISH_SEARCH_UNREADABLE for an
-    answer that is not a 200 with a results list (a queued 202, a changed shape): that is DEGRADED, never "nothing found"."""
+    """[{url,title,snippet,site_name}], possibly empty. Raises TinyFishError('TINYFISH_SEARCH_HTTP_<code>'), and
+    TINYFISH_SEARCH_UNREADABLE for an answer that is not a 200 with a results list (a queued 202, a changed shape):
+    that is DEGRADED, never "nothing found".
+    """
     wait = MIN_GAP_SECONDS - (time.monotonic() - _last[0])
     if wait > 0:
         time.sleep(wait)

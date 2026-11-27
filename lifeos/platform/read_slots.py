@@ -1,6 +1,4 @@
-"""LIFE-569: process-wide limits on how many reads of one kind are in flight at once, shared by every stage of a Jobs tick that runs side by side.
-
-Unconfigured (the default) a slot is a no-op, so nothing changes unless the tick configures it (the side-by-side runner always does). Stdlib only; no job knowledge."""
+"""Process-wide limits on how many reads of one kind are in flight at once. Unconfigured, a slot is a no-op."""
 import threading
 import time
 from contextlib import contextmanager
@@ -21,7 +19,7 @@ def slot(name):
         return
     began = time.monotonic()
     semaphore.acquire()
-    from lifeos.platform import stage_timing                                          # noqa: PLC0415 - LIFE-855: the wait counts toward the stage whose thread waited
+    from lifeos.platform import stage_timing  # noqa: PLC0415
     stage_timing.add_wait(time.monotonic() - began)
     try:
         yield

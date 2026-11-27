@@ -1,7 +1,8 @@
-"""LIFE-721: one policy-controlled read that two client identities call for the same Jira source. Pure, no network, no store, no cache.
+"""One policy-controlled read that two client identities call for the same Jira source.
 
-The caller never holds a credential: a grant names a credential (a NAME), and the injected `fetch` (the host broker side) is the only code that uses it. Order: validate, decide, write the receipt, then read; a receipt that cannot be written means no read.
-Fail closed with fixed words. Synthetic until the live proof in docs/platform/shared-read-acceptance.md runs."""
+Pure: no network, store or cache. Only the injected `fetch` (host broker side) uses a grant's credential. Validate,
+decide, write the receipt, then read: no receipt, no read.
+"""
 import hashlib
 import re
 from dataclasses import dataclass
@@ -9,19 +10,19 @@ from datetime import datetime, timedelta
 
 from lifeos.platform import access_policy
 
-TOOLS = {"jira.get_issue": ("jira", "read")}                                  # the closed list; a name outside it, or any write, is refused
-TENANTS = ("personal", "bytalos")                                            # TGP is excluded by design; anything else is refused
+TOOLS = {"jira.get_issue": ("jira", "read")}
+TENANTS = ("personal", "bytalos")
 MAX_AGE = timedelta(seconds=300)
-FIELDS = ("key", "summary", "status", "updated")                              # data minimization: nothing else leaves
+FIELDS = ("key", "summary", "status", "updated")
 SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
 
 
 @dataclass(frozen=True)
 class Session:
-    client: str           # claude-code | codex (a label for the receipt; identity is the principal)
-    principal: str        # 64 hex, the same key the access policy uses
+    client: str
+    principal: str
     tenant: str
-    trusted: bool         # set only by the host side after it authenticated the session
+    trusted: bool  # set only by the host side after it authenticated the session
 
 
 @dataclass(frozen=True)
@@ -31,15 +32,15 @@ class Grant:
     tenant: str
     account: str
     tool: str
-    credential_ref: str   # a NAME, never a value
+    credential_ref: str
     expires: datetime
     revoked: bool = False
 
 
 @dataclass(frozen=True)
 class Answer:
-    decision: str         # allow | deny
-    reason: str           # fixed word
+    decision: str
+    reason: str
     data: dict | None = None
 
 
@@ -48,7 +49,7 @@ def fingerprint(principal):
 
 
 def revoke(grants, client):
-    """A new tuple with every grant of `client` revoked; other clients and sources are untouched."""
+    """A new tuple with every grant of `client` revoked."""
     return tuple(Grant(**{**g.__dict__, "revoked": True}) if g.client == client else g for g in grants)
 
 
@@ -58,7 +59,9 @@ def _receipt(session, tool, request_id, outcome, reason, now, source_request_id=
 
 
 def read(session, tool, account, args, grants, policy, fetch, audit, now, request_id):
-    """`fetch(credential_ref, tool, args)` -> {"data": dict, "request_id": str, "fetched_at": datetime}. `audit(receipt)` raises when it cannot write. Never raises for a refused or failed read."""
+    """`fetch(credential_ref, tool, args)` -> {"data", "request_id", "fetched_at"}; `audit(receipt)` raises when it
+    cannot write. Never raises for a refused or failed read.
+    """
     def refuse(reason):
         _write(audit, _receipt(session, str(tool)[:40], request_id, "deny", reason, now))
         return Answer("deny", reason)
@@ -81,11 +84,11 @@ def read(session, tool, account, args, grants, policy, fetch, audit, now, reques
         return refuse("grant_revoked")
     if grant.expires <= now:
         return refuse("grant_expired")
-    _write(audit, _receipt(session, tool, request_id, "allow", "ok", now))                    # the receipt first: no receipt, no read
+    _write(audit, _receipt(session, tool, request_id, "allow", "ok", now))
     try:
         got = fetch(grant.credential_ref, tool, dict(args))
         data, source_id, at = got["data"], got["request_id"], got["fetched_at"]
-    except Exception:                                                                       # noqa: BLE001 - a connector failure is recorded by outcome only, never its message
+    except Exception:  # noqa: BLE001
         _write(audit, _receipt(session, tool, request_id, "error", "fetch_failed", now))
         return Answer("allow", "fetch_failed")
     age = now - at

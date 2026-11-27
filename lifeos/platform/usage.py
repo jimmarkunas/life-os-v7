@@ -1,19 +1,17 @@
-"""Hard spending/rate guard for TinyFish (Jim's wallet is $35 total and must never be used up).
+"""Hard spending and rate guard for TinyFish.
 
-Only the FREE Fetch API is ever called (see tinyfish.py: one endpoint, no paid code path). Free limits are
-150 URLs/min and 1,000 URLs/day; we stay under both with headroom and count pessimistically (every URL we SEND counts,
-success or failure). The daily count lives in Hostinger so it survives across hourly runs.
+Only the FREE Fetch API is called. Free limits are 150 URLs/min and 1,000 URLs/day; stay under both and count every
+URL sent.
 """
 from datetime import datetime, timezone
 import time
 
-FETCH_DAILY_CAP = 900        # of 1,000 free URLs per day
-FETCH_BATCH = 10             # API maximum per request
-MIN_SECONDS_PER_BATCH = 6    # 10 URLs / 6 s = 100 per minute, under the 150/min cap
+FETCH_DAILY_CAP = 900
+FETCH_BATCH = 10
+MIN_SECONDS_PER_BATCH = 6
 
 
 def granted(used, cap, wanted):
-    """How many of `wanted` URLs may be sent given `used` so far today."""
     return max(0, min(wanted, cap - used))
 
 
@@ -39,7 +37,6 @@ def reserve(connection, wanted):
 
 
 class Pacer:
-    """Keeps request batches at least MIN_SECONDS_PER_BATCH apart."""
 
     def __init__(self, clock=time.monotonic, sleep=time.sleep):
         self._clock, self._sleep, self._last = clock, sleep, None

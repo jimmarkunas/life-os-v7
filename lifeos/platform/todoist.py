@@ -1,6 +1,7 @@
-"""LIFE-757: minimal READ-ONLY Todoist client (stdlib only; platform: no product knowledge). GET requests only; there is no write method."""
-# Todoist API v1 (https://api.todoist.com/api/v1): a bearer token with the data:read scope, `GET /tasks` paged by `next_cursor`. This module has no create, update, close or delete call and its single
-# request path builds a GET; a test scans the source to keep it that way. Every error is a fixed code: never a URL, a token or a response body. A listing that cannot be proven complete raises.
+"""Minimal READ-ONLY Todoist client (stdlib only). GET requests only; there is no write method."""
+# Todoist API v1: a bearer token with data:read, `GET /tasks` paged by `next_cursor`. There is no write call and the
+# single request path builds a GET (a test scans the source to keep it so). Errors are fixed codes, never a URL, token
+# or body. A listing that cannot be proven complete raises.
 import time
 import urllib.parse
 import urllib.request
