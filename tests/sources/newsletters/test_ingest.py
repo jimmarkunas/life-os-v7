@@ -11,7 +11,7 @@ from tests.kit.gmail import FakeGmail
 
 
 def store_double():
-    """In-memory v7_jobs / v7_job_sources: a URL key is new once; no reposts in these fixtures."""
+    """In-memory v7_jobs / v7_job_sources: a URL key is new once"""
     db = {"jobs": set(), "sources": 0, "source_hashes": []}
 
     def handler(sql, args, cursor):
@@ -44,7 +44,9 @@ CARDS = {"m1": (JOBRIGHT, alert("v1", "v2"), NOW - 3600), "m2": ("someone@exampl
 
 
 class ExtractTests(unittest.TestCase):
-    """The extract mechanics (parse, save, mark Processed, stale and no-card handling), driven by the Jobright card layout; RetiredSenderTests below is Lensa (D201)."""
+    """The extract mechanics (parse, save, mark Processed, stale and no-card handling), driven by the Jobright card
+    layout
+    """
     def test_dry_run_counts_and_writes_nothing(self):
         gmail = FakeGmail(messages=CARDS)
         counts = ingest.extract(gmail, live=False, limit=10)
@@ -56,7 +58,7 @@ class ExtractTests(unittest.TestCase):
         first = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((first["new_jobs"], first["marked_processed"]), (2, 1))
         self.assertEqual(gmail.calls, [(["m1"], ["LBL"], [])])
-        second = ingest.extract(gmail, True, 10, conn)           # same links again: nothing new
+        second = ingest.extract(gmail, True, 10, conn)  # same links again: nothing new
         self.assertEqual((second["new_jobs"], second["repeat_links"]), (0, 2))
 
     def test_no_cards_message_stays_pending_and_stale_jobs_are_excluded(self):
@@ -80,7 +82,9 @@ class ExtractTests(unittest.TestCase):
 
 
 class RetiredSenderTests(unittest.TestCase):
-    """D201: Lensa mail still leaves the inbox, but it is closed out at once with its own Retired label (count retired_sender_lensa): no card is parsed, no job is written, and it never holds a pending slot."""
+    """Lensa mail still leaves the inbox, but it is closed out at once with its own Retired label (count
+    retired_sender_lensa): no card is parsed, no job is.
+    """
     def test_a_dry_run_counts_lensa_mail_as_retired_and_writes_nothing(self):
         gmail = FakeGmail(messages=MESSAGES)
         counts = ingest.extract(gmail, live=False, limit=10)
@@ -88,8 +92,9 @@ class RetiredSenderTests(unittest.TestCase):
         self.assertEqual(gmail.calls, [])
 
     def test_live_labels_lensa_mail_retired_never_processed_and_finalize_never_sees_it(self):
-        """Over the stateful mailbox and the real store: Processed means every card was saved (finalize then closes it Done), so retired mail
-        must carry its own label instead, leave the pending query, and stay out of finalize, reconcile and the repair."""
+        """Over the stateful mailbox and the real store: Processed means every card was saved (finalize then closes it
+        Done), so retired mail must carry its own.
+        """
         from lifeos.sources.newsletters import finalize
         from tests.jobs.support import Mailbox
         from tests.jobs.fakes_jobsdb import JobsDB
@@ -98,9 +103,9 @@ class RetiredSenderTests(unittest.TestCase):
         counts = ingest.extract(box, True, 10, db)
         self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"], counts["new_jobs"]), (1, 1, 0, 0))
         self.assertEqual(box.labels["l1"] & {"j-newsletters-retired", "j-newsletters-processed", "j-newsletters-done"}, {"j-newsletters-retired"})
-        self.assertEqual(box.list_ids(config.PENDING_QUERY), [])                   # it holds no pending slot on the next run
+        self.assertEqual(box.list_ids(config.PENDING_QUERY), [])  # it holds no pending slot on the next run
         self.assertEqual((box.list_ids(config.FINALIZE_QUERY), box.list_ids(config.RECONCILE_QUERY)), ([], []))
-        self.assertEqual(ingest.extract(box, True, 10, db)["marked_retired"], 0)    # a second run finds nothing to do
+        self.assertEqual(ingest.extract(box, True, 10, db)["marked_retired"], 0)  # a second run finds nothing to do
         finalize.finalize(box, True, 10, lambda: db)
         self.assertNotIn("j-newsletters-done", box.labels["l1"])
 
@@ -110,7 +115,7 @@ class RetiredSenderTests(unittest.TestCase):
 
 
 class SourceAccountingTests(unittest.TestCase):
-    """LIFE-64: every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
+    """every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
     def world(self, **mails):
         from tests.jobs.support import Mailbox, alert
         from tests.jobs.fakes_jobsdb import JobsDB
@@ -132,7 +137,7 @@ class SourceAccountingTests(unittest.TestCase):
         self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"]), (3, 1, 0))
         cursor = db.cursor()
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
-        self.assertEqual(finalize.blockers(db, ["m1", "m2"]), {"m1": "in_flight", "m2": "in_flight"})   # v2 is unfinished in BOTH mails
+        self.assertEqual(finalize.blockers(db, ["m1", "m2"]), {"m1": "in_flight", "m2": "in_flight"})  # v2 is unfinished in BOTH mails
 
     def test_a_mail_whose_cards_were_all_seen_before_still_has_its_rows_and_a_replay_adds_none(self):
         box, db = self.world(m1=("v1", "v2"), m2=("v1", "v2"))
@@ -154,14 +159,14 @@ class SourceAccountingTests(unittest.TestCase):
         cursor.execute("SELECT COUNT(*) FROM v7_job_sources WHERE job_id IS NULL")
         self.assertEqual(cursor.fetchone()[0], 1)
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
-        self.assertEqual(finalize.blockers(db, ["m1"]), {})                    # suppressed on purpose: accounted, not in flight
+        self.assertEqual(finalize.blockers(db, ["m1"]), {})  # suppressed on purpose: accounted, not in flight
 
     def partial_world(self):
-        """Mail saved by the old code: m2's repeat of v2 has no row of its own. Both are Processed; both are Done only if the test says so."""
+        """Mail saved by the old code: m2's repeat of v2 has no row of its own."""
         box, db = self.world(m1=("v1", "v2"), m2=("v2", "v3"))
         parse = ingest.PARSERS["jobright"]
         ingest.save_cards(db, "jobright", "m1", parse(box.messages["m1"][1]), time.time())
-        ingest.save_cards(db, "jobright", "m2", parse(box.messages["m2"][1])[1:], time.time())      # only v3: what the old code left (v2 collided with m1)
+        ingest.save_cards(db, "jobright", "m2", parse(box.messages["m2"][1])[1:], time.time())
         for labels in box.labels.values():
             labels.add("j-newsletters-processed")
         return box, db
@@ -172,25 +177,27 @@ class SourceAccountingTests(unittest.TestCase):
         counts = ingest.reconcile(box, lambda: db, 50)
         self.assertEqual((counts["checked"], counts["recovered_messages"], counts["recovered_jobs"]), (2, 1, 0))
         self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
-        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["recovered_messages"], 0)                    # idempotent
+        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["recovered_messages"], 0)  # idempotent
 
     def test_reconcile_reopens_done_mail_with_a_vacancy_unfinished_and_leaves_finished_mail_done(self):
         box, db = self.partial_world()
         for labels in box.labels.values():
             labels.add("j-newsletters-done")
         cursor = db.cursor()
-        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))      # v2 stays NEW: in flight in both mails
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))  # v2 stays NEW: in flight in both mails
         counts = ingest.reconcile(box, lambda: db, 50)
         self.assertEqual(counts["reopened"], 2)
         self.assertTrue(all("j-newsletters-done" not in box.labels[i] for i in ("m1", "m2")))
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
         for labels in box.labels.values():
             labels.add("j-newsletters-done")
-        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["reopened"], 0)                              # everything finished: stays Done
+        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["reopened"], 0)  # everything finished: stays Done
         self.assertTrue(all("j-newsletters-done" in box.labels[i] for i in ("m1", "m2")))
 
     def test_reconcile_holds_no_connection_while_it_reads_mail(self):
-        """The first live run lost its idle connection: reading the window's mail takes over a minute, so the store is opened only to read the row counts and to write."""
+        """The first live run lost its idle connection: reading the window's mail takes over a minute, so the store is
+        opened only to read the row counts and to.
+        """
         box, db = self.partial_world()
         for labels in box.labels.values():
             labels.add("j-newsletters-done")
@@ -210,7 +217,7 @@ class SourceAccountingTests(unittest.TestCase):
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
         counts = ingest.reconcile(box, Tracked, 50)
         self.assertEqual((counts["checked"], counts["recovered_messages"], counts["reopened"]), (2, 1, 2))
-        self.assertEqual(read_while_open, [0, 0])                                        # both messages were read with no connection open
+        self.assertEqual(read_while_open, [0, 0])  # both messages were read with no connection open
         self.assertEqual(open_now[0], 0)
 
 
@@ -219,8 +226,9 @@ if __name__ == "__main__":
 
 
 class MissingLabelTests(unittest.TestCase):
-    """M5 (run 39143395726): a dry run moves nothing, so it must not need a label only a live move uses (J Newsletters/Retired did not exist yet);
-    a live run creates the label it needs. The mailbox answers like the real client: an unknown label is an error unless it is created."""
+    """M5 (run 39143395726): a dry run moves nothing, so it must not need a label only a live move uses (J
+    Newsletters/Retired did not exist yet)
+    """
 
     class Box(FakeGmail):
         def __init__(self, labels, **kw):
@@ -250,14 +258,14 @@ class MissingLabelTests(unittest.TestCase):
         box.label_id = lambda name, create=False: looked.append(name) or name
         counts = ingest.extract(box, live=False, limit=10)
         self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"]), (1, 0, 0))
-        self.assertEqual((looked, box.created, box.calls), ([], [], []))           # zero mutation: no label read, created or applied
+        self.assertEqual((looked, box.created, box.calls), ([], [], []))  # zero mutation: no label read, created or applied
 
     def test_a_live_run_uses_a_preexisting_retired_label_without_creating_it(self):
         retired_only = {k: v for k, v in MESSAGES.items() if config.classify(v[0]) in config.RETIRED_SENDERS}
         box = self.Box({config.PROCESSED_LABEL, config.RETIRED_LABEL}, messages=retired_only)
         counts = ingest.extract(box, live=True, limit=10)
         self.assertEqual((counts["marked_retired"], counts["marked_processed"], box.created), (1, 0, []))
-        self.assertEqual(box.calls, [(list(retired_only), [config.RETIRED_LABEL], [])])     # Retired only, never Processed (D201)
+        self.assertEqual(box.calls, [(list(retired_only), [config.RETIRED_LABEL], [])])  # Retired only, never Processed
 
     def test_a_live_run_creates_the_missing_retired_label_and_uses_it(self):
         retired_only = {k: v for k, v in MESSAGES.items() if config.classify(v[0]) in config.RETIRED_SENDERS}

@@ -1,5 +1,6 @@
-"""LIFE-46 E07: accepted and cancelled Calendar events move the SAME round page in place (production-shaped fake): Interview 1 in
-Scheduling Pending is dated, a dated round is rescheduled or cancelled only by its own recorded event reference."""
+"""E07: accepted and cancelled Calendar events move the SAME round page in place (production-shaped fake): Interview 1 in
+Scheduling Pending is dated, a.
+"""
 import unittest
 from unittest.mock import patch
 from lifeos.interview import create, notion, stage
@@ -39,7 +40,7 @@ def snapshot(client, child):
 class Confirm(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_the_pending_round_is_dated_in_place_with_its_event_reference_and_nothing_else_is_created(self):
@@ -47,12 +48,12 @@ class Confirm(unittest.TestCase):
         posts, notes = len(client.posts), notion.protected_snapshot(client, child, "round")
         result = move(client, child)
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_confirmed")), (1, 1, 1))
-        self.assertEqual(len(client.posts), posts)                                   # no new page
+        self.assertEqual(len(client.posts), posts)  # no new page
         (dated,) = notion.child_scan(client, parent).items
         self.assertEqual((dated.page_id, dated.interview_date, dated.ordinal, dated.interviewer, dated.identity_valid), (child, DATE, 1, None, True))
-        self.assertEqual(texts(client, child + "-block-0")[1], create.identity_text(RoundQuery(True, DATE, None, 1)))   # still the v1 line
+        self.assertEqual(texts(client, child + "-block-0")[1], create.identity_text(RoundQuery(True, DATE, None, 1)))  # still the v1 line
         self.assertEqual(create.round_calendar(client, child), (REF, False))
-        self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)     # Live and Raw Notes untouched
+        self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)  # Live and Raw Notes untouched
         self.assertIn(f"{DATE} · accepted Calendar invite", snapshot(client, child))
         self.assertNotIn("Scheduling Pending", snapshot(client, child))
 
@@ -70,7 +71,7 @@ class Confirm(unittest.TestCase):
         self.assertEqual({k: [dict(b) for b in v] for k, v in client.blocks.items()}, before)
 
     def test_a_human_edit_in_a_machine_block_is_repaired_not_a_stop(self):
-        """LIFE-658: the edit is preserved and the round is dated (details in tests/interview/test_repair.py)."""
+        """the edit is preserved and the round is dated (details in tests/interview/test_repair.py)."""
         client, _, child = pending_round()
         client.blocks[client.blocks[child][1]["id"]][1]["paragraph"]["rich_text"] = [{"plain_text": "When: Jim wrote this"}]
         result = move(client, child)
@@ -119,7 +120,7 @@ class Confirm(unittest.TestCase):
 class Reschedule(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def dated(self):
@@ -147,7 +148,7 @@ class Reschedule(unittest.TestCase):
 class Cancel(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_a_cancelled_event_marks_its_round_cancelled_and_keeps_its_date_and_identity(self):
@@ -157,7 +158,7 @@ class Cancel(unittest.TestCase):
         result = move(client, child, cancelled=True)
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_cancelled")), (1, 1, 1))
         (round_,) = notion.child_scan(client, parent).items
-        self.assertEqual((round_.interview_date, round_.ordinal, round_.identity_valid), (DATE, 1, True))      # LIFE-43: still one valid machine child
+        self.assertEqual((round_.interview_date, round_.ordinal, round_.identity_valid), (DATE, 1, True))  # still one valid machine child
         self.assertEqual(create.round_calendar(client, child), (REF, True))
         self.assertIn(f"Cancelled {DATE}", snapshot(client, child))
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
@@ -177,7 +178,7 @@ class Cancel(unittest.TestCase):
 class Life43(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_every_state_reads_as_the_same_valid_machine_identity(self):
@@ -185,7 +186,7 @@ class Life43(unittest.TestCase):
         for step in ({}, {"date": LATER}, {"date": LATER, "cancelled": True}):
             move(client, child, **step)
             (found,) = notion.child_scan(client, parent).items
-            self.assertEqual((found.page_id, found.identity_valid, found.ordinal), (child, True, 1), step)   # J1C's progression signal stays TRUE
+            self.assertEqual((found.page_id, found.identity_valid, found.ordinal), (child, True, 1), step)  # J1C's progression signal stays TRUE
 
 
 if __name__ == "__main__":
@@ -193,7 +194,9 @@ if __name__ == "__main__":
 
 
 class CarriedOver(unittest.TestCase):
-    """LIFE-931: callouts copied by hand from a human's older notes page (interviewers, time, transcript link) survive every hourly refresh."""
+    """callouts copied by hand from a human's older notes page (interviewers, time, transcript link) survive every hourly
+    refresh.
+    """
 
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store
@@ -201,7 +204,7 @@ class CarriedOver(unittest.TestCase):
         self.addCleanup(_stop)
 
     def carry(self, client, prefixes):
-        """Overwrite each paragraph that starts with a prefix with a carried-over line; -> {prefix: (block id, new text)}."""
+        """Overwrite each paragraph that starts with a prefix with a carried-over line"""
         kept = {}
         for blocks in client.blocks.values():
             for b in blocks:
@@ -225,7 +228,7 @@ class CarriedOver(unittest.TestCase):
         result = move(client, child, date=LATER)
         self.assertEqual((result["why"].get("round_rescheduled"), result["readback_ok"], result.get("repaired_edits", 0)), (1, 1, 0))
         self.assertEqual(self.read(client, kept), {p: t for p, (_, t) in kept.items()})
-        self.assertIn(f"{LATER} · accepted Calendar invite", snapshot(client, child))      # the uncarried lines still move
+        self.assertIn(f"{LATER} · accepted Calendar invite", snapshot(client, child))  # the uncarried lines still move
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
         self.assertEqual(create.round_calendar(client, child), (REF, False))
 

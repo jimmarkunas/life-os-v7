@@ -1,4 +1,4 @@
-"""LIFE-42: progression is fail-closed, and a replayed real-shaped invite writes nothing through the existing writer."""
+"""progression is fail-closed, and a replayed real-shaped invite writes nothing through the existing writer."""
 import json
 import os
 import unittest
@@ -10,7 +10,7 @@ from lifeos.run import STAGES
 from tests.interview.test_create import WritableFake
 from tests.interview.test_notion import ENV, block, page
 
-# Shape of the production agency-invite case: agency invite, no requisition, no Ledger row, one existing machine round.
+# Shape of the production agency-invite case: agency invite, no requisition, no Ledger row, one existing.
 REAL_SHAPE = Invite("Example Rides", "Technical Project Manager", "2026-09-28", ordinal=1)
 
 
@@ -36,7 +36,7 @@ class Progress(unittest.TestCase):
         self.assertEqual(result.round, RoundQuery(True, "2026-09-28", None, 1))
 
     def test_round_identity_needs_date_and_interviewer_or_ordinal(self):
-        self.assertEqual(progress(Invite("Example Rides", "Program Lead", None, ordinal=1)).code, "request_source_missing")   # LIFE-42: no date is Scheduling Pending, which needs the request
+        self.assertEqual(progress(Invite("Example Rides", "Program Lead", None, ordinal=1)).code, "request_source_missing")
         self.assertEqual(progress(Invite("Example Rides", "Program Lead", None, ordinal=2)).code, "round_date_missing")
         self.assertEqual(progress(Invite("Example Rides", "Program Lead", "2026-9-29", ordinal=1)).code, "round_date_missing")
         self.assertEqual(progress(Invite("Example Rides", "Program Lead", "2026-09-28")).code, "round_identity_incomplete")

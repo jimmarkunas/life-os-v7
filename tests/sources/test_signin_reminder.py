@@ -1,4 +1,4 @@
-"""LIFE-993: the sign-in renewal reminder: one styled inbox item per profile per expiry, three days ahead or once lapsed."""
+"""the sign-in renewal reminder: one styled inbox item per profile per expiry, three days ahead or once lapsed."""
 import unittest
 from datetime import datetime, timezone
 
@@ -6,7 +6,7 @@ from lifeos.platform import agent_inbox
 from lifeos.sources.cards import oracle_card, signin_reminder
 
 NOW = datetime(2026, 11, 27, 0, 0, tzinfo=timezone.utc)
-METER, FIT = "2026-11-29T04:35:00+00:00", "2026-11-29T19:01:00+00:00"          # Sat 10:35 PM CT, Sun 1:01 PM CT
+METER, FIT = "2026-11-29T04:35:00+00:00", "2026-11-29T19:01:00+00:00"  # Sat 10:35 PM CT, Sun 1:01 PM CT
 
 
 class Plan(unittest.TestCase):

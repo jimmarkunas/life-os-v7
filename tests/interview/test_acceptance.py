@@ -123,17 +123,17 @@ class WorkflowWiring(unittest.TestCase):
         self.assertRegex(self.text, r"interview_acceptance:\n(?:.*\n)*?\s+default: false")
 
     def test_secret_is_step_scoped_and_used_once(self):
-        self.assertEqual(self.text.count("secrets.INTERVIEW_ACCEPTANCE_JSON"), 0)        # LIFE-699: not a GitHub secret any more
-        self.assertEqual(self.text.count("steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON"), 1)   # it arrives as the interview loader's masked output, used by this one step
+        self.assertEqual(self.text.count("secrets.INTERVIEW_ACCEPTANCE_JSON"), 0)  # not a GitHub secret any more
+        self.assertEqual(self.text.count("steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON"), 1)
         self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON }}", self.step())
-        self.assertNotIn("INTERVIEW_ACCEPTANCE_JSON:", self.text[:self.text.index("\njobs:")])   # never workflow-level env
+        self.assertNotIn("INTERVIEW_ACCEPTANCE_JSON:", self.text[:self.text.index("\njobs:")])  # never workflow-level env
 
     def test_job_gate_cannot_run_for_schedule_and_jobs_credentials_stay_blank(self):
         job = self.job()
         self.assertIn("github.event_name == 'workflow_dispatch'", job.split("runs-on")[0])
         for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "FIT_PROFILE_JSON"):
             self.assertIn(f'{name}: ""', job)
-        self.assertEqual(len([m for m in re.findall(r"secrets\.\w+", job) if m != "secrets.DOPPLER_TOKEN"]), 3)   # LIFE-699: 4 (was 8; the Notion ids map is declared empty now too): the Ledger id (3 steps) is declared empty for the V7 settings page to fill, not read from GitHub.   # LIFE-704: + the bootstrap token for the plain-switch loader step; LIFE-859: + the same token for the address loader.   # LIFE-541: the retry reuses the load's block by YAML alias, so the bootstrap token appears once (was 8). LIFE-360 (Jim, Nov 7): + the Ledger id for the Interview stage step; LIFE-338: + the Notion ids secret; the Bitwarden bootstrap token in the load and its one retry (D209), the acceptance case and the Ledger id for its read (D231), the negative case and its Ledger id (D233)
+        self.assertEqual(len([m for m in re.findall(r"secrets\.\w+", job) if m != "secrets.DOPPLER_TOKEN"]), 3)  # 4 (was 8)
 
     def test_command_never_embeds_the_case(self):
         step = self.step()

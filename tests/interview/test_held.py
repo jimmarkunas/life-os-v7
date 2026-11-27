@@ -1,4 +1,4 @@
-"""LIFE-958: a Held round never asks to verify scheduling; a recruiter screen is its own round type; a retired opportunity's rounds are Retired."""
+"""a Held round never asks to verify scheduling"""
 import unittest
 
 from lifeos.interview import held, notion, roster
@@ -57,7 +57,7 @@ class HeldNextAction(unittest.TestCase):
         code, counts = run_roster(client, UBER)
         self.assertEqual((code, counts["held_repaired"]), ("roster_synced", 1))
         self.assertEqual(client.edits, [("next", "Next action: Send Hannah a short note offering two times for the coordination call")])
-        self.assertEqual(client.blocks["snap"][2]["paragraph"]["rich_text"][0]["annotations"], {"bold": True})            # the bold label is kept
+        self.assertEqual(client.blocks["snap"][2]["paragraph"]["rich_text"][0]["annotations"], {"bold": True})  # the bold label is kept
 
     def test_no_follow_up_reads_none_and_the_owed_line_counts_only_when_it_holds_a_value(self):
         for after, want in (([], "None"), ([text("Follow-up owed / due: Unverified; no task or deadline is created from this page.")], "None"),
@@ -126,7 +126,7 @@ class RetiredOpportunity(unittest.TestCase):
         retired = [(Parent("p1", "Uber - Technical Project Manager", False), UBER[0][1])]
         run_roster(client, retired)
         self.assertEqual(cell(client.rows[0], "Status"), "Retired")
-        self.assertEqual(client.edits, [])                                                       # a retired opportunity's page is not repaired
+        self.assertEqual(client.edits, [])  # a retired opportunity's page is not repaired
         run_roster(client, UBER)
         self.assertEqual(cell(client.rows[0], "Status"), "Held")
 

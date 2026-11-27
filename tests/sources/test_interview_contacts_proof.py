@@ -1,9 +1,10 @@
-"""LIFE-88 E10 synthetic QA (lifeos/sources/proofs/interview_contacts_proof.py), run exactly as the manual interview-proof dispatch runs it (confirm = E10), on the production-shaped fakes:
-the Interview pages on the journey's Notion fake and the sandbox Job Ledger as a Notion data source on the same client."""
+"""E10 synthetic QA (lifeos/sources/proofs/interview_contacts_proof.py), run exactly as the manual interview-proof
+dispatch runs it (confirm = E10), on.
+"""
 import os
 from lifeos.interview import notion as _notion
 from lifeos.platform import full_width as _full_width
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages come from the Full Width template; the fakes apply it at once
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # pages come from the Full Width template
 _notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import copy
 import json
@@ -35,14 +36,14 @@ def bullet(text, block_id):
 
 
 class E10Workspace(QAWorkspace):
-    """The QA workspace plus what Notion does for a Ledger row: it is a page with a body. The production Walmart row and Smith page exist (read only)."""
+    """The QA workspace plus what Notion does for a Ledger row: it is a page with a body."""
     def __init__(self, refuse_databases=False, with_production=True):
         super().__init__(refuse_databases)
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}                                  # noqa: E731
         if with_production:
             self.pages[LEDGER_ROW] = {"id": LEDGER_ROW, "properties": {"Company": rich("ExampleMart"), "Job": {"type": "title", "title": [{"plain_text": "Senior Manager, Operations"}]},
                                                                      "Stable Job Key": rich("examplemart-ops-1")}}
-            self.blocks[LEDGER_ROW] = []                                                                                 # as production: the Ledger row has no body
+            self.blocks[LEDGER_ROW] = []  # as production: the Ledger row has no body
             self.pages[proof.WALMART_PAGE] = {"id": proof.WALMART_PAGE, "properties": {}}
             self.blocks[proof.WALMART_PAGE] = [heading("Job Description — Source-Grounded Summary", "w0"), bullet("Lead the operations and implementation teams.", "w1"),
                                                bullet("Own delivery across stores.", "w2"), heading("Interview Brief", "w3"), para("Not job description.", "w4")]
@@ -55,7 +56,7 @@ class E10Workspace(QAWorkspace):
         if method == "POST" and path == "/pages" and body["parent"].get("type") == "data_source_id":
             self.blocks.setdefault(out["id"], [])
         if method == "PATCH" and path.startswith("/blocks/") and not path.endswith("/children") and "to_do" in (body or {}):
-            self.find(path.split("/")[2])["to_do"]["checked"] = bool(body["to_do"].get("checked"))                     # as Notion keeps a ticked box
+            self.find(path.split("/")[2])["to_do"]["checked"] = bool(body["to_do"].get("checked"))  # as Notion keeps a ticked box
         return out
 
 
@@ -73,9 +74,9 @@ class E10Proof(unittest.TestCase):
         self.assertEqual(counts["failed"], 0, json.dumps(counts["assertions"], indent=1))
         self.assertEqual(counts["passed"], 19)
         self.assertEqual(counts["pages"], 5)
-        self.assertEqual(production, copy.deepcopy((client.pages[LEDGER_ROW], client.blocks[LEDGER_ROW], client.pages[SMITH], client.blocks[SMITH], client.blocks[proof.WALMART_PAGE])))   # read only
+        self.assertEqual(production, copy.deepcopy((client.pages[LEDGER_ROW], client.blocks[LEDGER_ROW], client.pages[SMITH], client.blocks[SMITH], client.blocks[proof.WALMART_PAGE])))  # read only
         (container,) = [b for b in client.blocks[QA_PARENT] if b.get("type") == "child_page"]
-        self.assertTrue(container["child_page"]["title"].endswith("(SYNTHETIC, QA-only)"))                                                            # one fresh sandbox, labelled
+        self.assertTrue(container["child_page"]["title"].endswith("(SYNTHETIC, QA-only)"))  # one fresh sandbox, labelled
         outside = {p["parent"].get("page_id") for p in client.posts} - {QA_PARENT}
         self.assertNotIn(LEDGER_ROW, outside)
         self.assertNotIn(SMITH, outside)
@@ -85,7 +86,7 @@ class E10Proof(unittest.TestCase):
         text = json.dumps(client.blocks)
         for name in ("Avery Synthetic", "Blake Synthetic", "Casey Synthetic"):
             self.assertIn(name, text)
-        self.assertIn("verify first", text)                                                                                       # the stale one says so
+        self.assertIn("verify first", text)  # the stale one says so
         self.assertEqual(counts["assertions"]["2a positive: the LinkedIn Contacts table shows exactly the three fictional contacts with their relevance lines"], "PASS")
         self.assertEqual(counts["assertions"]["7c positive: the refreshed table shows only the two undismissed contacts"], "PASS")
 

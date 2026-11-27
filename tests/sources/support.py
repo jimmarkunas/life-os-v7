@@ -1,4 +1,4 @@
-"""LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+"""test helpers that more than one test module (often in another domain) uses."""
 from tests.interview.support import ENV
 from lifeos.sources.interview import interview_evidence as ev
 from datetime import datetime
@@ -47,7 +47,9 @@ NOW = datetime(2026, 10, 21, 12, tzinfo=ev.TZ)
 
 
 class Ledger:
-    """The Job Ledger, keyed like the real one: the target check, an exact Stable Job Key lookup, one create and its read-back."""
+    """The Job Ledger, keyed like the real one: the target check, an exact Stable Job Key lookup, one create and its
+    read-back.
+    """
     source = "ledger-source"
 
     def __init__(self):
@@ -74,7 +76,8 @@ class Ledger:
 
 
 class NotionLike(WritableFake):
-    """The production-shaped fake, plus what Notion itself adds on read: every rich-text run carries its plain_text."""
+    """The production-shaped fake, plus what Notion itself adds on read: every rich-text run carries its plain_text.
+    """
     def register(self, prefix, items, depth=0):
         out = super().register(prefix, items, depth)
         for item in out:
@@ -84,15 +87,15 @@ class NotionLike(WritableFake):
 
 
 class JourneyFixture:
-    """The Interview journey harness: a fake Notion, a Job Ledger and one natural run of the Interview step. Shared by the Journey tests and the Through tests (another domain)."""
+    """The Interview journey harness: a fake Notion, a Job Ledger and one natural run of the Interview step."""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _db, _stop = claim_store()
         self.addCleanup(_stop)
         self.notion, self.ledger, self.events, self.recruiters = NotionLike(), Ledger(), [], None
         self.human = [dict(b) for b in self.notion.blocks["human"]]
-        made = self.ledger.create                                       # LIFE-361: one Job Ledger: the row the lead writer makes is the row the Interview step finds
+        made = self.ledger.create
         def create(props, blocks):
             pid = made(props, blocks)
             row = self.ledger.rows[pid]
@@ -101,15 +104,17 @@ class JourneyFixture:
         self.ledger.create = create
 
     def tick(self, *records):
-        """One natural run of the Interview step, exactly as the runner calls it, with the mailbox and Calendar as they are now."""
+        """One natural run of the Interview step, exactly as the runner calls it, with the mailbox and Calendar as they
+        are now.
+        """
         calendar = type("Calendar", (), {"list_events": lambda s, a, b: [e for e in self.events if e.get("status") != "cancelled"],
                                          "request": lambda s, m, p, params=None: {"items": list(self.events)}})()
-        with patch.object(ev.pipeline, "read_applied", return_value=[]), patch.object(create, "today", lambda: NOW.date().isoformat()):   # the page's "today" is the journey's NOW, never the wall clock
+        with patch.object(ev.pipeline, "read_applied", return_value=[]), patch.object(create, "today", lambda: NOW.date().isoformat()):
             return ev.run(20, True, environ=LIVE, client=self.notion, calendar=calendar, now=NOW, ledger=object(), records=list(records),
                           ledger_rows=self.ledger.for_company, writer=self.ledger, recruiters=self.recruiters)
 
     def settle(self, *records):
-        """Ticks until a tick writes nothing (each opportunity takes at most one write per tick); -> every tick's counts."""
+        """Ticks until a tick writes nothing (each opportunity takes at most one write per tick)"""
         ticks = [self.tick(*records)]
         while ticks[-1]["writes"] and len(ticks) < 6:
             ticks.append(self.tick(*records))
@@ -127,6 +132,8 @@ class JourneyFixture:
         return "\n".join(walk(page_id))
 
     def pages(self):
-        """The opportunities this journey made (the fake pipeline also holds one human page, "Legacy — Manager", which must stay untouched)."""
-        scan = notion.parents(self.notion, LIVE)                        # LIFE-361: an opportunity is its Ledger row
+        """The opportunities this journey made (the fake pipeline also holds one human page, 'Legacy — Manager', which
+        must stay untouched).
+        """
+        scan = notion.parents(self.notion, LIVE)  # an opportunity is its Ledger row
         return [(p, notion.child_scan(self.notion, p.page_id).items) for p in scan.items if p.active and p.page_id != "human"]

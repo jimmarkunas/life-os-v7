@@ -1,5 +1,4 @@
-"""LIFE-88 E01-E16 release gate (comment 10895). e2e_gate.json is the machine-readable status: every cited test must exist and not be skipped,
-a PASS needs tests and no gap, anything short of PASS names its gap, and CI never sets a live state."""
+"""E01-E16 release gate (comment 10895)."""
 import importlib
 import json
 import pathlib
@@ -31,7 +30,7 @@ class Gate(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(item["machine"], ("PASS", "PARTIAL", "PENDING", "DEGRADED"))
                 self.assertEqual(item["machine"] == "PASS", bool(item["tests"]) and not item["missing"])
-                self.assertEqual(item["live"], "PENDING")          # set only from a real run, read-back and Jim's review in LIFE-88, never here
+                self.assertEqual(item["live"], "PENDING")
 
     def test_full_end_to_end_is_not_claimed_while_any_outcome_is_short(self):
         if any(item["machine"] != "PASS" for key, item in GATE.items() if key != "E16"):

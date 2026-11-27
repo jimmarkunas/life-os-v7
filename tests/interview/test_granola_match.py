@@ -3,7 +3,7 @@ import unittest
 from lifeos.interview import granola_match as gm
 
 def addr(user, domain):
-    return user + "@" + domain                  # built, not written out: the privacy guard bans literal addresses outside its allowlist
+    return user + "@" + domain
 
 
 ROW = gm.Round("page-1", "2026-10-13", "Becton Dickinson", "Senior Technical Program Manager", "Dana Reyes", "REQ-4471", "bd.com", "insightglobal.com")
@@ -15,8 +15,8 @@ def meeting(mid="m1", start="2026-10-13T17:30:00Z", title="", description="", at
 
 class CentralDay(unittest.TestCase):
     def test_a_late_evening_central_meeting_is_still_that_central_day(self):
-        self.assertEqual(gm.central_day("2026-10-14T02:30:00Z"), "2026-10-13")        # 9:30 PM CDT
-        self.assertEqual(gm.central_day("2026-10-13T17:30:00Z"), "2026-10-13")        # 12:30 PM CDT
+        self.assertEqual(gm.central_day("2026-10-14T02:30:00Z"), "2026-10-13")  # 9:30 PM CDT
+        self.assertEqual(gm.central_day("2026-10-13T17:30:00Z"), "2026-10-13")  # 12:30 PM CDT
 
     def test_missing_or_naive_times_are_none(self):
         self.assertIsNone(gm.central_day(""))
@@ -33,7 +33,7 @@ class Reasons(unittest.TestCase):
     def test_requisition_or_two_role_words(self):
         self.assertEqual(gm.reasons(meeting(description="Re REQ-4471"), ROW), {"role"})
         self.assertEqual(gm.reasons(meeting(title="Technical Program chat"), ROW), {"role"})
-        self.assertEqual(gm.reasons(meeting(title="Program chat"), ROW), set())            # one word is too weak
+        self.assertEqual(gm.reasons(meeting(title="Program chat"), ROW), set())  # one word is too weak
 
     def test_interviewer_by_name_or_email(self):
         self.assertEqual(gm.reasons(meeting(attendees=["Dana Reyes"]), ROW), {"interviewer"})

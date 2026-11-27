@@ -1,4 +1,4 @@
-"""LIFE-37: the Granola transcript contract (lifeos/interview/transcript.py), synthetic data only; no live data or credentials."""
+"""the Granola transcript contract (lifeos/interview/transcript.py), synthetic data only"""
 import json
 import unittest
 from lifeos.interview.transcript import ContractError, normalize_granz

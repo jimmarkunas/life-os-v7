@@ -1,4 +1,4 @@
-"""LIFE-46: the accepted UI 3b opportunity parent and the one-time `LIFE OS: adopt` of Jim's own page."""
+"""the accepted UI 3b opportunity parent and the one-time `LIFE OS: adopt` of Jim's own page."""
 import copy
 import json
 import unittest
@@ -55,7 +55,7 @@ def depth(items, level=0):
 class OpportunityTemplateTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_jim_notes_region_runs_to_the_end_and_rounds_never_touch_it(self):
@@ -65,7 +65,7 @@ class OpportunityTemplateTests(unittest.TestCase):
         blocks += [block("My own heading", "heading_2", "mine-h"), block("my private note", id="mine")]
         before = notion.protected_snapshot(client, parent_id, "opportunity")
         self.assertIsNotNone(before)
-        self.assertIsNone(notion.protected_snapshot(client, parent_id))   # a round page still needs Live Notes + Raw Notes
+        self.assertIsNone(notion.protected_snapshot(client, parent_id))  # a round page still needs Live Notes + Raw Notes
         result = run(client, parent=PARENT, query=ROUND)
         self.assertEqual((result["rounds_created"], result["readback_ok"]), (1, 1))
         self.assertEqual(client.blocks[parent_id][-1]["type"], "child_page")
@@ -77,7 +77,7 @@ class OpportunityTemplateTests(unittest.TestCase):
         client = WritableFake()
         parent_id = machine_parent(client)
         run(client, parent=PARENT, query=ROUND)
-        for page_id in (parent_id, "created-2"):                                # unfold: the two lines as plain paragraphs
+        for page_id in (parent_id, "created-2"):  # unfold: the two lines as plain paragraphs
             fold = client.blocks[page_id].pop(0)
             client.blocks[page_id][0:0] = client.blocks.pop(fold["id"])
         self.assertEqual(notion.text(client.blocks["created-2"][0]), notion.MARKERS["round"])
@@ -92,10 +92,9 @@ class OpportunityTemplateTests(unittest.TestCase):
 
 
 class LegacyRoundTests(unittest.TestCase):
-    """Jim (Oct 21): for the pursuits he named, a hand-made round page's title ("Interview 1: Name (9/10/26)") is explicit evidence of its number and date."""
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def client(self):
@@ -115,7 +114,7 @@ class LegacyRoundTests(unittest.TestCase):
         self.assertTrue([t for t in self.texts(client) if "Interview 1 date passed" in t])
         self.assertEqual(client.blocks["kid1"], [block("Jim's interview notes", id="k1")])
         self.assertFalse([p for p, _ in client.patches if "kid1" in p or "k1" in p])
-        self.assertEqual(client.posts, [])                                      # no round page is created for an interview that already has one
+        self.assertEqual(client.posts, [])
 
     def test_an_unnamed_pursuit_never_reads_titles(self):
         client = self.client()
@@ -127,7 +126,7 @@ class LegacyRoundTests(unittest.TestCase):
 class AdoptTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_dry_run_reports_and_never_writes(self):
@@ -143,24 +142,24 @@ class AdoptTests(unittest.TestCase):
         result = run(client)
         self.assertEqual((result["writes"], result["parents_adopted"], result["readback_ok"], result["blocked"]), (1, 1, 1, 0))
         self.assertEqual(result["why"], {"parent_adopted": 1})
-        self.assertEqual(client.posts, [])                                     # no round in the adoption run
+        self.assertEqual(client.posts, [])  # no round in the adoption run
         writes = [c for c in client.calls if c[0] != "GET"]
         self.assertEqual((writes[0], client.patches[0][1]["after"]), (("PATCH", "/blocks/human/children"), "h0"))
         self.assertIn(("DELETE", "/blocks/h0"), writes)
-        self.assertFalse([w for w in writes if w[1].split("/")[2] in ("h1", "h2", "h2a", "h3")])   # Jim's blocks never written
+        self.assertFalse([w for w in writes if w[1].split("/")[2] in ("h1", "h2", "h2a", "h3")])  # Jim's blocks never written
         page = client.blocks["human"]
-        self.assertNotIn("h0", [b["id"] for b in page])                       # the adopt line is gone; the fold is first
+        self.assertNotIn("h0", [b["id"] for b in page])  # the adopt line is gone
         self.assertEqual(notion.text(page[0]), notion.FOLD)
         self.assertRegex(notion.text(client.blocks[page[0]["id"]][0]), r"^v7-interview:1;owner=machine;kind=opportunity;adopted=\d{4}-\d{2}-\d{2}$")
         self.assertEqual(notion.ownership(client, "human", "opportunity"), Ownership.MACHINE)
         notes = [notion.text(b) for b in page].index(notion.JIM_NOTES)
         self.assertEqual(page[notes + 1]["type"], "callout")
-        self.assertEqual(page[notes + 2:], original)                           # Jim's blocks: same ids, order and content
+        self.assertEqual(page[notes + 2:], original)  # Jim's blocks: same ids, order and content
         self.assertNotEqual(notion.text(page[-1]), "Write here.")
         replay = run(client)
         self.assertEqual((replay["rounds_created"], replay["readback_ok"]), (1, 1))
         self.assertEqual(client.blocks["human"][notes + 2:-1], original)
-        again = run(client)                                                  # LIFE-88: the page's Interviews table lists the round
+        again = run(client)  # the page's Interviews table lists the round
         self.assertEqual((again["writes"], again["why"]), (1, {"parent_refreshed": 1}))
         notes = [notion.text(b) for b in client.blocks["human"]].index(notion.JIM_NOTES)
         self.assertEqual(client.blocks["human"][notes + 2:-1], original)
@@ -197,13 +196,13 @@ class AdoptTests(unittest.TestCase):
     def test_undo_by_deleting_the_ownership_line(self):
         client = AdoptFake()
         run(client)
-        self.assertEqual(notion.text(client.blocks["human"].pop(0)), notion.FOLD)   # undo = delete the folded LIFE OS toggle
+        self.assertEqual(notion.text(client.blocks["human"].pop(0)), notion.FOLD)  # undo = delete the folded LIFE OS toggle
         patches = len(client.patches)
         result = run(client)
         self.assertIn("human_page", result["why"])
         self.assertEqual((len(client.patches), client.posts, result["writes"]), (patches, [], 0))
         client.blocks["human"].insert(0, block("LIFE OS: adopt", id="again"))
-        self.assertIn("adopt_conflict", run(client)["why"])                   # never a second copy of the sections
+        self.assertIn("adopt_conflict", run(client)["why"])  # never a second copy of the sections
         self.assertEqual(len(client.patches), patches)
 
     def test_adopted_marker_shape(self):
@@ -241,7 +240,7 @@ class AdoptTests(unittest.TestCase):
 
 
 def legacy(client):
-    """A LIFE OS opportunity page written before D235, folded (D236) like the real Walmart page, with Interview 1 under it."""
+    """A LIFE OS opportunity page written before, folded like the real Walmart page, with Interview 1 under it."""
     fold = lambda bid, *lines: {"id": bid, "type": "toggle", "toggle": {"rich_text": [{"plain_text": notion.FOLD}]}, "has_children": True}
     client.blocks["human"] = [fold("f"), block("Live Notes", "heading_2", "lv"), block("my live note", id="n1"),
                               block("Raw Notes", "heading_2", "rw"), block("Interview Rounds", "heading_2", "ir"),
@@ -256,7 +255,7 @@ def legacy(client):
 class UpgradeTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_dry_run_then_one_upgrade_then_the_existing_round_matches(self):
@@ -275,9 +274,9 @@ class UpgradeTests(unittest.TestCase):
         self.assertEqual([notion.text(b) for b in page_blocks].count(notion.FOLD), 1)
         notes = [notion.text(b) for b in page_blocks].index(notion.JIM_NOTES)
         self.assertEqual(page_blocks[notes + 1]["type"], "callout")
-        self.assertEqual(page_blocks[notes + 2:], original)                   # old headings, notes and Interview 1: untouched
+        self.assertEqual(page_blocks[notes + 2:], original)  # old headings, notes and Interview 1: untouched
         self.assertTrue(notion.text(page_blocks[1]).startswith("Stage: "))
-        self.assertEqual((page_blocks[2]["type"], page_blocks[3]["type"]), ("paragraph", "callout"))      # the machine-written note (LIFE-658), then the Action Center
+        self.assertEqual((page_blocks[2]["type"], page_blocks[3]["type"]), ("paragraph", "callout"))  # the machine-written note, then the Action Center
         self.assertIsNotNone(notion.protected_snapshot(client, "human", "opportunity"))
         replay = run(client)
         self.assertEqual((replay["why"], replay["writes"]), ({"child_match": 1}, 0))

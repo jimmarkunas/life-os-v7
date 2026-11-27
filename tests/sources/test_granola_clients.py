@@ -66,7 +66,9 @@ def _matches(row, flt):
 
 
 class Meetings:
-    """The Meetings data source: rows with typed properties and block children, the calls granola_clients makes, and Jim's File as choices."""
+    """The Meetings data source: rows with typed properties and block children, the calls granola_clients makes, and
+    Jim's File as choices.
+    """
     def __init__(self, schema_ok=True, drop_last=False, fail_append=False):
         self.rows, self.schema_ok, self.drop_last, self.fail_append, self.calls = {}, schema_ok, drop_last, fail_append, []
 
@@ -139,7 +141,7 @@ class Write(unittest.TestCase):
         notion = Meetings()
         gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)
         marker = gc.hidden.refs(notion.rows["row-0"]["children"][0])[0]
-        notion.rows["row-0"]["children"][0]["paragraph"] = {"rich_text": [{"type": "text", "text": {"content": marker}, "plain_text": marker}]}      # the page as it was written before
+        notion.rows["row-0"]["children"][0]["paragraph"] = {"rich_text": [{"type": "text", "text": {"content": marker}, "plain_text": marker}]}  # the page as it was written before
         self.assertEqual(gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)[0], "TRANSCRIPT_NOOP")
         self.assertTrue(gc.hidden.refs(notion.rows["row-0"]["children"][0]))
         before = len([c for c in notion.calls if c[0] == "PATCH"])

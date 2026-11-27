@@ -18,7 +18,7 @@ ROW = granola_match.Round(ROUND, DAY, "Becton Dickinson", "Senior Technical Prog
 
 
 def oracle(meetings, caps=("purge_all", "notes"), sink=None, scope="all", notes=None, bad=None):
-    """`bad`: {meeting id: Oracle's error code for `show`}; the code b"" means Oracle closed the connection with no reply."""
+    """`bad`: {meeting id: Oracle's error code for `show`}"""
     sink = sink if sink is not None else []
     bad = bad or {}
 
@@ -62,7 +62,7 @@ def nothing():
 
 
 def go(send, client, catalog, live=True, rounds=(ROW,), limit=3, patch_meetings=True):
-    """`patch_meetings`: the Meetings database (LIFE-166) is stubbed to an empty, reachable table; test_granola_clients runs the real module against its own fake."""
+    """`patch_meetings`: the Meetings database is stubbed to an empty, reachable table"""
     stub = [mock.patch.object(ga.granola_clients, "check", lambda c: "target_ok"), mock.patch.object(ga.granola_clients, "rows_where", lambda *a: []),
             mock.patch.object(ga.granola_clients, "unfiled_row", lambda *a: "created")] if patch_meetings else []
     for patcher in stub:
@@ -100,8 +100,8 @@ class Auto(unittest.TestCase):
         c = out["counts"]
         self.assertEqual((out["code"], c["carried"], c["purged"], c["left_on_oracle"], c["failed"]), ("GRAN_AUTO_DONE", 1, 1, 0, 0))
         self.assertEqual([op for op, _ in seen], ["sync", "list", "show", "purge"])
-        self.assertEqual(seen[-1][1], "all")                                       # the whole meeting, not only the utterances
-        self.assertEqual([(s[2], s[4], s[5]) for s in catalog.saved], [("carried", False, "job-key-1"), ("carried_purged", True, "job-key-1")])   # saved BEFORE the purge, updated after
+        self.assertEqual(seen[-1][1], "all")  # the whole meeting, not only the utterances
+        self.assertEqual([(s[2], s[4], s[5]) for s in catalog.saved], [("carried", False, "job-key-1"), ("carried_purged", True, "job-key-1")])  # saved BEFORE the purge, updated after
 
     def test_a_carried_meeting_is_never_read_or_written_again(self):
         seen, catalog = [], Catalog(done=[ga.key_of(UUID)])
@@ -123,7 +123,7 @@ class Auto(unittest.TestCase):
         c = out["counts"]
         self.assertEqual((c["carried"], c["purged"], c["left_on_oracle"], c["why"]), (1, 0, 1, {"GRAN_PURGE_ALL_UNSUPPORTED": 1}))
         self.assertNotIn("purge", [op for op, _ in seen])
-        self.assertEqual(catalog.rows[ga.key_of(UUID)], "carried")                  # carried, so it is not written again, but still on Oracle
+        self.assertEqual(catalog.rows[ga.key_of(UUID)], "carried")
 
     def test_a_purge_that_does_not_confirm_the_whole_scope_is_not_counted_as_purged(self):
         catalog = Catalog()
@@ -137,8 +137,8 @@ class Auto(unittest.TestCase):
         self.assertEqual((out["counts"]["header"], out["counts"]["failed"]), (1, 0))
         page = next(v for k, v in notion.pages.items() if k != ROUND)
         kinds = [b["type"] for b in page]
-        self.assertEqual(kinds[:3], ["paragraph", "paragraph", "heading_2"])          # marker first, then the source line, then the header
-        self.assertIn("heading_2", kinds[kinds.index("heading_2") + 1:])               # the "Transcript" heading sits between the header and the transcript
+        self.assertEqual(kinds[:3], ["paragraph", "paragraph", "heading_2"])
+        self.assertIn("heading_2", kinds[kinds.index("heading_2") + 1:])
         self.assertTrue(catalog.saved[0][3])
 
     def test_a_dry_run_writes_nothing_catalogs_nothing_and_purges_nothing(self):
@@ -163,7 +163,7 @@ class Auto(unittest.TestCase):
 
 
 def four(bad_days=()):
-    """Four meetings on four days, each with its own round; the newest is first. -> (meetings, rounds, ids newest first)."""
+    """Four meetings on four days, each with its own round"""
     names = ("Alpha", "Bravo", "Charlie", "Delta")
     meetings = [dict(MEETING, id=f"00000000-0000-4000-8000-00000000000{i}", start=f"2026-10-{10 + i}T17:30:00Z", title=f"{names[i]} Corp call") for i in range(4)]
     rounds = [granola_match.Round(f"r{i}", f"2026-10-{10 + i}", f"{names[i]} Corp", "", "") for i in range(4)]
@@ -177,7 +177,7 @@ def notion4():
 
 
 class OneBadMeeting(unittest.TestCase):
-    """LIFE-651: a failed read of one meeting is that meeting's; only a helper that is down stops the run."""
+    """a failed read of one meeting is that meeting's"""
 
     def test_one_failing_meeting_is_counted_and_the_older_ones_are_still_filed(self):
         meetings, rounds, newest_first = four()
@@ -195,7 +195,7 @@ class OneBadMeeting(unittest.TestCase):
         catalog = Catalog(done=[ga.key_of(i) for i in newest_first[2:]])
         catalog.rows[key] = "read_failed_1"
         out = go(oracle(meetings, sink=seen, bad={newest_first[0]: "GRAN_TIMEOUT"}), notion4(), catalog, rounds=rounds, limit=1)
-        self.assertEqual(out["counts"]["carried"], 1)                                      # the older one that reads fine goes first
+        self.assertEqual(out["counts"]["carried"], 1)  # the older one that reads fine goes first
         self.assertEqual([op for op, _ in seen].count("show"), 1)
         catalog = Catalog(done=[ga.key_of(i) for i in newest_first[1:]])
         catalog.rows[key] = f"read_failed_{ga.READ_TRIES}"

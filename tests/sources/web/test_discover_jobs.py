@@ -87,7 +87,7 @@ class Run(unittest.TestCase):
         self.assertEqual(sql[0][0], "SELECT id,")
         update = [a for w, a in sql if w == "UPDATE v7_jobs"][0]
         self.assertIn(7, update)
-        self.assertIn("'requeued_direct'", full[-1])             # a reason that is not no_match_*: Enrich rejecting it later never requeues it again
+        self.assertIn("'requeued_direct'", full[-1])
 
     def test_a_held_aggregator_result_is_not_requeued(self):
         conn = FakeConn(script={"SELECT id": (8, "https://uk.indeed.com/viewjob?jk=abc123def456", "Sixfold Bioscience Limited")})

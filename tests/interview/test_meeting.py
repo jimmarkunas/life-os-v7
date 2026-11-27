@@ -1,5 +1,6 @@
-"""E10: the accepted Calendar invite's own joining details (join link, location) on the round page's Logistics, written in place with the round's
-other Calendar facts and read back; nothing is guessed, and a cancelled invite shows none."""
+"""E10: the accepted Calendar invite's own joining details (join link, location) on the round page's Logistics, written
+in place with the round's other.
+"""
 import unittest
 from datetime import datetime
 from lifeos.interview import create, notion, stage
@@ -29,7 +30,7 @@ def logistics(client, child):
 class Joining(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_the_confirmed_round_shows_the_invites_join_link_and_location_and_reads_them_back(self):
@@ -38,7 +39,7 @@ class Joining(unittest.TestCase):
         result = move(client, child, (JOIN, PLACE))
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_confirmed")), (1, 1, 1))
         self.assertEqual(create.round_logistics(client, child), (REF, False, (JOIN, PLACE)))
-        self.assertEqual(create.round_calendar(client, child), (REF, False))                         # the E07 reader is unchanged
+        self.assertEqual(create.round_calendar(client, child), (REF, False))  # the E07 reader is unchanged
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
         again = move(client, child, (JOIN, PLACE))
         self.assertEqual((again["writes"], again["why"].get("round_unchanged")), (0, 1))
@@ -84,7 +85,7 @@ class Joining(unittest.TestCase):
 class FromTheInvite(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def event(self, **extra):
@@ -110,7 +111,9 @@ class FromTheInvite(unittest.TestCase):
 
 
 class Through(JourneyFixture, unittest.TestCase):
-    """The real Interview runner tick after tick (the LIFE-78 journey harness): the invite's details reach the same round page, and only a change writes."""
+    """The real Interview runner tick after tick: the invite's details reach the same round page, and only a change
+    writes.
+    """
 
 
     def test_the_accepted_invites_details_land_on_its_round_and_a_later_change_updates_it_in_place(self):
@@ -120,14 +123,14 @@ class Through(JourneyFixture, unittest.TestCase):
         self.assertEqual(ticks[0]["why"].get("round_confirmed"), 1)
         (_, (round_,)), = self.pages()
         self.assertEqual(create.round_logistics(self.notion, round_.page_id), (ev.reference(INVITE), False, (JOIN, None)))
-        self.events[0] = event(INVITE, hangoutLink=JOIN, location=PLACE)               # the same invite gains a location: the same page, no new round
+        self.events[0] = event(INVITE, hangoutLink=JOIN, location=PLACE)
         ticks = self.settle(LEAD, NO_REQ, REQUEST)
         self.assertEqual(ticks[0]["why"].get("round_details"), 1)
         (_, (again,)), = self.pages()
         self.assertEqual((again.page_id, again.interview_date), (round_.page_id, "2026-10-28"))
         self.assertEqual(create.round_logistics(self.notion, round_.page_id)[2], (JOIN, PLACE))
-        self.assertEqual(self.tick(LEAD, NO_REQ, REQUEST)["writes"], 0)                 # replay
-        self.assertNotIn("meet.example.test", str(ticks))                              # counts only: no link reaches the run's output
+        self.assertEqual(self.tick(LEAD, NO_REQ, REQUEST)["writes"], 0)  # replay
+        self.assertNotIn("meet.example.test", str(ticks))  # counts only: no link reaches the run's output
 
 
 if __name__ == "__main__":

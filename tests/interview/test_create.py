@@ -10,7 +10,7 @@ from lifeos.platform.notion_client import NotionError
 from tests.interview.test_notion import Fake, ENV, block, page
 from tests.interview.support import WritableFake
 
-notion.TEMPLATE_WAIT = 0                                   # Notion applies a page template after create; the fakes apply it at once
+notion.TEMPLATE_WAIT = 0  # Notion applies a page template after create
 PARENT = ParentQuery(" New Example ", " Program Manager ")
 ROUND = RoundQuery(True, "2026-10-01", ordinal=1)
 
@@ -18,7 +18,7 @@ ROUND = RoundQuery(True, "2026-10-01", ordinal=1)
 
 
 class ColumnFake(WritableFake):
-    """Actual visual shape; Notion metadata independently specifies block/page ancestry."""
+    """Actual visual shape"""
     def __init__(self, parent_type="block_id", enclosing="root"):
         super().__init__()
         self.blocks["root"] = [{"id": "columns", "type": "column_list", "has_children": True}]
@@ -44,7 +44,7 @@ def machine_parent(client):
 class CreationTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def run_evidence(self, client, live=True, parent=PARENT, query=ROUND, copies=1):
@@ -57,12 +57,12 @@ class CreationTests(unittest.TestCase):
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["parents_created"], result["readback_ok"]), (1, 1, 1))
                 self.assertEqual(len(client.posts), 1)
-                self.assertEqual(client.posts[0]["parent"], {"type": "data_source_id", "data_source_id": "ds-synthetic"})     # LIFE-361: the pursuit is a Ledger row
+                self.assertEqual(client.posts[0]["parent"], {"type": "data_source_id", "data_source_id": "ds-synthetic"})  # the pursuit is a Ledger row
                 parent_id = "created-1"
                 row = client.rows[parent_id]
                 self.assertEqual([client._value(row[k]) for k in ("Job", "Company", "Stage")], ["Program Manager", "New Example", "Applied"])
                 self.assertEqual(row["Source Types"], {"multi_select": [{"name": "Manual"}]})
-                self.assertNotIn("Stable Job Key", row)                   # no posting link given: no key is invented
+                self.assertNotIn("Stable Job Key", row)  # no posting link given: no key is invented
                 parent_blocks = client.blocks[parent_id]
                 self.assertEqual(notion.text(parent_blocks[0]), notion.FOLD)
                 lines = [notion.text(b) for b in client.blocks[parent_id + "-block-0"]]
@@ -70,7 +70,7 @@ class CreationTests(unittest.TestCase):
                 self.assertRegex(lines[1], r"^v7-render:1;job=none;source=[0-9a-f]{16};page=[0-9a-f]{16}$")
                 self.assertEqual([notion.text(b) for b in parent_blocks if b.get("type", "").startswith("heading")],
                                  ["Job Description — Original Posting", notion.JIM_NOTES])
-                self.assertEqual([b["type"] for b in parent_blocks[:6]], ["toggle", "paragraph", "paragraph", "callout", "divider", "column_list"])      # LIFE-658: the machine-written note follows the Stage line
+                self.assertEqual([b["type"] for b in parent_blocks[:6]], ["toggle", "paragraph", "paragraph", "callout", "divider", "column_list"])  # the machine-written note follows the Stage line
                 before = notion.protected_snapshot(client, parent_id, "opportunity")
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["rounds_created"], result["readback_ok"]), (1, 1, 1))
@@ -83,7 +83,7 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(json.loads(notion.text(lines[1]).split(";", 1)[1]), {"interview_date": query.interview_date, "interviewer": query.interviewer, "ordinal": query.ordinal})
                 self.assertIsNotNone(notion.protected_snapshot(client, "created-2"))
                 self.assertEqual(notion.protected_snapshot(client, parent_id, "opportunity"), before)
-                result = self.run_evidence(client, query=query)               # the page's Interviews table picks up the round
+                result = self.run_evidence(client, query=query)  # the page's Interviews table picks up the round
                 self.assertEqual((result["writes"], result["why"].get("parent_refreshed")), (1, 1))
                 self.assertEqual(notion.protected_snapshot(client, parent_id, "opportunity"), before)
                 result = self.run_evidence(client, query=query)
@@ -173,7 +173,7 @@ class CreationTests(unittest.TestCase):
         for mode, code in (("post", "write_failed"), ("readback", "readback_marker_missing"), ("identity", "readback_identity_mismatch"), ("protected", "readback_protected_changed")):
             with self.subTest(mode=mode):
                 from tests.jobs.fakes_jobsdb import claim_store
-                _claims, stop = claim_store()                                 # an unresolved create keeps its claim by design, so each mode starts from a clean store
+                _claims, stop = claim_store()
                 self.addCleanup(stop)
                 client = WritableFake()
                 if mode == "protected": machine_parent(client)
@@ -188,7 +188,7 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(result["writes"], 0 if mode == "post" else 1)
 
     def test_an_identity_with_ordinal_zero_is_a_valid_pre_screen_and_round_trips(self):
-        """LIFE-958 (Jim, comment 14112): ordinal 0 marks a recruiter pre-screen; it parses, and re-writing it never turns it into 1."""
+        """ordinal 0 marks a recruiter pre-screen"""
         line = create.IDENTITY_PREFIX + '{"interview_date":"2026-10-13","interviewer":null,"ordinal":0}'
         data = create.parse_identity(line)
         self.assertEqual(data, {"interview_date": "2026-10-13", "interviewer": None, "ordinal": 0})
@@ -227,10 +227,12 @@ class CreationTests(unittest.TestCase):
 
 
 class LedgerShapeTests(unittest.TestCase):
-    """LIFE-361 GWT-IC-3: the probe reports creation supported through the Ledger schema, with no Active Opportunities container anywhere."""
+    """GWT-IC-3: the probe reports creation supported through the Ledger schema, with no Active Opportunities container
+    anywhere.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def context(self):
@@ -239,7 +241,7 @@ class LedgerShapeTests(unittest.TestCase):
 
     def test_no_container_is_supported_through_the_ledger_schema(self):
         client = WritableFake()
-        client.blocks["root"] = [b for b in client.blocks["root"] if b.get("type") != "child_page"]          # no Active Opportunities container at all
+        client.blocks["root"] = [b for b in client.blocks["root"] if b.get("type") != "child_page"]  # no Active Opportunities container at all
         self.assertEqual(notion.ledger_shape(client, "ds-synthetic", self.context()), {"ledger_stage_options": 6, "insertion_supported": True, "code": "ledger_shape_supported"})
         result = stage.probe(10, True, environ=ENV, client=client)
         self.assertTrue(result["insertion_supported"])
@@ -266,7 +268,7 @@ class LedgerShapeTests(unittest.TestCase):
         client = WritableFake()
         parent_id = machine_parent(client)
         client.blocks["right"].append({"id": "retired", "type": "child_page", "child_page": {"title": "Retired — Manager"}})
-        scan = notion.parents(client, ENV, self.context())                  # LIFE-361: the new pursuit is a Ledger row; the legacy page is still read from the tree
+        scan = notion.parents(client, ENV, self.context())  # the new pursuit is a Ledger row
         self.assertTrue(scan.complete)
         self.assertEqual(resolve_parent(ParentQuery("Legacy", "Manager"), scan).page_id, "human")
         self.assertEqual(resolve_parent(PARENT, scan).page_id, parent_id)
@@ -285,7 +287,7 @@ class LedgerShapeTests(unittest.TestCase):
         self.assertEqual((result["writes_planned"], result["writes"]), (1, 0))
         machine_parent(client)
         stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
-        stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])          # the page lists the round
+        stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])  # the page lists the round
         result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
         self.assertEqual(result["writes"], 0)
         self.assertEqual(len(client.posts), 2)
@@ -295,7 +297,7 @@ class LedgerShapeTests(unittest.TestCase):
 class RecognizedRegionTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_orphans_before_and_after_container_are_ignored_untouched(self):
@@ -348,7 +350,7 @@ class RecognizedRegionTests(unittest.TestCase):
 class ConfiguredUuidTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_compact_root_dashed_api_parent_allows_target_scan_and_probe(self):
@@ -374,10 +376,12 @@ class ConfiguredUuidTests(unittest.TestCase):
 
 
 class Causes(unittest.TestCase):
-    """Live runs 39556923423 and 39565054862 ended two conversions as the bare pipeline_incomplete with zero planned writes; the cause is now a fixed code in the counts."""
+    """Live runs 39556923423 and 39565054862 ended two conversions as the bare pipeline_incomplete with zero planned
+    writes
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_a_cause_is_a_fixed_code_or_the_class_name_never_the_text(self):
@@ -406,16 +410,17 @@ class Causes(unittest.TestCase):
         class Deep:
             def call(self, method, path, body=None):
                 return {"results": [{"id": "x" + path.split("/")[2], "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": False}], "has_more": False}
-        self.assertTrue(notion.human_tail(Deep(), "p", blocks))                  # 120 containers: more than the 40 reads one scan is allowed
+        self.assertTrue(notion.human_tail(Deep(), "p", blocks))
         self.assertEqual(notion.PROTECTED_MAX_CALLS, 400)
-        self.assertEqual(notion.MAX_CALLS, 40)                                     # the scans keep their own limit
+        self.assertEqual(notion.MAX_CALLS, 40)  # the scans keep their own limit
 
 
 class ProtectedReadCauseTests(unittest.TestCase):
-    """Runs 39627629137 and 39632692329: SH/FT and Smith ended interview_protected_incomplete with 400 reads available. Jim's Interview Notes list sits in his columns, so the interview child pages are nested blocks of the protected read, and the read walked into their own deep UI 4 trees."""
+    """Runs 39627629137 and 39632692329: SH/FT and Smith ended interview_protected_incomplete with 400 reads available.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
 
@@ -424,7 +429,7 @@ class ProtectedReadCauseTests(unittest.TestCase):
         return {"id": ident, "type": kind, kind: {"rich_text": [], "title": ident}, "has_children": children}
 
     def tree(self, interview_tree):
-        """first line, then a column list > column > (callout, child_page); the child page holds `interview_tree` blocks."""
+        """first line, then a column list > column > (callout, child_page)"""
         blocks = {"page": [self.block("first", "paragraph"), self.block("cols", "column_list", True)],
                   "cols": [self.block("col", "column", True)],
                   "col": [self.block("note", "callout"), self.block("round", "child_page", True)],
@@ -441,16 +446,16 @@ class ProtectedReadCauseTests(unittest.TestCase):
     def test_an_interview_page_nested_in_jims_columns_is_not_read_as_part_of_his_page(self):
         deep = [self.block("d0", "column_list", True)]
         blocks, client = self.tree(deep)
-        for depth in range(1, 12):                                          # far past MAX_DEPTH and a lot of reads, if it were walked
+        for depth in range(1, 12):
             blocks[f"d{depth - 1}"] = [self.block(f"d{depth}", "column", True)]
         blocks["d11"] = [self.block("leaf", "paragraph")]
         page = blocks["page"]
         digest = notion.human_tail(client, "page", page)
         self.assertTrue(digest)
         self.assertNotIn("round", [c for c in client.calls if c != "round"])
-        self.assertNotIn("d0", client.calls)                                  # its children were never fetched
+        self.assertNotIn("d0", client.calls)  # its children were never fetched
         blocks["d11"] = [self.block("leaf", "paragraph"), self.block("added by a refresh", "paragraph")]
-        self.assertEqual(notion.human_tail(client, "page", page), digest)     # a round page changing under the list leaves the protected digest alone
+        self.assertEqual(notion.human_tail(client, "page", page), digest)
 
     def test_each_way_a_protected_read_ends_has_its_own_fixed_code(self):
         def chain(length):
@@ -465,7 +470,7 @@ class ProtectedReadCauseTests(unittest.TestCase):
                 def call(self, method, path, body=None):
                     return {"results": blocks[path.split("/")[2]], "has_more": more, "next_cursor": "same" if more else None}
             return Client()
-        blocks = chain(notion.PROTECTED_MAX_DEPTH + 3)                                         # LIFE-88 #438: the protected read has its own depth limit
+        blocks = chain(notion.PROTECTED_MAX_DEPTH + 3)  # #438: the protected read has its own depth limit
         with self.assertRaises(NotionError) as caught:
             notion.human_tail(client_for(blocks), "page", blocks["page"])
         self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_DEPTH")
@@ -476,16 +481,18 @@ class ProtectedReadCauseTests(unittest.TestCase):
         with self.assertRaises(NotionError) as caught:
             notion.human_tail(client_for(blocks, more=True), "page", blocks["page"])
         self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_READ")
-        with self.assertRaises(NotionError) as caught:                         # no Jim's notes heading and callout on a page that is read whole
+        with self.assertRaises(NotionError) as caught:
             notion.human_tail(client_for(blocks), "page")
         self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_SHAPE")
 
 
 class HostedFileTests(unittest.TestCase):
-    """Run 39637099250: Smith's page converted, then the read-back said readback_protected_changed although every block of Jim's was intact. Her page holds a Notion-hosted PDF (the submitted resume), whose signed URL and expiry are new on every read."""
+    """Run 39637099250: Smith's page converted, then the read-back said readback_protected_changed although every block
+    of Jim's was intact.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
 
@@ -506,10 +513,12 @@ class HostedFileTests(unittest.TestCase):
 
 
 class ProtectedDepth(unittest.TestCase):
-    """Run 39627629137 (cause interview_protected_incomplete, writes_planned 0): SH/FT and Smith nest deeper than the 4 levels a page scan allows, and the digest of Jim's content refused them."""
+    """Run 39627629137 (cause interview_protected_incomplete, writes_planned 0): SH/FT and Smith nest deeper than the 4
+    levels a page scan allows, and the.
+    """
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def chain(self, levels):
@@ -530,4 +539,4 @@ class ProtectedDepth(unittest.TestCase):
         with self.assertRaises(NotionError) as caught:
             notion.human_tail(client, "p", blocks)
         self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_DEPTH")
-        self.assertEqual(notion.MAX_DEPTH, 4)                                       # page scans keep their own limit
+        self.assertEqual(notion.MAX_DEPTH, 4)  # page scans keep their own limit

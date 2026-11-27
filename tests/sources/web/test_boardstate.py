@@ -1,4 +1,6 @@
-"""The per-board Scale-Up diagnostic: counts only, one entry per registry board, no title, link or text, and nothing written."""
+"""The per-board Scale-Up diagnostic: counts only, one entry per registry board, no title, link or text, and nothing
+written.
+"""
 import json
 import unittest
 from unittest import mock

@@ -1,9 +1,10 @@
-"""LIFE-78 M1/M2 synthetic exit (lifeos/sources/proofs/m1m2_proof.py), run exactly as the manual interview-proof dispatch runs it, on production-shaped fakes:
-the Interview pages on the journey's Notion fake, the sandbox Ledger and Recruiters as Notion data sources, the Daily Report region on the block-tree fake."""
+"""M1/M2 synthetic exit (lifeos/sources/proofs/m1m2_proof.py), run exactly as the manual interview-proof dispatch runs
+it, on production-shaped fakes.
+"""
 import os
 from lifeos.interview import notion as _notion
 from lifeos.platform import full_width as _full_width
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages come from the Full Width template; the fakes apply it at once
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # pages come from the Full Width template
 _notion.TEMPLATE_WAIT = _full_width.WAIT = 0
 import copy
 import json
@@ -21,7 +22,7 @@ from tests.kit.tree import Tree
 from tests.sources.test_interview_journey import NotionLike
 from tests.sources.test_interview_journey_proof import qa_workspace
 
-NOW = datetime(2026, 10, 23, 12, 46, 17, 431743, tzinfo=ev.TZ)      # seconds and fractions, like a real clock (Notion keeps minutes)
+NOW = datetime(2026, 10, 23, 12, 46, 17, 431743, tzinfo=ev.TZ)
 M1M2 = {**ENV, "INTERVIEW_JOURNEY_PROOF": "M1M2"}
 
 
@@ -30,7 +31,9 @@ def _plain(runs):
 
 
 def minutes(value):
-    """Like Notion: a date-time is kept to the minute (seconds and fractions dropped), as 'YYYY-MM-DDTHH:MM:00.000+HH:MM'."""
+    """Like Notion: a date-time is kept to the minute (seconds and fractions dropped), as 'YYYY-MM-
+    DDTHH:MM:00.000+HH:MM'.
+    """
     start = (value or {}).get("start") or ""
     if "T" not in start:
         return value
@@ -39,7 +42,9 @@ def minutes(value):
 
 
 class Sources:
-    """Notion data sources as the API answers them: create a database, read its schema, create / read / update its pages, filtered queries."""
+    """Notion data sources as the API answers them: create a database, read its schema, create / read / update its pages,
+    filtered queries.
+    """
     def __init__(self, base, refuse_databases=False):
         self.base, self.sources, self.rows, self.refuse = base, {}, {}, refuse_databases
 
@@ -94,7 +99,7 @@ class Sources:
         value = prop.get(kind)
         if "rich_text" in where or "title" in where:
             test = where.get("rich_text") or where.get("title")
-            if "contains" in test:                                      # Notion's contains ignores case
+            if "contains" in test:  # Notion's contains ignores case
                 return test["contains"].lower() in _plain(value).lower()
             return _plain(value) == test["equals"]
         if "url" in where:
@@ -113,8 +118,9 @@ class Sources:
 
 
 class QAWorkspace(NotionLike):
-    """The QA workspace: the journey's Notion fake for pages, plus data sources on the same client (as the real token reaches both). A copy aimed at
-    another data source (the proof's _scoped) shares the same state, like a second client on the same workspace."""
+    """The QA workspace: the journey's Notion fake for pages, plus data sources on the same client (as the real token
+    reaches both).
+    """
     def __init__(self, refuse_databases=False):
         super().__init__()
         self.pages[QA_PARENT] = page("QA — Interview OS / Opportunity Parent")
@@ -129,7 +135,7 @@ class QAWorkspace(NotionLike):
         if parts[0] == "data_sources":
             return sources.query(parts[1], body) if method == "POST" else sources.schema(parts[1])
         if parts[0] == "pages" and len(parts) == 2 and parts[1] in sources.rows:
-            if method == "PATCH" and "properties" not in body:           # an icon on the row page (the opportunity is the row, LIFE-361)
+            if method == "PATCH" and "properties" not in body:  # an icon on the row page
                 sources.rows[parts[1]]["icon"] = copy.deepcopy(body.get("icon"))
                 return copy.deepcopy(sources.rows[parts[1]])
             return sources.update(parts[1], body["properties"]) if method == "PATCH" else copy.deepcopy(sources.rows[parts[1]])
@@ -175,8 +181,7 @@ class Scoped(unittest.TestCase):
         client, sources = workspace(refuse)
         tree, pins = report_tree()
         real_pipeline = [dict(b) for b in client.blocks["root"]]
-        # The proof's posting is dated at the pinned NOW; freshness is judged by enrich._now(), so pin that clock too
-        # (otherwise the posting goes stale 15 days after NOW and this test fails on the real calendar; LIFE-349).
+        # The proof's posting is dated at the pinned NOW
         with patch.object(proof, "report_page", lambda c, container: pins), patch.object(enrich, "_now", lambda: NOW.astimezone(timezone.utc).replace(tzinfo=None)):
             counts = proof.run(M1M2, False, now=NOW, client=client, reader=client, report=tree)
         return counts, client, sources, tree, real_pipeline
@@ -188,9 +193,9 @@ class M1M2Proof(Scoped):
         self.assertEqual(counts["proof"], "m1m2")
         self.assertEqual(counts["failed"], 0, json.dumps(counts["assertions"], indent=1))
         self.assertEqual(counts["passed"], 33)
-        self.assertEqual(client.blocks["root"], real_pipeline)                                 # the real Hiring Pipeline (here "root") is never touched
+        self.assertEqual(client.blocks["root"], real_pipeline)
         self.assertNotIn("root", {p["parent"].get("page_id") for p in client.posts})
-        self.assertEqual(len(sources.sources), 2)                                              # the sandbox's own Ledger and Recruiters, nothing else
+        self.assertEqual(len(sources.sources), 2)
         ledger_rows = [p for p in sources.rows.values() if p["parent"]["data_source_id"] == f"{1:032x}"]
         self.assertEqual(len(ledger_rows), 1)
         self.assertGreater(counts["hiring_writes"], 0)
