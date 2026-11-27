@@ -27,6 +27,8 @@ LABEL = "pipeline-stale"
 FAIL_WINDOW_HOURS = 24
 FAIL_OPEN = 3
 RECOVER_PASSES = 3
+API_READ_TRIES = 3  # a GET to the GitHub API that answers 5xx or drops is repeated; a POST or PATCH never is
+API_READ_PAUSE = 2
 FAIL_TITLE = "V7 pipeline: hourly runs failing repeatedly (3+ failed in 24 hours)"
 FAIL_LABEL = "pipeline-failing"
 STUCK_TITLE = "V7 pipeline: an hourly tick run has had no conclusion for over 40 minutes"
@@ -311,9 +313,18 @@ def _api(path, method="GET", body=None):
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        raw = response.read()
-        return json.loads(raw) if raw else {}
+    for attempt in range(API_READ_TRIES if method == "GET" else 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read()
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as error:
+            if method != "GET" or error.code < 500 or attempt == API_READ_TRIES - 1:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if method != "GET" or attempt == API_READ_TRIES - 1:
+                raise
+        time.sleep(API_READ_PAUSE * (attempt + 1))
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
