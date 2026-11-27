@@ -13,7 +13,7 @@ from .boards import owned
 SERIES_FIELDS = (
     "summary,description,assignee,priority,labels,parent,issuelinks,sprint,status,duedate,subtasks,issuetype"
 )
-CLOSURE_FIELDS = "labels,status,statuscategorychangedate,resolutiondate"
+CLOSURE_FIELDS = "labels,status,statuscategorychangedate,resolutiondate,resolution"
 NO_SPRINT = -1
 
 
@@ -84,7 +84,13 @@ def closures(client, board_id, since):
     counts = rc.closure_counts(issues, since)
     out = {"closures_total": counts["total"]}
     if counts["split"]:
-        out.update({"closures_manual": counts["manual"], "closures_automatic": counts["automatic"]})
+        out.update(
+            {
+                "closures_manual": counts["manual"],
+                "closures_automatic": counts["automatic"],
+                "closures_cancelled": counts["cancelled"],
+            }
+        )
     return out
 
 

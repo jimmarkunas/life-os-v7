@@ -300,8 +300,8 @@ class Counts(unittest.TestCase):
             made["fields"]["statuscategorychangedate"] = when.isoformat()
             return made
         issues = [done("A-1", at(2026, 11, 24, 10), ["auto-closed"]), done("A-2", at(2026, 11, 25, 16), ["auto-closed"]), done("A-3", at(2026, 11, 25, 17)), issue("A-4")]
-        self.assertEqual(rc.closure_counts(issues), {"manual": None, "automatic": None, "total": 3, "split": False})
-        self.assertEqual(rc.closure_counts(issues, at(2026, 11, 25, 14)), {"manual": 1, "automatic": 1, "total": 3, "split": True})
+        self.assertEqual(rc.closure_counts(issues), {"manual": None, "automatic": None, "cancelled": 0, "total": 3, "split": False})
+        self.assertEqual(rc.closure_counts(issues, at(2026, 11, 25, 14)), {"manual": 1, "automatic": 1, "cancelled": 0, "total": 3, "split": True})
         self.assertEqual(rc.since({"MEJ_AUTOMATION_SINCE": "2026-11-25T14:00:00-06:00"}), at(2026, 11, 25, 14))
         for bad in (None, "", "yesterday", "2026-11-25T14:00:00"):
             self.assertIsNone(rc.since({"MEJ_AUTOMATION_SINCE": bad}))

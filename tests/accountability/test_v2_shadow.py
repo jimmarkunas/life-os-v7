@@ -31,7 +31,8 @@ def approved_both(mej, jfm, ref="SYNTHETIC-TEST-ONLY"):
 def kid(key, parent, done=False, kind="Task"):
     return {"key": key, "fields": {"parent": {"key": parent}, "issuetype": {"name": kind, "subtask": kind == "Sub-task"},
                                    "status": {"id": "10015" if done else "10014", "name": "Done" if done else "To Do", "statusCategory": {"key": "done" if done else "new"}},
-                                   "resolutiondate": "2026-11-10T10:00:00.000-0600" if done else None}}
+                                   "resolutiondate": "2026-11-10T10:00:00.000-0600" if done else None,
+                                   "resolution": {"name": "Done"} if done else None, "labels": []}}
 
 
 class Jira:
