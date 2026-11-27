@@ -1,0 +1,613 @@
+{
+ "floors": [
+  0.5,
+  0.6,
+  0.75,
+  0.9
+ ],
+ "note": "Frozen live behavioral queries for the new synthetic workspace. Expectations are by meaning and were fixed before any retrieval code change and before any live query; they are not edited to pass.",
+ "queries": [
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-001",
+      "sources": [
+       "FAKE-MSG-001"
+      ]
+     }
+    ]
+   },
+   "id": "L01",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "At what time of day does Avery like to schedule meetings?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-001",
+      "sources": [
+       "FAKE-MSG-001"
+      ]
+     }
+    ]
+   },
+   "id": "L02",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "Which hours does Avery favor for meetings?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-002",
+      "sources": [
+       "FAKE-MSG-002",
+       "FAKE-MSG-003"
+      ]
+     }
+    ]
+   },
+   "id": "L03",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "How does the alpha team like its status updates written?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-002",
+      "sources": [
+       "FAKE-MSG-002",
+       "FAKE-MSG-003"
+      ]
+     }
+    ]
+   },
+   "id": "L04",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "Does the alpha team want long or short status reports on Fridays?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-003",
+      "sources": [
+       "FAKE-MSG-004"
+      ]
+     }
+    ]
+   },
+   "id": "L05",
+   "kind": "decision",
+   "note": "",
+   "query": "Where does the alpha team triage issues?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-003",
+      "sources": [
+       "FAKE-MSG-004"
+      ]
+     }
+    ]
+   },
+   "id": "L06",
+   "kind": "decision",
+   "note": "",
+   "query": "Which board did the team decide to use for issue triage?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-004",
+      "sources": [
+       "FAKE-MSG-005"
+      ]
+     }
+    ]
+   },
+   "id": "L07",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "How large should pull requests be for Avery?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-004",
+      "sources": [
+       "FAKE-MSG-005"
+      ]
+     }
+    ]
+   },
+   "id": "L08",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "What does Avery expect in a pull request description?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-005",
+      "sources": [
+       "FAKE-MSG-006"
+      ]
+     }
+    ]
+   },
+   "id": "L09",
+   "kind": "decision",
+   "note": "",
+   "query": "Which chat channel did the alpha team choose for release questions?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-005",
+      "sources": [
+       "FAKE-MSG-006"
+      ]
+     }
+    ]
+   },
+   "id": "L10",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "Where should release questions go for the alpha team?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-007",
+      "sources": [
+       "FAKE-MSG-008"
+      ]
+     }
+    ]
+   },
+   "id": "L11",
+   "kind": "correction",
+   "note": "",
+   "query": "On which day does Avery want demos now?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-007",
+      "sources": [
+       "FAKE-MSG-008"
+      ]
+     }
+    ]
+   },
+   "id": "L12",
+   "kind": "correction",
+   "note": "",
+   "query": "Has Avery changed the demo day, and to what?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-009",
+      "sources": [
+       "FAKE-MSG-010"
+      ]
+     }
+    ]
+   },
+   "id": "L13",
+   "kind": "correction",
+   "note": "",
+   "query": "What style of release notes does the alpha team want?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-009",
+      "sources": [
+       "FAKE-MSG-010"
+      ]
+     }
+    ]
+   },
+   "id": "L14",
+   "kind": "correction",
+   "note": "",
+   "query": "Plain text or formatted release notes for the alpha team?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [
+    "FAKE-MEM-013"
+   ],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-012",
+      "sources": [
+       "FAKE-MSG-013",
+       "FAKE-MSG-014"
+      ]
+     }
+    ]
+   },
+   "id": "L15",
+   "kind": "multi_source",
+   "note": "",
+   "query": "What kind of retro summary does the alpha team prefer?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [
+    "FAKE-MEM-013"
+   ],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-012",
+      "sources": [
+       "FAKE-MSG-013",
+       "FAKE-MSG-014"
+      ]
+     }
+    ]
+   },
+   "id": "L16",
+   "kind": "multi_source",
+   "note": "",
+   "query": "How should the alpha team write up retros?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-014",
+      "sources": [
+       "FAKE-MSG-015"
+      ]
+     }
+    ]
+   },
+   "id": "L17",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "Which rooms does Avery like for focus time?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-015",
+      "sources": [
+       "FAKE-MSG-016"
+      ]
+     }
+    ]
+   },
+   "id": "L18",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "Where does Avery prefer to hold workshops?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-CAN-001",
+      "sources": [
+       "FAKE-CAN-001"
+      ]
+     }
+    ]
+   },
+   "id": "L19",
+   "kind": "canonical_wins",
+   "note": "",
+   "query": "Which day does Avery like releases on?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-CAN-001",
+      "sources": [
+       "FAKE-CAN-001"
+      ]
+     }
+    ]
+   },
+   "id": "L20",
+   "kind": "canonical",
+   "note": "",
+   "query": "What is the approved release day?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-020",
+      "sources": [
+       "FAKE-MSG-020"
+      ]
+     }
+    ]
+   },
+   "id": "L21",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "What does Blake like to receive summaries by?",
+   "split": "dev",
+   "tenant": "beta"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "ref": "FAKE-MEM-020",
+      "sources": [
+       "FAKE-MSG-020"
+      ]
+     }
+    ]
+   },
+   "id": "L22",
+   "kind": "paraphrase",
+   "note": "",
+   "query": "On which day does Blake want email summaries?",
+   "split": "heldout",
+   "tenant": "beta"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L23",
+   "kind": "revoked",
+   "note": "",
+   "query": "How does Avery like to be paged when something is urgent?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L24",
+   "kind": "revoked",
+   "note": "",
+   "query": "Does Avery prefer phone calls for urgent pages?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L25",
+   "kind": "absent",
+   "note": "",
+   "query": "What does Avery prefer for breakfast?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L26",
+   "kind": "absent",
+   "note": "",
+   "query": "Which airline does the alpha team like?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L27",
+   "kind": "absent",
+   "note": "",
+   "query": "What does Avery like to drink at meetings?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L28",
+   "kind": "absent",
+   "note": "",
+   "query": "What music does the alpha team want during focus time?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L29",
+   "kind": "absent",
+   "note": "",
+   "query": "What does Blake prefer for planning meetings?",
+   "split": "heldout",
+   "tenant": "beta"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L30",
+   "kind": "absent",
+   "note": "",
+   "query": "Which editor does the alpha team use for pull requests?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "equiv": [],
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "id": "L31",
+   "kind": "tenant_isolation",
+   "note": "",
+   "query": "What does Blake prefer for email summaries?",
+   "split": "heldout",
+   "tenant": "alpha"
+  }
+ ],
+ "registry": "behavioral.json",
+ "seed": {
+  "facts": [
+   "FAKE-MEM-001",
+   "FAKE-MEM-002",
+   "FAKE-MEM-003",
+   "FAKE-MEM-004",
+   "FAKE-MEM-005",
+   "FAKE-MEM-006",
+   "FAKE-MEM-007",
+   "FAKE-MEM-008",
+   "FAKE-MEM-009",
+   "FAKE-MEM-010",
+   "FAKE-MEM-011",
+   "FAKE-MEM-012",
+   "FAKE-MEM-013",
+   "FAKE-MEM-014",
+   "FAKE-MEM-015",
+   "FAKE-MEM-016",
+   "FAKE-MEM-020"
+  ],
+  "max_rows": 24,
+  "tombstones": [
+   {
+    "by": "FAKE-MEM-007",
+    "of": "FAKE-MEM-006",
+    "why": "superseded"
+   },
+   {
+    "by": null,
+    "of": "FAKE-MEM-011",
+    "why": "revoked"
+   }
+  ]
+ },
+ "version": 1,
+ "workspace": "um-t6-behavioral-v1"
+}
