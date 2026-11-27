@@ -246,10 +246,11 @@ def _frozen_mej_membership(first, manifest=None, project="MEJ"):
     return _frozen_row(first, manifest, project)["tasks"]
 
 
-def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ", today=None):
+def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ", today=None, recount=False):
     """v2 counts for one board from the approved key list alone. A member's current Jira parent never changes its
     goal, so reparenting or a new project Epic cannot move a count; a key that is not on the list is unassigned.
-    A closed quarter with a published snapshot returns that snapshot, never a recount. A goal listed under the row's
+    A closed quarter with a published snapshot returns that snapshot, never a recount (`recount` is the one
+    exception, so the snapshot can be compared with a fresh count). A goal listed under the row's
     `gaps` has incomplete baseline evidence: its figure is None (reported, never reconstructed)."""
     if not quarter_keys:
         return {}
@@ -258,7 +259,11 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ",
     gaps = row.get("gaps") if isinstance(row.get("gaps"), dict) else {}
     gap_goals = {goal for goal in quarter_keys if goal in gaps}
     snapshot = row.get("snapshot")
-    if isinstance(snapshot, dict) and last < (today or datetime.now(ZoneInfo("America/Chicago")).date()):
+    if (
+        not recount
+        and isinstance(snapshot, dict)
+        and last < (today or datetime.now(ZoneInfo("America/Chicago")).date())
+    ):
         figures = snapshot.get("figures")
         if not snapshot.get("version") or not isinstance(figures, dict) or any(g not in figures for g in quarter_keys):
             raise JiraError("ACCOUNTABILITY_MEJ_SNAPSHOT_INCOMPLETE")

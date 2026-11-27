@@ -67,6 +67,38 @@ class DbState:
             )
 
 
+class Stability:
+    """The promotion check's 24-hour window: one row per evaluation fingerprint in the same table (`pr...`), first pass
+    in last_notified, latest pass in last_ok. A dry run reads but never writes."""
+
+    def __init__(self, connection, live):
+        self.connection, self.live = connection, live
+
+    def load(self, key):
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT last_ok, last_notified FROM v7_jira_rollover WHERE k=%s", ("pr" + key,))
+            row = cursor.fetchone()
+        if not row or not row[0] or not row[1]:
+            return None
+        zone = ZoneInfo(reconcile.TZ)
+        return {"last": row[0].replace(tzinfo=zone), "first": row[1].replace(tzinfo=zone)}
+
+    def save(self, key, first, last):
+        if not self.live:
+            return
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,0,%s) ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok), last_notified=VALUES(last_notified)",
+                ("pr" + key, last.replace(tzinfo=None), first.replace(tzinfo=None)),
+            )
+
+    def reset(self):
+        if not self.live:
+            return
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM v7_jira_rollover WHERE k LIKE 'pr%'")
+
+
 def make_alert(state, environ, now, push=alerts.push):
     """-> alert(subject, details, key=None, once=False): one phone push per failure per Chicago day, recorded after
     the push is accepted."""
@@ -149,5 +181,5 @@ def run(
         if live:
             save_summary(connection, now, line, True)
         if after is not None:
-            total["promotion"] = after(environ, now, live, alert)
+            total["promotion"] = after(environ, now, live, alert, client=client, stability=Stability(connection, live))
         return total

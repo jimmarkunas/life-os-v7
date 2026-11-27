@@ -490,10 +490,27 @@ class Line(unittest.TestCase):
 
 
 class Promotion(unittest.TestCase):
-    BOUNDARY = datetime(2027, 1, 1, 8, 5, tzinfo=TZ)
+    BOUNDARY = datetime(2027, 1, 6, 8, 5, tzinfo=TZ)
 
-    def call(self, env, now=None, readers=None):
+    class Stable:
+        """A window whose first pass was recorded on the previous date."""
+
+        def __init__(self, now):
+            self.record = {"first": now - timedelta(days=1, minutes=5), "last": now - timedelta(days=1, minutes=5)}
+            self.saved = []
+
+        def load(self, key):
+            return self.record
+
+        def save(self, key, first, last):
+            self.saved.append(key)
+
+        def reset(self):
+            self.record = None
+
+    def call(self, env, now=None, readers=None, window=None):
         alerts, setter_calls = [], []
+        when = now or self.BOUNDARY
 
         class Setter:
             pass
@@ -503,9 +520,11 @@ class Promotion(unittest.TestCase):
         ):
             out = promotion_call.promotion(
                 env,
-                now or self.BOUNDARY,
+                when,
                 True,
                 lambda subject, details, key=None, once=False: alerts.append((key, once)),
+                client=object(),
+                stability=window if window is not None else self.Stable(when),
                 client_factory=lambda env: object(),
                 readers=readers,
             )
@@ -521,7 +540,7 @@ class Promotion(unittest.TestCase):
             "recurring": {"manual": 1, "auto": 1, "total": 2},
             "discrepancies": [],
         }
-        return lambda: {"quarter": "2027-Q1", "boards": {"JFM": board, "MEJ": board}}
+        return lambda: {"quarter": "2027-q1", "boards": {"JFM": board, "MEJ": board}}
 
     def test_the_kill_switch_off_does_nothing(self):
         out, alerts, setter = self.call({})
@@ -535,9 +554,18 @@ class Promotion(unittest.TestCase):
 
     def test_before_the_boundary_nothing_happens(self):
         out, alerts, setter = self.call(
-            {"V2_PROMOTION": "on"}, now=datetime(2026, 12, 31, 23, 0, tzinfo=TZ), readers=self.passing()
+            {"V2_PROMOTION": "on"}, now=datetime(2027, 1, 5, 23, 0, tzinfo=TZ), readers=self.passing()
         )
         self.assertEqual((out["status"], alerts, setter), ("not_due", [], []))
+
+    def test_a_first_pass_only_records_the_window_and_sets_nothing(self):
+        class Fresh(self.Stable):
+            def __init__(self):
+                self.record, self.saved = None, []
+
+        window = Fresh()
+        out, alerts, setter = self.call({"V2_PROMOTION": "on"}, readers=self.passing(), window=window)
+        self.assertEqual((out["status"], alerts, setter, len(window.saved)), ("stabilizing", [], [], 1))
 
     def test_the_shipped_empty_membership_keeps_legacy_and_sends_one_deduped_alert(self):
         out, alerts, setter = self.call({"V2_PROMOTION": "on"})
