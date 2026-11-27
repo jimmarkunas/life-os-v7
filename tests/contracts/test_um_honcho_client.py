@@ -1,25 +1,17 @@
 """the Honcho v3 client against a scripted opener: no network, the token never appears in a repr or an error, spending is
 armed per message, tenants are.
 """
-import importlib.util
 import io
 import json
 import pathlib
-import sys
 import unittest
 import urllib.error
+from tests.kit.tool_modules import load_tool
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
-def load(name):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, ROOT / "tools" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+load = load_tool
 
 
 c = load("um_honcho_client")
