@@ -5,6 +5,7 @@ Pure: the clock, files and GitHub are passed in. Each new deploy commit gets one
 flag (an open issue labelled `FLAG_LABEL`, read by the release timer); while paused, a new proof starts at most every
 `REPROOF_MINUTES` on main's head.
 """
+
 import dataclasses
 import datetime as dt
 import io
@@ -22,7 +23,11 @@ WAIT_MINUTES = 90  # a proof run unfinished this long after its dispatch has fai
 MATCH_SLACK_SECONDS = 120
 REPROOF_MINUTES = 60
 KEEP = 20
-CODE_FAILED, CODE_TIMED_OUT, CODE_NOT_FOUND = "RELEASE_PROOF_FAILED", "RELEASE_PROOF_TIMED_OUT", "RELEASE_PROOF_RUN_NOT_FOUND"
+CODE_FAILED, CODE_TIMED_OUT, CODE_NOT_FOUND = (
+    "RELEASE_PROOF_FAILED",
+    "RELEASE_PROOF_TIMED_OUT",
+    "RELEASE_PROOF_RUN_NOT_FOUND",
+)
 # the record, runs or manifest could not be read: nothing changes and nothing pages
 UNREADABLE = "RELEASE_PROOF_UNREADABLE"
 SHA = re.compile(r"[0-9a-f]{40}")
@@ -74,17 +79,41 @@ def parse_record(body):
         if not match:
             continue
         fields = dict(FIELD.findall(match.group(3)))
-        found.append(Entry(match.group(1), match.group(2), _field(fields, "dispatched"), _field(fields, "finished"), int(_field(fields, "run") or 0),
-                           _field(fields, "previous"), _field(fields, "code"), _field(fields, "note")))
+        found.append(
+            Entry(
+                match.group(1),
+                match.group(2),
+                _field(fields, "dispatched"),
+                _field(fields, "finished"),
+                int(_field(fields, "run") or 0),
+                _field(fields, "previous"),
+                _field(fields, "code"),
+                _field(fields, "note"),
+            )
+        )
     return sorted(found, key=lambda e: e.dispatched, reverse=True)[:KEEP]
 
 
 def render_record(entries):
     """The record issue's body, in the format parse_record reads."""
-    lines = ["Written by the Oracle ticker's watch (LIFE-693). One line per deployed commit; the newest is first. docs/platform/release-proof.md says how to read it.", ""]
+    lines = [
+        "Written by the Oracle ticker's watch (LIFE-693). One line per deployed commit; the newest is first. docs/platform/release-proof.md says how to read it.",
+        "",
+    ]
     for e in sorted(entries, key=lambda e: e.dispatched, reverse=True)[:KEEP]:
-        lines.append("`v1 %s %s dispatched=%s finished=%s run=%s previous=%s code=%s note=%s`" % (
-            e.commit, e.status, e.dispatched or "-", e.finished or "-", e.run or "-", e.previous or "-", e.code or "-", e.note or "-"))
+        lines.append(
+            "`v1 %s %s dispatched=%s finished=%s run=%s previous=%s code=%s note=%s`"
+            % (
+                e.commit,
+                e.status,
+                e.dispatched or "-",
+                e.finished or "-",
+                e.run or "-",
+                e.previous or "-",
+                e.code or "-",
+                e.note or "-",
+            )
+        )
     return "\n".join(lines)
 
 
@@ -107,7 +136,9 @@ def _match(entry, runs, taken):
     """
     if entry.run:
         return next((r for r in runs if r.get("id") == entry.run), None)
-    cutoff = (_t(entry.dispatched) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)) - dt.timedelta(seconds=MATCH_SLACK_SECONDS)
+    cutoff = (_t(entry.dispatched) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)) - dt.timedelta(
+        seconds=MATCH_SLACK_SECONDS
+    )
     for run in sorted(runs, key=lambda r: r.get("created_at") or ""):
         if run.get("id") not in taken and (_t(run.get("created_at")) or cutoff) >= cutoff:
             return run
@@ -126,7 +157,9 @@ def _resolve(entry, runs, taken, now, code_of):
             return dataclasses.replace(entry, status=FAIL, finished=finished, code=code_of(entry.run) or CODE_FAILED)
     started = _t(entry.dispatched)
     if started is not None and now - started >= dt.timedelta(minutes=WAIT_MINUTES):
-        return dataclasses.replace(entry, status=FAIL, finished=stamp(now), code=CODE_TIMED_OUT if run is not None else CODE_NOT_FOUND)
+        return dataclasses.replace(
+            entry, status=FAIL, finished=stamp(now), code=CODE_TIMED_OUT if run is not None else CODE_NOT_FOUND
+        )
     return entry
 
 
@@ -147,16 +180,31 @@ def decide(now, deployed, previous, entries, runs, paused, code_of=lambda run_id
         (now_failed if after.status == FAIL else now_passed if after.status == PASS else []).append(after)
         resolved.append(after)
     entries = sorted(resolved, key=lambda e: e.dispatched, reverse=True)
-    if deployed and SHA.fullmatch(deployed) and entries and entries[0].commit != deployed and entries[0].status == PENDING:
-        entries[0] = dataclasses.replace(entries[0], status=SUPERSEDED, finished=stamp(now), note="superseded_by_" + deployed[:12])
+    if (
+        deployed
+        and SHA.fullmatch(deployed)
+        and entries
+        and entries[0].commit != deployed
+        and entries[0].status == PENDING
+    ):
+        entries[0] = dataclasses.replace(
+            entries[0], status=SUPERSEDED, finished=stamp(now), note="superseded_by_" + deployed[:12]
+        )
     dispatch = None
     if deployed and SHA.fullmatch(deployed):
         newest = entries[0] if entries else None
         known = any(e.commit == deployed and e.status in (PENDING, PASS, FAIL) for e in entries)
-        reproof = bool(paused and newest is not None and newest.status == FAIL and not any(e.status == PENDING for e in entries)
-                       and now - (_t(newest.dispatched) or now) >= dt.timedelta(minutes=REPROOF_MINUTES))
+        reproof = bool(
+            paused
+            and newest is not None
+            and newest.status == FAIL
+            and not any(e.status == PENDING for e in entries)
+            and now - (_t(newest.dispatched) or now) >= dt.timedelta(minutes=REPROOF_MINUTES)
+        )
         if not known or reproof:
-            good = next((e.commit for e in entries if e.status == PASS and e.commit != deployed), "") or (previous if previous and previous != deployed else "")
+            good = next((e.commit for e in entries if e.status == PASS and e.commit != deployed), "") or (
+                previous if previous and previous != deployed else ""
+            )
             dispatch = Entry(deployed, PENDING, stamp(now), previous=good)
             entries = [dispatch] + entries
     failed = now_failed[-1] if now_failed else None
@@ -172,8 +220,7 @@ def decide(now, deployed, previous, entries, runs, paused, code_of=lambda run_id
 
 
 def revert_line(entry):
-    """The one-line revert: commits after the previous good one up to the deployed one, else the deployed commit alone.
-    """
+    """The one-line revert: commits after the previous good one up to the deployed one, else the deployed commit alone."""
     if entry.previous:
         return f"git revert --no-edit {entry.previous}..{entry.commit}"
     return f"git revert --no-edit {entry.commit}"
@@ -183,9 +230,11 @@ def failure_text(entry):
     code = entry.code or CODE_FAILED
     good = entry.previous[:12] if entry.previous else "none known"
     title = f"Release proof failed: deployed {entry.commit[:12]}, previous good {good}"
-    body = (f"The dry proof run for deployed commit {entry.commit[:12]} failed ({code}). Previous good commit: {good}. Revert: {revert_line(entry)} (open it as a PR to main). "
-            "Further Close releases wait until a proof run passes. The proof re-runs at most every hour on main's current head: if a fix is on main it passes and the pause lifts without anyone deploying; "
-            "if main still fails it stays paused (no second page); or close this issue on GitHub (one click) if you judged it safe.")
+    body = (
+        f"The dry proof run for deployed commit {entry.commit[:12]} failed ({code}). Previous good commit: {good}. Revert: {revert_line(entry)} (open it as a PR to main). "
+        "Further Close releases wait until a proof run passes. The proof re-runs at most every hour on main's current head: if a fix is on main it passes and the pause lifts without anyone deploying; "
+        "if main still fails it stays paused (no second page); or close this issue on GitHub (one click) if you judged it safe."
+    )
     return title, body
 
 

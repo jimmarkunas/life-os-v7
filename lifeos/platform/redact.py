@@ -2,18 +2,47 @@
 
 Meeting credentials (passcode, meeting id, join token) never reach logs, summaries or derived context.
 """
+
 from collections.abc import Iterable, Mapping
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 REDACTED = "<redacted>"
-_SENSITIVE_KEY_FRAGMENTS = ("authorization", "cookie", "token", "secret", "password", "passcode", "passwd", "pwd", "apikey", "privatekey", "email", "sender",
-                            "recipient", "messageid", "body", "payload", "content", "trackingurl", "accountid", "notionid", "pageid", "calendarid",
-                            "meetingid", "joinurl", "joinlink", "meetinglink", "transcript")
+_SENSITIVE_KEY_FRAGMENTS = (
+    "authorization",
+    "cookie",
+    "token",
+    "secret",
+    "password",
+    "passcode",
+    "passwd",
+    "pwd",
+    "apikey",
+    "privatekey",
+    "email",
+    "sender",
+    "recipient",
+    "messageid",
+    "body",
+    "payload",
+    "content",
+    "trackingurl",
+    "accountid",
+    "notionid",
+    "pageid",
+    "calendarid",
+    "meetingid",
+    "joinurl",
+    "joinlink",
+    "meetinglink",
+    "transcript",
+)
 _EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])")
 _URL = re.compile(r"https?://[^\s]+", re.I)
 _AUTH = re.compile(r"\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", re.I)
-_PASSCODE = re.compile(r"(?i)\b(pass(?:code|word)|pwd|meeting id|meeting number|access code)\b\s*[:=]?\s*[\w-]+(?:[ -]\d{2,}){0,3}")
+_PASSCODE = re.compile(
+    r"(?i)\b(pass(?:code|word)|pwd|meeting id|meeting number|access code)\b\s*[:=]?\s*[\w-]+(?:[ -]\d{2,}){0,3}"
+)
 _NOTION_ID = re.compile(r"\b[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\b", re.I)
 
 
@@ -29,7 +58,9 @@ def _sensitive_key(key):
 def _url(match):
     try:
         parts = urlsplit(match.group(0))
-        query = urlencode([(k, REDACTED if _sensitive_key(k) else v) for k, v in parse_qsl(parts.query, keep_blank_values=True)])
+        query = urlencode(
+            [(k, REDACTED if _sensitive_key(k) else v) for k, v in parse_qsl(parts.query, keep_blank_values=True)]
+        )
         host = parts.hostname or ""
         host = f"[{host}]" if ":" in host else host
         host = f"{host}:{parts.port}" if parts.port is not None else host
@@ -50,8 +81,7 @@ def _text(value, secrets):
 
 
 def redact(value, secrets: Iterable[str] = ()):
-    """A JSON-friendly redacted copy; the input is never mutated and unknown objects are reduced to their type name.
-    """
+    """A JSON-friendly redacted copy; the input is never mutated and unknown objects are reduced to their type name."""
     return _walk(value, tuple(str(s) for s in secrets if s))
 
 

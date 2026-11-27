@@ -2,6 +2,7 @@
 
 The key comes from the TINYFISH_API_KEY secret. Logs counts and categories only.
 """
+
 from collections.abc import Sequence
 from typing import Any
 import json
@@ -29,7 +30,14 @@ class TinyFishError(RuntimeError):
     """Fixed codes only - never key material or response bodies."""
 
 
-def fetch_many(urls: Sequence[str], fmt: str = "html", links: bool = True, ttl: int = 0, per_url_timeout_ms: int = 45000, timeout: int = 150) -> tuple[dict[Any, dict[str, Any]], list[dict[str, Any]]]:
+def fetch_many(
+    urls: Sequence[str],
+    fmt: str = "html",
+    links: bool = True,
+    ttl: int = 0,
+    per_url_timeout_ms: int = 45000,
+    timeout: int = 150,
+) -> tuple[dict[Any, dict[str, Any]], list[dict[str, Any]]]:
     """Fetch up to 10 URLs in one call. Returns (results_by_requested_url, errors_list)."""
     raw = os.environ.get("TINYFISH_API_KEY") or ""
     key, parts = clean_key(raw)
@@ -39,10 +47,12 @@ def fetch_many(urls: Sequence[str], fmt: str = "html", links: bool = True, ttl: 
         raise TinyFishError(f"TINYFISH_KEY_NOT_A_KEY(parts={len(parts)},raw_len={len(raw)})")
     if not urls or len(urls) > MAX_URLS:
         raise TinyFishError("TINYFISH_BAD_BATCH")
-    body = json.dumps({"urls": list(urls), "format": fmt, "links": links, "ttl": ttl,
-                       "per_url_timeout_ms": per_url_timeout_ms}).encode()
-    request = urllib.request.Request(ENDPOINT, data=body, method="POST",
-                                     headers={"X-API-Key": key, "Content-Type": "application/json"})
+    body = json.dumps(
+        {"urls": list(urls), "format": fmt, "links": links, "ttl": ttl, "per_url_timeout_ms": per_url_timeout_ms}
+    ).encode()
+    request = urllib.request.Request(
+        ENDPOINT, data=body, method="POST", headers={"X-API-Key": key, "Content-Type": "application/json"}
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read())

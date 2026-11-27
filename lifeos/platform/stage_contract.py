@@ -3,6 +3,7 @@
 Called like a stage function, `contract(limit, live, **kw)`: it checks the returned counts are a dict carrying every
 declared output key, else fails with STAGE_CONTRACT_OUTPUT_MISSING.
 """
+
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -31,4 +32,10 @@ class Contract:
         return counts
 
     def describe(self) -> dict[str, Any]:
-        return {"name": self.name, "inputs": list(self.inputs), "outputs": list(self.outputs), "dry_run": self.dry_run, "write": self.write}
+        return {
+            "name": self.name,
+            "inputs": list(self.inputs),
+            "outputs": list(self.outputs),
+            "dry_run": self.dry_run,
+            "write": self.write,
+        }

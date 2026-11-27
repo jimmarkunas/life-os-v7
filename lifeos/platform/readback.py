@@ -2,6 +2,7 @@
 
 Up to `attempts` reads, `pause` seconds apart, since Notion may briefly show the old state. Never repeats a write.
 """
+
 import time
 
 
