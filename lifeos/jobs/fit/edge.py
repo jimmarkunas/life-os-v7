@@ -1,8 +1,8 @@
 """V7 client of Oracle's synthetic-only `fit1` verb and its `limits` reading.
 
-V7 holds no Gateway credential and chooses no model, agent, tool or instruction: it sends one framed request,
-checks the echoed request hash, nonce and receipt (pinned model, no fallback) and hands the raw judgment to
-judge.accept. A doubt is a fixed code, never a retry.
+V7 holds no Gateway credential and chooses nothing but the request: it sends one framed request, checks the echoed
+hash, nonce and receipt (pinned model, no fallback) and hands the raw judgment to judge.accept. A doubt is a fixed
+code.
 """
 import hashlib
 import json
@@ -33,9 +33,8 @@ AGENTS = {"fit", "fit2", "fit3"}
 
 
 class EdgeError(RuntimeError):
-    """Fixed codes only. `detail` (when set) names the first receipt field that was not as contracted: a field name,
-    never content. `receipt` (FIT_EDGE_PURGE_FAILED only): the validated Oracle receipt, kept privately as
-    provenance.
+    """Fixed codes only. `detail` names the first receipt field not as contracted; `receipt` is set for
+    FIT_EDGE_PURGE_FAILED.
     """
     quota = None
 
@@ -59,9 +58,9 @@ CONNECT_ATTEMPTS, CONNECT_PAUSE = 2, 3
 
 
 def exchange(host, data, port=PORT, wait=WAIT, sleep=time.sleep):
-    """One request, read to the server's close (shared logic: lifeos/platform/socket_exchange.py). b"" = closed with
-    no output; a hung server is FIT_EDGE_TIMEOUT. A connection that cannot be opened is retried
-    (CONNECT_ATTEMPTS), then FIT_EDGE_CONNECT_FAILED: nothing was sent, so the caller treats it as no call.
+    """One request, read to the server's close; b"" = closed with no output, a hung server is FIT_EDGE_TIMEOUT.
+
+    A connection that cannot be opened is retried (CONNECT_ATTEMPTS), then FIT_EDGE_CONNECT_FAILED (nothing was sent).
     """
     return socket_exchange.exchange(host, data, port, wait, MAX_REPLY, lambda: EdgeError("FIT_EDGE_CONNECT_FAILED"), lambda: EdgeError("FIT_EDGE_TIMEOUT"),
                                     sleep=sleep, attempts=CONNECT_ATTEMPTS, pause=CONNECT_PAUSE)
@@ -79,9 +78,7 @@ def bad_receipt_field(receipt):
 
 
 def quota_reading(raw):
-    """Oracle's meter reading -> {"stop": int, "windows": [{"label", "used", "reset_at"}]}, labels and numbers only,
-    or None when absent or not as contracted.
-    """
+    """Oracle's meter reading -> {"stop", "windows"}, or None if not as contracted."""
     try:
         stop, windows = raw["stop"], raw["windows"]
         assert type(stop) is int and 1 <= stop <= 100 and isinstance(windows, list) and 0 < len(windows) <= 4
@@ -109,9 +106,6 @@ def _estimate(raw):
 
 
 def _answer(host, data, send, wait, status_ok):
-    """The checks `limits` and `invoke` share: a reply within the size limit, JSON, a fit1 reply with an acceptable
-    status -> the reply dict.
-    """
     raw = send(host, data, wait=wait)
     if not raw:
         raise EdgeError("FIT_EDGE_NO_REPLY")
@@ -124,10 +118,9 @@ def _answer(host, data, send, wait, status_ok):
 
 
 def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
-    """Oracle's `limits` request (no model run) -> {"read_at", "pools": [{"provider", "windows": [{"label", "used",
-    "reset_at"}], "stop"?}], "unavailable": [provider], "safety_cap": {"runs_today", "limit"} | None}, labels and
-    numbers only; or an EdgeError code. `backlog` (the Cloud Fit backlog count) is reported to Oracle, which
-    returns its per-window estimate on the openai pool.
+    """Oracle's `limits` request (no model run) -> {"read_at", "pools", "unavailable", "safety_cap"} or an EdgeError.
+
+    `backlog` (the Cloud Fit backlog count) is sent to Oracle, which returns its per-window estimate.
     """
     if not host:
         raise EdgeError("FIT_EDGE_NO_HOST")
@@ -161,7 +154,7 @@ def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
 
 
 def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
-    """One model invocation, never retried: -> {judgment, receipt, request_hash}, or an EdgeError code at the first
+    """One model invocation, never retried: -> {judgment, receipt, request_hash, ...} or an EdgeError at the first
     mismatch.
     """
     if not host:
@@ -194,9 +187,6 @@ def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
 
 
 def probes(fixture=None):
-    """Requests that must be refused with no model call: bad framing, oversize length, non-JSON body, unknown key, a
-    request not on the allowlist.
-    """
     bad, nonce = b"not-json-body", "0" * 32
     ghost = {**fixture, "title": fixture["title"] + " (modified)"} if fixture else {"title": "SYNTHETIC PROBE", "description": "SYNTHETIC PROBE", "profile": {"years": 1}}
     return {"bad_length": b"fit1 abc\n", "oversize": b"fit1 99999999\n", "not_json": b"fit1 %d\n" % len(bad) + bad, "unknown_key": frame(ghost, nonce, extra=1), "modified_or_unlisted": frame(ghost, nonce)}
@@ -217,9 +207,7 @@ def run(limit, live, environ=os.environ, send=exchange, manifest=MANIFEST):
 
 
 def _run(environ, send, manifest):
-    """FIT_EDGE_MODE=negative runs the refusal probes (no model call); otherwise one manifest fixture is one real
-    model invocation. Writes nothing.
-    """
+    """FIT_EDGE_MODE=negative runs the refusal probes; otherwise one manifest fixture is one real call."""
     host, mode = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip(), (environ.get("FIT_EDGE_MODE") or "").strip()
     if not host or not mode:
         return {"status": "FIT_EDGE_NOT_CONFIGURED"}

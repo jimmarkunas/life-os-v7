@@ -19,7 +19,7 @@ import time
 
 from lifeos.platform import source_registry as registry, stage_timing
 
-RUN_BUDGET_SECONDS = 35 * 60  # the workflow job allows 45 minutes; the rest is setup
+RUN_BUDGET_SECONDS = 35 * 60  # the job allows 45 minutes; the rest is setup
 FAST_FLOOR_SECONDS = 60  # a fast-path stage always gets at least this long
 
 
@@ -28,11 +28,11 @@ class Step:
     name: str
     budget: int
     limit: int = 40
-    bulk: bool = False  # runs after the fast path, only while the run's time lasts
-    module: str = ""  # a module whose main(argv) is the stage; else a lifeos.run stage
-    group: str = ""  # consecutive steps with the same group run side by side as threads
+    bulk: bool = False  # runs after the fast path, while time lasts
+    module: str = ""  # a module whose main(argv) is the stage
+    group: str = ""  # consecutive steps with the same group run as threads
     providers: tuple = ()  # outside services it calls; each has a TICK_CAP_* cap
-    # starts with the run in its own thread; the run waits for it where its group ends
+    # runs in its own thread; the run waits for it where its group ends
     early: bool = False
 
 
@@ -40,31 +40,28 @@ PLAN = (
     Step("resolve-jobright", 600, 40, group="A", providers=("jobright",)),
     Step("resolve-linkedin", 420, 150, group="A", providers=("linkedin",)),
     Step("resolve-dice", 180, 15, group="A", providers=("dice",)),
-    # Jobs already scored reach the Ledger before this run reads new descriptions.
     Step("audit-ready", 60),
-    Step("publish", 720, 40),  # ~13 s a page, so 40 fit the budget
+    Step("publish", 720, 40),  # ~13 s a page
     Step("enrich", 480, 150),
     Step("fit", 240),
     Step("audit-fresh", 60),
     Step("publish-fresh", 300, 20),
-    # after publish, so the full pass never delays the Ledger
     Step("audit", 180),
     Step("expire-holds", 120),
     Step("finalize", 180, 300, module="lifeos.sources.newsletters.finalize"),
-    # Drain pass: the backlog, in the run's spare time, never before the hourly work.
     Step("drain-audit-ready", 60, bulk=True),
     Step("drain-publish", 720, 120, bulk=True),
-    Step("drain-enrich", 480, 600, bulk=True),  # no TinyFish fallback: the Fetch day cap stays the hourly pass's
+    Step("drain-enrich", 480, 600, bulk=True),  # no TinyFish fallback
     Step("drain-fit", 240, bulk=True),
 )
-# the registered sources' steps (lifeos/platform/source_registry.json), each after the step it names
+# registered sources' steps, each after the step it names
 PLAN = registry.with_tick_steps(PLAN, Step)
-# a manual quick proof run reads few boards and publishes few pages
+# --quick: a small proof run
 QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "boards-tick": 50, "drain-publish": 10, "drain-enrich": 50}
 
 
 class StageTimeout(BaseException):
-    """Raised by the alarm. A BaseException, so a stage's own `except Exception` cannot swallow it."""
+    """Raised by the alarm. A BaseException so a stage's `except Exception` cannot swallow it."""
 
 
 def _alarm(_signum, _frame):
@@ -79,7 +76,6 @@ def _run_step(step, live, limit, stages):
         return "ok" if code == 0 else "failed"
     from lifeos import run                                                          # noqa: PLC0415 - the one stage registry
     code = run.main([step.name, "--limit", str(limit)] + (["--live"] if live else [])) if stages is None else stages[step.name](limit, live)
-    # Through lifeos.run.main the stage's counts are already noted: noting them again wiped them.
     if stages is not None:
         stage_timing.note_counts(code)
     return "ok" if code in (0, None) or isinstance(code, dict) else "failed"
@@ -98,11 +94,7 @@ def _small_int(raw, default, low=1, high=16):
 
 
 def concurrency_from_env(environ=None):
-    """-> {"caps": {provider: n}, "parallel": n}.
-
-    A cap that is not a whole number from 1 to 16 falls back to its default, so a typo never raises a cap. "ats" is
-    the one global limit on board reads (default 8 workers).
-    """
+    """-> {"caps": {provider: n}, "parallel": n}; a cap that is not a whole number from 1 to 16 uses its default."""
     environ = os.environ if environ is None else environ
     from lifeos.platform import limits                                                 # noqa: PLC0415
     return {"caps": {"linkedin": _small_int(environ.get("TICK_CAP_LINKEDIN"), CAP_DEFAULTS["linkedin"]), "tinyfish": _small_int(environ.get("TICK_CAP_TINYFISH"), CAP_DEFAULTS["tinyfish"]),
@@ -112,48 +104,37 @@ def concurrency_from_env(environ=None):
 
 
 def tick_concurrency(environ=None):
-    """The caps, read AFTER the Runtime Configuration rows are applied (the workflow declares TICK_CAP_* empty so the
-    settings source can fill them). Applying the source here never fails the tick.
-    """
     environ = os.environ if environ is None else environ
     try:
         from lifeos.platform import settings                                           # noqa: PLC0415
         settings.apply(environ)
-    except Exception:  # noqa: BLE001 - an unreadable settings source leaves the caps at their defaults, never fails the run
+    except Exception:  # noqa: BLE001 - unreadable settings leave the default caps
         pass
     return concurrency_from_env(environ)
 
 
-# seconds an early step waits so the run's first group asks for its service slots first
+# lets the first group ask for service slots first
 EARLY_START_DELAY = 1.0
 
 
 def _after_a_moment(target, *args):
-    """Start an early step a moment after the first group has asked for its slots, so it cannot take a shared slot first.
-    """
     time.sleep(EARLY_START_DELAY)
     target(*args)
 
 
 def _stop_thread(thread, flag):
-    """Raise StageTimeout inside `thread` (the alarm signal only reaches the main thread).
-
-    It takes effect when the thread next runs Python code, so a read blocked in the network ends at its own timeout.
-    """
+    """Raise StageTimeout inside `thread` (SIGALRM only reaches the main thread), when it next runs Python code."""
     with flag["lock"]:
         if not flag["done"] and thread.ident is not None:
             ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread.ident), ctypes.py_object(StageTimeout))
 
 
-# grace after a stage's own budget before the run stops waiting for a side-by-side stage
+# grace after a stage's budget before the run stops waiting
 ABANDON_GRACE_SECONDS = 5
 
 
 def _allot(step, left, quick):
-    """The one rule both runners use: -> (seconds the stage may run, its --limit).
-
-    None when a bulk stage has under a minute of the run left (skipped, resumes next run).
-    """
+    """-> (seconds the stage may run, its --limit); None when a bulk stage has under a minute left (skipped)."""
     if step.bulk and left < 60:
         return None
     allowed = max(1, int(min(step.budget, left))) if step.bulk else min(step.budget, max(FAST_FLOOR_SECONDS, int(left)))
@@ -161,9 +142,7 @@ def _allot(step, left, quick):
 
 
 def _report(step, label, seconds, outcome, timings, lock=None, queued=0.0):
-    """One stage's result: prints exactly one `stage <name>: <outcome> <seconds>s` line (skipped ones too) plus a
-    `stage_timing` JSON line. `queued` is the time spent waiting for the services' slots before the budget started.
-    """
+    """Print one `stage <name>: <outcome> <seconds>s` line plus a `stage_timing` JSON line; `queued` = slot wait."""
     with lock or threading.Lock():
         outcome[step.name] = label
         timings[step.name] = seconds
@@ -176,7 +155,6 @@ _SLOT_LOCK = threading.Lock()
 
 
 def _service_slots(concurrency):
-    """The per-service slots of this tick, made once so a cap holds across groups and early steps."""
     with _SLOT_LOCK:
         if "slots" not in concurrency:
             concurrency["slots"] = {name: threading.BoundedSemaphore(n) for name, n in concurrency["caps"].items() if name != "ats"}
@@ -184,17 +162,16 @@ def _service_slots(concurrency):
 
 
 def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcome, timings):
-    """Run consecutive independent steps side by side as threads of this process (one store tunnel).
+    """Run consecutive independent steps as threads of this process (one store tunnel).
 
-    Each keeps its own budget, outcome and `stage ...` line; one that fails or times out is its own red entry and the
-    others finish. A stage waits for its services' slots before its budget starts. A timeout is a timer thread raising
-    StageTimeout in the stage's thread; a read blocked in the OS ignores it until it returns, so the run stops waiting
-    after the budget plus ABANDON_GRACE_SECONDS and names the stage (`stage abandoned: <name>`).
+    Each keeps its own budget, outcome and `stage ...` line. A stage waits for its service slots before its budget
+    starts. A timer raises StageTimeout in its thread; a read blocked in the OS ignores it, so the run stops waiting
+    after ABANDON_GRACE_SECONDS and prints `stage abandoned: <name>`.
     """
     caps = concurrency["caps"]
     slots = _service_slots(concurrency)
     parallel = threading.BoundedSemaphore(concurrency["parallel"])
-    shared = threading.RLock()  # re-entrant: the check for "abandoned" and the report are one step
+    shared = threading.RLock()
     abandoned = set()
     threads = []
 
@@ -206,7 +183,7 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
         label = None
         try:
             with parallel:
-                # fixed order, so stages needing two services never deadlock
+                # fixed order avoids deadlock
                 for name in sorted(p for p in step.providers if p in slots):
                     slots[name].acquire()
                     held.append(name)
@@ -233,7 +210,6 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
             for name in held:
                 slots[name].release()
             with shared:
-                # the run already reported this stage as abandoned: a late return changes nothing
                 if step.name not in abandoned:
                     _report(step, label or "failed", clock() - began, outcome, timings, shared, queued)
 
@@ -246,7 +222,7 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
         thread = threading.Thread(target=work, args=(step, allowed, limit), name=f"tick-{step.name}", daemon=True)
         thread.start()
         threads.append((step, thread, allowed, time.monotonic() + allowed + ABANDON_GRACE_SECONDS))
-    # every stage has a timer; this bounds one that cannot hear it
+    # bounds a stage that cannot hear its timer
     for step, thread, allowed, stop_waiting in threads:
         thread.join(max(stop_waiting - time.monotonic(), 0))
         if thread.is_alive():
@@ -260,13 +236,13 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
 def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget=RUN_BUDGET_SECONDS, timings=None, concurrency=None):
     """-> {stage: ok | failed | timeout | skipped}.
 
-    `stages` (name -> callable(limit, live)) replaces lifeos.run in tests. `timings` (when given) collects {stage:
-    seconds}. `concurrency` (None = off) runs each run of consecutive steps that share a `group` side by side.
+    `stages` (name -> callable(limit, live)) replaces lifeos.run in tests; `timings` collects {stage: seconds};
+    `concurrency` (None = off) runs consecutive steps sharing a `group` side by side.
     """
     started, outcome = clock(), {}
     timings = {} if timings is None else timings
     previous = signal.signal(signal.SIGALRM, _alarm)
-    early = {}  # name -> thread of an `early` step
+    early = {}
     try:
         if concurrency:
             for step in plan:
@@ -287,7 +263,7 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
                     members = [c for c in run_of if c.name not in early]
                     if members:
                         _run_group(members, live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings)
-                    for c in run_of:  # the group ends only when its early step does
+                    for c in run_of:
                         if c.name in early:
                             early[c.name].join()
                     position += len(run_of)
@@ -317,7 +293,6 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
 
 
 def summary_table(outcome, timings, total):
-    """The stage table for the job summary: name, outcome, seconds, share of the tick."""
     lines = ["### Jobs tick: seconds per stage", "", "| Stage | Outcome | Seconds | Share |", "|---|---|---:|---:|"]
     for name, result in outcome.items():
         seconds = timings.get(name, 0.0)
@@ -330,11 +305,7 @@ SHADOW_WAIT_SECONDS = 20
 
 
 def shadow_in_background(environ=None):
-    """Start a compare-only read of the Runtime Configuration source beside the stages.
-
-    Returns a `collect()` that waits at most SHADOW_WAIT_SECONDS and gives the receipt (counts, names and codes only).
-    It changes no environment and writes nothing; any failure is a receipt, never a failed tick.
-    """
+    """Start a compare-only read of the Runtime Configuration source; `collect()` waits SHADOW_WAIT_SECONDS."""
     environ = os.environ if environ is None else environ
     box = {}
 
@@ -354,7 +325,6 @@ def shadow_in_background(environ=None):
 
 
 def planned(environ=None):
-    """PLAN without the stages TICK_SKIP_STAGES names."""
     skip = (os.environ if environ is None else environ).get("TICK_SKIP_STAGES", "").split()
     return tuple(step for step in PLAN if step.name not in skip)
 
@@ -376,7 +346,7 @@ def main(argv=None):
     full = planned()
     plan, left_out = due.split_plan(full)
     outcome = tick(args.live, args.quick, plan=plan, timings=timings, concurrency=concurrency)
-    for step, why in left_out:  # a stage not due is skipped, not red
+    for step, why in left_out:
         print(f"stage {step.name}: not due 0.0s ({why})", flush=True)
         outcome[step.name], timings[step.name] = "not due", 0.0
     if left_out:
@@ -399,10 +369,7 @@ def main(argv=None):
 
 
 def failing_stages(outcome, plan):
-    """The stages that fail the tick: any that failed, and a REQUIRED stage that ran out of its budget.
-
-    A bulk (optional) stage that timed out is counted `timeout` and printed, and the tick passes.
-    """
+    """The stages that fail the tick: any that failed, and a required (not bulk) stage that timed out."""
     optional = {step.name for step in plan if step.bulk}
     return [name for name, result in outcome.items() if result == "failed" or (result == "timeout" and name not in optional)]
 

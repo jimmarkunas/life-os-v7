@@ -1,8 +1,8 @@
 """Lane policy: one data-driven qualification for every acquisition lane (docs/LANES.md).
 
-Professional Fit is shared (lifeos.jobs.fit; one floor, 72, in every lane). A lane adds opportunity policy: market,
-work mode, pay, posting age, route and geography evidence. Unresolved evidence is REVIEW, never guessed; definitive
-negative evidence (and a closed vacancy) is EXCLUDE.
+Fit is shared across lanes; a lane adds market, work mode, pay, age, route and geography policy. Unresolved
+evidence is REVIEW; definitive negative evidence (and a closed vacancy) is EXCLUDE.
+
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -11,11 +11,11 @@ import re
 from lifeos.jobs.fit import UNIVERSAL_FIT_FLOOR
 
 FIT_FLOOR = UNIVERSAL_FIT_FLOOR  # ADMIT needs this Fit in every lane
-NEAR_MISS_FLOOR = 68  # a Fit under this with a second open question is Exclude, not Review
+NEAR_MISS_FLOOR = 68
 REVIEW_FLOOR = 60
 POSITIVE, NEGATIVE, UNRESOLVED = "POSITIVE", "NEGATIVE", "UNRESOLVED"
 ADMIT, REVIEW, EXCLUDE, DISABLED = "ADMIT", "REVIEW", "EXCLUDE", "DISABLED"
-# A recruiter's outreach, not an acquisition lane: decide_all admits it without the Fit gate.
+# not an acquisition lane: decide_all admits it without the Fit gate
 RECRUITER = "Recruiter"
 PRECEDENCE = ("Scale-Up", "Skilled Worker", "US Remote")
 
@@ -28,34 +28,27 @@ class LanePolicy:
     work_mode: str = "any"
     pay_floor: int | None = None
     max_age_days: int | None = None
-    unknown_date_blocks: bool = True  # a missing posting date goes to REVIEW (False: it does not suppress)
-    # An employer-board job is judged by its known Posting Date too; an undated one is not.
+    unknown_date_blocks: bool = True
     first_party_age: bool = False
     route: str | None = None
     geography_required: bool = False
-    # Another stated place is EXCLUDE (an empty location stays Review).
     london_only: bool = False
     enabled: bool = True
-    market_required: bool = False  # an unknown market is REVIEW
+    market_required: bool = False
     bucket: str = "Curated"
 
 
 POLICIES = {
     "US Remote": LanePolicy("US Remote", "US", "$", work_mode="remote_only", pay_floor=75_000, max_age_days=14, first_party_age=True),
-    # Scale-Up: the liberal lane. Any work mode, no pay floor, route + geography evidence required, 30-day age gate.
     "Scale-Up": LanePolicy("Scale-Up", "UK", "£", pay_floor=40_000, max_age_days=30, unknown_date_blocks=False, first_party_age=True, route="Scale-up",
                            geography_required=True, london_only=True, bucket="Target"),
-    # Skilled Worker: sponsor-register evidence for the employer is the route; London positive, a named non-target
-    # place negative, UK-remote / unresolved geography is Review; pay under GBP 65,000 excludes; 14 days.
     "Skilled Worker": LanePolicy("Skilled Worker", "UK", "£", pay_floor=65_000, max_age_days=14, route="Skilled Worker",
                                  geography_required=True, market_required=True, bucket="Target"),
     RECRUITER: LanePolicy(RECRUITER, "US", "$", unknown_date_blocks=False),
 }
 
 
-# Roles that must reach the board whatever the model scores: (company substring, title regex), case-insensitive. A
-# listed role that no exclusion rule hits and that clears every other lane test is Review rather than Excluded for
-# Fit.
+# (company substring, title regex), case-insensitive: such a role is REVIEW, not EXCLUDE, for Fit.
 KEEP_LIST = (
     ("revolut", r"^product designer \(platform\)$"),
     ("revolut", r"^partnerships manager \(lifestyle\)$"),
@@ -65,8 +58,6 @@ KEEP_LIST = (
     ("revolut", r"^credit manager\b.*\bproduct\b"),
 )
 
-# Keep-list role that a private TITLE rule would exclude (a product role matching the financial-risk rule): scored as
-# usual, reaches the board as Review.
 KEEP_OVERRIDES_EXCLUSION = (
     ("revolut", r"^credit manager\b.*\bproduct\b"),
 )
@@ -74,7 +65,6 @@ KEEP_OVERRIDES_EXCLUSION = (
 
 TITLE_WATCH_PREFIX = "web:titlewatch:"
 TITLE_ONLY_REASON = "found by title search; description not read"
-# A no-board Scale-Up sponsor's job from its listing page: Review from the link, never Admit.
 LISTING_REASON = "found by web search; listing page not read"
 LISTING_PROOF = "listing"
 THIN_REASON = "description too short to judge; Review from its apply link"
@@ -92,11 +82,7 @@ THIN_REVIEW_PREFIXES = ("web:su-", "web:gh-", "web:lv-", "web:ab-")
 
 
 def thin_review_source(source):
-    """A Scale-Up sponsor's own board (`web:su-<id>`) or a Greenhouse, Lever or Ashby board (`web:gh-`/`lv-`/`ab-`).
-
-    The board's feed is the posting: thin roles are reviewed from their apply link, never held, and an open role whose
-    title fits (Fit 60+ from its short text, no private title rule) is admitted.
-    """
+    """True for a Scale-Up sponsor's own board or a Greenhouse, Lever or Ashby board (thin roles stay open)."""
     return bool(source) and source.startswith(THIN_REVIEW_PREFIXES)
 
 
@@ -126,14 +112,11 @@ class Facts:
     geography: str = UNRESOLVED
     located: bool = False
     kept: bool = False
-    # Thin, but from a board's own text (thin_review_source): it can be admitted.
     thin_admit: bool = False
-    # Page text too thin to judge: a score from it is never a Go (see thin_admit).
     thin: bool = False
     title_only: bool = False
-    # A no-board Scale-Up sponsor's job from its listing page (never fetched): Review, never Admit.
     listing: bool = False
-    first_party: bool = False  # listed on the employer's own board: its posting age is not judged
+    first_party: bool = False  # posting age is not judged
     open_application: bool = False
 
 
@@ -144,9 +127,7 @@ class Decision:
 
 
 def qualify(policy, facts, today):
-    """Review is for ONE open question on a job that otherwise clearly fits: a near-miss Fit (60-67) with any other
-    unresolved evidence is EXCLUDE.
-    """
+    """-> Decision; a near-miss Fit with any other unresolved evidence is EXCLUDE, not REVIEW."""
     decision = _qualify(policy, facts, today)
     if decision.status == REVIEW and facts.fit is not None and facts.fit < NEAR_MISS_FLOOR and not (decision.reason or "").startswith("Fit ") and not facts.kept:
         return Decision(EXCLUDE, f"Fit {facts.fit} below {NEAR_MISS_FLOOR} and {decision.reason}")
@@ -203,16 +184,15 @@ def _qualify(policy, facts, today):
             return Decision(REVIEW, "geography unresolved")
     if facts.fit is None:
         return Decision(REVIEW, "Fit unscorable")
-    # A thin board-feed role is judged on its title (Fit 60+), not held to 72.
     if facts.fit < FIT_FLOOR and not (facts.thin_admit and facts.fit >= REVIEW_FLOOR):
         return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}" + (" (on Jim's keep list)" if facts.kept else ""))
     return Decision(ADMIT, "remote assumed" if policy.work_mode == "remote_only" and facts.work_mode == "unknown" else None)
 
 
 def qualify_all(facts, today, policies=POLICIES, own=None):
-    """{lane: Decision} for every enabled lane, plus the visible lane (None when no lane admits it)."""
+    """({lane: Decision} for every enabled lane, visible lane or None)."""
     results = {name: qualify(p, facts, today) for name, p in policies.items() if p.enabled}
-    if own is not None:  # another lane admits it only on a POSITIVE market match
+    if own is not None:
         for name, p in policies.items():
             if name != own and name in results and results[name].status == ADMIT and facts.market != p.market:
                 results[name] = Decision(EXCLUDE, f"market not shown to be {p.market}")
@@ -224,9 +204,7 @@ _PAY = re.compile(r"([$£€])\s?(\d[\d,]*(?:\.\d+)?)\s?(k|m)?\b(?:\s*(?:/|per|a
 
 
 def parse_pay(text):
-    """(annual minimum, currency symbol) from posted pay text, or (None, None) when not clearly explicit; hourly is
-    x2,080; a bare number is never pay.
-    """
+    """(annual minimum, currency symbol) from posted pay text, or (None, None); hourly is x2,080."""
     best = None
     for symbol, number, scale, unit in _PAY.findall(text or ""):
         value = float(number.replace(",", ""))
@@ -239,13 +217,10 @@ def parse_pay(text):
     return best if best else (None, None)
 
 
-# A US job is presumed workable remotely unless the employer REQUIRES office attendance. A negated or optional mention
-# ("no onsite requirement", "occasional travel to our office") does not count.
 _NEGATED = re.compile(r"\b(?:not|no|never|isn't|aren't|without|optional|optionally|occasional|occasionally|if you prefer|flexibility to)\b[^.;\n]{0,30}$", re.I)
 _HYBRID_REQ = re.compile(r"\bhybrid (?:role|work|schedule|position|model|arrangement|working)\b|"
                          r"\b(?:\d|one|two|three|four)\s+days?\s+(?:a|per|each)\s+week\s+(?:in|at|from)\s+(?:the |our |an? )?(?:office|hq|headquarters|studio|campus)\b|"
                          r"\b(?:in[- ]office|on-?site)\s+(?:\d|one|two|three|four)\s+days?\b", re.I)
-# A required number of office days a week, stated anywhere (benefits paragraphs sit past the 1,500-character window).
 _HYBRID_DAYS = re.compile(r"\b(?:in|at|from)\s+(?:the |our |an? )?(?:[a-z]+ )?(?:office|hq|headquarters|studio|campus)s?\s+(?:at least |a minimum of )?(?:\d\+?|one|two|three|four)\+?\s+days?\b|"
                           r"\b(?:\d\+?|one|two|three|four)\+?\s+days?\s+(?:a|per|each)\s+week\s+(?:in|at|from)\s+(?:the |our |an? )?(?:[a-z]+ )?(?:office|hq|headquarters|studio|campus)\b", re.I)
 _ONSITE_REQ = re.compile(r"\b(?:must|required to|requires you to|expected to|will need to|need to)\s+(?:be\s+|work\s+|report\s+)?(?:on-?site|in[- ]office|in (?:the|our) office|(?:from|at|in) (?:the|our) (?:office|hq|headquarters|campus))\b|"
@@ -257,8 +232,6 @@ _REMOTE_STATED = re.compile(r"\b(?:fully|100%|completely) remote\b|\b(?:remote|v
                             r"\bwork (?:from )?anywhere in the (?:us|u\.s\.|united states)\b", re.I)
 
 
-# Not a requirement: a condition earlier in the sentence ("if you live near our office") or a qualifier right after
-# ("onsite for quarterly planning", "in the office occasionally").
 _CONDITIONAL = re.compile(r"\b(?:if you|for (?:candidates|those|employees|team members) (?:who|located|based|living|near|in|within)|local (?:candidates|employees)|"
                           r"within \d+ miles|when (?:needed|required|necessary)|we offer|you (?:can|may) (?:choose|opt)|(?:the )?option to)\b", re.I)
 _OCCASIONAL = re.compile(r"^[^.;\n]{0,25}?\b(?:occasional(?:ly)?|as needed|when needed|if needed|periodically|for (?:quarterly|annual|team|company|occasional|key)\b|"
@@ -267,7 +240,6 @@ _OCCASIONAL = re.compile(r"^[^.;\n]{0,25}?\b(?:occasional(?:ly)?|as needed|when 
 
 
 def _required(pattern, text):
-    """The first mandatory (not negated, optional or conditional) match of `pattern` in `text`, else None."""
     for m in pattern.finditer(text):
         sentence = re.split(r"[.;\n]", text[:m.start()])[-1]
         if not (_NEGATED.search(text[max(0, m.start() - 40):m.start()]) or _CONDITIONAL.search(sentence) or _OCCASIONAL.search(text[m.end():])):
@@ -276,12 +248,7 @@ def _required(pattern, text):
 
 
 def work_mode_evidence(location, title="", text="", window=1500):
-    """(remote | hybrid | onsite | unknown, the employer's own words or None).
-
-    "unknown" means nothing is required either way: remote is presumed, never stated. A mandatory attendance
-    requirement beats any remote cue. Order: required hybrid/office attendance in the description; the #LI-Hybrid/#LI-
-    Onsite tag; the employer's place/title (remote wins alongside hybrid); an explicit remote statement; #LI-Remote.
-    """
+    """(remote | hybrid | onsite | unknown, the employer's own words or None); attendance beats remote cues."""
     head = f"{location or ''} {title or ''}"
     body = (text or "")[:window]
     for mode, pattern in (("hybrid", _HYBRID_REQ), ("onsite", _ONSITE_REQ)):
@@ -306,13 +273,12 @@ def work_mode_evidence(location, title="", text="", window=1500):
 
 
 def detect_work_mode(location, title="", text="", window=1500):
-    """remote | hybrid | onsite | unknown (work_mode_evidence without the words)."""
     return work_mode_evidence(location, title, text, window)[0]
 
 
 LANE_ALIAS = {"Newsletter": "US Remote"}
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}
-POLICY_VERSION = "l17"  # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l17"
 
 
 def lane_for(row_lane):
@@ -323,8 +289,7 @@ _UK_REMOTE = re.compile(r"remote\W{0,6}(?:uk|u\.k\.|united kingdom|england|great
 
 
 def geography_status(location):
-    """Scale-Up geography (target London): London is POSITIVE, a named other place NEGATIVE, anything else UNRESOLVED.
-    """
+    """London is POSITIVE, a named other place NEGATIVE, anything else UNRESOLVED."""
     text = (location or "").casefold()
     if not text:
         return UNRESOLVED
@@ -344,7 +309,7 @@ _OTHER = re.compile(r"\b(ireland|dublin|germany|berlin|munich|france|paris|spain
 
 
 def market_of(location):
-    """'US' | 'UK' | 'OTHER' from the location text alone; None when silent, ambiguous or naming several markets."""
+    """'US' | 'UK' | 'OTHER' from the location text; None when silent, ambiguous or several."""
     text = location or ""
     found = []
     if _CANADA.search(text) or _OTHER.search(text):
@@ -357,7 +322,7 @@ def market_of(location):
 
 
 def route_dict(stored):
-    """'Scale-up:POSITIVE;Skilled Worker:NEGATIVE' (as stored on the job) -> {'Scale-up': 'POSITIVE', ...}."""
+    """'Scale-up:POSITIVE;Skilled Worker:NEGATIVE' -> {'Scale-up': 'POSITIVE', ...}."""
     out = {}
     for part in (stored or "").split(";"):
         name, _, state = part.partition(":")
@@ -367,34 +332,29 @@ def route_dict(stored):
 
 
 def join_routes(stored, **extra):
-    """Add route states to the stored string without losing what is there."""
     merged = {**route_dict(stored), **extra}
     return ";".join(f"{k}:{v}" for k, v in merged.items())
 
 
-FIT_WINDOW = 6000  # the Fit stage reads this much of the description for a work-mode statement
+FIT_WINDOW = 6000
 
 
 def work_mode_for_fit(location, title, text):
-    """detect_work_mode over the Fit window."""
     return detect_work_mode(location, title, text, window=FIT_WINDOW)
 
 
 def first_party_age(lane):
-    """The lane's max age when its employer-board jobs are judged by age too, else None."""
+    """The lane's max age when employer-board jobs are judged by age, else None."""
     name = lane_for(lane)
-    # the Ledger spells it `Scale-up`
     policy = next((p for key, p in POLICIES.items() if key.casefold() == name.casefold()), None)
     return policy.max_age_days if policy and policy.first_party_age else None
 
 
 def first_party_source(source):
-    """True for a job read off an employer's own board by the web pass (source web:<id>), not the feed or an aggregator.
-    """
+    """True for a job read off an employer's own board (source web:<id>), not a feed or aggregator."""
     return bool(source) and source.startswith("web:") and source != "web:openjobs"
 
 
-# US places and statements that show US eligibility, for employer-board jobs only (the board lists the whole world).
 US_PLACES = re.compile(r"(?i:\b(?:nyc|new york|san francisco|bay area|los angeles|chicago|seattle|boston|austin|denver|atlanta|san jose|houston|phoenix|"
                        r"philadelphia|san diego|dallas|fort worth|portland|sunnyvale|mountain view|palo alto|redwood city|menlo park|boise|salt lake city|miami|"
                        r"fort lauderdale|jacksonville|charlotte|raleigh|nashville|minneapolis|pittsburgh|detroit|columbus|cincinnati|indianapolis|baltimore|"
@@ -419,8 +379,7 @@ def open_application(title):
 
 
 def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False, thin=False, thin_admit=False, listing=False):
-    """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced; pay only the posted pay field.
-    """
+    """Facts for one stored job; age uses the posting date, else first-seen."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     mode, evidence = work_mode_evidence(location, title, text, window=FIT_WINDOW)
@@ -433,16 +392,13 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
 
 
 def decide_all(row_lane, facts, today, exclusion=None):
-    """-> (Decision, visible lane, eligible lanes).
-
-    The job's own lane judges it first; when another enabled lane admits it and its own does not, that lane takes it.
-    A lane that already admits it keeps it unless a preceding lane also admits (Scale-Up wins). A private exclusion
-    rule excludes in every lane.
+    """-> (Decision, visible lane, eligible lanes); the own lane judges first, PRECEDENCE breaks ties, a private
+    exclusion wins.
     """
     own = lane_for(row_lane)
     if exclusion:
         return Decision(EXCLUDE, f"excluded: {exclusion}"), own, []
-    if own == RECRUITER:  # a recruiter wrote in: shown whatever its Fit
+    if own == RECRUITER:
         return Decision(ADMIT, "recruiter outreach: admitted without the Fit gate"), RECRUITER, [RECRUITER]
     results, visible = qualify_all(facts, today, own=own)
     eligible = [n for n in PRECEDENCE if n in results and results[n].status == ADMIT]
@@ -455,7 +411,6 @@ def decide_all(row_lane, facts, today, exclusion=None):
 
 
 def decide(row_lane, facts, today, exclusion=None):
-    """-> (Decision, lane name)."""
     decision, lane, _ = decide_all(row_lane, facts, today, exclusion)
     return decision, lane
 
@@ -478,9 +433,7 @@ PUBLIC_REASONS = (
 
 
 def public_reason(reason):
-    """A preview reason fit for a public log: one of the fixed codes in PUBLIC_REASONS, "none" for no reason, "other"
-    otherwise. No rule name, profile content or employer quotation is copied.
-    """
+    """A fixed code from PUBLIC_REASONS, "none" for no reason, "other" otherwise."""
     if not reason:
         return "none"
     return next((code for pattern, code in PUBLIC_REASONS if re.fullmatch(pattern, reason, re.S)), "other")
