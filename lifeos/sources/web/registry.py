@@ -2,6 +2,7 @@
 
 A source is one config row; `status` says how it can be read: ready | port | bespoke | discovery | fallback.
 """
+
 import json
 from pathlib import Path
 
@@ -32,7 +33,11 @@ def load(path=PATH):
 
 
 def enabled(status=None, tier=None, path=PATH):
-    return [r for r in load(path) if r["enabled"] and (status is None or r["status"] == status) and (tier is None or r["tier"] == tier)]
+    return [
+        r
+        for r in load(path)
+        if r["enabled"] and (status is None or r["status"] == status) and (tier is None or r["tier"] == tier)
+    ]
 
 
 def for_lane(lane, status="ready"):
@@ -40,7 +45,7 @@ def for_lane(lane, status="ready"):
 
 
 BOARDS_PATH = Path(__file__).with_name("boards.json")
-BOARD_KINDS = {"greenhouse": "gh", "ashby": "ab", "lever": "lv"}    # Seed ATS families and their id prefixes.
+BOARD_KINDS = {"greenhouse": "gh", "ashby": "ab", "lever": "lv"}  # Seed ATS families and their id prefixes.
 MAX_ID = 36
 
 
@@ -50,12 +55,15 @@ def company_from_slug(slug):
 
 def boards(path=BOARDS_PATH):
     """Ready employer board rows from the seed list plus extras, minus `skip` and boards already read elsewhere."""
-    from lifeos.platform import limits                                   # noqa: PLC0415
+    from lifeos.platform import limits  # noqa: PLC0415
+
     data = json.loads(Path(path).read_text())
     known = {(r["kind"], str(r.get("slug") or "").lower()) for p in PATHS.values() for r in load(p) if r.get("slug")}
     skip = {(s.split(":", 1)[0], s.split(":", 1)[1].lower()) for s in data.get("skip", [])}
     rows, seen = [], set()
-    pairs = [(e["kind"], e["slug"], e["company"], True) for e in data.get("extras", [])] + [(k, slug, None, False) for k in BOARD_KINDS for slug in data["seed"].get(k, [])]   # An extra's name wins.
+    pairs = [(e["kind"], e["slug"], e["company"], True) for e in data.get("extras", [])] + [
+        (k, slug, None, False) for k in BOARD_KINDS for slug in data["seed"].get(k, [])
+    ]  # An extra's name wins.
     for kind, slug, company, extra in pairs:
         key = (kind, slug.lower())
         if kind not in BOARD_KINDS or key in known or key in skip or key in seen:
@@ -64,7 +72,19 @@ def boards(path=BOARDS_PATH):
         ident = f"{BOARD_KINDS[kind]}-{slug.lower()}"
         if len(ident) > MAX_ID:
             raise RegistryError(f"{ident}: longer than {MAX_ID} characters")
-        rows.append({"id": ident, "company": company or company_from_slug(slug), "tier": "employer", "kind": kind, "status": "ready",
-                     "enabled": True, "slug": slug, "refresh_hours": limits.BOARDS_REFRESH_HOURS, "hot_hours": limits.BOARDS_HOT_HOURS, "quiet": True,
-                     **({"extra": True} if extra else {})})                       # A curated extra is read by the hourly pass from its first read.
+        rows.append(
+            {
+                "id": ident,
+                "company": company or company_from_slug(slug),
+                "tier": "employer",
+                "kind": kind,
+                "status": "ready",
+                "enabled": True,
+                "slug": slug,
+                "refresh_hours": limits.BOARDS_REFRESH_HOURS,
+                "hot_hours": limits.BOARDS_HOT_HOURS,
+                "quiet": True,
+                **({"extra": True} if extra else {}),
+            }
+        )  # A curated extra is read by the hourly pass from its first read.
     return rows

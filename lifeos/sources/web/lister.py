@@ -1,6 +1,7 @@
 """Status-aware board listing for the public ATS APIs: COMPLETE only for a valid, fully-read inventory, else FAILED.
 
 FAILED carries a fixed reason, is never "zero jobs" and never implies a removal."""
+
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 import html as htmllib
@@ -16,7 +17,11 @@ from lifeos.platform import egress, impersonate, limits
 from lifeos.platform.http import fetch
 
 COMPLETE, FAILED, UNCHANGED = "COMPLETE", "FAILED", "UNCHANGED"
-CONDITIONAL = ("greenhouse", "ashby", "lever")          # One plain GET returns the whole board, so a 304 means the whole board is unchanged.
+CONDITIONAL = (
+    "greenhouse",
+    "ashby",
+    "lever",
+)  # One plain GET returns the whole board, so a 304 means the whole board is unchanged.
 MAX_BYTES = 25_000_000
 SMARTRECRUITERS_PAGES = 30
 
@@ -32,11 +37,20 @@ class Listing:
 def refusal(status):
     if status == 200:
         return None
-    return {429: "rate_limited_429", 403: "blocked_403", 404: "not_found"}.get(status) or (f"http_{status}" if status else "network")
+    return {429: "rate_limited_429", 403: "blocked_403", 404: "not_found"}.get(status) or (
+        f"http_{status}" if status else "network"
+    )
 
 
 def _json(url, fetcher, body=None):
-    extra = {"data": json.dumps(body).encode(), "headers": {"Content-Type": "application/json", "Accept": "application/json"}} if body is not None else {}
+    extra = (
+        {
+            "data": json.dumps(body).encode(),
+            "headers": {"Content-Type": "application/json", "Accept": "application/json"},
+        }
+        if body is not None
+        else {}
+    )
     page = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES, **extra)
     if refusal(page.status):
         return None, refusal(page.status)
@@ -62,25 +76,57 @@ def _text(markup):
 
 
 def _job(ident, title, location, url, posted=None, content=None, company=None):
-    return {"id": str(ident), "title": (title or "").strip(), "location": (location or "").strip(), "url": url or "",
-            "posted": _day(posted), "content": content, "company": (company or "").strip() or None}
+    return {
+        "id": str(ident),
+        "title": (title or "").strip(),
+        "location": (location or "").strip(),
+        "url": url or "",
+        "posted": _day(posted),
+        "content": content,
+        "company": (company or "").strip() or None,
+    }
 
 
 def _greenhouse(slug, fetcher):
     data, err = _json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true", fetcher)
     if err or not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
         return Listing(FAILED, reason=err or "bad_shape")
-    return Listing(COMPLETE, [_job(j.get("id"), j.get("title"), (j.get("location") or {}).get("name"), j.get("absolute_url"),
-                                   j.get("first_published"), _text(j.get("content")), j.get("company_name")) for j in data["jobs"]])
+    return Listing(
+        COMPLETE,
+        [
+            _job(
+                j.get("id"),
+                j.get("title"),
+                (j.get("location") or {}).get("name"),
+                j.get("absolute_url"),
+                j.get("first_published"),
+                _text(j.get("content")),
+                j.get("company_name"),
+            )
+            for j in data["jobs"]
+        ],
+    )
 
 
 def _ashby(slug, fetcher):
     data, err = _json(f"https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true", fetcher)
     if err or not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
         return Listing(FAILED, reason=err or "bad_shape")
-    return Listing(COMPLETE, [_job(j.get("id"), j.get("title"), j.get("location"), j.get("jobUrl"), j.get("publishedAt"),
-                                   j.get("descriptionPlain") or _text(j.get("descriptionHtml")))
-                              for j in data["jobs"] if j.get("isListed", True)])
+    return Listing(
+        COMPLETE,
+        [
+            _job(
+                j.get("id"),
+                j.get("title"),
+                j.get("location"),
+                j.get("jobUrl"),
+                j.get("publishedAt"),
+                j.get("descriptionPlain") or _text(j.get("descriptionHtml")),
+            )
+            for j in data["jobs"]
+            if j.get("isListed", True)
+        ],
+    )
 
 
 def _lever(slug, fetcher):
@@ -91,15 +137,25 @@ def _lever(slug, fetcher):
     for j in data:
         extra = "\n".join(f"{x.get('text', '')}\n{_text(x.get('content')) or ''}" for x in (j.get("lists") or []))
         body = "\n".join(part for part in (j.get("descriptionPlain"), extra, j.get("additionalPlain")) if part) or None
-        jobs.append(_job(j.get("id"), j.get("text"), (j.get("categories") or {}).get("location"), j.get("hostedUrl"),
-                         j.get("createdAt"), body))
+        jobs.append(
+            _job(
+                j.get("id"),
+                j.get("text"),
+                (j.get("categories") or {}).get("location"),
+                j.get("hostedUrl"),
+                j.get("createdAt"),
+                body,
+            )
+        )
     return Listing(COMPLETE, jobs)
 
 
 def _smartrecruiters(slug, fetcher):
     jobs = []
     for page in range(SMARTRECRUITERS_PAGES):
-        data, err = _json(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset={page * 100}", fetcher)
+        data, err = _json(
+            f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset={page * 100}", fetcher
+        )
         if err or not isinstance(data, dict) or not isinstance(data.get("content"), list):
             return Listing(FAILED, reason=err or "bad_shape")
         for j in data["content"]:
@@ -107,8 +163,15 @@ def _smartrecruiters(slug, fetcher):
             where = " ".join(filter(None, [loc.get("city"), loc.get("region"), loc.get("country")]))
             if loc.get("remote"):
                 where = ("Remote " + where).strip()
-            jobs.append(_job(j.get("id"), j.get("name"), where, f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
-                             j.get("releasedDate")))
+            jobs.append(
+                _job(
+                    j.get("id"),
+                    j.get("name"),
+                    where,
+                    f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
+                    j.get("releasedDate"),
+                )
+            )
         if len(data["content"]) < 100:
             return Listing(COMPLETE, jobs)
     return Listing(FAILED, reason="too_many_pages")
@@ -124,7 +187,9 @@ def _workable(slug, fetcher):
         if j.get("telecommuting"):
             where = ("Remote " + where).strip()
         url = f"https://apply.workable.com/{slug}/j/{j['shortcode']}/" if j.get("shortcode") else j.get("url")
-        jobs.append(_job(j.get("shortcode"), j.get("title"), where, url, j.get("published_on"), _text(j.get("description"))))
+        jobs.append(
+            _job(j.get("shortcode"), j.get("title"), where, url, j.get("published_on"), _text(j.get("description")))
+        )
     return Listing(COMPLETE, jobs)
 
 
@@ -133,9 +198,20 @@ def _pinpoint(source, fetcher):
     data, err = _json(url, fetcher)
     if err or not isinstance(data, dict) or not isinstance(data.get("data"), list):
         return Listing(FAILED, reason=err or "bad_shape")
-    return Listing(COMPLETE, [_job(j.get("id"), j.get("title"), (j.get("location") or {}).get("name"), j.get("url"),
-                                   j.get("published_at") or j.get("created_at"), _text(j.get("description")))
-                              for j in data["data"]])
+    return Listing(
+        COMPLETE,
+        [
+            _job(
+                j.get("id"),
+                j.get("title"),
+                (j.get("location") or {}).get("name"),
+                j.get("url"),
+                j.get("published_at") or j.get("created_at"),
+                _text(j.get("description")),
+            )
+            for j in data["data"]
+        ],
+    )
 
 
 WORKDAY_PAGE, WORKDAY_MAX = 20, 2000
@@ -166,7 +242,9 @@ def _workday(source, fetcher, today=None):
     list_url, base = workday_urls(source)
     jobs, offset, total = [], 0, None
     while offset < WORKDAY_MAX:
-        data, err = _json(list_url, fetcher, {"appliedFacets": {}, "limit": WORKDAY_PAGE, "offset": offset, "searchText": ""})
+        data, err = _json(
+            list_url, fetcher, {"appliedFacets": {}, "limit": WORKDAY_PAGE, "offset": offset, "searchText": ""}
+        )
         if err or not isinstance(data, dict) or not isinstance(data.get("jobPostings"), list):
             return Listing(FAILED, reason=err or "bad_shape")
         batch = data["jobPostings"]
@@ -196,7 +274,12 @@ def _jibe(source, fetcher):
     jobs, page, total, seen = [], 1, None, set()
     while total is None or len(seen) < total:
         data, err = _json(f"{base}?page={page}&sortBy=relevance&descending=false&internal=false", fetcher)
-        if err or not isinstance(data, dict) or not isinstance(data.get("jobs"), list) or not isinstance(data.get("totalCount"), int):
+        if (
+            err
+            or not isinstance(data, dict)
+            or not isinstance(data.get("jobs"), list)
+            or not isinstance(data.get("totalCount"), int)
+        ):
             return Listing(FAILED, reason=err or "bad_shape")
         if total is None:
             total = data["totalCount"]
@@ -214,20 +297,39 @@ def _jibe(source, fetcher):
             if not ident or ident in seen:
                 return Listing(FAILED, reason="bad_shape")
             seen.add(ident)
-            where = " ".join(" ".join(str(d.get(k) or "").split()) for k in ("full_location", "short_location", "location_name", "country") if d.get(k))
-            body = "\n\n".join(t for t in (_text(d.get(k)) for k in ("description", "responsibilities", "qualifications")) if t) or None
-            jobs.append(_job(ident, " ".join(str(d.get("title") or "").split()), where,
-                             f"{job_base}/{quote(ident, safe='')}?lang=en-us", d.get("posted_date") or d.get("create_date"), body))
+            where = " ".join(
+                " ".join(str(d.get(k) or "").split())
+                for k in ("full_location", "short_location", "location_name", "country")
+                if d.get(k)
+            )
+            body = (
+                "\n\n".join(
+                    t for t in (_text(d.get(k)) for k in ("description", "responsibilities", "qualifications")) if t
+                )
+                or None
+            )
+            jobs.append(
+                _job(
+                    ident,
+                    " ".join(str(d.get("title") or "").split()),
+                    where,
+                    f"{job_base}/{quote(ident, safe='')}?lang=en-us",
+                    d.get("posted_date") or d.get("create_date"),
+                    body,
+                )
+            )
         page += 1
     return Listing(COMPLETE, jobs)
 
 
 def _teamtailor(source, fetcher):
-    page = fetcher(source["url"].rstrip("/") + ".rss", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
+    page = fetcher(
+        source["url"].rstrip("/") + ".rss", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES
+    )
     if refusal(page.status):
         return Listing(FAILED, reason=refusal(page.status))
     if "<!DOCTYPE" in page.html[:2000].upper() or "<!ENTITY" in page.html.upper():
-        return Listing(FAILED, reason="bad_shape")                   # Never expand entities from a third-party feed.
+        return Listing(FAILED, reason="bad_shape")  # Never expand entities from a third-party feed.
     try:
         channel = ET.fromstring(page.html).find("channel")
     except ET.ParseError:
@@ -236,9 +338,11 @@ def _teamtailor(source, fetcher):
         return Listing(FAILED, reason="bad_shape")
     jobs, seen = [], set()
     for item in channel.findall("item"):
+
         def text(name, item=item):
             node = item.find(name)
             return (node.text or "").strip() if node is not None and node.text else ""
+
         link = text("link")
         ident = text("guid") or link
         if not ident or ident in seen:
@@ -262,15 +366,22 @@ def _teamtailor(source, fetcher):
 
 def _first_party_html(source, fetcher):
     """A sponsor's own careers page: COMPLETE only when the reader proves the inventory or `zero_marker` shows."""
+
     def fetch_text(url):
         got = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
         if got.status != 200:
             raise ValueError(f"http_{got.status}")
         return got.html
+
     if source.get("announced_ua"):
         page = egress.honest(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
     elif source.get("impersonate"):
-        page = impersonate.fetch(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", ""))
+        page = impersonate.fetch(
+            source["url"],
+            warm_url=source.get("warm_url"),
+            alt_urls=source.get("alt_urls", ()),
+            must_contain=source.get("must_contain", ""),
+        )
     else:
         page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
     if refusal(page.status):
@@ -282,7 +393,9 @@ def _first_party_html(source, fetcher):
     if rows:
         return Listing(COMPLETE, rows)
     marker = source.get("zero_marker")
-    if source["kind"] in html_readers.SELF_PROVING or (marker and marker.casefold() in html_readers.strip_html(page.html).casefold()):
+    if source["kind"] in html_readers.SELF_PROVING or (
+        marker and marker.casefold() in html_readers.strip_html(page.html).casefold()
+    ):
         return Listing(COMPLETE, [])
     return Listing(FAILED, reason="bad_shape")
 
@@ -291,10 +404,18 @@ def _by_slug(reader):
     return lambda source, fetcher: reader(source["slug"], fetcher)
 
 
-READERS = {"greenhouse": _by_slug(_greenhouse), "ashby": _by_slug(_ashby), "lever": _by_slug(_lever),
-           "smartrecruiters": _by_slug(_smartrecruiters), "workable": _by_slug(_workable),
-           "pinpoint": _pinpoint, "workday": _workday, "jibe": _jibe, "teamtailor": _teamtailor,
-           **{kind: _first_party_html for kind in html_readers.READERS}}
+READERS = {
+    "greenhouse": _by_slug(_greenhouse),
+    "ashby": _by_slug(_ashby),
+    "lever": _by_slug(_lever),
+    "smartrecruiters": _by_slug(_smartrecruiters),
+    "workable": _by_slug(_workable),
+    "pinpoint": _pinpoint,
+    "workday": _workday,
+    "jibe": _jibe,
+    "teamtailor": _teamtailor,
+    **{kind: _first_party_html for kind in html_readers.READERS},
+}
 
 
 def list_source(source, fetcher=fetch):
@@ -307,7 +428,15 @@ def list_source(source, fetcher=fetch):
     if reader is None:
         return Listing(FAILED, reason="no_reader")
     conditional = source["kind"] in CONDITIONAL
-    sent = {k: v for k, v in (("If-None-Match", source.get("if_etag")), ("If-Modified-Since", source.get("if_modified"))) if v} if conditional else {}
+    sent = (
+        {
+            k: v
+            for k, v in (("If-None-Match", source.get("if_etag")), ("If-Modified-Since", source.get("if_modified")))
+            if v
+        }
+        if conditional
+        else {}
+    )
     pages = []
 
     def counted(url, **kw):
@@ -316,6 +445,7 @@ def list_source(source, fetcher=fetch):
         page = fetcher(url, **kw)
         pages.append(page)
         return page
+
     try:
         listing = reader(source, counted)
     except (OSError, ValueError, KeyError):

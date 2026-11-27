@@ -3,6 +3,7 @@
 For each registry source with `title_watch`, search the company's own domains for each watched title and add matching,
 not-yet-stored job pages. The page text usually cannot be read (403), so the title and search snippet are stored under
 source `web:titlewatch:<source id>`; the lane never makes such a role a Go. A role unseen for EXPIRE_DAYS closes."""
+
 from datetime import datetime, timedelta, timezone
 import os
 import re
@@ -17,8 +18,17 @@ PREFIX = "web:titlewatch:"
 MAX_QUERIES_PER_RUN = 14
 MAX_NEW_PER_RUN = 10
 EXPIRE_DAYS = 10
-DEFAULT_TITLES = ("Product Owner", "Head of Product", "Product Manager", "Program Manager", "Project Manager", "Campaign Creative Lead",
-                  "Partnerships Manager", "Operations Manager", "Strategy & Operations Manager")
+DEFAULT_TITLES = (
+    "Product Owner",
+    "Head of Product",
+    "Product Manager",
+    "Program Manager",
+    "Project Manager",
+    "Campaign Creative Lead",
+    "Partnerships Manager",
+    "Operations Manager",
+    "Strategy & Operations Manager",
+)
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 
 
@@ -27,7 +37,11 @@ def _now():
 
 
 def watched(sources):
-    return [s for s in sources if s.get("enabled", True) and isinstance(s.get("title_watch"), dict) and s["title_watch"].get("domains")]
+    return [
+        s
+        for s in sources
+        if s.get("enabled", True) and isinstance(s.get("title_watch"), dict) and s["title_watch"].get("domains")
+    ]
 
 
 def pairs(sources):
@@ -40,9 +54,17 @@ def pairs(sources):
 
 def forced(all_pairs, force):
     force = (force or "").strip().lower()
-    force = force[len("board:"):] if force.startswith("board:") else force
+    force = force[len("board:") :] if force.startswith("board:") else force
     names = [n.strip() for n in force.split(",") if len(n.strip()) >= 3 and n.strip() != "funnel"]
-    return [(s, t) for s, t in all_pairs if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)] if names else []
+    return (
+        [
+            (s, t)
+            for s, t in all_pairs
+            if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)
+        ]
+        if names
+        else []
+    )
 
 
 def window(all_pairs, now, size=MAX_QUERIES_PER_RUN):
@@ -93,7 +115,9 @@ def candidates(source, results):
 
 def _stored(cursor, url):
     tok = token(url)
-    cursor.execute("SELECT id FROM v7_jobs WHERE source_url LIKE %s OR final_apply_url LIKE %s LIMIT 1", (f"%{tok}%", f"%{tok}%"))
+    cursor.execute(
+        "SELECT id FROM v7_jobs WHERE source_url LIKE %s OR final_apply_url LIKE %s LIMIT 1", (f"%{tok}%", f"%{tok}%")
+    )
     return cursor.fetchone() is not None
 
 
@@ -103,35 +127,68 @@ def _location(title, snippet):
 
 def admit(connection, source, url, title, snippet, now):
     with connection.cursor() as cursor:
-        key, is_new = intake.add_job(cursor, {
-            "url": url, "status": "RESOLVED", "title": title, "company": source["company"], "location": _location(title, snippet), "salary": None,
-            "source": PREFIX + source["id"], "provider": "Title Watch", "lane": LANE, "age_days": None, "received": now, "provider_score": None, "posted": None}, now)
+        key, is_new = intake.add_job(
+            cursor,
+            {
+                "url": url,
+                "status": "RESOLVED",
+                "title": title,
+                "company": source["company"],
+                "location": _location(title, snippet),
+                "salary": None,
+                "source": PREFIX + source["id"],
+                "provider": "Title Watch",
+                "lane": LANE,
+                "age_days": None,
+                "received": now,
+                "provider_score": None,
+                "posted": None,
+            },
+            now,
+        )
         cursor.execute("SELECT id FROM v7_jobs WHERE dedupe_key=%s", (key,))
         found = cursor.fetchone()
         if not found or not is_new:
             return False
         job_id = found[0]
-        cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, updated_at=%s WHERE id=%s",
-                       (url, "Scale-up:POSITIVE", now, job_id))
+        cursor.execute(
+            "UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, updated_at=%s WHERE id=%s",
+            (url, "Scale-up:POSITIVE", now, job_id),
+        )
     desc = jd.describe(f"{title}\n{snippet}".strip(), is_html=False)
-    enrich.save(connection, job_id, {"outcome": "ready", "description": desc, "source_kind": "title_watch", "final_url": url})
+    enrich.save(
+        connection, job_id, {"outcome": "ready", "description": desc, "source_kind": "title_watch", "final_url": url}
+    )
     return True
 
 
 def expire(connection, now):
     with connection.cursor() as cursor:
-        cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='title_watch_unseen', updated_at=%s WHERE source LIKE %s AND last_seen < %s"
-                       " AND status NOT IN ('CLOSED','DUPLICATE','PURGED')", (now, PREFIX + "%", now - timedelta(days=EXPIRE_DAYS)))
+        cursor.execute(
+            "UPDATE v7_jobs SET status='CLOSED', unresolved_reason='title_watch_unseen', updated_at=%s WHERE source LIKE %s AND last_seen < %s"
+            " AND status NOT IN ('CLOSED','DUPLICATE','PURGED')",
+            (now, PREFIX + "%", now - timedelta(days=EXPIRE_DAYS)),
+        )
         return int(cursor.rowcount or 0)
 
 
 def run(limit, live, search=None, connect=None, sources=None, now=None):
-    from lifeos.platform import tinyfish_search                                             # noqa: PLC0415
+    from lifeos.platform import tinyfish_search  # noqa: PLC0415
+
     search = search or tinyfish_search.search
     now = now or _now()
     sources = sources if sources is not None else registry.load(registry.PATHS["Scale-Up"])
     todo = forced(pairs(sources), os.environ.get("WEB_FORCE")) or window(pairs(sources), now)
-    counts = {"sources": len(watched(sources)), "queries": 0, "errors": 0, "hits": 0, "known": 0, "new": 0, "added": 0, "expired": 0}
+    counts = {
+        "sources": len(watched(sources)),
+        "queries": 0,
+        "errors": 0,
+        "hits": 0,
+        "known": 0,
+        "new": 0,
+        "added": 0,
+        "expired": 0,
+    }
     found = []
     for source, title in todo:
         cfg = source["title_watch"]
@@ -154,7 +211,10 @@ def run(limit, live, search=None, connect=None, sources=None, now=None):
             for source, url, role, snippet in found:
                 if _stored(cursor, url):
                     counts["known"] += 1
-                    cursor.execute("UPDATE v7_jobs SET last_seen=%s WHERE (source_url LIKE %s) AND source LIKE %s", (now, f"%{token(url)}%", PREFIX + "%"))
+                    cursor.execute(
+                        "UPDATE v7_jobs SET last_seen=%s WHERE (source_url LIKE %s) AND source LIKE %s",
+                        (now, f"%{token(url)}%", PREFIX + "%"),
+                    )
                 else:
                     fresh.append((source, url, role, snippet))
         counts["new"] = len(fresh)

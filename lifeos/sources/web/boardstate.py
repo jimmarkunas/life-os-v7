@@ -3,6 +3,7 @@
 Reads the store, writes nothing, prints no title, link or text. Per source id: registry status and reader kind, the
 board's own state (last read result, age of last completion, consecutive failures, whether due), the current vacancies
 by ingest state and suppress reason, and the jobs created from it by status."""
+
 from lifeos.jobs import store
 from lifeos.sources.web import registry
 
@@ -16,25 +17,52 @@ def _age(seconds):
 
 def run(limit, live):
     sources = registry.load(registry.PATHS["Scale-Up"])
-    out = {"boards": {}, "totals": {"sources": len(sources), "never_read": 0, "failing": 0, "listing_jobs": 0, "no_jobs": 0, "with_jobs": 0, "published": 0}}
+    out = {
+        "boards": {},
+        "totals": {
+            "sources": len(sources),
+            "never_read": 0,
+            "failing": 0,
+            "listing_jobs": 0,
+            "no_jobs": 0,
+            "with_jobs": 0,
+            "published": 0,
+        },
+    }
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT source_id, last_status, last_reason, TIMESTAMPDIFF(SECOND, last_complete_at, UTC_TIMESTAMP()), failures, due_at <= UTC_TIMESTAMP() FROM v7_sources")
+        cursor.execute(
+            "SELECT source_id, last_status, last_reason, TIMESTAMPDIFF(SECOND, last_complete_at, UTC_TIMESTAMP()), failures, due_at <= UTC_TIMESTAMP() FROM v7_sources"
+        )
         state = {row[0]: row[1:] for row in cursor.fetchall()}
-        cursor.execute("SELECT source_id, ingest, COALESCE(suppress_reason, ''), COUNT(*) FROM v7_source_items WHERE state = 'CURRENT' AND source_id LIKE 'su-%%' "
-                       "GROUP BY source_id, ingest, suppress_reason")
+        cursor.execute(
+            "SELECT source_id, ingest, COALESCE(suppress_reason, ''), COUNT(*) FROM v7_source_items WHERE state = 'CURRENT' AND source_id LIKE 'su-%%' "
+            "GROUP BY source_id, ingest, suppress_reason"
+        )
         items = {}
         for source_id, ingest, reason, n in cursor.fetchall():
             items.setdefault(source_id, {})[f"{ingest}/{reason}" if reason else ingest] = n
-        cursor.execute("SELECT source, status, COUNT(*) FROM v7_jobs WHERE source LIKE 'web:su-%%' GROUP BY source, status")
+        cursor.execute(
+            "SELECT source, status, COUNT(*) FROM v7_jobs WHERE source LIKE 'web:su-%%' GROUP BY source, status"
+        )
         jobs = {}
         for source, status, n in cursor.fetchall():
-            jobs.setdefault(source[len("web:"):], {})[status] = n
+            jobs.setdefault(source[len("web:") :], {})[status] = n
     for source in sources:
         sid = source["id"]
         last_status, last_reason, age, failures, due = state.get(sid, (None, None, None, 0, None))
         listed = sum(items.get(sid, {}).values())
-        board = {"kind": source.get("kind"), "registry": source.get("status"), "read": last_status or "never", "reason": last_reason or "", "last_complete": _age(age),
-                 "failures": int(failures or 0), "due_now": bool(due), "listing": listed, "items": items.get(sid, {}), "jobs": jobs.get(sid, {})}
+        board = {
+            "kind": source.get("kind"),
+            "registry": source.get("status"),
+            "read": last_status or "never",
+            "reason": last_reason or "",
+            "last_complete": _age(age),
+            "failures": int(failures or 0),
+            "due_now": bool(due),
+            "listing": listed,
+            "items": items.get(sid, {}),
+            "jobs": jobs.get(sid, {}),
+        }
         out["boards"][sid] = board
         out["totals"]["never_read"] += last_status is None
         out["totals"]["failing"] += bool(last_status and last_status != "COMPLETE") or bool(failures)

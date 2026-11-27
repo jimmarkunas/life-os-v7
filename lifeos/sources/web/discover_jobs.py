@@ -3,6 +3,7 @@
 One search per `fallback` sponsor finds job pages naming the company. Each result that clearly names the sponsor becomes
 a NEW candidate (lane Scale-Up, route evidence Scale-up:POSITIVE), then runs the final-link chain: employer ATS board
 match, then one search for the employer's posting. Only `promote_leads` publishes without a final employer link."""
+
 from datetime import datetime, timezone
 import re
 from urllib.parse import urlsplit
@@ -19,16 +20,35 @@ SOURCE = "discover"
 PER_SPONSOR = 5
 RESOLVE_SEARCHES = 40
 _SEPARATORS = re.compile(r"\s+[|\-–—·•]\s+|\s+at\s+|\s+@\s+", re.I)
-_SITE_WORD = re.compile(r"\b(jobs?|careers?|vacanc\w+|indeed|linkedin|startup|reed|totaljobs|glassdoor|adzuna|cv-?library|visa|sponsor\w*|apply|hiring|work (?:at|for)|uk|london)\b", re.I)
-_NOT_A_ROLE = re.compile(r"^(jobs?|careers?|vacancies|current vacancies|open positions?|work (?:at|for) .*|jobs? (?:in|at) .*)$", re.I)
+_SITE_WORD = re.compile(
+    r"\b(jobs?|careers?|vacanc\w+|indeed|linkedin|startup|reed|totaljobs|glassdoor|adzuna|cv-?library|visa|sponsor\w*|apply|hiring|work (?:at|for)|uk|london)\b",
+    re.I,
+)
+_NOT_A_ROLE = re.compile(
+    r"^(jobs?|careers?|vacancies|current vacancies|open positions?|work (?:at|for) .*|jobs? (?:in|at) .*)$", re.I
+)
 # Pages that are not a job: sponsor-directory domains never post, and a title with no role noun, or one that names a
 # sponsor licence, is not a job title.
-SPONSOR_DIRECTORY_HOSTS = ("legitsponsors.co.uk", "sponsordirectory.co.uk", "hirenza.com", "getborderless.co.uk", "atlaspriorityservices.com", "jobvisaai.com", "myvisajobs.co.uk")
-_ROLE_NOUN = re.compile(r"\b(manager|engineer|developer|analyst|designer|director|lead|head|officer|executive|specialist|consultant|scientist|architect|coordinator|associate|assistant|administrator|"
-                        r"recruiter|marketer|writer|producer|technician|advis[eo]r|strategist|representative|researcher|programmer|accountant|president|vp|cto|cfo|coo|ceo|founder|owner|"
-                        r"partner|principal|intern|apprentice|trainee|operator|planner|buyer|controller|auditor|editor|copywriter|translator|lawyer|solicitor|counsel|paralegal|nurse|teacher|"
-                        r"tester|sdet|devops|sre|admin|agent|generalist|evangelist|ambassador)s?\b", re.I)
-_NOT_A_JOB_TITLE = re.compile(r"sponsor(?:s|ship)?\s+licen[cs]e|licen[cs]ed\s+sponsor|visa\s+sponsor|sponsor\s+(?:directory|list|register)|\bdirectory\b", re.I)
+SPONSOR_DIRECTORY_HOSTS = (
+    "legitsponsors.co.uk",
+    "sponsordirectory.co.uk",
+    "hirenza.com",
+    "getborderless.co.uk",
+    "atlaspriorityservices.com",
+    "jobvisaai.com",
+    "myvisajobs.co.uk",
+)
+_ROLE_NOUN = re.compile(
+    r"\b(manager|engineer|developer|analyst|designer|director|lead|head|officer|executive|specialist|consultant|scientist|architect|coordinator|associate|assistant|administrator|"
+    r"recruiter|marketer|writer|producer|technician|advis[eo]r|strategist|representative|researcher|programmer|accountant|president|vp|cto|cfo|coo|ceo|founder|owner|"
+    r"partner|principal|intern|apprentice|trainee|operator|planner|buyer|controller|auditor|editor|copywriter|translator|lawyer|solicitor|counsel|paralegal|nurse|teacher|"
+    r"tester|sdet|devops|sre|admin|agent|generalist|evangelist|ambassador)s?\b",
+    re.I,
+)
+_NOT_A_JOB_TITLE = re.compile(
+    r"sponsor(?:s|ship)?\s+licen[cs]e|licen[cs]ed\s+sponsor|visa\s+sponsor|sponsor\s+(?:directory|list|register)|\bdirectory\b",
+    re.I,
+)
 _PROFILE_PATH = re.compile(r"/(company|companies|cmp|employers?|organisations?|profile)/[^/]+/?$", re.I)
 
 
@@ -93,10 +113,16 @@ def direct_link(url, company):
 
 
 def requeue_held(cursor):
-    cursor.execute("SELECT id, source_url, company FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%'", (SOURCE,))
+    cursor.execute(
+        "SELECT id, source_url, company FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%'",
+        (SOURCE,),
+    )
     ids = [row[0] for row in cursor.fetchall() if direct_link(row[1], row[2] or "")]
     for job_id in ids:
-        cursor.execute("UPDATE v7_jobs SET status='NEW', resolve_attempts=0, unresolved_reason='requeued_direct', updated_at=%s WHERE id=%s", (_now(), job_id))
+        cursor.execute(
+            "UPDATE v7_jobs SET status='NEW', resolve_attempts=0, unresolved_reason='requeued_direct', updated_at=%s WHERE id=%s",
+            (_now(), job_id),
+        )
     return len(ids)
 
 
@@ -106,9 +132,24 @@ def _resolve(rows, budget):
 
 
 def _admit(cursor, source, job, now):
-    key, is_new = intake.add_job(cursor, {"url": job["url"], "status": "NEW", "title": job["title"], "company": source["company"], "location": job["location"],
-                                          "salary": None, "source": SOURCE, "provider": "Public Web", "lane": "Scale-Up", "age_days": None, "received": now,
-                                          "provider_score": None}, now)
+    key, is_new = intake.add_job(
+        cursor,
+        {
+            "url": job["url"],
+            "status": "NEW",
+            "title": job["title"],
+            "company": source["company"],
+            "location": job["location"],
+            "salary": None,
+            "source": SOURCE,
+            "provider": "Public Web",
+            "lane": "Scale-Up",
+            "age_days": None,
+            "received": now,
+            "provider_score": None,
+        },
+        now,
+    )
     if is_new:
         cursor.execute("UPDATE v7_jobs SET route_evidence=%s WHERE dedupe_key=%s", ("Scale-up:POSITIVE", key))
     return is_new
@@ -141,11 +182,19 @@ def promote_leads(cursor, snippets, now=None):
     """
     now = now or _now()
     counts = {"promoted": 0, "not_london": 0, "title_excluded": 0, "sponsor_directory": 0, "not_a_job": 0}
-    cursor.execute("SELECT id, source_url, title, company, location_text FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%' AND notion_page_id IS NULL", (SOURCE,))
+    cursor.execute(
+        "SELECT id, source_url, title, company, location_text FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%' AND notion_page_id IS NULL",
+        (SOURCE,),
+    )
     for job_id, url, title, company, place in cursor.fetchall():
-        reason = "sponsor_directory" if is_sponsor_directory(url) else "not_a_job" if is_not_a_job(title, company) else None
+        reason = (
+            "sponsor_directory" if is_sponsor_directory(url) else "not_a_job" if is_not_a_job(title, company) else None
+        )
         if reason:
-            cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s WHERE id=%s AND status='HOLD'", (reason, now, job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s WHERE id=%s AND status='HOLD'",
+                (reason, now, job_id),
+            )
             counts[reason] += bool(cursor.rowcount)
             continue
         if lanes.geography_status(place) != lanes.POSITIVE:
@@ -154,22 +203,49 @@ def promote_leads(cursor, snippets, now=None):
         if title_rules.check(title, company, "")[0]:
             counts["title_excluded"] += 1
             continue
-        cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='aggregator', link_proof=%s, status='RESOLVED', unresolved_reason='listing_lead', updated_at=%s"
-                       " WHERE id=%s AND status='HOLD'", (url, lanes.LISTING_PROOF, now, job_id))
+        cursor.execute(
+            "UPDATE v7_jobs SET final_apply_url=%s, apply_kind='aggregator', link_proof=%s, status='RESOLVED', unresolved_reason='listing_lead', updated_at=%s"
+            " WHERE id=%s AND status='HOLD'",
+            (url, lanes.LISTING_PROOF, now, job_id),
+        )
         if not cursor.rowcount:
             continue
         d = jd.describe(f"{title}\n{(snippets or {}).get(url) or LISTING_NOTE}", is_html=False)
-        cursor.execute("INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
-                       " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
-                       (job_id, "listing", d["full_text"], d["summary"], d["responsibilities"], d["requirements"], d["qualifications"], d["fingerprint"], now))
+        cursor.execute(
+            "INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
+            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
+            (
+                job_id,
+                "listing",
+                d["full_text"],
+                d["summary"],
+                d["responsibilities"],
+                d["requirements"],
+                d["qualifications"],
+                d["fingerprint"],
+                now,
+            ),
+        )
         counts["promoted"] += 1
     return counts
 
 
 def run(limit, live, search=None, sources=None):
     search = search or tinyfish_search.search
-    sponsors = sources if sources is not None else [r for r in registry.load(registry.PATHS["Scale-Up"]) if r["enabled"] and r["status"] == "fallback"]
-    counts = {"sponsors": len(sponsors), "searched": 0, "candidates": 0, "added": 0, "search_errors": 0, "requeued": 0, "hosts": {}}
+    sponsors = (
+        sources
+        if sources is not None
+        else [r for r in registry.load(registry.PATHS["Scale-Up"]) if r["enabled"] and r["status"] == "fallback"]
+    )
+    counts = {
+        "sponsors": len(sponsors),
+        "searched": 0,
+        "candidates": 0,
+        "added": 0,
+        "search_errors": 0,
+        "requeued": 0,
+        "hosts": {},
+    }
     found = []
     for source in sponsors[:limit]:
         try:

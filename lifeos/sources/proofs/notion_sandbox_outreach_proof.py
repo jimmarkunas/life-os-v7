@@ -5,6 +5,7 @@ exists and has no outreach region), fed fictional conversations from an in-memor
 store is never touched), and `job_page_outreach.run` runs four times: create, replay, in-place update that keeps block
 ids and puts the Needs Action row first, replay. Without --live it only reports whether the page exists.
 Outputs fixed codes and counts only."""
+
 import os
 from datetime import timedelta
 
@@ -33,25 +34,47 @@ def _para(content):
 
 
 def page_body():
-    leads = {"object": "block", "type": "toggle", "toggle": {"rich_text": _text("Network Leads (1)"),
-                                                             "children": [_para(f"{N.MARK} synthetic"), _para("Casey Synthetic · Fictional Labs (SYNTHETIC)")]}}
-    return [_para(f"{N.DESCRIPTION_MARK} | key=synthetic-servicenow-outreach"),
-            _para("SYNTHETIC job description for the LIFE-10 §2 outreach table proof. Not a real vacancy."), leads,
-            _para("Jim's notes (SYNTHETIC): the outreach writer must leave this paragraph untouched.")]
+    leads = {
+        "object": "block",
+        "type": "toggle",
+        "toggle": {
+            "rich_text": _text("Network Leads (1)"),
+            "children": [_para(f"{N.MARK} synthetic"), _para("Casey Synthetic · Fictional Labs (SYNTHETIC)")],
+        },
+    }
+    return [
+        _para(f"{N.DESCRIPTION_MARK} | key=synthetic-servicenow-outreach"),
+        _para("SYNTHETIC job description for the LIFE-10 §2 outreach table proof. Not a real vacancy."),
+        leads,
+        _para("Jim's notes (SYNTHETIC): the outreach writer must leave this paragraph untouched."),
+    ]
 
 
 def page_properties():
-    return {"Job": {"title": _text(TITLE)}, "Company": {"rich_text": _text("ServiceNow (SYNTHETIC)")}, "Role": {"rich_text": _text("Outreach table proof (SYNTHETIC)")}}
+    return {
+        "Job": {"title": _text(TITLE)},
+        "Company": {"rich_text": _text("ServiceNow (SYNTHETIC)")},
+        "Role": {"rich_text": _text("Outreach table proof (SYNTHETIC)")},
+    }
 
 
 def conversation(person, job_id, action, last_contact, follow_up):
-    rich = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]   # noqa: E731
-    return {"id": f"synthetic-{person.split()[0].lower()}", "properties": {
-        "Recruiter": {"type": "title", "title": rich(person)}, "Company": {"type": "rich_text", "rich_text": rich("Fictional Recruiting Co (SYNTHETIC)")},
-        "Role": {"type": "rich_text", "rich_text": rich("Outreach table proof (SYNTHETIC)")}, "Medium": {"type": "rich_text", "rich_text": rich("LinkedIn")},
-        "Last Contact": {"type": "date", "date": {"start": last_contact}}, "Done": {"type": "checkbox", "checkbox": False}, "Active": {"type": "checkbox", "checkbox": True},
-        "Action Status": {"type": "select", "select": {"name": action}}, "Follow-up Date": {"type": "date", "date": {"start": follow_up}},
-        "Job": {"type": "relation", "relation": [{"id": job_id}]}}}
+    rich = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]  # noqa: E731
+    return {
+        "id": f"synthetic-{person.split()[0].lower()}",
+        "properties": {
+            "Recruiter": {"type": "title", "title": rich(person)},
+            "Company": {"type": "rich_text", "rich_text": rich("Fictional Recruiting Co (SYNTHETIC)")},
+            "Role": {"type": "rich_text", "rich_text": rich("Outreach table proof (SYNTHETIC)")},
+            "Medium": {"type": "rich_text", "rich_text": rich("LinkedIn")},
+            "Last Contact": {"type": "date", "date": {"start": last_contact}},
+            "Done": {"type": "checkbox", "checkbox": False},
+            "Active": {"type": "checkbox", "checkbox": True},
+            "Action Status": {"type": "select", "select": {"name": action}},
+            "Follow-up Date": {"type": "date", "date": {"start": follow_up}},
+            "Job": {"type": "relation", "relation": [{"id": job_id}]},
+        },
+    }
 
 
 class Conversations:
@@ -91,16 +114,26 @@ def find_pages(client):
     found = client.query_data_source(SANDBOX_SOURCE, body)
     if not isinstance(found, dict) or not isinstance(found.get("results"), list) or found.get("has_more") is not False:
         raise fail("QUERY_INCOMPLETE")
-    return [p["id"] for p in found["results"] if isinstance(p, dict) and not p.get("archived") and not p.get("in_trash")]
+    return [
+        p["id"] for p in found["results"] if isinstance(p, dict) and not p.get("archived") and not p.get("in_trash")
+    ]
 
 
 def ensure_page(client):
     found = find_pages(client)
     if not found:
         try:
-            client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": SANDBOX_SOURCE}, "properties": page_properties(), "children": page_body()})
+            client.call_once(
+                "POST",
+                "/pages",
+                {
+                    "parent": {"type": "data_source_id", "data_source_id": SANDBOX_SOURCE},
+                    "properties": page_properties(),
+                    "children": page_body(),
+                },
+            )
         except NotionError:
-            pass                                                            # Never retried: the query below decides what happened.
+            pass  # Never retried: the query below decides what happened.
         found, how = find_pages(client), "created"
     else:
         how = "reused"
@@ -122,26 +155,61 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     if (environ.get("PROOF_CONFIRM") or "").strip() != CONFIRM:
         raise fail("NOT_CONFIRMED")
     now = (now or J.datetime.now(J.CT)).astimezone(J.CT)
-    client = Counted(client or Client({"NOTION_API_TOKEN": environ.get("NOTION_API_TOKEN") or "", "SANDBOX_SOURCE": SANDBOX_SOURCE}, source_name="SANDBOX_SOURCE"))
+    client = Counted(
+        client
+        or Client(
+            {"NOTION_API_TOKEN": environ.get("NOTION_API_TOKEN") or "", "SANDBOX_SOURCE": SANDBOX_SOURCE},
+            source_name="SANDBOX_SOURCE",
+        )
+    )
     if R.clean_id(client.source) != R.clean_id(SANDBOX_SOURCE):
         raise fail("NOT_SANDBOX")
-    counts = {"notion_sandbox_outreach_proof": "live" if live else "dry_run", "page": "", "steps": [], "region_kept": False, "needs_action_first": False, "writes": 0, "failed": 0}
+    counts = {
+        "notion_sandbox_outreach_proof": "live" if live else "dry_run",
+        "page": "",
+        "steps": [],
+        "region_kept": False,
+        "needs_action_first": False,
+        "writes": 0,
+        "failed": 0,
+    }
     if not live:
         counts["page"] = {0: "would_create", 1: "exists"}.get(len(find_pages(client)), "not_unique")
         return counts
     page_id, counts["page"] = ensure_page(client)
     talks = Conversations()
     today = now.date()
-    talks.pages.append(conversation("Avery Synthetic", page_id, store.WAITING, today.isoformat(), store.add_business_days(today, store.FOLLOW_UP_DAYS).isoformat()))
-    step = lambda at: J.run(0, True, environ={"JOB_PAGE_OUTREACH": "on"}, recruiters=talks, ledger=client, client=client, now=at)["codes"]   # noqa: E731
+    talks.pages.append(
+        conversation(
+            "Avery Synthetic",
+            page_id,
+            store.WAITING,
+            today.isoformat(),
+            store.add_business_days(today, store.FOLLOW_UP_DAYS).isoformat(),
+        )
+    )
+    step = lambda at: J.run(
+        0, True, environ={"JOB_PAGE_OUTREACH": "on"}, recruiters=talks, ledger=client, client=client, now=at
+    )["codes"]  # noqa: E731
     counts["steps"] += [step(now), step(now)]
     first = _region(client, page_id)
-    talks.pages.append(conversation("Blake Synthetic", page_id, store.NEEDS_ACTION, (today - timedelta(days=3)).isoformat(), today.isoformat()))
+    talks.pages.append(
+        conversation(
+            "Blake Synthetic", page_id, store.NEEDS_ACTION, (today - timedelta(days=3)).isoformat(), today.isoformat()
+        )
+    )
     later = now + timedelta(minutes=1)
     counts["steps"] += [step(later), step(later)]
     last = _region(client, page_id)
-    counts["region_kept"] = (last["heading"]["id"], last["table"]["id"]) == (first["heading"]["id"], first["table"]["id"])
-    counts["needs_action_first"] = len(last["rows"]) == 3 and R.cells_of(last["rows"][1])[0].startswith("Blake Synthetic")
+    counts["region_kept"] = (last["heading"]["id"], last["table"]["id"]) == (
+        first["heading"]["id"],
+        first["table"]["id"],
+    )
+    counts["needs_action_first"] = len(last["rows"]) == 3 and R.cells_of(last["rows"][1])[0].startswith(
+        "Blake Synthetic"
+    )
     counts["writes"] = client.writes
-    counts["failed"] = int(tuple(counts["steps"]) != EXPECTED or not counts["region_kept"] or not counts["needs_action_first"])
+    counts["failed"] = int(
+        tuple(counts["steps"]) != EXPECTED or not counts["region_kept"] or not counts["needs_action_first"]
+    )
     return counts
