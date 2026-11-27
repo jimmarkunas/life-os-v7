@@ -30,7 +30,7 @@ jobs:
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
           git checkout -q --detach FETCH_HEAD
       - uses: ./.github/actions/python
       - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)

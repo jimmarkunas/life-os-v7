@@ -21,7 +21,7 @@ HEAD = [
 VARIANTS = {
     "default": HEAD
     + [
-        "git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=1 origin \"$GITHUB_SHA\"",
+        "for try in 1 2 3; do git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=1 origin \"$GITHUB_SHA\" && break; [ \"$try\" = 3 ] && exit 1; sleep $((try * 5)); done",
         "git checkout -q --detach FETCH_HEAD",
     ],
     "depth2": HEAD

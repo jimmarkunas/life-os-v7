@@ -19,6 +19,7 @@ DENIED = GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 
 
 
 def run_main(module, error):
+    fresh()
     stderr, stdout = io.StringIO(), io.StringIO()
     with (
         mock.patch.object(module.Gmail, "from_env", side_effect=error),
@@ -27,6 +28,10 @@ def run_main(module, error):
     ):
         code = module.main(["--live"])
     return code, stderr.getvalue(), stdout.getvalue(), stage_timing.take("x")[1]
+
+
+def fresh():
+    stage_timing.take("x")  # forget what an earlier test left in this thread
 
 
 class RateLimit(unittest.TestCase):
