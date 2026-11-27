@@ -6,7 +6,7 @@ import unittest
 from lifeos.oraclecloud import backup_watch as bw
 from lifeos.platform import alert_registry, alerts
 
-NOW = dt.datetime(2026, 10, 29, 8, 0)                       # naive UTC, as the store keeps it
+NOW = dt.datetime(2026, 10, 29, 8, 0)  # naive UTC, as the store keeps it
 GOOD = {"ok": True, "code": "ok", "age_h": 5}
 FAILED = {"ok": False, "code": "backup_drive_http_403", "age_h": 1}
 MISSED = {"ok": True, "code": "ok", "age_h": 40}
@@ -45,7 +45,7 @@ class Decide(unittest.TestCase):
     def test_a_healthy_or_unknown_reading_sends_nothing(self):
         state, plan = bw.decide(None, GOOD, NOW)
         self.assertEqual((state["alert_open"], plan.notify), (False, []))
-        self.assertIsNone(bw.decide({"alert_open": True, "last_notified": NOW}, None, NOW))           # Oracle unreachable: neither opens nor resolves
+        self.assertIsNone(bw.decide({"alert_open": True, "last_notified": NOW}, None, NOW))  # Oracle unreachable: neither opens nor resolves
 
     def test_a_failed_night_opens_one_quiet_alert_that_names_the_failure(self):
         state, plan = bw.decide(None, FAILED, NOW)
@@ -65,7 +65,7 @@ class Decide(unittest.TestCase):
         open_state["last_notified"] = NOW - dt.timedelta(hours=24)
         self.assertEqual(bw.decide(open_state, FAILED, NOW)[1].notify[0][0], "remind")
         state, plan = bw.decide(open_state, GOOD, NOW)
-        self.assertEqual((state["alert_open"], plan.resolved, plan.notify), (False, [bw.KEY], []))      # INFO resolves without a push (platform alerts, D53)
+        self.assertEqual((state["alert_open"], plan.resolved, plan.notify), (False, [bw.KEY], []))  # INFO resolves without a push
 
 
 class Record(unittest.TestCase):

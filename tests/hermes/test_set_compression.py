@@ -1,4 +1,4 @@
-"""LIFE-334: the Hermes compression pin. A copy of the real config's shape (comments, the auxiliary section, the model section) in a temp folder; nothing real is touched."""
+"""the Hermes compression pin."""
 import hashlib
 import os
 import shutil

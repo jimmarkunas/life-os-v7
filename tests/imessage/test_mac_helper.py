@@ -32,7 +32,7 @@ class Installer(unittest.TestCase):
             self.assertIsNone(re.search(banned, INSTALL, re.M), banned)
         calls = re.findall(r"/usr/bin/sqlite3 (\S+)", INSTALL)
         self.assertTrue(calls)
-        self.assertEqual({c for c in calls if c != "/usr/bin/csreq"}, {"-readonly"})       # every database call is read-only
+        self.assertEqual({c for c in calls if c != "/usr/bin/csreq"}, {"-readonly"})  # every database call is read-only
 
     def test_paths_agree_across_installer_launcher_and_agent(self):
         agent = plistlib.loads((MAC / "ai.lifeos.imessage-attention.plist").read_bytes())
@@ -128,7 +128,9 @@ class Gate(unittest.TestCase):
 
 
 class AgentCheck(unittest.TestCase):
-    """The installer's structured LaunchAgent check, run in bash against the rendered template: comments cannot fail it, real keys cannot pass it."""
+    """The installer's structured LaunchAgent check, run in bash against the rendered template: comments cannot fail it,
+    real keys cannot pass it.
+    """
     SOCK = "/tmp/example home/Library/Application Support/LifeOS/imessage-attention.sock"
 
     def check(self, text):
@@ -175,7 +177,7 @@ class CodeHash(unittest.TestCase):
 
     def test_a_missing_hash_fails_identity_before_any_grant(self):
         self.assertIn('[ -n "$CDHASH" ] && record "helper code hash read from its signature: $CDHASH" PASS || record "helper code hash read from its signature (none found)" FAIL', INSTALL)
-        self.assertNotIn("codesign -dv ", INSTALL)                     # plain -dv does not print CDHash
+        self.assertNotIn("codesign -dv ", INSTALL)  # plain -dv does not print CDHash
 
 
 class GrantDetection(unittest.TestCase):
@@ -200,7 +202,9 @@ class GrantDetection(unittest.TestCase):
 
 
 class InstallerProbe(unittest.TestCase):
-    """The installer's own client, run against a launchd-like server: one tool process per connection, the connection as its stdin/stdout."""
+    """The installer's own client, run against a launchd-like server: one tool process per connection, the connection as
+    its stdin/stdout.
+    """
 
     def test_probe_passes_every_check_against_the_real_tool_without_messages_access(self):
         script = re.search(r"<<'PY'\n(.*?)\nPY\n", INSTALL, re.S).group(1)
@@ -214,7 +218,7 @@ class InstallerProbe(unittest.TestCase):
         probe = subprocess.Popen([sys.executable, "-I", "-", path, "pre"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         probe.stdin.write(script)
         probe.stdin.close()
-        for _ in range(2):                                            # the probe opens exactly two connections
+        for _ in range(2):  # the probe opens exactly two connections
             conn, _ = server.accept()
             subprocess.run([sys.executable, "-I", str(TOOL)], stdin=conn, stdout=conn, env=env, timeout=10, check=True)
             conn.close()

@@ -8,7 +8,7 @@ from lifeos.imessage import attention_mcp as m
 
 NOW = datetime(2026, 10, 14, 15, 0, tzinfo=timezone.utc)
 H, D = timedelta(hours=1), timedelta(days=1)
-ALICE, BOB, SHORT = "+15550100001", "bob@example.com", "262966"           # invented handles
+ALICE, BOB, SHORT = "+15550100001", "bob@example.com", "262966"  # invented handles
 
 
 def typedstream(text):
@@ -72,16 +72,16 @@ class Fixture:
 class Counts(unittest.TestCase):
     def test_counting_definitions_exclusions_and_windows(self):
         f = Fixture()
-        f.add(10, H)                                                  # unread, last 24 h
-        f.add(10, 2 * H, read=1)                                      # read: excluded
-        f.add(11, 3 * D, handle=2)                                    # unread, last 7 days
-        f.add(13, 40 * D, handle=3, service="SMS")                    # unread, historical, SMS
-        f.add(12, 2 * H, handle=2, service="RCS")                     # unread in a group
-        f.add(10, H, assoc=2000)                                      # a reaction: excluded
-        f.add(10, H, retracted=1)                                     # unsent: excluded
-        f.add(10, H, mine=1)                                          # from Jim: excluded
-        f.add(10, H, kind=1)                                          # system row: excluded
-        f.add(10, 5 * H, guid="dup", also=12)                         # one message joined to two chats: counted once
+        f.add(10, H)  # unread, last 24 h
+        f.add(10, 2 * H, read=1)  # read: excluded
+        f.add(11, 3 * D, handle=2)  # unread, last 7 days
+        f.add(13, 40 * D, handle=3, service="SMS")  # unread, historical, SMS
+        f.add(12, 2 * H, handle=2, service="RCS")  # unread in a group
+        f.add(10, H, assoc=2000)  # a reaction: excluded
+        f.add(10, H, retracted=1)  # unsent: excluded
+        f.add(10, H, mine=1)  # from Jim: excluded
+        f.add(10, H, kind=1)  # system row: excluded
+        f.add(10, 5 * H, guid="dup", also=12)  # one message joined to two chats: counted once
         out = m.counts(f.db, NOW)
         self.assertEqual((out["health"], out["sync"], out["count_reliable"]), ("CURRENT", "UNVERIFIED", False))
         c = out["counts"]
@@ -104,10 +104,10 @@ class Counts(unittest.TestCase):
 class Recent(unittest.TestCase):
     def test_newest_incoming_with_sender_text_and_reference(self):
         f = Fixture()
-        f.add(10, 30 * H)                                             # outside a 24 h window
+        f.add(10, 30 * H)  # outside a 24 h window
         a = f.add(10, 2 * H, text=None, attributed=typedstream("Can you call me before 5pm?"))
         b = f.add(11, H, handle=2, text="Invoice attached", attach=1, edited=1, read=1)
-        f.add(10, H, mine=1, text="mine")                             # outgoing: not in recent
+        f.add(10, H, mine=1, text="mine")  # outgoing: not in recent
         f.add(12, 3 * H, handle=1, text="dinner at 7", service="RCS")
         f.add(13, 4 * H, handle=3, text=None, attributed=typedstream("x" * 300), service="SMS")
         out = m.recent(24, f.db, NOW, f.contacts())
@@ -251,9 +251,9 @@ class Paging(unittest.TestCase):
 
     def test_more_than_one_page_each_message_exactly_once_in_order(self):
         f = Fixture()
-        ids = [f.add(10 + i % 3, timedelta(minutes=500 - i), text="t%d" % i, read=i % 2) for i in range(137)]    # read and unread alike
-        f.add(10, timedelta(minutes=1), mine=1)                                                                     # outgoing: never listed
-        f.add(10, 30 * H)                                                                                           # outside the window
+        ids = [f.add(10 + i % 3, timedelta(minutes=500 - i), text="t%d" % i, read=i % 2) for i in range(137)]  # read and unread alike
+        f.add(10, timedelta(minutes=1), mine=1)  # outgoing: never listed
+        f.add(10, 30 * H)  # outside the window
         pages, out = self.walk(f)
         self.assertEqual([len(p["messages"]) for p in pages], [50, 50, 37])
         self.assertEqual([p["more"] for p in pages], [True, True, False])
@@ -262,7 +262,7 @@ class Paging(unittest.TestCase):
 
     def test_same_timestamp_across_a_page_boundary_neither_skips_nor_repeats(self):
         f = Fixture()
-        ids = [f.add(10, timedelta(minutes=10), text="same%d" % i) for i in range(75)]                           # 75 rows, one identical date
+        ids = [f.add(10, timedelta(minutes=10), text="same%d" % i) for i in range(75)]  # 75 rows, one identical date
         pages, out = self.walk(f)
         self.assertEqual([len(p["messages"]) for p in pages], [50, 25])
         self.assertEqual([x["ref"] for x in out], ["m%d" % i for i in ids])

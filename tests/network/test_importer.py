@@ -1,4 +1,4 @@
-"""NET-1b importer: invented rows only. The store's real SQL runs on an in-memory stand-in (tests/kit/mysqlite.py)."""
+"""importer: invented rows only."""
 import csv
 import io
 import unittest
@@ -30,11 +30,13 @@ def row(i, company="Acme Corp", title="Director", url=True, first="Pat", last=No
 
 
 def seed_rows():
-    """The real seed's shape with invented values: 3,346 people (3,244 with an employer: some blank titles), 102 without a usable employer, 107 with no profile address."""
+    """The real seed's shape with invented values: 3,346 people (3,244 with an employer: some blank titles), 102 without
+    a usable employer, 107 with no.
+    """
     rows = [row(i, title="" if i % 7 == 0 else "Engineer", company=f"Company {i % 2485}") for i in range(3244)]
     kinds = ["", "Freelance", "Self-employed", "Retired", "Student", "Independent"]
     rows += [row(3244 + i, company=kinds[i % len(kinds)]) for i in range(101)]
-    rows.append(row(3345, company="Pat Person03345", first="Pat", last="Person03345"))          # own name as company
+    rows.append(row(3345, company="Pat Person03345", first="Pat", last="Person03345"))  # own name as company
     rows += [row(9000 + i, url=False) for i in range(107)]
     return rows
 
@@ -53,10 +55,10 @@ class Classify(unittest.TestCase):
     def test_negative_controls(self):
         def rec(url, company="Acme", first="Ann", last="Lee", title="X"):
             return {"first": first, "last": last, "url": url, "email": "", "company": company, "title": title, "connected": "05 Sep 2026"}
-        rows = [rec(URL + "a-1"), rec(URL + "a-1/", company="Other"),             # same profile twice: held, not merged
-                rec("https://example.com/notprofile"),                          # not a profile address: rejected
-                rec("", company="Acme"),                                        # no address: held
-                rec(URL + "b-2"), rec(URL + "c-3")]                             # same name, different people: two people
+        rows = [rec(URL + "a-1"), rec(URL + "a-1/", company="Other"),  # same profile twice: held, not merged
+                rec("https://example.com/notprofile"),  # not a profile address: rejected
+                rec("", company="Acme"),  # no address: held
+                rec(URL + "b-2"), rec(URL + "c-3")]  # same name, different people: two people
         plan = identity.classify(rows)
         self.assertEqual((len(plan["people"]), plan["ambiguous_held"], plan["rejected"]), (2, 3, 1))
         self.assertEqual(plan["source_rows"], 6)
@@ -95,7 +97,7 @@ class Import(unittest.TestCase):
 
     def test_failed_chunk_rolls_back_and_the_next_run_resumes(self):
         conn = MySQLite()
-        conn.fail_on = ("INSERT IGNORE INTO v7_network_people", 2)                   # the second chunk fails
+        conn.fail_on = ("INSERT IGNORE INTO v7_network_people", 2)  # the second chunk fails
         with self.assertRaises(NetworkError) as ctx:
             run_import(seed_rows(), conn=conn, chunk=1000)
         self.assertEqual(str(ctx.exception), "NETWORK_STORE_FAILED")
@@ -119,10 +121,10 @@ class Import(unittest.TestCase):
     def test_later_observations(self):
         conn = MySQLite()
         run_import([row(1, "Acme Corp", "Director"), row(2, "Beta Inc", "Lead")], conn=conn, name="LI_Connections_20260907.csv")
-        later = [row(1, "", ""), row(2, "Gamma LLC", "Lead")]                                     # 1: blank employer and title, 2: moved
+        later = [row(1, "", ""), row(2, "Gamma LLC", "Lead")]  # 1: blank employer and title, 2: moved
         run_import(later, conn=conn, name="LI_Connections_20261007.csv")
         positions = conn.raw.execute("SELECT p.url_key, s.company_key, s.title, s.position_state FROM v7_network_positions s JOIN v7_network_people p ON p.id = s.person_id ORDER BY 1, 4").fetchall()
-        self.assertIn(("person-00001", "acme", "Director", "CURRENT"), positions)                 # blank employer/title never supersedes or erases
+        self.assertIn(("person-00001", "acme", "Director", "CURRENT"), positions)  # blank employer/title never supersedes or erases
         self.assertIn(("person-00002", "beta", "Lead", "SUPERSEDED"), positions)
         self.assertIn(("person-00002", "gamma", "Lead", "CURRENT"), positions)
         self.assertEqual(conn.count("v7_network_batches"), 2)
@@ -138,7 +140,9 @@ class Import(unittest.TestCase):
 
 
 class ChangeEvents(unittest.TestCase):
-    """NET-2.1 (D158): events are ids and a hash only, written with the position change, replay-safe, and the seed (the first batch) writes none."""
+    """events are ids and a hash only, written with the position change, replay-safe, and the seed (the first batch)
+    writes none.
+    """
 
     def events(self, conn):
         return conn.raw.execute("SELECT person_id, event_type, old_position_id, new_position_id FROM v7_network_events ORDER BY person_id, event_type").fetchall()
@@ -153,10 +157,10 @@ class ChangeEvents(unittest.TestCase):
         conn = MySQLite()
         run_import([row(1, "Acme Corp", "Director"), row(2, "Beta Inc", "Lead"), row(3, "Cora Ltd", "Analyst"), row(4, "Dune LLC", "Manager"), row(5, "Echo Co", "Chief")],
                    conn=conn, name="LI_Connections_20260907.csv")
-        later = [row(1, "", ""),                      # blank fields: no event
-                 row(2, "Gamma LLC", "Lead"),         # company changed
+        later = [row(1, "", ""),  # blank fields: no event
+                 row(2, "Gamma LLC", "Lead"),  # company changed
                  row(3, "Cora Ltd", "Senior Analyst"),  # title changed
-                 row(6, "Fox Inc", "Engineer")]       # new person; persons 4 and 5 are absent: nothing
+                 row(6, "Fox Inc", "Engineer")]  # new person
         counts = run_import(later, conn=conn, name="LI_Connections_20261007.csv")
         self.assertEqual((counts["events_person_imported"], counts["events_company_changed"], counts["events_title_changed"]), (1, 1, 1))
         got = conn.raw.execute("SELECT p.url_key, e.event_type FROM v7_network_events e JOIN v7_network_people p ON p.id = e.person_id ORDER BY p.url_key").fetchall()
@@ -172,7 +176,7 @@ class ChangeEvents(unittest.TestCase):
         before = self.events(conn)
         again = run_import([row(1, "Gamma LLC", "Director"), row(2, "Beta Inc", "Lead")], conn=conn, name="LI_Connections_20261007.csv")
         self.assertEqual((again["replay"], again["events_company_changed"], self.events(conn)), (True, 0, before))
-        run_import([row(1, "Acme Corp", "Director")], conn=conn, name="LI_Connections_20260801.csv")          # older: never replaces a newer one, so no event
+        run_import([row(1, "Acme Corp", "Director")], conn=conn, name="LI_Connections_20260801.csv")  # older: never replaces a newer one, so no event
         self.assertEqual(self.events(conn), before)
         self.assertEqual(len(before), 2)
 
@@ -193,7 +197,7 @@ class ChangeEvents(unittest.TestCase):
         with self.assertRaises(NetworkError):
             run_import([row(1, "Gamma LLC", "Director")], conn=conn, name="LI_Connections_20261007.csv")
         self.assertEqual(conn.count("v7_network_events"), 0)
-        self.assertEqual(conn.raw.execute("SELECT position_state FROM v7_network_positions WHERE company_key='acme'").fetchone(), ("CURRENT",))      # the supersede rolled back too
+        self.assertEqual(conn.raw.execute("SELECT position_state FROM v7_network_positions WHERE company_key='acme'").fetchone(), ("CURRENT",))  # the supersede rolled back too
         done = run_import([row(1, "Gamma LLC", "Director")], conn=conn, name="LI_Connections_20261007.csv")
         self.assertEqual((done["events_company_changed"], conn.count("v7_network_events")), (1, 1))
 

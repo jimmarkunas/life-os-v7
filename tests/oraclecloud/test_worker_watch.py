@@ -1,5 +1,4 @@
-"""LIFE-531: more Codex workers than agents on Oracle raises one quiet phone alert, through the gateway; an unreadable reading changes nothing. The reminder, close and refused-push rules are
-the shared watch's, proven in test_backup_watch."""
+"""more Codex workers than agents on Oracle raises one quiet phone alert, through the gateway"""
 import contextlib
 import datetime as dt
 import io
@@ -9,7 +8,7 @@ from lifeos.oraclecloud import worker_watch as ww
 from lifeos.platform import alert_registry, alerts, codes
 from tests.oraclecloud.test_backup_watch import Store
 
-NOW = dt.datetime(2026, 11, 10, 18, 0)                      # naive UTC, as the store keeps it
+NOW = dt.datetime(2026, 11, 10, 18, 0)  # naive UTC, as the store keeps it
 FINE = {"count": 5, "agents": 5}
 LEAK = {"count": 6, "agents": 5}
 
@@ -28,7 +27,7 @@ class Decide(unittest.TestCase):
 
     def test_an_unreadable_reading_is_unknown_and_changes_nothing(self):
         self.assertIsNone(ww.healthy(None))
-        self.assertIsNone(ww.decide({"alert_open": True, "last_notified": NOW}, None, NOW))          # neither opens nor resolves
+        self.assertIsNone(ww.decide({"alert_open": True, "last_notified": NOW}, None, NOW))  # neither opens nor resolves
 
     def test_negative_control_the_threshold_is_the_agent_count_not_a_fixed_number(self):
         self.assertTrue(ww.healthy({"count": 9, "agents": 9}))

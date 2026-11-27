@@ -1,4 +1,4 @@
-"""Parsing and measuring a connections export. All people and companies here are invented; example.com addresses only."""
+"""Parsing and measuring a connections export."""
 import json
 import unittest
 
@@ -59,7 +59,7 @@ class ReadAndAnalyseTests(unittest.TestCase):
         rows, malformed = parse.read_rows(SAMPLE)
         self.assertEqual(len(rows), 9)
         self.assertEqual(malformed, 1)
-        self.assertEqual(rows[2]["first"], "Pat, MBA")                 # a quoted comma stays inside the field
+        self.assertEqual(rows[2]["first"], "Pat, MBA")  # a quoted comma stays inside the field
         reordered = "Position,Connected On,Company,URL,Last Name,First Name,Email Address\nCEO,01 Jan 2026,Acme,https://www.linkedin.com/in/a-b,B,A,\n"
         rows2, _ = parse.read_rows(reordered)
         self.assertEqual((rows2[0]["first"], rows2[0]["company"], rows2[0]["title"]), ("A", "Acme", "CEO"))
@@ -81,15 +81,15 @@ class ReadAndAnalyseTests(unittest.TestCase):
         self.assertEqual(counts["malformed_rows"], 1)
         self.assertEqual(counts["blank_url"], 2)
         self.assertEqual(counts["invalid_url"], 1)
-        self.assertEqual(counts["duplicate_url_keys"], 1)                # the two Ada rows share one key
-        self.assertEqual(counts["no_employer_company"], 2)               # own name, freelance
+        self.assertEqual(counts["duplicate_url_keys"], 1)  # the two Ada rows share one key
+        self.assertEqual(counts["no_employer_company"], 2)  # own name, freelance
         self.assertEqual(counts["email_present"], 1)
         self.assertEqual(counts["bad_connected_on"], 1)
         self.assertEqual(counts["blank_company"], 0)
-        self.assertEqual(counts["ambiguous_no_url_rows"], 2)             # the two Ron rows: same name, same employer key, no profile key
+        self.assertEqual(counts["ambiguous_no_url_rows"], 2)
         self.assertEqual(counts["newest_connected_on"], "2026-09-05")
         self.assertEqual(counts["oldest_connected_on"], "2020-01-01")
-        self.assertEqual(counts["distinct_company_keys"], 5)             # acme, widget, independent, globex, initech (own-name and freelance rows excluded)
+        self.assertEqual(counts["distinct_company_keys"], 5)
         self.assertGreater(counts["matchable_rows"], 0)
 
     def test_output_holds_counts_and_dates_only_never_row_content(self):

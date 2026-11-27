@@ -1,4 +1,4 @@
-"""LIFE-975 step 4d: the System table's bars, colours, status words, fixed row order and stale rule (pure functions)."""
+"""step 4d: the System table's bars, colours, status words, fixed row order and stale rule (pure functions)."""
 import datetime as dt
 import unittest
 from zoneinfo import ZoneInfo
@@ -42,9 +42,9 @@ class Bars(unittest.TestCase):
     def test_ten_blocks_filled_in_the_colour_and_the_rest_gray(self):
         self.assertEqual(st.used_bar(23), [("██", "green"), ("████████", "gray")])
         self.assertEqual(st.used_bar(66), [("███████", "green"), ("███", "gray")])
-        self.assertEqual(st.used_bar(100), [("██████████", "red")])                    # a full bar has no gray part
+        self.assertEqual(st.used_bar(100), [("██████████", "red")])  # a full bar has no gray part
         self.assertEqual(st.used_bar(0), [("██████████", "gray")])
-        self.assertEqual(st.used_bar(2), [("█", "green"), ("█████████", "gray")])        # a share above zero always shows one block
+        self.assertEqual(st.used_bar(2), [("█", "green"), ("█████████", "gray")])  # a share above zero always shows one block
 
     def test_the_colour_turns_orange_at_70_and_red_at_90_percent_used(self):
         self.assertEqual([st.colour_used(p) for p in (0, 69.9, 70, 89.9, 90, 100)], ["green", "green", "orange", "orange", "red", "red"])
@@ -60,14 +60,14 @@ class Rows(unittest.TestCase):
         self.assertEqual(len(table), 17)
         self.assertEqual([text(c) for c in table[0]], list(st.HEADER))
         self.assertTrue(all(len(r) == 5 for r in table))
-        self.assertEqual(build(stats(memory_pct=99), limits(), CONN)[1][0], [("Oracle · Memory", None)])        # the order never depends on the readings
+        self.assertEqual(build(stats(memory_pct=99), limits(), CONN)[1][0], [("Oracle · Memory", None)])  # the order never depends on the readings
 
     def test_a_healthy_page_reads_like_the_approved_wireframe(self):
         rows = {text(r[0]): r for r in build()[1:]}
         memory = rows["Oracle · Memory"]
         self.assertEqual((memory[1], text(memory[2]), text(memory[4])), ([("██", "green"), ("████████", "gray")], "23%", "OK"))
         cores = rows["Oracle · Cores"]
-        self.assertEqual((cores[1], text(cores[2]), cores[4]), ([("██████████", "orange")], "4 of 4 in use", [("OK", "green")]))      # no headroom stays orange, with an OK
+        self.assertEqual((cores[1], text(cores[2]), cores[4]), ([("██████████", "orange")], "4 of 4 in use", [("OK", "green")]))  # no headroom stays orange, with an OK
         self.assertEqual(text(rows["Oracle · Cost"][2]), "$0.00 this month")
         self.assertEqual((text(rows["Oracle · Services"][2]), rows["Oracle · Services"][1]), ("5 of 5 up", [("██████████", "green")]))
         self.assertEqual(text(rows["Honcho · Backup"][2]), "healthy · last Nov 24, 3:30 AM")
@@ -109,7 +109,7 @@ class Rows(unittest.TestCase):
     def test_the_connections_row_counts_what_should_work_and_names_what_is_down(self):
         row = {text(r[0]): r for r in build()[1:]}["Connections"]
         self.assertEqual(text(row[2]), "11 of 12 connected · Concord not connected · 3 off by design")
-        self.assertEqual((row[1], row[4]), ([("█████████", "red"), ("█", "gray")], [("CONCORD DOWN", "red")]))                # a failing connection turns the bar red
+        self.assertEqual((row[1], row[4]), ([("█████████", "red"), ("█", "gray")], [("CONCORD DOWN", "red")]))  # a failing connection turns the bar red
         whole = {text(r[0]): r for r in build(conn={"total": 12, "connected": 12, "down": [], "off": 3, "stale_since": None})[1:]}["Connections"]
         self.assertEqual((whole[1], whole[4], text(whole[2])), ([("██████████", "green")], [("OK", "green")], "12 of 12 connected · 3 off by design"))
 
@@ -119,9 +119,9 @@ class Stale(unittest.TestCase):
         old = NOW - dt.timedelta(hours=3)
         rows = {text(r[0]): r for r in build(limits_at=old)[1:]}
         self.assertEqual(rows["Codex · 5-hour"][4], [("STALE since 6:00 AM", "red")])
-        self.assertEqual(text(rows["Codex · 5-hour"][2]), "7% used")                              # the last reading stays shown beside the stale status
+        self.assertEqual(text(rows["Codex · 5-hour"][2]), "7% used")
         exactly = {text(r[0]): r for r in build(limits_at=NOW - dt.timedelta(hours=2))[1:]}
-        self.assertEqual(exactly["Codex · 5-hour"][4], [("OK", "green")])                        # exactly two hours is not stale
+        self.assertEqual(exactly["Codex · 5-hour"][4], [("OK", "green")])  # exactly two hours is not stale
         days = {text(r[0]): r for r in build(limits_at=dt.datetime(2026, 11, 16, 20, 30, tzinfo=CT))[1:]}
         self.assertEqual(days["Cloud Fit · Daily guard"][4], [("STALE since Nov 16", "red")])
 
@@ -133,10 +133,10 @@ class Stale(unittest.TestCase):
         rows = {text(r[0]): r for r in build(limits_=False, previous=previous, stamp=stamp, now=later)[1:]}
         self.assertEqual(rows["Codex · 5-hour"][4], [("STALE since 8:02 AM", "red")])
         self.assertEqual((text(rows["Codex · 5-hour"][2]), rows["Codex · 5-hour"][1]), ("7% used", first[8][1]))
-        self.assertEqual(rows["Oracle · Memory"][4], [("OK", "green")])                          # Oracle answered, so its rows are fresh
+        self.assertEqual(rows["Oracle · Memory"][4], [("OK", "green")])  # Oracle answered, so its rows are fresh
         again = st.previous_of([[[(h, "bold")] for h in st.HEADER]] + [r for r in build(limits_=False, previous=previous, stamp=stamp, now=later)[1:]])
         rows = {text(r[0]): r for r in build(limits_=False, previous=again, stamp=later, now=later + dt.timedelta(hours=1))[1:]}
-        self.assertEqual(rows["Codex · 5-hour"][4], [("STALE since 8:02 AM", "red")])           # the stale origin is carried, not reset to the latest run
+        self.assertEqual(rows["Codex · 5-hour"][4], [("STALE since 8:02 AM", "red")])
 
     def test_with_no_previous_row_a_missing_reading_says_unavailable(self):
         rows = {text(r[0]): r for r in build(stats_=False, previous={}, stamp=None)[1:]}
@@ -153,7 +153,7 @@ class Stale(unittest.TestCase):
 
 class BarWidthTests(unittest.TestCase):
     def test_every_bar_is_exactly_ten_full_block_cells_whatever_the_fill(self):
-        """Jim, Nov 25 2026: filled and empty cells are the same glyph, so bars of different fill render at the same length; empty cells are gray."""
+        """empty cells are gray."""
         for filled in range(0, 11):
             for colour in ("green", "orange", "red"):
                 pieces = st.bar(filled, colour)

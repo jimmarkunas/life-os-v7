@@ -1,4 +1,6 @@
-"""LIFE-977 (synthetic): the private endpoint's `concord1` request, the Concord helper behind it, and the reader on the runner side. Fake sockets and a fake CLI; no network, no real Concord."""
+"""(synthetic): the private endpoint's `concord1` request, the Concord helper behind it, and the reader on the runner
+side.
+"""
 import io
 import json
 import os
@@ -134,7 +136,7 @@ class Reader(unittest.TestCase):
         for path in sorted(root.glob("*.py")):
             if path.name in ("sources.py", "concord_reader.py"):
                 continue
-            self.assertNotIn("LIVE_READ_SOURCES", path.read_text(), path.name)                 # no other module widens or reads the allow-list
+            self.assertNotIn("LIVE_READ_SOURCES", path.read_text(), path.name)  # no other module widens or reads the allow-list
         self.assertIn("refuse_live", (root / "followup.py").read_text())
         with self.assertRaises(sources.InboxError) as caught:
             sources.refuse_live("cred:x")

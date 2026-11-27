@@ -1,4 +1,4 @@
-"""NET-2.2 matching: invented companies, titles and ids only."""
+"""matching: invented companies, titles and ids only."""
 import json
 import pathlib
 import unittest
@@ -37,7 +37,7 @@ class Leads(unittest.TestCase):
     def test_a_whole_word_prefix_is_a_possible_match_shown_last_and_a_partial_word_is_not(self):
         index = match.build_index([pos(1, "meta platforms"), pos(2, "meta"), pos(3, "metallica"), pos(4, "metaverse labs")])
         found = match.leads_for("meta", "Engineer", index, TODAY)
-        self.assertEqual([(l["person_id"], l["tier"]) for l in found], [(2, "CURRENT"), (1, "POSSIBLE")])      # "metallica" and "metaverse labs" share letters, not a whole word
+        self.assertEqual([(l["person_id"], l["tier"]) for l in found], [(2, "CURRENT"), (1, "POSSIBLE")])
 
     def test_order_within_a_tier_is_overlap_then_freshness_then_a_stable_id(self):
         index = match.build_index([pos(1, "acme", "Designer", verified=date(2026, 10, 1)), pos(2, "acme", "Product Manager", verified=date(2026, 8, 1)),
@@ -94,7 +94,7 @@ def pipeline_row(company, role, stage=None, kind=None, start=None, applied_on="2
 def save_pipeline(conn, rows, reasons=()):
     from lifeos.hiring import snapshot
     snap = {"schema": snapshot.SCHEMA_V, "taken_at": NOW.isoformat(), "accepted_at": NOW.isoformat(), "reasons": list(reasons), "rows": rows}
-    snapshot.STORE.ensure(conn)                                      # the stand-in has no ON DUPLICATE KEY: write the row the pipeline would have saved
+    snapshot.STORE.ensure(conn)
     conn.raw.execute("DELETE FROM v7_hiring_pipeline")
     conn.raw.execute("INSERT INTO v7_hiring_pipeline (snapshot_id, taken_at, schema_v, payload) VALUES (?,?,?,?)", (snapshot.KEY, "2026-10-07 12:00:00", snapshot.SCHEMA_V, json.dumps(snap)))
 
@@ -114,14 +114,14 @@ class Stage(unittest.TestCase):
 
     def test_applied_opportunities_and_upcoming_interviews_are_their_own_trigger_classes(self):
         conn = seeded()
-        save_pipeline(conn, [pipeline_row("Acme Corp", "Product Director"),                                                              # applied only
-                             pipeline_row("WidgetCo", "Analyst", "Hiring-Manager Interview Scheduled", "hiring_manager", "2026-10-09T15:00:00-05:00"),   # applied and an upcoming interview
-                             pipeline_row("Nobody Ltd", "Engineer", "Interviewing", "interview", "2026-09-01T15:00:00-05:00"),                 # a past interview is not upcoming
-                             pipeline_row("Acme Corp", "Engineer", "Submitted", None, None, applied_on=None)])                                  # an active-pursuit page
+        save_pipeline(conn, [pipeline_row("Acme Corp", "Product Director"),  # applied only
+                             pipeline_row("WidgetCo", "Analyst", "Hiring-Manager Interview Scheduled", "hiring_manager", "2026-10-09T15:00:00-05:00"),  # applied and an upcoming interview
+                             pipeline_row("Nobody Ltd", "Engineer", "Interviewing", "interview", "2026-09-01T15:00:00-05:00"),  # a past interview is not upcoming
+                             pipeline_row("Acme Corp", "Engineer", "Submitted", None, None, applied_on=None)])  # an active-pursuit page
         counts = network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)
         applied, interview = counts["by_class"]["applied"], counts["by_class"]["interview"]
         self.assertEqual((applied["considered"], applied["with_leads"], applied["without_leads"]), (4, 3, 1))
-        self.assertEqual((interview["considered"], interview["with_leads"]), (1, 1))                                                     # only the upcoming one
+        self.assertEqual((interview["considered"], interview["with_leads"]), (1, 1))  # only the upcoming one
         self.assertEqual((counts["pursuit_source"], counts["by_class"]["admitted_job"]["considered"]), ("ok", 3))
         self.assertGreaterEqual(counts["distinct_with_leads"], 2)
         for text in ("Acme", "WidgetCo", "Analyst", "2026-10-09"):
@@ -129,21 +129,21 @@ class Stage(unittest.TestCase):
 
     def test_the_hiring_pipelines_own_active_rule_decides_which_applications_are_targets(self):
         conn = seeded()
-        save_pipeline(conn, [pipeline_row("Acme Corp", "Old", "Submitted", None, None, applied_on="2026-08-01"),                                # older than 30 days: no longer active
-                             pipeline_row("Acme Corp", "Edge", "Submitted", None, None, applied_on="2026-09-07"),                               # exactly 30 days: still active
+        save_pipeline(conn, [pipeline_row("Acme Corp", "Old", "Submitted", None, None, applied_on="2026-08-01"),
+                             pipeline_row("Acme Corp", "Edge", "Submitted", None, None, applied_on="2026-09-07"),  # exactly 30 days: still active
                              pipeline_row("Acme Corp", "Fresh", "Submitted", None, None, applied_on="2026-10-01"),
-                             pipeline_row("Acme Corp", "Undated", "Submitted", None, None, applied_on=None),                                    # an undated one stays
-                             dict(pipeline_row("Acme Corp", "Carried", "Submitted", None, None, applied_on="2026-07-01"), carried=True),        # carried safe state keeps its behaviour
-                             pipeline_row("Acme Corp", "Later", "Interviewing", "interview", "2026-09-01T10:00:00-05:00", applied_on="2026-07-01")])   # a later stage stays
+                             pipeline_row("Acme Corp", "Undated", "Submitted", None, None, applied_on=None),  # an undated one stays
+                             dict(pipeline_row("Acme Corp", "Carried", "Submitted", None, None, applied_on="2026-07-01"), carried=True),  # carried safe state keeps its behaviour
+                             pipeline_row("Acme Corp", "Later", "Interviewing", "interview", "2026-09-01T10:00:00-05:00", applied_on="2026-07-01")])  # a later stage stays
         counts = network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)
         self.assertEqual((counts["by_class"]["applied"]["considered"], counts["older_submitted_excluded"]), (5, 1))
         from lifeos.hiring import render as hiring_render
         row = pipeline_row("Acme Corp", "Old", "Submitted", None, None, applied_on="2026-08-01")
-        self.assertTrue(hiring_render.older_submitted(row, NOW) and network_leads.hiring_render.older_submitted is hiring_render.older_submitted)      # one rule, shared
+        self.assertTrue(hiring_render.older_submitted(row, NOW) and network_leads.hiring_render.older_submitted is hiring_render.older_submitted)  # one rule, shared
 
     def test_an_unreadable_or_degraded_pipeline_is_reported_never_a_silent_zero(self):
         conn = seeded()
-        self.assertEqual(network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["pursuit_source"], "unavailable")             # no snapshot row at all
+        self.assertEqual(network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["pursuit_source"], "unavailable")  # no snapshot row at all
         save_pipeline(conn, [pipeline_row("Acme Corp", "Engineer")], reasons=["CALENDAR_UNAVAILABLE"])
         self.assertEqual(network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["pursuit_source"], "carried")
 

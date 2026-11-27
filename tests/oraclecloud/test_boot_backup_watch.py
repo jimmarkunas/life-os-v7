@@ -1,5 +1,4 @@
-"""LIFE-808: no free boot-volume backup slot on Oracle raises one quiet phone alert, through the gateway; an unreadable reading changes nothing. The reminder, close and
-refused-push rules are the shared watch's, proven in test_backup_watch."""
+"""no free boot-volume backup slot on Oracle raises one quiet phone alert, through the gateway"""
 import contextlib
 import datetime as dt
 import io
@@ -9,8 +8,8 @@ from lifeos.oraclecloud import boot_backup_watch as bw
 from lifeos.platform import alert_registry, alerts, codes
 from tests.oraclecloud.test_backup_watch import Store
 
-NOW = dt.datetime(2026, 11, 17, 22, 0)                      # naive UTC, as the store keeps it
-FULL = {"used": 5, "available": 0}                          # the Nov 16 2026 state: five backups, no slot, the weekly backup refused
+NOW = dt.datetime(2026, 11, 17, 22, 0)  # naive UTC, as the store keeps it
+FULL = {"used": 5, "available": 0}
 
 
 class Decide(unittest.TestCase):
@@ -32,7 +31,7 @@ class Decide(unittest.TestCase):
 
     def test_an_unreadable_reading_is_unknown_and_changes_nothing(self):
         self.assertIsNone(bw.healthy(None))
-        self.assertIsNone(bw.decide({"alert_open": True, "last_notified": NOW}, None, NOW))          # neither opens nor resolves
+        self.assertIsNone(bw.decide({"alert_open": True, "last_notified": NOW}, None, NOW))  # neither opens nor resolves
 
     def test_negative_control_the_line_is_zero_free_not_a_fixed_count(self):
         self.assertTrue(bw.healthy({"used": 99, "available": 1}))

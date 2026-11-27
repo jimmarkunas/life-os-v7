@@ -1,5 +1,4 @@
-"""LIFE-906: Amazon retention reads only mail its checkpoint does not hold. New mail is read once; unchanged mail is judged against Notion again with no Gmail read; a missing, stale, other-parser or unreadable
-checkpoint falls back to the full read; a run that did not finish leaves the checkpoint; the verdicts equal a full read's."""
+"""Amazon retention reads only mail its checkpoint does not hold."""
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -51,7 +50,7 @@ class Checkpoint(unittest.TestCase):
         gmail.reads.clear()
         second = self.run_(gmail, notion, self.seen())
         self.assertEqual((second["gmail"], gmail.reads), ({"listed": 2, "read": 0, "reused": 2}, []))
-        self.assertEqual(self.verdicts(second), self.verdicts(first))                   # the same counts and reasons as the full read
+        self.assertEqual(self.verdicts(second), self.verdicts(first))  # the same counts and reasons as the full read
 
     def test_new_mail_is_read_once_and_the_rest_is_not(self):
         gmail, notion = counting()
@@ -77,7 +76,7 @@ class Checkpoint(unittest.TestCase):
         before = self.db.raw.execute("SELECT message_id, seen_at FROM v7_mail_checkpoint ORDER BY message_id").fetchall()
         gmail.messages["m-3"] = dict(gmail.messages["m-2"])
         later = self.seen(now=STAMP + timedelta(hours=1))
-        gmail.message_record = lambda *a, **k: (_ for _ in ()).throw(retention.GmailError("GMAIL_HTTP_500"))        # the next read fails part way
+        gmail.message_record = lambda *a, **k: (_ for _ in ()).throw(retention.GmailError("GMAIL_HTTP_500"))  # the next read fails part way
         counts = self.run_(gmail, notion, later)
         self.assertNotIn("checkpoint", counts)
         self.assertEqual(self.db.raw.execute("SELECT message_id, seen_at FROM v7_mail_checkpoint ORDER BY message_id").fetchall(), before)
@@ -87,10 +86,10 @@ class Checkpoint(unittest.TestCase):
         counts = self.run_(gmail, notion, self.seen(), live=True)
         self.assertEqual((counts["trashed"], counts["checkpoint"]), (1, "saved"))
         rows = self.db.raw.execute("SELECT message_id, digest FROM v7_mail_checkpoint").fetchall()
-        self.assertEqual([r[0] for r in rows], ["m-2"])                                   # m-1 was trashed; only the kept mail stays
+        self.assertEqual([r[0] for r in rows], ["m-2"])  # m-1 was trashed
         import json
         digest = json.loads(rows[0][1])
-        self.assertEqual(sorted(digest), ["events", "received_at", "shape"])             # order number, status and a total flag: never a subject, a body or an address
+        self.assertEqual(sorted(digest), ["events", "received_at", "shape"])
         self.assertEqual(sorted(digest["events"][0]), ["has_total", "order_id", "reason", "status"])
 
     def test_no_store_credentials_means_the_old_behavior(self):

@@ -129,7 +129,7 @@ class DisplayFieldTests(unittest.TestCase):
     def test_an_unfamiliar_display_field_shape_is_none_not_a_failed_snapshot(self):
         row = snapshot.compact(self.page(**{"Costs per Cycle": {"type": "rollup", "rollup": {}}}))
         self.assertIsNone(row["Costs per Cycle"])
-        self.assertIsNone(row["Last Paid"])                                   # missing display property
+        self.assertIsNone(row["Last Paid"])  # missing display property
 
     def test_an_unfamiliar_critical_field_still_fails_closed(self):
         with self.assertRaises(snapshot.BillsError):
@@ -176,7 +176,7 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertGreater(props["Next Due"]["formula"]["date"]["start"], "2026-10-10")
         self.assertFalse(props["Paid"]["checkbox"])
         self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay",)])
-        self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")          # LIFE-978: the Paid tag goes back to Unpaid
+        self.assertEqual(props["Pay"]["select"]["name"], "Unpaid")  # the Paid tag goes back to Unpaid
         first_update = next(i for i, event in enumerate(events) if event[0] == "update")
         self.assertLess(next(i for i, event in enumerate(events) if event == ("ledger", "prepared")), first_update)
         self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
@@ -310,15 +310,15 @@ class PaidProcessorTests(unittest.TestCase):
         writes = len(client.writes)
         props = client.pages[page["id"]]["properties"]
         due = props["Due Date"]["date"]["start"]
-        props["Pay"]["select"] = {"name": "Paid"}             # an accidental second tag, same day
+        props["Pay"]["select"] = {"name": "Paid"}  # an accidental second tag, same day
         counts = paid.run(40, True, client=client, now=self.now, connect=lambda database=database: database)
         self.assertEqual((counts["review"], counts["advanced"], counts["failed"]), (1, 0, 0))
         self.assertEqual(len(client.writes), writes)
         self.assertEqual(props["Due Date"]["date"]["start"], due)
-        self.assertEqual(props["Pay"]["select"]["name"], "Paid")   # left tagged for a person
+        self.assertEqual(props["Pay"]["select"]["name"], "Paid")  # left tagged for a person
         from datetime import timedelta
         counts = paid.run(40, True, client=client, now=self.now + timedelta(days=1), connect=lambda database=database: database)
-        self.assertEqual(counts["advanced"], 1)               # the next day a tick is a new payment
+        self.assertEqual(counts["advanced"], 1)  # the next day a tick is a new payment
 
     def test_per_run_cap_leaves_extra_commands_checked(self):
         pages = [paid_page(page_id=f"00000000-0000-4000-8000-{i:012d}") for i in range(1, 23)]
@@ -350,7 +350,7 @@ class PaidProcessorTests(unittest.TestCase):
 
 
 class PayTagTests(unittest.TestCase):
-    """LIFE-978: the Pay tag (Unpaid, Paid, Auto) next to the legacy checkbox."""
+    """the Pay tag (Unpaid, Paid, Auto) next to the legacy checkbox."""
     def setUp(self):
         from zoneinfo import ZoneInfo
         self.now = datetime(2026, 10, 3, 12, tzinfo=ZoneInfo("America/Chicago"))
@@ -389,7 +389,7 @@ class PayTagTests(unittest.TestCase):
         self.assertEqual(client.writes, [("Last Paid", "Due Date")])
         self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
         writes = len(client.writes)
-        counts, _ = self.go(client, database)                # same day, same tick again: the due date is now in the future
+        counts, _ = self.go(client, database)
         self.assertEqual((counts["auto_rows"], counts["advanced"], len(client.writes)), (0, 0, writes))
 
     def test_auto_never_advances_twice_on_one_day_even_when_still_behind_after_one_cycle(self):
@@ -398,11 +398,11 @@ class PayTagTests(unittest.TestCase):
         counts, database = self.go(client)
         self.assertEqual(self.props(client, page)["Due Date"]["date"]["start"], "2026-08-01")
         writes = len(client.writes)
-        counts, _ = self.go(client, database)                # still before today, same day: the ledger says it ran today
+        counts, _ = self.go(client, database)
         self.assertEqual((counts["advanced"], counts["review"], len(client.writes)), (0, 1, writes))
         from datetime import timedelta
         counts, _ = self.go(client, database, now=self.now + timedelta(days=1))
-        self.assertEqual(counts["advanced"], 1)               # one cycle per day, never two in a run
+        self.assertEqual(counts["advanced"], 1)  # one cycle per day, never two in a run
 
     def test_auto_resumes_after_a_crash_without_advancing_twice_and_keeps_the_tag(self):
         page = paid_page(paid=False, pay="Auto", due="2026-10-01")

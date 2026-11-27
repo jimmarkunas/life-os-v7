@@ -1,4 +1,6 @@
-"""LIFE-671 (synthetic): the three accountability stages fill the V3 callouts from fake Jira, say so plainly when there are no quarter epics, and go DEGRADED when Jira cannot be read."""
+"""(synthetic): the three accountability stages fill the V3 callouts from fake Jira, say so plainly when there are no
+quarter epics, and go DEGRADED.
+"""
 import unittest
 from unittest import mock
 
@@ -31,12 +33,12 @@ def jira(extra=None, down=False):
 
 
 class Address(unittest.TestCase):
-    """The register row names a callout; it is accepted only when that callout sits on the Jim & Matt V3 page, also inside a column."""
+    """The register row names a callout"""
 
     def client(self, parent_title="Jim & Matt V3"):
         CAL = "c" * 32
         blocks = {CAL: {"parent": {"type": "block_id", "block_id": "col"}}, "col": {"parent": {"type": "block_id", "block_id": "cols"}}, "cols": {"parent": {"type": "page_id", "page_id": "v3"}}}
-        pages = {"v3": {"properties": {"title": {"type": "title", "title": F.rich(parent_title)}}}}          # a real page keeps its title in the title property
+        pages = {"v3": {"properties": {"title": {"type": "title", "title": F.rich(parent_title)}}}}  # a real page keeps its title in the title property
         register = [{"id": "r", "type": "code", "code": {"rich_text": F.rich("R4L jim.week        " + CAL + "\nR4R matt.week       " + CAL + "")}}]
 
         class Fake:
@@ -106,7 +108,7 @@ class Knowledge(unittest.TestCase):
         for who in ("matt", "jim"):
             texts = [notion.text(k).lower() for k in notion.kids[f"b-{who}-artifacts"][1:]]
             self.assertFalse([x for x in texts if "summary for claude" in x or "to-do" in x])
-        self.assertEqual(notion.text("pg-matt-p"), "old summary")                # the legacy summary page itself is untouched
+        self.assertEqual(notion.text("pg-matt-p"), "old summary")  # the legacy summary page itself is untouched
 
     def test_a_legacy_body_of_one_bullet_with_newlines_becomes_separate_bullets(self):
         notion = F.Notion()
@@ -114,23 +116,23 @@ class Knowledge(unittest.TestCase):
         notion.blocks["art-matt"] = {"id": "art-matt", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("Travel Tracker\nBand Sheet\nTo-do lists")}}
         self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual([b[0] for b in self.bullets(notion, "matt")], ["bulleted_list_item"] * 2)
-        self.assertEqual(notion.kids["b-matt-artifacts"][2], "art-matt")          # the existing block is reused, not recreated
+        self.assertEqual(notion.kids["b-matt-artifacts"][2], "art-matt")  # the existing block is reused, not recreated
 
     def test_a_persons_decorative_link_paragraph_above_the_bullets_is_never_touched(self):
         notion = F.Notion()
         page(notion, "artifacts")
         deco = {"id": "deco-matt", "type": "paragraph", "paragraph": {"rich_text": F.rich("Board (MEJ)", "https://jira.example.com/board")}}
         notion.blocks["deco-matt"] = deco
-        notion.kids["b-matt-artifacts"].insert(2, "deco-matt")                 # heading, stamp, decoration, then the body
-        for i in range(3):                                                      # the person's own placeholder bullets below it
+        notion.kids["b-matt-artifacts"].insert(2, "deco-matt")  # heading, stamp, decoration, then the body
+        for i in range(3):  # the person's own placeholder bullets below it
             notion.blocks[f"ph{i}"] = {"id": f"ph{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("Placeholder")}}
-        notion.kids["b-matt-artifacts"][3:4] = ["ph0", "ph1", "ph2"]            # replaces the legacy paragraph body
+        notion.kids["b-matt-artifacts"][3:4] = ["ph0", "ph1", "ph2"]  # replaces the legacy paragraph body
         before = dict(notion.blocks["deco-matt"])
         self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual(notion.blocks["deco-matt"], before)
         self.assertNotIn("deco-matt", notion.writes)
         self.assertEqual(notion.kids["b-matt-artifacts"][2], "deco-matt")
-        self.assertEqual([b[1][0][0] for b in self.bullets(notion, "matt")[1:]], ["Travel Tracker", "Band Sheet"])      # the placeholders became the artifacts; the decoration is still first
+        self.assertEqual([b[1][0][0] for b in self.bullets(notion, "matt")[1:]], ["Travel Tracker", "Band Sheet"])  # the placeholders became the artifacts
         notion.writes.clear()
         self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual(notion.writes, [])
@@ -206,11 +208,11 @@ class Knowledge(unittest.TestCase):
         self.assertEqual(found, {ID_C: {"kind": "Doc", "keys": ["JFM-5", "JFM-6"]}, "e" * 25: {"kind": "Doc", "keys": ["JFM-6"]}})
         rows = indexed([("Jim", "Plan Doc", ID_C, "JFM-5,JFM-6", "Doc", "verified")])
         counts = self.go(notion, F.Jira({"project = JFM": issues}), rows)
-        self.assertEqual(counts["jim"]["unindexed_candidates"], 1)           # the second doc is a candidate nobody verified yet; it is counted, never shown
+        self.assertEqual(counts["jim"]["unindexed_candidates"], 1)  # the second doc is a candidate nobody verified yet
 
 
 class IndexPages(unittest.TestCase):
-    """The index pages are found by their register row and accepted only with the expected title; a person's rows are read in order."""
+    """The index pages are found by their register row and accepted only with the expected title"""
 
     def make(self, title):
         notion = F.Notion()
@@ -269,7 +271,7 @@ class Changelog(unittest.TestCase):
 
 
 class QuarterSchedule(unittest.TestCase):
-    """A quarter begins on the first Wednesday of January, April, July and October (Jim, Nov 15 2026)."""
+    """A quarter begins on the first Wednesday of January, April, July and October."""
 
     def test_the_first_wednesdays(self):
         from datetime import date
@@ -301,7 +303,7 @@ class Stages(unittest.TestCase):
         self.assertEqual(str(caught.exception), "ACCOUNTABILITY_DEGRADED:jim,matt")
         self.assertEqual(notion.text("body-jim"), "Nothing yet.")
         self.assertEqual(notion.text("b-jim-week-st"), "DEGRADED · Jira could not be read at 11/18 · 9:05 AM CT · showing last accepted 11/18 · 8:05 AM CT")
-        self.assertEqual(notion.text("pg-jim-p"), "old summary")             # the summary page keeps its last accepted text too
+        self.assertEqual(notion.text("pg-jim-p"), "old summary")  # the summary page keeps its last accepted text too
 
     def test_week_links_every_ticket_and_keeps_open_work_apart_from_done(self):
         notion = F.Notion()
@@ -324,13 +326,13 @@ class Stages(unittest.TestCase):
         page(notion, "week")
         many = [{"key": f"JFM-{n}", "fields": {"summary": f"Task {n}", "status": {"name": "To Do"}, "duedate": None}} for n in range(40, 56)]
         fake = jira({"statusCategory != Done AND (sprint": many})
-        self.run_stage(week, "week", notion, fake, True)                      # a first run that cannot read its own write back raises ACCOUNTABILITY_VERIFY_FAILED
+        self.run_stage(week, "week", notion, fake, True)
         links = [url for text, url in notion.links("body-jim") if "more in Jira" in text]
         self.assertEqual(len(links), 1)
-        self.assertIn("(", links[0])                                         # the stored address has the characters Notion unescapes
+        self.assertIn("(", links[0])
         notion.writes.clear()
         self.run_stage(week, "week", notion, fake, True)
-        self.assertEqual(notion.writes, [])                                   # and a second identical run still writes nothing
+        self.assertEqual(notion.writes, [])  # and a second identical run still writes nothing
 
     def test_without_a_site_address_the_lines_are_plain_text_not_broken_links(self):
         notion = F.Notion()
@@ -354,10 +356,10 @@ class Stages(unittest.TestCase):
         self.assertEqual(notion.text("b-matt-goals-h"), "Quarterly Goals & Review — Matt · Q4 2026")
         self.assertIn("Last refreshed 11/18 · 9:05 AM CT", notion.text("b-jim-goals-st"))
         row = lambda who, i: [[(p["plain_text"], p["href"]) for p in cell] for cell in notion.blocks[f"t-{who}-r{i}"]["table_row"]["cells"]]
-        self.assertEqual(row("jim", 1), [[("Career", f"{SITE}/browse/JFM-9")], [("1 / 2", None)]])          # JFM-20 done in quarter, JFM-21 done before it (not counted), JFM-22 open; sub-task not counted
-        self.assertEqual(row("jim", 2), [[("Creative", None)], [("–", None)]])                                  # no Creative epic: no link, a dash
+        self.assertEqual(row("jim", 1), [[("Career", f"{SITE}/browse/JFM-9")], [("1 / 2", None)]])
+        self.assertEqual(row("jim", 2), [[("Creative", None)], [("–", None)]])  # no Creative epic: no link, a dash
         self.assertEqual(row("jim", 4), [[("LIFE OS", f"{SITE}/browse/JFM-102")], [("0 / 1", None)]])
-        self.assertEqual(row("matt", 3), [[("Health, Finances & Travel", f"{SITE}/browse/MEJ-3")], [("0 / 1", None)]])   # matched by "Health"
+        self.assertEqual(row("matt", 3), [[("Health, Finances & Travel", f"{SITE}/browse/MEJ-3")], [("0 / 1", None)]])  # matched by "Health"
         kids = notion.kids["b-jim-goals"]
         self.assertEqual([notion.blocks[k]["type"] for k in kids], ["heading_3", "paragraph", "table", "paragraph", "toggle"])
         self.assertIn("open tasks are not under a quarter epic", notion.text(kids[3]))
@@ -376,7 +378,7 @@ class Stages(unittest.TestCase):
         notion.writes.clear()
         self.combined(notion, jira(), links)
         self.assertEqual(notion.writes, [])
-        self.assertEqual([k for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "toggle"].__len__(), 1)      # no second toggle
+        self.assertEqual([k for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "toggle"].__len__(), 1)  # no second toggle
 
     def test_a_dry_run_changes_nothing(self):
         notion = F.Notion()

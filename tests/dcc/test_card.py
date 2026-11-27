@@ -1,4 +1,4 @@
-"""D175: the Daily Command Center is written by V7 from what the other cards say on the page."""
+"""the Daily Command Center is written by V7 from what the other cards say on the page."""
 import unittest
 import unittest.mock
 from datetime import datetime, timedelta
@@ -19,7 +19,9 @@ SPRINT = "JFM Sprint 15 · 6 Overdue/Blocked · 1 Today · 7 This Week · 2 Done
 
 
 class Nested(MailRegions):
-    """MailRegions that creates blocks the way the Notion API does: children nested up to two levels in one append, placed right after the `after` block."""
+    """MailRegions that creates blocks the way the Notion API does: children nested up to two levels in one append,
+    placed right after the `after` block.
+    """
 
     def _make(self, block):
         self.serial += 1
@@ -58,7 +60,7 @@ def page(calendar="Calendar (Updated 10:06 PM CT)", jira="JIRA Execution (Update
     notion.children["mail-callout"][1] = text_block(notion, "mail-status-old", "paragraph", mail)
     notion.children["amazon-callout"][0] = text_block(notion, "heading-amazon-callout", "heading_3", "Amazon Orders")
     notion.children["amazon-callout"][1] = text_block(notion, "amazon-status-old", "paragraph", amazon)
-    notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": attention, "text": {"content": attention}}]}        # Jim's headless callout keeps its status in its own text (D131)
+    notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": attention, "text": {"content": attention}}]}
     return notion
 
 
@@ -77,9 +79,9 @@ def lines_of(notion):
 class ClassifyTests(unittest.TestCase):
     def test_stamps_are_fresh_within_ninety_minutes_stale_after_and_yesterdays_when_later_than_now(self):
         self.assertEqual(card.classify({"status": "Updated 10:06 PM CT · x"}, NOW), ("fresh", "10:06 PM"))
-        self.assertEqual(card.classify({"status": "Updated 8:49 PM CT · x"}, NOW)[0], "stale")         # 91 minutes
-        self.assertEqual(card.classify({"status": "Updated 8:50 PM CT · x"}, NOW)[0], "fresh")          # exactly 90
-        self.assertEqual(card.classify({"status": "Updated 11:30 PM CT · x"}, NOW)[0], "stale")        # later than now means yesterday
+        self.assertEqual(card.classify({"status": "Updated 8:49 PM CT · x"}, NOW)[0], "stale")  # 91 minutes
+        self.assertEqual(card.classify({"status": "Updated 8:50 PM CT · x"}, NOW)[0], "fresh")  # exactly 90
+        self.assertEqual(card.classify({"status": "Updated 11:30 PM CT · x"}, NOW)[0], "stale")  # later than now means yesterday
         self.assertEqual(card.classify({"status": "Updated 12:05 AM CT · x"}, datetime(2026, 10, 12, 0, 30, tzinfo=TZ))[0], "fresh")
         self.assertEqual(card.classify({"status": "Calendar (Updated 10:06 PM CT)"}, NOW)[0], "fresh")
 
@@ -92,7 +94,7 @@ class ClassifyTests(unittest.TestCase):
 
 
 class DatedStampTests(unittest.TestCase):
-    """LIFE-660: the heading stamp carries the date (`Updated Oct 12 · 10:06 PM CT`); the Command Center reads it, still reads the old time-only form, and uses the real date."""
+    """the Command Center reads it, still reads the old time-only form, and uses the real date."""
 
     def fresh(self, text, now):
         return card.classify({"status": text}, now)
@@ -101,30 +103,29 @@ class DatedStampTests(unittest.TestCase):
         self.assertEqual(self.fresh("Updated Oct 12 · 10:06 PM CT · x", NOW), ("fresh", "10:06 PM"))
         self.assertEqual(self.fresh("Calendar (Updated Oct 12 · 10:06 PM CT)", NOW), ("fresh", "10:06 PM"))
         self.assertEqual(self.fresh("Updated 10:06 PM CT · x", NOW), ("fresh", "10:06 PM"))
-        self.assertEqual(self.fresh("Updated Oct 12 · 8:50 PM CT", NOW)[0], "fresh")                         # exactly 90 minutes
-        self.assertEqual(self.fresh("Updated Oct 12 · 8:49 PM CT", NOW)[0], "stale")                          # 91
+        self.assertEqual(self.fresh("Updated Oct 12 · 8:50 PM CT", NOW)[0], "fresh")  # exactly 90 minutes
+        self.assertEqual(self.fresh("Updated Oct 12 · 8:49 PM CT", NOW)[0], "stale")  # 91
         self.assertEqual(self.fresh("DEGRADED · Amazon sync failed at Oct 12 · 10:05 PM CT · x", NOW), ("degraded", "10:05 PM"))
         self.assertEqual(self.fresh("STALE · last accepted Oct 11 · 9:44 AM CT", NOW)[0], "stale")
 
     def test_a_stamp_from_yesterday_at_the_same_clock_time_is_stale_by_its_date(self):
-        self.assertEqual(self.fresh("Updated Oct 11 · 10:06 PM CT", NOW)[0], "stale")                         # the time-only form would have read fresh
+        self.assertEqual(self.fresh("Updated Oct 11 · 10:06 PM CT", NOW)[0], "stale")  # the time-only form would have read fresh
         self.assertEqual(self.fresh("Updated Oct 10 · 10:06 PM CT", NOW)[0], "stale")
 
     def test_a_stamp_across_midnight(self):
         after_midnight = datetime(2026, 10, 13, 0, 30, tzinfo=TZ)
-        self.assertEqual(self.fresh("Updated Oct 12 · 11:30 PM CT", after_midnight)[0], "fresh")             # 60 minutes ago, the day before
-        self.assertEqual(self.fresh("Updated Oct 12 · 10:50 PM CT", after_midnight)[0], "stale")             # 100 minutes
+        self.assertEqual(self.fresh("Updated Oct 12 · 11:30 PM CT", after_midnight)[0], "fresh")  # 60 minutes ago, the day before
+        self.assertEqual(self.fresh("Updated Oct 12 · 10:50 PM CT", after_midnight)[0], "stale")  # 100 minutes
         self.assertEqual(self.fresh("Updated Oct 13 · 12:05 AM CT", after_midnight)[0], "fresh")
 
     def test_a_stamp_across_a_month_end_and_a_year_end(self):
         self.assertEqual(self.fresh("Updated Oct 31 · 11:30 PM CT", datetime(2026, 11, 1, 0, 40, tzinfo=TZ))[0], "fresh")
         self.assertEqual(self.fresh("Updated Oct 31 · 9:30 PM CT", datetime(2026, 11, 1, 0, 40, tzinfo=TZ))[0], "stale")
-        self.assertEqual(self.fresh("Updated Feb 28 · 11:45 PM CT", datetime(2026, 3, 1, 0, 10, tzinfo=TZ))[0], "fresh")   # 2026 is not a leap year
+        self.assertEqual(self.fresh("Updated Feb 28 · 11:45 PM CT", datetime(2026, 3, 1, 0, 10, tzinfo=TZ))[0], "fresh")  # 2026 is not a leap year
         self.assertEqual(self.fresh("Updated Dec 31 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ))[0], "fresh")
         self.assertEqual(self.fresh("Updated Dec 30 · 11:45 PM CT", datetime(2027, 1, 1, 0, 10, tzinfo=TZ))[0], "stale")
 
     def test_the_numeric_form_reads_exactly_like_the_older_dated_form(self):
-        """LIFE-679: `11/13 · 3:31 PM CT` (no word Updated) is read as `Updated Nov 13 · 3:31 PM CT` is: same state, same clock, in a heading, after DEGRADED / STALE, across midnight, a month end and a year end."""
         self.assertEqual(self.fresh("Calendar (10/12 · 10:06 PM CT)", NOW), ("fresh", "10:06 PM"))
         self.assertEqual(self.fresh("10/12 · 10:06 PM CT · 26 bills due", NOW), ("fresh", "10:06 PM"))
         self.assertEqual(self.fresh("DEGRADED · Amazon sync failed at 10/12 · 10:05 PM CT · x", NOW), ("degraded", "10:05 PM"))
@@ -145,12 +146,14 @@ class DatedStampTests(unittest.TestCase):
 
 
 class SlowerCardTests(unittest.TestCase):
-    """LIFE-612: a card the due-time table runs less often than every tick is current for its longest gap between runs plus the usual 90 minutes."""
+    """a card the due-time table runs less often than every tick is current for its longest gap between runs plus the
+    usual 90 minutes.
+    """
     TABLE = {"bills": {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]}, "mail": {"every_hours": 6}, "amazon": {"every_hours": 3}, "jira": {"every_hours": 1}}
 
     def test_the_window_is_the_longest_gap_plus_ninety_minutes_and_an_hourly_card_keeps_ninety(self):
         self.assertEqual([card.fresh_minutes(label, self.TABLE) for label in ("Bills", "Mail Alerts", "Amazon", "Jira", "Hiring Pipeline", "Calendar")], [450, 450, 270, 90, 90, 90])
-        self.assertEqual(card.fresh_minutes("Bills", {"bills": {"slots_ct": ["03:00", "15:00"]}}), 90 + 12 * 60)          # uneven slots: the longest gap, wrapping past midnight
+        self.assertEqual(card.fresh_minutes("Bills", {"bills": {"slots_ct": ["03:00", "15:00"]}}), 90 + 12 * 60)
 
     def test_a_bills_callout_written_by_the_last_slot_still_reads_fresh_when_the_next_one_is_not_yet_due(self):
         for hours_old, state in ((5.9, "fresh"), (7.4, "fresh"), (7.6, "stale")):
@@ -159,13 +162,13 @@ class SlowerCardTests(unittest.TestCase):
             self.assertEqual(card.classify({"status": line}, NOW, card.fresh_minutes("Bills", self.TABLE))[0], state, hours_old)
 
     def test_the_slot_fixture_gives_bills_the_four_slots_and_the_command_center_says_nothing_is_wrong_when_bills_was_skipped(self):
-        self.assertEqual(card.fresh_minutes("Bills", self.TABLE), 450)               # LIFE-630: the real table is hourly now (90); the slot mechanism stays proven on this fixture
+        self.assertEqual(card.fresh_minutes("Bills", self.TABLE), 450)  # the real table is hourly now (90)
         self.assertEqual(card.fresh_minutes("Bills"), 90)
         areas = ComposeTests().areas(Bills={"status": "Updated 5:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker", "lines": [], "links": {}})
         with unittest.mock.patch.object(card.due, "load_table", lambda: self.TABLE):
-            composed = card.compose(areas, NOW)                                      # NOW is 10:20 PM CT: the Bills callout is 5 hours old, as when the 6 PM slot is the next one
-        self.assertNotIn("health", composed)                                           # LIFE-975: the source-health toggle is retired
-        self.assertEqual(composed["kpis"][0][:2], ("26", "Bills due"))                 # its number is still shown, bound to its own stamp
+            composed = card.compose(areas, NOW)
+        self.assertNotIn("health", composed)  # the source-health toggle is retired
+        self.assertEqual(composed["kpis"][0][:2], ("26", "Bills due"))  # its number is still shown, bound to its own stamp
 
 
 class ComposeTests(unittest.TestCase):
@@ -181,9 +184,9 @@ class ComposeTests(unittest.TestCase):
 
     def test_everything_fresh_binds_each_number_to_its_own_card_and_links_the_real_records(self):
         m = card.compose(self.areas(), NOW)
-        self.assertFalse({"focus", "sub", "items", "hiring", "health", "detail"} & set(m))                     # LIFE-975: no source-health toggle, no Hiring Pipeline
+        self.assertFalse({"focus", "sub", "items", "hiring", "health", "detail"} & set(m))  # no source-health toggle, no Hiring Pipeline
         self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Bills due"), ("6", "Jira Overdue / Blocked"), ("13", "Mail waiting")])
-        self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")                                          # the combined count, labelled as such, with its source stamp
+        self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")
 
     def test_a_degraded_or_stale_card_is_named_in_the_closed_summary_and_never_shows_a_number_or_a_zero(self):
         areas = self.areas(Amazon={"status": "DEGRADED · Amazon sync failed at 10:05 PM CT · showing the last accepted orders", "lines": []},
@@ -202,13 +205,13 @@ class ComposeTests(unittest.TestCase):
                            Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]})
         areas["Mail Alerts"] = {"status": "Updated 10:12 PM CT · 0 waiting · 0 need review", "lines": []}
         m = card.compose(areas, NOW)
-        self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "0", "0"])                   # a verified zero is a zero, Jira included
+        self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "0", "0"])  # a verified zero is a zero, Jira included
 
     def test_the_jira_card_shows_its_combined_overdue_blocked_count_and_never_a_number_it_cannot_verify(self):
         kpi = lambda areas: card.compose(areas, NOW)["kpis"][1]
         self.assertEqual(kpi(self.areas()), ("6", "Jira Overdue / Blocked", "Jira · 10:05 PM CT"))
         self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV, "JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]}))[0], "0")
-        split = "JFM Sprint 22 · 7 Overdue · 6 Blocked · 4 Today · 12 This Week · 1 Done"                          # LIFE-975: the counter is Overdue + Blocked of the new header line, no visa-epic ticket in either
+        split = "JFM Sprint 22 · 7 Overdue · 6 Blocked · 4 Today · 12 This Week · 1 Done"
         self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [split]}))[0], "13")
         stale = {"status": "JIRA Execution (Updated 8:00 PM CT)", "lines": [GTV, SPRINT]}
         self.assertEqual(kpi(self.areas(Jira=stale)), ("—", "Jira Overdue / Blocked", "STALE · Jira (last 8:00 PM)"))
@@ -233,7 +236,7 @@ class RunTests(unittest.TestCase):
             return [(b["type"], report_region.plain(b), walk(b["id"])) for b in notion.children.get(block_id, [])]
         return walk("dcc-callout")
 
-    def test_a_card_with_its_stamp_in_the_heading_reads_the_same_as_one_with_it_in_the_first_line(self):          # LIFE-609
+    def test_a_card_with_its_stamp_in_the_heading_reads_the_same_as_one_with_it_in_the_first_line(self):
         old, new = page(), page()
         for key, title, stamp, body in (("bills", "Bills: This Week", "Updated 10:07 PM CT", "0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker"),
                                         ("mail", "Mail Alerts", "Updated 10:12 PM CT", "13 waiting · 0 need review"),
@@ -256,12 +259,12 @@ class RunTests(unittest.TestCase):
         counts = go(notion)
         kids = notion.children["dcc-callout"]
         self.assertEqual([b["type"] for b in kids][1:], ["column_list"])
-        self.assertEqual((report_region.plain(kids[0]), kids[0]["id"]), (router.DCC_REGION + " · Mon 10/12 · 10:20 PM CT", "heading-dcc-callout"))        # the heading keeps its identity
-        self.assertNotIn("Protected DCC content", str(self.shape(notion)))                                                  # the old flat line is gone
+        self.assertEqual((report_region.plain(kids[0]), kids[0]["id"]), (router.DCC_REGION + " · Mon 10/12 · 10:20 PM CT", "heading-dcc-callout"))  # the heading keeps its identity
+        self.assertNotIn("Protected DCC content", str(self.shape(notion)))  # the old flat line is gone
         kpi_row = kids[1]["id"]
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])               # LIFE-694: the three KPI cards and the Runs OK today card
+        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])  # the three KPI cards and the Runs OK today card
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
-        self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (5, 0, 1))                      # LIFE-975: only the old flat line is removed
+        self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (5, 0, 1))  # only the old flat line is removed
         self.assertEqual(set(counts["states"].values()), {"fresh"})
         others = {k["id"] for key in before for k in notion.children.get(key, [])}
         self.assertFalse({p.split("/")[2] for m, p in notion.log if m == "DELETE"} & others)
@@ -277,16 +280,16 @@ class RunTests(unittest.TestCase):
         self.assertEqual(self.shape(notion), first)
         notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due through one week from now · 27 bills due · 27 overdue · Bill Tracker")
         counts = go(notion)
-        self.assertEqual(counts["blocks_written"], 1)                                                                       # only the changed KPI number remains in the DCC
-        self.assertEqual({k: [b["id"] for b in notion.children[k]] for k in ids}, ids)                                      # no block was added, removed or replaced
-        self.assertEqual(sum(1 for m, _ in notion.log if m == "APPEND"), made)                                              # only the first run created blocks
+        self.assertEqual(counts["blocks_written"], 1)  # only the changed KPI number remains in the DCC
+        self.assertEqual({k: [b["id"] for b in notion.children[k]] for k in ids}, ids)
+        self.assertEqual(sum(1 for m, _ in notion.log if m == "APPEND"), made)  # only the first run created blocks
 
     def test_the_command_center_text_says_what_the_cards_said(self):
         notion = page()
         go(notion)
         text = str(self.shape(notion))
         self.assertFalse(any(t in text for t in ("Primary focus", "Suggested next decisions", "Current focus")))
-        self.assertNotIn("Source health", text)                                                    # LIFE-975: the toggle is retired
+        self.assertNotIn("Source health", text)  # the toggle is retired
         self.assertNotIn("Hiring Pipeline", text)
 
     def test_an_install_that_does_not_read_back_complete_keeps_the_old_lines_and_fails(self):
@@ -298,21 +301,21 @@ class RunTests(unittest.TestCase):
             if parent.get("type") == "callout":
                 result = real(method, path, body)
                 row = next(b for b in notion.children["dcc-callout"] if b["type"] == "column_list")
-                notion.children[row["id"]] = []                                     # Notion acknowledges the append but the row of columns never appears
+                notion.children[row["id"]] = []
                 return result
             return real(method, path, body)
         notion.call_once = call_once
         with self.assertRaises(NotionError) as error:
             go(notion)
         self.assertIn("CARD_VERIFY_FAILED", str(error.exception))
-        self.assertIn("Protected DCC content", "\n".join(lines_of(notion)))             # the old lines are removed only after the replacement is verified
+        self.assertIn("Protected DCC content", "\n".join(lines_of(notion)))
         self.assertEqual([p for m, p in notion.log if m == "DELETE"], [])
 
     def test_a_foreign_child_inside_a_valid_component_is_never_deleted_and_nothing_is_written(self):
         notion = page()
         go(notion)
         kpi_row = notion.children["dcc-callout"][1]["id"]
-        kpi = notion.children[notion.children[notion.children[kpi_row][2]["id"]][0]["id"]]               # the Mail waiting card's blocks
+        kpi = notion.children[notion.children[notion.children[kpi_row][2]["id"]][0]["id"]]  # the Mail waiting card's blocks
         kpi.append(text_block(notion, "human-note", "paragraph", "my own note"))
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
@@ -326,8 +329,8 @@ class RunTests(unittest.TestCase):
         go(notion)
         kpi_row = notion.children["dcc-callout"][1]["id"]
         last = notion.children[notion.children[notion.children[kpi_row][2]["id"]][0]["id"]]
-        last[0]["type"], last[0]["paragraph"] = "paragraph", {"rich_text": []}                         # the last card's number block was changed
-        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 bills due · 7 overdue · Bill Tracker")      # an earlier card has new data
+        last[0]["type"], last[0]["paragraph"] = "paragraph", {"rich_text": []}  # the last card's number block was changed
+        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 bills due · 7 overdue · Bill Tracker")  # an earlier card has new data
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
             go(notion)
@@ -335,7 +338,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual(writes(notion, mark), [])
 
     def test_a_tile_row_and_a_divider_inside_the_callout_are_left_exactly_as_they_are(self):
-        """LIFE-938: Jim put the Agent Inbox tile row and a divider inside the Command Center callout (Nov 24 2026); they are another writer's, so this card never reads them as its own, writes to them or deletes them."""
+        """they are another writer's, so this card never reads them as its own, writes to them or deletes them."""
         notion = page()
         go(notion)
         def rich(text):
@@ -352,7 +355,7 @@ class RunTests(unittest.TestCase):
         mark = len(notion.log)
         counts = go(notion)
         self.assertEqual(counts["status"], "fresh")
-        self.assertEqual(writes(notion, mark), [])                                                  # the KPI row is unchanged and nothing was aimed at the foreign blocks
+        self.assertEqual(writes(notion, mark), [])
         self.assertEqual([b["id"] for b in notion.children["dcc-callout"]][2:4], ["tile-row", "tile-divider"])
         self.assertEqual({k: notion.children[k] for k in keep}, before)
 
@@ -368,7 +371,7 @@ class RunTests(unittest.TestCase):
         kpi_row = notion.children["dcc-callout"][1]["id"]
         kpi = notion.children[notion.children[notion.children[kpi_row][0]["id"]][0]["id"]]
         first = kpi[0]
-        first["type"], first["paragraph"] = "paragraph", {"rich_text": []}                                         # somebody changed the KPI's heading structure
+        first["type"], first["paragraph"] = "paragraph", {"rich_text": []}  # somebody changed the KPI's heading structure
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
             go(notion)
@@ -391,7 +394,7 @@ class RunTests(unittest.TestCase):
                 raise NotionError("NOTION_HTTP_500")
             return broken(method, path, body)
         notion.call = call
-        # LIFE-586: the write no longer reads the other regions to prove them unchanged, so an unreadable Bills region does not stop the card; the card shows it as unreadable
+        # the card shows it as unreadable
         go(notion)
         areas = card.read_areas(notion, ENV)
         self.assertEqual(areas["Bills"], {"unreadable": True})
@@ -405,12 +408,14 @@ class RunTests(unittest.TestCase):
         self.assertEqual(str(error.exception), "DCC_NO_EVIDENCE")
 
     def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-586: Jira's callout changing while the DCC card writes is another card doing its own job, not a violation."""
+        """Jira's callout changing while the DCC card writes is another card doing its own job, not a violation."""
         notion = page(change_on="APPEND", change_region="jira-callout")
         go(notion)
 
     def test_a_write_into_another_cards_block_is_refused_before_it_is_sent(self):
-        """LIFE-586 mutation proof for the tree writer: a sync aimed at Jira's callout fails with the out-of-scope code and Jira's block stays as it was."""
+        """mutation proof for the tree writer: a sync aimed at Jira's callout fails with the out-of-scope code and Jira's
+        block stays as it was.
+        """
         notion = page()
         foreign = notion.children["jira-callout"][0]["id"]
         before = notion.full_tree("jira-callout")
@@ -453,7 +458,7 @@ def go_with(notion, runs, **kw):
 
 
 class RunsCardTests(unittest.TestCase):
-    """LIFE-975 step 4b: the Runs OK today card is the fourth of four equal cards, built by the same renderer; the other three are as before."""
+    """step 4b: the Runs OK today card is the fourth of four equal cards, built by the same renderer"""
 
     def shown(self, runs):
         kids = card.runs_card(runs, NOW)["callout"]["children"]
@@ -478,7 +483,7 @@ class RunsCardTests(unittest.TestCase):
         many = {"state": "failed", "ok": 15, "total": 18, "failed": [RUN_URL + "0", RUN_URL + "1", RUN_URL + "2"], "why": ""}
         parts = card.runs_card(many, NOW)["callout"]["children"][1]["paragraph"]["rich_text"]
         self.assertEqual([p["annotations"]["color"] for p in parts], ["red", "red", "red"])
-        self.assertEqual([p["text"]["link"]["url"] for p in parts], [RUN_URL + "2", RUN_URL + "0", RUN_URL + "1"])       # the latest failed run on the label, the earlier ones as arrows
+        self.assertEqual([p["text"]["link"]["url"] for p in parts], [RUN_URL + "2", RUN_URL + "0", RUN_URL + "1"])
         last = card.runs_card({"state": "latest_failed", "ok": 1, "total": 2, "failed": [RUN_URL], "why": ""}, NOW)["callout"]["children"][1]["paragraph"]["rich_text"]
         self.assertEqual((last[0]["text"]["content"], last[0]["text"]["link"]["url"], last[0]["annotations"]), ("Last run failed", RUN_URL, {"bold": True, "color": "red"}))
 
@@ -497,19 +502,19 @@ class RunsCardTests(unittest.TestCase):
         notion = page()
         go_with(notion, RUNS)
         legacy = notion.children[notion.children[notion.children[kpi_columns(notion)[1]][3]["id"]][0]["id"]]
-        legacy[0] = notion._text_block(legacy[0]["id"], "heading_3", "Platform Stability")                       # the page as Jim has it today: the old card under the same four-column row
+        legacy[0] = notion._text_block(legacy[0]["id"], "heading_3", "Platform Stability")
         legacy[1] = notion._text_block(legacy[1]["id"], "paragraph", "Unverified")
         ids = [k["id"] for k in legacy]
         mark = len(notion.log)
         go_with(notion, {"state": "failed", "ok": 16, "total": 18, "failed": [RUN_URL], "why": ""})
-        self.assertEqual([k["id"] for k in kpi_columns(notion)[0][3]], ids)                                    # the same blocks, new text
+        self.assertEqual([k["id"] for k in kpi_columns(notion)[0][3]], ids)  # the same blocks, new text
         self.assertEqual([report_region.plain(k) for k in kpi_columns(notion)[0][3]][:2], ["16 / 18", "1 failed today"])
         self.assertNotIn("DELETE", writes(notion, mark))
-        self.assertEqual(len(kpi_columns(notion)[0]), 4)                                                        # the fourth column is recognised each time, never deleted as a surplus column
+        self.assertEqual(len(kpi_columns(notion)[0]), 4)
 
     def test_unreadable_github_shows_a_dash_and_never_a_zero(self):
         notion = page()
-        go(notion)                                                                                              # the real read with no token in the environment
+        go(notion)  # the real read with no token in the environment
         self.assertEqual(report_region.plain(kpi_columns(notion)[0][3][0]), "—")
 
     def test_the_run_time_is_in_the_heading_and_no_dated_line_is_ever_created(self):
@@ -519,7 +524,7 @@ class RunsCardTests(unittest.TestCase):
         self.assertEqual(notion.children["dcc-callout"][0]["id"], "heading-dcc-callout")
         top = [b for b in notion.children.get("page", []) if b.get("type") == "paragraph"]
         self.assertEqual(top, [])
-        go_with(notion, RUNS, now=NOW + timedelta(minutes=1))                                                    # a second run only changes the heading text
+        go_with(notion, RUNS, now=NOW + timedelta(minutes=1))  # a second run only changes the heading text
         self.assertEqual(report_region.plain(notion.children["dcc-callout"][0]), "ChatGPT · Daily Command Center · Mon 10/12 · 10:21 PM CT")
         self.assertFalse(hasattr(card, "header"))
 
@@ -530,10 +535,14 @@ class RunsCardTests(unittest.TestCase):
 
 
 class SurplusColumnTests(unittest.TestCase):
-    """LIFE-655: the live callout still holds the retired Attention KPI (4 columns), the card renders 3: the surplus column is removed first, then the normal sync runs."""
+    """the live callout still holds the retired Attention KPI (4 columns), the card renders 3: the surplus column is
+    removed first, then the normal sync.
+    """
 
     def live(self, notion, rename=None):
-        """The page as it stands after the LIFE-645 retirement: the first run's layout with the Attention KPI back as the third of four columns."""
+        """The page as it stands after the retirement: the first run's layout with the Attention KPI back as the third of
+        four columns.
+        """
         go(notion)
         row = notion.children["dcc-callout"][1]["id"]
         attention = {"object": "block", "type": "column", "column": {"width_ratio": 0.25, "children": [card._b("callout", icon="arrow-up", children=[
@@ -557,11 +566,11 @@ class SurplusColumnTests(unittest.TestCase):
         mark = len(notion.log)
         counts = go(notion)
         self.assertEqual(self.names(notion, row), ["Bills due", "Jira Overdue / Blocked", "Mail waiting", "Runs OK today"])
-        self.assertEqual([p for m, p in notion.log[mark:] if m == "DELETE"], [f"/blocks/{attention}"])               # one DELETE, aimed at the Attention column
+        self.assertEqual([p for m, p in notion.log[mark:] if m == "DELETE"], [f"/blocks/{attention}"])  # one DELETE, aimed at the Attention column
         self.assertEqual(counts["columns_removed"], 1)
-        self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {0.25})                                         # four equal columns
+        self.assertEqual({c["column"]["width_ratio"] for c in notion.children[row]}, {0.25})  # four equal columns
         mail = notion.children[notion.children[row][2]["id"]][0]
-        self.assertTrue(mail["callout"]["icon"]["external"]["url"].endswith("inbox_gray.svg"))                        # the Mail KPI kept its own icon, it was not rewritten into the Attention column
+        self.assertTrue(mail["callout"]["icon"]["external"]["url"].endswith("inbox_gray.svg"))
         self.assertEqual({k: notion.full_tree(k) for k in others}, others)
         mark = len(notion.log)
         go(notion)
@@ -600,7 +609,7 @@ class SurplusColumnTests(unittest.TestCase):
         real = notion.call
 
         def call(method, path, body=None):
-            return {} if method == "DELETE" and attention in path else real(method, path, body)             # Notion acknowledges the delete but the column stays
+            return {} if method == "DELETE" and attention in path else real(method, path, body)
         notion.call = call
         with self.assertRaises(NotionError) as error:
             go(notion)
@@ -610,7 +619,7 @@ class SurplusColumnTests(unittest.TestCase):
         notion = page()
         row, attention = self.live(notion, rename="Something Jim wrote")
         notion.children[row][3]["column"]["width_ratio"] = 0.25
-        notion.children[notion.children[notion.children[row][0]["id"]][0]["id"]][1] = text_block(notion, "renamed", "paragraph", "Bills overdue")       # two unknown columns, three expected
+        notion.children[notion.children[notion.children[row][0]["id"]][0]["id"]][1] = text_block(notion, "renamed", "paragraph", "Bills overdue")  # two unknown columns, three expected
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
             go(notion)
@@ -623,7 +632,7 @@ class SurplusColumnTests(unittest.TestCase):
         mark = len(notion.log)
         self.assertEqual(go(notion, live=False)["columns_removed"], 1)
         self.assertEqual(writes(notion, mark), [])
-        self.assertEqual(len(notion.children[row]), 5)                                                               # three KPI cards, the Runs OK today card and the surplus Attention column
+        self.assertEqual(len(notion.children[row]), 5)
 
 
 if __name__ == "__main__":

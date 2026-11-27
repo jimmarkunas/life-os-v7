@@ -64,7 +64,7 @@ class EventExtractionTests(unittest.TestCase):
 
 
 class ReturnMailTests(unittest.TestCase):
-    """LIFE-124: the return sender is a fourth allowlisted sender; a refund subject is REFUNDED, any other return notice is RETURNING."""
+    """the return sender is a fourth allowlisted sender"""
     def extract(self, subject):
         return events.extract(message("m-r", "return", subject=subject))
 
@@ -91,7 +91,7 @@ class ReturnMailTests(unittest.TestCase):
         refunded = {**event("m4", "DELIVERED", "2026-10-07T10:00:00+00:00"), "status": "REFUNDED"}
         row, reason = orders.reconcile([ordered, delivered, returning, refunded], None, NOW)
         self.assertEqual((reason, row["Status"], row["Grand Total"]), (None, "REFUNDED", "10.00"))
-        again, reason = orders.reconcile([delivered], row, NOW)                                      # a late older event cannot lower it
+        again, reason = orders.reconcile([delivered], row, NOW)  # a late older event cannot lower it
         self.assertEqual((reason, again["Status"]), (None, "REFUNDED"))
 
 
@@ -108,7 +108,7 @@ class ReconciliationTests(unittest.TestCase):
     def test_later_regression_total_url_and_duplicate_event_conflicts(self):
         shipped = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00")
         later_ordered = event("m-order", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34")
-        row, reason = orders.reconcile([shipped, later_ordered], now=NOW)             # D146: split shipments make a later lower status normal
+        row, reason = orders.reconcile([shipped, later_ordered], now=NOW)  # split shipments make a later lower status normal
         self.assertIsNone(reason)
         self.assertEqual((row["Status"], row["Grand Total"], row["Latest Event At"]), ("SHIPPED", "12.34", "2026-10-03T12:00:00+00:00"))
         split = [event("d1", "DELIVERED", "2026-10-02T12:00:00+00:00"), event("s2", "SHIPPED", "2026-10-04T12:00:00+00:00")]
@@ -132,7 +132,7 @@ class ReconciliationTests(unittest.TestCase):
         ordered = event("m-order", "ORDERED", "2026-09-30T12:00:00+00:00", total="12.34", subject="Ordered: Old text")
         shipped = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00", subject="Shipped: New text")
         row, _ = orders.reconcile([ordered, shipped], now=NOW)
-        replay, reason = orders.reconcile([ordered], row, now=NOW)                          # only the earlier month is read again
+        replay, reason = orders.reconcile([ordered], row, now=NOW)  # only the earlier month is read again
         self.assertIsNone(reason)
         self.assertTrue(orders.same(row, replay))
         self.assertEqual(replay["Item Summary"], "Shipped: New text")
@@ -147,9 +147,9 @@ class ReconciliationTests(unittest.TestCase):
     def test_one_compare_serves_the_order_check_and_the_read_back(self):
         row, _ = orders.reconcile([event("m-1", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")], now=NOW)
         later = {**row, "Latest Event At": "2026-10-01T12:00:30+00:00", "Item Summary": row["Item Summary"] + " "}
-        self.assertFalse(orders.same(row, later))                                          # seconds differ
-        self.assertTrue(orders.equal(row, later, orders.FIELDS, lambda v: str(v)[:16], lambda v: str(v).strip()))          # minutes and trimmed text agree
-        self.assertFalse(orders.equal(row, {**row, "Grand Total": "x"}, ("Grand Total",)))          # an unreadable total is a difference, never an error
+        self.assertFalse(orders.same(row, later))  # seconds differ
+        self.assertTrue(orders.equal(row, later, orders.FIELDS, lambda v: str(v)[:16], lambda v: str(v).strip()))  # minutes and trimmed text agree
+        self.assertFalse(orders.equal(row, {**row, "Grand Total": "x"}, ("Grand Total",)))
         self.assertFalse(orders.equal(row, {**row, "Item Count": "x"}, ("Item Count",)))
         self.assertTrue(orders.equal(row, {**row, "Grand Total": 12.34}, ("Grand Total",)))
 
@@ -190,7 +190,7 @@ class StageTests(unittest.TestCase):
                     raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
                 return super().message_record(message_id)
         rows = {"m-1": message("m-1", "auto-confirm"), "m-2": message("m-2", "auto-confirm", order_id="555-5555555-5555555")}
-        with self.assertRaises(stage.AmazonError):                                         # the normal pass still refuses to act on an incomplete read
+        with self.assertRaises(stage.AmazonError):
             stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW)
         counts = stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW, skip_unreadable=True)
         self.assertEqual((counts["unreadable"], counts["accepted"], counts["orders_new"], counts["filed"]), (1, 1, 1, 1))
@@ -305,7 +305,7 @@ def _row(order_id, status, at, ids, total="12.34"):
 
 
 class IngressRepairTests(unittest.TestCase):
-    """D113: the Amazon label and the Inbox are not processed boundaries."""
+    """the Amazon label and the Inbox are not processed boundaries."""
 
     def test_message_already_carrying_the_amazon_label_and_in_inbox_is_ingested(self):
         gmail = AmazonGmail({"m-1": message("m-1", "auto-confirm", labels=["INBOX", "label-amazon"])})
@@ -428,7 +428,7 @@ if __name__ == "__main__":
 
 
 class DecideOrderTests(unittest.TestCase):
-    """LIFE-623: the pure per-order decision, called directly with plain values (no fakes)."""
+    """the pure per-order decision, called directly with plain values (no fakes)."""
     ORDER = "123-1234567-1234567"
 
     def test_a_first_event_makes_a_row_with_no_conflict(self):

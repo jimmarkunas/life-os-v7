@@ -1,4 +1,4 @@
-"""LIFE-672: Megibow on Jim & Matt V3 — fixtures for Jim's and Matt's callouts (ticket step 9)."""
+"""Megibow on Jim & Matt V3 — fixtures for Jim's and Matt's callouts (ticket step 9)."""
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
@@ -7,7 +7,7 @@ from lifeos.megibow.windows import CHI, visible_weeks
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources.cards import megibow as stage
 
-NOW = datetime(2026, 11, 13, 14, 0, tzinfo=CHI)          # Friday; the visible Mondays run Sep 21 .. Nov 9
+NOW = datetime(2026, 11, 13, 14, 0, tzinfo=CHI)  # Friday
 WEEKS = visible_weeks(NOW.date())
 def CELL(t):
     return [{"type": "text", "plain_text": t, "text": {"content": t}}]
@@ -25,7 +25,7 @@ def para(i, text):
 
 
 class Page:
-    """One V3 page: Jim's and Matt's callouts, their summary pages, the register and Matt's database. Any write outside a callout or summary page fails the test."""
+    """One V3 page: Jim's and Matt's callouts, their summary pages, the register and Matt's database."""
     def __init__(self, matt_rows=None, matt_down=False, register_block=MATT_ID, jim_block="jim"):
         self.blocks = {}
         self.kids = {}
@@ -95,7 +95,7 @@ class Page:
         path = path.replace(MATT_ID, "matt").replace(JIM_ID, "jim").replace(ELSEWHERE_ID, "elsewhere")
         bid = path.split("/")[2]
         if path.endswith("/children"):
-            assert bid in ("jim", "matt"), path                                  # a new paragraph only ever goes inside a callout
+            assert bid in ("jim", "matt"), path  # a new paragraph only ever goes inside a callout
             new = f"{bid}-notes"
             self.blocks[new] = {"id": new, "type": "paragraph", "paragraph": {"rich_text": [dict(p, plain_text=p["text"]["content"]) for p in body["children"][0]["paragraph"]["rich_text"]]}}
             self.kids[bid].insert(self.kids[bid].index(body["after"]) + 1, new)
@@ -137,11 +137,11 @@ class Matt(unittest.TestCase):
         self.assertEqual(t[1], ["Outreach"] + ["5"] * 7 + ["0", "35"])
         self.assertEqual(t[6], ["Total"] + ["9"] * 7 + ["0", "63"])
         notes = page.text("matt-notes")
-        self.assertIn(W.NO_MEETINGS, notes)                                  # Friday, the week is entered with Scheduled 0
+        self.assertIn(W.NO_MEETINGS, notes)  # Friday, the week is entered with Scheduled 0
         self.assertIn(W.OUTREACH_DROP, notes)
         self.assertIn(W.CONVERSATION_DROP, notes)
         self.assertTrue(page.text("matt-stamp").startswith("Last refreshed 11/13 · 2:00 PM CT"))
-        self.assertEqual(page.kids["matt"][-2:], ["matt-notes", "matt-sum"])  # notes sit after the dash note, before the summary link
+        self.assertEqual(page.kids["matt"][-2:], ["matt-notes", "matt-sum"])
         self.assertEqual(page.kids["matt"][3], "matt-note")
 
     def test_some_weeks_show_dashes_never_zero_and_cumulative_adds_entered_weeks_only(self):
@@ -191,7 +191,7 @@ class Matt(unittest.TestCase):
     def test_second_run_is_a_no_op_and_dry_run_writes_nothing(self):
         page = Page([row(WEEKS[1], 3)])
         dry = matt(page, live=False)
-        self.assertEqual((page.writes, dry["rows_changed"]), ([], 6))          # every activity row: the week and Cumulative
+        self.assertEqual((page.writes, dry["rows_changed"]), ([], 6))  # every activity row: the week and Cumulative
         matt(page)
         writes = len(page.writes)
         matt(page)
@@ -248,7 +248,7 @@ class Jim(unittest.TestCase):
         self.assertEqual((counts["layout"], counts["matt"]["status"]), ("v3", "OK"))
         t = page.cells("jim")
         self.assertEqual(t[0][-1], "Cumulative")
-        self.assertEqual((t[1][-2], t[1][-3], t[6][-2]), ("1", "1", "1"))      # Outreach this week and last week; the current week's Total
+        self.assertEqual((t[1][-2], t[1][-3], t[6][-2]), ("1", "1", "1"))  # Outreach this week and last week
         self.assertTrue(page.text("jim-stamp").startswith("Last refreshed 11/13 · 2:00 PM CT"))
         self.assertIn("Review needed — none · MegIBOW Review", page.text("jim-notes"))
         link = [p for p in page.blocks["jim-notes"]["paragraph"]["rich_text"] if p["text"].get("link")]
@@ -301,7 +301,7 @@ class Jim(unittest.TestCase):
         proj = P.project(outcomes, NOW.date(), frozen, {a: 3 for a in C.ACTIVITIES}, date(2026, 10, 5), {WEEKS[0]: {a: 1 for a in C.ACTIVITIES}, WEEKS[1]: {a: 0 for a in C.ACTIVITIES}})
         old, new = R.table(proj), v3.table(proj["weeks"], proj["counts"], proj["cumulative"])
         for r in range(1, 7):
-            self.assertEqual(old[r][2:], new[r][1:9])                       # every week, every row (the V2 table has Cumulative second, V3 last)
+            self.assertEqual(old[r][2:], new[r][1:9])
             self.assertEqual(old[r][1], new[r][9])
 
 

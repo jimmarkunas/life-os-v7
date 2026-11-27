@@ -38,7 +38,7 @@ class Counts(unittest.TestCase):
     def test_main_list_only_with_muted_chats_counted_separately(self):
         chats = {c["id"]: c for c in (chat(1, 5), chat(2, 3, notes=QUIET), chat(3, 0, marked=True), chat(4, 9, positions=ARCHIVE), chat(5, 0),
                                       chat(6, 2, notes={"use_default_mute_for": True}, kind="chatTypeSupergroup", channel=True))}
-        scopes = {"notificationSettingsScopeChannelChats": 600000}                       # channels muted by default
+        scopes = {"notificationSettingsScopeChannelChats": 600000}  # channels muted by default
         self.assertEqual(a.counts(chats, scopes), {"chats_main": 5, "unread_messages": 10, "unread_messages_unmuted": 5,
                                                    "unread_chats": 4, "unread_chats_unmuted": 2})
 

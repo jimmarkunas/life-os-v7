@@ -1,4 +1,4 @@
-"""LIFE-918 AC3 (synthetic): the V3 weekly sprint view as native blocks, built to the approved wireframe (Jim left, Matt right, 2 x 2 tiles). No live Jira or Notion."""
+"""AC3 (synthetic): the V3 weekly sprint view as native blocks, built to the approved wireframe."""
 import unittest
 from datetime import date, datetime
 from unittest import mock
@@ -25,11 +25,11 @@ class Wireframe(unittest.TestCase):
             columns = specs[1]["children"]
             self.assertEqual([c["type"] for c in columns], ["column", "column"])
             labels = [[t["children"][1]["rich"][0][0] for t in c["children"]] for c in columns]
-            self.assertEqual(labels, [["Sprint commitments", "Overdue backlog"], ["Blocked outside sprint", "Done this week"]])          # a 2 x 2 grid
+            self.assertEqual(labels, [["Sprint commitments", "Overdue backlog"], ["Blocked outside sprint", "Done this week"]])  # a 2 x 2 grid
             numbers = [[(t["children"][0]["rich"][0][0], t["children"][0]["rich"][0][3]) for t in c["children"]] for c in columns]
-            self.assertEqual(numbers, [[("3", None), ("1", "red")], [("2", "red"), ("1", None)]])                                        # Blocked and Overdue red above 0
+            self.assertEqual(numbers, [[("3", None), ("1", "red")], [("2", "red"), ("1", None)]])  # Blocked and Overdue red above 0
             self.assertEqual(columns[1]["children"][1]["children"][1]["rich"][1][0], "\n1 auto-closed · 0 by hand")
-            self.assertEqual(specs[3]["children"][0]["rich"][0][0], f"{project}-11")                                                       # Sub-tasks nest under their parent
+            self.assertEqual(specs[3]["children"][0]["rich"][0][0], f"{project}-11")  # Sub-tasks nest under their parent
             self.assertEqual(specs[-1]["rich"][0][0], f"Next sprints: {project} W49 2026 · {project} W50 2026 · {project} W51 2026 · {project} W52 2026")
             self.assertEqual(specs[-2]["rich"][0][0], "Done this week — 1")
 
@@ -48,7 +48,7 @@ class Wireframe(unittest.TestCase):
 
     def test_the_pure_renderer_is_the_same_for_both_date_variants(self):
         a = weekview.spec(weekview._fixture("JFM"), date(2026, 12, 31), SITE, "JFM", datetime(2026, 12, 31, 8, tzinfo=ZoneInfo("America/Chicago")))
-        self.assertEqual(a[0]["rich"][0][0], "JFM W53 2026 · Mon Dec 28 – Sun Jan 3 (12/31 · 8:00 AM CT)")                                   # ISO week 53 and the year end
+        self.assertEqual(a[0]["rich"][0][0], "JFM W53 2026 · Mon Dec 28 – Sun Jan 3 (12/31 · 8:00 AM CT)")  # ISO week 53 and the year end
         self.assertEqual(a[-1]["rich"][0][0], "Next sprints: JFM W1 2027 · JFM W2 2027 · JFM W3 2027 · JFM W4 2027")
 
 
@@ -71,7 +71,7 @@ class Writer(unittest.TestCase):
             order = notion.kids[f"b-{who}-week"]
             self.assertEqual(notion.blocks[order[0]]["type"], "heading_3")
             self.assertEqual(order[1], f"b-{who}-week-st")
-            self.assertEqual(order[-1], f"s-pg-{who}")                                                  # the Summary for Claude line stays last
+            self.assertEqual(order[-1], f"s-pg-{who}")  # the Summary for Claude line stays last
             self.assertNotIn(f"body-{who}", order)
             tree = [notion.blocks[k]["type"] for k in order[2:-1]]
             self.assertEqual(tree[:2], ["paragraph", "column_list"])
