@@ -46,7 +46,8 @@ class World:
         self.token_dead_at = None
         self.flag_fail = False
         self.dream_attempt_cost = None
-        self.reads = 0
+        self.reads, self.refusing_from, self.expire_from, self.queue_at_arm = 0, None, None, []
+        self.scope_id, self.scope_state, self.scope_cap, self.blocked, self.scope_gone, self.bad_doc = "t2", "open", budget.SCOPE_CAP, None, False, False
         self.dream_in_queue = False
         self.armed_posts = 0
 
@@ -61,6 +62,8 @@ class World:
                 self.others += self.burst
             self.spent += self.other_rate
             self.others += self.other_rate
+            if self.refusing_from is not None and self.t >= self.refusing_from:
+                continue                                                   # the meter refuses every call: nothing is billed and nothing finishes
             if not self.queue:
                 continue
             item = self.queue[0]
@@ -78,7 +81,7 @@ class World:
                     self.dream_in_queue = False
 
     def drain(self):
-        while self.queue:
+        while self.queue and not (self.refusing_from is not None and self.t >= self.refusing_from):   # a refusing meter never drains
             self.step(1)
 
     def ours(self):
@@ -89,15 +92,24 @@ class Meter:
     def __init__(self, w):
         self.w = w
 
-    def spent(self):
-        self.w.reads += 1
-        if self.w.reads in self.w.meter_fail:
+    def reading(self):
+        """The meter's /health document: the monthly figure and the scope, whose spend is everything metered since it opened (here: all spend above BASE)."""
+        w = self.w
+        w.reads += 1
+        if w.reads in w.meter_fail:
             raise TimeoutError("meter")
-        if self.w.meter_frozen_after is not None and self.w.reads > self.w.meter_frozen_after:
-            if self.w.frozen_value is None:
-                self.w.frozen_value = self.w.spent
-            return self.w.frozen_value
-        return self.w.spent
+        if w.bad_doc:
+            return {"ok": True, "spent_usd": w.spent, "scope": {"id": w.scope_id}}
+        spent = w.spent
+        if w.meter_frozen_after is not None and w.reads > w.meter_frozen_after:
+            if w.frozen_value is None:
+                w.frozen_value = w.spent
+            spent = w.frozen_value
+        blocked = w.blocked or ("scope expired and not closed" if w.expire_from is not None and w.t >= w.expire_from else None)
+        doc = {"ok": True, "spent_usd": spent, "cap_usd": 25.0, "stopped": False, "blocked": blocked}
+        if not w.scope_gone:
+            doc["scope"] = {"id": w.scope_id, "cap_usd": w.scope_cap, "spent_usd": spent - BASE, "state": w.scope_state}
+        return doc
 
 
 class Honcho:
@@ -142,6 +154,7 @@ class Honcho:
 
     def post_messages(self, batch, armed):
         self._live()
+        self.w.queue_at_arm.append(len(self.w.queue))
         for _ in batch:
             self.w.posted += 1
             if armed or self.w.flags[0]:
@@ -151,6 +164,7 @@ class Honcho:
 
     def schedule_dream(self):
         self._live()
+        self.w.queue_at_arm.append(len(self.w.queue))
         worst = budget.dream_attempt_worst() / sum(budget.DREAM_ITER)
         for _ in range(self.w.dream_attempts):
             self.w.queue.append({"kind": "attempt", "started": False, "costs": [worst if self.w.dream_at_worst else self.w.call_cost(worst) for _ in range(sum(budget.DREAM_ITER))]})
@@ -176,9 +190,9 @@ class Clock:
         self.w.step(dt)
 
 
-def run(world, messages=20):
+def run(world, messages=20, scope_id="t2"):
     w = world
-    g = guard.Guard(Meter(w), Honcho(w), Clock(w))
+    g = guard.Guard(Meter(w), Honcho(w), Clock(w), scope_id=scope_id)
     try:
         report = g.run([{"content": f"m{i}"} for i in range(messages)])
     except Crash:
@@ -204,14 +218,27 @@ class Model(unittest.TestCase):
         self.assertEqual((budget.DREAM_OUT, budget.DERIVER_OUT, budget.DERIVER_IN), (8192, 2500, 25000))          # the dream asks for 8,192 output tokens per call, not 2,500
         self.assertEqual(budget.DREAM_ITER, (13, 11))
 
-    def test_the_queue_retry_limit_alone_uses_up_the_ceiling_and_the_strict_profile_cannot_fit_at_all(self):
-        self.assertGreater(budget.dream_worst(budget.DREAM_ATTEMPTS_QUEUE) + budget.tranche_worst(1), budget.CEILING)
-        self.assertGreater(budget.dream_worst(profile="strict"), budget.CEILING)
-        self.assertGreater(budget.tranche_worst(1, "strict") + budget.dream_worst(profile="strict"), budget.CEILING)
+    def test_at_two_dollars_even_the_strict_profile_and_the_queue_limit_fit_the_model(self):
+        self.assertEqual((budget.CEILING, budget.TRIP, budget.SCOPE_CAP), (2.00, 0.80, 2.00))        # the old $0.50 / $0.40 defaults no longer gate anything
+        self.assertLess(budget.dream_worst(budget.DREAM_ATTEMPTS_QUEUE) + budget.tranche_worst(1), budget.CEILING)
+        self.assertLessEqual(budget.tranche_worst(1, "strict") + budget.dream_worst(profile="strict"), budget.CEILING)
+        self.assertLess(budget.TRIP, budget.SCOPE_CAP - budget.RESERVATION_MAX)                      # the brake fires before the meter's own refusal line
+
+    def test_the_reservation_is_the_meters_documented_maximum(self):
+        spec = importlib.util.spec_from_file_location("meter_proxy_under_test", ROOT / "lifeos" / "edge" / "honcho" / "meter_proxy.py")
+        meter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(meter)
+        self.assertAlmostEqual(budget.RESERVATION_MAX, meter.reservation_nano(budget.DREAM_OUT) / 1e9, places=9)
+
+    def test_one_reservation_must_still_fit_the_scope_to_arm(self):
+        limit = budget.SCOPE_CAP - budget.RESERVATION_MAX                                           # 0.97952
+        self.assertTrue(budget.admissible(limit))
+        self.assertFalse(budget.admissible(limit + 0.01))
+        self.assertAlmostEqual(budget.numbers()["admission_limit_usd"], 0.97952, places=5)
 
     def test_arming_refuses_a_step_that_would_not_fit_and_a_negative_reading(self):
         self.assertTrue(budget.can_arm(0.0, budget.tranche_worst(), budget.dream_worst()))
-        self.assertFalse(budget.can_arm(0.25, budget.tranche_worst(), budget.dream_worst()))
+        self.assertFalse(budget.can_arm(1.85, budget.tranche_worst(), budget.dream_worst()))
         self.assertFalse(budget.can_arm(-0.01, 0.0, 0.0))
 
     def test_the_explicit_limit_keeps_every_automatic_dream_out_of_reach(self):
@@ -273,8 +300,8 @@ class Bound(unittest.TestCase):
         self.assertGreater(peak, 0.15)                                                                 # the dream really ran at full price in some crash schedule
         self.assertLessEqual(peak, budget.CEILING)
 
-    def test_documented_residual_a_dead_guard_and_two_more_queue_attempts_of_the_dream_can_pass_the_ceiling(self):
-        """Not a pass: this is the case no guard can close (it needs the meter to refuse). The dream's exposure is armed for one attempt; the queue may run three."""
+    def test_a_dead_guard_and_all_the_queues_dream_attempts_no_longer_pass_the_ceiling_in_the_model(self):
+        """At $0.50 this was a documented residual only the meter could close; at $2.00 three queued attempts of the dream fit. The meter still owns enforcement."""
         peak = 0.0
         probe = World("typical")
         probe.dream_attempts, probe.dream_at_worst = 3, True
@@ -285,8 +312,8 @@ class Bound(unittest.TestCase):
             w.crash_at = k
             run(w)
             peak = max(peak, w.ours())
-        self.assertGreater(peak, budget.CEILING)
-        self.assertLess(peak, budget.CEILING + 0.05)
+        self.assertGreater(peak, 0.3)
+        self.assertLessEqual(peak, budget.CEILING)
 
     def test_random_prices_and_random_failures_never_break_the_ceiling(self):
         for seed in range(250):
@@ -299,6 +326,99 @@ class Bound(unittest.TestCase):
             w.other_rate = rng.choice([0.0, 0.0, 0.00005])
             run(w)
             self.check(w, seed)
+
+
+class Scope(unittest.TestCase):
+    """LIFE-1029: the hardened meter's own scoped health is the authority; the guard checks it on every reading, brakes at $0.80 and never retries around a refusal."""
+
+    def stopped(self, **change):
+        w = World("typical")
+        for key, value in change.items():
+            setattr(w, key, value)
+        g, report = run(w)
+        return w, report
+
+    def test_the_old_fifty_cent_defaults_no_longer_gate_the_run(self):
+        w = World("worst")
+        g, report = run(w)
+        self.assertGreater(w.ours(), 0.50)                                                   # past the old ceiling, still armed and running
+        self.assertLessEqual(w.ours(), budget.CEILING)
+        self.assertIn(report["stopped"], (None, "tripped"))                                  # only the $0.80 brake or the end of the run
+        self.assertEqual(report["scope"]["cap_usd"], budget.SCOPE_CAP)
+
+    def test_a_full_typical_run_reports_the_scope_and_the_cleanup_evidence(self):
+        w, report = self.stopped()
+        self.assertIsNone(report["stopped"], report)
+        self.assertEqual(report["scope"]["state"], "open")
+        self.assertEqual(report["cleanup"], {"flags": [False, False], "queue_idle": True})
+
+    def test_each_wrong_scope_stops_before_anything_is_touched_or_armed(self):
+        cases = {
+            "scope_missing": {"scope_gone": True},
+            "scope_mismatch": {"scope_id": "someone-elses"},
+            "scope_cap_wrong": {"scope_cap": 25.0},
+            "scope_not_open": {"scope_state": "breached"},
+            "meter_blocked": {"blocked": "scope expired and not closed"},
+            "meter_malformed": {"bad_doc": True},
+        }
+        for reason, change in cases.items():
+            with self.subTest(reason):
+                w, report = self.stopped(**change)
+                self.assertEqual(report["stopped"], reason)
+                self.assertEqual((w.armed_posts, w.spent), (0, BASE))
+                self.assertEqual(w.flags, [False, False])
+
+    def test_a_guard_given_no_scope_id_stops_and_arms_nothing(self):
+        w = World("typical")
+        g, report = run(w, scope_id=None)
+        self.assertEqual((report["stopped"], w.armed_posts), ("scope_mismatch", 0))
+
+    def test_the_scope_expiring_mid_run_disarms_and_stops(self):
+        w, report = self.stopped(expire_from=12)
+        self.assertEqual(report["stopped"], "meter_blocked")
+        self.assertEqual(w.flags, [False, False])
+        self.assertIn({"t": report["events"][-1]["t"], "e": "disarmed"}, report["events"])
+        self.assertLessEqual(w.ours(), budget.CEILING)
+
+    def test_a_meter_that_refuses_every_call_is_a_stall_the_guard_stops_on_without_retrying(self):
+        w, report = self.stopped(refusing_from=8)
+        self.assertEqual(report["stopped"], "no_progress")
+        self.assertEqual(w.flags, [False, False])
+        posts = w.armed_posts
+        self.assertLess(posts, 20)                                                          # nothing was armed after the stall began
+        self.assertEqual(report["cleanup"]["flags"], [False, False])
+        self.assertIs(report["cleanup"]["queue_idle"], False)                               # what was queued is reported for the drain, not retried
+
+    def test_spend_at_the_brake_trips_and_disarms(self):
+        w = World("typical")
+        w.burst_at, w.burst = 6, 0.85                                                       # another client spends through the global scope mid-step
+        g, report = run(w)
+        self.assertIn(report["stopped"], ("tripped", "exposure_exceeded"))                   # seen live (the brake) or at the next settle (counted as the scope's spend)
+        self.assertEqual(w.flags, [False, False])
+        self.assertGreaterEqual(w.spent - BASE, budget.TRIP)
+
+    def test_no_step_is_armed_unless_one_more_reservation_fits_the_scope(self):
+        w = World("typical")
+        w.spent = BASE + 0.99                                                               # above 2.00 - 1.02048: the meter would refuse the next call
+        g, report = run(w)
+        self.assertEqual((report["stopped"], w.armed_posts), ("admission_limit", 0))
+        w2 = World("typical")
+        w2.spent = BASE + 0.5
+        self.assertIsNone(run(w2)[1]["stopped"])
+
+    def test_every_step_is_armed_with_nothing_in_flight(self):
+        for cost in ("typical", "worst"):
+            w = World(cost)
+            run(w)
+            self.assertGreater(len(w.queue_at_arm), 5)
+            self.assertEqual(set(w.queue_at_arm), {0})                                      # one reservation at a time: the queue is empty at every arming
+
+    def test_a_meter_timeout_while_armed_is_counted_and_never_arms_more(self):
+        w = World("typical")
+        w.meter_fail = set(range(8, 14))
+        g, report = run(w)
+        self.assertLessEqual(w.ours(), budget.CEILING)
+        self.assertEqual(w.flags, [False, False])
 
 
 class Failures(unittest.TestCase):
@@ -374,19 +494,19 @@ class Failures(unittest.TestCase):
 
     def test_a_message_over_the_limit_and_too_much_workspace_text_are_refused_before_anything_is_armed(self):
         w = World("typical")
-        g = guard.Guard(Meter(w), Honcho(w), Clock(w))
+        g = guard.Guard(Meter(w), Honcho(w), Clock(w), scope_id="t2")
         self.assertEqual(g.run([{"content": "x" * (budget.MESSAGE_CHARS_MAX + 1)}])["stopped"], "message_too_long")
         self.assertEqual((w.armed_posts, w.spent), (0, BASE))
         w2 = World("typical")
         w2.volume = budget.VOLUME_CHARS_MAX
-        g2 = guard.Guard(Meter(w2), Honcho(w2), Clock(w2))
+        g2 = guard.Guard(Meter(w2), Honcho(w2), Clock(w2), scope_id="t2")
         self.assertEqual(g2.run([{"content": "ok"}])["stopped"], "volume_exceeded")
         self.assertEqual((w2.armed_posts, w2.spent), (0, BASE))
 
     def test_seeded_directly_only_the_dream_is_armed_and_the_text_limit_still_applies(self):
         w = World("typical", explicit=40)
         w.posted = 40
-        g = guard.Guard(Meter(w), Honcho(w), Clock(w))
+        g = guard.Guard(Meter(w), Honcho(w), Clock(w), scope_id="t2")
         report = g.run([], seeded=True)
         self.assertIsNone(report["stopped"], report)
         self.assertEqual(w.armed_posts, 0)
@@ -424,7 +544,7 @@ class Failures(unittest.TestCase):
 
     def test_a_burst_of_other_spend_during_a_step_trips_the_brake_and_disarms(self):
         w = World("typical")
-        w.burst_at, w.burst = 4, 0.45
+        w.burst_at, w.burst = 4, 0.85
         g, report = run(w)
         self.assertIn(report["stopped"], ("tripped", "exposure_exceeded"))                           # seen live (brake) or at the next settle (counted as ours)
         self.assertEqual(w.flags, [False, False])

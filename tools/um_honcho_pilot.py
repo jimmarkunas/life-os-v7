@@ -122,7 +122,7 @@ class OracleDb:
         return {"documents": int(rows[0]), "dream_changes": int(rows[1]), "peer_card_changes": int(rows[2])}
 
 
-def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages"):
+def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages", scope_id=None):
     """-> the evidence (aggregates, counts and fixture ids only). Stops at the first free proof that fails, before any paid call."""
     ev, calls = {"steps": []}, []
 
@@ -176,7 +176,7 @@ def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages"):
     if seed == "conclusions":
         honcho.create_conclusions(messages)  # free seeding: no deriver call at all
         step("conclusions_created_directly", n=len(messages))
-    g = guard.Guard(meter, honcho, clock)
+    g = guard.Guard(meter, honcho, clock, scope_id=scope_id)
     report = g.run(messages, seeded=(seed == "conclusions"))
     step("guard_run", **{k: v for k, v in report.items() if k != "events"}, events=len(report["events"]))
     ev["guard_events"] = report["events"]

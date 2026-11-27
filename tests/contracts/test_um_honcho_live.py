@@ -29,7 +29,7 @@ def jwt(**claims):
 
 
 def good_env(**over):
-    env = {"UM_T2_RELEASE": live.RELEASE, "UM_T2_TOKEN": jwt(w="um-t2-fixture-v1", exp=NOW + 7000)}
+    env = {"UM_T2_RELEASE": live.RELEASE, "UM_T2_SCOPE": "um-t2-test", "UM_T2_TOKEN": jwt(w="um-t2-fixture-v1", exp=NOW + 7000)}
     env.update(over)
     return env
 
@@ -48,6 +48,8 @@ class Gate(unittest.TestCase):
         self.check(good_env(), (False, "wrong_host"), host="Jims-Mac.local")
         self.check(good_env(), (False, "url_not_loopback"), url="http://100.64.0.9:8000")
         self.check(good_env(HONCHO_ADMIN_JWT="x"), (False, "admin_token_present"))
+        self.check(good_env(UM_T2_SCOPE=""), (False, "scope_id_missing"))
+        self.check({k: v for k, v in good_env().items() if k != "UM_T2_SCOPE"}, (False, "scope_id_missing"))
         self.check(good_env(UM_T2_TOKEN=""), (False, "token_missing_or_not_jwt"))
         self.check(good_env(UM_T2_TOKEN="not-a-jwt"), (False, "token_missing_or_not_jwt"))
 
@@ -100,7 +102,7 @@ class Main(unittest.TestCase):
         self.assertEqual(built, [1])
         self.assertNotIn(env["UM_T2_TOKEN"], buf.getvalue())
 
-    def test_the_meter_reader_reads_only_the_health_spend(self):
+    def test_the_meter_reader_returns_the_whole_health_document_for_the_guard_to_check(self):
         class Answer:
             def __init__(self, body):
                 self.body = body
@@ -115,8 +117,10 @@ class Main(unittest.TestCase):
                 return self.body
 
         seen = []
-        m = live.MeterHttp(opener=lambda url, timeout: seen.append(url) or Answer(b'{"spent_usd": 0.7029, "cap_usd": 25.0}'))
-        self.assertEqual(m.spent(), 0.7029)
+        doc = b'{"ok": true, "spent_usd": 0.7029, "cap_usd": 25.0, "blocked": null, "scope": {"id": "s", "cap_usd": 2.0, "spent_usd": 0.0, "state": "open"}}'
+        m = live.MeterHttp(opener=lambda url, timeout: seen.append(url) or Answer(doc))
+        self.assertEqual(m.reading()["scope"], {"id": "s", "cap_usd": 2.0, "spent_usd": 0.0, "state": "open"})
+        self.assertFalse(hasattr(m, "spent"))                                                     # no monthly-delta shortcut around the scope
         self.assertEqual(seen, [live.METER_URL])
 
 

@@ -108,7 +108,7 @@ def go(world=None, db=None, honcho=None, graph=None, seed="messages"):
 
 
 def run(w, h, db, graph, seed="messages"):
-    return pilot.run_pilot(h, sim.Meter(w), db, DOC, graph, sim.Clock(w), reps=2, seed=seed)
+    return pilot.run_pilot(h, sim.Meter(w), db, DOC, graph, sim.Clock(w), reps=2, seed=seed, scope_id="t2")
 
 
 class Free(unittest.TestCase):
@@ -117,7 +117,7 @@ class Free(unittest.TestCase):
         names = [s["step"] for s in ev["steps"]]
         self.assertEqual(names, ["personal_baseline", "due_before", "created_all_off", "token_refused_on_personal", "brake_test_unarmed_message_creates_no_work", "oversize_message_refused_by_the_api", "guard_run"])
         self.assertNotIn("stopped", ev)
-        self.assertLessEqual(w.ours(), 0.5)
+        self.assertLessEqual(w.ours(), 2.0)                                                   # the approved scope; the old $0.50 no longer gates it
         self.assertEqual(w.armed_posts, 20)
 
     def test_the_personal_baseline_is_read_fresh_not_assumed_to_be_thirty(self):
@@ -136,6 +136,24 @@ class Free(unittest.TestCase):
         w, ev = go(w, honcho=h)
         self.assertEqual((ev["stopped"], w.armed_posts), ("token_not_scoped", 0))
         self.assertEqual(w.spent, sim.BASE)
+
+    def test_a_missing_or_wrong_scope_stops_the_pilot_before_anything_is_armed(self):
+        for change, reason in (({"scope_gone": True}, "scope_missing"), ({"scope_id": "other"}, "scope_mismatch"), ({"scope_state": "breached"}, "scope_not_open")):
+            with self.subTest(reason):
+                w = sim.World("typical")
+                for key, value in change.items():
+                    setattr(w, key, value)
+                w, ev = go(w)
+                self.assertEqual((ev["stopped"], w.armed_posts, w.spent), ("guard_" + reason, 0, sim.BASE))
+                self.assertEqual(w.flags, [False, False])
+
+    def test_the_four_modes_the_fresh_baseline_and_the_evidence_are_unchanged_by_the_scope(self):
+        w, ev = go()
+        self.assertEqual(ev["steps"][0]["step"], "personal_baseline")
+        self.assertEqual(sorted(ev["comparison"]), ["combined", "direct", "graph", "honcho"])
+        guard_run = ev["steps"][-1]
+        self.assertEqual((guard_run["step"], guard_run["scope"]["cap_usd"], guard_run["scope"]["state"]), ("guard_run", 2.0, "open"))
+        self.assertEqual(guard_run["cleanup"], {"flags": [False, False], "queue_idle": True})
 
     def test_the_brake_test_stops_the_run_if_an_unarmed_message_creates_work(self):
         w = sim.World("typical")
@@ -175,7 +193,7 @@ class Free(unittest.TestCase):
     def test_the_guard_stopping_is_reported_and_the_comparison_still_runs_on_what_exists(self):
         w, ev = go(world=sim.World("worst"))
         self.assertTrue(ev["stopped"].startswith("guard_"))
-        self.assertLessEqual(w.ours(), 0.5)
+        self.assertLessEqual(w.ours(), 2.0)
         self.assertIn("comparison", ev)
 
 

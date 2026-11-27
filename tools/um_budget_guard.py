@@ -1,8 +1,6 @@
 """LIFE-1003 (REQ-85 T2): the budget guard for the isolated Honcho experiment. It talks to the meter and to Honcho only through two injected objects, so every failure can be played back deterministically.
 
-How the ceiling is kept (the model is tools/um_budget.py): the workspace starts DISARMED (no deriver or dream spending without an explicit switch) and the guard ARMS one step at a time, only when the queue is idle and the meter reading is fresh,
-settled and consistent, and only when (spend so far) + (this step's worst case) + (the dream's worst case) fits the ceiling. Seeding messages are armed one by one with a per-message switch, so a guard that dies leaves nothing armed beyond the step
-already running. Every failure (meter timeout or stale reading, a refused configuration change, an expired token, a drain that never ends) stops the guard from arming anything further. The live trip is a second, earlier brake, not the bound."""
+The meter owns hard enforcement (its scope cap and documented-maximum reservations); the guard never substitutes a model for it. Every reading is the meter's own /health document and must show the expected scope: present, the expected id, the approved cap, state open, nothing blocked. Anything else stops the guard (and it disarms). Spend and the brake are the scope's own spend. The workspace starts DISARMED (no deriver or dream spending without an explicit switch) and the guard ARMS one step at a time, only when the queue is idle and settled and the step fits the modeled ceiling and one more reservation still fits the scope. Every failure (meter timeout, a missing or wrong scope, a refused configuration change, an expired token, a drain that never ends, no progress) stops the guard from arming anything further. A run is never guaranteed to complete: a meter refusal ends it, and it is never retried around the meter. The live trip is `um_budget.TRIP`."""
 
 import importlib.util
 import pathlib
@@ -22,6 +20,7 @@ def _load(name):
 budget = _load("um_budget")
 
 MAX_METER_ERRORS = 3
+STALL_S = 180  # no spend and no finished unit for this long while armed: the meter may be refusing
 SETTLE_S = 1.0
 DRAIN_S = 600
 WAIT_STEP_S = 1.0
@@ -47,7 +46,9 @@ class Unauthorized(HonchoError):
 
 
 class Guard:
-    def __init__(self, meter, honcho, clock, ceiling=budget.CEILING, trip=budget.TRIP, tranche=budget.TRANCHE):
+    def __init__(
+        self, meter, honcho, clock, scope_id=None, ceiling=budget.CEILING, trip=budget.TRIP, tranche=budget.TRANCHE
+    ):
         self.meter, self.hon, self.clock, self.ceiling, self.trip, self.tranche = (
             meter,
             honcho,
@@ -56,7 +57,8 @@ class Guard:
             trip,
             tranche,
         )
-        self.events, self.base, self.last, self.units_seen, self.exposure = [], None, None, 0, 0.0
+        self.scope_id, self.cap, self.scope_view = scope_id, budget.SCOPE_CAP, None
+        self.events, self.last, self.units_seen, self.exposure = [], None, 0, 0.0
         self.units_seen_armed, self.spent_at_units = False, 0.0
         self.started = clock.now()
 
@@ -64,11 +66,34 @@ class Guard:
     def _log(self, what, **kw):
         self.events.append({"t": round(self.clock.now() - self.started, 1), "e": what, **kw})
 
+    def _scope_spend(self, doc):
+        """-> the scope's own spend from the meter's health document, or a Stop for anything but a healthy, expected, open scope."""
+        if not isinstance(doc, dict) or doc.get("ok") is not True:
+            raise Stop("meter_malformed") from None
+        if doc.get("blocked"):
+            raise Stop("meter_blocked") from None  # an expired scope reads as blocked
+        scope = doc.get("scope")
+        if not isinstance(scope, dict):
+            raise Stop("scope_missing") from None
+        if not self.scope_id or scope.get("id") != self.scope_id:
+            raise Stop("scope_mismatch") from None
+        try:
+            cap, spent = float(scope["cap_usd"]), float(scope["spent_usd"])
+        except (KeyError, TypeError, ValueError):
+            raise Stop("meter_malformed") from None
+        if spent < 0 or abs(cap - self.cap) > 1e-9:
+            raise Stop("scope_cap_wrong" if spent >= 0 else "meter_malformed") from None
+        if scope.get("state") != "open":
+            raise Stop("scope_not_open") from None
+        self.scope_view = {"id": scope["id"], "cap_usd": cap, "spent_usd": spent, "state": scope["state"]}
+        return spent
+
     def _read(self):
         try:
-            value = float(self.meter.spent())
+            doc = self.meter.reading()
         except Exception as error:  # noqa: BLE001  any failure of the meter is a failed reading
             raise MeterError(type(error).__name__) from error
+        value = self._scope_spend(doc)
         if self.last is not None and value < self.last - 1e-9:
             raise MeterError("ledger_went_backwards")
         self.last = value
@@ -102,9 +127,7 @@ class Guard:
             waited += WAIT_STEP_S
             if waited > DRAIN_S:
                 raise Stop("drain_timeout") from None
-        if self.base is None:
-            self.base = second
-        spent = second - self.base
+        spent = second
         done = self.hon.completed_units()
         if done > self.units_seen and spent <= self.spent_at_units + budget.CHECK_DELTA and self.units_seen_armed:
             raise Stop("meter_stale")  # work finished but the ledger did not move: the reading cannot be trusted
@@ -121,19 +144,32 @@ class Guard:
 
     def _watch(self, until_idle):
         """While a step runs: read the meter every second; at the trip, disarm and stop. Meter errors are counted; the step is still bounded by its own exposure."""
-        errors, waited = 0, 0.0
+        errors, waited, snap, since = 0, 0.0, None, self.clock.now()
         while not until_idle():
             self._deadline()
             try:
-                spent = self._read() - (self.base or 0.0)
+                spent = self._read()
                 errors = 0
                 if spent >= self.trip:
-                    self.brake()
                     raise Stop("tripped") from None
+                progress = (round(spent, 6), self.hon.completed_units())
+                if progress != snap:
+                    snap, since = progress, self.clock.now()
+                elif self.clock.now() - since > STALL_S:
+                    raise Stop("no_progress") from None
             except MeterError:
                 errors += 1
                 if errors >= MAX_METER_ERRORS:
                     self._log("meter_unreadable_while_armed")
+            except Unauthorized:
+                self.brake()
+                raise Stop("token_expired") from None
+            except HonchoError:
+                self.brake()
+                raise Stop("honcho_unreadable") from None
+            except Stop:
+                self.brake()  # a wrong scope, a block, the trip or a stall: disarm first, then stop
+                raise
             self.clock.sleep(WAIT_STEP_S)
             waited += WAIT_STEP_S
             if waited > DRAIN_S:
@@ -165,6 +201,8 @@ class Guard:
             self._inputs_ok(batch)
             if not budget.can_arm(spent, exposure, budget.dream_worst(), self.ceiling):
                 raise Stop("budget_before_tranche_%d" % (i // self.tranche + 1)) from None
+            if not budget.admissible(spent, self.cap):
+                raise Stop("admission_limit") from None  # one more reservation would not fit the scope: the meter would refuse
             try:
                 self.hon.post_messages(batch, armed=True)
             except Unauthorized:
@@ -202,6 +240,8 @@ class Guard:
         self._inputs_ok()
         if not budget.can_arm(spent, exposure, 0.0, self.ceiling):
             raise Stop("budget_before_dream") from None
+        if not budget.admissible(spent, self.cap):
+            raise Stop("admission_limit") from None
         try:
             self.hon.set_flags(True, True)
         except Unauthorized:
@@ -230,6 +270,10 @@ class Guard:
         """-> the report. Never raises: a Stop is the reason the run ended early. `seeded=True`: the conclusions were created directly (no deriver spending), so only the dream is armed."""
         reason = ""
         try:
+            try:
+                self._read()  # the scope must be the expected, open one before anything else is touched
+            except MeterError as error:
+                raise Stop("meter_" + str(error)) from None
             self.hon.set_flags(False, False)
             if tuple(self.hon.get_flags()) != (False, False):
                 raise Stop("flags_unverified") from None
@@ -243,12 +287,25 @@ class Guard:
         finally:
             self.brake()
         try:
-            final = self._read() - (self.base or 0.0)
-        except MeterError:
+            final = self._read()
+        except (MeterError, Stop):
             final = None
         return {
             "stopped": reason or None,
             "spent_usd": None if final is None else round(final, 6),
             "armed_exposure_usd": round(self.exposure, 4),
+            "scope": self.scope_view,
+            "cleanup": self._cleanup(),
             "events": self.events,
         }
+
+    def _cleanup(self):
+        """What a reader needs to drain and close: the switches as last read and whether the queue is idle (None when Honcho could not be read)."""
+        out = {}
+        for key, call in (("flags", lambda: list(self.hon.get_flags())), ("queue_idle", self.hon.queue_idle)):
+            try:
+                out[key] = call()
+            except Exception as error:  # noqa: BLE001
+                out[key] = None
+                out[key + "_error"] = type(error).__name__
+        return out
