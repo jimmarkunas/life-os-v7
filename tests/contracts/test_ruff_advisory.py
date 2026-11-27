@@ -19,6 +19,7 @@ class Configured(unittest.TestCase):
         self.assertIn("line-length = 120", text)
         self.assertIn('quote-style = "preserve"', text)
         self.assertIn("skip-magic-trailing-comma = false", text)
+        self.assertIn("exclude = [\"lifeos/buzz/*.py\"", text)
         self.assertRegex(text, r'select = \["E", "F", "B"\]')
         self.assertIn('ignore = ["E501"]', text)                                      # existing lines run to 661 characters
 
