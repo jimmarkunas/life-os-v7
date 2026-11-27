@@ -2,6 +2,7 @@
 
 A rerun does nothing unless the row is still Degraded within REFRESH, when it is rebuilt. Off unless `WEEKLY_REVIEW`
 is on; a dry run writes nothing."""
+
 import os
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
@@ -71,9 +72,16 @@ def _choice(schema, name, value):
 
 
 def properties(schema, friday, health, open_count, now, current):
-    return {"Review": {"title": rich_text("Week Ending " + label(friday))}, "Week Ending": _date_prop(friday), "Week Start": _date_prop(friday - timedelta(days=6)),
-            "Generated At": {"date": {"start": now.replace(microsecond=0).isoformat()}}, "Status": _choice(schema, "Status", "Generated"),
-            "Source Health": _choice(schema, "Source Health", health), "Open Decisions": {"number": open_count}, "Current": {"checkbox": bool(current)}}
+    return {
+        "Review": {"title": rich_text("Week Ending " + label(friday))},
+        "Week Ending": _date_prop(friday),
+        "Week Start": _date_prop(friday - timedelta(days=6)),
+        "Generated At": {"date": {"start": now.replace(microsecond=0).isoformat()}},
+        "Status": _choice(schema, "Status", "Generated"),
+        "Source Health": _choice(schema, "Source Health", health),
+        "Open Decisions": {"number": open_count},
+        "Current": {"checkbox": bool(current)},
+    }
 
 
 def _t(content, bold=False):
@@ -93,19 +101,56 @@ def body(friday, lanes, queue, now, kind):
     plan = (friday + timedelta(days=1), friday + timedelta(days=7))
     by = {lane.name: lane for lane in lanes}
     degraded = [lane for lane in lanes if lane.health != "Healthy"]
-    blocks = [_block("callout", f"One weekly cross-system review of execution, commitments, inbound, files and LIFE OS health. Review window {short(start)} to {short(end)}; planning window {short(plan[0])} to {short(plan[1])}. "
-                     f"Generated {wl.when_text(now)} by V7 from read-only sources; a synthesis and decision surface, not a task manager.", icon={"type": "emoji", "emoji": "🔄"}, color="blue_background")]
+    blocks = [
+        _block(
+            "callout",
+            f"One weekly cross-system review of execution, commitments, inbound, files and LIFE OS health. Review window {short(start)} to {short(end)}; planning window {short(plan[0])} to {short(plan[1])}. "
+            f"Generated {wl.when_text(now)} by V7 from read-only sources; a synthesis and decision surface, not a task manager.",
+            icon={"type": "emoji", "emoji": "🔄"},
+            color="blue_background",
+        )
+    ]
     if kind == "backfill":
-        blocks.append(_block("callout", f"Backfill: this week was made on {short(now.date())} from the sources as they are now, not as they were on {short(end)}. The numbers describe today.", icon={"type": "emoji", "emoji": "🕘"}, color="gray_background"))
+        blocks.append(
+            _block(
+                "callout",
+                f"Backfill: this week was made on {short(now.date())} from the sources as they are now, not as they were on {short(end)}. The numbers describe today.",
+                icon={"type": "emoji", "emoji": "🕘"},
+                color="gray_background",
+            )
+        )
     blocks.append(_block("heading_2", "Executive Summary"))
-    blocks.append(_block("bulleted_list_item", ("All six source lanes read cleanly." if not degraded else f"{len(degraded)} of 6 source lanes are Degraded: " + ", ".join(f"{lane.name} ({lane.reason})" for lane in degraded) + ".")))
+    blocks.append(
+        _block(
+            "bulleted_list_item",
+            (
+                "All six source lanes read cleanly."
+                if not degraded
+                else f"{len(degraded)} of 6 source lanes are Degraded: "
+                + ", ".join(f"{lane.name} ({lane.reason})" for lane in degraded)
+                + "."
+            ),
+        )
+    )
     blocks.append(_block("bulleted_list_item", f"{len(queue)} decisions are waiting for Jim in the Decision Queue."))
-    for title, names in (("Jira Execution & Sprint Health", ("Jira",)), ("Calendar & Commitments", ("Calendar",)), ("Recruiters, Applications & Waiting-On", ("Gmail and Outlook",)),
-                         ("Notion & Drive Hygiene", ("Notion", "Drive")), ("Automation Health", ("Automation",))):
+    for title, names in (
+        ("Jira Execution & Sprint Health", ("Jira",)),
+        ("Calendar & Commitments", ("Calendar",)),
+        ("Recruiters, Applications & Waiting-On", ("Gmail and Outlook",)),
+        ("Notion & Drive Hygiene", ("Notion", "Drive")),
+        ("Automation Health", ("Automation",)),
+    ):
         blocks.append(_block("heading_2", title))
         for name in names:
             lane = by[name]
-            blocks.append(_block("paragraph", f"{lane.name}: {lane.health}" + (f" ({lane.reason})" if lane.reason else "") + (f" · source written {lane.at}" if lane.at else "")))
+            blocks.append(
+                _block(
+                    "paragraph",
+                    f"{lane.name}: {lane.health}"
+                    + (f" ({lane.reason})" if lane.reason else "")
+                    + (f" · source written {lane.at}" if lane.at else ""),
+                )
+            )
             blocks.extend(_block("bulleted_list_item", line) for line in lane.lines)
     blocks.append(_block("heading_2", "Decision Queue"))
     if not queue:
@@ -117,8 +162,17 @@ def body(friday, lanes, queue, now, kind):
             blocks.extend(_block("to_do", text, checked=False) for text in items)
     blocks.append(_block("heading_2", "Next Week Focus"))
     top = [g for g in wl.GROUPS if any(item[0] == g for item in queue)][:3]
-    blocks.append(_block("paragraph", ("Work the Decision Queue first: " + ", ".join(top) + "." if top else "Nothing is waiting on a decision; keep the fixed-time commitments.")
-                         + " This page proposes nothing in Jira, Calendar or mail; Reviewed and Applied are Jim's."))
+    blocks.append(
+        _block(
+            "paragraph",
+            (
+                "Work the Decision Queue first: " + ", ".join(top) + "."
+                if top
+                else "Nothing is waiting on a decision; keep the fixed-time commitments."
+            )
+            + " This page proposes nothing in Jira, Calendar or mail; Reviewed and Applied are Jim's.",
+        )
+    )
     return blocks
 
 
@@ -131,7 +185,14 @@ def github_runs(environ, friday, opener=None):
     out = {}
     try:
         for name in WORKFLOWS:
-            doc = branches.gh(f"/repos/{repo}/actions/workflows/{name}/runs?per_page=100&created={quote(window, safe='.')}", token, **({"opener": opener} if opener else {})) or {}
+            doc = (
+                branches.gh(
+                    f"/repos/{repo}/actions/workflows/{name}/runs?per_page=100&created={quote(window, safe='.')}",
+                    token,
+                    **({"opener": opener} if opener else {}),
+                )
+                or {}
+            )
             out[name] = [(r.get("conclusion"), r.get("updated_at")) for r in doc.get("workflow_runs", [])]
     except (OSError, ValueError, KeyError, TypeError, NotionError):
         return None
@@ -165,12 +226,27 @@ def collect(client, environ, friday, now, drive_read, opener=None):
         regions, header = wl.read_regions(client, page)
         report = client.call("GET", f"/pages/{quote(page, safe='')}")
         edited = datetime.fromisoformat(report["last_edited_time"].replace("Z", "+00:00")).astimezone(TZ)
-        hub = bool(client.call("GET", f"/pages/{quote(weekly_archive._clean(environ.get('WEEKLY_REVIEW_PAGE_ID')), safe='')}").get("id"))
+        hub = bool(
+            client.call(
+                "GET", f"/pages/{quote(weekly_archive._clean(environ.get('WEEKLY_REVIEW_PAGE_ID')), safe='')}"
+            ).get("id")
+        )
     except (NotionError, KeyError, ValueError):
         regions, header, edited, hub = {}, [], None, False
     runs = github_runs(environ, friday, opener)
-    parsed = None if runs is None else {k: [(c, datetime.fromisoformat(t.replace("Z", "+00:00"))) for c, t in v if t] for k, v in runs.items()}
-    return [wl.jira(regions, now), wl.calendar(regions, now), wl.mail(regions, now), wl.notion_hygiene(header, hub, edited, now), wl.automation(parsed, now), wl.drive(drive_read)]
+    parsed = (
+        None
+        if runs is None
+        else {k: [(c, datetime.fromisoformat(t.replace("Z", "+00:00"))) for c, t in v if t] for k, v in runs.items()}
+    )
+    return [
+        wl.jira(regions, now),
+        wl.calendar(regions, now),
+        wl.mail(regions, now),
+        wl.notion_hygiene(header, hub, edited, now),
+        wl.automation(parsed, now),
+        wl.drive(drive_read),
+    ]
 
 
 def _unavailable():
@@ -182,7 +258,14 @@ def write_week(client, source, environ, friday, kind, now, live, drive_read, exi
     lanes = collect(client, environ, friday, now, drive_read, opener)
     queue = wl.decisions(lanes)
     health = "Healthy" if all(lane.health == "Healthy" for lane in lanes) else "Degraded"
-    receipt = {"week_ending": friday.isoformat(), "kind": kind, "health": health, "open_decisions": len(queue), "degraded": [lane.name for lane in lanes if lane.health != "Healthy"], "reasons": {lane.name: lane.reason for lane in lanes if lane.health != "Healthy"}}
+    receipt = {
+        "week_ending": friday.isoformat(),
+        "kind": kind,
+        "health": health,
+        "open_decisions": len(queue),
+        "degraded": [lane.name for lane in lanes if lane.health != "Healthy"],
+        "reasons": {lane.name: lane.reason for lane in lanes if lane.health != "Healthy"},
+    }
     if not live:
         receipt["action"] = "would_rebuild" if existing else "would_create"
         return receipt
@@ -195,7 +278,7 @@ def write_week(client, source, environ, friday, kind, now, live, drive_read, exi
         client.call_once("PATCH", f"/pages/{quote(existing, safe='')}", {"properties": props})
         page = existing
         for start in range(0, len(blocks), 90):
-            client.call("PATCH", f"/blocks/{quote(page, safe='')}/children", {"children": blocks[start:start + 90]})
+            client.call("PATCH", f"/blocks/{quote(page, safe='')}/children", {"children": blocks[start : start + 90]})
     else:
         page = client.create(props, blocks)
     read = [b for b in _children(client, page) if b.get("type") != "child_page"]
@@ -209,11 +292,21 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
     if not _on(environ.get("WEEKLY_REVIEW")):
         return {"status": "off"}
     source = weekly_archive._clean(environ.get("NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID"))
-    if not source or not weekly_archive._clean(environ.get("JIRA_CARD_BLOCK_ID")) or not weekly_archive._clean(environ.get("WEEKLY_REVIEW_PAGE_ID")):
+    if (
+        not source
+        or not weekly_archive._clean(environ.get("JIRA_CARD_BLOCK_ID"))
+        or not weekly_archive._clean(environ.get("WEEKLY_REVIEW_PAGE_ID"))
+    ):
         return {"status": "not_configured"}
-    now = (now or datetime.now(TZ))
+    now = now or datetime.now(TZ)
     now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
-    client = client or Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": source}, source_name="NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID")
+    client = client or Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID": source,
+        },
+        source_name="NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID",
+    )
     rows = _rows(client, source)
     have = {}
     for row in rows:
@@ -234,18 +327,40 @@ def run(limit, live, environ=os.environ, client=None, now=None, drive_read=None,
     if prior and now - due_moment(friday) <= REFRESH:
         row = prior[0]
         props = row.get("properties") or {}
-        health = (((props.get("Source Health") or {}).get("select") or (props.get("Source Health") or {}).get("status")) or {}).get("name")
+        health = (
+            ((props.get("Source Health") or {}).get("select") or (props.get("Source Health") or {}).get("status")) or {}
+        ).get("name")
         created = datetime.fromisoformat(row["created_time"].replace("Z", "+00:00")).astimezone(TZ)
         if health == "Degraded" and now - created <= REFRESH:
-            out["weeks"].append(write_week(client, source, environ, friday, "natural", now, live, drive_read, existing=row["id"], newest=True, opener=opener))
+            out["weeks"].append(
+                write_week(
+                    client,
+                    source,
+                    environ,
+                    friday,
+                    "natural",
+                    now,
+                    live,
+                    drive_read,
+                    existing=row["id"],
+                    newest=True,
+                    opener=opener,
+                )
+            )
     for day, kind in todo:
         newest = day >= max(have, default=day)
-        out["weeks"].append(write_week(client, source, environ, day, kind, now, live, drive_read, newest=newest, opener=opener))
+        out["weeks"].append(
+            write_week(client, source, environ, day, kind, now, live, drive_read, newest=newest, opener=opener)
+        )
     made = [w for w in out["weeks"] if w.get("action") in ("created", "rebuilt")]
     if live and made:
         current = [r for r in _rows(client, source, {"property": "Current", "checkbox": {"equals": True}})]
         newest_made = max(made, key=lambda w: w["week_ending"])
         for row in current:
-            if row["id"].replace("-", "") != newest_made["page"].replace("-", "") and (_row_date(row) or date.min) < date.fromisoformat(newest_made["week_ending"]):
-                client.call_once("PATCH", f"/pages/{quote(row['id'], safe='')}", {"properties": {"Current": {"checkbox": False}}})
+            if row["id"].replace("-", "") != newest_made["page"].replace("-", "") and (
+                _row_date(row) or date.min
+            ) < date.fromisoformat(newest_made["week_ending"]):
+                client.call_once(
+                    "PATCH", f"/pages/{quote(row['id'], safe='')}", {"properties": {"Current": {"checkbox": False}}}
+                )
     return out

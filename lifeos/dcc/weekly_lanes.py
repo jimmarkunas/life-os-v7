@@ -2,6 +2,7 @@
 
 A lane never raises: a failed read is a Degraded Lane with a fixed code. Jira, Calendar, Mail and Notion read the V7
 cards on the Daily Report, Automation reads GitHub runs, Drive uses the `drive` reader. Counts and codes only."""
+
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -15,7 +16,15 @@ JIRA_FRESH, CARD_FRESH = timedelta(minutes=30), timedelta(hours=3)  # max card a
 HEADING_TIME = re.compile(r"\((STALE · last accepted )?(\d{1,2})/(\d{1,2}) · (\d{1,2}):(\d{2}) ([AP]M) CT\)")
 RANGE = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M)\s*[–-]\s*(\d{1,2}):(\d{2}) ([AP]M)")
 SOURCE_CARDS = re.compile(r"(\d+) of (\d+) source cards current")
-GROUPS = ("Carry Forward", "Reprioritize", "Close / Drop", "Schedule", "Create Work", "Waiting On", "System Maintenance")
+GROUPS = (
+    "Carry Forward",
+    "Reprioritize",
+    "Close / Drop",
+    "Schedule",
+    "Create Work",
+    "Waiting On",
+    "System Maintenance",
+)
 
 
 @dataclass
@@ -25,7 +34,7 @@ class Lane:
     reason: str = ""
     at: str = ""
     lines: list = field(default_factory=list)
-    items: list = field(default_factory=list)          # [(group, text)]
+    items: list = field(default_factory=list)  # [(group, text)]
 
 
 def _down(lane, reason):
@@ -37,7 +46,9 @@ def _down(lane, reason):
 def kids(client, block_id):
     out, cursor = [], None
     for _ in range(50):
-        path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100" + (f"&start_cursor={quote(cursor, safe='')}" if cursor else "")
+        path = f"/blocks/{quote(block_id, safe='')}/children?page_size=100" + (
+            f"&start_cursor={quote(cursor, safe='')}" if cursor else ""
+        )
         page = client.call("GET", path)
         if not isinstance(page, dict) or not isinstance(page.get("results"), list):
             raise NotionError("WEEKLY_REVIEW_READ")
@@ -54,7 +65,11 @@ CONTAINERS = ("callout", "column_list", "column", "toggle", "table")
 def _tree(client, block_id, depth=0, limit=5):
     out = []
     for block in kids(client, block_id):
-        sub = _tree(client, block["id"], depth + 1, limit) if block.get("has_children") and depth < limit and block.get("type") in CONTAINERS else []
+        sub = (
+            _tree(client, block["id"], depth + 1, limit)
+            if block.get("has_children") and depth < limit and block.get("type") in CONTAINERS
+            else []
+        )
         out.append((block, sub))
     return out
 
@@ -77,14 +92,23 @@ def _regions_in(nodes, names, found):
             text = block_text(block).strip()
             for name in names:
                 if text.startswith(name) and name not in found:
-                    end = next((j for j in range(i + 1, len(nodes)) if nodes[j][0].get("type", "").startswith("heading")), len(nodes))
-                    found[name] = (text, list(_flat(nodes[i + 1:end])))
+                    end = next(
+                        (j for j in range(i + 1, len(nodes)) if nodes[j][0].get("type", "").startswith("heading")),
+                        len(nodes),
+                    )
+                    found[name] = (text, list(_flat(nodes[i + 1 : end])))
         _regions_in(sub, names, found)
 
 
 def read_regions(client, page_id):
     """Returns ({region name: (heading, [blocks under it])}, leading page texts)."""
-    names = (router.JIRA_REGION, router.CALENDAR_REGION, router.MAIL_ALERTS_REGION, router.RECRUITER_OUTREACH_REGION, router.HIRING_REGION)
+    names = (
+        router.JIRA_REGION,
+        router.CALENDAR_REGION,
+        router.MAIL_ALERTS_REGION,
+        router.RECRUITER_OUTREACH_REGION,
+        router.HIRING_REGION,
+    )
     nodes = _tree(client, page_id)
     found = {}
     _regions_in(nodes, names, found)
@@ -138,9 +162,19 @@ def jira(regions, now):
         lane.lines.append(summary)
         counts = {k: int(v) for v, k in re.findall(r"(\d+) (Overdue/Blocked|Today|This Week|Done)", summary)}
         if counts.get("Overdue/Blocked"):
-            lane.items.append(("Reprioritize", f"{counts['Overdue/Blocked']} Jira items are Overdue or Blocked: decide the disposition of each in Jira."))
+            lane.items.append(
+                (
+                    "Reprioritize",
+                    f"{counts['Overdue/Blocked']} Jira items are Overdue or Blocked: decide the disposition of each in Jira.",
+                )
+            )
         if counts.get("Today", 0) > 3:
-            lane.items.append(("Reprioritize", f"{counts['Today']} items are on Today against a capacity of 3: move the extra ones deliberately."))
+            lane.items.append(
+                (
+                    "Reprioritize",
+                    f"{counts['Today']} items are on Today against a capacity of 3: move the extra ones deliberately.",
+                )
+            )
     elif lines is not None:
         _down(lane, "CARD_SUMMARY_MISSING")
     return lane
@@ -162,9 +196,14 @@ def calendar(regions, now):
             days[-1].append((_minutes(*m[:3]), _minutes(*m[3:])))
             spans += 1
     lane.lines.append(f"{spans} timed commitments on the Calendar card.")
-    overlaps = sum(1 for day in days for i, a in enumerate(day) for b in day[i + 1:] if a[0] < b[1] and b[0] < a[1])
+    overlaps = sum(1 for day in days for i, a in enumerate(day) for b in day[i + 1 :] if a[0] < b[1] and b[0] < a[1])
     if overlaps:
-        lane.items.append(("Schedule", f"{overlaps} overlapping calendar commitments within a day on the card: decide whether each overlap is intended."))
+        lane.items.append(
+            (
+                "Schedule",
+                f"{overlaps} overlapping calendar commitments within a day on the card: decide whether each overlap is intended.",
+            )
+        )
     return lane
 
 
@@ -181,9 +220,16 @@ def mail(regions, now):
             _down(lane, "CARD_STALE")
         if name == router.RECRUITER_OUTREACH_REGION:
             rows = max(0, sum(1 for b in got[1] if b.get("type") == "table_row") - 1)
-    lane.lines.append("Recruiter, Mail Alerts and Hiring Pipeline cards read; open recruiter rows are listed on the Daily Report.")
+    lane.lines.append(
+        "Recruiter, Mail Alerts and Hiring Pipeline cards read; open recruiter rows are listed on the Daily Report."
+    )
     if rows:
-        lane.items.append(("Waiting On", f"{rows} Recruiter Outreach rows are open on the Daily Report: answer, pass or mark each one."))
+        lane.items.append(
+            (
+                "Waiting On",
+                f"{rows} Recruiter Outreach rows are open on the Daily Report: answer, pass or mark each one.",
+            )
+        )
     return lane
 
 
@@ -197,7 +243,12 @@ def notion_hygiene(header, hub_readable, report_edited, now):
         lane.lines.append(f"{m[1]} of {m[2]} Daily Report source cards current.")
         if m[1] != m[2]:
             _down(lane, "SOURCE_CARDS_NOT_CURRENT")
-            lane.items.append(("System Maintenance", f"Only {m[1]} of {m[2]} Daily Report source cards were current: find the card that stopped updating."))
+            lane.items.append(
+                (
+                    "System Maintenance",
+                    f"Only {m[1]} of {m[2]} Daily Report source cards were current: find the card that stopped updating.",
+                )
+            )
     if not hub_readable:
         _down(lane, "WEEKLY_HUB_UNREADABLE")
     if report_edited is None or now - report_edited > CARD_FRESH:
@@ -221,7 +272,12 @@ def automation(runs, now):
         if rows[0][0] not in ("success", "skipped", "cancelled", None):
             _down(lane, "LATEST_RUN_FAILED_" + name.split(".")[0].upper())
     if failed:
-        lane.items.append(("System Maintenance", f"{failed} workflow runs failed in the review week: confirm each has a cause and a fix."))
+        lane.items.append(
+            (
+                "System Maintenance",
+                f"{failed} workflow runs failed in the review week: confirm each has a cause and a fix.",
+            )
+        )
     return lane
 
 
@@ -230,11 +286,20 @@ def drive(read):
     lane = Lane("Drive")
     try:
         got = read()
-        lane.lines.append(f"{got['new']} new and {got.get('changed', 0)} changed files in the review week; {got.get('unfiled', got['missing_metadata'])} new files sit unfiled at the top of My Drive; {got.get('duplicates', 0)} duplicate copies.")
+        lane.lines.append(
+            f"{got['new']} new and {got.get('changed', 0)} changed files in the review week; {got.get('unfiled', got['missing_metadata'])} new files sit unfiled at the top of My Drive; {got.get('duplicates', 0)} duplicate copies."
+        )
         if got["missing_metadata"]:
-            lane.items.append(("System Maintenance", f"{got['missing_metadata']} new Drive files are unfiled: decide where they belong."))
+            lane.items.append(
+                (
+                    "System Maintenance",
+                    f"{got['missing_metadata']} new Drive files are unfiled: decide where they belong.",
+                )
+            )
         if got.get("duplicates"):
-            lane.items.append(("Close / Drop", f"{got['duplicates']} Drive files are duplicate copies: decide which to keep."))
+            lane.items.append(
+                ("Close / Drop", f"{got['duplicates']} Drive files are duplicate copies: decide which to keep.")
+            )
         if got.get("complete") is False:
             _down(lane, "DRIVE_LIST_INCOMPLETE")
     except (OSError, ValueError, TimeoutError, KeyError, TypeError) as error:

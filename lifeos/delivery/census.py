@@ -2,6 +2,7 @@
 
 Subjects select candidates; bodies are searched for carrier-shaped numbers, and digit-only shapes (FedEx, DHL) count
 only after the word "tracking". Output is counts only."""
+
 import os
 import re
 from collections import Counter
@@ -14,7 +15,7 @@ QUERY = "{subject:tracking subject:shipped subject:shipment subject:delivery sub
 DEFAULT_LIMIT = 2000
 DAYS = 365
 NEAR = r"(?:tracking|track)[^0-9A-Za-z]{0,40}(?:number|no|#|id)?[^0-9A-Za-z]{0,10}"
-SHAPES = (                                                    # (carrier, regex, needs the word "tracking" just before it)
+SHAPES = (  # (carrier, regex, needs the word "tracking" just before it)
     ("UPS", re.compile(r"\b1Z[0-9A-Z]{16}\b"), False),
     ("AMAZON", re.compile(r"\bTBA[0-9]{12}\b"), False),
     ("USPS", re.compile(r"\b9[2-5][0-9]{18,24}\b"), False),
@@ -22,7 +23,10 @@ SHAPES = (                                                    # (carrier, regex,
     ("DHL", re.compile(NEAR + r"([0-9]{10})\b", re.I), True),
 )
 HREF = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.I)
-PARAM = re.compile(r"(?:tracknum|tracknumbers?|trackingnumbers?|tracking_number|trknbr|tlabels|trackid|trackingid|tracking_id|trackingnum)=([0-9A-Za-z]{10,34})", re.I)
+PARAM = re.compile(
+    r"(?:tracknum|tracknumbers?|trackingnumbers?|tracking_number|trknbr|tlabels|trackid|trackingid|tracking_id|trackingnum)=([0-9A-Za-z]{10,34})",
+    re.I,
+)
 CARRIERS = tuple(name for name, _, _ in SHAPES)
 
 
@@ -50,8 +54,19 @@ def link_numbers(html):
 
 def run(limit, live, environ=os.environ, gmail=None, now=None):
     """Read-only: `live` changes nothing here. Returns counts only."""
-    counts = {"messages": 0, "in_links_only": 0, "with_numbers": 0, "without_numbers": 0, "numbers": 0, "distinct": 0, "repeated": 0, "unreadable": 0, "since_days": DAYS,
-              "by_carrier": {c: 0 for c in CARRIERS}, "written": 0}
+    counts = {
+        "messages": 0,
+        "in_links_only": 0,
+        "with_numbers": 0,
+        "without_numbers": 0,
+        "numbers": 0,
+        "distinct": 0,
+        "repeated": 0,
+        "unreadable": 0,
+        "since_days": DAYS,
+        "by_carrier": {c: 0 for c in CARRIERS},
+        "written": 0,
+    }
     try:
         gmail = gmail or Gmail.from_env()
         ids = gmail.list_ids_complete(f"{QUERY} newer_than:{DAYS}d", limit if limit and limit > 0 else DEFAULT_LIMIT)
