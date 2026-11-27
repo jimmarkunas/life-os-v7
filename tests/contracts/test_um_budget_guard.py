@@ -687,6 +687,14 @@ class Failures(unittest.TestCase):
         self.assertEqual(w.armed_posts, 0)
         self.assertLessEqual(w.ours(), budget.dream_worst() + 1e-9)
 
+    def test_seeding_stops_early_when_the_next_tranche_would_pass_the_conclusion_limit(self):
+        w = World("typical")
+        g, report = run(w, messages=25)
+        self.assertIsNone(report["stopped"], report)
+        self.assertEqual(w.armed_posts, 21)  # two conclusions per message: a tranche of three more would reach 48 of 45
+        self.assertEqual([e["e"] for e in report["events"]].count("seed_limit"), 1)
+        self.assertLessEqual(w.explicit if w.explicit is not None else w.posted * 2, budget.EXPLICIT_MAX)
+
     def test_too_many_conclusions_stops_before_the_dream(self):
         w = World("typical", explicit=60)
         g, report = run(w)

@@ -135,7 +135,7 @@ class Free(unittest.TestCase):
         )
         self.assertNotIn("stopped", ev)
         self.assertLessEqual(w.ours(), 2.0)  # the approved scope
-        self.assertEqual(w.armed_posts, 20)
+        self.assertEqual(w.armed_posts, 21)  # the conclusion limit stops seeding after seven tranches of three
 
     def test_the_personal_baseline_is_read_fresh_not_assumed_to_be_thirty(self):
         w, ev = go(db=Db(before={"count": 31, "newest": "x", "hash": "a"}))
@@ -212,7 +212,7 @@ class Free(unittest.TestCase):
         w = sim.World("typical", explicit=40)
         h = Honcho(w)
         w, ev = go(w, honcho=h, seed="conclusions")
-        self.assertEqual((h.created, w.armed_posts), (20, 0))
+        self.assertEqual((h.created, w.armed_posts), (25, 0))
         self.assertIn("conclusions_created_directly", [s["step"] for s in ev["steps"]])
         self.assertLessEqual(w.ours(), pilot.budget.dream_worst() + 1e-9)
         self.assertNotIn("stopped", ev)
@@ -238,12 +238,13 @@ class Evidence(unittest.TestCase):
         self.assertEqual(ev["residue_after_delete"], {"documents": 0, "dream_changes": 0, "peer_card_changes": 1})
         self.assertEqual((ev["conclusions"], ev["dream_runs"]), (2, 1))
 
-    def test_the_messages_are_twenty_fabricated_ones_two_tenants_and_the_fixture_id_in_each(self):
+    def test_the_messages_are_twenty_five_fabricated_ones_two_tenants_and_the_fixture_id_in_each(self):
         msgs = pilot.corpus_messages(DOC)
-        self.assertEqual(len(msgs), 20)
+        self.assertEqual(len(msgs), 25)
+        self.assertEqual(sum(m["tenant"] == "alpha" for m in msgs), 21)
         self.assertEqual({m["peer_id"] for m in msgs}, {"t-alpha", "t-beta"})
         self.assertTrue(all(m["content"].startswith(m["source_ref"]) and len(m["content"]) <= 300 for m in msgs))
-        self.assertLess(len(msgs) * 2, 45)
+        self.assertTrue(all(m["source_ref"] in m["content"] for m in msgs))
 
 
 class Safe(unittest.TestCase):

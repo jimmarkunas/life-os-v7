@@ -32,9 +32,9 @@ budget, guard, client, um = (
 )
 WORKSPACE = "um-t2-fixture-v1"
 ALPHA_MESSAGES, BETA_MESSAGES = (
-    16,
+    21,
     4,
-)  # 20 messages: two conclusions each at most stays under the automatic dream threshold of 50
+)  # all 25 corpus sources; the guard stops seeding early if two conclusions each would pass the explicit limit
 
 
 def corpus_messages(doc):
