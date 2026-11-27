@@ -130,7 +130,7 @@ def dispatch(relay, name, args, who):
         if args:
             raise BuzzError("invalid_argument")
         return {"ok": True, "contract": CONTRACT, "operation": "capabilities", "data": capabilities(relay, who)}
-    op, comm, a = args.get("operation"), args.get("community"), args.get("arguments", {})
+    op, comm, a = args.get("operation"), args.get("community"), mcp_access.operation_arguments(args)
     if set(args) - set(FROZEN[name][1]) or not isinstance(op, str) or op not in (READ if name == "buzz_read" else PUBLISH):
         raise BuzzError("unknown_operation", operation=op[:64], valid=mcp_access.valid_operations(who, name, READ, ROUTES, PUBLISH, DISABLED)) if isinstance(op, str) and not set(args) - set(FROZEN[name][1]) else BuzzError("invalid_argument")
     if name == "buzz_publish":
@@ -236,7 +236,7 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         from lifeos.platform import mcp_access
         access = access or mcp_access.load()
         client = mcp_access.identify(access, "http", who.get("facts") or {"oauth_client": who.get("client")})
-        arguments = args.get("arguments") if isinstance(args.get("arguments"), dict) else {}
+        arguments = mcp_access.operation_arguments(args) if isinstance(mcp_access.operation_arguments(args), dict) else {}
         community = args.get("community") if isinstance(args.get("community"), str) else arguments.get("community") if isinstance(arguments.get("community"), str) else None
         tenant = access.communities.get(community, "personal") if community is not None else "personal"
         read_only = {**TOOLS, **FROZEN}[name][3] if name in {**TOOLS, **FROZEN} else False
@@ -246,7 +246,7 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
     except Exception as error:                                                                # noqa: BLE001  a fixed code only
         code = getattr(error, "reason", None) or (str(error) if type(error).__name__ == "AccessError" else "governance_unavailable")
         memory_monitor and code == "identity_unknown" and memory_monitor.unknown(MEMORY, "client:" + str(who.get("client")), code)
-        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant", "account_required", "unknown_account") else "governance_unavailable", reason=code)
+        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant", "account_required", "unknown_account") else "governance_unavailable", reason=code, **({"arguments_shape": mcp_access.arguments_shape(args)} if code == "unknown_tenant" and mcp_access else {}))
     if not out.executed:
         return _fail(msg, "access_denied", reason=out.reason)
     return mcp_access.capabilities_for_client(out.result, who, access, tuple(ROUTES), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
