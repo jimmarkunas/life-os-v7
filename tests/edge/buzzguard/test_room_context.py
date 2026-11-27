@@ -13,7 +13,7 @@ class RoomContext(Base):
     """
 
     EID = "ab12" * 16
-    CHAN = "0a1b2c3d-1111-4222-8333-944455566677"
+    CHAN = "00000000-0000-0000-0000-00000000102f"
 
     def test_room_context_reads_with_real_ids_are_allowed(self):
         for tool, ti in (
@@ -129,7 +129,7 @@ class RoomContext(Base):
 class NativeReadTools(Base):
     """Each must now be allowed."""
 
-    CHAN = "0a1b2c3d-1111-4222-8333-944455566677"
+    CHAN = "00000000-0000-0000-0000-00000000102f"
 
     def test_the_exact_calls_from_hook_log_are_allowed(self):
         self.assertEqual(self.dec("mcp__buzz__read", {"channel": self.CHAN, "limit": 30}), "allow")

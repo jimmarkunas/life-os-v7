@@ -11,7 +11,7 @@ from tests.kit.shared import SelfCursorDb
 
 ENV = {"NOTION_INTERVIEW_TOKEN": "t", "HIRING_PIPELINE_PAGE_ID": "p", "IMESSAGE_ALERTS_HOST": "oracle.test"}
 DAY = "2026-10-13"
-SECOND = "9c3d2e1f-0a1b-4c2d-8e3f-1a2b3c4d5e6f"
+SECOND = "00000000-0000-0000-0000-000000001039"
 MEETING = {"id": UUID, "start": "2026-10-13T17:30:00Z", "title": "Becton Dickinson follow-up", "attendees": []}
 OTHER = {"id": SECOND, "start": "2026-10-14T17:30:00Z", "title": "Nothing to do with a round", "attendees": []}
 ROW = granola_match.Round(ROUND, DAY, "Becton Dickinson", "Senior Technical Program Manager", "")

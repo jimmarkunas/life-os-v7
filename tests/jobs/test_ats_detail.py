@@ -123,8 +123,8 @@ class ReaderTests(unittest.TestCase):
 
     def test_shopify_careers_pages_are_read_through_ashby(self):
         single = {"title": "PM", "descriptionHtml": "<p>shop</p>", "publishedAt": "2026-09-26"}
-        url = "https://www.shopify.com/careers/senior-pm_0a1b2c3d-1111-2222-3333-444455556666"
-        job = read(url, {"/shopify/job-postings/0a1b2c3d-1111-2222-3333-444455556666": (200, single)})
+        url = "https://www.shopify.com/careers/senior-pm_00000000-0000-0000-0000-000000001032"
+        job = read(url, {"/shopify/job-postings/00000000-0000-0000-0000-000000001032": (200, single)})
         self.assertEqual((job["html"], job["posted"]), ("<p>shop</p>", "2026-09-26"))
         self.assertIsNone(read("https://www.shopify.com/pricing", {}))
 

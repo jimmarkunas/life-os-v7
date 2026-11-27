@@ -165,8 +165,8 @@ class PropertyTests(unittest.TestCase):
         }
         self.assertEqual(len(one), 1)
         self.assertEqual(
-            k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100/apply"),
-            k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100"),
+            k("https://jobs.lever.co/acme/00000000-0000-0000-0000-000000001036/apply"),
+            k("https://jobs.lever.co/acme/00000000-0000-0000-0000-000000001036"),
         )
         self.assertNotEqual(
             k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R1"),

@@ -29,7 +29,7 @@ PID = "00000000-0000-0000-0000-000000000007"
 WHO = {"login": "jim@example.com", "node": "node-1"}
 NOW = datetime(2026, 10, 20, 1, 40, tzinfo=close_app.TZ)
 DOCX = b"PK\x03\x04" + b"0" * 400
-FILENAME = "Jim_Markunas_Resume_Acme_TPM_V9.docx"
+FILENAME = "Jane_Doe_Resume_Acme_TPM_V9.docx"
 GDRIVE = b'{"client_id": "cid", "client_secret": "csecret", "refresh_token": "rtoken"}'
 
 
@@ -282,16 +282,12 @@ class BuildResume(unittest.TestCase):
         r.build()
         r.reply = {
             "status": "OK",
-            "filename": "Jim_Markunas_Resume_Acme_TPM_V9b.docx",
+            "filename": "Jane_Doe_Resume_Acme_TPM_V9b.docx",
             "docx": base64.b64encode(DOCX).decode(),
         }
         r.build()
-        self.assertEqual(
-            [f["name"] for f in r.page.props["Resume"]["files"]], ["Jim_Markunas_Resume_Acme_TPM_V9b.docx"]
-        )
-        self.assertEqual(
-            [b["file"]["name"] for b in r.page.appended], [FILENAME, "Jim_Markunas_Resume_Acme_TPM_V9b.docx"]
-        )
+        self.assertEqual([f["name"] for f in r.page.props["Resume"]["files"]], ["Jane_Doe_Resume_Acme_TPM_V9b.docx"])
+        self.assertEqual([b["file"]["name"] for b in r.page.appended], [FILENAME, "Jane_Doe_Resume_Acme_TPM_V9b.docx"])
 
     def test_the_route_and_its_modules_are_in_the_release(self):
         for module in ("lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py"):
@@ -772,3 +768,21 @@ class Upload(unittest.TestCase):
             self.assertEqual(str(ctx.exception), code)
         with self.assertRaises(NotionError):
             notion_files.upload("tok", FILENAME, b"", "x")
+
+
+class FileNamePattern(unittest.TestCase):
+    """The worker's resume file name is First_Last_Resume_<detail>.docx (or CV); anything else is off contract."""
+
+    def test_the_contract_names_pass_and_everything_else_fails(self):
+        for good in ("Jane_Doe_Resume_Acme_TPM_V9.docx", "Jane_Doe_CV_Acme.docx"):
+            self.assertTrue(resume_app.FILENAME.match(good), good)
+        for bad in (
+            "Resume_Acme.docx",
+            "Jane_Resume_Acme.docx",
+            "../Jane_Doe_Resume_Acme.docx",
+            "Jane_Doe_Notes_Acme.docx",
+            "Jane_Doe_Resume_Acme.exe",
+            "Jane_Doe_Resume_Acme.docx.exe",
+            "Jane Doe_Resume_Acme.docx",
+        ):
+            self.assertFalse(resume_app.FILENAME.match(bad), bad)

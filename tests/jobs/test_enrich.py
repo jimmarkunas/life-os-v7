@@ -243,7 +243,7 @@ class DiceEasyApply(unittest.TestCase):
         html = job_html(enrich._now().date().isoformat()) + "<button>Easy Apply</button>"
         with mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
             got = enrich.read_page(
-                "https://www.dice.com/job-detail/1dde497d-8758-4eed-8aac-816bed294b63", "Senior Data Engineer"
+                "https://www.dice.com/job-detail/00000000-0000-0000-0000-000000001033", "Senior Data Engineer"
             )
             plain = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer")
         self.assertEqual((got["outcome"], got.get("apply_kind")), ("ready", "easy_apply"))
@@ -478,7 +478,7 @@ class EmployerFromThePageTests(unittest.TestCase):
 
 
 class FirstPartyRelinkTests(unittest.TestCase):
-    URL = "https://www.revolut.com/en-GB/careers/position/chief-risk-officer-06107fff-99e7-4841-b66c-e101da5f1031/"
+    URL = "https://www.revolut.com/en-GB/careers/position/chief-risk-officer-00000000-0000-0000-0000-000000001034/"
 
     class Cur:
         def __init__(self, rows):
@@ -901,9 +901,9 @@ class BoardApiTests(unittest.TestCase):
             ],
         }
         with mock.patch.object(enrich, "fetch", return_value=Page(200, json.dumps(data))):
-            api = enrich._api_job("https://jobs.lever.co/acme/0f3a1b2c-1111-2222-3333-444455556666")
+            api = enrich._api_job("https://jobs.lever.co/acme/00000000-0000-0000-0000-000000001035")
             got = enrich.read_page(
-                "https://jobs.lever.co/acme/0f3a1b2c-1111-2222-3333-444455556666", "Senior Data Engineer"
+                "https://jobs.lever.co/acme/00000000-0000-0000-0000-000000001035", "Senior Data Engineer"
             )
         self.assertNotIn("plain", api)
         for part in (
@@ -971,7 +971,7 @@ class BoardApiTests(unittest.TestCase):
             "https://boards.greenhouse.io/acme/jobs/7654321",
         )
         self.assertIsNone(enrich.board_job_url(("greenhouse", "acme"), "https://acme.example/careers/data-engineer"))
-        uid = "0f3a1b2c-1111-2222-3333-444455556666"
+        uid = "00000000-0000-0000-0000-000000001035"
         self.assertEqual(
             enrich.board_job_url(("lever", "acme"), f"https://acme.example/jobs/{uid}/apply"),
             f"https://jobs.lever.co/acme/{uid}",

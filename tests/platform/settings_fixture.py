@@ -3,7 +3,7 @@
 from lifeos.platform import runtime_config as rc
 from lifeos.platform import settings
 
-SOURCE = "5a1c0e57-3b2d-4f6a-9c1d-0e2f3a4b5c6d"
+SOURCE = "00000000-0000-0000-0000-000000001002"
 SECRET = "synthetic-sentinel-value-7731"
 ENV = {rc.SOURCE_NAME: SOURCE}
 
