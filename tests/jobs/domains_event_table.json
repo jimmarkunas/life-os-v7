@@ -454,6 +454,12 @@
  "dispatch: jira=rollover + live": [
   "jira"
  ],
+ "dispatch: jira=setter-proof": [
+  "jira"
+ ],
+ "dispatch: jira=setter-proof + live": [
+  "jira"
+ ],
  "dispatch: jira=snapshot": [
   "jira"
  ],

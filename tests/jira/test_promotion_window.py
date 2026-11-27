@@ -25,7 +25,7 @@ class Cursor:
             self.row = self.rows.get(params[0])
         elif sql.startswith("INSERT INTO v7_jira_rollover"):
             self.rows[params[0]] = (params[1], params[2])
-        elif sql.startswith("DELETE FROM v7_jira_rollover WHERE k LIKE 'pr%'"):
+        elif sql == "DELETE FROM v7_jira_rollover WHERE k LIKE %s" and params == ("pr%",):
             for key in [k for k in self.rows if k.startswith("pr")]:
                 del self.rows[key]
         elif not sql.startswith("CREATE TABLE"):
