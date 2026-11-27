@@ -106,6 +106,9 @@ class Jira:
             inside = jql.split("parent in (", 1)[1].split(")", 1)[0]
             parents = set(inside.split(","))
             rows = [item for item in self.children if item["fields"]["parent"]["key"] in parents]
+        elif jql.startswith("key in ("):
+            wanted = set(jql.split("key in (", 1)[1].split(")", 1)[0].split(","))
+            rows = [item for item in self.children if item["key"] in wanted]
         elif 'issuetype = Epic AND labels = "mej-project"' in jql:
             rows = self.projects
         elif "project = MEJ AND issuetype != Epic AND statusCategory != Done" in jql:
@@ -185,12 +188,10 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
         with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED"):
             self.v2(Jira(), {"schema_version": 1, "quarters": {}})
 
-    def test_membership_cannot_follow_a_changed_project_parent(self):
-        fake = Jira()
-        bad = copy.deepcopy(FROZEN)
-        bad["quarters"]["2026-q4"]["tasks"]["MEJ-501"]["parent"] = "MEJ-352"
-        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT"):
-            self.v2(fake, bad)
+    def test_membership_does_not_follow_the_parent_the_list_recorded_or_the_one_jira_shows(self):
+        recorded = copy.deepcopy(FROZEN)
+        recorded["quarters"]["2026-q4"]["tasks"]["MEJ-501"]["parent"] = "MEJ-352"
+        self.assertEqual(self.v2(Jira(), recorded), self.v2(Jira()))
 
     def test_missing_frozen_task_fails_instead_of_silently_reducing_denominator(self):
         bad = copy.deepcopy(FROZEN)
@@ -225,8 +226,7 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
                 },
             }
         ]
-        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT"):
-            self.v2(Jira(projects))
+        self.assertEqual(self.v2(Jira(projects)), self.v2(Jira()))  # project Epic links never assign or move a member
 
     def test_jfm_gets_the_same_v2_count_from_its_own_frozen_list(self):
         """'918 uniform new' (comment 14228): two frozen lists, one per board, in one quarter row."""
