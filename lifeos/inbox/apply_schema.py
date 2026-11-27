@@ -1,7 +1,9 @@
-"""LIFE-712: the one-time apply of the four Action Inbox tables (stage `inbox-schema-apply`), after Jim approved the exact DDL (Nov 15 2026).
+"""One-time apply of the four Action Inbox tables (stage `inbox-schema-apply`).
 
-It refuses unless `schema.check` says the server is ready and none of the four tables exists, runs the planned CREATE TABLE IF NOT EXISTS statements and nothing else, then reads the four tables back:
-present, the expected number of columns each, every table empty. Without the confirmation word it only checks. Counts and flags only."""
+Refuses unless `schema.check` says ready and none of the four tables exists; runs the planned CREATE TABLE IF NOT
+EXISTS statements and nothing else, then reads back column counts and emptiness. Without the confirmation word it only
+checks.
+"""
 import os
 
 from lifeos.inbox import schema
@@ -13,8 +15,7 @@ class SchemaError(RuntimeError):
 
 
 def apply(cursor):
-    """Create the four tables (CREATE TABLE IF NOT EXISTS, nothing else) and read them back: all four present, the expected number of columns each, every table empty. Refuses unless `check` says
-    ready and none of the four exists yet. -> counts and flags only."""
+    """Create the four tables and read them back. Refuses unless `check` says ready and none exists."""
     before = schema.check(cursor)
     if not before["ready"]:
         raise SchemaError("INBOX_SCHEMA_NOT_READY")
@@ -24,7 +25,7 @@ def apply(cursor):
         cursor.execute(statement)
     after = schema.check(cursor)
     columns, rows = {}, {}
-    for table in schema.TABLES:                                         # fixed names from this module, never from input
+    for table in schema.TABLES:
         cursor.execute(f"SHOW COLUMNS FROM {table}")
         columns[table] = len(cursor.fetchall())
         cursor.execute(f"SELECT COUNT(*) FROM {table}")
@@ -36,7 +37,6 @@ def apply(cursor):
 
 
 def apply_stage(limit, live):
-    """The stage `inbox-schema-apply`: it applies only when SCHEMA_CONFIRM is exactly APPLY (the manual diag workflow's confirm input); otherwise it only checks."""
     with db.connect() as connection, connection.cursor() as cursor:
         if os.environ.get("SCHEMA_CONFIRM") != "APPLY":
             return {"dry_run": True, "check": schema.check(cursor)}

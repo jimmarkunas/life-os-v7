@@ -1,4 +1,4 @@
-"""LIFE-876: the Agent Inbox writer moved to lifeos.platform.agent_inbox (the governed MCP shares it); this module name keeps working."""
+"""Compatibility alias: the Agent Inbox writer lives in lifeos.platform.agent_inbox (shared with the governed MCP)."""
 import sys
 
 from lifeos.platform import agent_inbox
