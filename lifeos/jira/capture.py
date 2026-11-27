@@ -73,7 +73,7 @@ class _Pinned(http.client.HTTPSConnection):
     address = ""
 
     def connect(self):
-        sock = socket.create_connection((self.address, self.port or 443), self.timeout)
+        sock = socket.create_connection((self.address, self.port or 443), timeout=30)
         self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=self.host)
 
 
