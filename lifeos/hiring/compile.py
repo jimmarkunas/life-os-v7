@@ -11,10 +11,12 @@ Inputs (already read and checked complete by the source adapter):
 Output: {"rows": [...] | None, "reasons": [fixed codes], "unsupported": n, "unmatched_events": n}. rows None means
 UNAVAILABLE; any reason means DEGRADED. A row stores structure, never display text, so a past event can never keep an
 "upcoming" label."""
+
 from datetime import datetime
 
 from lifeos.platform import names
 from . import models as M
+
 
 def event_kind(title):
     words = " " + names.norm(title) + " "
@@ -67,8 +69,21 @@ def _opportunities(applied, parents, reasons, out):
                 opp["decision"] = opp["decision"] if opp["decision"] in M.CLOSED_DECISIONS else row.get("decision")
                 break
         else:
-            opps.append({"company": row["company"], "role": row["role"], "applied_on": row["applied_on"], "ledger": True, "ledger_id": row.get("id"), "decision": row.get("decision"), "parent": None, "parent_state": "none", "rounds": 0, "events": [],
-                         "hand": tuple(row.get("hand") or ())})
+            opps.append(
+                {
+                    "company": row["company"],
+                    "role": row["role"],
+                    "applied_on": row["applied_on"],
+                    "ledger": True,
+                    "ledger_id": row.get("id"),
+                    "decision": row.get("decision"),
+                    "parent": None,
+                    "parent_state": "none",
+                    "rounds": 0,
+                    "events": [],
+                    "hand": tuple(row.get("hand") or ()),
+                }
+            )
     for opp in opps:
         if opp.get("dup") and opp["decision"] in M.CLOSED_DECISIONS:
             opp["decision"] = None
@@ -77,8 +92,22 @@ def _opportunities(applied, parents, reasons, out):
         near = [o for o in opps if M.same(o["company"], o["role"], parent["company"], parent["role"])]
         if not near:
             if parent["company"] and parent["role"]:
-                opps.append({"company": parent["company"], "role": parent["role"], "applied_on": None, "ledger": False, "parent": parent["id"], "parent_state": "one", "rounds": parent["rounds"], "events": [], "lead": parent.get("lead", False), "replied": parent.get("replied", ""),
-                             "hand": (), "page_holds": tuple(parent.get("holds") or ())})
+                opps.append(
+                    {
+                        "company": parent["company"],
+                        "role": parent["role"],
+                        "applied_on": None,
+                        "ledger": False,
+                        "parent": parent["id"],
+                        "parent_state": "one",
+                        "rounds": parent["rounds"],
+                        "events": [],
+                        "lead": parent.get("lead", False),
+                        "replied": parent.get("replied", ""),
+                        "hand": (),
+                        "page_holds": tuple(parent.get("holds") or ()),
+                    }
+                )
             else:
                 out["untitled_pages"] += 1
         elif len(near) > 1 or near[0]["parent_state"] != "none":
@@ -86,7 +115,12 @@ def _opportunities(applied, parents, reasons, out):
                 o["parent"], o["parent_state"], o["page_holds"] = None, "ambiguous", ()
             reasons.add("IDENTITY_AMBIGUOUS")
         else:
-            near[0]["parent"], near[0]["parent_state"], near[0]["rounds"], near[0]["lead"] = parent["id"], "one", parent["rounds"], parent.get("lead", False)
+            near[0]["parent"], near[0]["parent_state"], near[0]["rounds"], near[0]["lead"] = (
+                parent["id"],
+                "one",
+                parent["rounds"],
+                parent.get("lead", False),
+            )
             near[0]["page_holds"] = tuple(parent.get("holds") or ())
     return opps
 
@@ -104,8 +138,12 @@ def _hold(row, opp, hit, before):
         return
     set_at = M.moment(hold["at"])
     cleared = before.get("hold_cleared") if (before.get("hold_cleared") or {}).get("op") == hold["op"] else None
-    newer = sorted((M.moment(when), by) for by, when in [("Calendar", e.get("updated")) for e in opp["events"]] + [("mail", (hit or {}).get("received")), ("mail", row.get("contact"))]
-                   if when and M.moment(when) > set_at)
+    newer = sorted(
+        (M.moment(when), by)
+        for by, when in [("Calendar", e.get("updated")) for e in opp["events"]]
+        + [("mail", (hit or {}).get("received")), ("mail", row.get("contact"))]
+        if when and M.moment(when) > set_at
+    )
     if not cleared and newer:
         cleared = {"op": hold["op"], "state": hold["state"], "by": newer[0][1], "on": newer[0][0].isoformat()}
     if cleared:
@@ -122,7 +160,9 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
         return {**out, "rows": rows, "reasons": sorted(reasons)}
     prior_rows = {r["key"]: r for r in (prior or {}).get("rows", [])}
     opps = _opportunities(applied, [p for p in parents if not p.get("retired")], reasons, out)
-    for page in (p for p in parents if p.get("retired")):         # a Retired page closes the pursuit unless an Active page for the same role says it is live again
+    for page in (
+        p for p in parents if p.get("retired")
+    ):  # a Retired page closes the pursuit unless an Active page for the same role says it is live again
         for opp in opps:
             if opp["parent_state"] == "none" and M.same(opp["company"], opp["role"], page["company"], page["role"]):
                 opp["closed"] = True
@@ -133,7 +173,13 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
                 continue
             at, why = match_event(event["title"], opps)
             if at is not None:
-                opps[at]["events"].append({"kind": kind, "start": event["start"], **({"updated": event["updated"]} if event.get("updated") else {})})
+                opps[at]["events"].append(
+                    {
+                        "kind": kind,
+                        "start": event["start"],
+                        **({"updated": event["updated"]} if event.get("updated") else {}),
+                    }
+                )
             elif why == "ambiguous":
                 reasons.add("CALENDAR_AMBIGUOUS")
             else:
@@ -147,16 +193,35 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
             continue
         key = _key(opp["company"], opp["role"])
         before = prior_rows.get(key) or {}
-        row = {"key": key, "company": opp["company"], "role": opp["role"], "applied_on": opp["applied_on"], "parent": opp["parent"], "parent_state": opp["parent_state"],
-               "ledger_id": opp.get("ledger_id"), "stage": None, "event_kind": None, "event_start": None, "rounds": opp["rounds"], "carried": False}
+        row = {
+            "key": key,
+            "company": opp["company"],
+            "role": opp["role"],
+            "applied_on": opp["applied_on"],
+            "parent": opp["parent"],
+            "parent_state": opp["parent_state"],
+            "ledger_id": opp.get("ledger_id"),
+            "stage": None,
+            "event_kind": None,
+            "event_start": None,
+            "rounds": opp["rounds"],
+            "carried": False,
+        }
         event = _pick(opp["events"], now)
         if event:
-            row.update(stage=_stage(event["kind"], event["start"], now), event_kind=event["kind"], event_start=event["start"])
+            row.update(
+                stage=_stage(event["kind"], event["start"], now), event_kind=event["kind"], event_start=event["start"]
+            )
         elif before.get("event_start"):
             # No current event: the prior event stays as history. A vanished future one (or unreadable Calendar)
             # is kept as "last accepted" and the result is DEGRADED. The stage never rolls back.
             future = datetime.fromisoformat(before["event_start"]) > now
-            row.update(stage=_stage(before["event_kind"], before["event_start"], now), event_kind=before["event_kind"], event_start=before["event_start"], carried=future or not ok["calendar"])
+            row.update(
+                stage=_stage(before["event_kind"], before["event_start"], now),
+                event_kind=before["event_kind"],
+                event_start=before["event_start"],
+                carried=future or not ok["calendar"],
+            )
             if future and ok["calendar"]:
                 reasons.add("EVENT_NOT_ON_CALENDAR")
         elif opp["rounds"]:
@@ -168,10 +233,17 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
             if opp.get("replied"):
                 row["replied"] = opp["replied"]
         hit = (outcomes or {}).get(key)
-        if hit and row["stage"] is not None:                      # outcome mail newer than the row's last evidence: a line to confirm, never a stage change
+        if (
+            hit and row["stage"] is not None
+        ):  # outcome mail newer than the row's last evidence: a line to confirm, never a stage change
             last = row["event_start"] or row["applied_on"]
             if last is None or datetime.fromisoformat(hit["received"]) > M.moment(last):
-                row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company"), "exact": hit.get("exact") is True}
+                row["outcome"] = {
+                    "kind": hit["kind"],
+                    "received": hit["received"],
+                    "match": hit.get("match", "company"),
+                    "exact": hit.get("exact") is True,
+                }
         if (contacts or {}).get(key):
             row["contact"] = contacts[key]
         _hold(row, opp, hit, before)
@@ -179,7 +251,9 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
             out["unsupported"] += 1
             continue
         rows.append(row)
-    rows.sort(key=lambda r: (-M.RANK.get(r["stage"], 0), r["event_start"] or "9", r["company"].lower(), r["role"].lower()))
+    rows.sort(
+        key=lambda r: (-M.RANK.get(r["stage"], 0), r["event_start"] or "9", r["company"].lower(), r["role"].lower())
+    )
     if not rows and reasons:
         rows = [dict(r, carried=True) for r in prior["rows"]] if prior and prior.get("rows") else None
     return {**out, "rows": rows, "reasons": sorted(reasons)}
