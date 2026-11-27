@@ -3,6 +3,7 @@
 OFF BY DEFAULT; legacy (v1) figures stay official. With V2_QUARTER_SHADOW exactly "on" the goals table gains New
 count (preview) and Status columns: the v2 count when an approved frozen quarter list exists, else a dash and a red
 reason. A v2 problem never fails the goals stage."""
+
 import re
 import sys
 
@@ -42,7 +43,12 @@ def cells(found, view):
             new, status = DASH, ((NEEDS if view["code"] == NOT_APPROVED else MISSING), render.RED)
         else:
             new, status = render.goal_cell(*view["counts"][key]), ("OK", render.GREEN)
-        out[lane] = [render.bar(done, total), [(render.goal_cell(done, total), None, False, None)], [(new, None, False, None)], [(status[0], None, False, status[1])]]
+        out[lane] = [
+            render.bar(done, total),
+            [(render.goal_cell(done, total), None, False, None)],
+            [(new, None, False, None)],
+            [(status[0], None, False, status[1])],
+        ]
     return out
 
 
@@ -50,8 +56,16 @@ def plain(table):
     return [" · ".join("".join(piece[0] for piece in cell) for cell in row) for row in table.values()]
 
 
-SYNTHETIC = {"Jim": ([("Career", 5, 26, "JFM-9"), ("LIFE OS", 6, 9, "JFM-102")], {"applies": True, "counts": None, "code": NOT_APPROVED}),
-             "Matt": ([("Career", 12, 29, "MEJ-1"), ("Creative", 4, 23, "MEJ-2")], {"applies": True, "counts": None, "code": NOT_APPROVED})}
+SYNTHETIC = {
+    "Jim": (
+        [("Career", 5, 26, "JFM-9"), ("LIFE OS", 6, 9, "JFM-102")],
+        {"applies": True, "counts": None, "code": NOT_APPROVED},
+    ),
+    "Matt": (
+        [("Career", 12, 29, "MEJ-1"), ("Creative", 4, 23, "MEJ-2")],
+        {"applies": True, "counts": None, "code": NOT_APPROVED},
+    ),
+}
 
 
 def main(argv):

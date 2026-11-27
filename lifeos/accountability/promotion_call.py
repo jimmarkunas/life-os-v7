@@ -20,6 +20,9 @@ def promotion(environ, now, live, alert, client_factory=None, readers=None):
 
     def send(item):
         alert(item["subject"], item["details"], PROMOTION_ALERT_KEY, True)
+
     client = (client_factory or common.notion_writer)(environ)
     setter = official_setter.official_setter(client, environ.get("V7_RUNTIME_CONFIG_SOURCE_ID", ""), live)
-    return check.run_if_due(now, {"V2_PROMOTION": True, "V2_OFFICIAL": state["V2_OFFICIAL"]}, readers or missing, setter, send)
+    return check.run_if_due(
+        now, {"V2_PROMOTION": True, "V2_OFFICIAL": state["V2_OFFICIAL"]}, readers or missing, setter, send
+    )

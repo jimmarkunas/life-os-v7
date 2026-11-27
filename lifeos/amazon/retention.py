@@ -2,6 +2,7 @@
 
 Only the three allowlisted senders, mail under the Amazon label, and mail whose message id is on its order row;
 anything else is counted and left alone. Dry run unless live."""
+
 import hashlib
 import os
 from datetime import datetime, timezone
@@ -27,8 +28,19 @@ def parser_version():
 
 def _digest(message):
     found = events.extract_all(message)
-    return {"received_at": message["received_at"], "shape": events.ambiguity_shape(message) if found[0].get("reason") == "ORDER_ID_AMBIGUOUS" else "",
-            "events": [{"order_id": e.get("order_id"), "reason": e.get("reason"), "status": e.get("status"), "has_total": e.get("grand_total") is not None} for e in found]}
+    return {
+        "received_at": message["received_at"],
+        "shape": events.ambiguity_shape(message) if found[0].get("reason") == "ORDER_ID_AMBIGUOUS" else "",
+        "events": [
+            {
+                "order_id": e.get("order_id"),
+                "reason": e.get("reason"),
+                "status": e.get("status"),
+                "has_total": e.get("grand_total") is not None,
+            }
+            for e in found
+        ],
+    }
 
 
 def _status(notion, source_id, message, age_days=0):
@@ -64,16 +76,33 @@ def _judge(notion, source_id, message_id, digest, age_days=0):
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, seen=None):
     """`seen`: the checkpoint, (load() -> {message id: digest}, save(digests) -> bool); default is the private store
     when this job has credentials, else none."""
-    counts = {"candidates": 0, "recorded": 0, "kept_unrecorded": 0, "no_order_id": 0, "no_row": 0, "not_listed": 0, "oldest_days": 0, "trashed": 0, "failed": 0}
+    counts = {
+        "candidates": 0,
+        "recorded": 0,
+        "kept_unrecorded": 0,
+        "no_order_id": 0,
+        "no_row": 0,
+        "not_listed": 0,
+        "oldest_days": 0,
+        "trashed": 0,
+        "failed": 0,
+    }
     now = now or datetime.now(timezone.utc)
     if seen is None and (environ.get("LIFEOS_ACQ_DB_NAME") or "").strip():
         parser, stamp = parser_version(), now.replace(tzinfo=None)
-        seen = (lambda: mail_checkpoint.load(READER, parser, stamp), lambda digests: mail_checkpoint.save(READER, parser, stamp, digests))
+        seen = (
+            lambda: mail_checkpoint.load(READER, parser, stamp),
+            lambda digests: mail_checkpoint.save(READER, parser, stamp, digests),
+        )
     reused = read = 0
     known, kept = (seen[0]() if seen else {}), {}
     try:
         gmail = gmail or Gmail.from_env()
-        source_id, notion = _config(environ) if notion is None else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
+        source_id, notion = (
+            _config(environ)
+            if notion is None
+            else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
+        )
         if not source_id:
             raise AmazonError("AMAZON_CONFIG_MISSING")
         _schema(notion, source_id)

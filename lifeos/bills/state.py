@@ -1,9 +1,20 @@
 """Pure due-state buckets over a saved Bill Tracker snapshot."""
+
 from datetime import date, timedelta
 
 # The supported recurring cycles, exactly; anything else (Lifetime, One Time, "4 Years", none) is not processed
 # automatically and is never "stale due".
-SUPPORTED_CYCLES = {"Weekly", "Bi-Weekly", "Monthly", "45 Days", "60 Days", "90 Days", "Quarterly", "180 Days", "Yearly"}
+SUPPORTED_CYCLES = {
+    "Weekly",
+    "Bi-Weekly",
+    "Monthly",
+    "45 Days",
+    "60 Days",
+    "90 Days",
+    "Quarterly",
+    "180 Days",
+    "Yearly",
+}
 
 
 def _day(value):
@@ -20,11 +31,14 @@ def _recurring(row):
 
 
 def classify(rows, today):
-    active_unpaid = [row for row in rows if row.get("Status") == "Active" and row.get("Paid") is False and _recurring(row)]
+    active_unpaid = [
+        row for row in rows if row.get("Status") == "Active" and row.get("Paid") is False and _recurring(row)
+    ]
     stale_due = [row for row in active_unpaid if (due := _day(row.get("Due Date"))) is not None and due < today]
     due_today = [row for row in active_unpaid if _day(row.get("Next Due")) == today]
     upper = today + timedelta(days=7)
-    due_next_7_days = [row for row in active_unpaid
-                       if (due := _day(row.get("Next Due"))) is not None and today < due <= upper]
+    due_next_7_days = [
+        row for row in active_unpaid if (due := _day(row.get("Next Due"))) is not None and today < due <= upper
+    ]
     paid = [row for row in rows if row.get("Paid") is True]
     return {"stale_due": stale_due, "due_today": due_today, "due_next_7_days": due_next_7_days, "paid": paid}

@@ -1,5 +1,5 @@
-"""Stage `accountability-artifacts`: verified Google Docs and Sheets from the artifact index, as a directory in each person's Knowledge center callout.
-"""
+"""Stage `accountability-artifacts`: verified Google Docs and Sheets from the artifact index, as a directory in each person's Knowledge center callout."""
+
 from lifeos.accountability import common, index, read, region, render
 
 

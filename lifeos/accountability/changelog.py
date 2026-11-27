@@ -1,5 +1,5 @@
-"""Stage `accountability-changelog`: appends one dated Canon / Change Log line when a quarter begins; earlier lines are never edited.
-"""
+"""Stage `accountability-changelog`: appends one dated Canon / Change Log line when a quarter begins; earlier lines are never edited."""
+
 import os
 from datetime import datetime
 
@@ -22,5 +22,10 @@ def run(limit, live, environ=None, notion=None, now=None):
     stamp = render.stamp(now)
     out["summary_page"] = out.pop("summary_page", found["summary"])
     last = out.get("last") or (have[-1] if have else "")
-    out["summary_written"] = region.write_summary(client, out.pop("summary_page"), render.summary("Canon / Change Log", stamp, [f"{out['lines']} lines, oldest first. Latest: {last}"]), live)
+    out["summary_written"] = region.write_summary(
+        client,
+        out.pop("summary_page"),
+        render.summary("Canon / Change Log", stamp, [f"{out['lines']} lines, oldest first. Latest: {last}"]),
+        live,
+    )
     return {"shared": out}

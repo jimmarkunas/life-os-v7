@@ -1,6 +1,7 @@
 """Shared run of one V3 accountability stage: for Jim then Matt, read Jira, write the callout and summary page, read both back.
 
 A person whose Jira read fails gets a DEGRADED stamp (body kept); the other is still written, then the stage fails."""
+
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -15,7 +16,12 @@ CHI = ZoneInfo("America/Chicago")
 
 
 def notion_writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def run_region(kind, build, environ=None, jira=None, notion=None, now=None, live=False):
@@ -31,7 +37,10 @@ def run_region(kind, build, environ=None, jira=None, notion=None, now=None, live
         try:
             counts[person.lower()] = build(client, block_id, person, project, jira, now, live, site, notion)
         except JiraError:
-            counts[person.lower()] = {"degraded": True, "stamp_written": region.degrade(client, block_id, lambda old: degraded_stamp(old, now), live)}
+            counts[person.lower()] = {
+                "degraded": True,
+                "stamp_written": region.degrade(client, block_id, lambda old: degraded_stamp(old, now), live),
+            }
             degraded.append(person.lower())
     if degraded:
         raise region.AccountabilityError("ACCOUNTABILITY_DEGRADED:" + ",".join(degraded))
