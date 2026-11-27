@@ -6,7 +6,10 @@ that project is refused; update touches only content, description and due text; 
 unproved fails; no delete or project call exists. Errors are fixed lower-case codes, never a token or body."""
 
 import json
+import os
 import re
+import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -64,6 +67,57 @@ OPS = {
     ),
 }
 READS = ("todoist_tasks", "todoist_projects", "todoist_comments")
+
+
+TOKEN_TTL_S = (
+    300  # the access tokens last an hour and the refresher renews them at 30 minutes; a few minutes of cache is safe
+)
+
+
+def wire(environ, state, run=subprocess.run):
+    """The MCP's configuration from its environment. The Bitwarden machine-account token (credential `bwsalerts`, the one the
+    Oracle ticker already holds) is only used to read the two ALERTS access items by id; writes stay off unless
+    TODOIST_WRITES is exactly `on`, and create or move go only to the ids in TODOIST_ALLOWED_PROJECTS (comma separated)."""
+    token = (environ.get("BWSALERTS") or "").strip()
+    state["bws"] = {"token": token, "environ": environ, "run": run} if token else None
+    state["writes_enabled"] = (environ.get("TODOIST_WRITES") or "").strip() == "on"
+    state["allowed_projects"] = {
+        p.strip() for p in (environ.get("TODOIST_ALLOWED_PROJECTS") or "").split(",") if p.strip()
+    }
+    state["cache"] = {}
+    return state
+
+
+def _fresh_tokens(state):
+    """-> (read access token, write access token) from the ALERTS items, cached for TOKEN_TTL_S; `unset` or unreadable is
+    not_configured, never a guess. Tests pass read_token and write_token directly instead."""
+    if state.get("read_token") or state.get("write_token"):
+        return state.get("read_token"), state.get("write_token")
+    bws = state.get("bws")
+    if not bws:
+        raise GovernedError("not_configured")
+    cache, now = state.setdefault("cache", {}), time.time()
+    if cache.get("at", 0) + TOKEN_TTL_S > now:
+        return cache["read"], cache["write"]
+    from lifeos.platform import alert_store, todoist_refresh  # noqa: PLC0415 - installed beside this module
+
+    got = {}
+    for app in ("read", "write"):
+        try:
+            doc = json.loads(
+                alert_store._bws(
+                    bws["token"],
+                    ["secret", "get", todoist_refresh.APPS[app]["access"], "-o", "json"],
+                    bws["run"],
+                    bws["environ"],
+                )
+            )
+            value = doc.get("value") if doc.get("id") == todoist_refresh.APPS[app]["access"] else None
+        except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
+            value = None
+        got[app] = value if isinstance(value, str) and value and value != todoist_refresh.UNSET else None
+    cache.update({"at": now, "read": got["read"], "write": got["write"]})
+    return got["read"], got["write"]
 
 
 def _id(value):
@@ -137,7 +191,7 @@ def run(op, args, state):
         raise GovernedError("unknown_operation")
     given, opener = dict(args), state.get("opener") or urllib.request.urlopen
     if op in READS:
-        token = state.get("read_token")
+        token = _fresh_tokens(state)[0]
         if not token:
             raise GovernedError("not_configured")
         if op == "todoist_projects":
@@ -153,7 +207,7 @@ def run(op, args, state):
         return {"tasks": rows[:limit], "truncated": len(rows) > limit}
     if not state.get("writes_enabled"):
         raise GovernedError("writes_disabled")
-    token = state.get("write_token")
+    token = _fresh_tokens(state)[1]
     if not token:
         raise GovernedError("not_configured")
     if op == "todoist_task_create":

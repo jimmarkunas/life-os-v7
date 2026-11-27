@@ -74,6 +74,7 @@ READ = {
 }
 LOOKUP = {"fetchers": {}, "rows": None}
 GOOGLE = {"creds": None, "opener": None}
+TODOIST = {"read_token": None, "write_token": None, "writes_enabled": False, "allowed_projects": set(), "bws": None, "cache": {}}  # no operation answers until a client holds a grant; writes stay off until TODOIST_WRITES=on
 # shared memory on Honcho, one gate tool per operation; memory_not_configured until HONCHO_MEMORY_TOKEN is set
 MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask")
 # ORCH: gateway None = the fixed Concord socket; INBOX: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant)
@@ -90,12 +91,12 @@ def _lift(module, op, state):
 
 
 try:
-    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup
-    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX), (orchestrator, ORCH)):
+    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup, todoist_governed
+    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX), (orchestrator, ORCH), (todoist_governed, TODOIST)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
         ROUTES.update({op: _module.route for op in _module.OPS})
 except ImportError:
-    call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = None
+    call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = todoist_governed = None
 try:
     from lifeos.platform import memory_honcho, memory_monitor
     memory_honcho.register(READ, _lift, MEMORY)
@@ -437,6 +438,7 @@ def main():
         orchestrator and orchestrator.wire(credentials(os.environ), ORCH); inbox_send.wire(credentials(os.environ), INBOX)
         memory_monitor and memory_monitor.wire(MEMORY, inbox_send, INBOX)  # event-driven memory alerts; no timer
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))
+        todoist_governed and todoist_governed.wire(credentials(os.environ), TODOIST)
         source_lookup.wire(credentials(os.environ), LOOKUP)
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
 
