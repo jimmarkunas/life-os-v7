@@ -1,9 +1,6 @@
-"""Counts-only report of why Scale-Up jobs are EXCLUDED_FIT (LIFE-121): reads v7_jobs and v7_job_fit, writes nothing.
-
-Splits the one status by stored reason, by Fit band and by source. Prints no title, link, company or text; lane reasons only as the fixed codes of lanes.public_reason.
-`high_score` lists the jobs scored at or over the floor that are still excluded, by stored reason, lane reason code and Fit exclusion rule."""
-# LIFE-121 (Jim, Oct 26: "Approved, make the PR"). EXCLUDED_FIT is one status for several causes (a Fit score under the floor, a lane rule such as pay or age, the precision audit);
-# the split lets Jim see how many roles sit just under the floor before anyone changes the Fit model or a gate.
+"""Counts-only report of why Scale-Up jobs are EXCLUDED_FIT: reads v7_jobs and v7_job_fit, writes nothing. Splits the
+status by stored reason, Fit band and source; no title, link, company or text is printed.
+"""
 import re
 
 from lifeos.jobs import store
@@ -14,7 +11,6 @@ TOP_SOURCES = 8
 
 
 def band(score):
-    """The Fit band of a stored score: at or over the floor, near miss (D100), review range (D84), or below it; None = never scored."""
     if score is None:
         return "unscored"
     if score >= FIT_FLOOR:
@@ -27,13 +23,11 @@ def band(score):
 
 
 def word(text):
-    """A stored reason as a fixed word: digits dropped, anything that is not plain lower-case words becomes `other`, so no text from a posting can reach the log."""
     cleaned = re.sub(r"\s+", " ", re.sub(r"\d+", "", str(text or "")).strip().lower()).strip(" _")
     return cleaned if FIXED.fullmatch(cleaned) else ("none" if not cleaned else "other")
 
 
 def tally(rows):
-    """rows: (source, unresolved_reason, score, admission, admission_reason, exclusion). -> the counts-only report."""
     out = {"total": 0, "by_reason": {}, "by_band": {}, "by_admission": {}, "by_exclusion": {}, "by_band_and_reason": {}, "by_source": {}, "high_score": {}}
     for source, reason, score, admission, admission_reason, exclusion in rows:
         out["total"] += 1
@@ -42,7 +36,7 @@ def tally(rows):
                            (out["by_exclusion"], word(exclusion)), (out["by_band_and_reason"], f"{b}/{r}")):
             table[key] = table.get(key, 0) + 1
         out["by_source"][source] = out["by_source"].get(source, 0) + 1
-        if score is not None and score >= FIT_FLOOR:                    # scored at or over the floor and still excluded: the ones worth a second look, by stored reason, lane reason code and Fit rule
+        if score is not None and score >= FIT_FLOOR:
             key = f"{r}/{public_reason(admission_reason)}/{word(exclusion)}"
             out["high_score"][key] = out["high_score"].get(key, 0) + 1
     out["by_source"] = dict(sorted(out["by_source"].items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_SOURCES])
@@ -65,8 +59,9 @@ REVIEW_RULE = "excluded_private_rule"
 
 
 def review_rows(rows):
-    """rows: (company, title, location, link, score, admission_reason, exclusion, reason). -> the high-scoring jobs excluded by Jim's own Fit rules, as tab-separated lines (PRIVATE text:
-    only ever written to the private Notion page)."""
+    """rows: (company, title, location, link, score, admission_reason, exclusion, reason) -> tab-separated lines
+    (PRIVATE text: only written to the private Notion page).
+    """
     keep = [r for r in rows if r[4] is not None and r[4] >= FIT_FLOOR and public_reason(r[5]) == REVIEW_RULE]
     keep.sort(key=lambda r: (str(r[7] or ""), str(r[6] or ""), str(r[0] or ""), str(r[1] or "")))
     clean = lambda v: " ".join(str(v if v is not None else "").split())
@@ -74,8 +69,9 @@ def review_rows(rows):
 
 
 def review(limit, live, connect=store.connect, client=None):
-    """LIFE-121 (Jim, Oct 26: "Yes, list the 59 in Notion"): the Scale-Up jobs scored at or over the Fit floor that Jim's own exclusion rules removed, written to ONE private Notion page (dry run unless live).
-    Reads the store only. The log carries counts and fixed codes; the text goes to Notion alone (lifeos.jobs.private_report)."""
+    """Write the high-scoring jobs the private exclusion rules removed to ONE private Notion page (dry run unless
+    live); the log carries counts only.
+    """
     from lifeos.jobs import private_report
     from lifeos.platform.notion_client import Client
     with connect() as connection, connection.cursor() as cursor:

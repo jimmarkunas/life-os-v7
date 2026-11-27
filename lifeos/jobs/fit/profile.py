@@ -1,4 +1,4 @@
-"""The private fit profile: injected at run time, validated here, never committed (D16).
+"""The private fit profile: injected at run time, validated here, never committed.
 
 Shape (JSON, held in the FIT_PROFILE_JSON secret):
   {"years": 20,
@@ -17,7 +17,7 @@ import re
 
 from lifeos.platform.names import norm          # noqa: F401 - one normalizer, shared with Interview OS
 
-VALUE = {"direct": 1.0, "adjacent": 0.75, "method": 0.6, "unsupported": 0.0}   # V2/V3 arithmetic: 1, 3/4, 3/5, 0
+VALUE = {"direct": 1.0, "adjacent": 0.75, "method": 0.6, "unsupported": 0.0}
 RANK = {"unsupported": 0, "method": 1, "adjacent": 2, "direct": 3}
 
 
@@ -37,9 +37,9 @@ class Profile:
         self.years = int(data.get("years") or 0)
         self.scope = dict(data.get("scope") or {})
         self.baseline = bool(data.get("baseline", True))
-        self.advantage = [term_regex(t) for t in data.get("advantage") or []]          # competitive-advantage terms (AI, ...)
-        self.specialization = [term_regex(t) for t in data.get("specialization") or []]  # a direct title specialization: +3
-        self.hard_family = [term_regex(t) for t in data.get("hard_family") or []]        # private additions to the generic list
+        self.advantage = [term_regex(t) for t in data.get("advantage") or []]
+        self.specialization = [term_regex(t) for t in data.get("specialization") or []]
+        self.hard_family = [term_regex(t) for t in data.get("hard_family") or []]
         self.exclusions = list(data.get("exclusions") or [])
         self.capabilities, self.functions = [], []
         for row in data.get("capabilities") or []:
@@ -68,7 +68,6 @@ class Profile:
         return found
 
     def capability(self, text, bucket=None):
-        """Best capability whose terms appear in the (normalized) text."""
         return self._best([c for c in self.capabilities if bucket in (None, c["bucket"])], text)
 
     def function(self, text):
@@ -76,7 +75,7 @@ class Profile:
 
 
 def _merge(base, extra):
-    """The extra block ADDS to the profile: its capabilities, functions, exclusions and term lists are appended, its scope only fills keys the profile lacks."""
+    """The extra block ADDS to the profile: lists are appended, its scope only fills keys the profile lacks."""
     merged = dict(base)
     for key in ("capabilities", "functions", "exclusions", "advantage", "specialization", "hard_family"):
         merged[key] = list(base.get(key) or []) + list(extra.get(key) or [])
@@ -86,9 +85,9 @@ def _merge(base, extra):
 
 
 def load(environ, synced=None):
-    """The profile from the FIT_PROFILE_JSON secret, plus the optional FIT_PROFILE_EXTRA_JSON block (D105: evidence added without replacing the profile) and the optional `synced` block
-    (the Notion page's approved evidence, read from the store by profile_sync.stored_block);
-    ProfileError when either is present but invalid, or the profile is absent."""
+    """The profile from the FIT_PROFILE_JSON secret plus the optional FIT_PROFILE_EXTRA_JSON and `synced`
+    (profile_sync.stored_block) blocks. ProfileError when one is invalid or the profile is absent.
+    """
     raw = (environ.get("FIT_PROFILE_JSON") or "").strip()
     if not raw:
         raise ProfileError("FIT_PROFILE_JSON is not set")
@@ -105,7 +104,7 @@ def load(environ, synced=None):
             data = _merge(data, extra)
         except (ValueError, TypeError, KeyError) as error:
             raise ProfileError("FIT_PROFILE_EXTRA_JSON is not a valid profile block") from error
-    if synced:                                                                  # the Notion-approved block (profile_sync): appended like the extra block
+    if synced:
         data = _merge(data, synced)
     try:
         return Profile(data)

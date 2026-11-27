@@ -1,5 +1,4 @@
-"""Jobs OS alert detectors and the alerts stage (D53): counts in, open or resolved alerts out."""
-# Detectors are pure functions of counts so they test without a database; state (which alerts are open, when last notified) lives in v7_alerts so a reminder is not a repeat. Counts only.
+"""Jobs OS alert detectors and the alerts stage: counts in, open or resolved alerts out."""
 import datetime as dt
 import os
 import re
@@ -7,24 +6,33 @@ import re
 from lifeos.jobs import daily, hold, store
 from lifeos.platform import alerts, credentials
 
-SOURCE_FAILURES = 3          # a sponsor that failed this many runs in a row
-STUCK_JOBS = 25              # jobs sitting in READY/RESOLVED for over a day
-QUIET_HOURS = 24             # no job published for this long
-STOP_WINDOW_HOURS = 24       # SAFE-1.1: a source that normally delivers new jobs ...
-STOP_BASELINE_DAYS = 14      # ... (measured over the 14 days before the window) ...
-STOP_PER_DAY = 3.0           # ... at least this many a day, and delivered none in the window, has stopped
-STUCK_WINDOW_HOURS, STUCK_MIN_JOBS, STUCK_SHARE = 72, 20, 0.5      # LIFE-74 M1: a source with at least 20 jobs first seen in 72 h, half or more still NEW or HOLD, has a stage that is not moving them (Lensa, Oct 6-17: 2 resolved of 109)
-YIELD_WINDOW_DAYS, YIELD_MIN_JOBS, YIELD_FLOOR = 7, 30, 0.05       # LIFE-74 M2: at least 30 jobs in 7 days with under 5% published has stopped yielding (Scale-Up discovery, Oct 17: 1 job in 5 runs)
-BOARD_FAIL_MIN_READS, BOARD_FAIL_SHARE = 100, 0.20                  # LIFE-74 M3: of the last two days' board reads, a fifth or more failed for a reason other than not_found
-SEARCH_MIN_CALLS, SEARCH_FAIL_SHARE = 20, 0.20                    # LIFE-74 M6: of the last two days' search calls (discover, title watch), a fifth or more failed
-HOLD_MIN, HOLD_GROWTH, HOLD_DAYS = 25, 1.2, 3                     # LIFE-74 M4: the HOLD pile grew every day for three days, by a fifth or more, and holds at least 25 jobs; M5: it holds 25+ and nothing in it was touched in 24 h while it grew
+SOURCE_FAILURES = 3
+STUCK_JOBS = 25
+QUIET_HOURS = 24
+# A source that normally delivers new jobs (measured over STOP_BASELINE_DAYS before the window) at least STOP_PER_DAY
+# a day, and delivered none in the window, has stopped.
+STOP_WINDOW_HOURS = 24
+STOP_BASELINE_DAYS = 14
+STOP_PER_DAY = 3.0
+# Stuck: a source with at least 20 jobs first seen in 72 h, half or more still NEW or HOLD, has a stage that is not
+# moving them.
+STUCK_WINDOW_HOURS, STUCK_MIN_JOBS, STUCK_SHARE = 72, 20, 0.5
+# Low yield: at least 30 jobs in 7 days with under 5% published.
+YIELD_WINDOW_DAYS, YIELD_MIN_JOBS, YIELD_FLOOR = 7, 30, 0.05
+BOARD_FAIL_MIN_READS, BOARD_FAIL_SHARE = 100, 0.20
+SEARCH_MIN_CALLS, SEARCH_FAIL_SHARE = 20, 0.20
+# The HOLD pile grew every day for three days by a fifth or more and holds at least 25 jobs; or it holds 25+ and
+# nothing in it was touched in 24 h while it grew.
+HOLD_MIN, HOLD_GROWTH, HOLD_DAYS = 25, 1.2, 3
 KEEP_DAILY_DAYS = 8
-BOARD_GROUPS = re.compile(r"web:(gh|ab|lv|su)-")                    # employer boards are watched by ATS family, never one by one (2,449 boards); every other web:* source is "web:other"
-RETIRED_SOURCES = {"lensa": "Lensa retired (D201): Cloudflare blocks it from the runners", "web:openjobs": "Open Jobs ended: the project shut down on 10 Oct 2026 (D201)"}   # never "stopped"
+BOARD_GROUPS = re.compile(r"web:(gh|ab|lv|su)-")
+RETIRED_SOURCES = {"lensa": "Lensa retired (D201): Cloudflare blocks it from the runners", "web:openjobs": "Open Jobs ended: the project shut down on 10 Oct 2026 (D201)"}
 
 
 def source_group(source):
-    """The name a source is monitored under: its own for mail and search sources, its ATS family for employer boards; None for a retired source."""
+    """The name a source is monitored under: its own for mail and search sources, its ATS family for employer boards;
+    None if retired.
+    """
     if source in RETIRED_SOURCES:
         return None
     if str(source).startswith("web:"):
@@ -34,7 +42,6 @@ def source_group(source):
 
 
 def group_status_counts(rows):
-    """rows: (source, status, n) -> {group: {status: n}}. Pure."""
     out = {}
     for source, status, n in rows:
         group = source_group(source)
@@ -45,7 +52,9 @@ def group_status_counts(rows):
 
 
 def yield_monitors(by_72h, by_7d):
-    """-> {"stuck": {group: share}, "low_yield": {group: share}}: the groups past a threshold, with the share that tripped it. Pure functions of counts."""
+    """-> {"stuck": {group: share}, "low_yield": {group: share}}: the groups past a threshold, with the share that
+    tripped it. Pure.
+    """
     stuck, low = {}, {}
     for group, table in by_72h.items():
         total = sum(table.values())
@@ -62,8 +71,10 @@ def yield_monitors(by_72h, by_7d):
 
 def daily_monitors(rows, today):
     """rows: {name: {iso day: value}} from the daily counts. -> {monitor: value} for the monitors that tripped. Pure.
-    M3 board_reads_failing, M6 search_failing: share failed over today and yesterday. M4 hold_rising: the HOLD snapshot rose on each of the last three days.
-    M5 hold_not_retried: the HOLD pile is large and grew, yet no HOLD job was touched in the last 24 hours."""
+    board_reads_failing / search_failing: share failed over today and yesterday. hold_rising: HOLD snapshot rose
+    on each of the last three days. hold_not_retried: HOLD is large and grew, yet no HOLD job was touched in 24
+    hours.
+    """
     def total(name):
         return sum(rows.get(name, {}).get((today - dt.timedelta(days=back)).isoformat(), 0) for back in (0, 1))
 
@@ -86,7 +97,7 @@ def daily_monitors(rows, today):
 
 
 def snapshot_hold(connection, now):
-    """Today's HOLD pile and how much of it was touched in the last 24 hours, kept for the trend monitors (counts only); also drops rows older than the keep window."""
+    """Record today's HOLD pile and how much of it was touched in 24 hours; drop rows past the keep window."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT COUNT(*), SUM(updated_at > %s) FROM v7_jobs WHERE status='HOLD'", (now - dt.timedelta(hours=24),))
         total, touched = cursor.fetchone()
@@ -101,7 +112,6 @@ def _key(group):
 
 
 def detect(counts, now, expiries=None):
-    """counts: {"published_24h", "sources_failing", "stuck_jobs"}. -> list[Alert]."""
     out = []
     if counts.get("published_24h") == 0:
         out.append(alerts.Alert("quiet_24h", alerts.INFO, "Nothing published in 24 hours", "No job reached Notion in a day.",
@@ -112,7 +122,7 @@ def detect(counts, now, expiries=None):
     if counts.get("stuck_jobs", 0) >= STUCK_JOBS:
         out.append(alerts.Alert("stuck_jobs", alerts.INFO, "Jobs stuck before publish", f"{counts['stuck_jobs']} job(s) waiting over 24 hours.",
                                 "check enrich and fit counts in the latest run"))
-    if counts.get("unresolved_terminal", 0) > 0:                                  # D185: worthwhile jobs that stayed unresolved after their one recovery attempt
+    if counts.get("unresolved_terminal", 0) > 0:
         out.append(alerts.Alert("unresolved_terminal", alerts.INFO, "Jobs ended unresolved after recovery", f"{counts['unresolved_terminal']} worthwhile job(s) stayed unresolved after one recovery attempt in 24 hours.",
                                 "run fit-review for the company, or check the resolver counts for that source"))
     for name, per_day in counts.get("stopped_sources", []):
@@ -155,7 +165,7 @@ def gather(connection, now):
         cursor.execute("SELECT COUNT(*) FROM v7_sources WHERE failures >= %s", (SOURCE_FAILURES,))
         failing = cursor.fetchone()[0]
         cursor.execute("SELECT source_id FROM v7_sources WHERE last_status = 'FAILED' AND COALESCE(last_reason, '') <> 'not_found' ORDER BY failures DESC, source_id LIMIT 3")
-        failing_boards = [row[0] for row in cursor.fetchall()]                     # LIFE-616: public registry ids, named in the board_reads_failing alert
+        failing_boards = [row[0] for row in cursor.fetchall()]
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status IN ('READY','RESOLVED') AND updated_at < %s", (cutoff,))
         stuck = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='EXCLUDED_UNRESOLVED' AND unresolved_reason=%s AND updated_at > %s", (hold.FAILED_RECOVERY, cutoff))
@@ -166,9 +176,9 @@ def gather(connection, now):
                        (window, window, start))
         rows = cursor.fetchall()
         cursor.execute("SELECT source_id FROM v7_sources WHERE last_complete_at > %s", (window,))
-        healthy = {f"web:{row[0]}" for row in cursor.fetchall()}     # a board read in full inside the window is idle, not stopped
+        healthy = {f"web:{row[0]}" for row in cursor.fetchall()}
         cursor.execute("SELECT feed_id FROM v7_feed WHERE status='OK'")
-        healthy |= {f"web:{row[0]}" for row in cursor.fetchall()}    # D178: the Open Jobs feed whose last run read it without error is idle, not stopped (a failed read stores DEGRADED, and that still pages)
+        healthy |= {f"web:{row[0]}" for row in cursor.fetchall()}
         stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in rows
                    if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy and source not in RETIRED_SOURCES]
         cursor.execute("SELECT source, status, COUNT(*) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source, status", (now - dt.timedelta(hours=STUCK_WINDOW_HOURS),))
@@ -203,19 +213,19 @@ def save(connection, plan, notified, now):
 
 def run(limit, live, environ=os.environ, now=None, send=None):
     now = now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-    expiries = credentials.expiries()                                                  # LIFE-604: the credential list is the one source of expiry dates
+    expiries = credentials.expiries()
     with store.connect() as connection:
         store.ensure_schema(connection)
         if live:
-            snapshot_hold(connection, now)                                                 # before the read, so today's HOLD pile is part of what the monitors see
+            snapshot_hold(connection, now)
         counts = gather(connection, now)
         active = detect(counts, now, expiries)
-        monitors = yield_monitors(counts["yield_72h"], counts["yield_7d"])             # LIFE-74: printed in the log line, so the monitors are readable while pushes are suspended
+        monitors = yield_monitors(counts["yield_72h"], counts["yield_7d"])
         plan = alerts.reconcile(active, load_state(connection), now)
         if not live:
             return {"active": len(active), "would_notify": len(plan.notify), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": {**monitors, **daily_monitors(counts["daily"], now.date())}}
         failed = set()
         sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send, failed)
-        delivered = {item.key for kind, item in plan.notify if kind != "resolved"} - failed          # LIFE-653: one failed push no longer un-records the ones that went; only it is retried
+        delivered = {item.key for kind, item in plan.notify if kind != "resolved"} - failed
         save(connection, plan, delivered, now)
     return {"active": len(active), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": {**monitors, **daily_monitors(counts["daily"], now.date())}, **sent}

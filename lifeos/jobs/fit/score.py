@@ -1,12 +1,12 @@
 """Professional Fit, V3 (docs/FIT_MODEL.md): five weighted dimensions over the requirements the posting activates.
 
   Role/seniority 29 (title evidence is a separate channel worth 29/4 of it) | Functional 29 | Technical/platform 21 |
-  Delivery complexity 14 | Competitive advantage 7.  Every requirement belongs to exactly one dimension.
+  Delivery complexity 14 | Competitive advantage 7. Every requirement belongs to exactly one dimension.
   Evidence: Direct 1, Adjacent 3/4, Method-equivalent 3/5, Unsupported 0. REQUIRED counts double, an inflated
-  requirement half. A dimension the posting does not activate is not applicable (it neither helps nor hurts).
-  A Direct title specialization adds 3. Fit is capped at 40 only when the posting's actual profession is a hard-family
-  mismatch. Title-only or requirement-free postings are UNSCORABLE, never 0.
-Fit never sees location, work mode, pay, visa, provider score, freshness. Exclusions are a separate gate (exclusions.py).
+  requirement half. A dimension the posting does not activate is not applicable. A Direct title specialization adds 3.
+  Fit is capped at 40 only for a hard-family profession mismatch. Title-only or requirement-free postings are
+  UNSCORABLE, never 0.
+Fit never sees location, work mode, pay, visa, provider score or freshness; exclusions are a separate gate.
 """
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -37,26 +37,26 @@ class Req:
     weight: Fraction = Fraction(1)
     strength: str = ""
     sim: float = 0.0
-    anchor: bool = False               # matched a profile capability or function (not a baseline phrase or a bare years/scope count)
+    anchor: bool = False
 
 
 @dataclass
 class Result:
     score: int | None
-    decision: str                      # Go | No-Go | Unscorable
+    decision: str
     line: str
     why: str
-    exclusion: str | None = None       # the gate that excluded it (separate from the Fit number)
+    exclusion: str | None = None
     confidence: str = "low"
     capped: bool = False
     buckets: dict = field(default_factory=dict)
     items: list = field(default_factory=list)
     soft: list = field(default_factory=list)
-    shadow_score: int | None = None    # the score if the semantic layer's matches were applied (shadow: never used)
-    shadow_changes: int = 0            # requirements the semantic layer would reclassify
-    shadow_flip: bool = False          # would the Go / No-Go decision differ
+    shadow_score: int | None = None
+    shadow_changes: int = 0
+    shadow_flip: bool = False
     shadow_sims: list = field(default_factory=list)
-    pre_functional: int | None = None  # the score before the Functional cap (calibration: how many jobs the cap moves)
+    pre_functional: int | None = None
 
 
 def _half_up(x):
@@ -113,7 +113,6 @@ def _classify(unit, profile):
 
 def _requirements(units, profile, year, semantic=None, changes=None):
     reqs, claimed = [], set()
-    # named platforms: one technical requirement per distinct tool (a stack list is not one requirement)
     found = {}
     for term, optional in extract.platform_hits(units):
         row = profile.capability(norm(term))
@@ -128,10 +127,10 @@ def _requirements(units, profile, year, semantic=None, changes=None):
         found.setdefault(row["id"] if row else norm(name).strip(),
                          Req("technical", name, row["class"] if row else "unsupported", Fraction(1, 2) if optional else Fraction(1)))
     platform = list(found.values())
-    for r in platform[6:] if len(platform) > 12 else []:           # 15 platforms listed, ~5 are core
+    for r in platform[6:] if len(platform) > 12 else []:
         r.weight = min(r.weight, Fraction(1, 2))
     reqs += platform
-    for u in units:                                               # everything else: one requirement, one dimension
+    for u in units:
         if u.section not in ("required", "preferred", "duty", "summary") or u.section == "skip":
             continue
         stated = extract.gated(u)
@@ -140,9 +139,9 @@ def _requirements(units, profile, year, semantic=None, changes=None):
         if not stated:
             continue
         if sum(1 for _, rx in extract._PLATFORM_RX if rx.search(u.norm)):
-            continue                                              # named tools were taken above, once each
+            continue
         if extract.scope_hits([u]) and not _best(profile, u.norm) and u.section != "duty":
-            continue                                              # team size / budget / reach: scored from scope below
+            continue
         cls, strength = _classify(u, profile)
         req = Req(_dimension(u, profile), _short(u.text), cls, _weight(u, year), strength, anchor=bool(strength))
         reqs.append(req)
@@ -179,7 +178,6 @@ _FAMILY_RX = [re.compile(p, re.I) for p in lexicon.HARD_FAMILY_PATTERNS]
 
 
 def _family(title, units, profile):
-    """True when the posting's actual profession is a hard-family mismatch (not one stray requirement)."""
     terms = list(lexicon.HARD_FAMILY)
     extra = profile.hard_family
     hit = lambda text: any(t in text.lower() for t in terms) or any(rx.search(text) for rx in _FAMILY_RX) or any(rx.search(norm(text)) for rx in extra)
@@ -192,25 +190,29 @@ def _family(title, units, profile):
 
 JUNIOR = re.compile(r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice|junior|graduate|entry[- ]level|early careers?)\b", re.I)
 SENIOR = re.compile(r"\b(?:director|vice president|vp|head|principal|manager)\b", re.I)
-JUNIOR_CAP = 55          # below the Review band: an analyst-level title is not this profile's level (D89)
-FUNCTIONAL_MARGIN = 25   # D103: Fit cannot exceed the Functional area's attainment by more than this: generic years / team size / scale cannot make up for the job itself
-UNANCHORED_CAP = 50      # no title or requirement matched a profile function or capability: generic requirements alone are not a Fit (D89)
+JUNIOR_CAP = 55
+# Fit cannot exceed the Functional area's attainment by more than this: generic years / team size / scale cannot make
+# up for the job itself.
+FUNCTIONAL_MARGIN = 25
+# No title or requirement matched a profile function or capability: generic requirements alone are not a Fit.
+UNANCHORED_CAP = 50
 
 
 @dataclass(frozen=True)
 class Calc:
-    """Exact arithmetic: nothing is rounded until `final`."""
     applicable_max: Fraction
-    contributions: dict            # dimension -> exact normalized contribution (0-100 scale)
-    uncapped: Fraction             # before the specialization bonus and the cap
+    contributions: dict
+    uncapped: Fraction
     capped: bool
     final: int
-    attainment: dict = field(default_factory=dict)   # dimension -> share of its own budget earned (0-100), applicable only
+    attainment: dict = field(default_factory=dict)
 
 
 def calculate(reqs, title_cls, bonus=False, capped=False):
-    """The V3 formula over classified requirements: Req(dim, label, cls, weight) and the title's evidence class.
-    Title is a fixed 7.25 sub-budget of Role/Seniority; the 21.75 JD sub-budget is applicable only when a role requirement exists."""
+    """The V3 formula over classified requirements Req(dim, label, cls, weight) and the title's evidence class. The
+    title is a fixed 7.25 sub-budget of Role/Seniority; the 21.75 JD sub-budget applies only when a role
+    requirement exists.
+    """
     title = TITLE_SHARE * EVIDENCE[title_cls]
     applicable, earned = TITLE_SHARE, {d: Fraction(0) for d in BUDGET}
     earned["role"] = title
@@ -244,11 +246,10 @@ def _line(score, decision, reqs, gate=None):
 
 
 def evaluate(title, company, text, profile, today, semantic=None):
-    """Professional Fit for one posting, plus the separate exclusion gate. `today` is a date (inflation uses its year)."""
     text = text or ""
     gate, soft = exclusions.check(title, company, text, profile)
     units = extract.parse(text)
-    capped = _family(title, units, profile)                    # a hard-family mismatch is judged from the title and the text, whether or not any requirement was recognised
+    capped = _family(title, units, profile)
     reqs = _requirements(units, profile, today.year) if len(text) >= MIN_TEXT else []
     if not reqs:
         why = "Description too short to score." if len(text) < MIN_TEXT else "No requirement was recognised in the description."
@@ -288,7 +289,7 @@ def evaluate(title, company, text, profile, today, semantic=None):
                     confidence="high" if confident else "low", capped=capped,
                     buckets={NAMES[d]: v for d, v in buckets.items()},
                     items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80], soft=soft, pre_functional=result_pre)
-    if semantic is not None:                       # shadow: the same posting with semantic matches applied; never used
+    if semantic is not None:
         changes = []
         shadow_reqs = _requirements(units, profile, today.year, semantic, changes)
         shadow, _ = _arithmetic(shadow_reqs, title_cls, bonus, capped)

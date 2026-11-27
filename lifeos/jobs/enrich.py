@@ -1,9 +1,10 @@
-"""Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
+"""Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match
+check.
 
-Source order for the description: ATS API (Greenhouse, Lever) -> schema.org JobPosting JSON-LD -> readable page text.
-Outcomes: READY (fresh, live, matches) | CLOSED | EXCLUDED_STALE (older than the job's LANE policy allows, known; lifeos.jobs.lanes owns the number) | back to NEW (page does not match the
-job: a wrong link is never published) | pending with a fixed reason when the page cannot be read (retried later).
-Plain HTTP only. Logs: counts only.
+Description source order: ATS API (Greenhouse, Lever) -> schema.org JobPosting JSON-LD -> readable page text.
+Outcomes: READY | CLOSED | EXCLUDED_STALE (older than the job's lane policy allows) | back to NEW (page does not
+match the job: a wrong link is never published) | pending with a fixed reason when the page cannot be read. Plain
+HTTP only. Counts only.
 """
 from datetime import date, datetime, timedelta, timezone
 import html as htmllib
@@ -16,7 +17,7 @@ from lifeos.platform import egress, impersonate, usage, limits, tinyfish
 from lifeos.jobs import ats_detail, jd, jsonld, lanes, quality, store
 from lifeos.platform.http import fetch
 
-TRIED_REASON = "description_empty_tf"     # the rendered fetch already ran once and the page was still empty: do not spend the cap again
+TRIED_REASON = "description_empty_tf"
 CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
                          r"posting (has )?expired|this job has expired|not accepting applications", re.I)
 
@@ -24,11 +25,10 @@ CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has
 _now = store.now
 
 
-GONE = {"closed": True}                                  # the board's API no longer knows the job
+GONE = {"closed": True}
 
 
 def _board_json(url):
-    """One board-API read -> its JSON, GONE (404 / 410), or None (any other answer, or not JSON)."""
     page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
     if page.status in (404, 410):
         return GONE
@@ -39,7 +39,6 @@ def _board_json(url):
 
 
 def _api_job(url):
-    """Greenhouse / Lever public job APIs -> dict(title, html, posted) or None."""
     parts = urlsplit(url)
     host, segs = (parts.hostname or "").lower(), [s for s in parts.path.split("/") if s]
     if host.endswith("greenhouse.io"):
@@ -50,7 +49,7 @@ def _api_job(url):
         if data is None or data is GONE:
             return data
         posted = str(data.get("first_published") or data.get("updated_at") or "")[:10]
-        return {"title": data.get("title"), "html": htmllib.unescape(data.get("content") or ""), "posted": posted}     # the API escapes its HTML (&lt;p&gt;), as the board lister unescapes it
+        return {"title": data.get("title"), "html": htmllib.unescape(data.get("content") or ""), "posted": posted}
     if host == "jobs.lever.co" and len(segs) >= 2:
         data = _board_json(f"https://api.lever.co/v0/postings/{segs[0]}/{segs[1]}")
         if data is None or data is GONE:
@@ -59,7 +58,7 @@ def _api_job(url):
         posted = datetime.fromtimestamp(created / 1000, timezone.utc).date().isoformat() if created else ""
         lists = "".join(f"<h3>{x.get('text') or ''}</h3><ul>{x.get('content') or ''}</ul>" for x in (data.get("lists") or []))
         return {"title": data.get("text"), "html": (data.get("description") or "") + lists + (data.get("additional") or ""),
-                "posted": posted}         # Lever keeps the duties and requirements in `lists` and the closing in `additional`: the opening alone read as jd_thin
+                "posted": posted}
     return None
 
 
@@ -71,39 +70,34 @@ def _parse_date(value):
 
 
 def _title_ok(want, *found, strict=False):
-    """Lenient: most of the job-title words appear in the title / page text found at the final link.
-    Strict (a link whose shape could not vouch for it): the page's own TITLE must carry nearly all the words; body text does not count,
-    because a listing or portal page contains many job titles."""
-    tokens = [t for t in _joined(re.sub(r"\([^)]*\)", " ", want or "")).split() if len(t) > 2] or [t for t in _joined(want).split() if len(t) > 2]   # LIFE-212 (Jim, Oct 31 2026): "(TPM)" is not a word the page must repeat
+    tokens = [t for t in _joined(re.sub(r"\([^)]*\)", " ", want or "")).split() if len(t) > 2] or [t for t in _joined(want).split() if len(t) > 2]
     hay = _joined(" ".join(f for f in (found[:1] if strict else found) if f))
     return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= (0.8 if strict else 0.6)
 
 
 def _joined(text):
-    """Normalised words with a lone letter joined to the number that follows it, on both sides: "S/4HANA", "S4HANA" and "S 4HANA" all read "s4hana"."""
-    return re.sub(r"\b([a-z]) (?=[0-9])", r"\1", ats_match.norm(text))         # LIFE-212 (Jim, Oct 31 2026)
+    return re.sub(r"\b([a-z]) (?=[0-9])", r"\1", ats_match.norm(text))
 
 
 def _greenhouse_embed(url, html):
-    """https://employer.example/jobs/?gh_jid=123 with a Greenhouse embed on the page -> the board's own job URL, else None."""
     job = re.search(r"[?&]gh_jid=(\d+)", url)
     board = re.search(r"greenhouse\.io/[^\"'\s<>]*?[?&;]for=([A-Za-z0-9_-]+)", html or "")
     return f"https://boards.greenhouse.io/embed/job_app?for={board.group(1)}&token={job.group(1)}" if job and board else None
 
 
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
-BOARD_PREFIX = {"gh": "greenhouse", "lv": "lever", "ab": "ashby"}       # the id prefixes of the seeded employer boards (lifeos.sources.web.registry.BOARD_KINDS, D202)
+BOARD_PREFIX = {"gh": "greenhouse", "lv": "lever", "ab": "ashby"}
 
 
 def board_of(source):
-    """'web:gh-acme' -> ('greenhouse', 'acme'), likewise lv- (Lever) and ab- (Ashby); any other source -> None."""
     match = re.fullmatch(r"web:(gh|lv|ab)-([a-z0-9][a-z0-9._-]*)", source or "")
     return (BOARD_PREFIX[match.group(1)], match.group(2)) if match else None
 
 
 def board_job_url(board, url):
-    """The board's own job URL for a job listed on that board but linked to the employer's site (a Greenhouse board's absolute_url is
-    often the employer's careers page, a JavaScript shell that reads as jd_thin or empty). The board's API then gives the full text."""
+    """The board's own job URL for a job listed on that board but linked to the employer's site (often a JavaScript
+    careers page that reads as jd_thin).
+    """
     kind, slug = board
     if kind == "greenhouse":
         ident = re.search(r"[?&](?:gh_jid|token)=(\d+)", url or "") or re.search(r"/(\d{6,})(?:[/?#]|$)", urlsplit(url or "").path + "/")
@@ -115,25 +109,26 @@ def board_job_url(board, url):
 
 
 def _title_words_in(want, html):
-    """Share of the job-title words found anywhere on the page, markup removed (script data such as JSON-LD counts)."""
     tokens = [t for t in ats_match.norm(want).split() if len(t) > 2]
     hay = set(ats_match.norm(re.sub(r"<[^>]+>", " ", html or "")).split())
     return sum(t in hay for t in tokens) / len(tokens) if tokens else 0
 
 
 def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
-    """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an ambiguous link shape on its
-    provenance, so the page must prove identity by title (strict). board: (kind, slug) of the ATS board the job was listed on."""
+    """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an
+    ambiguous link shape on provenance, so the page must prove identity by title. board: (kind, slug) of the ATS
+    board it was listed on.
+    """
     problem = quality.link_problem(url)
     strict = bool(problem) and proof == "unproven" and problem in quality.AMBIGUOUS
     if problem and not strict:
-        return {"outcome": "mismatch", "reason": problem}                    # workable_no_account: re-resolve, the matcher now keeps the account
+        return {"outcome": "mismatch", "reason": problem}
     api = ats_detail.read(url) or _api_job(url)
     if api is None and board:
         own = board_job_url(board, url)
         api = (ats_detail.read(own) or _api_job(own)) if own and own != url else None
         if api and api.get("closed"):
-            api = None                                   # the board's API not knowing the id proves nothing about the employer's page: read that page
+            api = None
     if api and api.get("closed"):
         return {"outcome": "closed"}
     if api:
@@ -144,29 +139,28 @@ def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
     else:
         page = fetch(url, timeout=15, max_hops=6)
         if page.status in (401, 403) and (urlsplit(url).hostname or "").lower().endswith("revolut.com"):
-            page = impersonate.fetch(url, warm_url="https://www.revolut.com/en-GB/careers/")      # D101: Revolut refuses a plain request; the listing already reads as Chrome
+            page = impersonate.fetch(url, warm_url="https://www.revolut.com/en-GB/careers/")
         if page.status in (401, 403) and first_party:
-            page = egress.honest(url, timeout=15, max_hops=6)       # a sponsor that refuses a plain request (Futuristic) lists fine as the announced bot; its job pages do too
+            page = egress.honest(url, timeout=15, max_hops=6)
         if page.status in (404, 410):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
             return {"outcome": "blocked", "reason": f"http_{page.status or 0}"}
         embedded = _greenhouse_embed(url, page.html)
-        if embedded:                                                  # an employer page that embeds a Greenhouse board (Veramed ?gh_jid=): the role is read from the board's own API
+        if embedded:
             api = _api_job(embedded)
-            if api and not api.get("closed"):                         # a 404 here may only mean the embed names a different board: never closes a role, the page path decides
+            if api and not api.get("closed"):
                 desc = jd.describe(api["html"], is_html=True)
                 return finish(title, desc, api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api", None, lane, strict, first_party,
                               thin_ok=bool(board))
         result = parse_html(url, title, page.html, lane, strict, first_party)
         if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
-            result["apply_kind"] = "easy_apply"            # a Dice job page (JSON-LD description, probe run 85) that is applied to on Dice itself: flag it
+            result["apply_kind"] = "easy_apply"
         return result
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party, thin_ok=bool(board))     # Jim, Oct 25: a board's own feed text is the posting
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party, thin_ok=bool(board))
 
 
 def parse_html(url, title, html, lane=None, strict=False, first_party=False):
-    """Description / date / liveness / title-match from already-fetched page HTML (plain HTTP or TinyFish Fetch)."""
     posting = jsonld.job_posting(html)
     body_text = jd.html_to_text(html)
     if CLOSED_TEXT.search(body_text[:4000]):
@@ -181,21 +175,21 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
             desc, source_kind = jd.describe(embedded, is_html=True), "next_data"
         else:
             region = jd.linkedin_description(html)
-            desc, source_kind = jd.describe(body_text if region is None else region, is_html=False), "page_text"      # a LinkedIn guest page: the description element, not its sign-in chrome
+            desc, source_kind = jd.describe(body_text if region is None else region, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
-        found_title = jd.linkedin_title(html) or found_title          # LIFE-212 (Jim, Oct 31 2026): a LinkedIn guest fragment has no <title>; its top card names the role
+        found_title = jd.linkedin_title(html) or found_title
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
     if first_party and result.get("outcome") == "mismatch" and not result.get("reason") and _title_words_in(title, html) >= 0.8:
-        result = finish(title, desc, title, posted, source_kind, valid_through, lane, False, first_party)       # the employer's own board listed this role at this address and its page carries the role's words (a page <title> that says only "Careers" proved nothing either way)
+        result = finish(title, desc, title, posted, source_kind, valid_through, lane, False, first_party)
         if result.get("outcome") in ("ready", "stale"):
             result["proof"] = "page_text"
     where = jsonld.location(posting) if posting else None
     if where and result.get("outcome") in ("ready", "stale"):
-        result["location"] = where                           # D111: a board that gave no place (Prepaid, Veramed, Bluestonex) is read off the job page's own data
+        result["location"] = where
     org = jsonld.hiring_organization(posting) if posting else None
     if org and result.get("outcome") in ("ready", "stale"):
-        result["company"] = org                              # D91: the employer as the page names it (replaces a job board's host stored as the company)
+        result["company"] = org
     return result
 
 
@@ -204,22 +198,21 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
         return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
     if problem in ("template", "listing"):
-        return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
-    if problem == "thin" and not (thin_ok or (first_party and lanes.lane_for(lane) == "Scale-Up")):     # Jim, Oct 21: a Scale-Up sponsor's own thin page is reviewed from its link (Fit marks it THIN), not held; Oct 25: so is a board feed's own short text (thin_ok)
+        return {"outcome": "mismatch", "reason": "jd_" + problem}
+    if problem == "thin" and not (thin_ok or (first_party and lanes.lane_for(lane) == "Scale-Up")):
         return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
     if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else "", strict=strict):
         return {"outcome": "mismatch"}
     today = _now().date()
     if valid_through and valid_through < today:
         return {"outcome": "closed"}
-    max_age = lanes.first_party_age(lane) if first_party else lanes.POLICIES[lanes.lane_for(lane)].max_age_days     # the lane policy is the only freshness authority; a job on its employer's own board is open (D111)
-                                                                                                                     # LIFE-212 (Jim, Oct 31 2026): except in US Remote and Scale-Up, where it is judged by age too
+    max_age = lanes.first_party_age(lane) if first_party else lanes.POLICIES[lanes.lane_for(lane)].max_age_days
     if posted and max_age is not None and (today - posted) > timedelta(days=max_age):
         return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
     return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
 
 
-TRUST = {"employer": 1, "aggregator": 2, "newsletter": 3, "email": 4}      # D4: sources of a posting date in order of trust (employer/ATS structured data first); lower is stronger
+TRUST = {"employer": 1, "aggregator": 2, "newsletter": 3, "email": 4}
 
 
 def _as_date(value):
@@ -227,9 +220,11 @@ def _as_date(value):
 
 
 def accepted_date(old, old_source, new, new_source="employer"):
-    """-> (posting date, source) to store (D4). A read that finds no date keeps what is stored; a source weaker than the stored one never replaces it, a stronger one does; between the
-    same source the EARLIEST date wins (it is the original posting date, so a repost's later date cannot make an old job look new, D6). Nothing here invents a date."""
-    old_source = old_source or ("employer" if old else None)               # a date stored before the source was recorded came from the employer read
+    """-> (posting date, source) to store. No date keeps what is stored; a weaker source never replaces a stronger
+    one; between equal sources the EARLIEST date wins, so a repost cannot make an old job look new. Never invents
+    a date.
+    """
+    old_source = old_source or ("employer" if old else None)
     if new is None:
         return old, old_source
     if old is None:
@@ -246,8 +241,9 @@ BOARD_HOST_COMPANY = r"(^| )(com|io|net|org|co|wd[0-9]+|myworkdayjobs)( |$)"
 
 
 def save_description(cursor, job_id, result, now=None):
-    """The one writer of a job's stored description (v7_job_descriptions). The Fit stage re-scores a job whose stored fingerprint no longer matches its score (LIFE-902), so this write alone is what
-    tells Fit a posting changed; it touches no status, link, date or Notion field."""
+    """The one writer of a job's stored description (v7_job_descriptions). The Fit stage re-scores a job whose stored
+    fingerprint no longer matches its score, so this write tells Fit a posting changed.
+    """
     d = result["description"]
     cursor.execute(
         "INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements,"
@@ -267,7 +263,7 @@ def save(connection, job_id, result):
             save_description(cursor, job_id, result, now)
             if result.get("apply_kind"):
                 cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
-            if result.get("company"):                         # only a company that is really a board host (Com / Io / Net / Org / Co, wdN, myworkdayjobs)
+            if result.get("company"):
                 cursor.execute("UPDATE v7_jobs SET company=%s WHERE id=%s AND company REGEXP %s", (result["company"][:200], job_id, BOARD_HOST_COMPANY))
             if result.get("location"):
                 cursor.execute("UPDATE v7_jobs SET location_text=%s WHERE id=%s AND (location_text IS NULL OR location_text='')", (result["location"][:2000], job_id))
@@ -275,23 +271,23 @@ def save(connection, job_id, result):
             known = cursor.fetchone() or (None, None)
             posted, source = accepted_date(_as_date(known[0]), known[1], result.get("posted"), result.get("posted_source") or "employer")
             age = (now.date() - posted).days if posted else None
-            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "      # JOBS-1.1A: the accepted Posting Date follows D4, never a later or weaker read
+            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
                            "posted_age_days=COALESCE(%s, posted_age_days), link_proof=COALESCE(%s, link_proof), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
                            ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted, source,
                             result.get("final_url") or None, age, result.get("proof"), now, job_id))
         elif outcome == "closed":
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
                            (now, job_id))
-        elif outcome == "linkedin_page":                 # LIFE-212 (Jim, Oct 31 2026): the employer link failed the match, so the row's LinkedIn posting becomes its link (D3 rank 4) and Enrich reads it next
+        elif outcome == "linkedin_page":
             cursor.execute("SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (result["url"], job_id))
             if cursor.fetchone():
                 cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, updated_at=%s WHERE id=%s", ("dup_of_final_url", now, job_id))
             else:
                 cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='aggregator', link_proof=NULL, unresolved_reason=NULL, updated_at=%s WHERE id=%s",
                                (result["url"], now, job_id))
-        elif outcome == "mismatch":                      # wrong link: take it back, never publish it
+        elif outcome == "mismatch":
             cursor.execute("UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, link_proof=NULL, "
-                           "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",   # an attempt: a link that keeps failing parks on HOLD, never loops
+                           "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",
                            (limits.RESOLVE_MAX_ATTEMPTS, (result.get("reason") or "link_mismatch")[:100], now, job_id))
         else:
             cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, enrich_attempts=enrich_attempts+1, "
@@ -299,51 +295,50 @@ def save(connection, job_id, result):
                            ((result.get("reason") or "blocked")[:100], limits.ENRICH_MAX_ATTEMPTS, now, job_id))
 
 
-DAILY_SLOT = "MOD(CRC32(id), 24) = HOUR(UTC_TIMESTAMP())"          # stateless "once a day": every row has one hour of the day, and the pipeline ticks hourly
+DAILY_SLOT = "MOD(CRC32(id), 24) = HOUR(UTC_TIMESTAMP())"
 
 
 def _first_party_over_age(now):
-    """LIFE-212 (Jim, Oct 31 2026): (SQL, params) leaving out a stale employer-board job whose lane judges it by age (US Remote, Scale-Up) and whose known Posting Date is over that age."""
     clauses, params = [], []
     for name in lanes.POLICIES:
         days = lanes.first_party_age(name)
         if days is None:
             continue
-        rows = [name] + [alias for alias, target in lanes.LANE_ALIAS.items() if target == name]       # a Newsletter row is judged as US Remote
+        rows = [name] + [alias for alias, target in lanes.LANE_ALIAS.items() if target == name]
         clauses.append("(lane IN (" + ", ".join(["%s"] * len(rows)) + ") AND posted_date IS NOT NULL AND posted_date < %s)")
         params += rows + [(now - timedelta(days=days)).date()]
     return ("", []) if not clauses else (" AND NOT (" + " OR ".join(clauses) + ")", params)
 
 
 def relink_first_party(cursor, now=None):
-    """D101: a first-party career-page job (source web:*) has no resolver: its link IS its own page. When an audit or Enrich bounced it back to NEW or HOLD
-    (a stale reason, a 403 now readable as Chrome) it stayed stuck for good. Put it back to RESOLVED with its own URL when that URL passes the link test.
-    Bounded: a mismatch counts resolve_attempts, and a HOLD is retried at most once a day. Returns the number requeued."""
+    """A first-party career-page job (source web:*) has no resolver: its link IS its own page. When an audit or
+    Enrich bounced it back to NEW or HOLD, put it back to RESOLVED with its own URL if that passes the link test.
+    A mismatch counts resolve_attempts; a HOLD is retried at most once a day. Returns the number requeued.
+    """
     now = now or _now()
     cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND (resolve_attempts < %s OR status='HOLD') AND "
                    "((status='NEW' AND resolve_attempts < %s AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason IN ('link_mismatch', 'no_job_id', 'listing_url') OR unresolved_reason LIKE 'Fit %% below 72')) OR "
-                   "(status='HOLD' AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('link_mismatch', 'jd_listing', 'jd_template')) AND " + DAILY_SLOT + ")) LIMIT 500",   # a hold is read again once a day, each row in its own hour: the reader improves, the hold never did (updated_at cannot say "a day ago": the daily listing refresh touches it)
+                   "(status='HOLD' AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('link_mismatch', 'jd_listing', 'jd_template')) AND " + DAILY_SLOT + ")) LIMIT 500",
                    (limits.RESOLVE_MAX_ATTEMPTS, limits.RESOLVE_MAX_ATTEMPTS))
     ids = []
     for job_id, url in cursor.fetchall():
         problem = quality.link_problem(url)
-        if problem is None or problem in quality.AMBIGUOUS:                    # an ambiguous shape on an employer's own board is proved by the page title (D76), never by guessing
+        if problem is None or problem in quality.AMBIGUOUS:
             ids.append((job_id, url, "unproven" if problem else None))
     for job_id, url, proof in ids:
         cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', link_proof=%s, unresolved_reason=NULL, enrich_attempts=0, resolve_attempts=LEAST(resolve_attempts, %s), updated_at=%s WHERE id=%s",
                        (url, proof, limits.RESOLVE_MAX_ATTEMPTS - 1, now, job_id))
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason=NULL, enrich_attempts=LEAST(enrich_attempts, %s), updated_at=%s WHERE status='HOLD' AND final_apply_url IS NOT NULL"
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('jd_thin', 'description_empty', 'description_empty_tf'))"
-                   " AND " + DAILY_SLOT, (limits.ENRICH_MAX_ATTEMPTS - 1, now))                 # an employer's own role parked after failed reads (a closed page, a thin page) is read once more a day; one failure parks it again
+                   " AND " + DAILY_SLOT, (limits.ENRICH_MAX_ATTEMPTS - 1, now))
     reread = int(cursor.rowcount or 0)
     aged, params = _first_party_over_age(now)
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL" + aged, (now, *params))
-    return len(ids) + reread + int(cursor.rowcount or 0)           # D111: a job dropped as old that sits on its employer's own board is read again (LIFE-212: not one its lane still finds too old)
+    return len(ids) + reread + int(cursor.rowcount or 0)
 
 
 def host_family(url):
-    """Counts-only label for where a page lives: a known ATS domain, LinkedIn, or 'employer_site' (never a company name)."""
     host = (urlsplit(url or "").hostname or "").lower()
     if host == "linkedin.com" or host.endswith(".linkedin.com"):
         return "linkedin"
@@ -358,7 +353,6 @@ def _bump(table, key):
 
 
 def blocked_report(results, urls):
-    """Why pages stayed blocked, as counts: {'reasons': {code: n}, 'families': {host family: n}}."""
     reasons, families, sources = {}, {}, {}
     for job_id, result in results:
         if result["outcome"] == "blocked":
@@ -369,8 +363,6 @@ def blocked_report(results, urls):
 
 
 def mismatch_report(results, urls, source_of, previous):
-    """Counts only: why links are rejected, which producer and site family they came from, and how many were already rejected last time
-    (a repeat means the same wrong link keeps coming back). Never a title, company or URL."""
     reasons, sources, families, repeat = {}, {}, {}, 0
     for job_id, result in results:
         if result["outcome"] != "mismatch":
@@ -383,8 +375,9 @@ def mismatch_report(results, urls, source_of, previous):
 
 
 def run(limit, live, drain=False):
-    """drain (LIFE-76): the backlog pass at the end of a tick. It never spends the TinyFish Fetch day cap (the hourly pass keeps it), and a page that
-    would need that fallback is left exactly as it is (no attempt counted), so the hourly pass reads it later with the fallback."""
+    """drain: the backlog pass at the end of a tick. It never spends the TinyFish Fetch day cap, and a page that
+    would need that fallback is left as it is for the hourly pass.
+    """
     relinked = 0
     with store.connect() as connection:
         store.ensure_schema(connection)
@@ -399,7 +392,7 @@ def run(limit, live, drain=False):
     lane_of = {r[0]: r[5] for r in fetched}
     source_of = {r[0]: r[6] for r in fetched}
     proof_of = {r[0]: (r[7] if len(r) > 7 else None) for r in fetched}
-    page_of = {r[0]: (r[8] if len(r) > 8 else None) for r in fetched}          # LIFE-212: the row's own posting (a LinkedIn row's /jobs/view/<id>)
+    page_of = {r[0]: (r[8] if len(r) > 8 else None) for r in fetched}
     counts = {"picked": len(rows), "outcome": {}, "source": {}, "relinked": relinked}
     results = []
     for job_id, url, title, kind, _prev in rows:
@@ -415,7 +408,7 @@ def run(limit, live, drain=False):
         except Exception as error:                                   # noqa: BLE001 - one unreadable page must never stop the rest of the batch (D83)
             result = {"outcome": "blocked", "reason": "read_" + type(error).__name__.lower()[:30]}
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
-            result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
+            result["reason"] = TRIED_REASON
         result["final_url"] = url
         results.append((job_id, result))
         _bump(counts["outcome"], result["outcome"])
@@ -428,8 +421,8 @@ def run(limit, live, drain=False):
     else:
         _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"}, {i for i, src in source_of.items() if lanes.first_party_source(src)})
         url_of = {job_id: quality.canonical_job_url(url) for job_id, url, _, _, _ in rows}
-        for job_id, result in results:                               # a page the fallback read is a new result: it keeps the link it was read from (without it save() cleared
-            result.setdefault("final_url", url_of[job_id])            # final_apply_url and the precision audit sent the READY job back as audit_url_root, Oct 25 7:25 PM CT: 63 of 69)
+        for job_id, result in results:
+            result.setdefault("final_url", url_of[job_id])
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})
@@ -443,9 +436,10 @@ def run(limit, live, drain=False):
 
 
 def linkedin_page(results, source_of, page_of):
-    """LIFE-212 (Jim, Oct 31 2026): a LinkedIn row whose employer link failed the title match (often an apply, sign-in or JavaScript page) used to go back to NEW,
-    where the resolver found the same link again until HOLD. It now takes its own LinkedIn posting, flagged `aggregator` (as page_fallback does), and Enrich
-    proves that page next. A row already on LinkedIn that mismatches keeps today's path (back to NEW, an attempt). -> the number switched."""
+    """A LinkedIn row whose employer link failed the title match takes its own LinkedIn posting, flagged
+    `aggregator`, and Enrich proves that page next (going back to NEW would let the resolver find the same link
+    until HOLD). A row already on LinkedIn goes back to NEW. -> the number switched.
+    """
     from lifeos.jobs.resolve.aggregators import li_apply                    # noqa: PLC0415 - as run() imports it
     switched = 0
     for job_id, result in results:
@@ -459,26 +453,25 @@ def linkedin_page(results, source_of, page_of):
 
 
 def _strict(job_id, titles, unproven_ids):
-    """The rendered fallback keeps the strict title proof for a link accepted only on provenance."""
     return job_id in unproven_ids and bool(quality.link_problem(titles[job_id][0]))
 
 
 def _mark_tried(result):
     if result.get("reason") == "description_empty":
-        result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
+        result["reason"] = TRIED_REASON
 
 
 def _swap(results, counts, i, result):
-    """A page the rendered fallback read replaces its blocked result, and the outcome counts follow."""
     results[i] = (results[i][0], result)
     counts["outcome"]["blocked"] -= 1
     _bump(counts["outcome"], result["outcome"])
 
 
 def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_ids=()):
-    """Rendered-fetch fallback (D12 amendment): ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS API gave no usable page.
-    It reads JD, date and liveness evidence only: no clicking, signing in, searching, link traversal, or choosing another vacancy, and it never
-    changes final_apply_url. Counted against the daily cap BEFORE sending."""
+    """Rendered-fetch fallback: ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS
+    API gave no usable page. Reads evidence only and never changes final_apply_url. Counted against the daily cap
+    BEFORE sending.
+    """
     titles = {job_id: (url, title) for job_id, url, title, _, _ in rows}
     tried = {job_id for job_id, _, _, _, prev in rows if prev == TRIED_REASON}
     blocked = [i for i, (job_id, r) in enumerate(results) if r["outcome"] == "blocked" and job_id not in tried]
@@ -489,11 +482,11 @@ def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_
             allowed = usage.reserve(connection, len(blocked))
     except store.StoreError:
         return
-    counts["fallback_attempted"] = min(allowed, len(blocked))       # the rest waited on the daily Fetch cap
+    counts["fallback_attempted"] = min(allowed, len(blocked))
     pacer, done = usage.Pacer(), 0
     for start in range(0, allowed, limits.TINYFISH_FETCH_BATCH):
         batch = blocked[start:min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
-        asked = {i: ats_detail.workday_cxs_url(titles[results[i][0]][0]) for i in batch}   # Workday: ask its JSON endpoint
+        asked = {i: ats_detail.workday_cxs_url(titles[results[i][0]][0]) for i in batch}
         urls = [asked[i] or titles[results[i][0]][0] for i in batch]
         pacer.wait()
         try:

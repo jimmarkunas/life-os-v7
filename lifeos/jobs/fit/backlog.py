@@ -1,20 +1,27 @@
-"""D219 (LIFE-41, Jim): the Cloud Fit backlog batch, one manual bounded run of the one Oracle fit1 path over jobs the tick's single canary call never reaches.
+"""The Cloud Fit backlog batch: one manual bounded run of the Oracle fit1 path over jobs the tick's single canary
+call never reaches.
 
-`python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX, BACKLOG_CALLS_MAX) jobs, V7_CLOUD_FIT_PARALLEL at a time (D232), within V7_CLOUD_FIT_BACKLOG_BUDGET seconds.
-V7_CLOUD_FIT_BACKLOG_MAX is Jim's ceiling (a repository variable); unset or invalid is 0, so nothing is asked. A tick runs it only when V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2).
-V7_CLOUD_FIT_BACKLOG_PAGE (optional): one Ledger page id; the batch asks at most that job or nothing (BACKLOG_TARGET_NOT_ELIGIBLE / BACKLOG_TARGET_INVALID); the id never reaches the log.
-An accepted answer becomes the visible Fit through the Fit stage's promotion; the batch then runs fit_sync, and a promoted page not synced is DEGRADED(LEDGER_SYNC_INCOMPLETE). Counts only in the log. Pointers: D219, D224, D232."""
-# Candidates are the canary's own (a public employer / ATS posting the audit would keep, a static Admit or Review, never asked) plus published jobs, most useful first. It does not read V7_CLOUD_FIT.
-# A published job's Ledger page is read first (lifeos.jobs.guard): applied, an Applied On date or an unreadable page uses no call. fit_sync writes only the page's machine-owned Fit fields (never Applied, Applied On or Saturn Decision).
-# A published job the cloud excludes is promoted the same way and the next tick's gated audit removes its page (D224, replacing the D219 hold). The publish step does not run on a backlog-only dispatch, so the batch runs fit_sync itself.
-# Parallelism (D232): 1-3, unset 1; Oracle runs one request per open lane and answers BUSY when none frees up, which releases that job and lowers the batch's calls in flight by one.
-# Each job is claimed before its call and written right after it, so a batch can stop anywhere and the next one resumes with the jobs still unasked. Scheduled run (6a2): N calls after the tick, N its own ceiling, 600 s, never a pilot page.
+`python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX,
+BACKLOG_CALLS_MAX) jobs, V7_CLOUD_FIT_PARALLEL at a time, within V7_CLOUD_FIT_BACKLOG_BUDGET seconds. The MAX
+ceiling is a repository variable; unset or invalid is 0 (nothing asked). V7_CLOUD_FIT_BACKLOG_PAGE (optional, one
+Ledger page id) limits the batch to that job or nothing; the id never reaches the log. An accepted answer becomes
+the visible Fit through the Fit stage's promotion; the batch then runs fit_sync, and a promoted page not synced is
+DEGRADED(LEDGER_SYNC_INCOMPLETE). Counts only in the log.
+"""
+# Candidates are the canary's own (a public employer / ATS posting the audit would keep, a static Admit or Review,
+# never asked) plus published jobs, most useful first. A published job's Ledger page is read first
+# (lifeos.jobs.guard): applied, an Applied On date or an unreadable page uses no call. A published job the cloud
+# excludes is promoted the same way and the next tick's gated audit removes its page. The publish step does not run on
+# a backlog-only dispatch, so the batch runs fit_sync itself.
+#
+# Parallelism is 1-3, unset 1; Oracle answers BUSY when no lane is free, which releases that job and lowers the calls
+# in flight by one. Each job is claimed before its call and written right after it, so a batch can stop anywhere.
 import os
 import re
 
 from lifeos.jobs import fit_sync, guard, ledger, sponsors, store
 from lifeos.jobs.fit import cloud as fit_cloud, profile as fit_profile, profile_sync, stage
-from lifeos.jobs.fit import edge                                          # LIFE-77: only the no-model `limits` request, to report the backlog count
+from lifeos.jobs.fit import edge
 
 LEDGER_SKIP = {guard.APPLIED, guard.APPLIED_ON, guard.UNREADABLE}
 REMAINING = ("SELECT j.status = 'PUBLISHED', f.admission, COUNT(*) FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id"
@@ -26,7 +33,7 @@ def _whole(raw, default=0):
     try:
         return max(0, int(str(raw).strip())) if raw is not None and str(raw).strip() != "" else default
     except ValueError:
-        return 0                                                        # an explicit value that is not a whole number fails closed
+        return 0
 
 
 def _refused(counts, state):
@@ -35,7 +42,6 @@ def _refused(counts, state):
 
 
 def remaining(cursor):
-    """-> the never-asked candidates by {published|unpublished}_{admit|review} (fixed keys, counts only)."""
     cursor.execute(REMAINING, (fit_cloud.PUBLIC_SOURCES,))
     out = {f"{p}_{a}": 0 for p in ("unpublished", "published") for a in ("admit", "review")}
     for published, admission, n in cursor.fetchall():
@@ -51,10 +57,10 @@ def run(limit, live, environ=os.environ, client=None):
     with store.connect() as connection, connection.cursor() as cursor:
         counts["remaining_before"] = remaining(cursor)
     if calls == 0:
-        return _refused(counts, "DEGRADED(BACKLOG_NOT_AUTHORIZED)")      # no approved ceiling or no request: nothing is asked
+        return _refused(counts, "DEGRADED(BACKLOG_NOT_AUTHORIZED)")
     page = (environ.get("V7_CLOUD_FIT_BACKLOG_PAGE") or "").strip().replace("-", "").lower()
     if page and not re.fullmatch(r"[0-9a-f]{32}", page):
-        return _refused(counts, "DEGRADED(BACKLOG_TARGET_INVALID)")      # a malformed target never widens to the ranked backlog
+        return _refused(counts, "DEGRADED(BACKLOG_TARGET_INVALID)")
     if page:
         calls = counts["backlog_calls_allowed"] = 1
         counts["backlog_targeted"] = 1
@@ -67,7 +73,7 @@ def run(limit, live, environ=os.environ, client=None):
         if client is None:
             from lifeos.platform import notion_client                     # noqa: PLC0415 - only a live batch reads Ledger pages
             client = notion_client.Client(environ)
-        target = ledger.verify(client)                                   # the Job Ledger target check comes before any page read
+        target = ledger.verify(client)
         if target != ledger.OK:
             ledger_check = lambda page_id, company, title: target         # noqa: E731 - every published job is skipped, never guessed
         else:
@@ -89,7 +95,7 @@ def run(limit, live, environ=os.environ, client=None):
         if promoted:
             cursor.execute("SELECT id FROM v7_jobs WHERE id IN %s AND status = 'PUBLISHED' AND notion_page_id IS NOT NULL", (tuple(promoted),))
             pages = [r[0] for r in cursor.fetchall()]
-    if live:                                                            # LIFE-77: Oracle keeps the backlog count so the AI Capacity card can show what it would use; a failed report never fails the batch
+    if live:
         try:
             edge.limits((environ.get("IMESSAGE_ALERTS_HOST") or "").strip(), backlog=sum(counts["remaining_after"].values()))
             counts["backlog_reported"] = sum(counts["remaining_after"].values())
@@ -98,14 +104,14 @@ def run(limit, live, environ=os.environ, client=None):
     counts["ledger_pages_promoted"] = len(pages)
     if live and pages:
         if target != ledger.OK:
-            counts["ledger_pages_pending"] = len(pages)                  # unreachable today (no published job is asked without the target check); fail closed anyway
+            counts["ledger_pages_pending"] = len(pages)
         else:
-            counts["fit_sync"] = fit_sync.run(client, live, gate)         # the unchanged sync: machine-owned Fit fields only, never Applied / Applied On / Saturn Decision
+            counts["fit_sync"] = fit_sync.run(client, live, gate)
             with store.connect() as connection, connection.cursor() as cursor:
                 cursor.execute("SELECT COUNT(*) FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.id IN %s"
                                " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at)", (tuple(pages),))
                 counts["ledger_pages_pending"] = int(cursor.fetchone()[0])
         if counts["ledger_pages_pending"]:
-            fit_cloud._degraded(counts, "LEDGER_SYNC_INCOMPLETE")         # the score is kept and the next sync retries; the batch still reports a failure
-    counts["failed"] = counts["cloud_degraded"]                         # run.PARTIAL_FAILURE: a degraded batch exits 1 with FIT_CLOUD_DEGRADED
+            fit_cloud._degraded(counts, "LEDGER_SYNC_INCOMPLETE")
+    counts["failed"] = counts["cloud_degraded"]
     return counts

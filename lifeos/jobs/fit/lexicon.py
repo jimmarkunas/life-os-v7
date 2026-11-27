@@ -1,7 +1,5 @@
 """Generic, public vocabulary: nothing here describes a person. Only what a job description says."""
 
-# Named technologies and platforms a posting may require. A term found in a posting becomes one Platform/Stack
-# requirement, classified against the private profile (unknown to the profile = Unsupported).
 PLATFORMS = (
     "adobe commerce", "magento", "shopify", "shopify plus", "bigcommerce", "salesforce commerce cloud", "commercetools",
     "vtex", "woocommerce", "sap commerce", "hybris", "oracle commerce", "aem", "adobe experience manager", "aep",
@@ -23,8 +21,6 @@ PLATFORMS = (
     "tealium", "google analytics", "adobe analytics", "amplitude", "mixpanel", "optimizely web", "launchdarkly",
 )
 
-# Off-target job families: a posting dominated by these is a different profession. They carry Unsupported weight in
-# the Role/Title bucket (a "software engineer" duty is never Direct for a program/product profile).
 OFF_TARGET = (
     "software engineer", "software developer", "backend engineer", "frontend engineer", "full stack", "full-stack",
     "data scientist", "data engineer", "machine learning engineer", "devops engineer", "site reliability",
@@ -34,14 +30,12 @@ OFF_TARGET = (
     "nurse", "physician", "electrical engineer", "mechanical engineer", "civil engineer", "construction",
 )
 
-# Soft requirements any working professional meets; counted Direct unless the profile says baseline = [].
 BASELINE = (
     "communication", "collaborat", "leadership", "problem solving", "problem-solving", "stakeholder", "fast-paced",
     "detail oriented", "detail-oriented", "self-starter", "organized", "organizational", "analytical", "presentation",
     "interpersonal", "adaptab", "time management", "prioriti", "written and verbal", "bachelor", "degree",
 )
 
-# Technologies young enough that "N years" beyond their age is an inflated requirement (first public year).
 TECH_FIRST_YEAR = {
     "kubernetes": 2014, "terraform": 2014, "docker": 2013, "react": 2013, "llm": 2020, "generative ai": 2022,
     "openai": 2020, "dbt": 2016, "snowflake": 2015, "databricks": 2013, "graphql": 2015, "headless": 2016,
@@ -49,23 +43,19 @@ TECH_FIRST_YEAR = {
     "shopify plus": 2014, "commercetools": 2006, "aep": 2019, "adobe experience platform": 2019,
 }
 
-# A bullet counts as a requirement only if it says one (this drops benefits, legal and company boilerplate).
 SHAPE = (r"experience|proficien|knowledge|ability|understanding|familiar|background|skilled|expertise|degree|"
          r"certif|track record|demonstrated|proven|must|required|capab|fluen|command of|working with|hands-on|"
          r"years|exposure")
-# Cues that a requirement is a wish, not a gate.
 OPTIONAL = (r"preferred|nice to have|nice-to-have|a plus|bonus|ideally|desirable|desired|is a plus|would be great|"
             r"not required|helpful|advantageous|an advantage|familiarity")
 
-# LIFE-41: the heading of an employer's own section ("About Acme", "About us", "Who we are"). Inside it only a whole heading switches section and a role
-# introduction ("We are seeking a Senior TPM to ...") is kept as the role summary; the employer's copy and product names stay skipped.
+# The heading of an employer's own section ("About Acme", "Who we are"). Inside it only a whole heading switches
+# section, and a role introduction ("We are seeking a Senior TPM to ...") is kept as the role summary.
 ABOUT_EMPLOYER = r"^about (?!(?:the |this |your )?(?:role|job|position|opportunity|team|work)\b|you\b)\S|^who we are\b"
 ROLE_INTRO = (r"\b(?:we(?:'re| are)\s+(?:seeking|looking for|hiring)|(?:seeking|looking for|hiring) an?\s|join (?:us|our team) as|as (?:a|an|the|our)\s)"
               r"[^.!?]{0,80}?\b(?:manager|lead|owner|director|head|engineer|analyst|specialist|architect|consultant|coordinator)\b")
 
-# Section headings (matched on a short line).
 HEADINGS = (
-    # LIFE-41: an "About <Employer>" heading is company marketing, not the role (checked first: product names can contain "Experience").
     ("skip", ABOUT_EMPLOYER),
     ("preferred", r"preferred|nice to have|nice-to-have|bonus|a plus|desired|desirable|extra credit|great to have"),
     ("required", r"requirement|must[- ]have|minimum|basic qualification|qualification|what you.?ll bring|what you bring|"
@@ -73,7 +63,6 @@ HEADINGS = (
                  r"experience|required"),
     ("summary", r"^(?:about )?the (?:role|job|position|opportunity|team)$|^about the (?:role|job|position|team)|^overview|^summary|"
                 r"^job description|^position summary|^role summary"),
-    # LIFE-41: employer culture and perks are skipped before the generic "you will" duty cue ("Why you will love working at Acme").
     ("skip", r"why you(?:.?ll| will) love|why (?:join|work)\b|^life at\b|^working at\b|what we offer|\bperks\b"),
     ("duty", r"responsibilit|what you.?ll do|what you will do|duties|day.to.day|your impact|in this role|key tasks|"
              r"you will|your role|what you.?ll own|how you.?ll"),
@@ -82,27 +71,20 @@ HEADINGS = (
              r"who we are|what we offer|total rewards|transparency|diversity|inclusion|disclaimer|^pay\\b|^location|^equal"),
 )
 
-# Generic exclusion defaults. Rules: terms (word match) and/or patterns (regex). `strict` = any hit anywhere is hard.
 DEFAULT_EXCLUSIONS = (
     {"id": "clinical", "reason": "clinical", "terms": ["clinical"]},
-    # D111: a fintech that serves healthcare workers (Stream) names healthcare a few times without being a healthcare job. In the title or the company it is still hard;
-    # in the text it takes four mentions, and a mention in the first 600 characters is no longer enough on its own.
     {"id": "healthcare", "reason": "healthcare", "terms": ["healthcare", "health care", "health-care"], "min_hits": 4},
-    # D89: a different profession in the TITLE (or a hospital as the employer) is never a Fit, whatever generic requirements the posting lists.
     {"id": "hr_function", "reason": "HR / people function", "where": "title", "patterns": [
         r"\bhuman resources\b", r"\bHR\b", r"\bTA\b", r"talent acquisition", r"\brecruit\w*", r"talent partner", r"people operations",
         r"people experience", r"people partner", r"people (?:&|and) culture", r"employee benefits", r"\bpayroll\b", r"total rewards"]},
     {"id": "legal_compliance", "reason": "legal / compliance / risk role", "where": "title", "patterns": [
         r"\blegal\b", r"\bcounsel\b", r"\bparalegal\b", r"\bcompliance (?:officer|analyst|manager|specialist)\b", r"\bAML\b", r"\bKYC\b",
         r"\brisk (?:analyst|officer)\b", r"employee relations", r"\bresearch scientist\b", r"\bthreat intelligence\b", r"\bmedia planner\b"]},
-    # D103: a financial-risk / financial-crime / treasury / audit role is a different profession, whatever generic requirements it lists ("20+ years", "stakeholder
-    # leadership"). The domain IS the job; program-risk wording ("risk and dependency management") never appears in such a title.
     {"id": "finance_risk_domain", "reason": "financial risk / fincrime / treasury / audit domain role", "where": "title", "patterns": [
         r"\bfin ?crime\b", r"\bfinancial crimes?\b", r"^(?!.*\b(?:product|program|project|delivery)\b).*\bfraud\b", r"\bsanctions\b", r"\bmlro\b", r"\btreasury\b", r"\bunderwrit\w*", r"\bactuar\w*",
         r"\binternal audit\b", r"\bauditor\b", r"\bregulatory (?:compliance|affairs|reporting)\b", r"\bcompliance (?:manager|officer|director|lead|head|partner)\b", r"\bchief risk\b", r"\bhead of (?:\w+ )?risk\b",
         r"(?<!program )(?<!project )(?<!delivery )\brisk (?:manager|director|lead|partner|head)\b", r"\b(?:operational|enterprise|business|credit|market|financial|liquidity|model|conduct) risk\b",
         r"\bcredit (?:analyst|officer|manager|controller)\b", r"\bcollateral\b", r"\bpayments? (?:fraud|compliance)\b"]},
-    # D114: Jim's own call on five roles that kept passing on generic strengths: enablement, engineering leadership, training and events are not his function.
     {"id": "not_my_function", "reason": "enablement / engineering leadership / training / events role", "where": "title", "patterns": [
         r"\b(?:revenue|sales|go[- ]to[- ]market|gtm) enablement\b", r"\b(?:director|head|vp|vice president) of engineering\b",
         r"\b(?:technical |sales |customer |product )?trainer\b", r"\bevents? (?:manager|lead|director|marketing)\b"]},
@@ -132,22 +114,19 @@ DEFAULT_EXCLUSIONS = (
                                                           "federal agency", "u.s. government", "us government"]},
 )
 
-# Professions that are a different job, not a stray requirement (Fit caps at 40 only when the posting IS one of these).
 HARD_FAMILY = (
     "software engineer", "software developer", "backend engineer", "frontend engineer", "full stack engineer",
     "hands-on software development", "machine learning engineer", "model development", "data scientist", "data science",
     "devops engineer", "site reliability", "infrastructure engineer", "cloud engineer", "database administrator",
     "sap basis", "salesforce administrator", "security engineer", "security architect", "penetration", "accountant",
     "accounting", "financial modeling", "financial analyst", "chief marketing officer", "cmo",
-    "videographer", "video producer", "video editor",                        # LIFE-41: a different profession, not product management
+    "videographer", "video producer", "video editor",
 )
-# LIFE-41: Product Marketing is a profession only as a role noun; "Product Manager - Product Marketing Platform" or a PM duty that names it is not.
 HARD_FAMILY_PATTERNS = (
     r"\bproduct marketing (?:manager|lead|director|specialist|strategist|associate|partner)\b|\bproduct marketer\b|"
     r"\b(?:head|director|vp|vice president|chief)\W+(?:of\s+)?product marketing\b",
 )
 
-# Generic shape of each dimension (a requirement belongs to exactly one, first match wins in this order).
 DIM_ROLE = (r"\b\d+\s*\+?\s*(?:years?|yrs?)\b|\bsenior\b|\bprincipal\b|\bdirector\b|\bhead of\b|\bexecutive accountab\w+|\bc-?level\b|"
             r"\bvp\b|\bvice president\b|\bmentor|\bpeople management\b|\bmanage (?:a )?team|\bportfolio\b|\baccountab\w+|\bauthority\b")
 DIM_TECH = (r"\bplatform\b|\barchitect\w*|\bapis?\b|\bintegrat\w+|\bcloud\b|\binfrastructure\b|\bsoftware\b|\bsystems?\b|"
