@@ -73,6 +73,7 @@ jobs:
           JIRA_GTV_EPIC: ""
           V3_WEEK_VIEW: ""   # LIFE-918: off unless the Runtime Configuration row says on; the stages below read it from the job environment
           V2_QUARTER_SHADOW: ""   # LIFE-918: same rule; the v2 preview column of the two Quarterly Goals & Review blocks
+          MEJ_AUTOMATION_SINCE: ""   # from the Runtime Configuration row like the two above: when the manual/automatic closure split began, so the week view can tell a delivered-by-hand closure from one before tracking
         run: python3 -m lifeos.platform.settings
       # why: V3 This week for Jim and Matt (LIFE-671; read-only from Jira; the callouts on Jim & Matt V3 are written only when live; counts only)
       - id: acweek
