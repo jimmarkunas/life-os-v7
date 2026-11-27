@@ -1,8 +1,9 @@
-"""LIFE-403 (epic LIFE-401): the per-agent access policy of the one access layer. Pure functions, no network.
+"""Per-agent access policy of the one access layer. Pure functions, no network.
 
-The policy file says, for each agent (by its 64-hex Buzz key) and each service (jira, notion, github, gmail, drive, calendar), one level: off, read or write. A call is one of read, write, delete, bulk
-(a write that touches more than `bulk_limit` items). The answer is allow, deny or pending (Jim approves deletes and bulk changes on the toggle page). Fail closed everywhere: a missing,
-unreadable or malformed policy, an unknown service or an unknown agent with no default is a deny, never an allow. v1 caps: Jira, GitHub, Gmail, Drive and Calendar are read only, Notion is read and write.
+The policy file gives each agent (by its 64-hex Buzz key) a level per service: off, read or write. A call is read,
+write, delete or bulk (a write touching more than `bulk_limit` items); the answer is allow, deny or pending (deletes
+and bulk changes wait for approval). Fails closed: a missing or malformed policy, an unknown service, or an unknown
+agent with no default is a deny. CAP limits each service's level.
 """
 import json
 import re
@@ -10,12 +11,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 LEVELS = ("off", "read", "write")
-SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz", "honcho")                # LIFE-868: honcho is the retained shared-memory service (store, recall, correct, revoke), write at most; gmail, drive and calendar added Nov 9 (Jim, LIFE-374)
-CAP = {"jira": "read", "notion": "write", "github": "read", "gmail": "read", "drive": "read", "calendar": "read", "buzz": "write", "honcho": "write"}       # LIFE-865: buzz is the LIFE OS Buzz MCP; the most any agent can get in v1 (Jim, Nov 8; read only for the new three)
+SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz", "honcho")
+CAP = {"jira": "read", "notion": "write", "github": "read", "gmail": "read", "drive": "read", "calendar": "read", "buzz": "write", "honcho": "write"}
 KINDS = ("read", "write", "delete", "bulk")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BULK_DEFAULT = 10
-CENTRAL = ZoneInfo("America/Chicago")                                # audit times are Central, with daylight saving (-06:00 in winter, -05:00 in summer)
+CENTRAL = ZoneInfo("America/Chicago")
 
 
 class PolicyError(ValueError):
@@ -23,7 +24,9 @@ class PolicyError(ValueError):
 
 
 def load(text):
-    """Parse and validate a policy document. Raises PolicyError on anything unexpected (the caller then denies every call)."""
+    """Parse and validate a policy document. Raises PolicyError on anything unexpected (the caller then denies every
+    call).
+    """
     try:
         doc = json.loads(text)
     except (TypeError, ValueError):
@@ -59,14 +62,14 @@ def _levels(row):
 
 
 def level_of(policy, agent, service):
-    """The effective level: the agent's row (or the default), clamped to the v1 cap for the service."""
+    """The agent's level (its row or the default), clamped to CAP for the service."""
     row = policy["agents"].get(agent, policy["default"])
     level = row[service]
     return min(level, CAP[service], key=LEVELS.index)
 
 
 def decide(policy, agent, service, kind, count=1):
-    """-> (decision, reason). decision is allow, deny or pending. `policy` is the result of load(), or None when it could not be read."""
+    """-> (decision, reason). `policy` is the result of load(), or None when it could not be read."""
     if policy is None:
         return "deny", "policy_unreadable"
     if service not in SERVICES:
@@ -92,7 +95,9 @@ def decide(policy, agent, service, kind, count=1):
 
 
 def audit_line(agent, service, op, decision, reason, approver=None, now=None):
-    """One audit record: when (Central), who, what service and operation, the decision and its reason, and who approved. No arguments, no page text, no secret."""
+    """One audit record: when (Central), who, service, operation, decision, reason and approver. No arguments, page text
+    or secrets.
+    """
     when = (now or datetime.now(CENTRAL)).astimezone(CENTRAL)
     clean = lambda v, n: re.sub(r"[^A-Za-z0-9_.:-]", "_", str(v))[:n]
     return {"t": when.isoformat(timespec="seconds"), "agent": clean(agent, 64), "service": clean(service, 16), "op": clean(op, 80), "decision": clean(decision, 8),

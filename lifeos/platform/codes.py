@@ -1,8 +1,10 @@
-"""The outcome-code registry (LIFE-72): the one checked-in definition of every fixed code the pipeline can emit.
+"""The outcome-code registry: the one checked-in definition of every fixed code the pipeline can emit.
 
-Each package declares its own codes in lifeos/<package>/codes.json (plus reasons.json for stored reasons and not_codes.json for configuration names); this module only collects them (LIFE-644).
-A code is a fixed UPPER_SNAKE word that names a result: a refusal, a failure, a skip, a normal stop or a state. For each one the registry gives the owning stage, the kind of result (CLASSES), whether it counts against the job's retry budget, what it means in plain words, what to do next, and whether it may ever alert (SEVERITIES: none, info, page; no code pages yet, LIFE-71).
-Config and environment names that look like codes are listed in NOT_CODES. tests/contracts/test_codes.py fails when the code emits a code-shaped string that is neither a code nor in NOT_CODES."""
+Each package declares its codes in lifeos/<package>/codes.json (plus reasons.json for stored reasons and
+not_codes.json for configuration names); this module collects them. Each code has an owning stage, a kind (CLASSES), a
+retry-budget flag, a meaning, a next action and a severity (SEVERITIES). Config names that look like codes belong in
+NOT_CODES; tests/contracts/test_codes.py fails on a code-shaped string that is neither.
+"""
 import ast
 import json
 import re
@@ -18,12 +20,12 @@ CANDIDATE = re.compile(r"^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$")
 
 class Code(NamedTuple):
     stage: str
-    klass: str          # ok: a normal success | state: a status word, not a result | terminal: final for this job | retry: tried again later | blocked: a person or a limit must act | degraded: ran, but part failed | bug: off contract, a code defect
-    attempt: bool       # counts as an attempt against the job's retry budget
+    klass: str  # ok | state (a status word) | terminal (final for the job) | retry | blocked (a person or a limit must act) | degraded (part failed) | bug (off contract)
+    attempt: bool  # counts against the job's retry budget
     meaning: str
     action: str
     severity: str = "none"
-    public: bool = False   # reasons only: may be printed in a public log as itself (alertstate.REASONS is built from these); every other stored reason prints as "other"
+    public: bool = False  # reasons only: may print in a public log as itself (alertstate.REASONS is built from these); any other stored reason prints as "other"
 
 
 def _r(stage, klass, attempt, meaning, action, severity="none", public=False):
@@ -31,8 +33,10 @@ def _r(stage, klass, attempt, meaning, action, severity="none", public=False):
 
 
 def declared(root=Path(__file__).resolve().parents[1]):
-    """-> (codes, reasons, not_codes) collected from every lifeos/<package>/codes.json (a flat {CODE: [stage, class, attempt, meaning, action[, severity]]}), reasons.json
-    ({word: [stage, class, attempt, meaning, action, public]}) and not_codes.json (a list of configuration names). A code is declared in exactly one file (tests/contracts/test_codes.py)."""
+    """-> (codes, reasons, not_codes) collected from every lifeos/<package>/codes.json ({CODE: [stage, class, attempt,
+    meaning, action[, severity]]}), reasons.json ({word: [stage, class, attempt, meaning, action, public]}) and
+    not_codes.json (a list of names). A code is declared in exactly one file.
+    """
     def read(name):
         return [json.loads(path.read_text()) for path in sorted(root.glob("*/" + name))]
     return ({code: _r(*row) for data in read("codes.json") for code, row in data.items()}, {word: _r(*row[:5], public=row[5]) for data in read("reasons.json") for word, row in data.items()},
@@ -43,19 +47,18 @@ CODES, REASONS, _NAMES = declared()
 for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT", "LIMIT_UNCONFIGURED", "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE",
                 "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH", "PURGE_FAILED", "USAGE_UNAVAILABLE", "QUOTA_RESERVE", "QUOTA_UNCONFIGURED",
                 "METER_UNAVAILABLE", "AUTH_UNAVAILABLE"):
-    if "FIT_EDGE_REFUSED_" + _reason not in CODES:                  # the f-string forms Fit builds from Oracle's refusal reasons; same meaning as the bare reason
+    if "FIT_EDGE_REFUSED_" + _reason not in CODES:  # the f-string forms Fit builds from Oracle's refusal reasons
         _base = CODES[_reason]
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
-CODES.update(registry.code_rows(_r))      # LIFE-618: the registered job sources' own codes (lifeos/platform/source_registry.json)
+CODES.update(registry.code_rows(_r))
 
-# LIFE-560: every name in the environment-variable registry (credentials.config()) is a configuration name, never a result code.
+# Every name in the environment-variable registry is a configuration name, never a result code.
 from lifeos.platform import credentials    # noqa: E402 - placed beside the list it extends
 NOT_CODES = frozenset(_NAMES) | frozenset(row["name"] for row in credentials.config()["names"]) | frozenset(credentials.config()["provided"]["names"])
 
 
 def public_reasons():
-    """The reasons a counts-only public log may print as themselves, as the allowlist alertstate.REASONS uses."""
     return frozenset(code for code, entry in REASONS.items() if entry.public)
 
 
@@ -64,7 +67,9 @@ _SQL_REASON_IN = re.compile(r"unresolved_reason\s+(?:NOT\s+)?IN\s*\(([^)]*)\)")
 
 
 def sql_reasons(source):
-    """The literal reasons one module's SQL writes or tests on unresolved_reason: {reason}. A LIKE pattern is not a reason."""
+    """The literal reasons one module's SQL writes or tests on unresolved_reason: {reason}. A LIKE pattern is not a
+    reason.
+    """
     found = set(_SQL_REASON.findall(source))
     for group in _SQL_REASON_IN.findall(source):
         found.update(re.findall(r"'([^'%]+)'", group))
@@ -72,7 +77,6 @@ def sql_reasons(source):
 
 
 def candidates(source):
-    """The fixed code-shaped strings in one module's source (docstrings excluded): {code: first line number}."""
     tree = ast.parse(source)
     parent = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     found = {}
@@ -83,5 +87,4 @@ def candidates(source):
 
 
 def lookup(code):
-    """-> the Code for a registered code, else None."""
     return CODES.get(code)

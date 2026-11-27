@@ -1,13 +1,11 @@
-"""LIFE-975 step 4d: the System table's Connections row, and the one writer of the System health database's owned rows."""
-# Owned rows are those with `Managed by = v7-inbox-writer`.
-# The database moved by id to Monitoring & Alerts (data source from the LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE setting). Its only writer was the LIFE-711 view writer; LIFE-792 (Nov 16 2026) retired that
-# writer with the mirror view and nothing wrote the rows again, so they have said `Last OK 11/16 · 8:30 PM CT` ever since. This module is the writer now, and it writes only owned rows.
-# A connection works when the domains job that uses it passed (GitHub's run history of domains.yml, read with the token the step already has; no new credential). Last OK is when that job last finished
-# with success; Health is 🟢 ok when its newest finished run passed and 🔴 unavailable when it failed. A row with no job is a connection nothing exercises yet (Concord: the Agent Inbox's Concord source
-# is read-only and refused live reads until LIFE-977): until its first good read it stays `⚪ not connected` and counts as down, because Concord should work (Jim, Nov 25 2026). Since LIFE-977 the System card asks the
-# private endpoint's `concord1` once per tick (a count and a fixed code, lifeos/inbox/concord_reader.py): a good read sets the row 🟢 ok with Last OK = the read time; a failed read keeps the last good time, and the row
-# counts as connected for 2.5 hours after it, then reads `CONCORD DOWN · STALE since <time>`. Off by design: TGP
-# Everything, School Outlook, Bytalos Asana. The Todoist row is retired: archived once, never written again. Names, counts and fixed words only.
+"""The System table's Connections row, and the one writer of the System health database's owned rows.
+
+Only rows with `Managed by = v7-inbox-writer` are written. A connection works when the domains job that uses it
+passed: Last OK is when that job last succeeded, Health is 🟢 ok when its newest finished run passed and 🔴 unavailable
+when it failed. A row with no job stays `⚪ not connected` and counts as down. The Concord row is read once per tick
+(lifeos/inbox/concord_reader.py): a good read sets it ok, a failed read keeps the last good time, and it counts as
+connected for FRESH after that, then reads `CONCORD DOWN · STALE since <time>`.
+"""
 import datetime as dt
 import json
 import os
@@ -16,11 +14,11 @@ import urllib.request
 from lifeos.platform import ct_stamp, notion_ids
 from lifeos.platform.notion_client import NotionError
 
-SOURCE_NAME = "SYSTEM_HEALTH_SOURCE"                              # the setting row LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE holds the data source id (never in source)
+SOURCE_NAME = "SYSTEM_HEALTH_SOURCE"
 MANAGED_BY = "v7-inbox-writer"
 OFF_BY_DESIGN = ("health:tgp:everything", "health:personal:school_outlook", "health:bytalos:asana")
 RETIRED = ("health:personal:todoist",)
-JOBS = {                                     # record id -> the domains.yml job that exercises the connection
+JOBS = {  # record id -> the domains.yml job that exercises the connection
     "health:personal:jira": "jira", "health:bytalos:jira": "jira",
     "health:personal:calendar": "agenda", "health:bytalos:calendar": "agenda",
     "health:personal:outlook:work": "outlook", "health:personal:outlook:personal": "outlook",
@@ -32,9 +30,9 @@ JOBS = {                                     # record id -> the domains.yml job 
 CONCORD = "health:all:concord"
 NAMES = {"health:all:concord": "Concord"}
 OK, FAILING, NOT_CONNECTED = "🟢 ok", "🔴 unavailable", "⚪ not connected"
-FRESH = {CONCORD: dt.timedelta(hours=2, minutes=30)}      # LIFE-977: a connection counts as connected this long after its last good read; every other row 2 hours
+FRESH = {CONCORD: dt.timedelta(hours=2, minutes=30)}  # how long a connection counts as connected after its last good read
 DEFAULT_FRESH = dt.timedelta(hours=2)
-RUNS = 12                                    # the newest domains runs read for evidence (about half a day of ticks)
+RUNS = 12
 API = "https://api.github.com"
 
 
@@ -55,7 +53,6 @@ def source_id(environ=os.environ):
 
 
 def read_rows(client, source):
-    """-> [{"page", "id", "name", "workspace", "health", "last_ok"}] for every row this writer owns. Anything else in the database is never read into the list."""
     if not source:
         raise ConnectionsError("CONNECTIONS_NOT_CONFIGURED")
     rows, cursor = [], None
@@ -72,7 +69,9 @@ def read_rows(client, source):
 
 
 def last_ok_time(text, now):
-    """`11/16 · 8:30 PM CT` -> an aware Central datetime (a date that lands after now is the year before), or None for `—` or anything unreadable."""
+    """`11/16 · 8:30 PM CT` -> an aware Central datetime (a date after now is last year), or None for `—` or anything
+    unreadable.
+    """
     found = ct_stamp.read(text or "")
     if not found or found[0] is None:
         return None
@@ -88,7 +87,7 @@ def last_ok_time(text, now):
     return None
 
 
-TICK_RUN = "domains (after tick)"                  # the run title of the after-tick run: the only runs that count as evidence a connection works
+TICK_RUN = "domains (after tick)"  # only after-tick runs count as evidence
 
 
 def _api(path, token, opener=urllib.request.urlopen):
@@ -98,8 +97,9 @@ def _api(path, token, opener=urllib.request.urlopen):
 
 
 def evidence(environ=os.environ, api=_api):
-    """-> {job: {"last_ok": aware datetime or None, "failed": bool}} from the newest `domains` runs' jobs, newest first: `last_ok` is when the job last finished with success; `failed` is true when its newest
-    finished (not skipped) run did not succeed. {} when the history cannot be read (the rows then keep their last values and go stale by the two-hour rule)."""
+    """-> {job: {"last_ok": aware datetime or None, "failed": bool}} from the newest `domains` runs, newest first.
+    `failed`: its newest finished (not skipped) run did not succeed. {} when the history cannot be read.
+    """
     repo, token = (environ.get("GITHUB_REPOSITORY") or "").strip(), (environ.get("GITHUB_TOKEN") or "").strip()
     if not repo:
         return {}
@@ -108,7 +108,7 @@ def evidence(environ=os.environ, api=_api):
         out = {}
         for run in runs:
             if run.get("conclusion") not in ("success", "failure") or not str(run.get("display_title") or "").startswith(TICK_RUN):
-                continue                          # a manual or dry run (an agent proving a change) says nothing about whether a connection works
+                continue  # a manual or dry run says nothing about whether a connection works
             for job in api(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", token)["jobs"]:
                 if job.get("conclusion") not in ("success", "failure") or not job.get("completed_at"):
                     continue
@@ -121,8 +121,9 @@ def evidence(environ=os.environ, api=_api):
 
 
 def plan(rows, seen, now, concord=None):
-    """-> [(page id, {"Health": option, "Last OK": text})] for each owned row whose job evidence changed it. Rows with no job, off by design and retired are left as they are.
-    `concord`: the parsed `concord1` reading (lifeos/inbox/concord_reader.py) or None. A good read sets the Concord row ok with the read time; a failed or absent one changes nothing (the last good time stands)."""
+    """-> [(page id, {"Health": option, "Last OK": text})] for each owned row whose job evidence changed it; rows with no
+    job, off by design or retired are left alone. `concord` is the parsed `concord1` reading or None.
+    """
     updates = []
     for row in rows:
         if row["id"] == CONCORD:
@@ -144,7 +145,6 @@ def plan(rows, seen, now, concord=None):
 
 
 def apply(client, updates, retired_pages):
-    """The only writes: each update's Health and Last OK on its own owned row, and the one-time archive of the retired Todoist row."""
     for page, values in updates:
         client.call("PATCH", f"/pages/{page}", {"properties": {"Health": {"select": {"name": values["Health"]}}, "Last OK": {"rich_text": [{"type": "text", "text": {"content": values["Last OK"]}}]}}})
     for page in retired_pages:
@@ -152,14 +152,14 @@ def apply(client, updates, retired_pages):
 
 
 def merged(rows, updates):
-    """The rows as they will read after `updates` (so a dry run and a live run summarise the same thing)."""
     changed = {page: values for page, values in updates}
     return [{**row, **{"health": changed[row["page"]]["Health"], "last_ok": changed[row["page"]]["Last OK"]}} if row["page"] in changed else row for row in rows]
 
 
 def summary(rows, now):
-    """-> {"total", "connected", "down": [names], "off", "stale_since"} over the owned rows that should work, or None when there are none. Retired rows are ignored; a should-work row is
-    connected only when it is 🟢 ok with a Last OK no more than two hours old."""
+    """-> {"total", "connected", "down": [names], "off", "stale_since"} over the owned rows that should work, or None
+    when there are none. Connected means 🟢 ok with a Last OK no more than two hours old.
+    """
     live = [r for r in rows if r["id"] not in RETIRED]
     should = [r for r in live if r["id"] not in OFF_BY_DESIGN]
     if not should:
@@ -177,7 +177,7 @@ def summary(rows, now):
         if name not in down:
             down.append(name)
         if row["health"] == OK and at is not None:
-            stale = at if stale is None or at < stale else stale          # a row that says ok but has not been refreshed is stale, not failing
+            stale = at if stale is None or at < stale else stale  # ok but not refreshed: stale, not failing
     return {"total": len(should), "connected": connected, "down": down, "off": sum(r["id"] in OFF_BY_DESIGN for r in live), "stale_since": stale}
 
 

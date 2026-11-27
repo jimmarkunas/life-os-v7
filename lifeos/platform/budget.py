@@ -1,8 +1,10 @@
-"""LIFE-691: a time budget for every stage: a stage that spends it stops its own work, records one fixed code, and fails the run only if it is a required stage.
+"""A time budget for every stage: one that spends it stops, records one fixed code, and fails the run only if required.
 
-`lifeos/platform/stage_budgets.json` holds one row per stage (seconds, required). `guard(seconds)` is an alarm around one stage; the exception it raises is a BaseException, so a stage's own
-`except Exception` cannot swallow it, and `finally` blocks still run. Where a run already has an alarm (the Jobs tick gives each of its stages its own), the guard stays out of the way.
-A stage within its budget behaves exactly as before. Counts carry the fixed code and the two numbers only (public repo: no names, no content)."""
+`lifeos/platform/stage_budgets.json` holds one row per stage (seconds, required). `guard(seconds)` is an alarm around
+one stage; its exception is a BaseException, so a stage's own `except Exception` cannot swallow it and `finally`
+blocks still run. Where a run already has an alarm (the Jobs tick gives each stage its own), the guard stays out of
+the way. Counts carry the fixed code and the two numbers only.
+"""
 import json
 import os
 import signal
@@ -37,8 +39,9 @@ def _alarm(_signum, _frame):
 
 @contextmanager
 def guard(seconds, environ=None):
-    """Run the block under an alarm of `seconds`. No alarm when the switch STAGE_BUDGETS is off, off the main thread, where there is no alarm signal, or where another alarm is already armed
-    (the Jobs tick arms one per stage: its own budget governs there)."""
+    """Run the block under an alarm of `seconds`. No alarm when STAGE_BUDGETS is off, off the main thread, or where
+    another alarm is armed.
+    """
     environ = os.environ if environ is None else environ
     if (environ.get("STAGE_BUDGETS") == "off" or not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread()
             or signal.getsignal(signal.SIGALRM) not in (signal.SIG_DFL, signal.SIG_IGN, None) or signal.getitimer(signal.ITIMER_REAL)[0] > 0):
@@ -54,6 +57,8 @@ def guard(seconds, environ=None):
 
 
 def over_budget(seconds, elapsed, required):
-    """-> (counts, exit code) for a stage the alarm stopped: required stages fail the run with the fixed code, optional ones record it and let the run pass."""
+    """-> (counts, exit code) for a stage the alarm stopped: required stages fail the run with the fixed code, optional
+    ones record it and pass.
+    """
     counts = {"stage_budget_exceeded": 1, "code": CODE, "budget_seconds": int(seconds), "elapsed_seconds": int(elapsed), "required": bool(required)}
     return counts, (1 if required else 0)

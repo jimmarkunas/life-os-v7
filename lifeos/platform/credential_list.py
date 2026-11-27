@@ -1,7 +1,12 @@
-"""The credential inventory as data: names, providers, purpose, where each is read, an expiry date when known; never a value (LIFE-528).
+"""The credential inventory as data: names, providers, purpose, where each is read, an expiry date when known; never a value.
 
-A Python module because the Close service's release tool copies only .py files. CREDENTIALS is the expiry inventory behind the Alert settings screen; `lifeos/platform/credentials.py` reads it; edit the entries here. PROVIDED, PATTERNS and NOT_ENVIRONMENT also stay here; the environment-variable name rows live in lifeos/<owner package>/config.txt (LIFE-644). tests/contracts/test_config_registry.py checks the registry against every environment read in lifeos/ and every name a workflow sets. Names only: never a value, a secret id, a Bitwarden item id or a path."""
-# LIFE-560 added the registry of environment-variable NAMES (kind, owner, purpose).
+A Python module because the Close service's release tool copies only .py files. CREDENTIALS is the expiry inventory
+behind the Alert settings screen; `lifeos/platform/credentials.py` reads it. PROVIDED, PATTERNS and NOT_ENVIRONMENT
+also stay here; the environment-variable name rows live in lifeos/<owner package>/config.txt.
+tests/contracts/test_config_registry.py checks the registry against every environment read in lifeos/ and every name a
+workflow sets.
+"""
+# The registry of environment-variable NAMES (kind, owner, purpose).
 
 CREDENTIALS = [{'key': 'timer_token',
   'label': 'cron-job.org GitHub token',
@@ -311,9 +316,10 @@ CREDENTIALS = [{'key': 'timer_token',
   'how_read': 'an OCI API signing key has no expiry'}]
 
 
-# kind: input (read by code, set by a workflow or a person) | flag (an on/off or mode switch) | secret (a credential or private detail, identifier only) | workflow_only (set in a workflow, read by a shell step or an action)
-# patterns: files that read names built at run time, with the name patterns they may read. not_environment: files whose `env` is not the process environment.
-# LIFE-644: the name rows themselves (NAME kind purpose) are in lifeos/<owner package>/config.txt; credentials.config() collects them with the groups below.
+# - kind: input (read by code, set by a workflow or a person) | flag (an on/off or mode switch) | secret (a credential
+#   or private detail, identifier only) | workflow_only (set in a workflow, read by a shell step or an action)
+# - patterns: files that read names built at run time, with the name patterns they may read.
+# - not_environment: files whose `env` is not the process environment.
 PROVIDED = {'prefixes': ['GITHUB_', 'RUNNER_'], 'names': ['CI', 'PATH', 'SUDO_USER', 'CREDENTIALS_DIRECTORY', 'HOME']}
 PATTERNS = [{'file': 'lifeos/inbox/followup_wiring.py', 'match': ['FOLLOWUP_ACCOUNT_*']},
  {'file': 'lifeos/amazon/card.py', 'match': ['*_CARD_BLOCK_ID', 'GMAIL_OAUTH_*']},

@@ -1,13 +1,10 @@
-"""LIFE-791: the Agent Inbox. One place where agents and people write items for Jim that are too big to ignore and too small for a Jira ticket or a Todoist task."""
-# Jim, Nov 16 2026: "tasks that need my attention from Agents and people that are not big enough to be a jira ticket, or too small to be a Todoist task ... a centralized place for the various agents to write to
-# me (similar to what we built with the Concord inbox in Orca)". It is NOT a view of Jira, Todoist or Calendar: "Jira stays the only task list", so no row ever mirrors another system's record.
-#
-# The inbox is one Notion database ("Agent Inbox list", the inline database on Jim's Agent Inbox page). A writer adds one row: `send(...)` here (the `send_to_jim` tool and CLI call it) or a direct Notion write
-# with the property names in docs/platform/agent-inbox.md. Jim marks a row Done or Dismissed, writes a Reply, sets Snoozed or Promoted. Nothing here reads Jira, Todoist, Calendar or any other source.
-#
-# Safety: a write targets only the one data source named "Agent Inbox list" (found by search, never a committed id; zero or several is a fixed refusal); a row is created with Status New and nothing else; the subject,
-# details and link are checked for secrets, personal data and synthetic hosts before anything leaves the process; one sender may add at most RATE_PER_HOUR rows an hour; the same key never adds a second row.
-# Output is counts and fixed reason words only: never a subject, a sender, a link or a token.
+"""The Agent Inbox: one place where agents and people write items for Jim, too big to ignore and too small for a ticket.
+
+One Notion database ("Agent Inbox list"); `send(...)` adds a row with Status New, and Jim marks it Done, Dismissed,
+Snoozed or Promoted. A write targets only the one data source with that title (found by search, never a committed id).
+Subject, details and link are checked for secrets, personal data and synthetic hosts first; one sender may add at most
+RATE_PER_HOUR rows an hour and the same key never adds a second row. Output is counts and fixed reason words only.
+"""
 import hashlib
 import re
 from datetime import datetime, time, timedelta, timezone
@@ -19,20 +16,20 @@ from lifeos.platform.notion_client import Client, NotionError
 
 DB_TITLE = "Agent Inbox list"
 PAGE_TITLE = "Agent Inbox"
-MERGED_TITLE = "Daily LIFE OS Report (Hourly)"                                    # LIFE-938/939: the one page after the merge; the old Agent Inbox page is archived, no pointer
+MERGED_TITLE = "Daily LIFE OS Report (Hourly)"
 PAGE_TITLES = (MERGED_TITLE, PAGE_TITLE)
 COUNTER_LINE = re.compile(r"Now \d+ · Today \d+")
-MERGED_LABELS = ("This week", "FYI", "Snoozed")                                    # the three count tiles beside the Now and Today box
+MERGED_LABELS = ("This week", "FYI", "Snoozed")
 URGENCY = ("Now", "Today", "This week", "FYI")
 WORKSPACES = ("Personal", "Bytalos")
 STATUSES = ("New", "Done", "Dismissed", "Snoozed", "Promoted")
-TILES = (("Now", "New", "Now"), ("Today", "New", "Today"), ("This week", "New", "This week"), ("FYI", "New", "FYI"), ("Snoozed", "Snoozed", None))   # label, status, urgency (None: any)
+TILES = (("Now", "New", "Now"), ("Today", "New", "Today"), ("This week", "New", "This week"), ("FYI", "New", "FYI"), ("Snoozed", "Snoozed", None))  # label, status, urgency (None: any)
 SUBJECT_MAX, DETAILS_MAX, FROM_MAX, LINK_MAX, KEY_MAX = 160, 1500, 60, 500, 64
 RATE_PER_HOUR = 20
 CT = ZoneInfo("America/Chicago")
-DETAILS_LINE_MAX, BODY_BLOCKS_MAX, CELL_MAX = 120, 90, 300                          # LIFE-988: the Details property is one readable line; the full text is the styled page body
+DETAILS_LINE_MAX, BODY_BLOCKS_MAX, CELL_MAX = 120, 90, 300
 
-_FROM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:/-]{0,59}$")                       # a name or an agent id: never an address
+_FROM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:/-]{0,59}$")  # a name or an agent id: never an address
 _KEY = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _SECRET = re.compile("|".join((
     r"nsec1[0-9a-z]{20,}", r"ghp_[A-Za-z0-9]{20,}", r"gh[ousr]_[A-Za-z0-9]{20,}", r"github_pat_[A-Za-z0-9_]{20,}", r"sk-[A-Za-z0-9_-]{20,}", r"AKIA[0-9A-Z]{16}", r"xox[abprs]-[A-Za-z0-9-]{10,}",
@@ -69,7 +66,9 @@ def _due(value):
 
 
 def due_for(urgency, moment):
-    """LIFE-988: the Due an urgency means for an item created at `moment` (CT, with its own offset): Now is that moment, Today is 11:59 PM CT that day, This week is 11:59 PM CT on the coming Sunday (the same day on a Sunday), FYI has none."""
+    """The Due an urgency means for an item created at `moment`: Now is that moment, Today and This week are 11:59 PM CT
+    that day and the coming Sunday, FYI has none.
+    """
     local = moment.astimezone(CT)
     if urgency == "Now":
         return local.replace(microsecond=0).isoformat()
@@ -92,7 +91,9 @@ def _link(value):
 
 
 def normalize(item, now=None):
-    """A validated item: from, subject, urgency, workspace, due, due_given, link, details, key. `due` is the sender's own when given, else the one its urgency means at `now` (LIFE-988). InboxError with a fixed word otherwise; nothing is ever echoed back."""
+    """A validated item; `due` is the sender's own, else the one its urgency means at `now`. Raises InboxError with a
+    fixed word.
+    """
     if not isinstance(item, dict):
         raise InboxError("item_invalid")
     sender = _text(item.get("from"), FROM_MAX, "from", required=True)
@@ -111,7 +112,7 @@ def normalize(item, now=None):
     key = str(item.get("key") or "").strip()
     if key and not _KEY.match(key):
         raise InboxError("key_invalid")
-    out["key"] = key or hashlib.sha256("\x1f".join((sender, subject, given, out["link"])).encode()).hexdigest()[:32]       # the key never depends on a computed Due
+    out["key"] = key or hashlib.sha256("\x1f".join((sender, subject, given, out["link"])).encode()).hexdigest()[:32]  # the key never depends on a computed Due
     return out
 
 
@@ -123,7 +124,6 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 
 
 def _spans(text):
-    """Inline text with **bold** as Notion rich text (each piece at most 1900 characters)."""
     out, last = [], 0
     for found in list(_BOLD.finditer(text)) + [None]:
         plain = text[last:found.start() if found else len(text)]
@@ -136,7 +136,6 @@ def _spans(text):
 
 
 def gist(details):
-    """The one-line Details property: the first line of the text without markup, at most DETAILS_LINE_MAX characters."""
     for line in str(details or "").splitlines():
         words = re.sub(r"^\s*(?:#{1,3}\s+|[-*]\s+|\d+\.\s+)", "", line.replace("**", "")).strip()
         if words and not re.fullmatch(r"[\s|:-]+", words):
@@ -151,8 +150,9 @@ def _row(cells, width):
 
 
 def body_blocks(details):
-    """LIFE-988: the item's text as styled Notion blocks. The first line is a callout (the ask); `a | b | c` rows become a table (first row the header); `- ` and `1. ` lines become lists; `# ` and `## ` headings;
-    everything else a paragraph; **bold** stays bold. At most BODY_BLOCKS_MAX blocks."""
+    """The item's text as styled Notion blocks (first line a callout, `a | b | c` rows a table, lists, headings), at most
+    BODY_BLOCKS_MAX.
+    """
     lines, blocks, i = [ln.rstrip() for ln in str(details or "").splitlines()], [], 0
     while i < len(lines) and len(blocks) < BODY_BLOCKS_MAX:
         line = lines[i].strip()
@@ -185,7 +185,6 @@ def body_blocks(details):
 
 
 def replace_body(client, page_id, details):
-    """Make the page body exactly the styled text (an update with the same key replaces the body, never appends): delete the old blocks, then add the new ones."""
     blocks = body_blocks(details)
     if not blocks:
         return
@@ -201,7 +200,6 @@ def replace_body(client, page_id, details):
 
 
 def properties(item):
-    """The Notion property payload for a normalized item: Status is always New, nothing else is ever preset."""
     props = {"Subject": {"title": [{"type": "text", "text": {"content": item["subject"]}}]}, "From": _rich(item["from"]), "Workspace": {"select": {"name": item["workspace"]}},
              "Urgency": {"select": {"name": item["urgency"]}}, "Status": {"select": {"name": "New"}}, "Key": _rich(item["key"]), "Details": _rich(gist(item["details"]))}
     if item["due"]:
@@ -216,8 +214,8 @@ def _plain_title(rich):
 
 
 def locate(client):
-    """The data source id of the one database called DB_TITLE. None or several is a fixed refusal: a writer never guesses where to write."""
-    found = notion_pages.search_all(client, DB_TITLE, "data_source", InboxError, incomplete="inbox_not_found", capped="inbox_not_found")           # LIFE-891: every result page, not the first 25
+    """The data source id of the one database called DB_TITLE; None or several is a fixed refusal."""
+    found = notion_pages.search_all(client, DB_TITLE, "data_source", InboxError, incomplete="inbox_not_found", capped="inbox_not_found")
     hits = [r for r in found if r.get("object") == "data_source" and not r.get("in_trash") and not r.get("archived") and _plain_title(r.get("title")) == DB_TITLE]
     if len(hits) != 1:
         raise InboxError("inbox_not_found" if not hits else "inbox_ambiguous")
@@ -243,14 +241,15 @@ def _select(name, value):
 
 
 def send(client, item, now=None, source=None):
-    """Add one row. -> {"created": 1} or {"duplicate": 1}. InboxError (fixed word) when the item is refused or the sender is over the rate; NotionError (fixed code) when Notion refuses."""
+    """Add one row -> {"created": 1} or {"duplicate": 1}. Raises InboxError (fixed word) when the item is refused or over
+    the rate, NotionError when Notion refuses.
+    """
     now = now or datetime.now(timezone.utc)
     item = normalize(item, now)
     source = source or locate(client)
     matched = client.query_data_source(source, {"page_size": 2, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}).get("results") or []
     if matched:
-        # Fail closed if the same key already names multiple rows. Never guess a
-        # target or reset Jim's own Status when an agent resubmits an item.
+        # Fail closed if the same key names several rows.
         if len(matched) != 1 or not matched[0].get("id"):
             raise InboxError("duplicate_key_ambiguous")
         rich = matched[0].get("properties", {}).get("From", {}).get("rich_text", [])
@@ -260,7 +259,7 @@ def send(client, item, now=None, source=None):
         props = properties(item)
         props.pop("Status")
         if not item["due_given"] and ((matched[0].get("properties", {}).get("Due") or {}).get("date") or {}).get("start"):
-            props.pop("Due", None)                                                           # LIFE-988: a resend never moves a Due that is already set unless the sender names one
+            props.pop("Due", None)  # a resend never moves a Due that is already set unless the sender names one
         client.call_once("PATCH", f"/pages/{matched[0]['id']}", {"properties": props})
         replace_body(client, matched[0]["id"], item["details"])
         return {"updated": 1}
@@ -273,7 +272,9 @@ def send(client, item, now=None, source=None):
 
 
 def fill_missing_due(client, source, now=None, statuses=("New",), cap=40):
-    """LIFE-988: give every open row that has an urgency but no Due the one its urgency means at the row's own Received time (rows with a Due, FYI rows and closed rows are never touched). -> {"filled": n, "left": n}."""
+    """Give every open row with an urgency but no Due the one its urgency means at its Received time. -> {"filled": n,
+    "left": n}.
+    """
     out, cursor = {"filled": 0, "left": 0}, None
     flt = {"and": [{"or": [_select("Status", st) for st in statuses]} if len(statuses) > 1 else _select("Status", statuses[0]), {"property": "Due", "date": {"is_empty": True}}]}
     for _ in range(5):
@@ -293,7 +294,6 @@ def fill_missing_due(client, source, now=None, statuses=("New",), cap=40):
 
 
 def counts(client, source=None):
-    """{label: number} for the five tiles: New items per urgency, and Snoozed items."""
     source = source or locate(client)
     return {label: _count(client, source, [_select("Status", status)] + ([_select("Urgency", urgency)] if urgency else [])) for label, status, urgency in TILES}
 
@@ -313,7 +313,6 @@ def _words(block):
 
 
 def _tiles(client, page_id):
-    """The five tile callouts of the page as [(callout id, number block, label block)] in order, or InboxError tiles_shape_changed."""
     body = _children(client, page_id)
     if not body or body[0].get("type") != "column_list":
         raise InboxError("tiles_shape_changed")
@@ -331,9 +330,10 @@ def _tiles(client, page_id):
 
 
 def _merged_row(client, page_id):
-    """LIFE-938: the merged page's blocks as (box callout, box heading block, box gray line block or None, [(callout id, number block, label block)] for This week, FYI and Snoozed), or None.
-    They are found by what they say, wherever Jim put them among the page's first blocks and the containers inside them (callouts, columns): the box is the one callout headed `Now N · Today M` (earlier shape) or whose second block is the gray line `Now N · Today M` (tile shape),
-    each tile is the one callout whose first block is its number and whose second is its label. Two of a kind, or a missing one, is None (the caller then falls back to the old page)."""
+    """The merged page's blocks as (box callout, box heading, box gray line or None, [(callout id, number block, label
+    block)] for This week, FYI and Snoozed), or None. Found by what they say; two of a kind or a missing one gives
+    None (the caller falls back to the old page).
+    """
     boxes, tiles = [], {}
 
     def scan(blocks, depth):
@@ -344,9 +344,9 @@ def _merged_row(client, page_id):
                 if kids and kids[0].get("type") == "heading_3":
                     head = _words(kids[0])
                     if head.startswith("Now") and "Today" in head:
-                        boxes.append((block, kids[0], None))                       # the earlier shape: the heading alone says `Now N · Today M`
+                        boxes.append((block, kids[0], None))
                     elif len(kids) > 1 and kids[1].get("type") == "paragraph" and COUNTER_LINE.fullmatch(_words(kids[1]).strip()):
-                        boxes.append((block, kids[0], kids[1]))                    # the tile shape: one number, then the gray line `Now N · Today M`
+                        boxes.append((block, kids[0], kids[1]))
                     elif len(kids) > 1 and kids[1].get("type") == "paragraph" and _words(kids[1]).strip() in MERGED_LABELS:
                         tiles.setdefault(_words(kids[1]).strip(), []).append((block["id"], kids[0], kids[1]))
                 if depth < 3:
@@ -366,8 +366,9 @@ def _live_titled(page, titles):
 
 
 def _parent_page(client, source):
-    """LIFE-891: the page that holds the inbox database the run already found (data source, then its database, then that database's parent page), accepted only when its title
-    is exactly PAGE_TITLE, it is live, and its first block is the tile row. None for anything else: the caller then falls back to the paged title search."""
+    """The page holding the inbox database the run already found, accepted only when titled PAGE_TITLE, live, and
+    starting with the tile row; else None.
+    """
     try:
         parent = (client.call("GET", f"/data_sources/{source}") or {}).get("parent") or {}
         if parent.get("type") == "database_id":
@@ -384,9 +385,9 @@ def _parent_page(client, source):
 
 
 def locate_page(client, source=None):
-    """The page that holds the tiles: the one live page titled MERGED_TITLE with the merged tile row (LIFE-938), else the one live page titled PAGE_TITLE whose first block is the old tile row.
-    None or several of the winning kind is a fixed refusal; no id is ever committed. A merged page always wins, so the old Agent Inbox page (archived, tiles frozen) is never written after the merge.
-    LIFE-891: with `source` the old page's database parent is tried first (only before the merge); otherwise every result page of the title searches is read."""
+    """The page that holds the tiles: the one live page titled MERGED_TITLE with the merged tile row, else the one titled
+    PAGE_TITLE with the old tile row. None or several of the winning kind is a fixed refusal.
+    """
     merged = []
     for page in notion_pages.search_all(client, MERGED_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"):
         if _live_titled(page, (MERGED_TITLE,)) and _merged_row(client, page["id"]):
@@ -418,8 +419,6 @@ def _line_key(rich):
 
 
 def _set_counter(client, box, heading, line, now, today):
-    """Make the box the same shape as the tiles beside it (Jim, Nov 24 2026 6:12 PM CT): a default callout (no background colour), one number as its heading (Now + Today), and one plain gray line `Now N · Today M` below it;
-    anything else inside it is removed. Change only what differs; only the box's own blocks are touched. -> blocks changed."""
     changed = 0
     if (box.get("callout") or {}).get("color") != "default":
         client.call_once("PATCH", f"/blocks/{box['id']}", {"callout": {"color": "default"}})
@@ -443,14 +442,13 @@ def _set_counter(client, box, heading, line, now, today):
 
 
 def recount_page(client, page_id=None, source=None):
-    """Write the tiles from the database. Old page: the five tile numbers and labels. Merged page (LIFE-938): the Now and Today box (the tiles' shape: a default callout, one number, one gray line `Now N · Today M`; anything else in it is removed) and the This week, FYI and Snoozed tiles. Only those blocks are ever patched, and only when they differ. -> {"tiles": n, "tiles_changed": n}."""
     source = source or locate(client)
     numbers = counts(client, source)
     page_id = page_id or locate_page(client, source)
     merged = _merged_row(client, page_id)
     if merged:
         box, heading, line, tiles = merged
-        changed = _set_counter(client, box, heading, line, numbers["Now"], numbers["Today"])      # Jim, Nov 24 2026 2:36 PM CT: a counter only, no item list; 6:12 PM CT: the tiles' own shape
+        changed = _set_counter(client, box, heading, line, numbers["Now"], numbers["Today"])
         for label, (_, number_block, label_block) in zip(MERGED_LABELS, tiles, strict=True):
             if _words(number_block) != str(numbers[label]):
                 client.update_block(number_block["id"], "heading_3", [{"type": "text", "text": {"content": str(numbers[label])}}])
@@ -469,11 +467,12 @@ def recount_page(client, page_id=None, source=None):
     return {"tiles": len(TILES), "tiles_changed": changed}
 
 
-TEST_KEY_PREFIXES = ("proof-", "direct-")                                          # the keys the inbox proof writes; only these rows may ever be trashed
+TEST_KEY_PREFIXES = ("proof-", "direct-")  # only rows with these key prefixes may ever be trashed
 
 
 def archive_keys(client, keys, source=None):
-    """Trash the rows whose Key is in `keys`: only the proof's own test rows (keys that start with a TEST_KEY_PREFIXES word); any other key is a refusal and nothing is trashed. -> number archived."""
+    """Trash the rows whose Key starts with a TEST_KEY_PREFIXES word; any other key is a refusal. -> number archived.
+    """
     if any(not str(key).startswith(TEST_KEY_PREFIXES) for key in keys):
         raise InboxError("archive_not_a_test_row")
     source = source or locate(client)

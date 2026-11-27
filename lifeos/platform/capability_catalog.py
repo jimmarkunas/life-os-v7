@@ -1,8 +1,9 @@
-"""LIFE-810 (F01): the capability catalog resolver. Pure functions, no network, no secret, no endpoint.
+"""The capability catalog resolver. Pure functions, no network, no secret, no endpoint.
 
-It extends the existing access layer (access_policy.py decides allow/deny; agent_directory.py is a catalog, not a token) with one question: for a registered principal, tool and action in a
-workspace, which provider, account alias, host, source and freshness apply, and is it working, synthetic or missing? A catalog row grants nothing and is never proof that a provider is online.
-Fail closed: an unreadable catalog, an unknown principal or capability, the wrong workspace, a missing or duplicate alias or a stale source refuses with a fixed code and never invents a route.
+For a registered principal, tool and action in a workspace: which provider, account alias, host, source and freshness
+apply, and is it working, synthetic or missing? A catalog row grants nothing and never proves a provider is online.
+Fails closed: an unreadable catalog, an unknown principal or capability, the wrong workspace, a missing or duplicate
+alias or a stale source refuses with a fixed code and never invents a route.
 """
 import json
 import re
@@ -82,8 +83,10 @@ def _refuse(code, **extra):
 
 
 def resolve(catalog, principal, tool, action, workspace, now=None):
-    """-> {"ok": True, ...the exact action, provider, tenant, account alias, host, allowed source, provenance and status...} or {"ok": False, "code": ...}. Never raises, never returns a credential or an endpoint.
-    `catalog` is the result of load(), or None when it could not be read. A `synthetic` row resolves with synthetic=True: it proves a contract, not a live provider."""
+    """-> {"ok": True, ...action, provider, tenant, account alias, host, allowed source, provenance, status} or {"ok":
+    False, "code": ...}. Never raises or returns a credential or endpoint. `catalog` is the result of load(), or None
+    when unreadable. A `synthetic` row resolves with synthetic=True: it proves a contract, not a live provider.
+    """
     if catalog is None:
         return _refuse("catalog_unreadable")
     who = catalog["principals"].get(principal) if isinstance(principal, str) else None
