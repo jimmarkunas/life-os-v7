@@ -1,5 +1,6 @@
-"""A fake Notion block store for region writers (Jira card, and any later Bills/Calendar region): GET lists the children, DELETE removes one,
-PATCH of a block replaces its paragraph. Anything else is a test failure."""
+"""A fake Notion block store for region writers (Jira card, and any later Bills/Calendar region): GET lists the children,
+DELETE removes one, PATCH of a.
+"""
 
 
 class FakeBlocks:
@@ -9,18 +10,18 @@ class FakeBlocks:
     def call(self, method, path, body=None):
         self.log.append(method)
         if method == "GET":
-            return {"object": "list", "results": [dict(k) for k in self.kids], "next_cursor": None, "has_more": False}     # LIFE-549: the paging fields the real list carries
+            return {"object": "list", "results": [dict(k) for k in self.kids], "next_cursor": None, "has_more": False}  # the paging fields the real list carries
         if method == "DELETE":
             bid = path.rsplit("/", 1)[1]
             gone = next((k for k in self.kids if k["id"] == bid), {"id": bid})
             self.kids = [k for k in self.kids if k["id"] != bid]
-            return {**gone, "object": "block", "archived": True, "in_trash": True}                                    # the real DELETE returns the archived block
+            return {**gone, "object": "block", "archived": True, "in_trash": True}  # the real DELETE returns the archived block
         if method == "PATCH" and path.startswith("/blocks/") and "children" not in path:
             for k in self.kids:
                 if k["id"] == path.rsplit("/", 1)[1]:
-                    kind = next(iter(body))                      # paragraph or heading_N: the block keeps its type and takes the new rich text
+                    kind = next(iter(body))
                     k[kind] = {"rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
-                    return {"object": "block", **k}                                                                  # the real PATCH returns the updated block
+                    return {"object": "block", **k}  # the real PATCH returns the updated block
             return {}
         raise AssertionError(path)
 
@@ -61,7 +62,7 @@ class DataSourcePages:
 
 
 class PaidBillTracker:
-    """Mutable synthetic Bill Tracker rows; records property writes and recalculates Next Due."""
+    """Mutable synthetic Bill Tracker rows"""
 
     SOURCE = "11111111-1111-4111-8111-111111111111"
 
@@ -183,7 +184,7 @@ class AgendaRegions:
         if method == "PATCH" and clean.startswith("/blocks/"):
             block_id = clean.rsplit("/", 1)[1]
             root = self.metas.get(block_id)
-            if root and "callout" in (body or {}):                    # the callout's own text
+            if root and "callout" in (body or {}):  # the callout's own text
                 rich = [{"plain_text": part["text"]["content"], **part} for part in body["callout"]["rich_text"]]
                 root["callout"] = {**root.get("callout", {}), "rich_text": rich}
                 return {}
@@ -227,8 +228,9 @@ class AgendaRegions:
 
 
 class BillsRegions(AgendaRegions):
-    """The production-shaped Daily Report: Calendar, JIRA and the ChatGPT region (protected) plus the Bills callout as it stood on 2026-10-04, a
-    heading, the frozen status paragraph with its Bill Tracker link and the linked 'View of Bills' database view."""
+    """The production-shaped Daily Report: Calendar, JIRA and the ChatGPT region (protected) plus the Bills callout as it
+    stood on 2026-10-04, a heading.
+    """
 
     def __init__(self, view_title="View of Bills", extra_kid=None, change_on=None, change_region="calendar-callout"):
         super().__init__()
@@ -246,7 +248,7 @@ class BillsRegions(AgendaRegions):
 
     def call(self, method, path, body=None):
         result = super().call(method, path, body)
-        if method in ("DELETE", "PATCH"):                       # PATCH: a line rewritten in place
+        if method in ("DELETE", "PATCH"):  # PATCH: a line rewritten in place
             self._poke(method)
         return result
 
@@ -254,26 +256,26 @@ class BillsRegions(AgendaRegions):
         block_id = path.split("/")[2]
         result = super().call_once(method, path, {"children": body["children"]})
         after = body.get("after")
-        if (body.get("position") or {}).get("type") == "start":          # Notion inserts the new blocks before everything else in the callout
+        if (body.get("position") or {}).get("type") == "start":
             kids = self.children[block_id]
             made = kids[-len(body["children"]):]
             del kids[-len(body["children"]):]
             kids[0:0] = made
             result = {"results": made + kids[len(made):]}
-        elif after:                                           # Notion inserts the new blocks right after the named block
+        elif after:
             kids = self.children[block_id]
             made = kids[-len(body["children"]):]
             del kids[-len(body["children"]):]
             at = next(i for i, k in enumerate(kids) if k["id"] == after) + 1
             kids[at:at] = made
-            result = {"results": made + kids[at + len(made):]}          # Notion lists the blocks after the insertion point too
+            result = {"results": made + kids[at + len(made):]}
         self._poke("APPEND")
         return result
 
 
 class AmazonRegions(BillsRegions):
-    """BillsRegions (so Calendar, JIRA, ChatGPT and Bills are all protected) plus the Amazon callout as it stood on 2026-10-04: a heading and the
-    frozen September status text. `table` adds a block that is not text (it must survive every write)."""
+    """BillsRegions plus the Amazon callout as it stood on 2026-10-04: a heading and the frozen September status text.
+    """
 
     def __init__(self, table=True, **kwargs):
         super().__init__(**kwargs)
@@ -283,8 +285,6 @@ class AmazonRegions(BillsRegions):
 
 
 class AttentionRegions(AmazonRegions):
-    """AmazonRegions plus the Attention callout as Jim keeps it: NO heading of its own, only the linked Attention view (a block that is not text and must survive every
-    write) and, to be replaced, nothing else."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -295,7 +295,9 @@ class AttentionRegions(AmazonRegions):
 
 
 class MailRegions(AttentionRegions):
-    """AttentionRegions plus the Mail Alerts callout: a heading, one old status line to replace, and a non-text block that must survive every write."""
+    """AttentionRegions plus the Mail Alerts callout: a heading, one old status line to replace, and a non-text block
+    that must survive every write.
+    """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -304,14 +306,16 @@ class MailRegions(AttentionRegions):
 
 
 def filter_depth(node):
-    """Levels of compound filters (`and` / `or`) in a Notion filter: a bare property filter is 0, an `and` of properties is 1."""
+    """Levels of compound filters (`and` / `or`) in a Notion filter: a bare property filter is 0, an `and` of properties
+    is 1.
+    """
     if not isinstance(node, dict):
         return 0
     inner = [filter_depth(child) for key in ("and", "or") for child in node.get(key, [])]
     return (1 + max(inner, default=0)) if ("and" in node or "or" in node) else 0
 
 
-LANE_OPTIONS = ("Newsletter", "US Web", "Scale-up", "Skilled Worker", "US Remote")      # the Ledger's Visible Lane options, spelled as it spells them
+LANE_OPTIONS = ("Newsletter", "US Web", "Scale-up", "Skilled Worker", "US Remote")
 
 
 def _select_names(node):

@@ -1,9 +1,4 @@
-"""LIFE-560: find every environment-variable NAME the code reads and every name the workflows set. Names only; no value is ever read or kept.
-
-Reads (AST over lifeos/**/*.py): os.environ[...], os.environ.get/pop/setdefault(...), os.getenv(...), `"X" in os.environ`, and the same on any object named like an environment
-(a parameter called `environ`, `env`, `environment`, or an attribute ending in `environ`), because most modules take `environ=os.environ` so tests can pass a dict.
-A read whose name is not a string literal is reported separately as DYNAMIC (file and line), never guessed.
-Sets (YAML over .github/workflows/*.yml): every key of every `env:` mapping at workflow, job and step level."""
+"""find every environment-variable NAME the code reads and every name the workflows set."""
 import ast
 import re
 from pathlib import Path
@@ -27,13 +22,13 @@ def _literal(node):
 
 
 def reads_in(source):
-    """-> (set of literal names, list of line numbers of reads whose name is not a literal)."""
+    """> (set of literal names, list of line numbers of reads whose name is not a literal)."""
     names, dynamic = set(), []
     for node in ast.walk(ast.parse(source)):
         key = None
         if isinstance(node, ast.Subscript) and _is_env_object(node.value):
             if not isinstance(node.ctx, ast.Load):
-                continue                                  # a write (`env[k] = v`) is not a read
+                continue  # a write (`env[k] = v`) is not a read
             key = node.slice
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in METHODS and node.args:
             owner = node.func.value
@@ -52,7 +47,7 @@ def reads_in(source):
 
 
 def code_reads(root=ROOT, skip=()):
-    """-> ({name: sorted files that read it}, {file: [lines of non-literal reads]}). `skip`: files whose `env` is not the process environment."""
+    """> ({name: sorted files that read it}, {file: [lines of non-literal reads]})."""
     found, dynamic = {}, {}
     for path in sorted((root / "lifeos").rglob("*.py")):
         rel = str(path.relative_to(root))
@@ -78,7 +73,7 @@ def _env_keys(node, out):
 
 
 def workflow_sets(root=ROOT):
-    """-> {name: sorted workflow files that set it in an env: block}."""
+    """> {name: sorted workflow files that set it in an env: block}."""
     import yaml
     found = {}
     for path in sorted((root / ".github" / "workflows").glob("*.yml")):
@@ -87,17 +82,17 @@ def workflow_sets(root=ROOT):
         for name in keys:
             if NAME.match(name):
                 found.setdefault(name, []).append(path.name)
-    loader = root / ".github" / "actions" / "bws-plain" / "plain.py"          # LIFE-704: the plain switches are exported to the job environment by this loader, not by an env: block
+    loader = root / ".github" / "actions" / "bws-plain" / "plain.py"
     if loader.exists():
         for name in re.findall(r'^    "([A-Z0-9_]+)": "[0-9a-f-]{36}",$', loader.read_text(), re.M) + ["LIVE"]:
-            if name in ("V7_LIVE", "V7_CLOUD_FIT_SCHEDULED"):        # read only inside workflow expressions (V7_LIVE becomes LIVE), never by code
+            if name in ("V7_LIVE", "V7_CLOUD_FIT_SCHEDULED"):
                 continue
             found.setdefault(name, []).append("bws-plain/plain.py")
     return found
 
 
 def problems(config, root=ROOT):
-    """-> list of plain-words problems between the registry (`config`) and the code and workflows under `root`. Names only."""
+    """> list of plain-words problems between the registry (`config`) and the code and workflows under `root`."""
     import fnmatch
     out = []
     listed = {row["name"]: row for row in config["names"]}

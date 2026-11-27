@@ -1,4 +1,6 @@
-"""LIFE-1023: every job that reads the Google calendar may request a GitHub OIDC token (`id-token: write`), and the retired key is loaded nowhere."""
+"""every job that reads the Google calendar may request a GitHub OIDC token (`id-token: write`), and the retired key is
+loaded nowhere.
+"""
 
 import pathlib
 import re

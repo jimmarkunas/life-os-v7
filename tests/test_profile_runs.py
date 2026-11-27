@@ -1,4 +1,6 @@
-"""LIFE-555: the run-time profile reads only job and step names and start/end times from GitHub's run records, and computes percentiles and the critical path from them."""
+"""the run-time profile reads only job and step names and start/end times from GitHub's run records, and computes
+percentiles and the critical path from.
+"""
 import io
 import unittest
 from contextlib import redirect_stdout
@@ -6,7 +8,7 @@ from unittest import mock
 
 from lifeos.sources.devtools import profile_runs as pr
 
-# A saved, trimmed run record: names are the workflow's own step names; every time is made up.
+# A saved, trimmed run record: names are the workflow's own step names
 RECORD = {"jobs": [
     {"name": "prep", "conclusion": "success", "startedAt": "2026-01-01T10:00:00Z", "completedAt": "2026-01-01T10:02:00Z", "steps": [
         {"name": "Set up job", "conclusion": "success", "startedAt": "2026-01-01T10:00:00Z", "completedAt": "2026-01-01T10:00:02Z"},

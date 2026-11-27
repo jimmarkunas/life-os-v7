@@ -1,5 +1,6 @@
-"""Ownership boundaries (D17): platform knows nothing about jobs, jobs knows nothing about any one source,
-and the same opening is the same row whichever producer emits it."""
+"""Ownership boundaries: platform knows nothing about jobs, jobs knows nothing about any one source, and the same opening
+is the same row whichever.
+"""
 import ast
 from pathlib import Path
 import unittest
@@ -12,8 +13,7 @@ LAYERS = sorted(p.name for p in ROOT.iterdir() if p.is_dir() and (p / "__init__.
 
 
 def allowed(layer):
-    """platform imports nothing; producers (sources) may use platform and any OS; every other layer (an OS such as
-    jobs, finance, ...) may use platform only. A new OS under lifeos/ is covered automatically."""
+    """platform imports nothing"""
     if layer == "platform":
         return set()
     return {"platform", *LAYERS} if layer == "sources" else {"platform"}
@@ -29,11 +29,12 @@ def layer_imports(layer):
                     yield path.name, name.split(".")[1]
 
 
-APPS = {"lifeos.sources.apps"}      # the Oracle Close service's screens and its front door (lifeos.sources.apps.close_app); every other lifeos/sources module is a stage, a registry or a proof
+APPS = {"lifeos.sources.apps"}
 
 
 def sources_targets(source, module):
-    """Every dotted lifeos.sources module `source` imports, relative imports resolved from its own dotted name `module`."""
+    """Every dotted lifeos.sources module `source` imports, relative imports resolved from its own dotted name `module`.
+    """
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             bases = [(a.name, ()) for a in node.names]
@@ -55,7 +56,7 @@ def is_app(name):
 
 
 def app_boundary_breaks(path):
-    """(file, import) pairs where an app imports a stage, or a stage imports an app. An app may use platform, the OS packages and other apps."""
+    """(file, import) pairs where an app imports a stage, or a stage imports an app."""
     module = ".".join(path.relative_to(ROOT.parent).with_suffix("").parts)
     app = is_app(module)
     for target in sources_targets(path.read_text(), module):

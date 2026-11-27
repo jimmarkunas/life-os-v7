@@ -9,7 +9,7 @@ from tests import shard
 
 
 class ShardsPartitionTheSuite(unittest.TestCase):
-    """The PR check runs `python -m tests.shard 1 2` and `2 2` side by side (Jim, Oct 26 2026). A test that fell in neither shard would silently never run."""
+    """The PR check runs `python -m tests.shard 1 2` and `2 2` side by side."""
 
     def ids(self, k, n):
         suite, total = shard.shard_suite(k, n)
@@ -26,7 +26,7 @@ class ShardsPartitionTheSuite(unittest.TestCase):
     def test_each_shard_is_substantial_and_this_file_is_in_one(self):
         first, total = self.ids(1, 2)
         second, _ = self.ids(2, 2)
-        self.assertGreater(min(len(first), len(second)), total // 3)           # a lopsided split would put the time back on one side
+        self.assertGreater(min(len(first), len(second)), total // 3)
         self.assertTrue(any("test_shards" in i for i in first + second))
 
     def test_a_module_is_never_split_across_shards(self):
@@ -43,8 +43,7 @@ class ShardsPartitionTheSuite(unittest.TestCase):
 
 @unittest.skipIf(os.environ.get("SHARD_MEASURING"), "the weights file is being rewritten by `python -m tests.shard --measure`")
 class ShardWeights(unittest.TestCase):
-    """LIFE-557: the split is balanced by measured seconds (tests/shard-weights.json). The file must be honest (real modules only, no dates or paths), a module it does not list must
-    not break the split, and a shard's time must not depend on anything but the tree."""
+    """the split is balanced by measured seconds (tests/shard-weights.json)."""
 
     def modules(self):
         tests = list(shard.tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(shard.ROOT))))
@@ -73,7 +72,7 @@ class ShardWeights(unittest.TestCase):
         where = shard.assignment(modules, 2, weights)
         self.assertEqual(set(where), modules)
         self.assertIn(where["tests.contracts.test_shards"], (0, 1))
-        self.assertEqual(where, shard.assignment(modules, 2, weights))                       # deterministic for the same tree
+        self.assertEqual(where, shard.assignment(modules, 2, weights))  # deterministic for the same tree
 
     def test_without_a_weights_file_the_older_split_still_works(self):
         modules = self.modules()
@@ -102,7 +101,9 @@ class ShardWeights(unittest.TestCase):
         self.assertEqual(shard.merge([first, {"tests.fake.test_quick": 0.5, "tests.fake.test_other": 1.234}]), {"tests.fake.test_other": 1.23, "tests.fake.test_quick": 0.5})
 
     def test_a_shard_reports_seconds_per_module_and_weights_can_be_built_from_the_logs(self):
-        """LIFE-705: each CI shard prints its measured seconds per module, so the split can be balanced on CI time (not a laptop's)."""
+        """each CI shard prints its measured seconds per module, so the split can be balanced on CI time (not a
+        laptop's).
+        """
         class A(unittest.TestCase):
             def test_a(self):
                 pass
@@ -114,7 +115,7 @@ class ShardWeights(unittest.TestCase):
             def test_c(self):
                 pass
         A.__module__, B.__module__ = "tests.fake.test_a", "tests.fake.test_b"
-        ticks = iter([10.0, 11.0, 14.0, 17.0])                                    # three test starts, then the end of the run
+        ticks = iter([10.0, 11.0, 14.0, 17.0])  # three test starts, then the end of the run
         with mock.patch.object(shard.time, "perf_counter", lambda: next(ticks)):
             result = shard.TimedResult(io.StringIO(), True, 0)
             result.startTestRun()
@@ -122,12 +123,12 @@ class ShardWeights(unittest.TestCase):
                 result.startTest(test)
                 result.stopTest(test)
             result.stopTestRun()
-        self.assertEqual({m: round(v, 1) for m, v in result.module_seconds.items()}, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0})       # the span of each module; the sum is the shard's time
+        self.assertEqual({m: round(v, 1) for m, v in result.module_seconds.items()}, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0})  # the span of each module
         lines = shard.timing_report(1, 3, {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01})
         self.assertIn("shard 1/3 took 7.0 s", lines[0])
         self.assertEqual(json.loads(lines[1][len("shard-seconds "):]), {"k": 1, "n": 3, "rest": 0.01, "seconds": {"tests.fake.test_a": 4.0, "tests.fake.test_b": 3.0}})
         weights = shard.weights_from_logs([lines[1], lines[1].replace("4.0", "6.0")], {"tests.fake.test_a", "tests.fake.test_b", "tests.fake.test_tiny", "tests.fake.test_new"})
-        self.assertEqual(weights, {"tests.fake.test_a": 5.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01, "tests.fake.test_new": 0.01})      # the mean over logs; a module no log shows is 0.01
+        self.assertEqual(weights, {"tests.fake.test_a": 5.0, "tests.fake.test_b": 3.0, "tests.fake.test_tiny": 0.01, "tests.fake.test_new": 0.01})  # the mean over logs
 
     def test_a_failing_module_stops_the_measurement(self):
         class Broken(unittest.TestCase):

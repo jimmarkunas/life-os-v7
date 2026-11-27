@@ -1,5 +1,6 @@
-"""LIFE-618 / LIFE-588: the job-source registry (lifeos/platform/source_registry.json) drives the stage table, the Jobs-tick plan and the source's own codes, and a stage under lifeos/sources/ that is neither registered nor on
-the short "not yet migrated" list fails here, by name."""
+"""the job-source registry (lifeos/platform/source_registry.json) drives the stage table, the Jobs-tick plan and the
+source's own codes, and a stage.
+"""
 import importlib
 import json
 import sys
@@ -11,8 +12,7 @@ from lifeos.jobs import tick
 from lifeos.platform import codes
 from lifeos.platform import source_registry as registry
 
-# Stages whose target sits under lifeos/sources/ and that are still wired by hand in lifeos/run.py (and, for the tick ones, lifeos/jobs/tick.py). Each migration PR moves one name from here into
-# source_registry.json; a new source is never added here.
+# Stages whose target sits under lifeos/sources/ and that are still wired by hand in lifeos/run.py (and, for.
 NOT_YET_MIGRATED = frozenset(())
 
 
@@ -76,12 +76,12 @@ class MissingSourcesAreCaught(unittest.TestCase):
         self.assertEqual(unlisted(stages), ["brand-new-source"])
 
     def test_removing_a_registry_line_is_caught_by_name(self):
-        self.assertEqual(unlisted(run.STAGES, sources=()), sorted(s.name for s in registry.SOURCES if s.module.startswith("lifeos.sources")))          # with the registry emptied, every registered source shows up
+        self.assertEqual(unlisted(run.STAGES, sources=()), sorted(s.name for s in registry.SOURCES if s.module.startswith("lifeos.sources")))
 
 
 class ThePilotIsUnchanged(unittest.TestCase):
     def test_sponsors_has_the_same_stage_tick_step_and_place_as_before_the_registry(self):
-        self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT"))          # LIFE-589: the pilot stage is declared through its contract
+        self.assertEqual(run.STAGES["sponsors"].target, ("lifeos.sources.discovery.sponsor_register", "CONTRACT"))  # the pilot stage is declared through its contract
         self.assertEqual(next(s for s in tick.PLAN if s.name == "sponsors"), tick.Step("sponsors", 120, 40, bulk=True, group="B"))
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[names.index("sponsors") + 1], "boards-backfill")
@@ -119,7 +119,7 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
     def test_its_partial_failure_code_is_what_the_run_exits_with_when_its_counts_say_failed(self):
         self.assertEqual(registry.partial_failures([self.fake, registry.Source("quiet", "m")]), {"fake-source": "FAKE_SOURCE_FAILED"})
         self.assertEqual(registry.partial_failures(), {s.name: s.partial_failure for s in registry.SOURCES if s.partial_failure})
-        self.assertTrue({"mail-filing", "manual-job", "granola-auto"} <= set(run.PARTIAL_FAILURE))             # the registered rows are merged into run.PARTIAL_FAILURE
+        self.assertTrue({"mail-filing", "manual-job", "granola-auto"} <= set(run.PARTIAL_FAILURE))
 
     def test_its_codes_become_registered_codes_with_the_sources_stage(self):
         rows = registry.code_rows(codes._r, [self.fake])
@@ -128,7 +128,9 @@ class AFakeSourceNeedsOnlyItsModuleAndOneLine(unittest.TestCase):
 
 
 class StatusIsStated(unittest.TestCase):
-    """LIFE-907: every registered source carries one status word (the loader ignores the key, so a run never changes), and the words that name a limit match the code."""
+    """every registered source carries one status word (the loader ignores the key, so a run never changes), and the
+    words that name a limit match the code.
+    """
     RAW = json.loads(registry.FILE.read_text(encoding="utf-8"))
     WORDS = {"active", "parked", "manual", "retired"}
 

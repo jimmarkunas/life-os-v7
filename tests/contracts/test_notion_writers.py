@@ -1,6 +1,6 @@
-"""LIFE-688: every writer of the Daily Report page is listed in docs/platform/notion-writers.md with its owner, job and guard, and whole-page reads happen only where the doc lists them.
-
-A new Notion writer adds one `OWNERS` entry in lifeos/platform/router.py and one row in the doc; without them this test fails with the message below."""
+"""every writer of the Daily Report page is listed in docs/platform/notion-writers.md with its owner, job and guard, and
+whole-page reads happen only.
+"""
 import pathlib
 import re
 import unittest
@@ -20,7 +20,7 @@ NOT_OWNED_HERE = {router.REPO_REGION: "the Weekly Review page, listed under othe
 
 
 def tables(text):
-    """-> {first header cell: [row cells]} for every markdown table in the text."""
+    """> {first header cell: [row cells]} for every markdown table in the text."""
     found, header, rows = {}, None, []
     for line in text.splitlines() + [""]:
         if line.startswith("|"):
@@ -83,7 +83,7 @@ class NotionWriters(unittest.TestCase):
 
     def test_each_job_and_stage_is_real(self):
         jobs = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())["jobs"]
-        jobs["capacity-card"] = yaml.safe_load((ROOT / ".github/workflows/capacity-card.yml").read_text())["jobs"]["capacitycard"]       # LIFE-793: the AI Capacity card runs in its own workflow
+        jobs["capacity-card"] = yaml.safe_load((ROOT / ".github/workflows/capacity-card.yml").read_text())["jobs"]["capacitycard"]  # the AI Capacity card runs in its own workflow
         for row in self.writers:
             job, stage = row[3].split(".")
             runs = " ".join(str(step.get("run", "")) for step in jobs[job]["steps"])

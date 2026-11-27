@@ -1,4 +1,5 @@
-"""LIFE-1010: .github/workflows/hourly.yml is the parts in .github/workflows-src/hourly joined in file-name order, like domains.yml; tools/regen.py --check fails when either side is edited alone."""
+""".github/workflows/hourly.yml is the parts in.github/workflows-src/hourly joined in file-name order, like domains.yml
+"""
 import io
 import pathlib
 import re

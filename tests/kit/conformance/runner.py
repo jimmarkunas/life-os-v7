@@ -1,7 +1,4 @@
-"""LIFE-549: fake conformance. Behavior cases are DATA (tests/kit/conformance/cases/<family>.json), written once and run against every subject:
-the fake, and ground truth (the real library over a loopback server, the real library's API, or a recorded and scrubbed real response shape).
-A case names what it expects; `gaps` lists, per subject, the cases where that subject is KNOWN to differ, with the reason. A gap that no longer differs fails
-(so a documented gap cannot go stale), and an undocumented difference fails (so a fake cannot drift unnoticed). Domain-free: imports no lifeos code."""
+"""fake conformance."""
 import json
 import os
 
@@ -19,7 +16,8 @@ def recording(name):
 
 
 def differences(spec, subject_name, observe):
-    """-> {case name: {observable: (expected, got)}} for every case this subject runs (an `applies_to` list limits it); `observe(case) -> dict`."""
+    """> {case name: {observable: (expected, got)}} for every case this subject runs (an `applies_to` list limits it)
+    """
     out = {}
     for case in spec["cases"]:
         if "applies_to" in case and subject_name not in case["applies_to"]:
@@ -31,7 +29,7 @@ def differences(spec, subject_name, observe):
 
 
 def problems(spec, subject_name, observe):
-    """-> list of human-readable problems; empty means the subject conforms (apart from its documented gaps)."""
+    """> list of human-readable problems"""
     gaps = spec.get("gaps", {}).get(subject_name, {})
     found = differences(spec, subject_name, observe)
     out = []

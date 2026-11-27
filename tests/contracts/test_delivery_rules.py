@@ -1,4 +1,6 @@
-"""LIFE-606: Jim's nine delivery rules (LOS-119, November 11 2026) are in docs/agent-reference.md (the full guide AGENTS.md points to) exactly once, in order, each with its bold title."""
+"""Jim's nine delivery rules (LOS-119, November 11 2026) are in docs/agent-reference.md (the full guide AGENTS.md points
+to) exactly once, in order.
+"""
 import pathlib
 import re
 import unittest
@@ -12,7 +14,7 @@ TITLES = ("Fewer, bigger tickets.", "One approval pass at the start.", "Measurem
 class DeliveryRules(unittest.TestCase):
     def section(self):
         text = AGENTS.read_text()
-        self.assertEqual(text.count("## Delivery rules for every epic"), 1)           # the rules appear once, never as a second copy
+        self.assertEqual(text.count("## Delivery rules for every epic"), 1)  # the rules appear once, never as a second copy
         start = text.index("## Delivery rules for every epic")
         end = text.index("\n## ", start + 5)
         return text[start:end]

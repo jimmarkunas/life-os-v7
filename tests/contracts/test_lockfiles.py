@@ -1,4 +1,4 @@
-"""LIFE-536: every dependency CI installs comes from a lockfile (exact versions and sha256 hashes); nothing is installed unpinned."""
+"""every dependency CI installs comes from a lockfile (exact versions and sha256 hashes)"""
 import json
 import re
 import unittest
@@ -49,7 +49,7 @@ class Locks(unittest.TestCase):
         except ImportError:
             self.skipTest("PyYAML not installed")
         for action in (ROOT / ".github/actions").glob("*/action.yml"):
-            data = yaml.safe_load(action.read_text())                     # a stray colon in a description once made GitHub reject the whole action
+            data = yaml.safe_load(action.read_text())
             self.assertIn("runs", data, action.as_posix())
         steps = yaml.safe_load((ROOT / ".github/actions/python/action.yml").read_text())["runs"]["steps"]
         self.assertTrue(any(s.get("run") == "pip install --require-hashes -r requirements.lock" for s in steps))

@@ -1,4 +1,6 @@
-"""LIFE-907: the numbers docs/LIMITS.md and docs/US_REMOTE_WEB.md state are the numbers in lifeos/platform/limits.py and the source lists, so a change to a constant fails here until the doc says it too."""
+"""the numbers docs/LIMITS.md and docs/US_REMOTE_WEB.md state are the numbers in lifeos/platform/limits.py and the source
+lists, so a change to a.
+"""
 import json
 import pathlib
 import unittest

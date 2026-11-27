@@ -1,14 +1,4 @@
-"""LIFE-548: a test index (which tests run which production file) and a selector that picks the tests a change can affect.
-
-  python -m tests.testindex build [--out docs/test-index.json]     run the whole suite once with per-test coverage contexts and write the index (needs `coverage`; about 3 minutes). The index is NOT committed (LIFE-644):
-                                                                   CI builds it on every push to main and saves it in the Actions cache; pull requests restore it. A local one is git-ignored.
-  python -m tests.testindex select --base HEAD^1                   print the unittest targets for the files changed since BASE; the single word FULL means "run everything"
-  python -m tests.testindex check [--max-age-days 7]               exit 1 (with the reason) when the index is older than that or unreadable
-
-Safety first: when in doubt the selector says FULL: no index, an unreadable one, one older than 7 days, or any trouble reading it. tests/contracts ALWAYS runs. Changes to the shared test kit, the test tooling, workflows, locks, config, the shared
-platform layer, privacy files, or any file the selector does not know are FULL. A production file missing from the index falls back to its mirror test folder (tests/<package>),
-and with no mirror to FULL. Docs-only changes run just the contracts. The index holds only repo-relative paths and dotted test ids: no data, no timestamps but one
-`generated_at`, no absolute paths. The full suite still runs on every push to main and every hourly run (the CI wiring is in docs/platform/test-index.md)."""
+"""a test index (which tests run which production file) and a selector that picks the tests a change can affect."""
 import argparse
 import datetime
 import json
@@ -25,11 +15,11 @@ SCHEMA = 1
 MAX_AGE_DAYS = 7
 
 FULL = "FULL"
-FULL_PREFIXES = ("tests/kit/", ".github/", ".claude/", "lifeos/platform/", "requirements")      # a change here can affect any test
+FULL_PREFIXES = ("tests/kit/", ".github/", ".claude/", "lifeos/platform/", "requirements")  # a change here can affect any test
 FULL_FILES = ("docs/PRIVACY.md", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini", ".coveragerc", "conftest.py", ".gitignore")
 FULL_SUFFIXES = (".lock",)
-REPO_WIDE = ("tests.platform.test_docstyle", "tests.platform.test_settings", "tests.platform.test_bws_plain", "tests.platform.test_switches", "tests.platform.test_due", "tests.jira.test_jira")       # LIFE-744: tests that scan every production file, so they must run for any change to one; LIFE-760 adds the settings, bws-plain, switches, due and workflow-shape tests PR 1261 failed on (PR 1235 added two long docstrings under lifeos/inbox, only tests/inbox ran, main failed)
-IGNORED_PREFIXES = ("docs/", "tools/")                                                         # docs run the contracts only; tools/ has its own node tests (separate CI step)
+REPO_WIDE = ("tests.platform.test_docstyle", "tests.platform.test_settings", "tests.platform.test_bws_plain", "tests.platform.test_switches", "tests.platform.test_due", "tests.jira.test_jira")
+IGNORED_PREFIXES = ("docs/", "tools/")  # docs run the contracts only
 
 
 def dotted(path):
@@ -37,19 +27,19 @@ def dotted(path):
 
 
 def test_modules(root=ROOT, folder="tests"):
-    """-> sorted dotted module names of every test_*.py under `folder` (repo-relative)."""
+    """> sorted dotted module names of every test_*.py under `folder` (repo-relative)."""
     base = pathlib.Path(root) / folder
     return sorted(dotted(str(p.relative_to(root))) for p in base.rglob("test_*.py") if p.is_file())
 
 
 def production_files(root=ROOT):
-    """-> sorted lifeos/ python files (relative to lifeos/), without package markers."""
+    """> sorted lifeos/ python files (relative to lifeos/), without package markers."""
     base = pathlib.Path(root) / "lifeos"
     return sorted(str(p.relative_to(base)) for p in base.rglob("*.py") if p.name != "__init__.py")
 
 
 def build(coverage_json, tests, skipped=(), commit="", now=None):
-    """coverage_json: coverage.py's JSON with show_contexts; tests: all test ids on disk -> the index dict (pure; deterministic apart from generated_at)."""
+    """coverage_json: coverage.py's JSON with show_contexts"""
     ids = sorted(set(tests))
     position = {t: i for i, t in enumerate(ids)}
     covers = {}
@@ -113,7 +103,7 @@ def contract_modules(root=ROOT):
 
 
 def select(changed, index, root=ROOT):
-    """-> FULL, or a sorted list of unittest targets (dotted modules, or dotted test ids). When in doubt FULL."""
+    """> FULL, or a sorted list of unittest targets (dotted modules, or dotted test ids)."""
     if index is None:
         return FULL
     changed = [c for c in changed if c]
@@ -124,9 +114,9 @@ def select(changed, index, root=ROOT):
     for path in changed:
         if path in FULL_FILES or path.endswith(FULL_SUFFIXES) or path.startswith(FULL_PREFIXES):
             return FULL
-        if "/" not in path and not path.endswith(".md"):                       # a top-level file we do not know (build/config files, scripts)
+        if "/" not in path and not path.endswith(".md"):
             return FULL
-        if path.startswith("tests/") and "/" not in path[len("tests/"):]:      # tests/__init__.py, tests/shard.py, tests/testindex.py: the harness itself
+        if path.startswith("tests/") and "/" not in path[len("tests/"):]:
             if path.startswith("tests/test_") and path.endswith(".py"):
                 targets.add(dotted(path))
                 continue
@@ -136,7 +126,7 @@ def select(changed, index, root=ROOT):
                 if (pathlib.Path(root) / path).is_file():
                     targets.add(dotted(path))
                 continue
-            return FULL                                                        # a helper under tests/ (support module): it can serve any test
+            return FULL
         if path.startswith(IGNORED_PREFIXES) or path.endswith(".md"):
             continue
         if path.startswith("lifeos/"):
@@ -146,12 +136,12 @@ def select(changed, index, root=ROOT):
             stem = os.path.splitext(os.path.basename(rel))[0]
             if rel.endswith(".py") and rel in index["covers"] and index["covers"][rel]:
                 targets.update(ids[i] for i in index["covers"][rel])
-                if mirror and mirror.is_dir():                                 # an index can be days old: the tests named after this module always run too
+                if mirror and mirror.is_dir():
                     targets.update(dotted(str(p.relative_to(root))) for p in mirror.rglob("test_%s*.py" % stem))
                 elif not package and (pathlib.Path(root) / "tests" / ("test_%s.py" % stem)).is_file():
                     targets.add("tests.test_%s" % stem)
                 continue
-            if package and mirror.is_dir():                                    # unknown to the index: the whole mirror folder
+            if package and mirror.is_dir():  # unknown to the index: the whole mirror folder
                 targets.update(test_modules(root, "tests/" + package))
                 continue
             if not package and (pathlib.Path(root) / "tests" / ("test_%s.py" % stem)).is_file():
@@ -160,14 +150,14 @@ def select(changed, index, root=ROOT):
             return FULL
         return FULL
     known = module_set(root)
-    targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}      # a stale index can still name a test file this change deleted: it is not a target
-    targets = {_current(t, known, root) for t in targets}                                            # ... and a test id whose method this change renamed or deleted runs as its whole module (a stale index must never name a test that no longer exists)
+    targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}
+    targets = {_current(t, known, root) for t in targets}  # ...
     modules = {t for t in targets if t in known}
-    return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))     # a test id inside a selected module would run twice
+    return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))  # a test id inside a selected module would run twice
 
 
 def _current(target, known, root=ROOT):
-    """-> the target when it is a module or a test id whose method still exists in its file; otherwise the longest known module it starts with (the whole module runs)."""
+    """> the target when it is a module or a test id whose method still exists in its file"""
     if target in known:
         return target
     module = max((m for m in known if target.startswith(m + ".")), key=len)
@@ -190,8 +180,7 @@ _MODULES = {}
 
 
 def check(index, now=None, max_age_days=MAX_AGE_DAYS):
-    """-> list of problems (empty = usable): unreadable, or too old. A production file the index does not list (new, renamed or deleted since the build) is NOT a problem (LIFE-588): `select` sends it to its
-    mirror test folder, or to FULL, so adding a source never needs a rebuild of the index."""
+    """> list of problems (empty = usable): unreadable, or too old."""
     if index is None:
         return ["the test index is missing or unreadable"]
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -204,7 +193,7 @@ def check(index, now=None, max_age_days=MAX_AGE_DAYS):
 
 
 def all_tests(root=ROOT):
-    """-> (every test id, the skipped ones), found by loading the suite the same way CI does."""
+    """> (every test id, the skipped ones), found by loading the suite the same way CI does."""
     suite = unittest.defaultTestLoader.discover(str(pathlib.Path(root) / "tests"), pattern="test_*.py", top_level_dir=str(root))
     found, skipped = [], []
 
@@ -228,13 +217,13 @@ def changed_files(base):
 
 
 def build_command(out):
-    """Run the whole suite under coverage with one context per test, then write the index. Needs coverage.py installed."""
+    """Run the whole suite under coverage with one context per test, then write the index."""
     rc = ROOT / ".coverage-test-index.rc"
     data = ROOT / ".coverage-test-index.data"
     rc.write_text("[run]\ndynamic_context = test_function\nsource = lifeos\n")
     try:
         subprocess.run([sys.executable, "-m", "coverage", "run", "--rcfile=%s" % rc, "--data-file=%s" % data, "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-p", "test_*.py"], cwd=ROOT, check=True,
-                       env={**os.environ, "TESTINDEX_BUILDING": "1"})     # the guards that compare the OLD index with the code are skipped while the new one is being written
+                       env={**os.environ, "TESTINDEX_BUILDING": "1"})
         subprocess.run([sys.executable, "-m", "coverage", "json", "--rcfile=%s" % rc, "--data-file=%s" % data, "--show-contexts", "-o", str(ROOT / ".coverage-test-index.json"), "-q"], cwd=ROOT, check=True)
         coverage_json = json.loads((ROOT / ".coverage-test-index.json").read_text())
     finally:
@@ -264,8 +253,8 @@ def main(argv=None):
     if args.command == "select":
         try:
             index = load()
-            picked = select(changed_files(args.base), None if check(index) else index)     # an index older than 7 days is never used
-        except Exception:                                                       # cannot list the change, or the index is damaged in any way: run everything
+            picked = select(changed_files(args.base), None if check(index) else index)  # an index older than 7 days is never used
+        except Exception:
             picked = FULL
         print(FULL if picked == FULL else "\n".join(picked))
         return 0

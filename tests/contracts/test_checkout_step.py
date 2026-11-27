@@ -1,4 +1,4 @@
-"""LIFE-638: every job fetches the repository with our own git step instead of actions/checkout. The step fetches the exact commit, passes the token once, masks it, and leaves nothing in the git config."""
+"""every job fetches the repository with our own git step instead of actions/checkout."""
 import os
 import pathlib
 import re
@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 NAME = "Checkout the exact commit (own fetch, token never stored)"
 HEAD = ["auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\\n'); echo \"::add-mask::$auth\"",
         "git init -q . && git remote add origin \"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY\""]
-VARIANTS = {                                                       # the only three steps that may exist: the exact commit, its two parents (pr-tests), and main with every branch (branches archive)
+VARIANTS = {
     "default": HEAD + ["git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=1 origin \"$GITHUB_SHA\"", "git checkout -q --detach FETCH_HEAD"],
     "depth2": HEAD + ["git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=2 origin \"$GITHUB_SHA\"", "git checkout -q --detach FETCH_HEAD"],
     "main": HEAD + ["git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'", "git checkout -q -B main origin/main"],
@@ -60,14 +60,14 @@ class StepBehaviour(unittest.TestCase):
             first = git(remote, "rev-parse", "HEAD~1")
             work, done = run_step("default", tmp, remote, first)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-            self.assertEqual(git(work, "rev-parse", "HEAD"), first)                                            # the exact commit, not the newest one
+            self.assertEqual(git(work, "rev-parse", "HEAD"), first)  # the exact commit, not the newest one
             self.assertTrue((work / "one.txt").exists() and not (work / "two.txt").exists())
-            self.assertEqual(git(work, "rev-list", "--count", "HEAD"), "1")                                     # depth 1
+            self.assertEqual(git(work, "rev-list", "--count", "HEAD"), "1")  # depth 1
             config = (work / ".git" / "config").read_text() + git(work, "config", "--list")
             self.assertNotIn(TOKEN, config)
             self.assertNotIn("extraheader", config)
             lines = done.stdout.splitlines()
-            self.assertTrue(lines[0].startswith("::add-mask::") and TOKEN not in lines[0])                      # the encoded header is masked first
+            self.assertTrue(lines[0].startswith("::add-mask::") and TOKEN not in lines[0])  # the encoded header is masked first
             self.assertNotIn(TOKEN, done.stdout + done.stderr)
 
     def test_depth2_keeps_the_parent_and_main_fetches_every_branch(self):
@@ -84,7 +84,7 @@ class StepBehaviour(unittest.TestCase):
             self.assertIn("origin/side", git(work, "branch", "-r"))
             self.assertEqual(git(work, "rev-list", "--count", "HEAD"), "2")
 
-    def test_a_step_that_stores_the_token_fails_the_same_check(self):                                       # fail-then-pass: the leak this test exists to catch
+    def test_a_step_that_stores_the_token_fails_the_same_check(self):  # fail-then-pass: the leak this test exists to catch
         leaking = script("default").replace("git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch", "git config http.extraheader \"AUTHORIZATION: basic $auth\" && git fetch")
         with tempfile.TemporaryDirectory() as tmp:
             remote = make_remote(tmp)
@@ -110,7 +110,7 @@ class EveryWorkflow(unittest.TestCase):
                     self.assertEqual(len(named), 1, (path.name, job))
                     run = "\n".join(re.sub(r"\s+#.*$", "", line) for line in named[0]["run"].strip().splitlines())
                     self.assertIn(run, [script(v) for v in VARIANTS], (path.name, job))
-                    self.assertNotIn("env", named[0], (path.name, job))                                         # no step environment: the token is the runner's own, written once in the command
+                    self.assertNotIn("env", named[0], (path.name, job))
                 else:
                     self.assertEqual(named, [], (path.name, job))
         self.assertGreaterEqual(found, 40)

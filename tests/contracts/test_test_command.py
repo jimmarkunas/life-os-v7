@@ -1,4 +1,4 @@
-"""LIFE-605: tools/test.sh, the one local test command. It must find its own Python, say exactly what is missing when it finds none, and never install anything by itself."""
+"""tools/test.sh, the one local test command."""
 import os
 import shutil
 import subprocess
@@ -16,7 +16,7 @@ class TestCommand(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
         (self.tmp / "tools").mkdir()
-        shutil.copy(SCRIPT, self.tmp / "tools" / "test.sh")                           # a folder with no .git, no .venv and no tests: only the script's own logic runs
+        shutil.copy(SCRIPT, self.tmp / "tools" / "test.sh")
 
     def run_script(self, *args, **env):
         base = {"PATH": "/usr/bin:/bin", "HOME": str(self.tmp)}
@@ -28,8 +28,8 @@ class TestCommand(unittest.TestCase):
             self.skipTest("this host has a Python 3.12 with PyYAML on /usr/bin")
         self.assertEqual(done.returncode, 3, done.stderr)
         self.assertIn("Python 3.12 or newer with PyYAML", done.stderr)
-        self.assertIn("typed yes", done.stderr)                                       # the Oracle VM rule
-        self.assertEqual(list(self.tmp.iterdir()), [self.tmp / "tools"])               # nothing was created or installed
+        self.assertIn("typed yes", done.stderr)  # the Oracle VM rule
+        self.assertEqual(list(self.tmp.iterdir()), [self.tmp / "tools"])  # nothing was created or installed
 
     def test_the_chosen_python_is_reported_and_everything_runs_outside_a_git_checkout(self):
         done = self.run_script("--list", LIFEOS_PYTHON=sys.executable)
@@ -50,7 +50,7 @@ class TestCommand(unittest.TestCase):
 
 
 class ReceiptTemplate(unittest.TestCase):
-    """LIFE-605: one receipt template with the six parts, the Jira settings page exists too."""
+    """one receipt template with the six parts, the Jira settings page exists too."""
     ROOT = Path(__file__).resolve().parents[2]
     PARTS = ("1. Context in plain words", "2. What changed", "3. How it was verified", "4. What is unverified", "5. Next steps", "6. How to verify (click only)")
 

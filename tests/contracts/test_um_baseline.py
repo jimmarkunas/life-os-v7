@@ -1,4 +1,4 @@
-"""LIFE-1002 (REQ-85 T1): the retrieval baseline runner and its fabricated corpus. Local only: a test fails on any real-looking identifier and on any network use."""
+"""(REQ-85 T1): the retrieval baseline runner and its fabricated corpus."""
 import importlib.util
 import io
 import json
@@ -19,7 +19,7 @@ METRICS = {"precision_at_5", "recall", "abstention_accuracy", "canonical_citatio
 
 
 class FakeHoncho:
-    """Stands in for the T2 client: recall(query, tenant, top_k) -> [{"source_ref", "text"}]. Token overlap over the corpus, with deliberate faults the runner must catch."""
+    """Stands in for the T2 client: recall(query, tenant, top_k) -> [{'source_ref', 'text'}]."""
 
     def __init__(self, world, leak=False, fabricate=False, uncited=False):
         self.world, self.leak, self.fabricate, self.uncited, self.cost_usd, self.calls = world, leak, fabricate, uncited, 0.002, 0
@@ -146,7 +146,7 @@ class WithAClient(unittest.TestCase):
 
 
 class GraphArm(unittest.TestCase):
-    """LIFE-1003: the graph arm can be injected (the Aura fixtures); `graph` and `combined` use it, `direct` never does."""
+    """the graph arm can be injected (the Aura fixtures)"""
 
     class Arm:
         def __init__(self, world):

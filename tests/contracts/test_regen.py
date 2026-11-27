@@ -1,4 +1,6 @@
-"""LIFE-726 / LIFE-765: tools/regen.py finds nothing to add or drop (the registries are current), adds the rows a new stage needs, and with --commit (what preflight runs) commits exactly those files."""
+"""tools/regen.py finds nothing to add or drop (the registries are current), adds the rows a new stage needs, and with
+--commit (what preflight runs).
+"""
 import io
 import pathlib
 import sys

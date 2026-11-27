@@ -1,4 +1,5 @@
-"""The code map is generated on demand (not committed, LIFE-644): the generator runs, lists every stage and package, and `find` answers from it."""
+"""The code map is generated on demand: the generator runs, lists every stage and package, and `find` answers from it.
+"""
 import unittest
 
 from lifeos.sources.devtools import codemap
@@ -20,7 +21,7 @@ class CodeMap(unittest.TestCase):
 
 
 class RoutingPageAndFind(unittest.TestCase):
-    """LIFE-592: CODEMAP.md is a short routing page; the full map stays in codemap.json and `codemap find` answers one question from it."""
+    """CODEMAP.md is a short routing page"""
 
     def test_the_routing_page_stays_under_its_size_limit_and_lists_every_stage_and_package(self):
         text = codemap.render()[0]

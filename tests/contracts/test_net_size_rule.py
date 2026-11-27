@@ -1,10 +1,12 @@
-"""LIFE-625: the net-size rule is in the three places agents read (pull request template, receipt template, AGENTS.md), and AGENTS.md stays under its byte cap."""
+"""the net-size rule is in the three places agents read (pull request template, receipt template, AGENTS.md), and
+AGENTS.md stays under its byte cap.
+"""
 import pathlib
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMMAND = "python -m lifeos.platform.net_size"
-AGENTS_CAP_BYTES = 5632          # LIFE-987: 5120 until the agent-layer rule and the orchestrator run exception Jim asked for (comment 14320). LIFE-986: 4608 until the dry-run claim rule Jim asked for on Nov 25 2026. LIFE-766: AGENTS.md is the one-page boot guide (4096 until LIFE-949, which adds the one memory line Jim asked for in its target 8; 4352 until LIFE-965, which adds the one Buzz contract line Jim asked for)
+AGENTS_CAP_BYTES = 5632
 REFERENCE_CAP_BYTES = 15360
 
 
@@ -21,16 +23,16 @@ class NetSizeRule(unittest.TestCase):
     def test_the_pull_request_template_asks_for_net_size_with_the_command(self):
         self.assertTrue(asks_for_net_size((ROOT / ".github/pull_request_template.md").read_text()))
 
-    def test_a_template_without_the_section_is_caught(self):                    # negative control: the check can fail
+    def test_a_template_without_the_section_is_caught(self):  # negative control: the check can fail
         self.assertFalse(asks_for_net_size("Jira: LIFE-\n\n## What changes\n\n## Evidence\n\n## Not proven yet\n"))
         self.assertFalse(asks_for_net_size("## Net size\n\nlines, counted by hand\n"))
 
-    def test_the_pull_request_template_asks_why_a_second_package_changed_and_how_a_sweep_is_labelled(self):   # LIFE-629: makes Jim's 1-in-5 cross-package target measurable
+    def test_the_pull_request_template_asks_why_a_second_package_changed_and_how_a_sweep_is_labelled(self):  # makes Jim's 1-in-5 cross-package target measurable
         template = (ROOT / ".github/pull_request_template.md").read_text()
         self.assertTrue(asks_about_cross_package(template))
         self.assertLess(template.index("## Net size"), template.index("## Cross-package change"))
 
-    def test_a_template_without_the_cross_package_section_or_its_prompts_is_caught(self):                     # negative control
+    def test_a_template_without_the_cross_package_section_or_its_prompts_is_caught(self):  # negative control
         self.assertFalse(asks_about_cross_package("## Net size\n\n## Not proven yet\n"))
         self.assertFalse(asks_about_cross_package("## Cross-package change\n\nAny comment?\n"))
 

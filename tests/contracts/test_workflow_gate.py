@@ -1,4 +1,4 @@
-"""LIFE-779: the standing pre-approval gate (tools/workflow_gate.py). A workflow change with no new secret and no wider permissions needs no approval; each stop reason is proven by a test that fails if the check is removed."""
+"""the standing pre-approval gate (tools/workflow_gate.py)."""
 import importlib.util
 import io
 import json
@@ -63,14 +63,14 @@ class PreApproved(unittest.TestCase):
 
 class CommentsAreNeutral(unittest.TestCase):
     def test_dropping_a_trailing_comment_changes_no_line_so_a_spend_word_in_it_or_beside_it_stops_nothing(self):
-        """LIFE-1010: the generated workflows lost their comments; a line that only lost its comment must not look newly added."""
+        """the generated workflows lost their comments"""
         base = BASE.replace("      - run: echo hello", "      - run: echo hello\n        env:\n          V7_CLOUD_FIT_PARALLEL: '1'     # the old comment").replace("        env:\n          TOKEN", "        env2:\n          TOKEN")
         head = base.replace("     # the old comment", "")
         self.assertEqual(check(head, base), [])
 
 
 class CredentialSets(unittest.TestCase):
-    """LIFE-1013: a `bws-load` step names its list with `set:` (the lists are in sets.yml); the gate judges the list, so a name added there is a new credential."""
+    """a `bws-load` step names its list with `set:` (the lists are in sets.yml)"""
     FLOW = BASE.replace("        with:\n          secrets: |\n            11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n", "        with:\n          set: other\n")
     OLD = "other: |\n  11111111-1111-1111-1111-111111111111 > KNOWN_ITEM\n"
 
@@ -96,7 +96,9 @@ class Stops(unittest.TestCase):
 
 
 class ReuseInSameWorkflow(unittest.TestCase):
-    """Standing approval (Jim, Nov 22 2026, 6:03 PM CT; gate change asked for at 6:14 PM CT): a name another job of the SAME workflow already loads may reach a new or existing job with no stop."""
+    """Standing approval: a name another job of the SAME workflow already loads may reach a new or existing job with no
+    stop.
+    """
 
     def test_an_existing_secret_reaching_another_job_passes(self):
         head = BASE.replace("      - run: echo other", "      - run: echo other\n        env:\n          T: ${{ secrets.EXISTING }}")
@@ -213,7 +215,7 @@ class Cli(unittest.TestCase):
         self.assertIn("Jim approved", accepted.getvalue())
 
 
-# LIFE-908: the approval Jim recorded in a LIFE ticket (ChatGPT, then the ticket's "Jim must do first" section) is read from Jira, never asked for twice; anything it does not name still stops.
+# the approval Jim recorded in a LIFE ticket is read from Jira, never asked for twice
 DOMAINS_BASE = """name: domains
 on: [workflow_dispatch]
 permissions:
@@ -289,7 +291,7 @@ class JiraApproval(unittest.TestCase):
         self.assertEqual(code, 0, text)
         self.assertIn("workflow gate: Jira-approved (LIFE-904, mcp-read file", text)
         self.assertIn(".github/workflows/domains.yml: chain: actions:read", text)
-        self.assertNotIn("Jim's instruction", text)                                   # the description is never echoed
+        self.assertNotIn("Jim's instruction", text)  # the description is never echoed
         self.assertNotIn("[waiting on]", text)
 
     def test_the_approval_items_of_the_real_ticket_text_are_exactly_one(self):

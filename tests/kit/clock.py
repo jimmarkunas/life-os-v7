@@ -1,16 +1,4 @@
-"""LIFE-692: the one clock a test may read. A test that asks the real clock for "now" passes or fails depending on the day it runs (a date-bound test stopped the jobs pipeline from publishing on
-Nov 6 2026, LIFE-349; an earlier one failed the same way, LIFE-264), so a test takes its time from here: a fixed moment, or the moment named by the environment variable LIFEOS_TEST_NOW
-(an ISO date or time, UTC when no zone is given), which CI sets to two different dates to prove no result depends on today's date.
-
-    from tests.kit import clock
-    clock.now()                       # an aware UTC datetime; clock.now(tz) converts it
-    clock.today(), clock.time()       # the same moment as a date and as epoch seconds
-    clock.naive_utc()                 # the same moment without a zone, for code that stores naive UTC
-    mock.patch.object(module, "datetime", clock.FrozenDateTime)   # a module that did `from datetime import datetime` and asks for now()
-    mock.patch.object(module, "date", clock.FrozenDate)           # ... and for date.today()
-
-tests/contracts/test_frozen_clock.py fails a test file that calls the real clock (`datetime.now`, `date.today`, `time.time`, `datetime.utcnow`, `datetime.today`) unless the file is listed with a reason in
-docs/platform/scheduled-checks.md (the allowlist)."""
+"""the one clock a test may read."""
 import datetime as dt
 import os
 
@@ -43,7 +31,7 @@ def time():
 
 
 class FrozenDateTime(dt.datetime):
-    """`datetime` with now(), utcnow() and today() fixed at the test clock; every other method is the real one."""
+    """`datetime` with now, utcnow and today fixed at the test clock"""
 
     @classmethod
     def now(cls, tz=None):

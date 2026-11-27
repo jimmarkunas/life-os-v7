@@ -1,4 +1,5 @@
-"""LIFE-760: tools/preflight.sh is the gate before a push, and tools/automerge.sh arms auto-merge only for a HEAD that passed it. Runs in a throwaway git repo with no network and no gh."""
+"""tools/preflight.sh is the gate before a push, and tools/automerge.sh arms auto-merge only for a HEAD that passed it.
+"""
 import os
 import shutil
 import subprocess
@@ -41,7 +42,7 @@ class Gate(unittest.TestCase):
     def test_a_marker_for_this_head_gets_past_the_gate(self):
         self.marker.write_text(self.sha + "\n")
         done = self.run_tool("automerge.sh", "7")
-        self.assertNotEqual(done.returncode, 4, done.stderr)               # it goes on to the gh step (no gh here, so exit 1)
+        self.assertNotEqual(done.returncode, 4, done.stderr)  # it goes on to the gh step (no gh here, so exit 1)
 
     def test_the_explicit_skip_is_named_on_stderr(self):
         done = self.run_tool("automerge.sh", "7", LIFEOS_PREFLIGHT_SKIP="1")

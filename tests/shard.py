@@ -1,10 +1,4 @@
-"""Run one shard of the unit-test suite: `python -m tests.shard K N` runs shard K of N (1-based).
-
-The PR check runs the shards side by side in one job so the suite finishes in about half the time (Jim, Oct 26 2026: the suite had reached the 75 s limit). A shard is
-a set of whole TEST MODULES (module-level fixtures keep working), balanced by each module's MEASURED seconds (tests/shard-weights.json, LIFE-557; a module the file does
-not list is weighted by its source size) - longest first, to the lightest shard; the split is deterministic for a given tree. `python -m tests.shard --measure` rewrites the file
-from a full green run (fastest of two runs per module). tests/contracts/test_shards.py proves every test runs in exactly one shard. A module that failed to import always lands in shard 1, so
-the failure is reported once and never lost."""
+"""Run one shard of the unit-test suite: `python -m tests.shard K N` runs shard K of N (1-based)."""
 import io
 import json
 import os
@@ -14,7 +8,7 @@ import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-WEIGHTS = ROOT / "tests" / "shard-weights.json"       # LIFE-557: measured seconds per test module; written by `python -m tests.shard --measure`
+WEIGHTS = ROOT / "tests" / "shard-weights.json"  # measured seconds per test module
 
 
 def tests_of(suite):
@@ -29,9 +23,7 @@ def module_of(test):
     return test.__class__.__module__ if test.__class__.__name__ != "_FailedTest" else None
 
 
-# Measured seconds for the modules that take 1.5 s or more (LIFE-406, Nov 8 2026: one process, the whole suite, 138 s in all). File size alone put the slow ones
-# together and a shard passed the 75 s limit. Every other module is weighted by file size, scaled so that all of them together come to the 31 s they measured.
-# Refresh these when a shard nears the limit.
+# Measured seconds for the modules that take 1.5 s or more.
 SECONDS = {
     "tests.buzz.test_remote_mcp": 17.7,
     "tests.contracts.test_readiness": 11.7,
@@ -59,7 +51,9 @@ REST_SECONDS = 31.0
 
 
 def load_weights(path=None):
-    """{module: seconds} from tests/shard-weights.json, or {} when the file is missing or unreadable (the split then uses the older measured table and file sizes)."""
+    """{module: seconds} from tests/shard-weights.json, or {} when the file is missing or unreadable (the split then uses
+    the older measured table and file.
+    """
     try:
         data = json.loads(pathlib.Path(path or WEIGHTS).read_text())
         return {str(k): float(v) for k, v in data["seconds"].items()}
@@ -69,8 +63,7 @@ def load_weights(path=None):
 
 def assignment(modules, n, weights=None):
     """{module: shard index 0..n-1}: heaviest first, each to the currently lightest shard (ties to the lowest index).
-    A module's weight is its measured seconds from the weights file; a module the file does not list is weighted by its source size at the average seconds per kilobyte of the
-    listed ones, so a new module never breaks the split. Without a weights file the older table (SECONDS) and the 31 s size scale apply, as before."""
+    """
     weights = load_weights() if weights is None else weights
     def kb(name):
         path = ROOT / (name.replace(".", "/") + ".py")
@@ -94,7 +87,7 @@ def assignment(modules, n, weights=None):
 
 
 def check_weights(weights, known_modules):
-    """-> list of problems: a module that does not exist, a non-positive or non-numeric time. Used by the contract test."""
+    """> list of problems: a module that does not exist, a non-positive or non-numeric time."""
     problems = []
     for name, seconds in sorted(weights.items()):
         if name not in known_modules:
@@ -114,10 +107,11 @@ def modules_in(tests):
 
 
 def measure(tests, clock=time.perf_counter):
-    """{module: seconds} from ONE pass: each module's tests run as their own suite (so its module fixtures count), modules in the order a full run uses. A second pass in the same
-    process is not possible (some modules keep state between runs), so a pass is its own process; `merge` keeps the fastest of several."""
+    """{module: seconds} from ONE pass: each module's tests run as their own suite (so its module fixtures count),
+    modules in the order a full run uses.
+    """
     seconds = {}
-    for name, group in modules_in(tests).items():                      # discovery order, exactly as a full run goes (some modules lean on state an earlier one set)
+    for name, group in modules_in(tests).items():
         started = clock()
         result = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(unittest.TestSuite(group))
         took = clock() - started
@@ -137,8 +131,9 @@ def merge(passes):
 
 
 class TimedResult(unittest.TextTestResult):
-    """LIFE-705: wall seconds per test module inside this shard (module and class fixtures included, so the sum is the shard's time). Tests of a module run one after another, so a module's
-    time is the span from its first test starting to the next module's first test starting (the last one: to the end of the run)."""
+    """wall seconds per test module inside this shard (module and class fixtures included, so the sum is the shard's
+    time).
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,7 +157,9 @@ class TimedResult(unittest.TextTestResult):
 
 
 def timing_report(k, n, seconds, floor=0.05, top=12):
-    """The lines a shard prints after its run: the slowest modules for people, and one `shard-seconds {...}` line that `--from-logs` turns into weights (modules under `floor` seconds are summed as 'rest')."""
+    """The lines a shard prints after its run: the slowest modules for people, and one `shard-seconds {...}` line that
+    `--from-logs` turns into weights.
+    """
     kept = {m: round(v, 2) for m, v in sorted(seconds.items()) if v >= floor and m}
     rest = round(sum(seconds.values()) - sum(kept.values()), 2)
     slow = ", ".join(f"{m.rsplit('.', 1)[-1]} {v:.1f}s" for m, v in sorted(kept.items(), key=lambda kv: -kv[1])[:top])
@@ -170,7 +167,9 @@ def timing_report(k, n, seconds, floor=0.05, top=12):
 
 
 def weights_from_logs(texts, known_modules):
-    """{module: seconds}: the mean over the given shard logs of each module's `shard-seconds` time, and 0.01 for a known module no log shows (it ran in under 0.05 s everywhere)."""
+    """{module: seconds}: the mean over the given shard logs of each module's `shard-seconds` time, and 0.01 for a known
+    module no log shows (it ran in.
+    """
     seen = {}
     for text in texts:
         for line in text.splitlines():
@@ -185,7 +184,7 @@ def weights_from_logs(texts, known_modules):
 
 def write_weights(seconds, path=None):
     """Deterministic file: module names sorted, seconds rounded, no dates, no paths."""
-    pathlib.Path(path or WEIGHTS).write_text(json.dumps({"v": 1, "seconds": {k: max(round(v, 2), 0.01) for k, v in sorted(seconds.items())}}, indent=1) + "\n")     # a module that ran in under 5 ms is listed at 0.01 s: a time of 0 would read as a bad entry
+    pathlib.Path(path or WEIGHTS).write_text(json.dumps({"v": 1, "seconds": {k: max(round(v, 2), 0.01) for k, v in sorted(seconds.items())}}, indent=1) + "\n")
 
 
 def shard_suite(k, n, loader=None):
@@ -198,7 +197,7 @@ def shard_suite(k, n, loader=None):
 
 def main(argv=None):
     argv = list(argv if argv is not None else sys.argv[1:])
-    if argv[:1] == ["--measure-pass"]:                         # one timed pass in this process; the raw seconds go to the file named next
+    if argv[:1] == ["--measure-pass"]:  # one timed pass in this process
         os.environ["SHARD_MEASURING"] = "1"
         everything = list(tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(ROOT))))
         pathlib.Path(argv[1]).write_text(json.dumps(measure(everything)))
@@ -218,7 +217,7 @@ def main(argv=None):
         write_weights(seconds)
         print(f"wrote {WEIGHTS.relative_to(ROOT)}: {len(seconds)} modules, {sum(seconds.values()):.0f} s in all (fastest of {runs} passes)")
         return 0
-    if argv[:1] == ["--from-logs"]:                              # LIFE-705: weights from CI shard logs: python -m tests.shard --from-logs shard-1.log shard-2.log ...
+    if argv[:1] == ["--from-logs"]:
         everything = list(tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(ROOT))))
         seconds = weights_from_logs([pathlib.Path(name).read_text() for name in argv[1:]], set(modules_in(everything)))
         write_weights(seconds)

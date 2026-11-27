@@ -1,8 +1,4 @@
-"""LIFE-528 outcome 1: the alert gateway (lifeos/platform/alerts.py) is the only place that sends an alert.
-
-A sender is any code that talks to a notification service: the phone push service (ntfy), the Telegram or WhatsApp bot (`openclaw message send`, the Bot API), Graph, email, Slack,
-a macOS notification. Every file in lifeos/ and .github/ that contains one of those patterns must be in ALLOWED below with the reason it may, and every ALLOWED entry must still match, so the
-list cannot go stale. A new sender anywhere else fails this test. The full inventory with the decisions is docs/platform/alert-senders.md."""
+"""outcome 1: the alert gateway (lifeos/platform/alerts.py) is the only place that sends an alert."""
 import re
 import unittest
 from pathlib import Path
@@ -64,7 +60,7 @@ class OnlyTheGatewaySends(unittest.TestCase):
 
     def test_the_only_post_to_the_phone_push_service_is_in_the_gateway(self):
         posts = [p for p, text in repo_files().items() if re.search(r"https://ntfy\.sh/\{[^\n]*", text) and re.search(r'method="POST"', text)]
-        self.assertEqual(posts, ["lifeos/platform/alerts.py"])                                        # the relay only READS the topic (a GET poll)
+        self.assertEqual(posts, ["lifeos/platform/alerts.py"])  # the relay only READS the topic (a GET poll)
 
     def test_every_allowed_entry_has_a_reason(self):
         for path, (kinds, reason) in ALLOWED.items():

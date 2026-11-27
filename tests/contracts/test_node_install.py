@@ -1,4 +1,6 @@
-"""LIFE-639: Node comes from a checked download (not actions/setup-node) and Python from the runner image in a virtual environment (not actions/setup-python)."""
+"""Node comes from a checked download (not actions/setup-node) and Python from the runner image in a virtual environment
+(not actions/setup-python).
+"""
 import hashlib
 import io
 import os
@@ -45,7 +47,7 @@ class NodeInstall(unittest.TestCase):
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
             self.assertTrue(pathlib.Path(tmp, "node", "bin", "node").is_file())
             self.assertEqual(path_file.read_text().strip(), str(pathlib.Path(tmp, "node", "bin")))
-        with tempfile.TemporaryDirectory() as tmp:                          # fail-then-pass: the same recorded value, one different byte in the download
+        with tempfile.TemporaryDirectory() as tmp:
             bad = pathlib.Path(tmp, "bad.tar.xz")
             make_tarball(bad, b"fixture-node-TAMPERED")
             done, path_file = run_install(bad.as_uri(), recorded, tmp)

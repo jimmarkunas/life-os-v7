@@ -1,7 +1,6 @@
-"""LIFE-691: every workflow job has a measured `timeout-minutes` and docs/platform/timeouts.md lists them all (the per-stage budgets are checked in tests/contracts/test_stages.py).
-
-`lifeos/platform/timeouts.json` holds the target for each job (twice the slowest of the last 100 runs, see the doc). Workflow files are protected, so the tighter values arrive in one separate
-workflow pull request: until then the jobs in `pending` still have their old value, and this test keeps that list honest. The workflow pull request empties `pending`."""
+"""every workflow job has a measured `timeout-minutes` and docs/platform/timeouts.md lists them all (the per-stage
+budgets are checked in.
+"""
 import json
 import pathlib
 import unittest
@@ -29,7 +28,7 @@ class WorkflowJobTimeouts(unittest.TestCase):
         pending = set(TIMEOUTS["pending"])
         for key, job in jobs().items():
             row = TIMEOUTS["jobs"][key]
-            self.assertLessEqual(row["target"], row["current"], key)                         # a timeout is only ever tightened
+            self.assertLessEqual(row["target"], row["current"], key)  # a timeout is only ever tightened
             if key in pending:
                 self.assertEqual(job["timeout-minutes"], row["current"], f"{key} is pending: it must still have its old value")
                 self.assertGreater(row["current"], row["target"], f"{key} is pending but already at its target: remove it from `pending`")
@@ -41,13 +40,17 @@ class WorkflowJobTimeouts(unittest.TestCase):
             self.assertTrue(row["target"] >= 5 or row["target"] == row["current"], key)
 
     def test_no_job_is_set_under_ten_minutes_if_it_has_ever_run_longer_than_that(self):
-        """The ticket's stop rule: a target under 10 minutes for a job whose slowest measured run is over 10 minutes needs Jim."""
+        """The ticket's stop rule: a target under 10 minutes for a job whose slowest measured run is over 10 minutes
+        needs Jim.
+        """
         for key, row in TIMEOUTS["jobs"].items():
             if row["slowest_seconds"] is not None and row["target"] < 10:
                 self.assertLessEqual(row["slowest_seconds"], 600, key)
 
     def test_a_target_never_breaks_the_bitwarden_helper_rule(self):
-        """tests/contracts/test_bws_helper.py: the helper's retry never takes more than a third of the job's limit: 3 x its wait must fit in the TARGET too, so applying the targets cannot break that test."""
+        """tests/contracts/test_bws_helper.py: the helper's retry never takes more than a third of the job's limit: 3 x
+        its wait must fit in the TARGET too, so.
+        """
         for key, job in jobs().items():
             for step in job.get("steps") or []:
                 if step.get("uses") == "./.github/actions/bws-helper":
