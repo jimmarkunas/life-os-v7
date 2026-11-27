@@ -29,7 +29,7 @@ class LinkedInTests(unittest.TestCase):
         self.assertEqual([(c.company, c.title, c.location_text) for c in cards],
                          [("Acme", "Project Manager", "Austin, TX (Remote)"), ("Globex", "Program Lead", "United States (Remote)")])
         self.assertEqual(cards[0].url, "https://www.linkedin.com/jobs/view/1111111111")
-        self.assertTrue(all("SYNTH" not in c.url and "?" not in c.url for c in cards))   # no personal tokens kept
+        self.assertTrue(all("SYNTH" not in c.url and "?" not in c.url for c in cards))  # no personal tokens kept
 
 
 class JobrightTests(unittest.TestCase):

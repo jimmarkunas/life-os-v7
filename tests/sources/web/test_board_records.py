@@ -1,5 +1,4 @@
-"""LIFE-616 (Jim approved the rule and the 20-second save limit, comment 12836): a board that fails, times out on its read or times out on its save is that board's red entry; the stage fails
-only when at least 3 boards AND at least half of the boards due failed (LIFE-676: a slow save is counted and named but is not one of them). Per-board seconds are recorded and printed. Fake boards and an in-memory repo; counts and public ids only."""
+"""a board that fails, times out on its read or times out on its save is that board's red entry"""
 import datetime as dt
 import json
 import os
@@ -56,7 +55,9 @@ class LostSession(MemRepo):
 
 
 class SaveLost(unittest.TestCase):
-    """LIFE-854: with one held connection, a session lost between boards fails only that board (it is not advanced and is read again next window); the pass and its receipt go on."""
+    """with one held connection, a session lost between boards fails only that board (it is not advanced and is read
+    again next window)
+    """
 
     def test_a_lost_session_fails_that_board_drops_the_connection_and_the_pass_goes_on(self):
         repo = LostSession("s2")
@@ -80,13 +81,14 @@ class SaveLost(unittest.TestCase):
             run.run(10, True, NOW, fixed({"s1": GOOD}), repo, boards("s1"))
 
 
-REAL_PORT = os.environ.get("LIFEOS_TEST_MARIADB_PORT")                                       # LIFE-901: set only by a person running a throwaway local MariaDB; CI skips these
+REAL_PORT = os.environ.get("LIFEOS_TEST_MARIADB_PORT")
 
 
 @unittest.skipUnless(REAL_PORT, "no throwaway local MariaDB (set LIFEOS_TEST_MARIADB_PORT and LIFEOS_TEST_MARIADB_PASSWORD_FILE)")
 class RealDriverSessionLoss(unittest.TestCase):
-    """LIFE-901: the held connection of PR #1365 and the `save_lost` rule of PR #1368 on a REAL MariaDB through the real pymysql driver and the repository's own connection wrapper: a real server-side
-    KILL of the held session between two boards. The host is fixed to 127.0.0.1 and the database is created and dropped here, so this can never reach a production database."""
+    """the held connection of PR #1365 and the `save_lost` rule of PR #1368 on a REAL MariaDB through the real pymysql
+    driver and the repository's own.
+    """
 
     def setUp(self):
         import pymysql
@@ -111,7 +113,7 @@ class RealDriverSessionLoss(unittest.TestCase):
         def connect():
             raw = self.connect(self.name)
             try:
-                yield self.platform_db._Connection(raw)                                          # the repository's own wrapper (reconnect for reads), over a real socket
+                yield self.platform_db._Connection(raw)
             finally:
                 raw.close()
         return connect
@@ -124,17 +126,17 @@ class RealDriverSessionLoss(unittest.TestCase):
                 try:
                     super().commit(o, failures, lane)
                 finally:
-                    outer.live_ids.append((o.source["id"], self._live[1].thread_id() if self._live else None))        # the real server session the board's save ended on (None: it was dropped)
+                    outer.live_ids.append((o.source["id"], self._live[1].thread_id() if self._live else None))
                 if o.source["id"] == kill_after and self._live:
                     victim = self._live[1].thread_id()
-                    outer.admin.cursor().execute(f"KILL {victim}")                              # a real server-side session loss, between two boards
+                    outer.admin.cursor().execute(f"KILL {victim}")
                     if pause:
                         time.sleep(pause)
         return Repo()
 
     def seed(self, skip=False):
-        """Three boards already read once and now due (a board never read belongs to the backfill, not to this pass). `skip`: each also holds a quiet streak and an ETag, so the pass asks with a validator
-        and a 304 answer makes its save ONE cheap UPDATE, the common skip-path write that PR #1368 protects."""
+        """Three boards already read once and now due (a board never read belongs to the backfill, not to this pass).
+        """
         from lifeos.jobs import store
         with self.store()() as connection:
             store.ensure_schema(connection)
@@ -165,7 +167,7 @@ class RealDriverSessionLoss(unittest.TestCase):
     def test_a_normal_pass_holds_one_real_session_for_every_board_and_writes_the_receipt(self):
         counts, seen = self.run_pass(self.repo())
         self.assertEqual((counts["complete"], counts.get("save_lost", 0), seen), (3, 0, []))
-        self.assertEqual(len({session for _, session in self.live_ids}), 1)                       # every board used the one real session the pass opened
+        self.assertEqual(len({session for _, session in self.live_ids}), 1)
         self.assertEqual(set(self.rows().values()), {"COMPLETE"})
         self.assertEqual(counts["timing"]["boards"], 3)
         self.assertIn("receipt", counts)
@@ -175,17 +177,17 @@ class RealDriverSessionLoss(unittest.TestCase):
         print(f"\nreal-driver evidence: server-side KILL of the held session after board s1; driver error {seen}; sessions used {self.live_ids}")
         self.assertEqual((counts["complete"], counts["failed"], counts["failed_why"], counts["save_lost"]), (2, 1, {"save_lost": 1}, 1))
         self.assertEqual(len(seen), 1)
-        self.assertTrue(seen[0].startswith("OperationalError"))                                     # the real driver's lost-session error, code 2006 or 2013
-        self.assertEqual(self.rows(), {"s1": "COMPLETE", "s2": "SEED", "s3": "COMPLETE"})            # s2 was not advanced (still due, read again next window); s3 committed over a fresh session
+        self.assertTrue(seen[0].startswith("OperationalError"))
+        self.assertEqual(self.rows(), {"s1": "COMPLETE", "s2": "SEED", "s3": "COMPLETE"})
         by = dict(self.live_ids)
-        self.assertIsNone(by["s2"])                                                                 # the lost session was dropped, never reused
-        self.assertNotIn(by["s3"], (None, by["s1"]))                                                # s3 committed over a different, fresh real session
-        self.assertEqual(counts["timing"]["boards"], 3)                                             # the receipt and its timing are still written
+        self.assertIsNone(by["s2"])  # the lost session was dropped, never reused
+        self.assertNotIn(by["s3"], (None, by["s1"]))  # s3 committed over a different, fresh real session
+        self.assertEqual(counts["timing"]["boards"], 3)  # the receipt and its timing are still written
         self.assertIn("receipt", counts)
 
     def test_a_session_idle_more_than_three_seconds_is_pinged_and_reconnected_without_losing_a_board(self):
         counts, seen = self.run_pass(self.repo(kill_after="s1", pause=run.SqlRepo.HELD_IDLE_SECONDS + 0.7), skip=True)
-        self.assertEqual((counts["complete"], counts.get("save_lost", 0), seen), (3, 0, []))      # the 3 s ping found the dead session and reopened it before the write
+        self.assertEqual((counts["complete"], counts.get("save_lost", 0), seen), (3, 0, []))
         self.assertEqual(set(self.rows().values()), {"COMPLETE"})
 
 
@@ -196,11 +198,11 @@ class SaveLimit(unittest.TestCase):
             got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), save_seconds=0.2)
         finally:
             repo.release.set()
-        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_timeout"], got["save_blocked"]), (1, 2, {"save_timeout": 1, "save_blocked": 1}, 1, 1))   # s3 waited its own limit for the stuck write, never wrote: save_blocked
+        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_timeout"], got["save_blocked"]), (1, 2, {"save_timeout": 1, "save_blocked": 1}, 1, 1))
         self.assertEqual([o.source["id"] for o, _ in repo.commits if o.source["id"] != "s2"], ["s1"])
 
     def test_one_stuck_save_does_not_fail_the_stage_through_the_boards_queued_behind_it(self):
-        repo = SlowSave("s1")                                                     # Nov 13 2026: one slow Greenhouse save left 3 boards behind it red and failed every tick
+        repo = SlowSave("s1")
         try:
             got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3", "s4", "s5", "s6")}), repo, boards("s1", "s2", "s3", "s4", "s5", "s6"), save_seconds=0.1)
         finally:
@@ -248,7 +250,7 @@ class StageRule(unittest.TestCase):
         self.assertEqual(got["failed"], 2)
 
     def test_board_failures_never_fail_the_stage_however_many(self):
-        """LIFE-678 (Jim, Nov 14 2026: "Never fail the run"): 3 flaky outside sites out of 5 or 6 due boards failed the 11 PM and 12 AM CT ticks."""
+        """3 flaky outside sites out of 5 or 6 due boards failed the 11 PM and 12 AM CT ticks."""
         for ok, bad, reason in ((3, 3, "http_521"), (2, 3, "bad_shape"), (0, 6, "rate_limited")):
             got, _ = self.fails(ok=ok, bad=bad, reason=reason)
             self.assertEqual((got["failed"], got["failed_why"], got["complete"]), (bad, {reason: bad}, ok))
@@ -257,7 +259,7 @@ class StageRule(unittest.TestCase):
         self.assertFalse(hasattr(run, "BoardsFailing"))
 
     def saves(self, stalled, bad=()):
-        """Six boards due; the `stalled` ones each take longer than the save limit on their own (not queued behind one stuck write), the `bad` ones fail to read."""
+        """Six boards due"""
         names = [f"s{i}" for i in range(6)]
         lookup = {n: lister.Listing(lister.FAILED, reason="http_521") if n in bad else GOOD for n in names}
 
@@ -268,13 +270,13 @@ class StageRule(unittest.TestCase):
                 super().commit(o, failures, lane)
         return run.run(50, True, NOW, fixed(lookup), Stalls(), boards(*names), save_seconds=0.1)
 
-    def test_slow_saves_alone_never_fail_the_stage_but_are_counted_and_named(self):   # LIFE-676: 3 of 6 saves past the limit failed every tick on Nov 13 2026
+    def test_slow_saves_alone_never_fail_the_stage_but_are_counted_and_named(self):
         got = self.saves({"s0", "s2", "s4"})
         self.assertEqual((got["failed"], got["save_timeout"], got["failed_ids"], got["complete"]), (3, 3, ["s0", "s2", "s4"], 3))
 
     def test_slow_saves_and_real_board_failures_together_never_fail_the_stage(self):
         self.assertEqual(self.saves({"s0", "s2"}, bad={"s1", "s3"})["failed"], 4)
-        self.assertEqual(self.saves({"s0"}, bad={"s1", "s3", "s4"})["failed"], 4)       # LIFE-678: three real ones no longer fail it either
+        self.assertEqual(self.saves({"s0"}, bad={"s1", "s3", "s4"})["failed"], 4)
 
     def test_boards_that_answer_not_found_never_count_toward_the_stage_rule(self):
         got, _ = self.fails(ok=1, bad=0, dead=5)
@@ -315,9 +317,9 @@ class Idempotent(unittest.TestCase):
         first = run.run(10, True, NOW, fixed(lookup), repo, boards("s1", "s2", "s3"))
         items_after_first = {k: dict(v) for k, v in repo.items_by.items()}
         second = run.run(10, True, NOW + dt.timedelta(hours=20), fixed(lookup), repo, boards("s1", "s2", "s3"))
-        self.assertEqual(items_after_first, {k: dict(v) for k, v in repo.items_by.items()})              # nothing new was written for the boards that read in full
+        self.assertEqual(items_after_first, {k: dict(v) for k, v in repo.items_by.items()})
         self.assertEqual((first["failed"], second["failed"], second["added"]), (1, 1, 0))
-        self.assertEqual(repo.state["s2"]["failures"], 2)                                                # the failed board counts one failure per run, not more
+        self.assertEqual(repo.state["s2"]["failures"], 2)
 
 
 class Alert(unittest.TestCase):

@@ -38,14 +38,14 @@ class Write(unittest.TestCase):
         client = FakeNotion()
         code, counts = gw.write(client, ROUND, envelope(), True)
         self.assertEqual((code, counts["readback_ok"], counts["blocks_written"]), ("TRANSCRIPT_WRITTEN", 1, 5))
-        (page,) = client.templated                                                                              # D16.1: made from the Full Width template; the fake refuses anything else
-        self.assertFalse([b for b in client.pages[page] if b.get("id") == f"filler-{page}"])                    # and the template's empty paragraph is gone
+        (page,) = client.templated  # made from the Full Width template
+        self.assertFalse([b for b in client.pages[page] if b.get("id") == f"filler-{page}"])  # and the template's empty paragraph is gone
 
     def test_more_than_one_batch_is_appended(self):
         client = FakeNotion()
         code, counts = gw.write(client, ROUND, envelope(250), True)
         self.assertEqual((code, counts["blocks_written"]), ("TRANSCRIPT_WRITTEN", 252))
-        self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 3)                                  # 252 blocks in batches of 90
+        self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 3)  # 252 blocks in batches of 90
 
     def test_a_replay_is_a_noop(self):
         client = FakeNotion()
@@ -64,7 +64,7 @@ class Write(unittest.TestCase):
         return [{"type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}, "plain_text": text}]}}]
 
     def test_an_existing_page_that_is_not_ours_is_never_touched(self):
-        client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Notes"}}])          # D250: found by its machine marker, not its title
+        client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Notes"}}])  # found by its machine marker, not its title
         client.pages["x"] = self.marked("v7-transcript:1;draft-not-accepted")
         self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_PAGE_UNVERIFIED")
         self.assertFalse([c for c in client.calls if c[0] in ("POST", "PATCH")])
@@ -73,8 +73,8 @@ class Write(unittest.TestCase):
         client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Full Transcript"}}])
         client.pages["x"] = self.marked("Jim wrote this")
         code, _ = gw.write(client, ROUND, envelope(), True)
-        self.assertNotEqual(code, "TRANSCRIPT_PAGE_UNVERIFIED")                                                 # no title match any more (D250-05): the import adds its own marked page
-        self.assertEqual(client.pages["x"], self.marked("Jim wrote this"))                                      # and Jim's page is never edited
+        self.assertNotEqual(code, "TRANSCRIPT_PAGE_UNVERIFIED")
+        self.assertEqual(client.pages["x"], self.marked("Jim wrote this"))  # and Jim's page is never edited
 
     def test_two_transcript_pages_are_ambiguous(self):
         two = [{"id": f"x{i}", "type": "child_page", "child_page": {"title": "Full Transcript"}} for i in range(2)]
@@ -94,7 +94,7 @@ class Write(unittest.TestCase):
                 return super().call(method, path, body)
         client = AppendFails()
         self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")
-        self.assertEqual(client.archived, client.templated)                                                     # the blank page made from the template is set aside
+        self.assertEqual(client.archived, client.templated)  # the blank page made from the template is set aside
         none = FakeNotion()
         with mock.patch.dict(os.environ, {"LIFEOS_NOTION_FULL_WIDTH_TEMPLATE": ""}):
             self.assertEqual(gw.write(none, ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")

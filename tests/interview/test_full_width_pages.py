@@ -1,7 +1,6 @@
-"""D16.1 (Jim verified Oct 21; widened Nov 23, 2026, LIFE-933): every page V7 creates under a page must come from Jim's Full Width template, because Notion's public API cannot read or set a page's width.
-The check reads the source (ast) of every module under lifeos/. A page creation is (a) `write_tree(...)` with `title=`, which must also pass `template=`, or (b) a POST to `/pages` whose parent is a `page_id`,
-whose body must carry a `template` key (or go through `full_width.create`). A row created in a database (parent `data_source_id`) is not a page body and is out of scope.
-There is no exception list (Jim, Nov 23, 2026: "the guard allows zero exceptions"): QA control pages and synthetic proof pages are full width too."""
+"""every page V7 creates under a page must come from Jim's Full Width template, because Notion's public API cannot read
+or set a page's width.
+"""
 import ast
 import pathlib
 import unittest
@@ -33,7 +32,7 @@ def _parent_is_page(d):
 
 
 def pages_without_template(source):
-    """-> line numbers of page creations that do not use the Full Width template."""
+    """> line numbers of page creations that do not use the Full Width template."""
     tree, named = _calls(source)
     bad = []
     for node in ast.walk(tree):
@@ -67,14 +66,14 @@ class FullWidth(unittest.TestCase):
         for module in ("lifeos/dcc/weekly_archive.py", "lifeos/interview/advisor_queue.py", "lifeos/interview/advisor_store.py", "lifeos/interview/granola_write.py", "lifeos/jobs/private_report.py"):
             self.assertIn("full_width.create", (ROOT / module).read_text(), module)
 
-    def test_the_check_fails_on_a_creation_without_the_template(self):                                  # fail-then-pass: the checker itself
+    def test_the_check_fails_on_a_creation_without_the_template(self):  # fail-then-pass: the checker itself
         self.assertEqual(pages_without_template("notion.write_tree(c, p, b, title=t)\n"), [1])
         self.assertEqual(pages_without_template("notion.write_tree(c, p, b, title=t, template=notion.FULL_WIDTH)\n"), [])
-        self.assertEqual(pages_without_template("notion.write_tree(c, p, blocks)\n"), [])             # no title: it appends blocks, it creates nothing
+        self.assertEqual(pages_without_template("notion.write_tree(c, p, blocks)\n"), [])  # no title: it appends blocks, it creates nothing
         self.assertEqual(pages_without_template('c.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": p}, "children": b})\n'), [1])
         self.assertEqual(pages_without_template('c.call_once("POST", "/pages", {"parent": {"page_id": p}, "template": {"type": "template_id"}})\n'), [])
         self.assertEqual(pages_without_template('body = {"parent": {"page_id": p}, "children": []}\nc.call_once("POST", "/pages", body)\n'), [2])
-        self.assertEqual(pages_without_template('c.call("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": s}, "properties": {}})\n'), [])   # a database row
+        self.assertEqual(pages_without_template('c.call("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": s}, "properties": {}})\n'), [])  # a database row
 
 
 if __name__ == "__main__":

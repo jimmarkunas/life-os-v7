@@ -1,4 +1,6 @@
-"""LIFE-975 step 4d: the System card stage: Oracle's stats, Codex read once, the Connections row from the System health database, one write in place."""
+"""step 4d: the System card stage: Oracle's stats, Codex read once, the Connections row from the System health database,
+one write in place.
+"""
 import contextlib
 import datetime as dt
 import io
@@ -14,9 +16,9 @@ from tests.oraclecloud.support import SystemPage, default_rows
 from tests.platform.test_connections import GOOD, database
 from tests.oraclecloud.test_system_table import limits as good_limits
 
-NOW = dt.datetime(2026, 11, 25, 15, 0, tzinfo=dt.timezone.utc)                  # 9:00 AM in Chicago
+NOW = dt.datetime(2026, 11, 25, 15, 0, tzinfo=dt.timezone.utc)  # 9:00 AM in Chicago
 ENV = {"IMESSAGE_ALERTS_HOST": " 100.64.0.9 ", "JIRA_CARD_BLOCK_ID": "jira", "NOTION_JIRA_TOKEN": "unused", "LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE": "src-id"}
-def setUpModule():                                                                       # LIFE-977: no test ever reaches the endpoint; the Concord ask answers nothing unless a test hands it a fetcher
+def setUpModule():  # no test ever reaches the endpoint
     global _patch
     _patch = mock.patch.object(card, "fetch", lambda host, port=card.PORT, request=b"": b"")
     _patch.start()
@@ -64,7 +66,7 @@ class Run(unittest.TestCase):
         rows = {r[0]: r for r in table[1:]}
         self.assertEqual((rows["Oracle · Memory"][2], rows["Codex · 5-hour"][2], rows["Connections"][2], rows["Connections"][4]), ("23%", "7% used", "5 of 6 connected · Concord not connected · 3 off by design", "CONCORD DOWN"))
         self.assertEqual({r[4] for k, r in rows.items() if k != "Connections"}, {"OK"})
-        self.assertEqual(calls["limits"], 1)                                                              # Codex is read ONCE for the whole table
+        self.assertEqual(calls["limits"], 1)  # Codex is read ONCE for the whole table
 
     def test_only_the_heading_and_the_table_rows_are_ever_written(self):
         page = database()
@@ -104,14 +106,14 @@ class Run(unittest.TestCase):
         with mock.patch.object(report_region, "require_configured", lambda ids, fail: None), contextlib.redirect_stdout(io.StringIO()):
             counts = oracle_card.run(0, True, ENV, later, refuse, page, lambda host: reading(), GOOD, noop, noop, noop)
         rows = {r[0]: r for r in page.row_text()[1:]}
-        self.assertEqual((counts["oracle"], counts["stale"]), (0, 9))                                       # the seven Oracle rows and the two Anthropic rows that Oracle reports
-        self.assertEqual(rows["Oracle · Memory"][2:], ["23%", "—", "STALE since 9:00 AM"])                  # the last reading is kept, never zero
+        self.assertEqual((counts["oracle"], counts["stale"]), (0, 9))
+        self.assertEqual(rows["Oracle · Memory"][2:], ["23%", "—", "STALE since 9:00 AM"])  # the last reading is kept, never zero
         self.assertEqual(rows["Codex · Week"][4], "OK")
 
     def test_limits_that_cannot_be_read_make_only_the_limits_rows_stale_with_a_fixed_code_in_the_log(self):
         page = database()
         counts, _, _ = self.run_card(page, lim=lambda: (None, None))
-        self.assertEqual((counts["limits"], counts["stale"]), (0, 6))                                       # Codex x2, OpenRouter, the guard and the two sign-ins
+        self.assertEqual((counts["limits"], counts["stale"]), (0, 6))
         def boom(host):
             raise edge.EdgeError("FIT_EDGE_NO_REPLY")
         out = io.StringIO()
@@ -134,7 +136,7 @@ class Run(unittest.TestCase):
         page = database()
         counts, _, _ = self.run_card(page, env={k: v for k, v in ENV.items() if k != "LIFEOS_NOTION_SYSTEM_HEALTH_SOURCE"})
         self.assertEqual((counts["connections"], counts["stale"], counts["written"] > 0), ("unread", 1, True))
-        self.assertEqual(page.log, [])                                                                   # no database row is touched
+        self.assertEqual(page.log, [])  # no database row is touched
 
     def test_not_configured_without_a_host_or_the_jira_anchor(self):
         for env in ({"JIRA_CARD_BLOCK_ID": "jira"}, {"IMESSAGE_ALERTS_HOST": "h"}):
@@ -189,14 +191,14 @@ class ConcordRow(unittest.TestCase):
 
     def test_a_failed_read_keeps_the_last_good_time_and_the_row_stays_connected_for_two_and_a_half_hours(self):
         page = database()
-        self.run_card(page, concord_reply())                                                        # good read at 8:59 AM CT
+        self.run_card(page, concord_reply())  # good read at 8:59 AM CT
         later = NOW + dt.timedelta(hours=2, minutes=20)
-        fresh = lambda at: {job: {"last_ok": at, "failed": False} for job in ("jira", "agenda", "recruiters", "followup")}       # the job-backed rows stay fresh; only Concord ages
+        fresh = lambda at: {job: {"last_ok": at, "failed": False} for job in ("jira", "agenda", "recruiters", "followup")}  # the job-backed rows stay fresh
         counts, _ = self.run_card(page, concord_reply(False, "CONCORD_READ_FAILED", 0), later, fresh(later - dt.timedelta(minutes=5)))
-        self.assertEqual(self.health(page), (connections.OK, "11/25 · 8:59 AM CT"))               # unchanged
-        self.assertEqual(counts["connections"], "6/6")                                              # 2h20m: still inside 2.5 hours
+        self.assertEqual(self.health(page), (connections.OK, "11/25 · 8:59 AM CT"))  # unchanged
+        self.assertEqual(counts["connections"], "6/6")  # 2h20m: still inside 2.5 hours
         counts, _ = self.run_card(page, concord_reply(False, "CONCORD_READ_FAILED", 0), NOW + dt.timedelta(hours=2, minutes=40), fresh(NOW + dt.timedelta(hours=2, minutes=35)))
-        self.assertEqual(counts["connections"], "5/6")                                              # 2h40m: DOWN
+        self.assertEqual(counts["connections"], "5/6")  # 2h40m: DOWN
         rows = {r[0]: r for r in page.row_text()[1:]}
         self.assertEqual(rows["Connections"][4], "CONCORD DOWN · STALE since 8:59 AM")
 
@@ -209,7 +211,7 @@ class ConcordRow(unittest.TestCase):
         self.assertEqual((str(caught.exception), called), ("live_reads_not_authorized", []))
         with mock.patch("lifeos.inbox.sources.LIVE_READ_SOURCES", frozenset()):
             counts, _ = self.run_card(database(), concord_reply())
-        self.assertEqual(counts["concord"], "live_reads_not_authorized")                           # the stage still writes; the row just does not become good
+        self.assertEqual(counts["concord"], "live_reads_not_authorized")  # the stage still writes
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(resolve_parent(ParentQuery("", "Manager"), Scan((), True)).code, "identity_invalid")
 
     def test_children_never_cross_parent(self):
-        """LIFE-382 (D250-04): resolve_child no longer re-compares each scanned child's parent; child_scan proves it (see test_notion: a foreign-parent child makes the scan incomplete)."""
+        """child_scan proves it (see test_notion: a foreign-parent child makes the scan incomplete)."""
         parent = Resolution(State.MATCH, "parent_match", "p")
         child = Child("c", "p", "2026-10-01", "Example Person", 1)
         other = Child("elsewhere", "other", child.interview_date, child.interviewer, 1)
@@ -35,7 +35,9 @@ class IdentityTests(unittest.TestCase):
                 self.assertEqual(resolve_child(parent, query, scan, explicit).code, code)
 
     def test_a_pre_screen_with_ordinal_zero_is_never_round_one_nor_ambiguous_with_it(self):
-        """LIFE-958: the Becton recruiter screen (ordinal 0, no interviewer in its identity) never matches, blocks or collides with the client's own rounds."""
+        """the Becton recruiter screen (ordinal 0, no interviewer in its identity) never matches, blocks or collides with
+        the client's own rounds.
+        """
         parent = Resolution(State.MATCH, "parent_match", "p")
         screen = Child("screen", "p", "2026-10-13", None, 0, True)
         real = Child("real", "p", "2026-11-02", "Jane Roe", 1, True)
@@ -58,7 +60,7 @@ class IdentityTests(unittest.TestCase):
         absent = resolve_child(parent, RoundQuery(True, interview_date="2026-11-02", ordinal=1, interviewer="Jane Roe"), Scan((screen,), True), None)
         self.assertEqual(absent.code, "child_not_found")
         self.assertEqual(creation_eligibility("target_ok", parent, Ownership.MACHINE, absent, Scan((screen,), True), RoundQuery(True, "2026-11-02", "Jane Roe", 1)), "create_allowed")
-        self.assertEqual(creation_eligibility("target_ok", parent, Ownership.MACHINE, absent, Scan((screen,), True), RoundQuery(True, "2026-11-02", None, 0)), "round_identity_incomplete")   # an invite never makes ordinal 0
+        self.assertEqual(creation_eligibility("target_ok", parent, Ownership.MACHINE, absent, Scan((screen,), True), RoundQuery(True, "2026-11-02", None, 0)), "round_identity_incomplete")  # an invite never makes ordinal 0
 
     def test_creation_gate(self):
         parent = Resolution(State.MATCH, "parent_match", "p")

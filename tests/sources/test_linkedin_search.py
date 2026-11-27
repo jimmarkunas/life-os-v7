@@ -1,5 +1,6 @@
-"""D203: LinkedIn job search works in concert with the LinkedIn job alerts: one identity, one resolve lane (alerts first), no seen_count bumps,
-and the first refusal stops it with a named reason."""
+"""LinkedIn job search works in concert with the LinkedIn job alerts: one identity, one resolve lane (alerts first), no
+seen_count bumps, and the first.
+"""
 from datetime import date, datetime
 import unittest
 
@@ -41,7 +42,7 @@ class Parse(unittest.TestCase):
         self.assertNotIn("f_WT", url)
         self.assertIn("keywords=program+manager&", url)
         self.assertIn("f_TPR=r86400", url)
-        self.assertEqual([q for q in ls.QUERIES if "remote" in q.split()], [])      # D204: a job that never says remote is still a candidate
+        self.assertEqual([q for q in ls.QUERIES if "remote" in q.split()], [])  # a job that never says remote is still a candidate
 
 
 class Read(unittest.TestCase):
@@ -87,7 +88,7 @@ class Concert(unittest.TestCase):
         self.run_search((200, body))
         again = self.run_search((200, body))
         self.assertEqual((again["new"], again["already_known"]), (0, 1))
-        self.assertEqual(self.rows()[0][2], 1)                    # repost.is_ghost reads seen_count: a search must not fake a ghost
+        self.assertEqual(self.rows()[0][2], 1)
 
     def test_cards_are_candidates_never_labelled_remote_and_each_reason_is_counted(self):
         body = (card(300001, "Technical Program Manager", where="United States") + card(300002, "Technical Program Manager", where="Seattle, WA")
@@ -97,7 +98,7 @@ class Concert(unittest.TestCase):
         counts = self.run_search((200, body))
         self.assertEqual(counts["screen"], {"admitted_remote_assumed": 2, "admitted_remote_assumed_place_unresolved": 1, "admitted_remote_in_location": 1,
                                             "non_us": 1, "not_remote_hybrid": 1, "not_remote_onsite": 1, "title_other_profession_engineer": 1})
-        self.assertEqual(sorted(r[4] for r in self.rows()), ["North America", "Remote, US", "Seattle, WA", "United States"])   # as given, never "(Remote)"
+        self.assertEqual(sorted(r[4] for r in self.rows()), ["North America", "Remote, US", "Seattle, WA", "United States"])  # as given, never "(Remote)"
 
     def test_cards_that_show_remote_take_the_room_first(self):
         body = card(310001, "Program Manager", where="United States") + card(310002, "Program Manager", where="Remote, US")
@@ -130,8 +131,7 @@ class SharedLane(unittest.TestCase):
 
 
 class NoTinyFishForSearchRows(unittest.TestCase):
-    """Production-shaped: rows picked from the store by the shared lane carry their source; a search row never reaches the free-search step,
-    an alert row still does (that lane's existing behaviour is unchanged)."""
+    """Production-shaped: rows picked from the store by the shared lane carry their source"""
 
     def test_a_search_row_takes_the_linkedin_page_without_a_search_and_an_alert_row_is_unchanged(self):
         from unittest import mock
@@ -148,5 +148,5 @@ class NoTinyFishForSearchRows(unittest.TestCase):
                 mock.patch.object(linkedin.ats_match, "match_many", side_effect=lambda items: ["company"] * len(items)), \
                 mock.patch.object(linkedin.search_match, "find", side_effect=lambda c, t: searched.append(c) or ("miss", "no_result")):
             got = linkedin.resolve_rows(rows, budget={"left": 10})
-        self.assertEqual(len(searched), 1)                                                          # the alert row only
+        self.assertEqual(len(searched), 1)  # the alert row only
         self.assertEqual(got[1], {"outcome": "landed", "via": "linkedin_page", "kind": "aggregator", "url": "https://www.linkedin.com/jobs/view/700002"})

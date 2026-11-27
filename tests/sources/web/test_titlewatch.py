@@ -1,4 +1,4 @@
-"""D123: the title watch finds roles a company's own site lists but its board listing does not carry."""
+"""the title watch finds roles a company's own site lists but its board listing does not carry."""
 import unittest
 from datetime import date, datetime
 from unittest.mock import patch
@@ -69,7 +69,7 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(tw.forced(pairs, "board:Revolut, tambo").__len__(), revolut_titles + len(tw.DEFAULT_TITLES))
         self.assertEqual(tw.forced(pairs, ""), [])
         self.assertEqual(tw.forced(pairs, "funnel"), [])
-        self.assertEqual(tw.forced(pairs, "ab"), [])                                            # names need 3 letters
+        self.assertEqual(tw.forced(pairs, "ab"), [])  # names need 3 letters
 
     def test_the_registry_watches_revolut_and_the_own_site_fallback_companies_only(self):
         watched = {s["id"] for s in tw.watched(registry.load(registry.PATHS["Scale-Up"]))}
@@ -177,15 +177,15 @@ class LaneTests(unittest.TestCase):
         for fit in (95, 72):
             decision = self.decide(fit, title_only=True, kept=True)
             self.assertEqual((decision.status, decision.reason), (lanes.REVIEW, lanes.TITLE_ONLY_REASON), fit)
-        for fit in (71, 70, 68):                                                                  # below the 72 floor (D191): Review for the floor, still never a Go
+        for fit in (71, 70, 68):
             decision = self.decide(fit, title_only=True, kept=True)
             self.assertEqual((decision.status, decision.reason), (lanes.REVIEW, f"Fit {fit} below 72 (on Jim's keep list)"), fit)
-        self.assertEqual(self.decide(95).status, lanes.ADMIT)                                  # a read posting at the same score is a Go
+        self.assertEqual(self.decide(95).status, lanes.ADMIT)  # a read posting at the same score is a Go
 
     def test_a_low_score_or_an_unresolved_place_never_excludes_a_watched_title(self):
         self.assertEqual(self.decide(40, title_only=True, kept=True).status, lanes.REVIEW)
-        self.assertEqual(self.decide(80, title_only=True, kept=True, location="").status, lanes.REVIEW)     # D100 does not turn a chosen title into an exclusion
-        self.assertEqual(self.decide(40).status, lanes.EXCLUDE)                                # the same score from a read posting is excluded
+        self.assertEqual(self.decide(80, title_only=True, kept=True, location="").status, lanes.REVIEW)  # does not turn a chosen title into an exclusion
+        self.assertEqual(self.decide(40).status, lanes.EXCLUDE)  # the same score from a read posting is excluded
 
     def test_a_hard_exclusion_still_wins_for_a_title_watch_role(self):
         decision = lanes.decide("Scale-Up", self.facts(80, title_only=True, kept=True), self.TODAY, "clinical")[0]
@@ -199,7 +199,7 @@ class LaneTests(unittest.TestCase):
         url = "https://www.revolut.com/careers/position/campaign-creative-lead-92db1b5f-56bc-4524-bc8b-5f1d2188ae1a/"
         self.assertEqual(audit.judge(url, "short snippet"), "audit_jd_thin")
         self.assertIsNone(audit.judge(url, "short snippet", title_only=True))
-        self.assertEqual(audit.judge("https://www.revolut.com/careers/", "short", title_only=True), "audit_url_listing_url")   # the link test still applies
+        self.assertEqual(audit.judge("https://www.revolut.com/careers/", "short", title_only=True), "audit_url_listing_url")  # the link test still applies
 
 
 if __name__ == "__main__":

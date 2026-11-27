@@ -23,7 +23,7 @@ class StageTests(unittest.TestCase):
 
     def test_dry_run_creation_is_only_eligibility(self):
         evidence = [(ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", ordinal=1))]
-        client = Fake()                                                         # a pre-D235 parent is upgraded first (LIFE-46)
+        client = Fake()  # a pre- parent is upgraded first
         result = stage.run(10, False, environ=ENV, client=client, evidence=evidence)
         self.assertEqual((result["why"], result["writes_planned"], result["blocked"]), ({"upgrade_allowed": 1}, 1, 0))
         client = Fake()
@@ -85,13 +85,13 @@ class StageTests(unittest.TestCase):
         self.assertEqual(result["matched"], 1)
         self.assertEqual(result["human_pages"], 2)
         self.assertEqual(result["why"]["human_page"], 1)
-        self.assertEqual(result["blocked_why"], {"human_page": 1})           # LIFE-664: each block names its fixed code
+        self.assertEqual(result["blocked_why"], {"human_page": 1})  # each block names its fixed code
         self.assertEqual(result["writes"], 0)
         self.assertTrue(all(method == "GET" for method, _ in client.calls))
 
 
 class OutcomeTests(unittest.TestCase):
-    """LIFE-623: the pure outcome rules, called directly with plain dicts (no fakes)."""
+    """the pure outcome rules, called directly with plain dicts (no fakes)."""
     def result(self, code, readback_failed=False, writes=0):
         return {"code": code, "readback_failed": readback_failed, "writes": writes}
 

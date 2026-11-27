@@ -1,6 +1,6 @@
-"""LIFE-78 synthetic journey: the REAL Interview OS runner (`interview_evidence.run`) and the REAL Notion writer (`stage` / `create`), tick after tick,
-against the production-shaped Notion fake. Only the outside world is faked: the mailbox, Google Calendar and the Job Ledger. Everything is invented
-(ExampleCo, requisition 777777, example.test links). This proves the machine; it is not M1/M2 evidence and never stands in for a real interview."""
+"""synthetic journey: the REAL Interview OS runner (`interview_evidence.run`) and the REAL Notion writer (`stage` /
+`create`), tick after tick, against.
+"""
 import unittest
 from datetime import datetime
 from unittest.mock import patch
@@ -40,66 +40,65 @@ class Recruiters:
 class Journey(JourneyFixture, unittest.TestCase):
 
     def test_recruiter_lead_to_interview_scheduled_rescheduled_cancelled_on_one_page(self):
-        # 1. A recruiter names the job and the employer's requisition: one Ledger row, one opportunity page. A second recruiter gives no requisition: REVIEW, nothing written.
+        # 1.
         first = self.tick(LEAD, NO_REQ)
         self.assertEqual((first["lead_rows"], first["parents_created"], first["lead_review"]), (1, 1, {"requisition_missing": 1}))
         (row,) = self.ledger.rows.values()
         self.assertEqual((row["stable_job_key"], row["lane"]), (KEY, "Recruiter"))
         self.settle(LEAD, NO_REQ)
         (page, kids), = self.pages()
-        self.assertEqual((page.page_id, page.title, kids), ("ledger-1", "ExampleCo - Program Manager", ()))      # the lead's own row, no second one
+        self.assertEqual((page.page_id, page.title, kids), ("ledger-1", "ExampleCo - Program Manager", ()))  # the lead's own row, no second one
         notes = notion.protected_snapshot(self.notion, page.page_id, "opportunity")
 
-        # 2. Replay of the same mail: nothing new anywhere.
+        # 2.
         again = self.tick(LEAD, NO_REQ)
         self.assertEqual((again["writes"], again["lead_rows"], len(self.ledger.rows), len(self.pages())), (0, 0, 1, 1))
 
-        # 3. The employer asks for availability (no time yet): Interview 1, Scheduling Pending, under the same page and linked to the same Ledger row.
+        # 3.
         self.settle(LEAD, NO_REQ, REQUEST)
         (page, kids), = self.pages()
         (round_,) = kids
         self.assertEqual((round_.interview_date, round_.ordinal, round_.identity_valid), (None, 1, True))
-        self.assertEqual(self.tick(LEAD, NO_REQ, REQUEST)["writes"], 0)              # replay: still one round
+        self.assertEqual(self.tick(LEAD, NO_REQ, REQUEST)["writes"], 0)  # replay: still one round
 
-        # 4. Jim accepts the Calendar invite: that same round page is dated in place and records the event.
+        # 4.
         self.events.append(event(INVITE, start="2026-10-28T10:00:00-05:00"))
         ticks = self.settle(LEAD, NO_REQ, REQUEST)
         self.assertEqual(ticks[0]["why"].get("round_confirmed"), 1)
         (page, (round_,)), = self.pages()
         self.assertEqual((round_.page_id, round_.interview_date), (kids[0].page_id, "2026-10-28"))
         self.assertEqual(create.round_calendar(self.notion, round_.page_id), (ev.reference(INVITE), False))
-        self.settle(LEAD, NO_REQ, REQUEST)                                            # E10: the opportunity reads the round's recorded invite
+        self.settle(LEAD, NO_REQ, REQUEST)
         opportunity = self.shown(page.page_id)
         self.assertIn("2026-10-28 · accepted Calendar invite", opportunity)
         self.assertIn("from the accepted Calendar invite", opportunity)
 
-        # 5. The recruiter moves the same invite a week: the same page is re-dated, no second round.
+        # 5.
         self.events[0] = event(INVITE, start="2026-11-04T10:00:00-05:00")
         ticks = self.settle(LEAD, NO_REQ, REQUEST)
         self.assertEqual(ticks[0]["why"].get("round_rescheduled"), 1)
         (page, (round_,)), = self.pages()
         self.assertEqual((round_.page_id, round_.interview_date), (kids[0].page_id, "2026-11-04"))
 
-        # 6. The invite is cancelled: the same page says Cancelled, keeps its date and identity; replay writes nothing.
+        # 6.
         self.events[0] = {**self.events[0], "status": "cancelled"}
         ticks = self.settle(LEAD, NO_REQ, REQUEST)
         self.assertEqual(ticks[0]["why"].get("round_cancelled"), 1)
         (page, (round_,)), = self.pages()
         self.assertEqual((round_.page_id, round_.interview_date, round_.identity_valid), (kids[0].page_id, "2026-11-04", True))
         self.assertEqual(create.round_calendar(self.notion, round_.page_id), (ev.reference(INVITE), True))
-        opportunity = self.shown(page.page_id)                                       # the opportunity no longer says scheduled or Prepare
+        opportunity = self.shown(page.page_id)
         self.assertIn("Interview 1 cancelled in Calendar", opportunity)
         self.assertIn("Ask the recruiter whether Interview 1 moves to a new time.", opportunity)
         self.assertNotIn("Prepare for Interview 1", opportunity)
 
-        # Across the whole journey: one Ledger row, one opportunity, one round, Jim's notes on the opportunity and the human page never touched.
+        # Across the whole journey: one Ledger row, one opportunity, one round, Jim's notes on the opportunity and the.
         self.assertEqual((len(self.ledger.rows), len(self.pages()), len(self.pages()[0][1])), (1, 1, 1))
         self.assertEqual(notion.protected_snapshot(self.notion, page.page_id, "opportunity"), notes)
         self.assertEqual(self.notion.blocks["human"], self.human)
 
     def test_e10_the_recruiter_of_the_exact_request_message_is_linked_and_a_same_name_row_elsewhere_is_not(self):
-        """LIFE-78 E10: the Recruiters row whose Source URL IS the request message reaches the opportunity page; a row for the same person on another
-        message never does (no name matching), and an unreadable Recruiters source is DEGRADED on the page and in the run, never "no recruiter"."""
+        """E10: the Recruiters row whose Source URL IS the request message reaches the opportunity page"""
         self.recruiters = Recruiters([("Pat Example", "Staffing Example Inc", LEAD["url"]),
                                       ("Pat Example", "Other Staffing", "https://example.test/thread/elsewhere")])
         self.settle(LEAD, NO_REQ)
@@ -108,8 +107,8 @@ class Journey(JourneyFixture, unittest.TestCase):
         self.assertIn("Recruiter · Staffing Example Inc", shown)
         self.assertIn("1 thread(s) linked from the Recruiters database", shown)
         self.assertNotIn("Other Staffing", shown)
-        self.assertNotIn("https://example.test/thread/elsewhere", self.recruiters.queries)          # only the opportunities' own request links are asked for
-        self.assertEqual(self.tick(LEAD, NO_REQ)["writes"], 0)                                       # replay: nothing changes
+        self.assertNotIn("https://example.test/thread/elsewhere", self.recruiters.queries)
+        self.assertEqual(self.tick(LEAD, NO_REQ)["writes"], 0)  # replay: nothing changes
 
     def test_e10_an_unreadable_recruiters_source_is_degraded_never_no_recruiter(self):
         self.recruiters = Recruiters(broken=True)
@@ -140,23 +139,23 @@ class Journey(JourneyFixture, unittest.TestCase):
         counts = self.tick(LEAD, wrong)
         (page, kids), = self.pages()
         self.assertEqual((kids, counts["writes"]), ((), 0))
-        self.assertGreater(counts["failed"], 0)                                       # visible, never a quiet zero
+        self.assertGreater(counts["failed"], 0)  # visible, never a quiet zero
 
     PHASES = {"pages_scan", "page_reads", "calendar", "round_reads", "ledger_roster", "mail", "ledger_requests", "decisions", "recruiters", "network", "sent_mail", "writer", "after_writer"}
 
     def test_every_run_reports_seconds_per_fixed_phase_and_nothing_else_changes(self):
-        """LIFE-793: measurement only. The no-work, the writing and the failing run each carry counts-only seconds by fixed phase name; the writes and the failure counts stay what they were."""
+        """measurement only."""
         quiet = self.tick()
         wrote = self.tick(LEAD, NO_REQ)
         wrong = {**REQUEST, "body": "Please select a time for a call. Requisition 999999.", "url": "https://example.test/thread/wrong"}
         failed = self.tick(LEAD, wrong)
         for counts in (quiet, wrote, failed):
             seconds = counts["seconds"]
-            self.assertTrue(set(seconds) <= self.PHASES | {"total"} and {"pages_scan", "writer", "total"} <= set(seconds), sorted(seconds))     # fixed names only, never a title, id or address
+            self.assertTrue(set(seconds) <= self.PHASES | {"total"} and {"pages_scan", "writer", "total"} <= set(seconds), sorted(seconds))  # fixed names only, never a title, id or address
             self.assertTrue(all(isinstance(v, float) and v >= 0 for v in seconds.values()))
             self.assertAlmostEqual(seconds["total"], sum(v for k, v in seconds.items() if k != "total"), delta=0.5)
-        self.assertEqual((quiet["writes"], wrote["lead_rows"]), (0, 1))                   # the measurement did not change what is written
-        self.assertGreater(failed["failed"], 0)                                           # and a failing run is still visibly failing
+        self.assertEqual((quiet["writes"], wrote["lead_rows"]), (0, 1))  # the measurement did not change what is written
+        self.assertGreater(failed["failed"], 0)  # and a failing run is still visibly failing
 
 
 if __name__ == "__main__":

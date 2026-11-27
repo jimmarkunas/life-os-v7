@@ -1,4 +1,5 @@
-"""Web acquisition: status-aware listing, classification, cheap suppression, and one bounded run over an in-memory repo."""
+"""Web acquisition: status-aware listing, classification, cheap suppression, and one bounded run over an in-memory repo.
+"""
 from datetime import date, datetime, timedelta
 import json
 import unittest
@@ -61,7 +62,7 @@ class Listing(unittest.TestCase):
             return Fetched(url, 200, json.dumps(page if "offset=0" in url else last))
         got = lister.list_board("smartrecruiters", "x", paged)
         self.assertEqual((got.status, len(got.jobs), len(calls)), (lister.COMPLETE, 101, 2))
-        self.assertIsNone(got.jobs[0]["content"])                      # the list carries no description: enrich reads the page
+        self.assertIsNone(got.jobs[0]["content"])
 
     def test_rows_without_identity_are_not_jobs(self):
         got = lister.list_board("greenhouse", "x", fetcher({"boards-api": (200, {"jobs": [{"id": 1, "title": "", "absolute_url": "u"}]})}))
@@ -79,11 +80,11 @@ class WorkdayJibePinpoint(unittest.TestCase):
             body = json.loads(kw["data"])
             seen.append((url, body["offset"], body["limit"]))
             return Fetched(url, 200, json.dumps(pages[body["offset"]]))
-        # two jobs on the first page are fewer than the page size, so the second request is made only while offset < total
+        # two jobs on the first page are fewer than the page size, so the second request is made only while offset <.
         pages[0]["jobPostings"].append({"title": "x", "externalPath": "/job/z_0", "locationsText": "", "postedOn": ""})
         src = {"kind": "workday", "url": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external/jobs",
                "public_job_base_url": "https://adobe.wd5.myworkdayjobs.com/en-US/external"}
-        with mock.patch.object(lister, "date", clock.FrozenDate):                              # `Posted Today` is read against date.today(): the same test clock the assertion uses
+        with mock.patch.object(lister, "date", clock.FrozenDate):
             got = lister.list_source(src, fake)
         self.assertEqual((got.status, len(got.jobs), len(seen)), (lister.COMPLETE, 3, 1))
         self.assertEqual(got.jobs[0]["url"], "https://adobe.wd5.myworkdayjobs.com/en-US/external/job/a_1")
@@ -144,9 +145,9 @@ class Suppression(unittest.TestCase):
         self.assertEqual(suppress.reason(self.j("Program Manager", posted=date(2026, 8, 1)), NOW.date()), "stale")
 
     def test_target_family_and_ambiguity_continue(self):
-        self.assertIsNone(suppress.reason(self.j("Technical Program Manager, DevOps Platform")))      # not killed by 'DevOps'
+        self.assertIsNone(suppress.reason(self.j("Technical Program Manager, DevOps Platform")))  # not killed by 'DevOps'
         self.assertIsNone(suppress.reason(self.j("Engineering Program Manager")))
-        self.assertIsNone(suppress.reason(self.j("Product Manager", "Remote")))                        # unknown market passes
+        self.assertIsNone(suppress.reason(self.j("Product Manager", "Remote")))  # unknown market passes
         self.assertIsNone(suppress.reason(self.j("Director, Strategy", "New York, NY")))
 
 
@@ -158,12 +159,12 @@ class ScaleUp(unittest.TestCase):
         ready = registry.for_lane("Scale-Up")
         self.assertEqual(sorted({r["kind"] for r in ready if "_html" not in r["kind"] and r["kind"] != "doubleword_bundle"}),
                          ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
-        self.assertEqual(len(ready), 38)                                          # 19 public ATS boards + 19 first-party careers pages (Futuristic via the announced-bot header); Luzern (join.com) and Connectd (Welcome to the Jungle) added Oct 27 2026 with runner proof (5 roles each, title names the company, LIFE-121); Otto Car and Truvi are fallback (D51); Zero Gravity was retired in #592 and re-enabled Oct 26 2026 (it read COMPLETE with 5 roles on the next probe: intermittent, not dead, LIFE-76); Otto Car and Truvi retired in #593 (404; no job markup)
-        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
+        self.assertEqual(len(ready), 38)
+        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)  # no discoverable ATS: stays DEGRADED, never zero
 
     def test_scale_up_suppression_is_not_us_remote_suppression(self):
         j = lambda t, where, posted=None: {"title": t, "location": where, "posted": posted}
-        self.assertIsNone(suppress.reason(j("Program Manager", "London, UK (Hybrid)"), NOW.date(), "Scale-Up"))        # any work mode
+        self.assertIsNone(suppress.reason(j("Program Manager", "London, UK (Hybrid)"), NOW.date(), "Scale-Up"))  # any work mode
         self.assertIsNone(suppress.reason(j("Program Manager", "London", date(2026, 9, 10)), NOW.date(), "Scale-Up"))  # 21 days: inside 30
         self.assertEqual(suppress.reason(j("Program Manager", "London", date(2026, 8, 20)), NOW.date(), "Scale-Up"), "stale")
         self.assertEqual(suppress.reason(j("Program Manager", "Paris, France"), NOW.date(), "Scale-Up"), "non_target_geography")
@@ -227,7 +228,7 @@ class OneRun(unittest.TestCase):
         again = run.run(10, True, later, fixed({"s1": board, "s2": lister.Listing(lister.FAILED, reason="rate_limited")}), repo, SOURCES)
         self.assertEqual((again["unchanged"], again["admit"], again["added"], again["removed"]), (1, 0, 0, 0))
         self.assertEqual((again["failed"], again["failed_why"]), (1, {"rate_limited": 1}))
-        self.assertEqual(len(repo.items("s2")), 1)                                  # the failed board's accepted state is untouched
+        self.assertEqual(len(repo.items("s2")), 1)  # the failed board's accepted state is untouched
         self.assertGreater(repo.state["s2"]["failures"], 0)
 
     def test_removal_only_from_a_complete_listing(self):
@@ -256,7 +257,7 @@ class OneRun(unittest.TestCase):
             first = run.run(10, True, NOW, fixed({"s1": board, "s2": self.listing()}), repo, SOURCES)
             self.assertEqual((first["admit"], first["pending"]), (3, 2))
             second = run.run(10, True, NOW + timedelta(minutes=1), fixed({"s1": board, "s2": self.listing()}), repo, SOURCES)
-            self.assertEqual((second["admit"], second["pending"]), (2, 0))             # a backlog board is due again at once
+            self.assertEqual((second["admit"], second["pending"]), (2, 0))  # a backlog board is due again at once
         finally:
             limits.WEB_INGEST_PER_RUN = old
 
@@ -272,7 +273,9 @@ RSS = """<?xml version="1.0"?><rss xmlns:tt="https://teamtailor.com/locations"><
 
 
 class EveryPassTimesItself(unittest.TestCase):
-    """LIFE-904: the tick's own `web` passes (no `select`) print the same timing receipt the boards window does, with every PR #1365 field."""
+    """the tick's own `web` passes (no `select`) print the same timing receipt the boards window does, with every PR
+    #1365 field.
+    """
     def test_a_pass_without_select_carries_timing_with_every_field(self):
         board = OneRun.listing((1, "Program Manager", "Remote - US"))
         got = run.run(10, True, NOW, fixed({"s1": board, "s2": board}), MemRepo(), SOURCES)
@@ -306,7 +309,7 @@ class Teamtailor(unittest.TestCase):
 
 
 class LongLocations(unittest.TestCase):
-    """D104: a stored place cut at 200 characters hid London from Revolut jobs; unchanged jobs whose listed place is longer are put right."""
+    """a stored place cut at 200 characters hid London from Revolut jobs"""
 
     def test_unchanged_jobs_with_a_long_place_are_relocated(self):
         offices = " | ".join(f"Office {n} · office · Country {n}" for n in range(12)) + " | London · office · United Kingdom"
@@ -325,14 +328,14 @@ class ForcedBoard(unittest.TestCase):
         sources = [{"id": "su-revolut-ltd", "company": "Revolut Ltd"}, {"id": "su-plentific", "company": "Plentific"}]
         states = {"su-revolut-ltd": {"due_at": datetime(2030, 1, 1), "failures": 0}, "su-plentific": {"due_at": datetime(2030, 1, 1), "failures": 0}}
         def forced(force):
-            return run.forced_ids(sources, force)                      # run.run drops these ids' stored states, so these boards are due now
+            return run.forced_ids(sources, force)
         self.assertEqual(forced("revolut"), {"su-revolut-ltd"})
         self.assertEqual((forced("funnel"), forced("re"), forced(None)), (set(), set(), set()))
-        self.assertEqual(forced("board:revolut, plentific"), set(states))             # several companies, board: ignored
+        self.assertEqual(forced("board:revolut, plentific"), set(states))  # several companies, board: ignored
 
 
 class FirstPartyAgeInTheWebPass(unittest.TestCase):
-    """D111: age is not a reason to drop a job from an employer's own board; a job dropped for age before comes back."""
+    """age is not a reason to drop a job from an employer's own board"""
 
     def stale(self):
         return {"id": "p1", "title": "Project Manager", "location": "London (hybrid)", "url": "https://x/p1", "posted": date(2026, 7, 14), "content": None}
@@ -355,7 +358,9 @@ class FirstPartyAgeInTheWebPass(unittest.TestCase):
 
 
 class StoredJobPutRight(unittest.TestCase):
-    """D111: a job already stored whose listed title or place changed is corrected, judged again, and an exclusion that rested on the wrong place is lifted."""
+    """a job already stored whose listed title or place changed is corrected, judged again, and an exclusion that rested
+    on the wrong place is lifted.
+    """
 
     class Cur:
         def __init__(self):
@@ -368,7 +373,7 @@ class StoredJobPutRight(unittest.TestCase):
             return False
 
         def execute(self, sql, params=()):
-            sql % tuple("x" for _ in params)                    # survives driver formatting
+            sql % tuple("x" for _ in params)  # survives driver formatting
             self.sql.append((sql, params))
 
         def fetchone(self):
@@ -390,7 +395,7 @@ class StoredJobPutRight(unittest.TestCase):
 
 
 class BoardTimeLimit(unittest.TestCase):
-    """LIFE-567: one board that never answers fails at its own limit; the other boards in the same run still finish and commit."""
+    """one board that never answers fails at its own limit"""
     THREE = SOURCES + [{"id": "s3", "company": "S3", "kind": "greenhouse", "slug": "s3"}]
 
     def test_a_hung_board_is_failed_and_the_others_commit(self):
@@ -400,7 +405,7 @@ class BoardTimeLimit(unittest.TestCase):
 
         def lister_fn(source):
             if source["id"] == "s2":
-                release.wait(10)                                                 # never answers within the limit
+                release.wait(10)  # never answers within the limit
             return empty
         try:
             got = run.run(10, True, NOW, lister_fn, repo, self.THREE, board_seconds=0.2)
@@ -408,7 +413,7 @@ class BoardTimeLimit(unittest.TestCase):
             release.set()
         self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["failed_ids"]), (2, 1, {"board_timeout": 1}, ["s2"]))
         self.assertEqual({o.source["id"] for o, _ in repo.commits}, {"s1", "s2", "s3"})
-        self.assertGreater(repo.state["s2"]["failures"], 0)                    # retried on the normal schedule
+        self.assertGreater(repo.state["s2"]["failures"], 0)  # retried on the normal schedule
 
     def test_a_reader_error_still_surfaces(self):
         def lister_fn(source):

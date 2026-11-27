@@ -11,7 +11,7 @@ from tests.interview.test_notion import ENV, block
 
 
 def legacy_round_page(view, query, parent_id, identity, prep=None):
-    """The D230 round layout written before LIFE-88 (top-level sections, "Derived" last); such pages keep the Derived path."""
+    """The round layout written before (top-level sections, 'Derived' last)"""
     head = lambda label: {"object": "block", "type": "heading_2", "heading_2": {"rich_text": [{"type": "text", "text": {"content": label}}]}}
     return [template.fold(notion.MARKERS["round"], identity)] + [head(x) for x in ("Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived")]
 
@@ -45,7 +45,7 @@ class PrepFake(WritableFake):
 class InputTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def test_validation_normalization_hash_order_and_render(self):
@@ -65,7 +65,7 @@ class InputTests(unittest.TestCase):
 class PrepTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     def apply(self, client, query, data, live=True):
@@ -332,12 +332,12 @@ class PrepTests(unittest.TestCase):
         current_query = RoundQuery(True, "2026-10-02", ordinal=3)
         create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
         current = PrepEvidence(pressure_points=("Current risk",))
-        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")       # nothing to inherit yet
+        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")  # nothing to inherit yet
         old = PrepEvidence(pressure_points=("Old risk",), questions=("Old question",))
-        prep.apply(client, ENV, PARENT, previous_query, old, True, RunContext.start(60))              # earlier round prepared later
+        prep.apply(client, ENV, PARENT, previous_query, old, True, RunContext.start(60))  # earlier round prepared later
         calls = len(client.calls)
         self.assertEqual(self.apply(client, current_query, current)["code"], "derived_match")
-        self.assertNotIn(("GET", f"/blocks/{previous_id}/children?page_size=100"), client.calls[calls:])   # never reads its Derived
+        self.assertNotIn(("GET", f"/blocks/{previous_id}/children?page_size=100"), client.calls[calls:])  # never reads its Derived
         self.assertEqual(self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict")
 
     def test_replay_requires_exact_current_evidence_hash(self):
@@ -432,7 +432,7 @@ class PrepTests(unittest.TestCase):
 class DerivedScanTests(unittest.TestCase):
 
     def setUp(self):
-        from tests.jobs.fakes_jobsdb import claim_store                  # LIFE-903: the Ledger creators claim in an in-memory store
+        from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
     class Pages:
@@ -452,7 +452,7 @@ class DerivedScanTests(unittest.TestCase):
         return {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [{"plain_text": label, "text": {"content": label}}]}}
 
     def test_large_notes_do_not_exhaust_the_scan_and_are_dropped_unread(self):
-        notes = [[self.bullet("private note") for _ in range(100)] for _ in range(60)]    # 60 pages, beyond the 40-call scan budget
+        notes = [[self.bullet("private note") for _ in range(100)] for _ in range(60)]  # 60 pages, beyond the 40-call scan budget
         client = self.Pages([[self.heading("Live Notes")]] + notes + [[self.heading("Derived"), self.bullet("x")]])
         heading, payload = notion.derived_blocks(client, "p")
         self.assertEqual((notion.text(heading), [notion.text(b) for b in payload]), ("Derived", ["x"]))

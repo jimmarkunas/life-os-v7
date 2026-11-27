@@ -1,4 +1,6 @@
-"""LIFE-931: the Interviews list on Hiring Pipeline: one row per machine round, read from the round page's own snapshot, kept current by the Interview job."""
+"""the Interviews list on Hiring Pipeline: one row per machine round, read from the round page's own snapshot, kept
+current by the Interview job.
+"""
 import unittest
 from lifeos.interview import notion, roster
 from lifeos.interview.models import Child, Parent
@@ -85,7 +87,7 @@ class Rows(unittest.TestCase):
         self.assertEqual([cell(uber, n) for n in ("Interview", "Company", "Role", "Round", "Date (CT)", "Interviewer", "Status", "Transcript", "Round page")],
                          ["Uber · Interview 1", "Uber", "Technical Project Manager", 1, "2026-09-29", "Bethany Papenbrock, Hannah Hinz (from the old notes page)", "Held", True, "https://www.notion.so/uber"])
         self.assertEqual([cell(walmart, n) for n in ("Status", "Transcript", "Interviewer", "Date (CT)")], ["Scheduling pending", False, "Not verified", None])
-        self.assertTrue(all(m == "GET" or p.startswith("/pages") for m, p in client.calls))      # reads, and writes only to list rows
+        self.assertTrue(all(m == "GET" or p.startswith("/pages") for m, p in client.calls))  # reads, and writes only to list rows
 
     def test_a_replay_writes_nothing(self):
         client = Fake()
@@ -113,7 +115,7 @@ class Rows(unittest.TestCase):
         self.assertEqual((counts["roster_retired"], len(client.rows), cell(client.rows[1], "Status")), (1, 2, "Retired"))
         client = Fake()
         run(client)
-        client.blocks["walmart"] = []                                  # the page no longer reads as a round: skipped, so its row stays as it was
+        client.blocks["walmart"] = []
         code, counts = run(client)
         self.assertEqual((counts["roster_skipped"], counts.get("roster_retired", 0), cell(client.rows[1], "Status")), (1, 0, "Scheduling pending"))
 
@@ -134,7 +136,9 @@ if __name__ == "__main__":
 
 
 class RootPages(unittest.TestCase):
-    """A machine opportunity page directly under Hiring Pipeline (not in the Active or Retired container) still lists its rounds."""
+    """A machine opportunity page directly under Hiring Pipeline (not in the Active or Retired container) still lists its
+    rounds.
+    """
     def test_a_machine_page_under_the_root_lists_its_round_and_a_human_page_does_not(self):
         from lifeos.interview import create, stage
         from lifeos.interview.models import RoundQuery

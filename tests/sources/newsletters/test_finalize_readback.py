@@ -1,4 +1,6 @@
-"""Newsletter acceptance: mail -> cards -> lane decision -> Ledger payload -> read-back -> finalize (no network, no database)."""
+"""Newsletter acceptance: mail -> cards -> lane decision -> Ledger payload -> read-back -> finalize (no network, no
+database).
+"""
 from datetime import date, datetime
 import unittest
 
@@ -74,7 +76,7 @@ class Cursor:
         self.args = args
 
     def fetchall(self):
-        return [tuple(r) + (None,) * (4 - len(r)) for r in self.rows if r[0] in self.args]          # (message, status, unverified[, repost_of])
+        return [tuple(r) + (None,) * (4 - len(r)) for r in self.rows if r[0] in self.args]  # (message, status, unverified[, repost_of])
 
 
 class Conn:
@@ -101,7 +103,7 @@ class FinalizeTests(unittest.TestCase):
         rows = [("done", "PUBLISHED", 0), ("done", "EXCLUDED_STALE", 1), ("open", "READY", 1), ("open", "PUBLISHED", 0),
                 ("unread", "PUBLISHED", 1)]
         counts, calls = self.run_finalize(rows, ["done", "open", "unread", "empty"])
-        self.assertEqual(calls, [(["done", "empty"], ["LBL"], [])])                 # no saved jobs = nothing in flight
+        self.assertEqual(calls, [(["done", "empty"], ["LBL"], [])])  # no saved jobs = nothing in flight
         self.assertEqual((counts["closed"], counts["in_flight"], counts["unverified"]), (2, 1, 1))
 
     def test_hold_and_unknown_statuses_keep_the_mail_open_and_terminal_ones_close_it(self):
@@ -121,7 +123,7 @@ class FinalizeTests(unittest.TestCase):
         gmail = NoLabel(results={config.FINALIZE_QUERY: ["a"]})
         counts = finalize.finalize(gmail, False, 50, lambda: Conn([("a", "PUBLISHED", 0)]))
         self.assertEqual((counts["would_close"], gmail.calls), (1, []))
-        with self.assertRaises(GmailError):                                   # a LIVE run must not hide a lookup failure it cannot fix
+        with self.assertRaises(GmailError):
             class Broken(FakeGmail):
                 def label_id(self, name, create=False):
                     raise GmailError("boom")

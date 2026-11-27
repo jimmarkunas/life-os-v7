@@ -13,7 +13,7 @@ from lifeos.interview.models import PrepEvidence
 from lifeos.platform import full_width
 from lifeos.platform.notion_client import Client, NotionError
 
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: every page is created from the Full Width template
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # every page is created from the Full Width template
 full_width.WAIT = 0
 
 ROOT_ENV = {"INTERVIEW_ADVISOR_ROOT_PAGE_ID": "root"}
@@ -60,7 +60,7 @@ class FakeNotion:
         if method == "GET" and path.startswith("/blocks/"):
             pid = path.split("/")[2]
             return {"results": self.pages[pid]["blocks"], "has_more": False, "next_cursor": None}
-        if method == "POST" and path == "/pages":                       # D16.1: from the Full Width template: no children in the create request, one empty filler paragraph on top
+        if method == "POST" and path == "/pages":
             self.posts += 1
             assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             pid = "00000000-0000-0000-0000-000000000001"
@@ -70,7 +70,7 @@ class FakeNotion:
             self.pages[pid] = page_obj
             self.template_pages.append(pid)
             child = block("child_page", "", title)
-            child["id"] = pid                                                   # the listed child is the page just created
+            child["id"] = pid  # the listed child is the page just created
             self.pages[body["parent"]["page_id"]]["blocks"].append(child)
             return page_obj
         if method == "PATCH" and path.endswith("/children"):
@@ -197,7 +197,7 @@ class StoreTests(unittest.TestCase):
             pages = build_tree(); mutate(pages)
             with self.assertRaises(store.AdvisorStoreError):
                 store.read_store(FakeNotion(pages), ROOT_ENV)
-        # LIFE-383 (D250): the root is held by its configured id, so its title is not compared, and a child page without an Advisor marker is free-form and ignored
+        # the root is held by its configured id, so its title is not compared, and a child page without an Advisor.
         for mutate in (lambda p: p[0]["properties"]["Name"]["title"].__setitem__(0, {"plain_text": "Renamed by Jim"}),
                        lambda p: p[0]["blocks"].append(block("child_page", "", "Extra"))):
             pages = build_tree(); mutate(pages)
@@ -342,8 +342,8 @@ class StoreTests(unittest.TestCase):
         verified = store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", b, d)
         self.assertIsInstance(verified.prep, PrepEvidence)
         self.assertEqual(client.posts, 1)
-        self.assertEqual(len(client.template_pages), 1)                                                        # D16.1: the preview came from the Full Width template, its filler paragraph is gone
-        self.assertEqual(client.methods.count("PATCH"), 1)                                                   # one append of the preview blocks (a page is never patched otherwise)
+        self.assertEqual(len(client.template_pages), 1)
+        self.assertEqual(client.methods.count("PATCH"), 1)
         self.assertNotIn("template-filler", str([blk.get("id") for blk in client.pages[client.template_pages[0]]["blocks"]]))
         same = store.FakeNotion if False else client
         with self.assertRaises(store.AdvisorStoreError) as error:
@@ -367,7 +367,7 @@ class StoreTests(unittest.TestCase):
         client = FakeNotion(build_tree())
         verified = store.create_preview(client, "advisor-previews", "00000000000000000000000000000004", bundle(), draft())
         self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "advisor-previews").prep, verified.prep)
-        self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "root").prep, verified.prep)       # LIFE-383 (D250): the parent is not compared
+        self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "root").prep, verified.prep)  # the parent is not compared
         for parent, gen, digest in (("advisor-previews", "f" * 32, None), ("advisor-previews", None, "f" * 64)):
             with self.assertRaises(store.AdvisorStoreError):
                 store.read_preview(client, "00000000-0000-0000-0000-000000000001", parent, gen, digest)

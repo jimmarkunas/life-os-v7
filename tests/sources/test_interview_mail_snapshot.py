@@ -1,4 +1,6 @@
-"""LIFE-894: Interview OS reads its mail early (a read-only step beside the tick) and the late Interview job uses that snapshot only when it is current and complete; anything else reads exactly as before."""
+"""Interview OS reads its mail early (a read-only step beside the tick) and the late Interview job uses that snapshot
+only when it is current and.
+"""
 import contextlib
 import io
 import json
@@ -14,9 +16,9 @@ from tests.sources.support import mail, outreach
 from tests.sources.test_interview_evidence import APPLIED, ENV, Run
 
 UTC = timezone.utc
-TICK = datetime(2026, 11, 22, 12, 7, tzinfo=UTC)                  # the tick started at 12:07 UTC
-TAKEN = TICK + timedelta(minutes=4)                                # its early read began four minutes later
-NOW = TICK + timedelta(minutes=30)                                 # the late run
+TICK = datetime(2026, 11, 22, 12, 7, tzinfo=UTC)  # the tick started at 12:07 UTC
+TAKEN = TICK + timedelta(minutes=4)  # its early read began four minutes later
+NOW = TICK + timedelta(minutes=30)  # the late run
 RECORDS = [mail(subject="Schedule your interview - ExampleCo Program Manager", received="2026-11-20T15:00:00Z"),
            outreach(url="https://example.test/thread/lead", received="2026-11-21T09:00:00Z", extra="Requisition 777777."),
            {**mail(subject="Newsletter"), "provider": "outlook", "id": "acct:1", "received": "2026-11-22T11:00:00Z", "folder": "JUNK"}]
@@ -24,7 +26,7 @@ STARTED = TICK.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Frozen(datetime):
-    """ev.run reads the clock once; it reads NOW, so the tick, the snapshot and the late run have fixed relative times."""
+    """ev.run reads the clock once"""
     @classmethod
     def now(cls, tz=None):
         return NOW.astimezone(tz) if tz else NOW
@@ -94,9 +96,9 @@ class Judge(unittest.TestCase):
         self.assertEqual(snap.judge(self.row(), TICK, NOW, 14), "used")
 
     def test_no_row_a_stale_row_a_wrong_hour_row_an_incomplete_row_or_another_window_is_never_used(self):
-        for kw, why in (({"taken_at": TICK - timedelta(hours=1), "tick_hour": snap.hour_key(TICK - timedelta(hours=1))}, "stale"),            # the previous tick's read
-                        ({"taken_at": TICK - timedelta(minutes=3), "tick_hour": snap.hour_key(TICK - timedelta(minutes=3))}, "stale"),    # just outside the grace
-                        ({"tick_hour": snap.hour_key(TAKEN - timedelta(hours=1))}, "wrong_hour"),                                          # a row filed under another hour
+        for kw, why in (({"taken_at": TICK - timedelta(hours=1), "tick_hour": snap.hour_key(TICK - timedelta(hours=1))}, "stale"),  # the previous tick's read
+                        ({"taken_at": TICK - timedelta(minutes=3), "tick_hour": snap.hour_key(TICK - timedelta(minutes=3))}, "stale"),  # just outside the grace
+                        ({"tick_hour": snap.hour_key(TAKEN - timedelta(hours=1))}, "wrong_hour"),  # a row filed under another hour
                         ({"complete": False}, "incomplete"),
                         ({"days": 30}, "days"),
                         ({"taken_at": NOW + timedelta(minutes=5), "tick_hour": snap.hour_key(NOW + timedelta(minutes=5))}, "future")):
@@ -152,7 +154,7 @@ class EarlyStep(unittest.TestCase):
         counts = self.go(db)
         self.assertEqual((counts["snapshot"], counts["records"], counts["complete"]), ("saved", 3, True))
         self.assertEqual(snap.load(db, TICK, NOW, 14)["records"], RECORDS)
-        self.assertNotIn("example", json.dumps(counts))                                           # counts and fixed codes: no address, subject or id
+        self.assertNotIn("example", json.dumps(counts))  # counts and fixed codes: no address, subject or id
 
     def test_a_source_read_in_part_is_filed_incomplete_so_the_late_run_reads_for_itself(self):
         db = Db()
@@ -166,7 +168,7 @@ class EarlyStep(unittest.TestCase):
             raise RuntimeError("boom with a subject line")
         counts = self.go(db, read=broken)
         self.assertEqual((counts["snapshot"], db.rows, db.sql), ("not_saved", {}, []))
-        self.assertNotIn("subject", json.dumps(counts))                                           # a fixed code, never the error's text
+        self.assertNotIn("subject", json.dumps(counts))  # a fixed code, never the error's text
 
     def test_a_store_that_is_down_is_a_fixed_code_not_a_failure_of_the_run(self):
         self.assertEqual(self.go(Db(down=True))["snapshot"], "not_saved")
@@ -185,14 +187,16 @@ class EarlyStep(unittest.TestCase):
              patch.object(ev.streaks, "save", side_effect=AssertionError("streaks")):
             self.go(db)
         self.assertTrue(db.sql)
-        self.assertTrue(all("v7_interview_mail" in sql for sql in db.sql), db.sql)               # nothing but its own table
+        self.assertTrue(all("v7_interview_mail" in sql for sql in db.sql), db.sql)  # nothing but its own table
 
 
 class LateRun(unittest.TestCase):
     """ev.run with and without the snapshot: the same input gives the same output."""
 
     def fresh_tick(self):
-        """TICK_STARTED and the time of the early read: the tick began at 12:07, its early read four minutes later, and ev.run's clock says 12:37."""
+        """TICK_STARTED and the time of the early read: the tick began at 12:07, its early read four minutes later, and
+        ev.run's clock says 12:37.
+        """
         return STARTED, TAKEN
 
     def run_late(self, db, started, read=None, records=None):
@@ -203,7 +207,7 @@ class LateRun(unittest.TestCase):
 
     @staticmethod
     def output(counts):
-        """The counts line with the timing and measurement fields removed (LIFE-894 Done when)."""
+        """The counts line with the timing and measurement fields removed."""
         return {k: v for k, v in counts.items() if k not in ("seconds", "mail_seconds", "mail_gmail", "mail_snapshot")}
 
     def test_a_current_complete_snapshot_is_used_and_gmail_is_not_read_again(self):
@@ -211,16 +215,16 @@ class LateRun(unittest.TestCase):
         counts, got, spy = self.run_late(saved(Db(), taken=taken), started)
         self.assertEqual(spy.call_count, 0)
         self.assertEqual(counts["mail_snapshot"], "used")
-        self.assertEqual(counts["mail_gmail"], DETAIL["gmail"])                                 # the early read's own Gmail counts
+        self.assertEqual(counts["mail_gmail"], DETAIL["gmail"])  # the early read's own Gmail counts
 
     def test_the_output_with_the_snapshot_equals_the_output_of_the_unchanged_late_read(self):
         started, taken = self.fresh_tick()
-        today_counts, today, _ = self.run_late(Db(), "")                                      # no TICK_STARTED: exactly today's read
+        today_counts, today, _ = self.run_late(Db(), "")  # no TICK_STARTED: exactly today's read
         used_counts, used, spy = self.run_late(saved(Db(), taken=taken), started)
         self.assertEqual(spy.call_count, 0)
         self.assertEqual(self.output(used_counts), self.output(today_counts))
         self.assertEqual(used["evidence"], today["evidence"])
-        self.assertTrue(today["evidence"])                                                      # a real request came through, not an empty equality
+        self.assertTrue(today["evidence"])  # a real request came through, not an empty equality
 
     def test_stale_wrong_hour_incomplete_other_window_or_missing_falls_back_to_the_full_read_with_the_same_output(self):
         started, taken = self.fresh_tick()
@@ -230,7 +234,7 @@ class LateRun(unittest.TestCase):
                  "none": Db(), "store": Db(down=True)}
         for why, db in cases.items():
             counts, got, spy = self.run_late(db, started)
-            self.assertEqual((spy.call_count, counts["mail_snapshot"]), (1, why), why)             # the full read ran, and the reason is a fixed code
+            self.assertEqual((spy.call_count, counts["mail_snapshot"]), (1, why), why)  # the full read ran, and the reason is a fixed code
             self.assertEqual(self.output(counts), self.output(today_counts), why)
             self.assertEqual(got["evidence"], today["evidence"], why)
 
@@ -239,7 +243,7 @@ class LateRun(unittest.TestCase):
         counts, got, spy = self.run_late(db, "")
         self.assertEqual(spy.call_count, 1)
         self.assertNotIn("mail_snapshot", counts)
-        self.assertEqual([s for s in db.sql if s.startswith("SELECT")], [])                     # the store was not even asked
+        self.assertEqual([s for s in db.sql if s.startswith("SELECT")], [])  # the store was not even asked
 
     def test_mail_that_was_handed_in_is_used_as_before_and_the_snapshot_is_not_consulted(self):
         db = saved(Db())
@@ -270,8 +274,8 @@ class Wiring(unittest.TestCase):
         from lifeos.platform import budget
         self.assertEqual(run.STAGES["interview-mail"].target, ("lifeos.sources.interview.mail_snapshot", "stage"))
         self.assertNotIn("interview-mail-shadow", run.STAGES)
-        self.assertFalse(budget.budget_for("interview-mail")[1])                                 # a failed early read never fails the run
-        self.assertTrue(budget.budget_for("interview")[1])                                       # the late writer is unchanged
+        self.assertFalse(budget.budget_for("interview-mail")[1])  # a failed early read never fails the run
+        self.assertTrue(budget.budget_for("interview")[1])  # the late writer is unchanged
 
 
 if __name__ == "__main__":

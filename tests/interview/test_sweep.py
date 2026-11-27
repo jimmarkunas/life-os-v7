@@ -1,5 +1,6 @@
-"""LIFE-88 (Jim, Oct 21): every opportunity page, Active and Retired, becomes the new page: classified by shape, converted a few per run through the existing writers, Jim's content proven unchanged,
-the sweep stopped by the first failure. Everything here is synthetic."""
+"""every opportunity page, Active and Retired, becomes the new page: classified by shape, converted a few per run through
+the existing writers, Jim's.
+"""
 import copy
 import unittest
 from lifeos.interview import create, notion, stage, template
@@ -100,10 +101,10 @@ class SweepTests(unittest.TestCase):
         for key in ("opportunity", "retired"):
             tops = client.blocks[key]
             self.assertTrue(notion.is_fold(tops[0]))
-            self.assertNotIn(notion.ADOPT, [notion.text(b) for b in tops])                          # the adopt line is consumed
+            self.assertNotIn(notion.ADOPT, [notion.text(b) for b in tops])  # the adopt line is consumed
             tail = [(b["id"], notion.text(b)) for b in tops if b["id"] in dict(kept[key])]
-            self.assertEqual(tail, kept[key])                                                       # Jim's blocks, same ids, same order
-            self.assertEqual(sweep.classify(client, key), "current")                                 # and a second sweep finds nothing to do
+            self.assertEqual(tail, kept[key])  # Jim's blocks, same ids, same order
+            self.assertEqual(sweep.classify(client, key), "current")  # and a second sweep finds nothing to do
         again = sweep_run(client)
         self.assertEqual((again["inventory"], again["converted"], again["writes"]), ({"current": 2}, 0, 0))
 
@@ -117,14 +118,14 @@ class SweepTests(unittest.TestCase):
         from lifeos.platform.runtime import RunContext
         client = SweepFake()
         before = copy.deepcopy(client.blocks)
-        short = RunContext.start(sweep.PAGE_SECONDS - 1)                  # run 39662178449 ended failed 1 (deadlineexceeded) though nothing was wrong: the budget ran out between pages
+        short = RunContext.start(sweep.PAGE_SECONDS - 1)
         counts = sweep.run(CONVERT, True, client, scan_of(client), lambda company, role: "synthetic-key", lambda c, page_id, context: None, short)
         self.assertEqual((counts["failed"], counts["converted"], counts["writes"], counts["waiting"], counts["why"]), (0, 0, 0, 2, {"time_budget": 1}))
         self.assertEqual(client.blocks, before)
 
     def test_time_running_out_inside_a_page_is_still_a_failure(self):
         from lifeos.platform.runtime import RunContext
-        ticks = iter([0.0, 0.0, 0.0] + [1000.0] * 500)                   # enough time at the check, none a moment later
+        ticks = iter([0.0, 0.0, 0.0] + [1000.0] * 500)  # enough time at the check, none a moment later
         client = SweepFake()
         counts = sweep.run(CONVERT, True, client, scan_of(client), lambda company, role: "synthetic-key", lambda c, page_id, context: None, RunContext.start(300, clock=lambda: next(ticks)))
         self.assertEqual(counts["failed"], 1)
@@ -140,7 +141,7 @@ class SweepTests(unittest.TestCase):
         before = copy.deepcopy(client.blocks)
         counts = sweep_run(client)
         self.assertEqual((counts["converted"], counts["failed"], counts["why"]), (0, 1, {"write_failed": 1}))
-        self.assertEqual(client.blocks, before)                                                      # nothing was written to either page
+        self.assertEqual(client.blocks, before)  # nothing was written to either page
 
     def test_a_page_that_changes_under_the_write_is_reported_and_stops_the_sweep(self):
         client = SweepFake()
@@ -182,7 +183,7 @@ class CurrentPageTests(unittest.TestCase):
         first = sweep_run(client)
         self.assertEqual((first["why"].get("parent_refreshed"), first["failed"]), (1, 0))
         self.assertIn("Jane Doe", " ".join(texts(client, page_id)))
-        self.assertEqual(notion.human_tail(client, page_id), tail)                                   # Jim's notes and the round page untouched
+        self.assertEqual(notion.human_tail(client, page_id), tail)  # Jim's notes and the round page untouched
         again = sweep_run(client)
         self.assertEqual((again["why"].get("parent_unchanged"), again["why"].get("parent_refreshed"), again["writes"]), (1, None, 0))
         self.assertEqual(sweep_run(client, {**ENV, "INTERVIEW_CONVERT": "inventory"})["writes"], 0)
@@ -202,7 +203,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(sweep.classify(client, "opportunity"), "current")
         self.assertEqual(notion.human_tail(client, "opportunity"), tail)
         self.assertEqual([b["id"] for b in client.blocks["opportunity"]][-4:], ["jh", "jc", "jn", "r1"])
-        self.assertNotIn("m1", [b["id"] for b in client.blocks["opportunity"]])                       # V7's own old region is replaced
+        self.assertNotIn("m1", [b["id"] for b in client.blocks["opportunity"]])
 
     def test_a_prefold_page_with_a_round_page_inside_its_machine_region_is_not_recognized(self):
         client = SweepFake()

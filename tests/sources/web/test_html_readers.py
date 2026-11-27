@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
 
 class StreamReaderTests(unittest.TestCase):
-    """D111: Stream's label is '<role> <city> <department>' and its place is only in the URL slug."""
+    """Stream's label is '<role> <city> <department>' and its place is only in the URL slug."""
     PAGE = ('<html><body>'
             '<a href="/en/careers/delivery-manager-london-8459831">Delivery Manager London Delivery</a>'
             '<a href="/en/careers/director-of-partnerships-new-york-123456">Director of Partnerships New York Commercial</a>'

@@ -1,4 +1,6 @@
-"""LIFE-88 QA probe: manual only, typed QA confirmation, and nothing but the QA render proof (tested in test_ui3c.QaAcceptanceRun)."""
+"""QA probe: manual only, typed QA confirmation, and nothing but the QA render proof (tested in
+test_ui3c.QaAcceptanceRun).
+"""
 import unittest
 import unittest.mock
 from lifeos.interview import ui_probe as P

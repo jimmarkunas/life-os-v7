@@ -1,4 +1,4 @@
-"""LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+"""test helpers that more than one test module (often in another domain) uses."""
 from lifeos.interview import create, notion, prep, template, ui_probe, view
 from lifeos.interview.transcript import normalize_granz
 import json
@@ -7,11 +7,11 @@ from lifeos.platform import full_width
 from lifeos.platform.notion_client import NotionError
 import copy
 
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: pages are created from the Full Width template; no sleeping in tests
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # pages are created from the Full Width template
 full_width.WAIT = 0
 
 
-ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "ds-synthetic"}     # LIFE-361: a new pursuit is created in the Ledger
+ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "ds-synthetic"}  # a new pursuit is created in the Ledger
 
 
 def block(label, kind="paragraph", id="block", **extra):
@@ -47,7 +47,7 @@ class Fake:
         return {"results": copy.deepcopy(results[:1] if "page_size=1" in path and "page_size=100" not in path else results), "has_more": self.more, "next_cursor": None}
 
     def query_data_source(self, source_id=None, body=None):
-        return {"results": [], "has_more": False, "next_cursor": None}             # an empty Job Ledger: readers fall back to the page tree as before
+        return {"results": [], "has_more": False, "next_cursor": None}
 
 
 UUID = "3f2a1c6e-1b7a-4c1e-9d55-0a1b2c3d4e5f"
@@ -72,7 +72,7 @@ class FakeNotion:
         self.calls.append((method, path))
         if self.fail_on == method:
             raise NotionError("NOTION_NETWORK")
-        if method == "POST" and path == "/pages":                      # D16.1: only a page made from the Full Width template is full width; it lands with one empty paragraph and takes no children
+        if method == "POST" and path == "/pages":
             assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             pid = f"page-{len(self.pages)}"
             self.pages[pid] = [{"id": f"filler-{pid}", "type": "paragraph", "paragraph": {"rich_text": []}}]
@@ -80,7 +80,7 @@ class FakeNotion:
             self.pages[body["parent"]["page_id"]].append({"id": pid, "type": "child_page", "child_page": {"title": title}})
             self.templated.append(pid)
             return {"id": pid}
-        if method == "PATCH" and path.startswith("/pages/"):           # a failed write archives the stub it made
+        if method == "PATCH" and path.startswith("/pages/"):  # a failed write archives the stub it made
             self.archived.append(path.split("/")[2])
             return {}
         if method == "DELETE" and path.startswith("/blocks/"):
@@ -112,8 +112,8 @@ class WritableFake(Fake):
         self.pages["human"] = page("Legacy — Manager")
         self.pages["human"]["parent"] = {"type": "block_id", "block_id": "left"}
         self.blocks["human"] = [block("human notes")]
-        self.rows = {}                                         # LIFE-361: the Job Ledger data source: row id -> properties
-        self.sandbox_source = None                             # a proof's own sandbox Ledger (POST /databases), the same rows
+        self.rows = {}  # the Job Ledger data source: row id -> properties
+        self.sandbox_source = None
         self.sandbox_schema = None
         self.stage_options = ["Found", "Applied", "Interviewing", "Offer", "Working", "Ended"]
         self.posts = []
@@ -125,8 +125,9 @@ class WritableFake(Fake):
     MUST = ("column_list", "column", "table", "tab")
 
     def register(self, prefix, items, depth=0):
-        """Like Notion: every block gets an id, nested children become readable child lists, a request carries at most two
-        nesting levels, and a column list, column, table or tab must arrive with its children."""
+        """Like Notion: every block gets an id, nested children become readable child lists, a request carries at most
+        two nesting levels, and a column list.
+        """
         items = copy.deepcopy(items)
         for index, item in enumerate(items):
             item["id"] = f"{prefix}-block-{index}"
@@ -153,16 +154,16 @@ class WritableFake(Fake):
         return {"id": rid, "properties": copy.deepcopy(self.rows[rid])}
 
     def query_data_source(self, source_id=None, body=None):
-        """Like the Job Ledger: the Stage reader (parents_from_ledger) and the company read (ledger_row). A hidden row is missing from the Stage reader only."""
-        self.calls.append(("GET", f"/data_sources/{source_id}/query"))           # a read (Notion's query is a POST, but it changes nothing)
+        """Like the Job Ledger: the Stage reader (parents_from_ledger) and the company read (ledger_row)."""
+        self.calls.append(("GET", f"/data_sources/{source_id}/query"))
         if f"/data_sources/{source_id}/query" in self.fail:
             raise NotionError("NOTION_NETWORK")
         wanted = (body or {}).get("filter") or {}
-        if self.sandbox_schema is not None and source_id == self.sandbox_source:         # like Notion: a filter on a property the data source lacks is a 400
+        if self.sandbox_schema is not None and source_id == self.sandbox_source:
             named = [f["property"] for f in wanted.get("or", wanted.get("and", [wanted])) if "property" in f]
             if any(n not in self.sandbox_schema for n in named):
                 raise NotionError("NOTION_HTTP_400")
-        if "or" in wanted:                                                       # LIFE-353: the decision writers' pursuit read, Applied ticked or Stage set
+        if "or" in wanted:
             found = [r for r in self.rows if self._value(self.rows[r].get("Stage")) or (self.rows[r].get("Applied") or {}).get("checkbox")]
         elif wanted.get("property") == "Stage":
             found = [r for r in self.rows if self._value(self.rows[r].get("Stage")) and not (self.hide_created and r.startswith("created-"))]
@@ -196,7 +197,7 @@ class WritableFake(Fake):
             if path.endswith("/children"):
                 self.appends = getattr(self, "appends", 0) + 1
                 siblings = self.blocks.setdefault(key, [])
-                first = key in self.pages and not siblings                    # a page created from a template, filled now
+                first = key in self.pages and not siblings  # a page created from a template, filled now
                 items = self.register(key if first else f"{key}-add{self.appends}", body["children"])
                 at = [b["id"] for b in siblings].index(body["after"]) + 1 if body.get("after") else 0 if body.get("position") == {"type": "start"} else len(siblings)
                 siblings[at:at] = items
@@ -206,7 +207,7 @@ class WritableFake(Fake):
                     siblings[0] = block("missing marker")
                 return {"results": copy.deepcopy(items)}
             if path.startswith("/pages/"):
-                if key in self.rows and "properties" in body:            # the Ledger row's Stage, or (LIFE-353) its Hiring Decision and history
+                if key in self.rows and "properties" in body:
                     self.rows[key].update(copy.deepcopy(body["properties"]))
                     self.edits = getattr(self, "edits", 0) + 1
                     return {"id": key}
@@ -216,7 +217,7 @@ class WritableFake(Fake):
             kind = next(k for k in body)
             target[kind]["rich_text"] = copy.deepcopy(body[kind]["rich_text"])
             return copy.deepcopy(target)
-        if method == "GET" and path.startswith("/pages/") and path.split("/")[2] in self.rows:      # a Ledger row page, as the decision writer reads it
+        if method == "GET" and path.startswith("/pages/") and path.split("/")[2] in self.rows:  # a Ledger row page, as the decision writer reads it
             rid = path.split("/")[2]
             return {**self.row_of(rid), "archived": False, "in_trash": False, "last_edited_time": f"2026-10-22T00:00:{getattr(self, 'edits', 0):02d}.000Z",
                     "parent": {"type": "data_source_id", "data_source_id": self.sandbox_source or "ds-synthetic"}}
@@ -230,9 +231,9 @@ class WritableFake(Fake):
                                    "Source Types": {"type": "multi_select", "multi_select": {"options": [{"name": "Manual"}, {"name": "LinkedIn"}]}}}}
         if method != "POST":
             return super().call(method, path, body)
-        if path == "/databases":                                       # a proof's sandbox Ledger: one data source
+        if path == "/databases":  # a proof's sandbox Ledger: one data source
             self.calls.append((method, path))
-            self.sandbox_source = "5a" * 16                             # Notion-shaped: the decision writer checks a row's parent by id
+            self.sandbox_source = "5a" * 16
             self.sandbox_schema = copy.deepcopy(body["initial_data_source"]["properties"])
             return {"id": "sandbox-db", "data_sources": [{"id": self.sandbox_source}]}
         assert path == "/pages"
@@ -240,11 +241,11 @@ class WritableFake(Fake):
         self.posts.append(copy.deepcopy(body))
         if self.post_error:
             raise NotionError("private error body")
-        if body["parent"]["type"] == "data_source_id":               # LIFE-361: a new Manual Ledger row (no Stage yet; no body)
+        if body["parent"]["type"] == "data_source_id":  # a new Manual Ledger row (no Stage yet)
             assert body["parent"]["data_source_id"] in ("ds-synthetic", self.sandbox_source) and "children" not in body
-            rid = f"created-{len(self.posts)}" if body["parent"]["data_source_id"] == "ds-synthetic" else f"{len(self.posts):032x}"      # a sandbox row gets a Notion-shaped id
+            rid = f"created-{len(self.posts)}" if body["parent"]["data_source_id"] == "ds-synthetic" else f"{len(self.posts):032x}"  # a sandbox row gets a Notion-shaped id
             props = copy.deepcopy(body["properties"])
-            for prop in props.values():                                # Notion answers with plain_text on every text run
+            for prop in props.values():  # Notion answers with plain_text on every text run
                 for run in prop.get("title") or prop.get("rich_text") or []:
                     run["plain_text"] = run["text"]["content"]
             self.rows[rid] = {**props, "Stage": {"select": None}, "Hiring Decision": {"select": None}}
@@ -289,7 +290,8 @@ class Sim(WritableFake):
 
 
 def written(current=None):
-    """A UI 3c page written by the staged writer under "active", with Jim's own note and an interview page after it."""
+    """A UI 3c page written by the staged writer under 'active', with Jim's own note and an interview page after it.
+    """
     client = Sim()
     current = current or opportunity()
     blocks = create.rendered(current, tail=None)[0]

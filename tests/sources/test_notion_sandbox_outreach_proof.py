@@ -1,4 +1,4 @@
-"""LIFE-10 §2: the synthetic sandbox proof of the job-page outreach writer, against a fake Notion tree. Every name and id is invented; nothing real is reached."""
+"""§2: the synthetic sandbox proof of the job-page outreach writer, against a fake Notion tree."""
 import contextlib
 import gc
 import io
@@ -20,7 +20,9 @@ NOW = datetime(2026, 10, 20, 9, 0, tzinfo=J.CT)
 
 
 class Sandbox(Tree):
-    """The sandbox data source and its pages on top of the block tree: a title query, page reads, and the one page create."""
+    """The sandbox data source and its pages on top of the block tree: a title query, page reads, and the one page
+    create.
+    """
     source = SANDBOX_SOURCE
 
     def __init__(self):
@@ -41,7 +43,7 @@ class Sandbox(Tree):
         if (method, path) == ("POST", "/pages"):
             self.log.append((method, path))
             assert body["parent"] == {"type": "data_source_id", "data_source_id": SANDBOX_SOURCE}
-            pid = f"{0xfeed0000 + len(self.rows):032x}"                 # never collides with the tree's own block ids
+            pid = f"{0xfeed0000 + len(self.rows):032x}"  # never collides with the tree's own block ids
             self.pages.add(pid)
             self.rows[pid] = body["properties"]["Job"]["title"][0]["text"]["content"]
             for child in body["children"]:
@@ -62,7 +64,7 @@ class OutreachProof(unittest.TestCase):
         (pid,) = box.rows
         top = box.kids[pid]
         kinds = [box.blocks[b]["type"] for b in top]
-        self.assertEqual(kinds, ["paragraph", "paragraph", "toggle", "heading_3", "table", "paragraph"])     # the region sits right after Network Leads, the notes stay last
+        self.assertEqual(kinds, ["paragraph", "paragraph", "toggle", "heading_3", "table", "paragraph"])
         heading, table = top[3], top[4]
         self.assertEqual(R.plain(box.blocks[heading]), "🤝 Outreach (Updated 10/20 @ 9:01 AM CT)")
         self.assertEqual([R.cells_of(box.blocks[r])[0].split("\n")[0] for r in box.kids[table]], ["Person — Employer", "Blake Synthetic", "Avery Synthetic"])
@@ -118,7 +120,7 @@ class OutreachProof(unittest.TestCase):
         self.assertEqual(made, {"environ": {"NOTION_API_TOKEN": "t", "SANDBOX_SOURCE": SANDBOX_SOURCE}, "source_name": "SANDBOX_SOURCE"})
 
     def test_a_failed_expectation_fails_the_step_with_a_fixed_code(self):
-        gc.collect()                                                   # a handle leaked by an earlier test warns when it is collected: not inside this test's stderr check
+        gc.collect()
         out, err = io.StringIO(), io.StringIO()
         counts = {"notion_sandbox_outreach_proof": "live", "steps": [{"created": 1}], "failed": 1}
         with patch.dict(runner.STAGES, {"notion-sandbox-outreach-proof": lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
