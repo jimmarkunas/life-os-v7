@@ -28,7 +28,11 @@ EDITABLE = ("summary", "description", "assignee", "priority", "labels", "parent"
 def adf(text):
     if isinstance(text, dict):
         return text
-    return {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": str(text)}]}]}
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": str(text)}]}],
+    }
 
 
 def payload(fields, project, kind, parent=None):
@@ -55,20 +59,32 @@ def edit_fields(drift):
         if name not in drift:
             continue
         value = drift[name]
-        out[name] = adf(value) if name == "description" and value else ({"accountId": value} if name == "assignee" and value else ({"name": value} if name == "priority" else ({"key": value} if name == "parent" and value else value)))
+        out[name] = (
+            adf(value)
+            if name == "description" and value
+            else (
+                {"accountId": value}
+                if name == "assignee" and value
+                else (
+                    {"name": value} if name == "priority" else ({"key": value} if name == "parent" and value else value)
+                )
+            )
+        )
     return out
 
 
 def raw_writers(client):
     def create_clone(root, fields, sprint_id=None, origin=None):
         origin = origin or root
-        meta = (client.issue(origin, "issuetype,project").get("fields") or {})
+        meta = client.issue(origin, "issuetype,project").get("fields") or {}
         project, kind = (meta.get("project") or {}).get("key"), (meta.get("issuetype") or {}).get("name")
         if not project or not kind:
             raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
         key = client.create_issue(payload(fields, project, kind))["key"]
         try:
-            client.link_issues(CLONE_LINK, key, origin)  # the clone is the INWARD argument, so its entry carries outwardIssue=<origin>
+            client.link_issues(
+                CLONE_LINK, key, origin
+            )  # the clone is the INWARD argument, so its entry carries outwardIssue=<origin>
         except JiraError:
             client.delete_issue(key)
             raise
@@ -85,13 +101,23 @@ def raw_writers(client):
         marker = rc.auto_close_fields(run_id)
         client.edit_issue(key, update={"labels": [{"add": marker["label"]}]})
         client.add_comment(key, marker["comment"])
-        done = [t for t in client.transitions(key) if (((t.get("to") or {}).get("statusCategory") or {}).get("key")) == "done"]
+        done = [
+            t
+            for t in client.transitions(key)
+            if (((t.get("to") or {}).get("statusCategory") or {}).get("key")) == "done"
+        ]
         if len(done) != 1:
             raise JiraError("JIRA_RECONCILE_TRANSITION_AMBIGUOUS")
         client.transition(key, done[0]["id"])
 
-    return rc.Writers(create_sprint=client.create_sprint, rename_sprint=client.rename_sprint, create_clone=create_clone, sync_fields=sync_fields,
-                      move_to_backlog=client.move_to_backlog, close_done=close_done)
+    return rc.Writers(
+        create_sprint=client.create_sprint,
+        rename_sprint=client.rename_sprint,
+        create_clone=create_clone,
+        sync_fields=sync_fields,
+        move_to_backlog=client.move_to_backlog,
+        close_done=close_done,
+    )
 
 
 def live_writers(client, environ=None):
@@ -99,7 +125,14 @@ def live_writers(client, environ=None):
     return raw_writers(client) if rc.writers_verified(environ) else rc.Writers()
 
 
-PERMISSIONS = ("CREATE_ISSUES", "EDIT_ISSUES", "DELETE_ISSUES", "TRANSITION_ISSUES", "MANAGE_SPRINTS_PERMISSION", "SCHEDULE_ISSUES")
+PERMISSIONS = (
+    "CREATE_ISSUES",
+    "EDIT_ISSUES",
+    "DELETE_ISSUES",
+    "TRANSITION_ISSUES",
+    "MANAGE_SPRINTS_PERMISSION",
+    "SCHEDULE_ISSUES",
+)
 ATTEMPTS, WAIT = 4, 5
 MEMBER_ATTEMPTS, MEMBER_WAIT = 6, 10
 
@@ -173,36 +206,74 @@ def contract_check(client, configured):
             checks[name] = bool(call())
         except Exception:  # noqa: BLE001
             checks[name] = False
+
     for position, (_, board_id, _, readonly) in enumerate(configured, 1):
         attempt(f"board{position}_scrum", lambda b=board_id: str(client.board(b).get("type", "")).lower() == "scrum")
-        attempt(f"board{position}_sprints", lambda b=board_id: isinstance(client.sprints(b, "future"), list) and isinstance(client.sprints(b, "active"), list))
-        attempt(f"board{position}_backlog", lambda b=board_id: isinstance(client.backlog_issues(b, "statusCategory != Done", "summary"), list))
-    attempt("cloners_link_type", lambda: any(t.get("name") == CLONE_LINK and t.get("outward") == "clones" for t in client.link_types()))
+        attempt(
+            f"board{position}_sprints",
+            lambda b=board_id: (
+                isinstance(client.sprints(b, "future"), list) and isinstance(client.sprints(b, "active"), list)
+            ),
+        )
+        attempt(
+            f"board{position}_backlog",
+            lambda b=board_id: isinstance(client.backlog_issues(b, "statusCategory != Done", "summary"), list),
+        )
+    attempt(
+        "cloners_link_type",
+        lambda: any(t.get("name") == CLONE_LINK and t.get("outward") == "clones" for t in client.link_types()),
+    )
     names = set()
-    attempt("fields", lambda: names.update(f.get("name") for f in client.field_list()) or {"Sprint", "Labels", "Linked Issues", "Due date"} <= names)
+    attempt(
+        "fields",
+        lambda: (
+            names.update(f.get("name") for f in client.field_list())
+            or {"Sprint", "Labels", "Linked Issues", "Due date"} <= names
+        ),
+    )
     held = {project: permissions(client, project) for project, _, _, readonly in configured if not readonly}
     listed = sprint_list_check(client, configured)
-    return {"ok": all(checks.values()) and bool(checks), "boards": len(configured), "checks": checks, "permissions": held,
-            "sprint_list": listed, "sprint_list_ok": bool(listed) and all(row["equal"] for row in listed)}
+    return {
+        "ok": all(checks.values()) and bool(checks),
+        "boards": len(configured),
+        "checks": checks,
+        "permissions": held,
+        "sprint_list": listed,
+        "sprint_list_ok": bool(listed) and all(row["equal"] for row in listed),
+    }
 
 
 def sprint_list_check(client, configured):
     """Read-only cross-check of the Agile sprint list against JQL counts. -> rows with an `equal` flag."""
     from .search import search
+
     rows = []
     for position, (_, board_id, _, _) in enumerate(configured, 1):
         for state in ("active", "future"):
             try:
                 sprints = client.sprints(board_id, state)
             except Exception:  # noqa: BLE001
-                rows.append({"board": position, "sprint": None, "state": state, "list_open": None, "list_all": None, "jql_open": None, "jql_all": None, "equal": False})
+                rows.append(
+                    {
+                        "board": position,
+                        "sprint": None,
+                        "state": state,
+                        "list_open": None,
+                        "list_all": None,
+                        "jql_open": None,
+                        "jql_all": None,
+                        "equal": False,
+                    }
+                )
                 continue
             for sprint in sprints:
                 row = {"board": position, "sprint": int(sprint["id"]), "state": state}
                 try:
                     row["list_open"] = len(client.sprint_issues(row["sprint"], "statusCategory != Done", "summary"))
                     row["list_all"] = len(client.sprint_issues(row["sprint"], "", "summary"))
-                    row["jql_open"] = len(search(client, f"sprint = {row['sprint']} AND statusCategory != Done", "summary"))
+                    row["jql_open"] = len(
+                        search(client, f"sprint = {row['sprint']} AND statusCategory != Done", "summary")
+                    )
                     row["jql_all"] = len(search(client, f"sprint = {row['sprint']}", "summary"))
                     row["equal"] = row["list_open"] == row["jql_open"] and row["list_all"] == row["jql_all"]
                 except Exception:  # noqa: BLE001
@@ -240,7 +311,13 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
     sleep = sleep or time.sleep
     check = contract_check(client, configured)
     if not live:
-        return {"mode": "dry_run", "ok": check["ok"], "steps": check["checks"], "permissions": check["permissions"], "cleaned": True}
+        return {
+            "mode": "dry_run",
+            "ok": check["ok"],
+            "steps": check["checks"],
+            "permissions": check["permissions"],
+            "cleaned": True,
+        }
     if not check["ok"]:
         raise JiraError("JIRA_VERIFY_CONTRACT_FAILED")
     if not keep and not (check["permissions"].get(board) or {}).get("DELETE_ISSUES"):
@@ -266,11 +343,21 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
             in_list = clone in {i.get("key") for i in items}
             ids = _sprint_ids(client, clone, field_id)
             by_field = False if ids is None else ((sprint_id in ids) if kind == "sprint" else (sprint_id not in ids))
-            diag[label] = {"write": write, "reads": tries["n"], "list_items": meta.get("items", len(items)), "list_total": meta.get("total"), "list_pages": meta.get("pages"),
-                           "list_complete": meta.get("complete"), "page_cap": jira_module.MAX_PAGES * jira_module.PAGE_SIZE, "in_list": in_list,
-                           "field_sprints": None if ids is None else len(ids), "in_sprint_field": None if ids is None else (sprint_id in ids),
-                           "passed_by": "both" if in_list and by_field else "list" if in_list else "field" if by_field else "none"}
+            diag[label] = {
+                "write": write,
+                "reads": tries["n"],
+                "list_items": meta.get("items", len(items)),
+                "list_total": meta.get("total"),
+                "list_pages": meta.get("pages"),
+                "list_complete": meta.get("complete"),
+                "page_cap": jira_module.MAX_PAGES * jira_module.PAGE_SIZE,
+                "in_list": in_list,
+                "field_sprints": None if ids is None else len(ids),
+                "in_sprint_field": None if ids is None else (sprint_id in ids),
+                "passed_by": "both" if in_list and by_field else "list" if in_list else "field" if by_field else "none",
+            }
             return in_list or by_field
+
         ok = _eventually(probe, sleep, MEMBER_ATTEMPTS, MEMBER_WAIT)
         diag[label]["seconds"] = int(time.monotonic() - began)
         return ok
@@ -282,25 +369,56 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
                 why[label] = "READ_MISMATCH"
         except JiraError as error:
             steps[label], why[label] = False, _code(error)
+
     try:
-        sprint_id = int(client.create_sprint(board_id, name, start, start + timedelta(days=6, hours=23, minutes=30))["id"])
-        step("create_sprint", lambda: _eventually(lambda: any(int(s["id"]) == sprint_id and s.get("name") == name for s in client.sprints(board_id, "future")), sleep))
+        sprint_id = int(
+            client.create_sprint(board_id, name, start, start + timedelta(days=6, hours=23, minutes=30))["id"]
+        )
+        step(
+            "create_sprint",
+            lambda: _eventually(
+                lambda: any(
+                    int(s["id"]) == sprint_id and s.get("name") == name for s in client.sprints(board_id, "future")
+                ),
+                sleep,
+            ),
+        )
         renamed = name + " RENAMED"
         client.rename_sprint(sprint_id, renamed)
-        step("rename_sprint", lambda: _eventually(lambda: any(int(s["id"]) == sprint_id and s.get("name") == renamed for s in client.sprints(board_id, "future")), sleep))
-        origin = client.issue(issue_key, "summary,description,assignee,priority,labels,parent,duedate,issuetype,project,issuelinks")
+        step(
+            "rename_sprint",
+            lambda: _eventually(
+                lambda: any(
+                    int(s["id"]) == sprint_id and s.get("name") == renamed for s in client.sprints(board_id, "future")
+                ),
+                sleep,
+            ),
+        )
+        origin = client.issue(
+            issue_key, "summary,description,assignee,priority,labels,parent,duedate,issuetype,project,issuelinks"
+        )
         clone = writers.create_clone(issue_key, rc.clone_fields(origin, 7), sprint_id, issue_key)
         step("clone_into_sprint", lambda: bool(clone) and member("clone_into_sprint", "sprint", _write_state(client)))
 
         def identity():
             def read():
                 fresh = client.issue(clone, "summary,labels,issuelinks,sprint,status")
-                found = rc.series([origin, fresh], configured=(issue_key,))  # the origin need not carry `recurring`; the chain is what is checked
+                found = rc.series(
+                    [origin, fresh], configured=(issue_key,)
+                )  # the origin need not carry `recurring`; the chain is what is checked
                 return list(found) == [issue_key] and clone in found[issue_key]["keys"]
+
             return _eventually(read, sleep)
+
         step("clone_link_identity", identity)
         writers.sync_fields(clone, {"summary": f"{TEST_PREFIX} sync"})
-        step("sync_fields", lambda: _eventually(lambda: (client.issue(clone, "summary").get("fields") or {}).get("summary") == f"{TEST_PREFIX} sync", sleep))
+        step(
+            "sync_fields",
+            lambda: _eventually(
+                lambda: (client.issue(clone, "summary").get("fields") or {}).get("summary") == f"{TEST_PREFIX} sync",
+                sleep,
+            ),
+        )
         _write_state(client)
         writers.move_to_backlog([clone])
         step("move_to_backlog", lambda: member("move_to_backlog", "backlog", _write_state(client)))
@@ -310,7 +428,10 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
 
         def closed():
             fields = client.issue(clone, "status,labels").get("fields") or {}
-            return ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done" and rc.AUTO_LABEL in (fields.get("labels") or [])
+            return ((fields.get("status") or {}).get("statusCategory") or {}).get(
+                "key"
+            ) == "done" and rc.AUTO_LABEL in (fields.get("labels") or [])
+
         step("close_done_with_label", lambda: _eventually(closed, sleep))
     except JiraError as error:
         why["run"] = _code(error)
@@ -326,7 +447,15 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
                 parts[part] = False
                 why["cleanup_" + part] = _code(error)
         cleaned = all(parts.values())
-    out = {"mode": "live", "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why, "steps": steps, "why": why, "diag": diag, "cleaned": cleaned, "cleaned_parts": parts}
+    out = {
+        "mode": "live",
+        "ok": all(steps.values()) and len(steps) == 8 and cleaned and "run" not in why,
+        "steps": steps,
+        "why": why,
+        "diag": diag,
+        "cleaned": cleaned,
+        "cleaned_parts": parts,
+    }
     if keep:
         out["kept"] = [clone] if clone else []
     return out
@@ -344,7 +473,11 @@ def main(argv=None, environ=os.environ, client=None):
     args = parser.parse_args(argv)
     configured = boards(environ)
     client = client or Jira.from_env(environ)
-    result = contract_check(client, configured) if args.command == "contract-check" else verify(client, configured, args.board, args.issue, args.live, keep=args.keep)
+    result = (
+        contract_check(client, configured)
+        if args.command == "contract-check"
+        else verify(client, configured, args.board, args.issue, args.live, keep=args.keep)
+    )
     print("jira-writers:", json.dumps(result, sort_keys=True))
     return 0 if result["ok"] else 1
 

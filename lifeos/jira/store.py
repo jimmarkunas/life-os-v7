@@ -1,4 +1,5 @@
 """Private storage for the Jira snapshot: one row per project (see platform/snapshot_store)."""
+
 from lifeos.platform.snapshot_store import Store
 
 _STORE = Store("v7_jira_snapshot", "project_key", "VARCHAR(16)")

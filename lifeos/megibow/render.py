@@ -1,5 +1,5 @@
-"""MegIBOW block text. Pure: projection -> the table rows and the note lines. No names, only counts and fixed words.
-"""
+"""MegIBOW block text. Pure: projection -> the table rows and the note lines. No names, only counts and fixed words."""
+
 from lifeos.megibow import classify as C
 from lifeos.megibow import project as P
 from lifeos.megibow import warnings as W
@@ -30,7 +30,9 @@ def table(proj):
 
 def status(now, degraded=False, review=0, reason=None):
     if degraded:
-        return f"MegIBOW (DEGRADED at {ct_stamp.when(chicago(now))}) — counts may be incomplete" + (f" ({reason})" if reason else "")
+        return f"MegIBOW (DEGRADED at {ct_stamp.when(chicago(now))}) — counts may be incomplete" + (
+            f" ({reason})" if reason else ""
+        )
     line = f"MegIBOW ({ct_stamp.when(chicago(now))})"
     if review:
         line += f" · Review needed — {review} activity candidate{'s' if review != 1 else ''}"

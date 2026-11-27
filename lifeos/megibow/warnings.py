@@ -3,6 +3,7 @@
 At most 3, in order: evidence quality, no meetings scheduled, pipeline imbalance, outreach drop, conversation drop.
 Trend rules need four trustworthy completed weeks; a failed source yields only the source-unavailable warning.
 """
+
 from statistics import median
 
 from lifeos.megibow import classify as C

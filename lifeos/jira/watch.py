@@ -4,6 +4,7 @@ Told the rollover step's outcome: success records the time and closes any open a
 worked for STUCK_HOURS, then reminds every 6 hours and says when it recovers. Skipped steps and dry runs record
 nothing.
 """
+
 import json
 import os
 from datetime import datetime, timezone
@@ -12,9 +13,11 @@ from lifeos.platform import alerts, db
 
 KEY = "jira_rollover_stuck"
 STUCK_HOURS = 3
-SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_jira_rollover (
+SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS v7_jira_rollover (
         k VARCHAR(16) NOT NULL PRIMARY KEY, last_ok DATETIME NOT NULL, alert_open TINYINT NOT NULL DEFAULT 0, last_notified DATETIME NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+)
 
 
 def decide(state, ok, now):
@@ -26,8 +29,19 @@ def decide(state, ok, now):
         state.update(last_ok=now, alert_open=False, last_notified=None)
         return state, alerts.reconcile([], known, now)
     hours = int((now - state["last_ok"]).total_seconds() // 3600)
-    active = [alerts.Alert(KEY, alerts.PAGE, f"Jira sprint rollover has not worked for {hours} hours", "A board kept its old sprint.",
-                           "open the domains run (jira job, rollover step) and look for the JIRA_ code")] if hours >= STUCK_HOURS else []
+    active = (
+        [
+            alerts.Alert(
+                KEY,
+                alerts.PAGE,
+                f"Jira sprint rollover has not worked for {hours} hours",
+                "A board kept its old sprint.",
+                "open the domains run (jira job, rollover step) and look for the JIRA_ code",
+            )
+        ]
+        if hours >= STUCK_HOURS
+        else []
+    )
     state["alert_open"] = bool(active)
     return state, alerts.reconcile(active, known, now)
 
@@ -41,9 +55,11 @@ def _load(connection):
 
 def _save(connection, state):
     with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,%s,%s) "
-                       "ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok), alert_open=VALUES(alert_open), last_notified=VALUES(last_notified)",
-                       ("roll", state["last_ok"], 1 if state["alert_open"] else 0, state["last_notified"]))
+        cursor.execute(
+            "INSERT INTO v7_jira_rollover (k, last_ok, alert_open, last_notified) VALUES (%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok), alert_open=VALUES(alert_open), last_notified=VALUES(last_notified)",
+            ("roll", state["last_ok"], 1 if state["alert_open"] else 0, state["last_notified"]),
+        )
 
 
 def run(limit, live, environ=os.environ, now=None, send=None, connect=None):
