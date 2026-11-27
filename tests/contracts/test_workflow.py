@@ -1514,7 +1514,7 @@ class DopplerParityTests(unittest.TestCase):
             raise unittest.SkipTest("pyyaml unavailable") from None
         root = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows"
         cls.docs = {p.stem: _yaml.safe_load(p.read_text()) for p in sorted(root.glob("*.yml"))}
-        cls.texts = {p.stem: p.read_text() for p in sorted(root.glob("*.yml"))}
+        cls.texts = {p.stem: wfsets.expand_text(p.read_text()) for p in sorted(root.glob("*.yml"))}
 
     def loaders_with_compare(self):
         """-> [(workflow, job, loader step, the compare step that follows it or None)] for every runtime-token Bitwarden load that names secrets."""

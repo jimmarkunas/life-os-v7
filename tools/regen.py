@@ -50,13 +50,13 @@ GUARDED_WHY = "Loops over its items with error handling inside; one failed item 
 
 
 def domains_text():
-    """LIFE-764: the whole of domains.yml, joined from its fragments (000-header.yml, then one file per job, a long job in lettered continuation files) in file-name order; LIFE-1010: without comments (the history lives in docs/workflows.md)."""
-    return wfsrc.strip_comments("".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml"))))
+    """LIFE-764: the whole of domains.yml, joined from its fragments (000-header.yml, then one file per job, a long job in lettered continuation files) in file-name order; LIFE-1010: without comments (the history lives in docs/workflows.md) and with repeats as YAML anchors and aliases (LIFE-1013)."""
+    return wfsrc.compress(wfsrc.strip_comments("".join(path.read_text() for path in sorted(DOMAINS_PARTS.glob("*.yml")))))
 
 
 def hourly_text():
     """LIFE-1010: the whole of hourly.yml, joined from `.github/workflows-src/hourly` the same way, without comments."""
-    return wfsrc.strip_comments("".join(path.read_text() for path in sorted(HOURLY_PARTS.glob("*.yml"))))
+    return wfsrc.compress(wfsrc.strip_comments("".join(path.read_text() for path in sorted(HOURLY_PARTS.glob("*.yml")))))
 
 
 def workflow_doc_text():

@@ -1,6 +1,6 @@
 """LIFE-1010: the size budget of the big workflows. A generated workflow is at most 130 KB, a source part at most 6 KB and a step name at most 60 characters, so an agent can read and edit one job without loading the whole file.
 
-domains.yml is held at the size the lean pass reached (RATCHET), not the 130 KB: what is left in it is the per-step credential wiring, which this pass was forbidden to change. The number may only go down."""
+domains.yml and hourly.yml have their own, lower caps (RATCHET, LIFE-1013); the caps only go down."""
 import pathlib
 import tempfile
 import unittest
@@ -13,7 +13,7 @@ SRC = ROOT / ".github/workflows-src"
 GENERATED_MAX = 130 * 1024
 PART_MAX = 6 * 1024
 NAME_MAX = 60
-RATCHET = {"domains.yml": 140_000, "hourly.yml": 94_500}               # reached 139,192 and 93,683 bytes (240,853 and 123,939 before the lean passes); lower them when the files shrink, never raise
+RATCHET = {"domains.yml": 125_000, "hourly.yml": 65_000}              # LIFE-1013: reached 112,341 and 56,549 bytes (240,853 and 123,939 before the lean passes); room for growth on purpose
 BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 
@@ -50,11 +50,13 @@ class Budget(unittest.TestCase):
         self.assertEqual(len(found), 3, found)
         self.assertTrue(any("010-a.yml" in f for f in found) and any("step name" in f for f in found) and any("domains.yml" in f for f in found))
 
-    def test_a_clean_tree_has_no_problem_and_the_ratchet_sits_just_above_the_reached_size(self):
+    def test_a_clean_tree_has_no_problem_and_the_caps_sit_above_the_reached_sizes_with_room_to_grow(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(problems(tmp, tmp), [])
         for name, ceiling in RATCHET.items():
-            self.assertLess(ceiling - len((FLOWS / name).read_bytes()), 4000, f"lower the {name} ratchet to just above the new size")
+            size = len((FLOWS / name).read_bytes())
+            self.assertLess(size, ceiling, name)
+            self.assertLess(ceiling - size, 15_000, f"lower the {name} cap when the file shrinks well below it")
 
 
 if __name__ == "__main__":

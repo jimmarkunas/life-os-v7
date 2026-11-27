@@ -1,6 +1,8 @@
 import json
 import re
 import unittest
+
+from tests import wftext
 from pathlib import Path
 from unittest.mock import patch
 from lifeos.interview import acceptance, stage
@@ -101,7 +103,7 @@ class Delegation(unittest.TestCase):
 
 
 class WorkflowWiring(unittest.TestCase):
-    text = (ROOT / ".github/workflows/hourly.yml").read_text()
+    text = wftext.text(ROOT / ".github/workflows/hourly.yml")
 
     def job(self):
         start = self.text.index("\n  interview:\n")

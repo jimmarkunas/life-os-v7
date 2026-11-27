@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import unittest
+
+from tests import wftext
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
@@ -294,7 +296,7 @@ class WorkflowTests(unittest.TestCase):
 
 
 class HourlyJobTests(unittest.TestCase):
-    text = (ROOT / ".github/workflows/domains.yml").read_text()
+    text = wftext.text(ROOT / ".github/workflows/domains.yml")
 
     def job(self):
         return self.text[self.text.index("\n  outlook:\n"):self.text.index("\n  bills:\n")]

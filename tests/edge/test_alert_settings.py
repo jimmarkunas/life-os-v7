@@ -110,10 +110,11 @@ class WorkflowsPassTheSwitchAndTheSettings(unittest.TestCase):
     def test_every_workflow_that_can_push_receives_the_mute_the_switch_and_the_settings(self):
         import pathlib
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
-        senders = [p for p in sorted(root.glob("*.yml")) if "platform.alerts push" in p.read_text() or "platform.gate" in p.read_text() or "NTFY_TOPIC" in p.read_text()]
+        from tests import wftext
+        senders = [p for p in sorted(root.glob("*.yml")) if "platform.alerts push" in wftext.text(p) or "platform.gate" in wftext.text(p) or "NTFY_TOPIC" in wftext.text(p)]
         self.assertGreaterEqual(len(senders), 4)
         for path in senders:
-            text = path.read_text()
+            text = wftext.text(path)
             for name in ("ALERTS_MUTED_UNTIL", "ALERTS_ENABLED", "ALERT_SETTINGS"):
                 with self.subTest(workflow=path.name, variable=name):
                     self.assertRegex(text, rf"uses: \./\.github/actions/bws-plain\n\s+with:\n\s+access_token: .*\n\s+names: [A-Z_,]*\b{name}\b")      # LIFE-704: read from Bitwarden by the plain-switch loader (alerts fail open there), no longer from a GitHub variable
