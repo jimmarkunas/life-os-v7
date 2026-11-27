@@ -172,6 +172,15 @@ class MemoryClient(unittest.TestCase):
             raise OSError("down")
         self.assertEqual(C.Memory("https://example.invalid/mcp", "t", broken).store("x", "s"), {"ok": False, "error": "capture_unreachable"})
 
+        calls = []
+
+        def counting(request, timeout=0):
+            calls.append(1)
+            raise OSError("down")
+        down = C.Memory("https://example.invalid/mcp", "t", counting)
+        down.store("x", "s"), down.store("y", "s")
+        self.assertEqual((len(calls), down.down), (1, "OSError"))  # the second call fails at once; the error class is kept for the run's counts
+
 
 if __name__ == "__main__":
     unittest.main()
