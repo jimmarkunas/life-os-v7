@@ -44,7 +44,7 @@ def synthetic(value):
     return len(digits) <= 2 or value.replace("-", "").lower() in ("1234567890abcdef1234567890abcdef",)
 
 
-# Bare ids (no URL around them) and names: LIFE-1066. A real Notion id from this workspace has "5926" at characters 9 to 12
+# Bare ids (no URL around them) and names. A real Notion id from this workspace has "5926" at characters 9 to 12
 # of its 32 hex digits, and is refused anywhere. Any other bare id must be synthetic, or sit in a file listed with a reason.
 BARE_ID = re.compile(
     r"(?<![0-9A-Za-z])([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})(?![0-9A-Za-z])"
