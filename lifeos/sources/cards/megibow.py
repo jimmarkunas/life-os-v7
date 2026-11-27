@@ -5,6 +5,7 @@ decisions -> classify (pure) -> project -> warnings -> render -> write only the 
 codes only in the log. Lives under sources because it may read the Jobs tables; lifeos/megibow imports platform
 only.
 """
+
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import collections
@@ -13,7 +14,19 @@ import json
 import os
 
 from lifeos.platform.notion_ids import notion_id
-from lifeos.megibow import card, classify as C, evidence, history, project as P, render as R, review, store, v3, warnings as W, weekly
+from lifeos.megibow import (
+    card,
+    classify as C,
+    evidence,
+    history,
+    project as P,
+    render as R,
+    review,
+    store,
+    v3,
+    warnings as W,
+    weekly,
+)
 from lifeos.megibow.windows import CHI, chicago, monday, window_utc
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from lifeos.platform import ct_stamp, mail
@@ -32,7 +45,12 @@ class MegibowError(NotionError):
 
 
 def _writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def _meta(outcome, msgs, evs, ctx):
@@ -45,10 +63,25 @@ def _meta(outcome, msgs, evs, ctx):
         e = evs.get(key)
         people = C.external([a["email"] for a in (e or {}).get("attendees") or []], ctx)
         when = chicago((e or {})["start"]).date() if e else outcome["week"]
-    return {"who": people[0] if people else "unknown", "people": [C.key_hash("contact", p) for p in people], "when": when}
+    return {
+        "who": people[0] if people else "unknown",
+        "people": [C.key_hash("contact", p) for p in people],
+        "when": when,
+    }
 
 
-def run(limit, live, environ=os.environ, gmail=None, gcal=None, outlook_clients=None, notion=None, connection=None, now=None, known=None):
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    gmail=None,
+    gcal=None,
+    outlook_clients=None,
+    notion=None,
+    connection=None,
+    now=None,
+    known=None,
+):
     """Jim's table first, then Matt's, each isolated: a failure of either never changes the other. Jim's failure is
     raised after Matt's write; Matt's alone is `failed` 1 (MEGIBOW_MATT_DEGRADED).
     """
@@ -86,17 +119,37 @@ def _matt(notion, now, live):
             entered, out["ignored"] = v3.matt_rows(notion, v3.find(notion, v3.MATT_SOURCE_TITLE, "data_source"))
         except Exception as error:  # noqa: BLE001 - an unreadable database keeps the last accepted rows
             out["code"] = _code(error)
-            out.update(v3.write(notion, block_id, f"DEGRADED at {ct_stamp.when(now)} — Matt's database could not be read; showing the last accepted rows", None, None, live))
+            out.update(
+                v3.write(
+                    notion,
+                    block_id,
+                    f"DEGRADED at {ct_stamp.when(now)} — Matt's database could not be read; showing the last accepted rows",
+                    None,
+                    None,
+                    live,
+                )
+            )
             out.pop("summary_page", None)
             return out
         proj = v3.matt_project(entered, now.date())
         warns, suppressed = v3.matt_warnings(proj, now)
-        lines = warns or ([f"Warnings start once {v3.MIN_ENTERED} weeks are entered ({proj['entered']} so far)."] if suppressed else [W.HEALTHY])
+        lines = warns or (
+            [f"Warnings start once {v3.MIN_ENTERED} weeks are entered ({proj['entered']} so far)."]
+            if suppressed
+            else [W.HEALTHY]
+        )
         stamp = f"Last refreshed {when}"
         link = v3.history_link(notion, "Matt")
         notes = [("\n".join(lines) + "\n", None), ("Megibow history", link)] if link else [("\n".join(lines), None)]
-        out.update(v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"]), notes, live))
-        out["summary_written"] = v3.write_summary(notion, out.pop("summary_page"), v3.summary("Matt", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines), live)
+        out.update(
+            v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"]), notes, live)
+        )
+        out["summary_written"] = v3.write_summary(
+            notion,
+            out.pop("summary_page"),
+            v3.summary("Matt", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines),
+            live,
+        )
         out.update(status="OK", entered=proj["entered"], warnings=len(warns))
     except Exception as error:  # noqa: BLE001 - Matt's failure never reaches Jim's result
         out["code"] = out["code"] or _code(error)
@@ -111,8 +164,21 @@ def _code(error):
 
 def _jim(limit, live, environ, gmail, gcal, outlook_clients, notion, connection, now, known):
     today = now.date()
-    counts = {"gmail_sent": 0, "outlook_sent": 0, "events": 0, "sources_failed": 0, "degraded": False, "status": {}, "review_open": 0, "decisions_applied": 0, "frozen": 0,
-              "warnings": 0, "rows_written": 0, "text_written": False, "why": []}
+    counts = {
+        "gmail_sent": 0,
+        "outlook_sent": 0,
+        "events": 0,
+        "sources_failed": 0,
+        "degraded": False,
+        "status": {},
+        "review_open": 0,
+        "decisions_applied": 0,
+        "frozen": 0,
+        "warnings": 0,
+        "rows_written": 0,
+        "text_written": False,
+        "why": [],
+    }
     start, end = window_utc(today)
     far = now.astimezone(timezone.utc) + timedelta(days=FORWARD_DAYS)
     msgs, evs, own, failed = [], [], set(), 0
@@ -137,7 +203,11 @@ def _jim(limit, live, environ, gmail, gcal, outlook_clients, notion, connection,
         own |= mine
     except GcalError as error:
         fail("gcal", error)
-    accounts = list(outlook_clients if outlook_clients is not None else ((label, client, client is None) for label, client in mail.outlook_accounts(environ)))
+    accounts = list(
+        outlook_clients
+        if outlook_clients is not None
+        else ((label, client, client is None) for label, client in mail.outlook_accounts(environ))
+    )
     for account, client, connect_error in accounts:
         if connect_error:
             fail(f"outlook@{account}", "sign-in unreadable")
@@ -158,7 +228,8 @@ def _jim(limit, live, environ, gmail, gcal, outlook_clients, notion, connection,
 
     with contextlib.ExitStack() as stack:
         if connection is None and environ.get("LIFEOS_ACQ_DB_NAME"):
-            from lifeos.platform import db                                    # noqa: PLC0415
+            from lifeos.platform import db  # noqa: PLC0415
+
             connection = stack.enter_context(db.connect())
         return _finish(counts, live, environ, notion, connection, now, today, msgs, evs, own, degraded, known)
 
@@ -183,7 +254,9 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
         block_id, counts["block_source"] = (environ.get("MEGIBOW_BLOCK_ID") or "").strip(), "secret"
     if not block_id:
         raise card._fail("BLOCK_NOT_FOUND")
-    layout_v3 = v3.is_v3(notion, block_id)  # the callout (heading first); the older block while the register has no jim.megibow row
+    layout_v3 = v3.is_v3(
+        notion, block_id
+    )  # the callout (heading first); the older block while the register has no jim.megibow row
     if legacy is None:
         legacy = card.read_legacy(notion, block_id)
         if legacy and live and connection is not None:
@@ -197,7 +270,14 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     for m in msgs:
         for a in list(m["to"]) + list(m["cc"]):
             sent_to.setdefault(a, []).append(m["sent_at"])
-    ctx = {"self": {a for a in own if a}, "known": known, "excluded": excluded, "overrides": dict(decisions), "contacts": dict(contacts), "sent_to": sent_to}
+    ctx = {
+        "self": {a for a in own if a},
+        "known": known,
+        "excluded": excluded,
+        "overrides": dict(decisions),
+        "contacts": dict(contacts),
+        "sent_to": sent_to,
+    }
     by_msg = {C.key_hash("msg", m["id"]): m for m in msgs}
     by_ev = {}
     for e in evs:
@@ -251,15 +331,35 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     baseline = []
     for week in proj["weeks"][:-1]:
         c = proj["counts"][week]
-        if c is not None and (trusted.get(week) if week in frozen else not any(o["week"] == week for o in proj["review"])):
+        if c is not None and (
+            trusted.get(week) if week in frozen else not any(o["week"] == week for o in proj["review"])
+        ):
             baseline.append(c)
-    forward = len({o["key"] for o in outcomes if o["status"] == C.COUNTED and o["activity"] == C.SCHEDULED and by_ev.get(o["key"]) and by_ev[o["key"]]["start"] >= now
-                   and by_ev[o["key"]]["start"] <= now + timedelta(days=14)})
+    forward = len(
+        {
+            o["key"]
+            for o in outcomes
+            if o["status"] == C.COUNTED
+            and o["activity"] == C.SCHEDULED
+            and by_ev.get(o["key"])
+            and by_ev[o["key"]]["start"] >= now
+            and by_ev[o["key"]]["start"] <= now + timedelta(days=14)
+        }
+    )
     unresolved = sum(1 for o in proj["review"] if o["week"] == proj["current"])
     warns = W.evaluate(proj["counts"][proj["current"]], baseline, now, forward, degraded, unresolved)
     counts["warnings"], counts["review_open"] = len(warns), len(proj["review"])
     counts["status"] = {a: proj["counts"][proj["current"]][a] for a in C.ACTIVITIES}
-    items = [{"key": o["key"], "candidate": o["candidate"] or "Outreach", "why": o["reason"], "week": (o["meta"]["when"]).isoformat(), "who": o["meta"]["who"]} for o in proj["review"]]
+    items = [
+        {
+            "key": o["key"],
+            "candidate": o["candidate"] or "Outreach",
+            "why": o["reason"],
+            "week": (o["meta"]["when"]).isoformat(),
+            "who": o["meta"]["who"],
+        }
+        for o in proj["review"]
+    ]
     if review_id and notion is not None:
         wanted = review.plan(items, rows, now)
         if live and not degraded:
@@ -296,7 +396,14 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
 def _jim_v3(notion, block_id, proj, warns, degraded, review_db, now, live, weekly_error=""):
     when = ct_stamp.when(now)
     if weekly_error and not degraded:
-        return v3.write(notion, block_id, f"DEGRADED at {ct_stamp.when(now)} — Jim's weekly database could not be read; showing the last accepted counts", None, None, live) | {"layout": "v3"}
+        return v3.write(
+            notion,
+            block_id,
+            f"DEGRADED at {ct_stamp.when(now)} — Jim's weekly database could not be read; showing the last accepted counts",
+            None,
+            None,
+            live,
+        ) | {"layout": "v3"}
     if degraded:
         stamp = f"DEGRADED at {ct_stamp.when(now)} — counts may be incomplete; showing the last accepted counts"
         return v3.write(notion, block_id, stamp, None, [(W.SOURCE_UNAVAILABLE, None)], live) | {"layout": "v3"}
@@ -308,14 +415,28 @@ def _jim_v3(notion, block_id, proj, warns, degraded, review_db, now, live, weekl
     history_url = v3.history_link(notion, "Jim")
     if history_url:
         notes += [(" · ", None), ("Megibow history", history_url)]
-    out = v3.write(notion, block_id, stamp, v3.table(proj["weeks"], proj["counts"], proj["cumulative"], proj.get("typed")), notes, live)
-    out["summary_written"] = v3.write_summary(notion, out.pop("summary_page"), v3.summary("Jim", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines + [review_line]), live)
+    out = v3.write(
+        notion,
+        block_id,
+        stamp,
+        v3.table(proj["weeks"], proj["counts"], proj["cumulative"], proj.get("typed")),
+        notes,
+        live,
+    )
+    out["summary_written"] = v3.write_summary(
+        notion,
+        out.pop("summary_page"),
+        v3.summary("Jim", stamp, proj["weeks"], proj["counts"], proj["cumulative"], lines + [review_line]),
+        live,
+    )
     return out | {"layout": "v3"}
 
 
 def known_companies(connection):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT DISTINCT company FROM v7_jobs WHERE status IN ('PUBLISHED','READY') AND company IS NOT NULL")
+        cursor.execute(
+            "SELECT DISTINCT company FROM v7_jobs WHERE status IN ('PUBLISHED','READY') AND company IS NOT NULL"
+        )
         rows = cursor.fetchall()
     return {n for n in (C.normal(r[0]) for r in rows) if len(n) >= 3}
 
@@ -323,6 +444,9 @@ def known_companies(connection):
 def _alert(environ, now, live, counts):
     if not live or now.weekday() != 2 or not ((now.hour, now.minute) >= (13, 30) and now.hour < 15):
         return
-    from lifeos.platform import alerts                                    # noqa: PLC0415
+    from lifeos.platform import alerts  # noqa: PLC0415
+
     body = f"{counts['sources_failed']} source(s) unread; the table shows DEGRADED"
-    counts["notified"] = alerts.push("megibow_stale", "MegIBOW is not fresh for the 3 PM meeting", body, (environ.get("NTFY_TOPIC") or "").strip())
+    counts["notified"] = alerts.push(
+        "megibow_stale", "MegIBOW is not fresh for the 3 PM meeting", body, (environ.get("NTFY_TOPIC") or "").strip()
+    )

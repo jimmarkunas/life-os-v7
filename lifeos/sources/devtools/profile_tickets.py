@@ -6,6 +6,7 @@ Per merged PR titled `[LIFE-nnn]`: files and lines changed, minutes from first c
 failures before the first green, and (with a Jira file {"LIFE-nnn": {"start": ISO, "done": ISO}}) minutes from
 Agent Go to Done. Numbers and issue keys only; it calls `gh` for reads.
 """
+
 import argparse
 import datetime as dt
 import json
@@ -53,13 +54,30 @@ def profile(pr, detail, runs, jira=None):
     ordered = sorted(runs, key=lambda r: r["createdAt"])
     green = [r for r in ordered if r["headSha"] == final and r["conclusion"] == "success"]
     first_green = min(green, key=lambda r: r["updatedAt"]) if green else None
-    failed_before = sum(1 for r in ordered if r["conclusion"] == "failure" and (first_green is None or r["createdAt"] < first_green["createdAt"]))
+    failed_before = sum(
+        1
+        for r in ordered
+        if r["conclusion"] == "failure" and (first_green is None or r["createdAt"] < first_green["createdAt"])
+    )
     first_commit = min(c["committedDate"] for c in detail["commits"])
     files = [f["path"] for f in detail["files"]]
-    row = {"pr": pr["number"], "key": key, "files": pr["changedFiles"], "added": pr["additions"], "removed": pr["deletions"],
-           "commit_to_merge_min": minutes(first_commit, pr["mergedAt"]), "ci_runs": len(ordered), "cancelled_runs": sum(1 for r in ordered if r["conclusion"] == "cancelled"),
-           "failed_before_green": failed_before, "first_run_to_green_min": minutes(ordered[0]["createdAt"], first_green["updatedAt"]) if ordered and first_green else None,
-           "scope": scope(files), "first_commit": first_commit, "merged_at": pr["mergedAt"]}
+    row = {
+        "pr": pr["number"],
+        "key": key,
+        "files": pr["changedFiles"],
+        "added": pr["additions"],
+        "removed": pr["deletions"],
+        "commit_to_merge_min": minutes(first_commit, pr["mergedAt"]),
+        "ci_runs": len(ordered),
+        "cancelled_runs": sum(1 for r in ordered if r["conclusion"] == "cancelled"),
+        "failed_before_green": failed_before,
+        "first_run_to_green_min": minutes(ordered[0]["createdAt"], first_green["updatedAt"])
+        if ordered and first_green
+        else None,
+        "scope": scope(files),
+        "first_commit": first_commit,
+        "merged_at": pr["mergedAt"],
+    }
     if jira and key in jira and jira[key].get("start") and jira[key].get("done"):
         row["jira_start_to_done_min"] = minutes(jira[key]["start"], jira[key]["done"])
     return row
@@ -67,12 +85,28 @@ def profile(pr, detail, runs, jira=None):
 
 def summary(rows):
     out = {}
-    for name in ("files", "added", "removed", "commit_to_merge_min", "ci_runs", "failed_before_green", "first_run_to_green_min"):
+    for name in (
+        "files",
+        "added",
+        "removed",
+        "commit_to_merge_min",
+        "ci_runs",
+        "failed_before_green",
+        "first_run_to_green_min",
+    ):
         values = sorted(r[name] for r in rows if r.get(name) is not None)
-        out[name] = {"n": len(values), "median": statistics.median(values), "worst": values[-1]} if values else {"n": 0, "median": None, "worst": None}
+        out[name] = (
+            {"n": len(values), "median": statistics.median(values), "worst": values[-1]}
+            if values
+            else {"n": 0, "median": None, "worst": None}
+        )
     tickets = {r["key"]: r["jira_start_to_done_min"] for r in rows if r.get("jira_start_to_done_min") is not None}
     values = sorted(tickets.values())
-    out["jira_start_to_done_min_per_ticket"] = {"n": len(values), "median": statistics.median(values), "worst": values[-1]} if values else {"n": 0, "median": None, "worst": None}
+    out["jira_start_to_done_min_per_ticket"] = (
+        {"n": len(values), "median": statistics.median(values), "worst": values[-1]}
+        if values
+        else {"n": 0, "median": None, "worst": None}
+    )
     out["prs_with_a_failed_first_run"] = sum(1 for r in rows if r["failed_before_green"] > 0)
     out["prs_touching_more_than_one_package"] = sum(1 for r in rows if len(r["scope"]) > 1)
     return out
@@ -95,8 +129,12 @@ def split(rows, jira):
             continue
         first = min(prs, key=lambda r: when(r["first_commit"]))["first_commit"]
         last = max(prs, key=lambda r: when(r["merged_at"]))["merged_at"]
-        out[key] = {"queue_and_orientation_min": minutes(times["start"], first), "building_min": minutes(first, last), "after_merge_to_done_min": minutes(last, times["done"]),
-                    "total_min": minutes(times["start"], times["done"])}
+        out[key] = {
+            "queue_and_orientation_min": minutes(times["start"], first),
+            "building_min": minutes(first, last),
+            "after_merge_to_done_min": minutes(last, times["done"]),
+            "total_min": minutes(times["start"], times["done"]),
+        }
     return out
 
 
@@ -105,15 +143,22 @@ def split_summary(tickets):
         return {"n": 0, "largest": None, "median_min": {}, "share_pct": {}, "sum_min": {}}
     sums = {part: round(sum(t[part] for t in tickets.values()), 1) for part in PARTS}
     total = sum(sums.values()) or 1
-    return {"n": len(tickets), "largest": max(PARTS, key=lambda part: sums[part]), "sum_min": sums,
-            "median_min": {part: statistics.median(t[part] for t in tickets.values()) for part in PARTS},
-            "share_pct": {part: round(100 * sums[part] / total) for part in PARTS}}
+    return {
+        "n": len(tickets),
+        "largest": max(PARTS, key=lambda part: sums[part]),
+        "sum_min": sums,
+        "median_min": {part: statistics.median(t[part] for t in tickets.values()) for part in PARTS},
+        "share_pct": {part: round(100 * sums[part] / total) for part in PARTS},
+    }
 
 
 def table(rows):
     head = "| PR | Ticket | Files | + / - | Commit to merge (min) | CI runs | Failed before green | First run to green (min) | Jira start to Done (min) | Packages |\n|---|---|---|---|---|---|---|---|---|---|\n"
-    body = "".join(f"| {r['pr']} | {r['key']} | {r['files']} | +{r['added']} / -{r['removed']} | {r['commit_to_merge_min']} | {r['ci_runs']} | {r['failed_before_green']} | "
-                   f"{r['first_run_to_green_min'] if r['first_run_to_green_min'] is not None else 'n/a'} | {r.get('jira_start_to_done_min', 'n/a')} | {', '.join(r['scope'])} |\n" for r in rows)
+    body = "".join(
+        f"| {r['pr']} | {r['key']} | {r['files']} | +{r['added']} / -{r['removed']} | {r['commit_to_merge_min']} | {r['ci_runs']} | {r['failed_before_green']} | "
+        f"{r['first_run_to_green_min'] if r['first_run_to_green_min'] is not None else 'n/a'} | {r.get('jira_start_to_done_min', 'n/a')} | {', '.join(r['scope'])} |\n"
+        for r in rows
+    )
     return head + body
 
 
@@ -125,12 +170,36 @@ def gh(args, run=subprocess.run):
 
 
 def collect(last, jira=None, call=gh):
-    listing = call(["pr", "list", "--state", "merged", "--limit", "200", "--json", "number,title,mergedAt,additions,deletions,changedFiles,headRefName"])
+    listing = call(
+        [
+            "pr",
+            "list",
+            "--state",
+            "merged",
+            "--limit",
+            "200",
+            "--json",
+            "number,title,mergedAt,additions,deletions,changedFiles,headRefName",
+        ]
+    )
     mine = sorted((p for p in listing if KEY.match(p["title"])), key=lambda p: p["mergedAt"], reverse=True)[:last]
     rows = []
     for pr in mine:
         detail = call(["pr", "view", str(pr["number"]), "--json", "commits,files,headRefOid"])
-        runs = call(["run", "list", "--branch", pr["headRefName"], "--workflow", CI_WORKFLOW, "--limit", "100", "--json", "conclusion,createdAt,updatedAt,headSha"])
+        runs = call(
+            [
+                "run",
+                "list",
+                "--branch",
+                pr["headRefName"],
+                "--workflow",
+                CI_WORKFLOW,
+                "--limit",
+                "100",
+                "--json",
+                "conclusion,createdAt,updatedAt,headSha",
+            ]
+        )
         rows.append(profile(pr, detail, runs, jira))
     return rows
 
@@ -148,9 +217,22 @@ def main(argv=None, call=gh, out=sys.stdout):
     rows = collect(args.last, jira, call)
     parts = split(rows, jira)
     if args.json:
-        out.write(json.dumps({"rows": rows, "summary": summary(rows), "split": parts, "split_summary": split_summary(parts)}, indent=1) + "\n")
+        out.write(
+            json.dumps(
+                {"rows": rows, "summary": summary(rows), "split": parts, "split_summary": split_summary(parts)},
+                indent=1,
+            )
+            + "\n"
+        )
     else:
-        out.write(table(rows) + "\n" + json.dumps(summary(rows), indent=1) + "\n" + json.dumps(split_summary(parts), indent=1) + "\n")
+        out.write(
+            table(rows)
+            + "\n"
+            + json.dumps(summary(rows), indent=1)
+            + "\n"
+            + json.dumps(split_summary(parts), indent=1)
+            + "\n"
+        )
     return 0
 
 

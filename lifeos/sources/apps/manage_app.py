@@ -5,6 +5,7 @@ confirm on a fresh read: Reopen, set Paused, Waiting on employer or Active, set 
 record sent material (form answers, or a Google Drive file that must exist and not be in the trash at review and at
 confirm). Outputs: fixed codes only.
 """
+
 import re
 from datetime import date
 from html import escape as e
@@ -24,7 +25,9 @@ MANAGE_TTL = 8 * 3600
 QMAX, HITS = 100, 15
 FOLDER = "application/vnd.google-apps.folder"
 OP = re.compile(r"[0-9a-f]{16}")
-DRIVE_LINK = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/(?:document|spreadsheets|presentation))/d/([A-Za-z0-9_-]{10,200})(?:/[A-Za-z]*)?(?:[?#]\S*)?")
+DRIVE_LINK = re.compile(
+    r"https://(?:drive\.google\.com/file|docs\.google\.com/(?:document|spreadsheets|presentation))/d/([A-Za-z0-9_-]{10,200})(?:/[A-Za-z]*)?(?:[?#]\S*)?"
+)
 LINK = re.compile(r"https://[^\s<>\"]{1,500}")
 
 
@@ -32,7 +35,9 @@ _stop = stopper(SUB, PATH, TAB)
 
 
 def _record(rows, page):
-    rec = D.route(rows, {"action": D.ACTION, "id": D._page_id(page["id"]), "company": page["company"], "role": page["role"]})
+    rec = D.route(
+        rows, {"action": D.ACTION, "id": D._page_id(page["id"]), "company": page["company"], "role": page["role"]}
+    )
     return C.KIND, rec, bool(rec.get("decision"))
 
 
@@ -55,12 +60,30 @@ def _link(label, href, note):
 def _fields(secret, login, kind, rec, page, exp):
     st = C._fingerprint(kind, D._page_id(rec["id"]), page["company"], page["role"], True)
     o = D._page_id(rec["id"])
-    return {"o": o, "k": kind, "co": page["company"], "ro": page["role"], "exp": str(exp), "st": st, "t": C._mac(secret, "manage-reopen", login, o, st, exp)}
+    return {
+        "o": o,
+        "k": kind,
+        "co": page["company"],
+        "ro": page["role"],
+        "exp": str(exp),
+        "st": st,
+        "t": C._mac(secret, "manage-reopen", login, o, st, exp),
+    }
 
 
 def _hand_fields(secret, login, kind, o, company, role, exp, act):
     st = C._fingerprint(kind, o, company, role, False)
-    return {"o": o, "k": kind, "co": company, "ro": role, "exp": str(exp), "st": st, "act": act, "step": "review", "t": C._mac(secret, "manage-hand", login, o, st, exp, act)}
+    return {
+        "o": o,
+        "k": kind,
+        "co": company,
+        "ro": role,
+        "exp": str(exp),
+        "st": st,
+        "act": act,
+        "step": "review",
+        "t": C._mac(secret, "manage-hand", login, o, st, exp, act),
+    }
 
 
 def _day(at):
@@ -72,46 +95,74 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp, picker=None)
     if nxt and nxt["op"] in {m.group(1) for m in map(C.DONE_LINE.fullmatch, lines) if m}:
         nxt = None
     state = f"{M.HOLD_LABEL[hold['state']]} · set by Jim {_day(hold['at'])}" if hold else "Active"
-    body = ('<div class="eyebrow">Set by Jim</div><p class="lead">A hand-set state never changes the stage evidence shows; new mail or Calendar evidence clears Paused or Waiting.</p>'
-            f'<p class="lead"><b>State:</b> {e(state)}</p>')
+    body = (
+        '<div class="eyebrow">Set by Jim</div><p class="lead">A hand-set state never changes the stage evidence shows; new mail or Calendar evidence clears Paused or Waiting.</p>'
+        f'<p class="lead"><b>State:</b> {e(state)}</p>'
+    )
     if nxt:
         body += f'<p class="lead"><b>Your next action:</b> {e(nxt["text"] or "—")} · <b>Due:</b> {e(nxt["due"] or "No date set")}</p>'
     if kind == "ledger" and not ledger_ready:
-        return body + f'<div class="notice alert">Not available yet: the Job Ledger has no “{e(D.HAND_SET)}” text property, so nothing can be stored on this application. Nothing was changed.</div>'
-    form = lambda act, extra=None: f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, act) | {"p": D._page_id(page["id"])} | (extra or {}))}'   # noqa: E731
-    buttons = "".join(f'<button class="btn" name="v" value="{v}">{e(label)}</button>' for v, label in HOLD_CHOICES if v != (hold or {}).get("state", M.ACTIVE))
-    body += (f'<div class="mcard"><h4>Status</h4>{form("hold")}<div class="mrow">{buttons}</div></form></div>'
-             f'<div class="mcard"><h4>Set a next action</h4>{form("next")}<div class="mrow">'
-             f'<label class="fld">Next action<input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label><label class="fld due">Due<input type="date" name="due"></label>'
-             '<button class="btn">Review next action</button></div></form><p class="hint">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</p></div>')
+        return (
+            body
+            + f'<div class="notice alert">Not available yet: the Job Ledger has no “{e(D.HAND_SET)}” text property, so nothing can be stored on this application. Nothing was changed.</div>'
+        )
+    form = lambda act, extra=None: (
+        f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, act) | {"p": D._page_id(page["id"])} | (extra or {}))}'
+    )  # noqa: E731
+    buttons = "".join(
+        f'<button class="btn" name="v" value="{v}">{e(label)}</button>'
+        for v, label in HOLD_CHOICES
+        if v != (hold or {}).get("state", M.ACTIVE)
+    )
+    body += (
+        f'<div class="mcard"><h4>Status</h4>{form("hold")}<div class="mrow">{buttons}</div></form></div>'
+        f'<div class="mcard"><h4>Set a next action</h4>{form("next")}<div class="mrow">'
+        f'<label class="fld">Next action<input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label><label class="fld due">Due<input type="date" name="due"></label>'
+        '<button class="btn">Review next action</button></div></form><p class="hint">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</p></div>'
+    )
     sent, unsent = M.sent_of(lines), _hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "unsent")
-    body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(
-        f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
-        '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
+    body += (
+        '<div class="mcard"><h4>Materials sent</h4>'
+        + (
+            "".join(
+                f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
+                '<button class="btn">Remove</button></form>'
+                for m in sent
+            )
+            or '<p class="hint">None recorded yet.</p>'
+        )
+        + '</div>'
+    )
     if picker:
         pick = form("sent", {"sk": M.FILE, "su": ""}).replace("<form ", '<form id="pick-form" ', 1)
-        body += (f'<div class="mcard"><h4>Pick a Google Drive file you sent</h4>{pick}</form>'
-                 f'<div class="mrow"><button type="button" class="btn" id="pick-drive" disabled data-client="{e(picker["client_id"])}" data-key="{e(picker["api_key"])}" data-app="{e(picker["app_id"])}">Choose from Google Drive</button></div>'
-                 '<p class="hint">Google asks you to sign in the first time; it sees only the file you pick. You review it before anything is recorded.</p>'
-                 '<script src="/manage-picker.js" defer></script></div>')
-    body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'
-             f'<label class="fld">Search my Drive (optional)<input type="search" name="q" maxlength="{QMAX}" placeholder="Leave empty for your latest files"></label><button class="btn">Show my Drive files</button></div></form>'
-             '<p class="hint">Click it with the box empty to pick from your most recently edited files, or type part of a name first. You review the file before anything is recorded.</p>'
-             f'<div class="or">or paste its link</div>{form("sent", {"sk": M.FILE})}<div class="mrow">'
-             '<label class="fld">Drive link<input type="url" name="su" maxlength="500"></label><button class="btn">Review Drive file</button></div></form></div>'
-             f'<div class="mcard"><h4>Add an application form or portal answers</h4>{form("sent", {"sk": M.FORM})}<div class="mrow">'
-             f'<label class="fld">What it was<input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label><label class="fld">Link (optional)<input type="url" name="su" maxlength="500"></label>'
-             '<button class="btn">Review form</button></div></form></div>')
+        body += (
+            f'<div class="mcard"><h4>Pick a Google Drive file you sent</h4>{pick}</form>'
+            f'<div class="mrow"><button type="button" class="btn" id="pick-drive" disabled data-client="{e(picker["client_id"])}" data-key="{e(picker["api_key"])}" data-app="{e(picker["app_id"])}">Choose from Google Drive</button></div>'
+            '<p class="hint">Google asks you to sign in the first time; it sees only the file you pick. You review it before anything is recorded.</p>'
+            '<script src="/manage-picker.js" defer></script></div>'
+        )
+    body += (
+        f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'
+        f'<label class="fld">Search my Drive (optional)<input type="search" name="q" maxlength="{QMAX}" placeholder="Leave empty for your latest files"></label><button class="btn">Show my Drive files</button></div></form>'
+        '<p class="hint">Click it with the box empty to pick from your most recently edited files, or type part of a name first. You review the file before anything is recorded.</p>'
+        f'<div class="or">or paste its link</div>{form("sent", {"sk": M.FILE})}<div class="mrow">'
+        '<label class="fld">Drive link<input type="url" name="su" maxlength="500"></label><button class="btn">Review Drive file</button></div></form></div>'
+        f'<div class="mcard"><h4>Add an application form or portal answers</h4>{form("sent", {"sk": M.FORM})}<div class="mrow">'
+        f'<label class="fld">What it was<input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label><label class="fld">Link (optional)<input type="url" name="su" maxlength="500"></label>'
+        '<button class="btn">Review form</button></div></form></div>'
+    )
     return body
 
 
-CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(--light);padding:16px 18px;margin:0 0 14px}.mcard h4{margin:0 0 12px;font-size:13px;font-weight:720}"
-       ".mrow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:flex-end}.mrow .fld{flex:1 1 220px}.mrow .fld.due{flex:0 1 170px}"
-       ".fld{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:680;color:var(--muted)}"
-       ".fld input{font:inherit;font-weight:500;color:var(--ink);background:var(--paper);border:1px solid var(--border-strong);border-radius:7px;padding:9px 11px;min-height:40px;width:100%;box-sizing:border-box}"
-       ".fld input:focus-visible{outline:3px solid var(--focus);outline-offset:1px}.hint{margin:10px 0 0;font-size:12px;color:var(--muted)}"
-       ".item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}.item:last-of-type{border-bottom:none}"
-       ".or{margin:14px 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:740}")
+CSS = (
+    ".mcard{border:1px solid var(--border);border-radius:10px;background:var(--light);padding:16px 18px;margin:0 0 14px}.mcard h4{margin:0 0 12px;font-size:13px;font-weight:720}"
+    ".mrow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:flex-end}.mrow .fld{flex:1 1 220px}.mrow .fld.due{flex:0 1 170px}"
+    ".fld{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:680;color:var(--muted)}"
+    ".fld input{font:inherit;font-weight:500;color:var(--ink);background:var(--paper);border:1px solid var(--border-strong);border-radius:7px;padding:9px 11px;min-height:40px;width:100%;box-sizing:border-box}"
+    ".fld input:focus-visible{outline:3px solid var(--focus);outline-offset:1px}.hint{margin:10px 0 0;font-size:12px;color:var(--muted)}"
+    ".item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}.item:last-of-type{border-bottom:none}"
+    ".or{margin:14px 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:740}"
+)
 
 
 # The Drive picker asks only for drive.file; the service's own Drive credential never reaches the browser. Its browser
@@ -119,8 +170,11 @@ CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(
 # hidden).
 # A pick reloads the page, so the drive.file token is kept in this browser until it expires and renewed with prompt
 # "".
-PICKER_FIELDS = {"client_id": re.compile(r"[0-9]{6,20}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com"), "api_key": re.compile(r"AIza[0-9A-Za-z_-]{30,60}"),
-                 "app_id": re.compile(r"[0-9]{6,20}")}
+PICKER_FIELDS = {
+    "client_id": re.compile(r"[0-9]{6,20}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com"),
+    "api_key": re.compile(r"AIza[0-9A-Za-z_-]{30,60}"),
+    "app_id": re.compile(r"[0-9]{6,20}"),
+}
 PICKER_JS = """(function () {
   var b = document.getElementById("pick-drive"), f = document.getElementById("pick-form"), token = null, ready = null, KEY = "lifeos-picker-token";
   if (!b || !f) { return; }
@@ -157,7 +211,9 @@ PICKER_JS = """(function () {
 
 def picker(secrets):
     got = secrets.get("picker")
-    ok = isinstance(got, dict) and all(isinstance(got.get(k), str) and rx.fullmatch(got[k]) for k, rx in PICKER_FIELDS.items())
+    ok = isinstance(got, dict) and all(
+        isinstance(got.get(k), str) and rx.fullmatch(got[k]) for k, rx in PICKER_FIELDS.items()
+    )
     return {k: got[k] for k in PICKER_FIELDS} if ok else None
 
 
@@ -170,22 +226,31 @@ def handle_css(req, who, secrets):
 
 
 def _styled(page):
-    return page.replace(b'<link rel="stylesheet" href="/close.css">', b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">')
+    return page.replace(
+        b'<link rel="stylesheet" href="/close.css">',
+        b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">',
+    )
 
 
 def _drive(secrets):
     if not secrets.get("gdrive"):
         return None
     from .resume_app import gdrive_client
+
     return gdrive_client(secrets["gdrive"])
 
 
 def _drive_file(drive, fid):
     meta = drive.get(fid)
     name, link = meta.get("name"), meta.get("webViewLink")
-    if meta.get("trashed") or not isinstance(name, str) or not name.strip() or not (isinstance(link, str) and LINK.fullmatch(link)):
+    if (
+        meta.get("trashed")
+        or not isinstance(name, str)
+        or not name.strip()
+        or not (isinstance(link, str) and LINK.fullmatch(link))
+    ):
         return None
-    return " ".join(name.split())[:M.NEXT_MAX], link
+    return " ".join(name.split())[: M.NEXT_MAX], link
 
 
 def _sent_check(form, secrets):
@@ -193,42 +258,122 @@ def _sent_check(form, secrets):
     sk, text, url = form.get("sk", ""), " ".join((form.get("sx") or "").split()), (form.get("su") or "").strip()
     if sk == M.FORM:
         if not text or len(text) > M.NEXT_MAX or not text.isprintable() or (url and not LINK.fullmatch(url)):
-            return None, None, None, _stop(400, "Not accepted", "Say what the form was; a link is optional", f"Up to {M.NEXT_MAX} characters; a link starts with https://.", "Nothing was changed.")
+            return (
+                None,
+                None,
+                None,
+                _stop(
+                    400,
+                    "Not accepted",
+                    "Say what the form was; a link is optional",
+                    f"Up to {M.NEXT_MAX} characters; a link starts with https://.",
+                    "Nothing was changed.",
+                ),
+            )
         return sk, text, url or None, None
     if sk != M.FILE:
-        return None, None, None, _stop(400, "Not accepted", "Choose a form or a Drive file", "Reload Manage and choose one.", "Nothing was changed.")
+        return (
+            None,
+            None,
+            None,
+            _stop(
+                400,
+                "Not accepted",
+                "Choose a form or a Drive file",
+                "Reload Manage and choose one.",
+                "Nothing was changed.",
+            ),
+        )
     hit = DRIVE_LINK.fullmatch(url)
     if not hit:
-        return None, None, None, _stop(400, "Not accepted", "Paste the Google Drive link of the file", "Open the file in Drive and copy its link.", "Nothing was changed.")
+        return (
+            None,
+            None,
+            None,
+            _stop(
+                400,
+                "Not accepted",
+                "Paste the Google Drive link of the file",
+                "Open the file in Drive and copy its link.",
+                "Nothing was changed.",
+            ),
+        )
     drive = _drive(secrets)
     if drive is None:
-        return None, None, None, _stop(409, "Not recorded", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was changed.")
+        return (
+            None,
+            None,
+            None,
+            _stop(
+                409,
+                "Not recorded",
+                "Google Drive is not connected",
+                "The Drive credential is not installed on the Close service.",
+                "Nothing was changed.",
+            ),
+        )
     try:
         found = _drive_file(drive, hit.group(1))
     except RuntimeError as error:
-        return None, None, None, _stop(409, "Not recorded", "That Drive file could not be read", "Check the link and that the file is shared with you.", f"Refused: {str(error)[:60]}. Nothing was changed.")
+        return (
+            None,
+            None,
+            None,
+            _stop(
+                409,
+                "Not recorded",
+                "That Drive file could not be read",
+                "Check the link and that the file is shared with you.",
+                f"Refused: {str(error)[:60]}. Nothing was changed.",
+            ),
+        )
     if not found:
-        return None, None, None, _stop(409, "Not recorded", "That Drive file is in the trash or has no name", "Restore it in Drive or pick another file.", "Nothing was changed.")
+        return (
+            None,
+            None,
+            None,
+            _stop(
+                409,
+                "Not recorded",
+                "That Drive file is in the trash or has no name",
+                "Restore it in Drive or pick another file.",
+                "Nothing was changed.",
+            ),
+        )
     return sk, found[0], found[1], None
 
 
 def _hub(req, who, secrets):
     pid = D._page_id(req["query"].get("o"))
     if not pid:
-        return _stop(400, "Invalid link", "No opportunity selected", "Open Manage from an interview opportunity page.", "Nothing was changed.")
+        return _stop(
+            400,
+            "Invalid link",
+            "No opportunity selected",
+            "Open Manage from an interview opportunity page.",
+            "Nothing was changed.",
+        )
     reader, config = secrets["reader"], secrets["config"]
     pages = D.ledger_pages(reader)
     rows, parents = C._state(reader, config["pipeline"], pages)
     mine = [p for p in parents if pid in (D._page_id(p["id"]), D._page_id(p["tree_id"]))]
     if len(mine) != 1:
-        return _stop(404, "Not found", "This opportunity page is not in the Hiring Pipeline", "Open Manage from the opportunity page itself.", "Nothing was changed.")
+        return _stop(
+            404,
+            "Not found",
+            "This opportunity page is not in the Hiring Pipeline",
+            "Open Manage from the opportunity page itself.",
+            "Nothing was changed.",
+        )
     page = mine[0]
     kind, rec, closed = _record(rows, page)
     rid = D._page_id(rec["id"])
-    body = ('<section class="section"><div class="eyebrow">Exact opportunity</div><div class="jobhead"><div>'
-            f'<h2>{e(page["role"])}</h2><div class="company">{e(page["company"])}</div></div>'
-            f'<a class="status" href="https://www.notion.so/{rid}" target="_blank" rel="noopener">{"Closed" if closed else "Open"} · Job Ledger ↗</a></div></section><section class="section">'
-            '<div class="eyebrow">Actions</div><p class="lead">Each action opens its own screen and changes nothing until you confirm there.</p>')
+    body = (
+        '<section class="section"><div class="eyebrow">Exact opportunity</div><div class="jobhead"><div>'
+        f'<h2>{e(page["role"])}</h2><div class="company">{e(page["company"])}</div></div>'
+        f'<a class="status" href="https://www.notion.so/{rid}" target="_blank" rel="noopener">{"Closed" if closed else "Open"} · Job Ledger ↗</a></div></section><section class="section">'
+        '<div class="eyebrow">Actions</div><p class="lead">Each action opens its own screen and changes nothing until you confirm there.</p>'
+    )
     exp = int(C._now().timestamp()) + MANAGE_TTL
     if closed:
         try:
@@ -241,147 +386,367 @@ def _hub(req, who, secrets):
         else:
             fields = _fields(secrets["link"], who["login"], kind, rec, page, exp)
             hired = rec.get("decision") == "Hired"
-            body += (f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary" name="step" value="review">Reopen this opportunity</button>'
-                     '<span class="lead">Puts it back among the open opportunities; its history is kept.</span></div>'
-                     + ('<label class="lead"><input type="checkbox" name="h" value="1"> If it was recorded as Hired: reopen it anyway</label>' if hired else "") + '</form>')
+            body += (
+                f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary" name="step" value="review">Reopen this opportunity</button>'
+                '<span class="lead">Puts it back among the open opportunities; its history is kept.</span></div>'
+                + (
+                    '<label class="lead"><input type="checkbox" name="h" value="1"> If it was recorded as Hired: reopen it anyway</label>'
+                    if hired
+                    else ""
+                )
+                + '</form>'
+            )
     else:
-        body += _link("Close this opportunity", "/?" + urlencode({"o": rid}), "Record why it ended (rejected, withdrew, filled, ...).")
+        body += _link(
+            "Close this opportunity",
+            "/?" + urlencode({"o": rid}),
+            "Record why it ended (rejected, withdrew, filled, ...).",
+        )
         lines = _fold_lines(reader, pid)
         for key, text in _open_actions(lines):
-            body += _link("Mark the next action complete", "/complete?" + urlencode({"o": pid, "a": key}), "Your own next action." if any(
-                (M.NEXT_LINE.fullmatch(t) or [None] * 4)[3] == key for t in lines) else "The page's current primary action.")
+            body += _link(
+                "Mark the next action complete",
+                "/complete?" + urlencode({"o": pid, "a": key}),
+                "Your own next action."
+                if any((M.NEXT_LINE.fullmatch(t) or [None] * 4)[3] == key for t in lines)
+                else "The page's current primary action.",
+            )
         raw = next((p for p in pages if D._page_id(p.get("id")) == rid), {})
         props = raw.get("properties") or {}
         ledger_lines = M.hand_lines(D._text(props.get(D.HAND_SET), "rich_text"))
-        body += '</section><section class="section">' + _hand(secrets["link"], who["login"], kind, rec, page, ledger_lines + tuple(lines), D.HAND_SET in props, exp, picker(secrets))
-    body += _link("Build résumé · I applied with this résumé", "/resume?" + urlencode({"j": rid}), "Tailor a résumé, or record which one you sent.")
+        body += '</section><section class="section">' + _hand(
+            secrets["link"],
+            who["login"],
+            kind,
+            rec,
+            page,
+            ledger_lines + tuple(lines),
+            D.HAND_SET in props,
+            exp,
+            picker(secrets),
+        )
+    body += _link(
+        "Build résumé · I applied with this résumé",
+        "/resume?" + urlencode({"j": rid}),
+        "Tailor a résumé, or record which one you sent.",
+    )
     if not closed:
-        body += _link("Mark outreach as sent", "/sent?" + urlencode({"j": rid}), "Record a message you sent to a contact for this job.")
-    body += (f'</section><div class="actions"><a class="btn link" href="https://www.notion.so/{pid}" target="_blank" rel="noopener">Open the opportunity page in Notion →</a></div>')
+        body += _link(
+            "Mark outreach as sent",
+            "/sent?" + urlencode({"j": rid}),
+            "Record a message you sent to a contact for this job.",
+        )
+    body += f'</section><div class="actions"><a class="btn link" href="https://www.notion.so/{pid}" target="_blank" rel="noopener">Open the opportunity page in Notion →</a></div>'
     return 200, C.HTML, _styled(S.page("Manage opportunity", SUB, body, PATH, TAB)), ()
 
 
 def _moved(secret, login, act, target, company, role, form):
     """The pursuit no longer lives on the open row this form names. Nothing is written."""
     back = D._page_id(form.get("p"))
-    hub = _link("Open Manage again", "/manage?" + urlencode({"o": back}), "From the opportunity page, with its current state.") if back else ""
+    hub = (
+        _link(
+            "Open Manage again",
+            "/manage?" + urlencode({"o": back}),
+            "From the opportunity page, with its current state.",
+        )
+        if back
+        else ""
+    )
     if target.get("decision"):
-        body = ('<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity was closed after Manage opened</h3>'
-                '<p class="lead">A closed opportunity takes no next action or hold.</p><div class="notice alert">Nothing was changed.</div>' + hub + '</section>')
+        body = (
+            '<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity was closed after Manage opened</h3>'
+            '<p class="lead">A closed opportunity takes no next action or hold.</p><div class="notice alert">Nothing was changed.</div>'
+            + hub
+            + '</section>'
+        )
         return 409, C.HTML, S.page("Opportunity changed", SUB, body, PATH, TAB), ()
-    keep = ({"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
-            else {"v": form.get("v", ""), "sx": form.get("sx", "")} if act == "unsent" else {"nx": form.get("nx", ""), "due": form.get("due", "")})
-    fields = _hand_fields(secret, login, C.KIND, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + MANAGE_TTL, act) | keep | {"p": form.get("p", "")}
-    body = (f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on <a href="https://www.notion.so/{D._page_id(target["id"])}" target="_blank" rel="noopener">another Job Ledger row ↗</a></h3>'
-            '<p class="lead">The Job Ledger changed after Manage opened, so the opportunity is now carried by that row.</p>'
-            '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on that row, then confirm.</div>'
-            f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary">Review this change on that row</button></div></form>'
-            + hub + '</section>')
+    keep = (
+        {"v": form.get("v", "")}
+        if act == "hold"
+        else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")}
+        if act == "sent"
+        else {"v": form.get("v", ""), "sx": form.get("sx", "")}
+        if act == "unsent"
+        else {"nx": form.get("nx", ""), "due": form.get("due", "")}
+    )
+    fields = (
+        _hand_fields(
+            secret, login, C.KIND, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + MANAGE_TTL, act
+        )
+        | keep
+        | {"p": form.get("p", "")}
+    )
+    body = (
+        f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on <a href="https://www.notion.so/{D._page_id(target["id"])}" target="_blank" rel="noopener">another Job Ledger row ↗</a></h3>'
+        '<p class="lead">The Job Ledger changed after Manage opened, so the opportunity is now carried by that row.</p>'
+        '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on that row, then confirm.</div>'
+        f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary">Review this change on that row</button></div></form>'
+        + hub
+        + '</section>'
+    )
     return 409, C.HTML, S.page("Opportunity changed", SUB, body, PATH, TAB), ()
 
 
 def _hand_post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    o, step, exp, st, kind, act = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("act", "")
+    o, step, exp, st, kind, act = (
+        D._page_id(form.get("o")),
+        form.get("step"),
+        form.get("exp", ""),
+        form.get("st", ""),
+        form.get("k", ""),
+        form.get("act", ""),
+    )
     company, role = form.get("co", ""), form.get("ro", "")
-    if not (live(form, secret, "manage-hand", login, o, st, C._now(), ("cancel", "review", "confirm"), tail=(act,)) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, False), st)):
+    if not (
+        live(form, secret, "manage-hand", login, o, st, C._now(), ("cancel", "review", "confirm"), tail=(act,))
+        and kind == C.KIND
+        and C._same(C._fingerprint(kind, o, company, role, False), st)
+    ):
         return _expired(form)
     if step == "cancel":
-        return _stop(200, "Cancelled", "Nothing changed", "The opportunity keeps its current state and next action.", "Nothing was written.", "")
-    value, text, due = form.get("v", ""), " ".join((form.get("sx" if act == "unsent" else "nx") or "").split()), (form.get("due") or "").strip()
+        return _stop(
+            200,
+            "Cancelled",
+            "Nothing changed",
+            "The opportunity keeps its current state and next action.",
+            "Nothing was written.",
+            "",
+        )
+    value, text, due = (
+        form.get("v", ""),
+        " ".join((form.get("sx" if act == "unsent" else "nx") or "").split()),
+        (form.get("due") or "").strip(),
+    )
     if act == "sent":
         value, text, due, refused = _sent_check(form, secrets)
         if refused:
             return refused
     if act == "unsent" and not (OP.fullmatch(value) and len(text) <= M.NEXT_MAX and text.isprintable()):
-        return _stop(400, "Not accepted", "Choose an item to remove", "Reload Manage and choose one.", "Nothing was changed.")
+        return _stop(
+            400, "Not accepted", "Choose an item to remove", "Reload Manage and choose one.", "Nothing was changed."
+        )
     if act == "hold" and value not in M.HOLD_LABEL and value != M.ACTIVE:
-        return _stop(400, "Not accepted", "Choose Paused, Waiting on employer or Active", "Reload Manage and choose one.", "Nothing was changed.")
+        return _stop(
+            400,
+            "Not accepted",
+            "Choose Paused, Waiting on employer or Active",
+            "Reload Manage and choose one.",
+            "Nothing was changed.",
+        )
     if act == "next":
         try:
             valid = bool(DAY.fullmatch(due) and date.fromisoformat(due)) if due else True
         except ValueError:
             valid = False
         if not valid or len(text) > M.NEXT_MAX or not (text or due) or not (text or "x").isprintable():
-            return _stop(400, "Not accepted", "Enter a next action, a real due date, or both", f"A next action is up to {M.NEXT_MAX} characters; a due date is a real calendar date.", "Nothing was changed.")
-    payload = value if act == "hold" else f"{value}\x1f{text}\x1f{due or ''}" if act == "sent" else f"{value}\x1f{text}" if act == "unsent" else f"{text}\x1f{due}"
+            return _stop(
+                400,
+                "Not accepted",
+                "Enter a next action, a real due date, or both",
+                f"A next action is up to {M.NEXT_MAX} characters; a due date is a real calendar date.",
+                "Nothing was changed.",
+            )
+    payload = (
+        value
+        if act == "hold"
+        else f"{value}\x1f{text}\x1f{due or ''}"
+        if act == "sent"
+        else f"{value}\x1f{text}"
+        if act == "unsent"
+        else f"{text}\x1f{due}"
+    )
     sign = C._mac(secret, "manage-hand-c", login, o, st, exp, act, payload)
-    what = (f"Set it to {M.HOLD_LABEL.get(value, 'Active')}" if act == "hold" else f"Sent: {M.SENT_KINDS[value]} · {text}" if act == "sent" else f"Remove sent material: {text}" if act == "unsent"
-            else f"Your next action: {text or '—'} · Due: {due or 'No date set'}")
+    what = (
+        f"Set it to {M.HOLD_LABEL.get(value, 'Active')}"
+        if act == "hold"
+        else f"Sent: {M.SENT_KINDS[value]} · {text}"
+        if act == "sent"
+        else f"Remove sent material: {text}"
+        if act == "unsent"
+        else f"Your next action: {text or '—'} · Due: {due or 'No date set'}"
+    )
     if step == "review":
-        fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t", "p")} | (
-            {"v": value} if act == "hold" else {"sk": value, "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
-            else {"v": value, "sx": text} if act == "unsent" else {"nx": text, "due": due}) | {"c": sign}
-        note = ("The stage stays as the evidence shows; the Hiring Pipeline lists it with no to-do until you set it back to Active or new mail or Calendar evidence arrives."
-                if act == "hold" and value != M.ACTIVE else "It goes back on the to-do list." if act == "hold"
-                else "Listed under Materials Sent on the opportunity page after the next hourly run." if act == "sent"
-                else "Taken off Materials Sent after the next hourly run; the record keeps a removal line, so its history stays." if act == "unsent"
-                else "Shown beside the derived action, labelled set by Jim, after the next hourly run. New evidence never changes it; Mark Complete clears it.")
-        return 200, C.HTML, S.page("Review the change", "Nothing is recorded until you confirm.", (
-            f'<section class="section"><div class="eyebrow">Review</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
-            f'<p class="lead"><b>{e(what)}</b></p><p class="lead">{e(note)} Nothing else changes and nothing is sent.</p></section>'
-            f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
-            '<button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'), PATH, TAB), ()
+        fields = (
+            {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t", "p")}
+            | (
+                {"v": value}
+                if act == "hold"
+                else {"sk": value, "sx": form.get("sx", ""), "su": form.get("su", "")}
+                if act == "sent"
+                else {"v": value, "sx": text}
+                if act == "unsent"
+                else {"nx": text, "due": due}
+            )
+            | {"c": sign}
+        )
+        note = (
+            "The stage stays as the evidence shows; the Hiring Pipeline lists it with no to-do until you set it back to Active or new mail or Calendar evidence arrives."
+            if act == "hold" and value != M.ACTIVE
+            else "It goes back on the to-do list."
+            if act == "hold"
+            else "Listed under Materials Sent on the opportunity page after the next hourly run."
+            if act == "sent"
+            else "Taken off Materials Sent after the next hourly run; the record keeps a removal line, so its history stays."
+            if act == "unsent"
+            else "Shown beside the derived action, labelled set by Jim, after the next hourly run. New evidence never changes it; Mark Complete clears it."
+        )
+        return (
+            200,
+            C.HTML,
+            S.page(
+                "Review the change",
+                "Nothing is recorded until you confirm.",
+                (
+                    f'<section class="section"><div class="eyebrow">Review</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
+                    f'<p class="lead"><b>{e(what)}</b></p><p class="lead">{e(note)} Nothing else changes and nothing is sent.</p></section>'
+                    f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
+                    '<button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'
+                ),
+                PATH,
+                TAB,
+            ),
+            (),
+        )
     if not C._same(form.get("c"), sign):
         return invalid(_stop, "Review the change again.", "This confirmation is not valid")
     config = secrets["config"]
-    client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
+    client = Client(
+        {"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]}
+    )
     target = D.route(D.rows(D.ledger_pages(client)), {"action": D.ACTION, "id": o, "company": company, "role": role})
     if D._page_id(target["id"]) != o or target.get("decision"):
         return _moved(secret, login, act, target, company, role, form)
     at, op = C._now().isoformat(timespec="seconds"), C._mac(secret, "op-h", o, st, exp, act, payload)[:16]
-    line = (M.hold_line(value, at, op) if act == "hold" else M.sent_line(value, text, due, at, op) if act == "sent" else M.unsent_line(value, at, op) if act == "unsent"
-            else M.next_line(text, due, at, op))
+    line = (
+        M.hold_line(value, at, op)
+        if act == "hold"
+        else M.sent_line(value, text, due, at, op)
+        if act == "sent"
+        else M.unsent_line(value, at, op)
+        if act == "unsent"
+        else M.next_line(text, due, at, op)
+    )
     try:
         done = D.set_hand(client, {"id": o, "company": company, "role": role}, line, True)
     except NotionError as error:
         code = str(error)[:60]
         if code == "DECISION_SCHEMA_MISSING":
-            return _stop(409, "Not changed", "The Job Ledger cannot store this yet", f"It needs a “{D.HAND_SET}” text property on the Job Ledger.", f"Refused: {code}. Nothing was changed.")
+            return _stop(
+                409,
+                "Not changed",
+                "The Job Ledger cannot store this yet",
+                f"It needs a “{D.HAND_SET}” text property on the Job Ledger.",
+                f"Refused: {code}. Nothing was changed.",
+            )
         if code.removeprefix("DECISION_") in ("CLOSED", "STALE_IDENTITY", "CONCURRENT_CHANGE", "HISTORY_UNREADABLE"):
-            return _stop(409, "Not changed", "This change was not recorded", "The opportunity closed or changed since Manage was opened.", f"Refused: {code}. Nothing was changed.")
+            return _stop(
+                409,
+                "Not changed",
+                "This change was not recorded",
+                "The opportunity closed or changed since Manage was opened.",
+                f"Refused: {code}. Nothing was changed.",
+            )
         return unverified(_stop, "Could not verify the change", code=code)
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
         return unverified(_stop, "Could not verify the change")
     if act == "hold":
         secrets.get("after", []).append("hiring")
-    return _stop(200, "Recorded", "Recorded and read back", "The opportunity's own record was updated and read back successfully.",
-                 f"{company} — {role} · {what}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
+    return _stop(
+        200,
+        "Recorded",
+        "Recorded and read back",
+        "The opportunity's own record was updated and read back successfully.",
+        f"{company} — {role} · {what}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.",
+        "ok",
+    )
 
 
 def _expired(form):
     page = D._page_id(form.get("p"))
-    body = ('<section class="section"><div class="eyebrow">Not accepted</div><h3 class="step-title">This page has expired</h3>'
-            '<p class="lead">Manage was open too long, or the form was changed. Open it again and repeat the step.</p><div class="notice danger">Nothing was changed.</div>'
-            + (_link("Reload Manage", "/manage?" + urlencode({"o": page}), "Opens this opportunity's Manage screen fresh.") if page else "") + '</section>')
+    body = (
+        '<section class="section"><div class="eyebrow">Not accepted</div><h3 class="step-title">This page has expired</h3>'
+        '<p class="lead">Manage was open too long, or the form was changed. Open it again and repeat the step.</p><div class="notice danger">Nothing was changed.</div>'
+        + (
+            _link("Reload Manage", "/manage?" + urlencode({"o": page}), "Opens this opportunity's Manage screen fresh.")
+            if page
+            else ""
+        )
+        + '</section>'
+    )
     return 403, C.HTML, _styled(S.page("This page has expired", SUB, body, PATH, TAB)), ()
 
 
 def _drive_search(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
-    o, exp, st, kind, company, role = D._page_id(form.get("o")), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("co", ""), form.get("ro", "")
-    if not (live(form, secret, "manage-hand", login, o, st, C._now(), None, tail=("drive",)) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, False), st)):
+    o, exp, st, kind, company, role = (
+        D._page_id(form.get("o")),
+        form.get("exp", ""),
+        form.get("st", ""),
+        form.get("k", ""),
+        form.get("co", ""),
+        form.get("ro", ""),
+    )
+    if not (
+        live(form, secret, "manage-hand", login, o, st, C._now(), None, tail=("drive",))
+        and kind == C.KIND
+        and C._same(C._fingerprint(kind, o, company, role, False), st)
+    ):
         return _expired(form)
     q = " ".join((form.get("q") or "").split())
     if len(q) > QMAX or not q.isprintable():
         return _stop(400, "Not accepted", "Shorten the file name", f"Up to {QMAX} characters.", "Nothing was searched.")
     drive = _drive(secrets)
     if drive is None:
-        return _stop(409, "Not searched", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was searched.")
+        return _stop(
+            409,
+            "Not searched",
+            "Google Drive is not connected",
+            "The Drive credential is not installed on the Close service.",
+            "Nothing was searched.",
+        )
     from lifeos.platform.gdrive import _quote
+
     try:
-        files = drive.find((f"name contains '{_quote(q)}' and " if q else "") + f"mimeType != '{FOLDER}'", order="modifiedTime desc")
+        files = drive.find(
+            (f"name contains '{_quote(q)}' and " if q else "") + f"mimeType != '{FOLDER}'", order="modifiedTime desc"
+        )
     except RuntimeError as error:
-        return _stop(409, "Not searched", "Google Drive could not be searched", "Try again in a minute.", f"Refused: {str(error)[:60]}. Nothing was changed.")
-    hits = [f for f in files if isinstance(f.get("name"), str) and DRIVE_LINK.fullmatch(str(f.get("webViewLink") or ""))][:HITS]
+        return _stop(
+            409,
+            "Not searched",
+            "Google Drive could not be searched",
+            "Try again in a minute.",
+            f"Refused: {str(error)[:60]}. Nothing was changed.",
+        )
+    hits = [
+        f for f in files if isinstance(f.get("name"), str) and DRIVE_LINK.fullmatch(str(f.get("webViewLink") or ""))
+    ][:HITS]
     pick = _hand_fields(secret, login, kind, o, company, role, int(exp), "sent") | {"sk": M.FILE, "sx": ""}
-    rows = "".join(f'<form method="post" action="/manage">{S._hidden(pick | {"su": f["webViewLink"]})}<div class="actions"><button class="btn">Pick</button>'
-                   f'<span class="lead">{e(" ".join(f["name"].split()))} · <a href="{e(f["webViewLink"])}" target="_blank" rel="noopener">open ↗</a></span></div></form>' for f in hits)
-    body = (f'<section class="section"><div class="eyebrow">Search my Drive</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
-            f'<p class="lead">{f"Files whose name contains “{e(q)}”" if q else "Your Drive files"}, most recently edited first{f" (the first {HITS})" if len(hits) == HITS else ""}.</p>'
-            + (rows or '<div class="notice alert">No Drive file matches. Try a shorter part of the name.</div>')
-            + (_link("Back to Manage", "/manage?" + urlencode({"o": back}), "Nothing was recorded.") if (back := D._page_id(form.get("p"))) else "") + '</section>')
-    return 200, C.HTML, S.page("Search my Drive", "Pick the file you sent; you review it before anything is recorded.", body, PATH, TAB), ()
+    rows = "".join(
+        f'<form method="post" action="/manage">{S._hidden(pick | {"su": f["webViewLink"]})}<div class="actions"><button class="btn">Pick</button>'
+        f'<span class="lead">{e(" ".join(f["name"].split()))} · <a href="{e(f["webViewLink"])}" target="_blank" rel="noopener">open ↗</a></span></div></form>'
+        for f in hits
+    )
+    body = (
+        f'<section class="section"><div class="eyebrow">Search my Drive</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
+        f'<p class="lead">{f"Files whose name contains “{e(q)}”" if q else "Your Drive files"}, most recently edited first{f" (the first {HITS})" if len(hits) == HITS else ""}.</p>'
+        + (rows or '<div class="notice alert">No Drive file matches. Try a shorter part of the name.</div>')
+        + (
+            _link("Back to Manage", "/manage?" + urlencode({"o": back}), "Nothing was recorded.")
+            if (back := D._page_id(form.get("p")))
+            else ""
+        )
+        + '</section>'
+    )
+    return (
+        200,
+        C.HTML,
+        S.page(
+            "Search my Drive", "Pick the file you sent; you review it before anything is recorded.", body, PATH, TAB
+        ),
+        (),
+    )
 
 
 def _post(req, who, secrets):
@@ -390,40 +755,97 @@ def _post(req, who, secrets):
     if req["form"].get("act") in ("hold", "next", "sent", "unsent"):
         return _hand_post(req, who, secrets)
     form, secret, login = req["form"], secrets["link"], who["login"]
-    o, step, exp, st, kind = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", "")
+    o, step, exp, st, kind = (
+        D._page_id(form.get("o")),
+        form.get("step"),
+        form.get("exp", ""),
+        form.get("st", ""),
+        form.get("k", ""),
+    )
     company, role = form.get("co", ""), form.get("ro", "")
-    if not (live(form, secret, "manage-reopen", login, o, st, C._now(), ("cancel", "review", "confirm")) and kind == C.KIND and C._same(C._fingerprint(kind, o, company, role, True), st)):
+    if not (
+        live(form, secret, "manage-reopen", login, o, st, C._now(), ("cancel", "review", "confirm"))
+        and kind == C.KIND
+        and C._same(C._fingerprint(kind, o, company, role, True), st)
+    ):
         return _expired(form)
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing reopened", "The opportunity stays closed.", "Nothing was written.", "")
     hired = form.get("h") == "1"
     if step == "review":
         fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "t")} | ({"h": "1"} if hired else {})
-        return 200, C.HTML, S.page("Reopen opportunity", "Puts a closed opportunity back among the open ones.", (
-            f'<section class="section"><div class="eyebrow">Review</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
-            '<p class="lead">Its recorded decision is cleared (the history keeps the close and adds this reopen). Nothing else changes and nothing is sent.</p></section>'
-            f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
-            '<button class="btn primary" name="step" value="confirm">Reopen it</button></div></form>'), PATH, TAB), ()
+        return (
+            200,
+            C.HTML,
+            S.page(
+                "Reopen opportunity",
+                "Puts a closed opportunity back among the open ones.",
+                (
+                    f'<section class="section"><div class="eyebrow">Review</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
+                    '<p class="lead">Its recorded decision is cleared (the history keeps the close and adds this reopen). Nothing else changes and nothing is sent.</p></section>'
+                    f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
+                    '<button class="btn primary" name="step" value="confirm">Reopen it</button></div></form>'
+                ),
+                PATH,
+                TAB,
+            ),
+            (),
+        )
     config = secrets["config"]
-    client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
+    client = Client(
+        {"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]}
+    )
     target = D.route(D.rows(D.ledger_pages(client)), {"action": D.REOPEN, "id": o, "company": company, "role": role})
     if D._page_id(target["id"]) != o:
-        return _stop(409, "Conflict", "Opportunity changed", "The record that closed it is not the one this form names.", "Nothing was changed. Reload Manage and try again.")
-    request = {"action": D.REOPEN, "confirmed": True, "id": o, "company": company, "role": role, "reason": REASON, "op": C._mac(secret, "op-r", o, st, exp)[:32], "reopen_hired": hired}
+        return _stop(
+            409,
+            "Conflict",
+            "Opportunity changed",
+            "The record that closed it is not the one this form names.",
+            "Nothing was changed. Reload Manage and try again.",
+        )
+    request = {
+        "action": D.REOPEN,
+        "confirmed": True,
+        "id": o,
+        "company": company,
+        "role": role,
+        "reason": REASON,
+        "op": C._mac(secret, "op-r", o, st, exp)[:32],
+        "reopen_hired": hired,
+    }
     try:
         done = D.confirm_rejected(client, request, True, C._now())
     except NotionError as error:
         code = str(error)[:60]
         if code == "DECISION_HIRED_REOPEN_UNCONFIRMED":
-            return _stop(409, "Not changed", "It was recorded as Hired", "Tick “If it was recorded as Hired: reopen it anyway” on Manage to reopen it.", f"Refused: {code}. Nothing was changed.")
+            return _stop(
+                409,
+                "Not changed",
+                "It was recorded as Hired",
+                "Tick “If it was recorded as Hired: reopen it anyway” on Manage to reopen it.",
+                f"Refused: {code}. Nothing was changed.",
+            )
         if code in ("DECISION_NOT_CLOSED", "DECISION_CONFLICT"):
-            return _stop(409, "Not changed", "This opportunity was not reopened", "It is already open, or its decision changed since Manage was opened.", f"Refused: {code}. Nothing was changed.")
+            return _stop(
+                409,
+                "Not changed",
+                "This opportunity was not reopened",
+                "It is already open, or its decision changed since Manage was opened.",
+                f"Refused: {code}. Nothing was changed.",
+            )
         return unverified(_stop, "Could not verify the reopen", "it was reopened", code)
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
         return unverified(_stop, "Could not verify the reopen", "it was reopened")
     secrets.get("after", []).append("hiring")
-    return _stop(200, "Reopened", "Opportunity reopened", "The canonical record was updated and read back successfully.",
-                 f"{company} — {role} · Reopened{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
+    return _stop(
+        200,
+        "Reopened",
+        "Opportunity reopened",
+        "The canonical record was updated and read back successfully.",
+        f"{company} — {role} · Reopened{' (already recorded)' if done['status'] == 'already_recorded' else ''}.",
+        "ok",
+    )
 
 
 handle = handler(_hub, _post, _stop, "This opportunity cannot be managed here")

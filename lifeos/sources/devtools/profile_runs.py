@@ -6,6 +6,7 @@ Runs are grouped by outcome and kind (tick versus manual dispatch); cancelled an
 Percentiles are nearest-rank. The critical path is the longest chain through the workflow's `needs:` lines at p50
 job times.
 """
+
 import argparse
 import json
 import re
@@ -16,7 +17,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOWS = {"hourly": "hourly.yml", "domains": "domains.yml"}
-STARTUP = re.compile(r"set up job|checkout|bitwarden|tailscale|tailnet|set up python|setup-python|install|restore|cache|complete job|post run", re.I)
+STARTUP = re.compile(
+    r"set up job|checkout|bitwarden|tailscale|tailnet|set up python|setup-python|install|restore|cache|complete job|post run",
+    re.I,
+)
 UNIT_TESTS = re.compile(r"unit tests", re.I)
 NAME_MAX = 70
 
@@ -70,7 +74,11 @@ def percentile(values, p):
 
 
 def stats(values):
-    return {"n": len(values), "p50": percentile(values, 50), "p95": percentile(values, 95)} if values else {"n": 0, "p50": 0, "p95": 0}
+    return (
+        {"n": len(values), "p50": percentile(values, 50), "p95": percentile(values, 95)}
+        if values
+        else {"n": 0, "p50": 0, "p95": 0}
+    )
 
 
 def summarize(records):
@@ -87,13 +95,22 @@ def summarize(records):
                     startup += took
                 if UNIT_TESTS.search(step):
                     tests += took
-    return {"runs": len(records), "wall": stats([r["wall"] for r in records]),
-            "jobs": {name: {**stats(slot["seconds"]), "steps": {step: stats(vals) for step, vals in slot["steps"].items()}} for name, slot in jobs.items()},
-            "startup_share": round(startup / total, 3) if total else 0, "unit_test_share": round(tests / total, 3) if total else 0, "job_seconds": total}
+    return {
+        "runs": len(records),
+        "wall": stats([r["wall"] for r in records]),
+        "jobs": {
+            name: {**stats(slot["seconds"]), "steps": {step: stats(vals) for step, vals in slot["steps"].items()}}
+            for name, slot in jobs.items()
+        },
+        "startup_share": round(startup / total, 3) if total else 0,
+        "unit_test_share": round(tests / total, 3) if total else 0,
+        "job_seconds": total,
+    }
 
 
 def needs_from_workflow(path):
     import yaml
+
     jobs = (yaml.safe_load(Path(path).read_text()) or {}).get("jobs", {})
     out = {}
     for name, body in jobs.items():
@@ -108,9 +125,12 @@ def critical_path(needs, seconds):
 
     def reach(job):
         if job not in best:
-            before = max((reach(dep) for dep in needs.get(job, [])), default=(0, []), key=lambda pair: (pair[0], len(pair[1])))
+            before = max(
+                (reach(dep) for dep in needs.get(job, [])), default=(0, []), key=lambda pair: (pair[0], len(pair[1]))
+            )
             best[job] = (before[0] + seconds.get(job, 0), before[1] + [job])
         return best[job]
+
     return max((reach(job) for job in needs), default=(0, []), key=lambda pair: (pair[0], len(pair[1])))
 
 
@@ -136,7 +156,18 @@ def pick(runs, workflow, last, failed):
 
 
 def collect(workflow, last, failed, fetch=gh):
-    runs = fetch(["run", "list", "-w", WORKFLOWS[workflow], "-L", "300", "--json", "databaseId,conclusion,event,displayTitle,createdAt"])
+    runs = fetch(
+        [
+            "run",
+            "list",
+            "-w",
+            WORKFLOWS[workflow],
+            "-L",
+            "300",
+            "--json",
+            "databaseId,conclusion,event,displayTitle,createdAt",
+        ]
+    )
     out = {}
     for key, ids in pick(runs, workflow, last, failed).items():
         out[key] = [run_record(fetch(["run", "view", str(i), "--json", "jobs"])) for i in ids]
@@ -149,7 +180,9 @@ def render(workflow, groups, needs, top=8):
         s = summarize(records)
         durations = {name: job["p50"] for name, job in s["jobs"].items()}
         seconds, chain = critical_path(needs, durations)
-        lines.append(f"## {workflow} / {outcome} / {how}: {s['runs']} runs; wall p50 {s['wall']['p50']} s, p95 {s['wall']['p95']} s; startup share {s['startup_share']:.0%}, unit-test share {s['unit_test_share']:.0%}")
+        lines.append(
+            f"## {workflow} / {outcome} / {how}: {s['runs']} runs; wall p50 {s['wall']['p50']} s, p95 {s['wall']['p95']} s; startup share {s['startup_share']:.0%}, unit-test share {s['unit_test_share']:.0%}"
+        )
         lines.append(f"critical path (p50 job times): {' > '.join(chain) or 'none'} = {seconds} s")
         for name, job in sorted(s["jobs"].items(), key=lambda kv: -kv[1]["p95"]):
             lines.append(f"- job {name}: n={job['n']} p50 {job['p50']} s, p95 {job['p95']} s")
@@ -176,7 +209,7 @@ def main(argv=None):
     if args.json:
         print(json.dumps({f"{o}/{k}": summarize(r) for (o, k), r in groups.items()}, sort_keys=True))
     else:
-        print(render(args.workflow, groups, needs, top=args.top or 10 ** 6))
+        print(render(args.workflow, groups, needs, top=args.top or 10**6))
     return 0
 
 

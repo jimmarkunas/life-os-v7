@@ -5,6 +5,7 @@ route and A-rated licences, and replaces v7_sponsors in one transaction. Anythin
 link, missing columns, too few rows) is FAILED and the previous register stays. Refreshed at most weekly unless
 SPONSORS_FORCE=true. Counts only.
 """
+
 import csv
 from datetime import datetime, timedelta, timezone
 import io
@@ -52,7 +53,9 @@ def read(text, route, entry, rated=False):
     found = {}
     for row in reader:
         rating = (row.get(rating_col) or "").lower() if rating_col else "a rating"
-        if (row.get(route_col) or "").strip().lower() != route or ("a rating" not in rating and "a (premium)" not in rating):
+        if (row.get(route_col) or "").strip().lower() != route or (
+            "a rating" not in rating and "a (premium)" not in rating
+        ):
             continue
         name = (row.get(name_col) or "").strip()
         key = tuple(names.core(name))
@@ -91,14 +94,23 @@ def run(limit, live, now=None, fetcher=fetch, environ=os.environ):
             with connection.cursor() as cursor:
                 cursor.execute("DELETE FROM v7_sponsors")
                 for start in range(0, len(entries), 1000):
-                    cursor.executemany("INSERT IGNORE INTO v7_sponsors (name_key, name, refreshed_at) VALUES (%s,%s,%s)",
-                                       [(" ".join(names.core(n))[:160], n, now) for n in entries[start:start + 1000]])
+                    cursor.executemany(
+                        "INSERT IGNORE INTO v7_sponsors (name_key, name, refreshed_at) VALUES (%s,%s,%s)",
+                        [(" ".join(names.core(n))[:160], n, now) for n in entries[start : start + 1000]],
+                    )
     return counts
 
 
 CONTRACT = stage_contract.Contract(
-    name="sponsors", run=run,
-    inputs=("the gov.uk content API page for the register of licensed sponsors (public)", "the CSV that page names (public)", "table v7_sponsors, read for its newest refresh time", "SPONSORS_FORCE, an optional switch"),
+    name="sponsors",
+    run=run,
+    inputs=(
+        "the gov.uk content API page for the register of licensed sponsors (public)",
+        "the CSV that page names (public)",
+        "table v7_sponsors, read for its newest refresh time",
+        "SPONSORS_FORCE, an optional switch",
+    ),
     outputs=("status", "sponsors", "saved"),
     dry_run="reads the register and the table's newest refresh time, parses and counts the Skilled Worker A-rated names; changes nothing",
-    write="replaces v7_sponsors with those names in one transaction, at most weekly unless forced; on any failure the previous register stays")
+    write="replaces v7_sponsors with those names in one transaction, at most weekly unless forced; on any failure the previous register stays",
+)
