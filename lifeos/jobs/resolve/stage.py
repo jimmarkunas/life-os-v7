@@ -4,6 +4,7 @@ Per source: read a batch of NEW rows, close the connection, run the (slow) link 
 job: RESOLVED (final_apply_url + apply_kind), DUPLICATE (same final link already stored), or left NEW with a fixed
 unresolved_reason so the next run retries. Logs: counts only.
 """
+
 import hashlib
 import time
 
@@ -31,9 +32,16 @@ def pick_rows(connection, source, limit):
     names, marks = _sources(source)
     extra = ", source" if source in SHARED else ""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT id, source_url, company, title, location_text" + extra + " FROM v7_jobs WHERE status='NEW' AND source IN (" + marks + ") "
-                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
-                       "ORDER BY source<>%s, resolve_attempts, last_seen DESC LIMIT %s", (*names, limits.RESOLVE_MAX_ATTEMPTS, source, limit))
+        cursor.execute(
+            "SELECT id, source_url, company, title, location_text"
+            + extra
+            + " FROM v7_jobs WHERE status='NEW' AND source IN ("
+            + marks
+            + ") "
+            "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
+            "ORDER BY source<>%s, resolve_attempts, last_seen DESC LIMIT %s",
+            (*names, limits.RESOLVE_MAX_ATTEMPTS, source, limit),
+        )
         return [tuple(row) for row in cursor.fetchall()]
 
 
@@ -46,7 +54,12 @@ def unproven(result):
     prove it by the page title.
     """
     url = result.get("url")
-    return bool(result.get("outcome") == "landed" and url and result.get("via") in DIRECT_LINK and quality.link_problem(url) in quality.AMBIGUOUS)
+    return bool(
+        result.get("outcome") == "landed"
+        and url
+        and result.get("via") in DIRECT_LINK
+        and quality.link_problem(url) in quality.AMBIGUOUS
+    )
 
 
 def apply_result(connection, job_id, result):
@@ -61,24 +74,31 @@ def apply_result(connection, job_id, result):
         if result.get("outcome") == "landed" and url and kind:
             cursor.execute("SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (url, job_id))
             if cursor.fetchone():
-                cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, "
-                               "updated_at=%s WHERE id=%s", ("dup_of_final_url", now, job_id))
+                cursor.execute(
+                    "UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, "
+                    "updated_at=%s WHERE id=%s",
+                    ("dup_of_final_url", now, job_id),
+                )
                 return "duplicate"
-            cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind=%s, link_proof=%s, "
-                           "unresolved_reason=NULL, updated_at=%s WHERE id=%s", (url, kind, proof, now, job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind=%s, link_proof=%s, "
+                "unresolved_reason=NULL, updated_at=%s WHERE id=%s",
+                (url, kind, proof, now, job_id),
+            )
             return "resolved"
         reason = (result.get("outcome") or "unknown")[:100]
         # not tried yet, or the search failed: not an attempt
         bump = 0 if reason in ("deferred", "rate_limited") or reason.startswith("failed_search:") else 1
-        cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, resolve_attempts=resolve_attempts+%s, "
-                       "status=IF(resolve_attempts>=%s, 'HOLD', status), updated_at=%s WHERE id=%s",
-                       (reason, bump, limits.RESOLVE_MAX_ATTEMPTS, now, job_id))
+        cursor.execute(
+            "UPDATE v7_jobs SET unresolved_reason=%s, resolve_attempts=resolve_attempts+%s, "
+            "status=IF(resolve_attempts>=%s, 'HOLD', status), updated_at=%s WHERE id=%s",
+            (reason, bump, limits.RESOLVE_MAX_ATTEMPTS, now, job_id),
+        )
         return "pending"
 
 
 def why(result):
-    """The fixed reason a result is counted under: what landed, or why it did not (detail after the first colon is dropped).
-    """
+    """The fixed reason a result is counted under: what landed, or why it did not (detail after the first colon is dropped)."""
     if result.get("outcome") == "landed":
         problem = result.get("url") and quality.link_problem(result["url"])
         if problem and unproven(result):
@@ -98,21 +118,33 @@ def run_rows(source, limit, live, resolver, batch=BATCH_ROWS, deadline_minutes=D
     with store.connect() as connection:
         store.ensure_schema(connection)
         rows = pick_rows(connection, source, limit)
-    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "closed": 0, "kind": {}, "why": {},
-              "batches": 0, "not_reached": 0}
+    counts = {
+        "picked": len(rows),
+        "resolved": 0,
+        "duplicate": 0,
+        "pending": 0,
+        "closed": 0,
+        "kind": {},
+        "why": {},
+        "batches": 0,
+        "not_reached": 0,
+    }
     context = runtime.RunContext.start(deadline_minutes * 60, clock=clock)
     for start in range(0, len(rows), batch):
         if context.expired():
             counts["not_reached"] = len(rows) - start
             break
-        part = rows[start:start + batch]
+        part = rows[start : start + batch]
         results = resolver(part)  # slow: no database connection open
         counts["batches"] += 1
         if not live:
             counts["dry_run"] = True
         _save(counts, part, results, live)
-        print(f"{source} batch {counts['batches']}: rows {start + len(part)}/{len(rows)} resolved={counts['resolved']} "
-              f"pending={counts['pending']} duplicate={counts['duplicate']} closed={counts['closed']}", flush=True)
+        print(
+            f"{source} batch {counts['batches']}: rows {start + len(part)}/{len(rows)} resolved={counts['resolved']} "
+            f"pending={counts['pending']} duplicate={counts['duplicate']} closed={counts['closed']}",
+            flush=True,
+        )
     return counts
 
 
@@ -124,8 +156,10 @@ def _save(counts, rows, results, live):
                 continue
             if result.get("outcome") == "closed":
                 with connection.cursor() as cursor:
-                    cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s "
-                                   "WHERE id=%s", (_now(), row[0]))
+                    cursor.execute(
+                        "UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
+                        (_now(), row[0]),
+                    )
                 counts["closed"] += 1
                 continue
             verdict = apply_result(connection, row[0], result)

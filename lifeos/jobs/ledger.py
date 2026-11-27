@@ -3,13 +3,25 @@
 Applies to publish, audit trash and retention trash. Checks the properties this code reads and writes and their types,
 once per client. Wrong or unreadable target = no write.
 """
+
 from datetime import timezone
 from zoneinfo import ZoneInfo
 
 from lifeos.platform.notion_client import NotionError
 
-REQUIRED = {"Job": "title", "Apply URL": "url", "Stable Job Key": "rich_text", "Applied": "checkbox", "Applied On": "date", "Saturn Decision": "select",
-            "Visible Lane": "select", "Admission Status": "select", "Posting Date": "date", "First Surfaced": "date", "LIFE OS Fit": "number"}
+REQUIRED = {
+    "Job": "title",
+    "Apply URL": "url",
+    "Stable Job Key": "rich_text",
+    "Applied": "checkbox",
+    "Applied On": "date",
+    "Saturn Decision": "select",
+    "Visible Lane": "select",
+    "Admission Status": "select",
+    "Posting Date": "date",
+    "First Surfaced": "date",
+    "LIFE OS Fit": "number",
+}
 OK, UNREADABLE, MISMATCH = "ok", "target_unreadable", "target_mismatch"
 CT = ZoneInfo("America/Chicago")
 
@@ -67,5 +79,8 @@ def select_options(client, prop):
     with HTTP 400).
     """
     props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
-    return [option["name"] for option in ((props.get(prop) or {}).get("select") or {}).get("options") or [] if option.get("name")]
-
+    return [
+        option["name"]
+        for option in ((props.get(prop) or {}).get("select") or {}).get("options") or []
+        if option.get("name")
+    ]

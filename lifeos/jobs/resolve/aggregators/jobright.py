@@ -3,6 +3,7 @@
 Chromium runs inside the CI runner (no paid browser). Only the link chain is done here: no descriptions, dates or
 parsing. Logs: fixed outcome codes and counts only.
 """
+
 import asyncio
 import json
 import os
@@ -13,8 +14,10 @@ from lifeos.jobs import classify
 
 HOME = "https://jobright.ai/"
 SIGN_IN = re.compile(r"^\s*(sign\s*in|log\s*in)\s*$", re.I)
-APPLY_XPATH = ("xpath=//button[contains(translate(normalize-space(.), 'APPLY', 'apply'), 'apply') "
-               "or contains(@class, 'apply-button')]")
+APPLY_XPATH = (
+    "xpath=//button[contains(translate(normalize-space(.), 'APPLY', 'apply'), 'apply') "
+    "or contains(@class, 'apply-button')]"
+)
 LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
 
 
@@ -53,7 +56,7 @@ async def login(page, email, password):
             stage = "profile_wait"
             await page.locator("xpath=//span[text()='Profile']").first.wait_for(timeout=25000)
             return "ok"
-        except Exception:                                       # noqa: BLE001
+        except Exception:  # noqa: BLE001
             seen.append(stage)
             if attempt < 2:
                 await page.goto(HOME, wait_until="domcontentloaded")
@@ -62,9 +65,11 @@ async def login(page, email, password):
         texts = await page.evaluate("""() => [...document.querySelectorAll('a,button,span,div')]
             .filter(e => e.children.length === 0 && /sign|log ?in|join|continue/i.test(e.textContent || ''))
             .map(e => e.tagName + ':' + e.textContent.trim().slice(0, 24)).slice(0, 8)""")
-        seen.append(page.url.split("?")[0].split("//")[-1].split("/")[0] + (await page.title())[:30] + "|" + ";".join(texts))
+        seen.append(
+            page.url.split("?")[0].split("//")[-1].split("/")[0] + (await page.title())[:30] + "|" + ";".join(texts)
+        )
         marks = [m for m in ("captcha", "turnstile", "recaptcha", "incorrect", "invalid", "verify") if m in html]
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         marks = []
     return "login_failed:" + "/".join(seen) + ":" + ",".join(marks)
 
@@ -80,8 +85,14 @@ def job_result_link(data_text):
         job = json.loads(data_text)["props"]["pageProps"]["dataSource"]["jobResult"]
     except (KeyError, TypeError, ValueError):
         return None
-    found = {strip_tracking(job[k]) for k in ("originalUrl", "applyLink") if isinstance(job, dict) and isinstance(job.get(k), str)
-             and job[k].startswith("http") and not is_internal(job[k])}
+    found = {
+        strip_tracking(job[k])
+        for k in ("originalUrl", "applyLink")
+        if isinstance(job, dict)
+        and isinstance(job.get(k), str)
+        and job[k].startswith("http")
+        and not is_internal(job[k])
+    }
     return found.pop() if len(found) == 1 else None
 
 
@@ -99,7 +110,7 @@ async def original_post_link(page):
         await anchor.wait_for(timeout=8000)
         href = await anchor.get_attribute("href")
         return href if href and href.startswith("http") and not is_internal(href) else None
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -107,7 +118,7 @@ async def page_data_link(page):
     """Employer URL carried in the logged-in job page's own data (no click), or None."""
     try:
         return job_result_link(await page.evaluate(DATA_JS))
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -122,17 +133,17 @@ async def follow(context, page, job_url, wait_ms=12000):
         return {"outcome": "landed", "via": via, "kind": kind, "url": final}
     try:
         await page.locator(APPLY_XPATH).first.wait_for(timeout=wait_ms)
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {"outcome": "apply_unavailable"}
     before = set(context.pages)
     label = ""
     try:
         label = " ".join((await page.locator(APPLY_XPATH).first.inner_text()).split())[:24]
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     try:
         await page.locator(APPLY_XPATH).first.click(timeout=wait_ms)
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {"outcome": "apply_click_error"}
     deadline = asyncio.get_event_loop().time() + wait_ms / 1000
     while asyncio.get_event_loop().time() < deadline:
@@ -149,11 +160,13 @@ async def follow(context, page, job_url, wait_ms=12000):
     try:
         dialog = await page.locator("[role=dialog], .ant-modal, .ant-drawer").count()
         page_text = (await page.inner_text("body")).lower()
-        marks = [m for m in ("no longer", "expired", "closed", "unavailable", "upgrade", "limit", "verify") if m in page_text]
+        marks = [
+            m for m in ("no longer", "expired", "closed", "unavailable", "upgrade", "limit", "verify") if m in page_text
+        ]
         labels = await page.evaluate("""() => [...document.querySelectorAll('[role=dialog] button, .ant-modal button, .ant-modal a, [role=dialog] a')]
             .map(e => (e.textContent || '').trim().slice(0, 22)).filter(Boolean).slice(0, 6)""")
         marks += ["btn=" + "|".join(labels)]
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         dialog, marks = -1, []
     return {"outcome": f"target_timeout:{label}:dialog={dialog}:pages={len(context.pages)}:{','.join(marks)}"}
 
@@ -163,7 +176,8 @@ async def resolve_many(urls, environ=os.environ, pause_ms=1500):
     email, password = environ.get("JOBRIGHT_EMAIL", ""), environ.get("JOBRIGHT_PASSWORD", "")
     if not email or not password:
         return [{"outcome": "auth_unavailable"} for _ in urls]
-    from playwright.async_api import async_playwright        # noqa: PLC0415 - only when the browser path runs
+    from playwright.async_api import async_playwright  # noqa: PLC0415 - only when the browser path runs
+
     results = []
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True, args=LAUNCH_ARGS)
@@ -176,7 +190,7 @@ async def resolve_many(urls, environ=os.environ, pause_ms=1500):
             for url in urls:
                 try:
                     results.append(await follow(context, page, url))
-                except Exception:                               # noqa: BLE001 - site failure; counted, never logged
+                except Exception:  # noqa: BLE001 - site failure; counted, never logged
                     results.append({"outcome": "chain_failed"})
                 await page.wait_for_timeout(pause_ms)
         finally:

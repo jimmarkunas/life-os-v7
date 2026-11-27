@@ -1,14 +1,14 @@
 """Jobs OS tables and persistence (Hostinger). The connection itself lives in lifeos.platform.db."""
+
 from datetime import datetime, timezone
 import sys
 
 from lifeos.platform import mail_checkpoint
-from lifeos.platform.db import StoreError, connect          # noqa: F401 - the jobs facade for the database
+from lifeos.platform.db import StoreError, connect  # noqa: F401 - the jobs facade for the database
 
 
 def now():
-    """The one UTC clock (naive) of the jobs stages; each stage keeps it as `_now` so a test can pin that stage alone.
-    """
+    """The one UTC clock (naive) of the jobs stages; each stage keeps it as `_now` so a test can pin that stage alone."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
@@ -135,7 +135,26 @@ SCHEMA = (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     mail_checkpoint.CREATE,
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_meeting_catalog", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync", "v7_interview_mail", "v7_mail_checkpoint")
+TABLES = (
+    "v7_jobs",
+    "v7_job_sources",
+    "v7_job_descriptions",
+    "v7_job_fit",
+    "v7_sources",
+    "v7_source_items",
+    "v7_source_runs",
+    "v7_alerts",
+    "v7_feed",
+    "v7_meeting_catalog",
+    "v7_sponsors",
+    "v7_tombstones",
+    "v7_ledger_urls",
+    "v7_spend",
+    "v7_daily_counts",
+    "v7_fit_profile_sync",
+    "v7_interview_mail",
+    "v7_mail_checkpoint",
+)
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
     ("v7_jobs", "meta_v", "SMALLINT NULL", None),
@@ -187,10 +206,14 @@ COLUMNS = (
     ("v7_jobs", "ledger_claim_by", "VARCHAR(64) NULL", None),
     ("v7_jobs", "ledger_claim_at", "DATETIME NULL", None),
 )
+
+
 def existing_v7_tables(connection):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT table_name FROM information_schema.tables "
-                       "WHERE table_schema = DATABASE() AND table_name LIKE 'v7\\_%%'")
+        cursor.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() AND table_name LIKE 'v7\\_%%'"
+        )
         return {row[0] for row in cursor.fetchall()}
 
 
@@ -199,14 +222,20 @@ WIDEN = (("v7_jobs", "location_text", 2000),)
 
 
 def _column_present(cursor, table, column):
-    cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-                   "AND table_name = %s AND column_name = %s", (table, column))
+    cursor.execute(
+        "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+        "AND table_name = %s AND column_name = %s",
+        (table, column),
+    )
     return bool(cursor.fetchone()[0])
 
 
 def _key_present(cursor, table, key):
-    cursor.execute("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() "
-                   "AND table_name = %s AND index_name = %s", (table, key))
+    cursor.execute(
+        "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() "
+        "AND table_name = %s AND index_name = %s",
+        (table, key),
+    )
     return bool(cursor.fetchone()[0])
 
 
@@ -231,13 +260,24 @@ def ensure_schema(connection):
     with connection.cursor() as cursor:
         for table, column, ddl, index in COLUMNS:
             if not _column_present(cursor, table, column):
-                _alter(cursor, f"ALTER TABLE {table} ADD COLUMN {column} {ddl}", lambda cursor=cursor, table=table, column=column: _column_present(cursor, table, column))
+                _alter(
+                    cursor,
+                    f"ALTER TABLE {table} ADD COLUMN {column} {ddl}",
+                    lambda cursor=cursor, table=table, column=column: _column_present(cursor, table, column),
+                )
                 if index:
-                    _alter(cursor, f"ALTER TABLE {table} {index}", lambda cursor=cursor, table=table, index=index: _key_present(cursor, table, index.split()[2]))
+                    _alter(
+                        cursor,
+                        f"ALTER TABLE {table} {index}",
+                        lambda cursor=cursor, table=table, index=index: _key_present(cursor, table, index.split()[2]),
+                    )
     with connection.cursor() as cursor:
         for table, column, width in WIDEN:
-            cursor.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "
-                           "AND table_name = %s AND column_name = %s", (table, column))
+            cursor.execute(
+                "SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "
+                "AND table_name = %s AND column_name = %s",
+                (table, column),
+            )
             row = cursor.fetchone()
             if row and row[0] is not None and row[0] < width:
                 cursor.execute(f"ALTER TABLE {table} MODIFY {column} VARCHAR({width})")
@@ -258,8 +298,14 @@ def check():
             new_by_source = {row[0]: row[1] for row in cursor.fetchall()}
             cursor.execute("SELECT COUNT(DISTINCT fuzzy_key) FROM v7_jobs WHERE status = 'NEW'")
             distinct_new = cursor.fetchone()[0]
-    return {"connected": True, "tables_in_db": total, "jobs_by_status": by_status, "new_by_source": new_by_source,
-            "distinct_new_by_fuzzy_key": distinct_new, **result}
+    return {
+        "connected": True,
+        "tables_in_db": total,
+        "jobs_by_status": by_status,
+        "new_by_source": new_by_source,
+        "distinct_new_by_fuzzy_key": distinct_new,
+        **result,
+    }
 
 
 if __name__ == "__main__":

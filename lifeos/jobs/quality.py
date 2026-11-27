@@ -1,14 +1,44 @@
 """Precision guards: is this URL a single job page, and is this text a real job description? Pure functions."""
+
 import re
 from urllib.parse import parse_qs, urlsplit
 
-GENERIC_LAST = {"search", "jobs", "job", "careers", "career", "openings", "positions", "vacancies", "join-us", "join",
-                "apply", "application", "all", "listings", "opportunities", "work-with-us", "teams", "locations"}
-ATS_FORM_SUFFIX = ("breezy.hr", "lever.co", "workable.com", "ashbyhq.com", "recruitee.com", "applytojob.com", "jobvite.com")
+GENERIC_LAST = {
+    "search",
+    "jobs",
+    "job",
+    "careers",
+    "career",
+    "openings",
+    "positions",
+    "vacancies",
+    "join-us",
+    "join",
+    "apply",
+    "application",
+    "all",
+    "listings",
+    "opportunities",
+    "work-with-us",
+    "teams",
+    "locations",
+}
+ATS_FORM_SUFFIX = (
+    "breezy.hr",
+    "lever.co",
+    "workable.com",
+    "ashbyhq.com",
+    "recruitee.com",
+    "applytojob.com",
+    "jobvite.com",
+)
 PLACEHOLDER = re.compile(r"%[A-Z][A-Z0-9_]{4,}%")
 LISTING_HINT = re.compile(r"(\b\d+ Locations\b|\bHybrid Remote,|\bRemote,\s*$|\bOn-?site,\s*$)", re.M)
-JD_WORDS = re.compile(r"responsibilit|qualification|requirement|experience|you will|you'll|we are looking|about the (role|job|"
-                      r"position|team)|skills|benefits|what you|who you are", re.I)
+JD_WORDS = re.compile(
+    r"responsibilit|qualification|requirement|experience|you will|you'll|we are looking|about the (role|job|"
+    r"position|team)|skills|benefits|what you|who you are",
+    re.I,
+)
 
 
 def canonical_job_url(url):
@@ -22,12 +52,34 @@ def canonical_job_url(url):
     return url
 
 
-JOB_ID_PARAMS = {"gh_jid", "jid", "job_id", "jobid", "jobref", "job_ref", "job", "ashby_jid", "lever_jid", "req", "req_id", "reqid", "requisition",
-                 "requisition_id", "posting", "posting_id", "vacancy", "vacancy_id", "opening", "opening_id", "position_id", "positionid", "id"}
+JOB_ID_PARAMS = {
+    "gh_jid",
+    "jid",
+    "job_id",
+    "jobid",
+    "jobref",
+    "job_ref",
+    "job",
+    "ashby_jid",
+    "lever_jid",
+    "req",
+    "req_id",
+    "reqid",
+    "requisition",
+    "requisition_id",
+    "posting",
+    "posting_id",
+    "vacancy",
+    "vacancy_id",
+    "opening",
+    "opening_id",
+    "position_id",
+    "positionid",
+    "id",
+}
 
 
-HOST_ID_PARAMS = {"greenhouse.io": {"token"},
-                  "eightfold.ai": {"pid"}}
+HOST_ID_PARAMS = {"greenhouse.io": {"token"}, "eightfold.ai": {"pid"}}
 
 
 def _id_in_query(query, host=""):
@@ -38,7 +90,10 @@ def _id_in_query(query, host=""):
     for suffix, extra in HOST_ID_PARAMS.items():
         if host == suffix or host.endswith("." + suffix):
             names |= extra
-    return any(key.lower() in names and any(len(v) >= 3 and re.search(r"\d", v) for v in values) for key, values in query.items())
+    return any(
+        key.lower() in names and any(len(v) >= 3 and re.search(r"\d", v) for v in values)
+        for key, values in query.items()
+    )
 
 
 def url_problem(url):

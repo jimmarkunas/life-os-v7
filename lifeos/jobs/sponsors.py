@@ -4,6 +4,7 @@ The register is loaded into `v7_sponsors` by lifeos.sources.discovery.sponsor_re
 equality of the employer name (lifeos.jobs.names), never a fuzzy score. States: POSITIVE (on the register), NEGATIVE
 (register loaded, employer not on it), UNRESOLVED (no register, an empty company, or a recruiter/intermediary).
 """
+
 from lifeos.jobs import names, store
 from lifeos.jobs.lanes import NEGATIVE, POSITIVE, UNRESOLVED
 
