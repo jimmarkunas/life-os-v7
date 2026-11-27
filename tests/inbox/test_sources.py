@@ -11,6 +11,7 @@ from lifeos.inbox import inbox, policy, sources
 from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.jira import Jira
 from tests.inbox import fixtures as F
+from tests.kit.readers import opener
 
 BASE = "https://jira.example.test"
 WRITES = ("post", "request", "insert", "update", "delete", "create_sprint", "set_sprint_state", "move_issues")
@@ -23,16 +24,6 @@ def issue(key="LIFE-1", status="Human UAT", assignee="acct-1", due=None):
 def event(id="e1", status="confirmed"):
     return {"id": id, "htmlLink": f"https://cal.example.test/{id}", "summary": F.SAME_TITLE, "status": status, "updated": "2026-11-14T19:30:00.000Z",
             "start": {"dateTime": "2026-11-14T16:00:00-06:00", "timeZone": "America/Chicago"}}
-
-
-def opener(rows, error=None):
-    def open_reader(credential_ref):
-        def read(*args):
-            if error:
-                raise error
-            return rows
-        return read
-    return open_reader
 
 
 def jira_src(workspace, rows=None, error=None, **kw):

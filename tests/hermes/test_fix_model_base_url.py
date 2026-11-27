@@ -1,11 +1,11 @@
 """model.base_url points at OpenRouter while the provider is openai-codex."""
 import hashlib
 import os
-import shutil
 import stat
 import subprocess
-import tempfile
 import unittest
+
+from tests.kit.hermes_home import HermesHome
 from tests.kit import this_python
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,20 +34,8 @@ def sha(path):
         return hashlib.sha256(handle.read()).hexdigest()
 
 
-class Fix(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        self.home = os.path.join(self.tmp, "hermes")
-        os.makedirs(self.home)
-        self.conf = os.path.join(self.home, "config.yaml")
-        self.write(CONFIG)
-        os.chmod(self.conf, 0o640)
-        self.backup = os.path.join(self.tmp, "backup")
-
-    def write(self, text):
-        with open(self.conf, "w") as handle:
-            handle.write(text)
+class Fix(HermesHome, unittest.TestCase):
+    CONFIG = CONFIG
 
     def run_script(self, *args):
         done = subprocess.run(["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args], capture_output=True, text=True, env=this_python.env())
