@@ -1,4 +1,5 @@
 """Private Interview Advisor contracts and the deterministic compiler into PrepEvidence."""
+
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
@@ -14,13 +15,22 @@ from .prep import normalize as normalize_prep
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _EVIDENCE_ID = re.compile(r"^E-[A-Z0-9]+(?:-[A-Z0-9]+)*$")
 _SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_CODES = {"advisor_input_invalid", "advisor_manifest_invalid", "advisor_source_invalid",
-          "advisor_evidence_invalid", "advisor_draft_invalid", "advisor_ref_missing",
-          "advisor_evidence_missing", "advisor_evidence_inactive", "advisor_compile_too_large"}
+_CODES = {
+    "advisor_input_invalid",
+    "advisor_manifest_invalid",
+    "advisor_source_invalid",
+    "advisor_evidence_invalid",
+    "advisor_draft_invalid",
+    "advisor_ref_missing",
+    "advisor_evidence_missing",
+    "advisor_evidence_inactive",
+    "advisor_compile_too_large",
+}
 
 
 class AdvisorContractError(ValueError):
     """A private-data-safe, fixed-code contract failure."""
+
     def __init__(self, code):
         self.code = code if code in _CODES else "advisor_input_invalid"
         super().__init__(self.code)
@@ -44,9 +54,14 @@ class EvidenceRef:
     version: int
 
     def __post_init__(self):
-        _fail(isinstance(self.evidence_id, str) and len(self.evidence_id) <= 64
-              and _EVIDENCE_ID.fullmatch(self.evidence_id) is not None
-              and type(self.version) is int and self.version > 0, "advisor_evidence_invalid")
+        _fail(
+            isinstance(self.evidence_id, str)
+            and len(self.evidence_id) <= 64
+            and _EVIDENCE_ID.fullmatch(self.evidence_id) is not None
+            and type(self.version) is int
+            and self.version > 0,
+            "advisor_evidence_invalid",
+        )
 
     def canonical(self):
         return f"{self.evidence_id}@{self.version}"
@@ -76,9 +91,13 @@ class CandidateEvidence:
         _fail(isinstance(self.ref, EvidenceRef), "advisor_evidence_invalid")
         _text(self.canonical_text, "advisor_evidence_invalid", 500)
         _text(self.source_ref, "advisor_evidence_invalid", 300)
-        _fail(isinstance(self.tags, tuple) and len(self.tags) <= 16
-              and all(isinstance(tag, str) and tag.strip() and len(tag) <= 80 for tag in self.tags)
-              and type(self.active) is bool, "advisor_evidence_invalid")
+        _fail(
+            isinstance(self.tags, tuple)
+            and len(self.tags) <= 16
+            and all(isinstance(tag, str) and tag.strip() and len(tag) <= 80 for tag in self.tags)
+            and type(self.active) is bool,
+            "advisor_evidence_invalid",
+        )
 
 
 class SourceKind(str, Enum):
@@ -103,13 +122,16 @@ class AdvisorSource:
     active: bool = True
 
     def __post_init__(self):
-        _fail(isinstance(self.source_id, str) and len(self.source_id) <= 120
-              and _SOURCE_ID.fullmatch(self.source_id) is not None and "://" not in self.source_id,
-              "advisor_source_invalid")
+        _fail(
+            isinstance(self.source_id, str)
+            and len(self.source_id) <= 120
+            and _SOURCE_ID.fullmatch(self.source_id) is not None
+            and "://" not in self.source_id,
+            "advisor_source_invalid",
+        )
         _fail(isinstance(self.kind, SourceKind), "advisor_source_invalid")
         _text(self.text, "advisor_source_invalid", 20000)
-        _fail(type(self.version) is int and self.version > 0 and type(self.active) is bool,
-              "advisor_source_invalid")
+        _fail(type(self.version) is int and self.version > 0 and type(self.active) is bool, "advisor_source_invalid")
         if self.kind == SourceKind.GUIDANCE:
             _text(self.text, "advisor_source_invalid", 300)
         if self.kind == SourceKind.ACCEPTED_SIGNAL:
@@ -135,12 +157,19 @@ class AdvisorManifest:
     advisor_prompt_version: str
 
     def __post_init__(self):
-        for name in ("straight_line_version", "game_theory_version", "candidate_profile_version",
-                     "evidence_bank_version", "advisor_prompt_version"):
+        for name in (
+            "straight_line_version",
+            "game_theory_version",
+            "candidate_profile_version",
+            "evidence_bank_version",
+            "advisor_prompt_version",
+        ):
             _text(getattr(self, name), "advisor_manifest_invalid", 80)
         for name in ("straight_line_hash", "game_theory_hash", "candidate_profile_hash", "evidence_bank_hash"):
-            _fail(isinstance(getattr(self, name), str) and _HASH.fullmatch(getattr(self, name)) is not None,
-                  "advisor_manifest_invalid")
+            _fail(
+                isinstance(getattr(self, name), str) and _HASH.fullmatch(getattr(self, name)) is not None,
+                "advisor_manifest_invalid",
+            )
 
 
 @dataclass(frozen=True)
@@ -160,8 +189,7 @@ class AdvisorInputBundle:
         _text(self.role, "advisor_input_invalid", 200)
         _fail(isinstance(self.interview_date, str), "advisor_input_invalid")
         with fixed(ValueError, AdvisorContractError, "advisor_input_invalid"):
-            _fail(date.fromisoformat(self.interview_date).isoformat() == self.interview_date,
-                  "advisor_input_invalid")
+            _fail(date.fromisoformat(self.interview_date).isoformat() == self.interview_date, "advisor_input_invalid")
         _fail(self.interviewer is None or isinstance(self.interviewer, str), "advisor_input_invalid")
         if self.interviewer is not None:
             _text(self.interviewer, "advisor_input_invalid", 200)
@@ -169,23 +197,36 @@ class AdvisorInputBundle:
         _fail((self.interviewer and self.interviewer.strip()) or self.ordinal is not None, "advisor_input_invalid")
         _text(self.source_job_id, "advisor_input_invalid", 160)
         _fail(isinstance(self.manifest, AdvisorManifest), "advisor_manifest_invalid")
-        _fail(isinstance(self.sources, tuple) and len(self.sources) <= 100
-              and all(isinstance(source, AdvisorSource) for source in self.sources), "advisor_input_invalid")
-        _fail(isinstance(self.evidence, tuple) and len(self.evidence) <= 500
-              and all(isinstance(item, CandidateEvidence) for item in self.evidence), "advisor_input_invalid")
+        _fail(
+            isinstance(self.sources, tuple)
+            and len(self.sources) <= 100
+            and all(isinstance(source, AdvisorSource) for source in self.sources),
+            "advisor_input_invalid",
+        )
+        _fail(
+            isinstance(self.evidence, tuple)
+            and len(self.evidence) <= 500
+            and all(isinstance(item, CandidateEvidence) for item in self.evidence),
+            "advisor_input_invalid",
+        )
         source_keys = [(s.source_id, s.version) for s in self.sources]
         evidence_refs = [e.ref.canonical() for e in self.evidence]
         _fail(len(source_keys) == len(set(source_keys)), "advisor_source_invalid")
         _fail(len(evidence_refs) == len(set(evidence_refs)), "advisor_evidence_invalid")
         _fail(bool(self.evidence) and all(item.active for item in self.evidence), "advisor_evidence_invalid")
         _fail(all(source.active for source in self.sources), "advisor_source_invalid")
-        required = {SourceKind.JOB_DESCRIPTION, SourceKind.CANDIDATE_PROFILE,
-                    SourceKind.STRAIGHT_LINE_DOCTRINE, SourceKind.GAME_THEORY_DOCTRINE}
+        required = {
+            SourceKind.JOB_DESCRIPTION,
+            SourceKind.CANDIDATE_PROFILE,
+            SourceKind.STRAIGHT_LINE_DOCTRINE,
+            SourceKind.GAME_THEORY_DOCTRINE,
+        }
         _fail(required.issubset({source.kind for source in self.sources}), "advisor_source_invalid")
-        _fail(not set(source.canonical_ref() for source in self.sources).intersection(evidence_refs),
-              "advisor_input_invalid")
-        _fail(sum(s.kind == SourceKind.GUIDANCE and s.active for s in self.sources) <= 3,
-              "advisor_source_invalid")
+        _fail(
+            not set(source.canonical_ref() for source in self.sources).intersection(evidence_refs),
+            "advisor_input_invalid",
+        )
+        _fail(sum(s.kind == SourceKind.GUIDANCE and s.active for s in self.sources) <= 3, "advisor_source_invalid")
         signal_counts = {}
         for source in self.sources:
             if source.kind == SourceKind.ACCEPTED_SIGNAL and source.active:
@@ -201,7 +242,9 @@ def bundle_digest(bundle: AdvisorInputBundle) -> str:
         "source_job_id": bundle.source_job_id,
         "manifest": manifest,
         "sources": [[s.source_id, s.kind.value, s.version, s.text, s.source_round, s.active] for s in bundle.sources],
-        "evidence": [[e.ref.canonical(), e.canonical_text, e.source_ref, list(e.tags), e.active] for e in bundle.evidence],
+        "evidence": [
+            [e.ref.canonical(), e.canonical_text, e.source_ref, list(e.tags), e.active] for e in bundle.evidence
+        ],
     }
     with fixed((TypeError, ValueError, UnicodeError), AdvisorContractError, "advisor_input_invalid"):
         canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -215,9 +258,12 @@ class GroundedAdvice:
 
     def __post_init__(self):
         _text(self.text, "advisor_draft_invalid", 600)
-        _fail(isinstance(self.source_refs, tuple) and bool(self.source_refs)
-              and all(isinstance(ref, str) and ref.strip() and len(ref) <= 160 for ref in self.source_refs),
-              "advisor_draft_invalid")
+        _fail(
+            isinstance(self.source_refs, tuple)
+            and bool(self.source_refs)
+            and all(isinstance(ref, str) and ref.strip() and len(ref) <= 160 for ref in self.source_refs),
+            "advisor_draft_invalid",
+        )
 
 
 @dataclass(frozen=True)
@@ -263,45 +309,61 @@ class PreInterviewForecast:
 
 
 def _validate_forecast(bundle, forecast):
-    _fail(isinstance(bundle, AdvisorInputBundle) and isinstance(forecast, PreInterviewForecast),
-          "advisor_draft_invalid")
-    _fail(isinstance(forecast.risks, tuple) and 3 <= len(forecast.risks) <= 7
-          and all(isinstance(risk, PreInterviewRisk) for risk in forecast.risks), "advisor_draft_invalid")
+    _fail(
+        isinstance(bundle, AdvisorInputBundle) and isinstance(forecast, PreInterviewForecast), "advisor_draft_invalid"
+    )
+    _fail(
+        isinstance(forecast.risks, tuple)
+        and 3 <= len(forecast.risks) <= 7
+        and all(isinstance(risk, PreInterviewRisk) for risk in forecast.risks),
+        "advisor_draft_invalid",
+    )
     sources = {source.canonical_ref(): source for source in bundle.sources}
     evidence = {item.ref.canonical(): item for item in bundle.evidence}
     hypotheses = set()
     personal_grounding_kinds = {SourceKind.CANDIDATE_PROFILE, SourceKind.GUIDANCE, SourceKind.ACCEPTED_SIGNAL}
     for risk in forecast.risks:
-        for value, limit in ((risk.hypothesis, 300), (risk.why_plausible, 500),
-                             (risk.if_confirmed, 500), (risk.do_not_do, 300)):
-            _fail(isinstance(value, str) and value.strip() == value and bool(value) and len(value) <= limit,
-                  "advisor_draft_invalid")
+        for value, limit in (
+            (risk.hypothesis, 300),
+            (risk.why_plausible, 500),
+            (risk.if_confirmed, 500),
+            (risk.do_not_do, 300),
+        ):
+            _fail(
+                isinstance(value, str) and value.strip() == value and bool(value) and len(value) <= limit,
+                "advisor_draft_invalid",
+            )
         _fail(isinstance(risk.confidence, ForecastConfidence), "advisor_draft_invalid")
         _fail(type(risk.personal_pattern) is bool, "advisor_draft_invalid")
         identity = risk.hypothesis.casefold()
         _fail(identity not in hypotheses, "advisor_draft_invalid")
         hypotheses.add(identity)
-        _fail(isinstance(risk.watch_for, tuple) and 1 <= len(risk.watch_for) <= 5,
-              "advisor_draft_invalid")
+        _fail(isinstance(risk.watch_for, tuple) and 1 <= len(risk.watch_for) <= 5, "advisor_draft_invalid")
         watch_items = set()
         for item in risk.watch_for:
-            _fail(isinstance(item, str) and item.strip() == item and bool(item) and len(item) <= 200,
-                  "advisor_draft_invalid")
+            _fail(
+                isinstance(item, str) and item.strip() == item and bool(item) and len(item) <= 200,
+                "advisor_draft_invalid",
+            )
             _fail(item.casefold() not in watch_items, "advisor_draft_invalid")
             watch_items.add(item.casefold())
-        _fail(isinstance(risk.source_refs, tuple) and bool(risk.source_refs)
-              and all(isinstance(ref, str) for ref in risk.source_refs), "advisor_draft_invalid")
+        _fail(
+            isinstance(risk.source_refs, tuple)
+            and bool(risk.source_refs)
+            and all(isinstance(ref, str) for ref in risk.source_refs),
+            "advisor_draft_invalid",
+        )
         _fail(len(risk.source_refs) == len(set(risk.source_refs)), "advisor_draft_invalid")
         _fail(all(ref in sources for ref in risk.source_refs), "advisor_ref_missing")
-        _fail(isinstance(risk.evidence_refs, tuple)
-              and all(isinstance(ref, str) for ref in risk.evidence_refs), "advisor_draft_invalid")
+        _fail(
+            isinstance(risk.evidence_refs, tuple) and all(isinstance(ref, str) for ref in risk.evidence_refs),
+            "advisor_draft_invalid",
+        )
         _fail(len(risk.evidence_refs) == len(set(risk.evidence_refs)), "advisor_draft_invalid")
-        _fail(all(ref in evidence for ref in risk.evidence_refs),
-              "advisor_evidence_missing")
+        _fail(all(ref in evidence for ref in risk.evidence_refs), "advisor_evidence_missing")
         _fail(risk.certainty_target in ("opportunity", "candidate", "company"), "advisor_draft_invalid")
         if risk.personal_pattern:
-            _fail(any(sources[ref].kind in personal_grounding_kinds for ref in risk.source_refs),
-                  "advisor_ref_missing")
+            _fail(any(sources[ref].kind in personal_grounding_kinds for ref in risk.source_refs), "advisor_ref_missing")
 
 
 def render_forecast(bundle: AdvisorInputBundle, forecast: PreInterviewForecast) -> str:
@@ -311,12 +373,20 @@ def render_forecast(bundle: AdvisorInputBundle, forecast: PreInterviewForecast) 
     sections = ["## Pre-Mortem — How This Interview Could Go Wrong"]
     for risk in forecast.risks:
         evidence_lines = [f"- {evidence[ref]}" for ref in risk.evidence_refs] or ["- None selected"]
-        sections.append("\n".join((f"### {risk.hypothesis}", f"**Confidence:** {risk.confidence.value.upper()}",
-                         f"**Why this is plausible:** {risk.why_plausible}",
-                         "**Watch for:**\n" + "\n".join(f"- {item}" for item in risk.watch_for),
-                         f"**If confirmed:** {risk.if_confirmed}", f"**Do not:** {risk.do_not_do}",
-                         "**Evidence to deploy:**\n" + "\n".join(evidence_lines),
-                         f"**Certainty target:** {risk.certainty_target.title()}")))
+        sections.append(
+            "\n".join(
+                (
+                    f"### {risk.hypothesis}",
+                    f"**Confidence:** {risk.confidence.value.upper()}",
+                    f"**Why this is plausible:** {risk.why_plausible}",
+                    "**Watch for:**\n" + "\n".join(f"- {item}" for item in risk.watch_for),
+                    f"**If confirmed:** {risk.if_confirmed}",
+                    f"**Do not:** {risk.do_not_do}",
+                    "**Evidence to deploy:**\n" + "\n".join(evidence_lines),
+                    f"**Certainty target:** {risk.certainty_target.title()}",
+                )
+            )
+        )
     return "\n\n".join(sections)
 
 
@@ -329,30 +399,42 @@ def _validate_draft(bundle, draft):
     source_refs = {source.canonical_ref() for source in bundle.sources}
     evidence_refs = {item.ref.canonical() for item in bundle.evidence}
     all_refs = source_refs | evidence_refs
-    straight_line_refs = {source.canonical_ref() for source in bundle.sources
-                          if source.kind == SourceKind.STRAIGHT_LINE_DOCTRINE}
-    game_theory_refs = {source.canonical_ref() for source in bundle.sources
-                        if source.kind == SourceKind.GAME_THEORY_DOCTRINE}
+    straight_line_refs = {
+        source.canonical_ref() for source in bundle.sources if source.kind == SourceKind.STRAIGHT_LINE_DOCTRINE
+    }
+    game_theory_refs = {
+        source.canonical_ref() for source in bundle.sources if source.kind == SourceKind.GAME_THEORY_DOCTRINE
+    }
     contextual_refs = all_refs - straight_line_refs - game_theory_refs
     for section in _PRIVATE_SECTIONS:
         items = getattr(draft, section)
-        _fail(isinstance(items, tuple) and len(items) <= 8 and all(isinstance(x, GroundedAdvice) for x in items),
-              "advisor_draft_invalid")
+        _fail(
+            isinstance(items, tuple) and len(items) <= 8 and all(isinstance(x, GroundedAdvice) for x in items),
+            "advisor_draft_invalid",
+        )
         if section in ("straight_line", "game_theory"):
             _fail(bool(items), "advisor_draft_invalid")
         for item in items:
             _fail(len(item.text) <= 600, "advisor_draft_invalid")
             _fail(all(ref in all_refs for ref in item.source_refs), "advisor_ref_missing")
             if section == "straight_line":
-                _fail(any(ref in straight_line_refs for ref in item.source_refs)
-                      and any(ref in contextual_refs for ref in item.source_refs), "advisor_ref_missing")
+                _fail(
+                    any(ref in straight_line_refs for ref in item.source_refs)
+                    and any(ref in contextual_refs for ref in item.source_refs),
+                    "advisor_ref_missing",
+                )
             if section == "game_theory":
-                _fail(any(ref in game_theory_refs for ref in item.source_refs)
-                      and any(ref in contextual_refs for ref in item.source_refs), "advisor_ref_missing")
+                _fail(
+                    any(ref in game_theory_refs for ref in item.source_refs)
+                    and any(ref in contextual_refs for ref in item.source_refs),
+                    "advisor_ref_missing",
+                )
     for section in _CONCLUSION_SECTIONS:
         items = getattr(draft, section)
-        _fail(isinstance(items, tuple) and len(items) <= 5 and all(isinstance(x, GroundedAdvice) for x in items),
-              "advisor_draft_invalid")
+        _fail(
+            isinstance(items, tuple) and len(items) <= 5 and all(isinstance(x, GroundedAdvice) for x in items),
+            "advisor_draft_invalid",
+        )
         for item in items:
             _fail(len(item.text) <= 500, "advisor_compile_too_large")
             _fail(all(ref in all_refs for ref in item.source_refs), "advisor_ref_missing")
@@ -378,6 +460,9 @@ def compile_prep(bundle: AdvisorInputBundle, draft: AdvisorDraft) -> PrepEvidenc
         pressure_points=tuple(item.text for item in draft.pressure_points),
         questions=tuple(item.text for item in draft.questions),
     )
-    with fixed(OverflowError, AdvisorContractError, "advisor_compile_too_large"), fixed((ValueError, TypeError), AdvisorContractError, "advisor_draft_invalid"):
+    with (
+        fixed(OverflowError, AdvisorContractError, "advisor_compile_too_large"),
+        fixed((ValueError, TypeError), AdvisorContractError, "advisor_draft_invalid"),
+    ):
         normalize_prep(result)
     return result

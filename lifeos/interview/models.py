@@ -1,4 +1,5 @@
 """Internal identity evidence; never serialize these records into public logs."""
+
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -37,11 +38,11 @@ class RoundQuery:
     cancelled: bool = False
     meeting: tuple | None = None
     recruiters: tuple = ()
-    recruiters_state: str | None = None        # None: not connected; else "linked" | "none" | "unreadable".
+    recruiters_state: str | None = None  # None: not connected; else "linked" | "none" | "unreadable".
     contacts: tuple = ()
-    contacts_state: str | None = None          # None: no Ledger row linked; else "linked" | "none" | "unreadable".
+    contacts_state: str | None = None  # None: no Ledger row linked; else "linked" | "none" | "unreadable".
     sent_mail: tuple = ()
-    sent_mail_state: str | None = None         # None: Gmail not read; else "read" | "unreadable".
+    sent_mail_state: str | None = None  # None: Gmail not read; else "read" | "unreadable".
     refresh_only: bool = False
 
 
