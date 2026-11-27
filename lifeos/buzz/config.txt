@@ -7,3 +7,6 @@ BUZZ_RECIPIENTS secret Buzz setting (recipients)
 BUZZ_STAGE_CHANNEL input Buzz setting (stage channel)
 BUZZ_STAGE_HERMES_PUBKEY secret Buzz setting (stage hermes pubkey)
 BUZZ_URL_LIFE_OS input Buzz setting (url life os)
+BWSALERTS secret The Bitwarden machine-account token the Oracle ticker already holds (credential bwsalerts), loaded by the governed MCP only to read the two one-hour Todoist access items by id; LIFE-1094 narrows it
+TODOIST_WRITES flag Todoist write operations of the governed MCP: only the exact value on enables them; unset or anything else leaves every write refused
+TODOIST_ALLOWED_PROJECTS input Comma separated Todoist project ids that Todoist create and move may target through the governed MCP; empty refuses both

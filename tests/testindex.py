@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import functools
 import json
 import re
 import os
@@ -20,9 +21,9 @@ FULL_PREFIXES = (
     "tests/kit/",
     ".github/",
     ".claude/",
-    "lifeos/platform/",
     "requirements",
 )  # a change here can affect any test
+INDEX_FULL_PREFIXES = ("lifeos/platform/",)  # the coverage index cannot see what a hub reaches; the import graph can
 FULL_FILES = (
     "docs/PRIVACY.md",
     "pyproject.toml",
@@ -42,7 +43,23 @@ REPO_WIDE = (
     "tests.platform.test_due",
     "tests.jira.test_jira",
 )
-IGNORED_PREFIXES = ("docs/", "tools/")  # docs run the contracts only
+IGNORED_PREFIXES = ("docs/", "tools/")  # docs and tools run the contracts and the tests that name the file
+DATA_SUFFIXES = (
+    ".md",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".txt",
+    ".sh",
+    ".toml",
+    ".csv",
+    ".html",
+    ".js",
+    ".mjs",
+    ".cfg",
+    ".ini",
+)
+SOURCE_ROOTS = ("lifeos/", "tests/", "tools/", "docs/")
 
 
 def dotted(path):
@@ -128,56 +145,112 @@ def contract_modules(root=ROOT):
     return test_modules(root, "tests/contracts")
 
 
-def select(changed, index, root=ROOT):
-    """> FULL, or a sorted list of unittest targets (dotted modules, or dotted test ids)."""
-    if index is None:
-        return FULL
-    changed = [c for c in changed if c]
-    targets = set(contract_modules(root))
-    if any(c.startswith("lifeos/") and c.endswith(".py") for c in changed):
-        targets.update(REPO_WIDE)
-    ids = index["tests"]
-    for path in changed:
-        if path in FULL_FILES or path.endswith(FULL_SUFFIXES) or path.startswith(FULL_PREFIXES):
-            return FULL
-        if "/" not in path and not path.endswith(".md"):
-            return FULL
-        if path.startswith("tests/") and "/" not in path[len("tests/") :]:
-            if path.startswith("tests/test_") and path.endswith(".py"):
-                targets.add(dotted(path))
-                continue
-            return FULL
-        if path.startswith("tests/") and path.endswith(".py"):
-            if os.path.basename(path).startswith("test_"):
-                if (pathlib.Path(root) / path).is_file():
-                    targets.add(dotted(path))
-                continue
-            return FULL
-        if path.startswith(IGNORED_PREFIXES) or path.endswith(".md"):
+@functools.lru_cache(maxsize=4)
+def test_texts(root=ROOT):
+    """{dotted test module: source text}, read once per run."""
+    texts = {}
+    for path in pathlib.Path(root, "tests").rglob("test_*.py"):
+        try:
+            texts[dotted(str(path.relative_to(root)))] = path.read_text(errors="replace")
+        except OSError:
             continue
-        if path.startswith("lifeos/"):
-            rel = path[len("lifeos/") :]
-            package = rel.split("/")[0] if "/" in rel else None
-            mirror = pathlib.Path(root) / "tests" / package if package else None
-            stem = os.path.splitext(os.path.basename(rel))[0]
-            if rel.endswith(".py") and rel in index["covers"] and index["covers"][rel]:
-                targets.update(ids[i] for i in index["covers"][rel])
-                if mirror and mirror.is_dir():
-                    targets.update(dotted(str(p.relative_to(root))) for p in mirror.rglob("test_%s*.py" % stem))
-                elif not package and (pathlib.Path(root) / "tests" / ("test_%s.py" % stem)).is_file():
-                    targets.add("tests.test_%s" % stem)
-                continue
-            if package and mirror.is_dir():  # unknown to the index: the whole mirror folder
-                targets.update(test_modules(root, "tests/" + package))
-                continue
-            if not package and (pathlib.Path(root) / "tests" / ("test_%s.py" % stem)).is_file():
-                targets.add("tests.test_%s" % stem)
-                continue
+    return texts
+
+
+def importers(dotted_name, stem, root=ROOT):
+    """Test modules whose text names the production module (`lifeos.pkg.stem`, or `from lifeos.pkg import stem`)."""
+    package = dotted_name.rsplit(".", 1)[0]
+    pattern = re.compile(
+        r"\b%s\b|from\s+%s\s+import[^\n]*\b%s\b" % (re.escape(dotted_name), re.escape(package), re.escape(stem))
+    )
+    return {name for name, text in test_texts(root).items() if pattern.search(text)}
+
+
+def data_readers(path, root=ROOT):
+    """Test modules whose source names this changed file by its repo path, or by its file name (or, for a script, its
+    stem) when that is distinctive (`codes.json`, `ci_failure_summary`).
+    """
+    base = pathlib.Path(path).name
+    stem = pathlib.Path(path).stem
+    needles = {path} | ({base} if "." in base and len(base) >= 8 else set()) | ({stem} if len(stem) >= 12 else set())
+    return {name for name, text in test_texts(root).items() if any(n in text for n in needles)}
+
+
+def _mirror(rel, package, stem, root, whole):
+    """Test modules that mirror a lifeos file: its package's test folder (the whole folder when `whole`, else the tests
+    named after the file) or, at the top level, tests/test_<stem>.py.
+    """
+    base = pathlib.Path(root) / "tests"
+    if package and (base / package).is_dir():
+        if whole:
+            return set(test_modules(root, "tests/" + package))
+        return {dotted(str(p.relative_to(root))) for p in (base / package).rglob("test_%s*.py" % stem)}
+    if not package and (base / ("test_%s.py" % stem)).is_file():
+        return {"tests.test_%s" % stem}
+    return set()
+
+
+def _targets_for(path, index, reaching, root):
+    """> FULL, or the set of test modules and ids one changed path calls for beyond the contracts. Anything this cannot
+    place is FULL.
+    """
+    root = pathlib.Path(root)
+    name = os.path.basename(path)
+    full_prefixes = FULL_PREFIXES + (INDEX_FULL_PREFIXES if reaching is None else ())
+    if path in FULL_FILES or path.endswith(FULL_SUFFIXES) or path.startswith(full_prefixes):
+        return FULL
+    suffix = os.path.splitext(name)[1]
+    if "/" not in path:
+        return set() if path.endswith(".md") else FULL
+    if path.startswith("tests/"):
+        if path.endswith(".py"):
+            if not name.startswith("test_"):
+                return FULL  # a helper, the shard runner or the selector itself: anything may use it
+            return {dotted(path)} if (root / path).is_file() else set()
+        return data_readers(path, root) or FULL
+    if path.startswith(IGNORED_PREFIXES):
+        if suffix not in DATA_SUFFIXES and suffix != ".py":
             return FULL
+        return data_readers(path, root)
+    if path.startswith("lifeos/"):
+        rel = path[len("lifeos/") :]
+        package = rel.split("/")[0] if "/" in rel else None
+        stem = os.path.splitext(name)[0]
+        found = set()
+        if suffix == ".py":
+            if name == "__init__.py":
+                return _mirror(rel, package, stem, root, True) or FULL
+            module = path[:-3].replace("/", ".")
+            ids = index["tests"] if index else []
+            covered = {ids[i] for i in index["covers"].get(rel, ())} if index else set()
+            found |= covered
+            if reaching is not None:  # the local gate: the import graph and every test that names the module
+                found |= reaching({module}) | importers(module, stem, root)
+            whole = not covered and package != "platform"
+            found |= _mirror(rel, package, stem, root, whole)
+        elif suffix in DATA_SUFFIXES:
+            found |= data_readers(path, root) | _mirror(rel, package, stem, root, True)
+        return found or FULL
+    return FULL
+
+
+def select(changed, index, root=ROOT, reaching=None):
+    """> FULL, or a sorted list of unittest targets (dotted modules, or dotted test ids). The ONE selector: PR CI calls it
+    with the coverage `index`, the local gate with `reaching` (a function from changed lifeos modules to the test modules
+    that reach them through the import graph). With neither it cannot judge, and says FULL; a path it cannot place is
+    FULL too.
+    """
+    if index is None and reaching is None:
         return FULL
     known = module_set(root)
+    targets = set(contract_modules(root)) | {m for m in REPO_WIDE if m in known}
+    for path in (c for c in changed if c):
+        found = _targets_for(path, index, reaching, root)
+        if found == FULL:
+            return FULL
+        targets |= found
     targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}
-    targets = {_current(t, known, root) for t in targets}  # ...
+    targets = {_current(t, known, root) for t in targets}  # a renamed test method runs as its module
     modules = {t for t in targets if t in known}
     return sorted(
         t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules)
@@ -244,11 +317,22 @@ def all_tests(root=ROOT):
     return found, skipped
 
 
-def changed_files(base):
-    out = subprocess.run(
-        ["git", "diff", "--name-only", base, "HEAD"], capture_output=True, text=True, cwd=ROOT, check=True
-    ).stdout
-    return [line.strip() for line in out.splitlines() if line.strip()]
+def changed_files(base, root=ROOT, local=False):
+    """> the repo paths changed since `base`, a rename as its old path (deleted) plus its new one. `local` adds what is
+    not committed yet: staged, unstaged and new untracked files.
+    """
+    commands = [["git", "diff", "--name-only", "--no-renames", base, "HEAD"]]
+    if local:
+        commands += [
+            ["git", "diff", "--name-only", "--no-renames", "--cached"],
+            ["git", "diff", "--name-only", "--no-renames"],
+            ["git", "ls-files", "--others", "--exclude-standard"],
+        ]
+    found = []
+    for command in commands:
+        out = subprocess.run(command, capture_output=True, text=True, cwd=root, check=True).stdout
+        found += [line.strip() for line in out.splitlines() if line.strip() and line.strip() not in found]
+    return found
 
 
 def build_command(out):

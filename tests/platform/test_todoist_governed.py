@@ -204,5 +204,67 @@ class Governed(unittest.TestCase):
             g.route("todoist_task_delete", {}, "personal")
 
 
+class FakeBws:
+    def __init__(self, store):
+        self.store, self.calls, self.envs = store, 0, []
+
+    def __call__(self, argv, env=None, **kw):
+        self.calls += 1
+        self.envs.append(env)
+        item = argv[3]
+        out = json.dumps({"id": item, "value": self.store.get(item, "unset")})
+        return type("D", (), {"returncode": 0, "stdout": out})()
+
+
+class Wiring(unittest.TestCase):
+    def wired(self, env, store, fake=None):
+        bws = FakeBws(store)
+        st = g.wire(env, {}, run=bws)
+        st["opener"] = fake or Fake([{"id": "1", "content": "a", "project_id": "p1"}])
+        return st, bws
+
+    def test_nothing_is_configured_without_the_bitwarden_credential_and_writes_default_off(self):
+        st, _ = self.wired({}, {})
+        self.assertEqual((st["bws"], st["writes_enabled"], st["allowed_projects"]), (None, False, set()))
+        self.assertEqual(code("todoist_tasks", {}, st), "not_configured")
+        self.assertEqual(code("todoist_task_complete", {"task_id": "1"}, st), "writes_disabled")
+
+    def test_the_access_tokens_come_from_the_two_alerts_items_are_cached_and_never_in_an_argument(self):
+        from lifeos.platform import todoist_refresh as r
+
+        store = {r.APPS["read"]["access"]: RD, r.APPS["write"]["access"]: RW}
+        st, bws = self.wired({"BWSALERTS": "0.bwstoken", "LIFEOS_BWS_BIN": "bws"}, store)
+        g.run("todoist_tasks", {}, st)
+        g.run("todoist_projects", {}, st)
+        self.assertEqual(bws.calls, 2)  # one read per app, then cached
+        self.assertTrue(all(e["BWS_ACCESS_TOKEN"] == "0.bwstoken" for e in bws.envs))
+        self.assertTrue(all(c[2] == "Bearer " + RD for c in st["opener"].calls))
+
+    def test_an_unset_or_empty_access_item_is_not_configured_never_a_guess(self):
+        from lifeos.platform import todoist_refresh as r
+
+        st, _ = self.wired({"BWSALERTS": "t"}, {r.APPS["read"]["access"]: "unset", r.APPS["write"]["access"]: ""})
+        self.assertEqual(code("todoist_tasks", {}, st), "not_configured")
+
+    def test_writes_need_the_switch_exactly_on_and_a_project_list(self):
+        from lifeos.platform import todoist_refresh as r
+
+        store = {r.APPS["read"]["access"]: RD, r.APPS["write"]["access"]: RW}
+        for value in ("", "true", "ON", "yes"):
+            st, _ = self.wired({"BWSALERTS": "t", "TODOIST_WRITES": value, "TODOIST_ALLOWED_PROJECTS": "p1"}, store)
+            self.assertEqual(
+                code("todoist_task_create", {"content": "x", "project_id": "p1"}, st), "writes_disabled", value
+            )
+        st, _ = self.wired({"BWSALERTS": "t", "TODOIST_WRITES": "on"}, store)
+        self.assertEqual(
+            code("todoist_task_create", {"content": "x", "project_id": "p1"}, st), "projects_not_configured"
+        )
+        st, _ = self.wired(
+            {"BWSALERTS": "t", "TODOIST_WRITES": "on", "TODOIST_ALLOWED_PROJECTS": " p1 , p2 "}, store, Fake()
+        )
+        self.assertEqual(st["allowed_projects"], {"p1", "p2"})
+        self.assertTrue(g.run("todoist_task_create", {"content": "x", "project_id": "p1"}, st)["verified"])
+
+
 if __name__ == "__main__":
     unittest.main()
