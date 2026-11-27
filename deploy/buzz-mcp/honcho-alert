@@ -7,7 +7,7 @@
 `issue` generates 256 random bits, forms the bearer credential `lm1.honcho-alerts.<secret>`, and hands it to `systemd-creds encrypt` through a pipe; it is written only as the root-only 0600 file
 /etc/lifeos-honcho/honcho_alerts_mcp.cred (a unit loads it with LoadCredentialEncrypted=honcho_alerts_mcp:/etc/lifeos-honcho/honcho_alerts_mcp.cred). It never overwrites: a second run prints the same
 hash with `exists`. Prints `honcho-alerts ok sha256=<hex>` or `honcho-alerts exists sha256=<hex>`, never the credential.
-`send` reads the credential from $CREDENTIALS_DIRECTORY/honcho_alerts_mcp (inside a unit) or, as root, by decrypting the file above in memory; it calls the loopback MCP service (127.0.0.1:8787) as that client.
+`send` makes one request with a 60 s timeout and never retries; its failure words are timeout, interrupted, unreachable, http_<code>, malformed_reply, no_credential or the server's own code. `send` reads the credential from $CREDENTIALS_DIRECTORY/honcho_alerts_mcp (inside a unit) or, as root, by decrypting the file above in memory; it calls the loopback MCP service (127.0.0.1:8787) as that client.
 The sender in the Inbox is always `honcho-alerts`, and the same subject updates the same row, so a repeat never adds a second one. Prints `alert created|updated|duplicate` or `alert_failed <reason>`
 (exit 1) and nothing else: no subject text, no credential. Subjects and details must carry no secret and no personal data."""
 import base64
@@ -15,8 +15,10 @@ import hashlib
 import json
 import os
 import secrets
+import socket
 import subprocess
 import sys
+import http.client
 import urllib.error
 import urllib.request
 
@@ -24,6 +26,18 @@ CRED_NAME = "honcho_alerts_mcp"
 CRED_FILE = os.environ.get("HONCHO_ALERT_CRED_FILE", "/etc/lifeos-honcho/honcho_alerts_mcp.cred")
 URL = os.environ.get("HONCHO_ALERT_URL", "http://127.0.0.1:8787/mcp")
 CLIENT = "honcho-alerts"
+
+
+def _timeout():
+    """The one request's timeout in seconds: 60 (a send_to_jim can take about 22 s; 20 s was too short), HONCHO_ALERT_TIMEOUT_S only for tests."""
+    try:
+        value = float(os.environ.get("HONCHO_ALERT_TIMEOUT_S") or 60)
+    except ValueError:
+        return 60.0
+    return value if 0 < value <= 120 else 60.0
+
+
+TIMEOUT_S = _timeout()
 URGENCY = ("Now", "Today", "This week", "FYI")
 
 
@@ -74,14 +88,28 @@ def send(subject, details, urgency):
         args["details"] = details[:1500]
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": "send_to_jim", "community": "life-os", "arguments": args}}}
     request = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Accept": "application/json", "Authorization": "Bearer " + token})
+    # Exactly one request, never retried: a timeout or a dropped reply is AMBIGUOUS (the write may have been committed), and a resend of the same
+    # sender and subject updates the same Inbox row, so the next alert run is the only safe retry.
     try:
-        with urllib.request.urlopen(request, timeout=20) as reply:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_S) as reply:
             out = json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
     except urllib.error.HTTPError as error:
         print(f"alert_failed http_{error.code}")
         return 1
-    except (OSError, ValueError, KeyError, IndexError, TypeError):
+    except (TimeoutError, socket.timeout):
+        print("alert_failed timeout")
+        return 1
+    except urllib.error.URLError as error:
+        print("alert_failed timeout" if isinstance(error.reason, (TimeoutError, socket.timeout)) else "alert_failed unreachable")
+        return 1
+    except (ConnectionResetError, BrokenPipeError, http.client.HTTPException):
+        print("alert_failed interrupted")
+        return 1
+    except OSError:
         print("alert_failed unreachable")
+        return 1
+    except (ValueError, KeyError, IndexError, TypeError):
+        print("alert_failed malformed_reply")
         return 1
     data = out.get("data") if isinstance(out, dict) and out.get("ok") else None
     word = next((w for w in ("created", "updated", "duplicate") if isinstance(data, dict) and data.get(w)), None)
