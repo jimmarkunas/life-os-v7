@@ -1,0 +1,161 @@
+{
+ "covered_ids": [
+  "FAKE-DEC-001",
+  "FAKE-DEC-002",
+  "FAKE-DEC-004",
+  "FAKE-ISS-001",
+  "FAKE-ISS-002",
+  "FAKE-ISS-003",
+  "FAKE-ISS-004",
+  "FAKE-NOTE-001",
+  "FAKE-PR-001",
+  "FAKE-PR-002",
+  "FAKE-PR-003",
+  "FAKE-REQ-001",
+  "FAKE-REQ-002",
+  "FAKE-REQ-003",
+  "FAKE-REQ-101",
+  "FAKE-TASK-001",
+  "FAKE-TASK-002",
+  "FAKE-UAT-001",
+  "FAKE-UAT-002"
+ ],
+ "dependency_case_ids": [
+  "D1",
+  "D2",
+  "D3"
+ ],
+ "eligible_question_ids": [
+  "Q01",
+  "Q02",
+  "Q03",
+  "Q04",
+  "Q06",
+  "Q07",
+  "Q09",
+  "Q10",
+  "Q11",
+  "Q12",
+  "Q13",
+  "Q14",
+  "Q15",
+  "Q16",
+  "Q17",
+  "Q18",
+  "Q19"
+ ],
+ "not_covered_ids": [
+  "FAKE-DEC-003",
+  "FAKE-DEC-101",
+  "FAKE-ISS-101",
+  "FAKE-NOTE-002",
+  "FAKE-NOTE-003",
+  "FAKE-NOTE-101"
+ ],
+ "not_eligible_question_ids": [
+  "Q05",
+  "Q08",
+  "Q20"
+ ],
+ "note": "Frozen structured-fact denominators and paraphrases for the retained um-t2-fixture-v1 workspace.",
+ "paraphrases": [
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-REQ-001"
+   ],
+   "id": "P01",
+   "split": "dev",
+   "tenant": "alpha",
+   "text": "Tell me the requirement about exporting a project as an offline bundle."
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-DEC-002"
+   ],
+   "id": "P02",
+   "split": "heldout",
+   "tenant": "alpha",
+   "text": "By default, after how many days does a shared link stop working?"
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-ISS-003"
+   ],
+   "id": "P03",
+   "split": "dev",
+   "tenant": "alpha",
+   "text": "Which issue is about the expiry timer for share links?"
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-PR-002"
+   ],
+   "id": "P04",
+   "split": "heldout",
+   "tenant": "alpha",
+   "text": "Which pull request implements the share link expiry timer?"
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-NOTE-001"
+   ],
+   "id": "P05",
+   "split": "dev",
+   "tenant": "alpha",
+   "text": "Who owns the beta release?"
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-REQ-101"
+   ],
+   "id": "P06",
+   "split": "heldout",
+   "tenant": "beta",
+   "text": "What is required of the offline export bundle for beta?"
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-UAT-001"
+   ],
+   "id": "P07",
+   "split": "dev",
+   "tenant": "alpha",
+   "text": "Which acceptance test checks the offline export bundle?"
+  },
+  {
+   "category": "paraphrase",
+   "expect_ids": [
+    "FAKE-TASK-001"
+   ],
+   "id": "P08",
+   "split": "heldout",
+   "tenant": "alpha",
+   "text": "Which task is responsible for the migration notes?"
+  },
+  {
+   "category": "absent",
+   "expect_ids": [],
+   "id": "P09",
+   "split": "dev",
+   "tenant": "alpha",
+   "text": "What is the catering budget for the launch event?"
+  },
+  {
+   "category": "absent",
+   "expect_ids": [],
+   "id": "P10",
+   "split": "heldout",
+   "tenant": "alpha",
+   "text": "Which colour is the company mascot?"
+  }
+ ],
+ "version": 1,
+ "workspace": "um-t2-fixture-v1"
+}
