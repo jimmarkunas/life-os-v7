@@ -20,6 +20,8 @@ def issue(key, status="To Do", due=None, kind="Task", parent=None):
         "status": {"name": status, "statusCategory": {"key": "done" if status == "Done" else "new"}},
         "issuetype": {"name": kind, "subtask": kind == "Sub-task"},
         "duedate": due,
+        "resolution": {"name": "Done"} if status == "Done" else None,
+        "labels": [],
     }
     if parent:
         fields["parent"] = {"key": parent}
@@ -29,7 +31,7 @@ def issue(key, status="To Do", due=None, kind="Task", parent=None):
 class Board:
     """A synthetic project: answers each of the view's queries from fixed lists."""
 
-    def __init__(self, project, sprint, outside, done=()):
+    def __init__(self, project, sprint, outside, done=(), future=(), sprints=None):
         self.project, self.sprint, self.outside, self.done, self.queries = (
             project,
             list(sprint),
@@ -37,11 +39,17 @@ class Board:
             list(done),
             [],
         )
+        self.future, self.sprints = list(future), dict(sprints or {})
 
     def get(self, path, params):
+        if path.startswith("/rest/agile/1.0/issue/"):
+            name = self.sprints.get(path.rsplit("/", 1)[1])
+            return {"fields": {"sprint": {"name": name} if name else None}}
         jql = params["jql"]
         self.queries.append(jql)
-        if "statusCategory = Done" in jql:
+        if "sprint in futureSprints()" in jql:
+            rows = self.future
+        elif "statusCategory = Done" in jql:
             rows = self.done
         elif "sprint not in openSprints()" in jql:
             rows = self.outside

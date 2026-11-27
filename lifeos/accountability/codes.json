@@ -229,5 +229,12 @@
     false,
     "The Q4 baseline for a goal has incomplete evidence, so no figure is reconstructed.",
     "Report the gap; add evidence to the membership file only when Jim or Matt approves it."
+  ],
+  "ACCOUNTABILITY_WEEK_SPRINT_UNREAD": [
+    "accountability",
+    "blocked",
+    false,
+    "An overdue issue in a future sprint has no readable sprint name.",
+    "Nothing was written; the week region is stamped DEGRADED and keeps its last body until the sprint reads."
   ]
 }
