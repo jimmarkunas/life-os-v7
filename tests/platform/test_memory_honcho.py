@@ -540,6 +540,21 @@ class Ask(unittest.TestCase):
         self.assertEqual(raised.exception.reason, "memory_unavailable")
 
 
+class AnswerRule(unittest.TestCase):
+    """LIFE-1064: recall hands the reading agent candidates ranked by topic; the agent decides, so every recall says so."""
+
+    def test_recall_carries_the_answer_rule_and_its_description_states_it(self):
+        out = run("memory_recall", {"workspace": "Personal", "query": "anything"}, FakeHoncho())
+        self.assertEqual((out["answer_rule"], out["count"]), (mh.ANSWER_RULE, 0))
+        self.assertIn(mh.ANSWER_RULE, mh.OPS["memory_recall"][0])
+        self.assertIn("candidates ranked by topic, not answers", mh.ANSWER_RULE)
+        self.assertIn("nothing stored answers", mh.ANSWER_RULE)
+
+    def test_ask_is_described_as_metered_and_second_to_recall(self):
+        self.assertTrue(mh.OPS["memory_ask"][0].startswith("Metered: use memory_recall first"))
+        self.assertIn("it is free", mh.OPS["memory_recall"][0])
+
+
 class Wiring(unittest.TestCase):
     def test_the_five_operations_are_registered_and_ask_is_a_read_in_the_workspaces_tenant(self):
         self.assertEqual(
