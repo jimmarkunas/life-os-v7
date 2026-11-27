@@ -548,8 +548,8 @@ test('the panel wires removing agents and @mentions: markup, scripts, loader, wo
 })
 
 // v0.13.0: wake an agent through its Orca terminal (what Buzz's harness does, with Orca's terminal API).
-const TERM_A = 'term_097d19e2-a76f-4b8c-bc2a-eaeb238849e1'
-const TERM_B = 'term_16aa60b6-71ae-45b6-80e5-f84178b765ea'
+const TERM_A = 'term_00000000-0000-0000-0000-00000000103d'
+const TERM_B = 'term_00000000-0000-0000-0000-00000000103e'
 
 test('parseWho keeps each agent\'s task text and drops the "(Ns ago)" tail', () => {
   const agents = parseWho(`Who's here\n  claude-code:898a1d54 live/active          Available in the Concord Room (terminal ${TERM_A})  (0s ago)\n  codex:35be1109     idle/active          -  (1205s ago)\n`)

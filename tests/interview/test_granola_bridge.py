@@ -138,7 +138,7 @@ class Bridge(unittest.TestCase):
     def test_zero_or_two_meetings_on_the_pinned_day_stops_before_any_fetch(self):
         for meetings in (
             [],
-            [MEETING, dict(MEETING, id="2f2a1c6e-1b7a-4c1e-9d55-0a1b2c3d4e5f", start="2026-10-13T19:00:00Z")],
+            [MEETING, dict(MEETING, id="00000000-0000-0000-0000-000000001031", start="2026-10-13T19:00:00Z")],
         ):
             seen = []
             out = go_run(oracle(meetings, sink=seen), FakeNotion())

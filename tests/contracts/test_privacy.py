@@ -57,34 +57,17 @@ BITWARDEN_ID_PATHS = (
     "docs/NOTION_INTEGRATIONS.md",
 )  # Bitwarden secret ids by design
 RANDOM_ID_FILES = {
-    "docs/MASTER_ROADMAP.md": "OpenClaw run ids quoted as evidence",
     "docs/platform/shared-read-oracle-runbook.md": "the Jira cloud id inside an Atlassian gateway URL",
-    "lifeos/platform/alert_store.py": "public vendor job ids used as sample values",
-    "lifeos/probe.py": "public vendor job ids used as sample values",
-    "tests/contracts/test_settings_workflows.py": "random fake source id",
-    "tests/contracts/test_workflow.py": "random fake secret values that prove masking",
-    "tests/edge/buzzguard/test_room_context.py": "ascending fake channel id",
-    "tests/edge/secrets/test_lifeos_secret_use.py": "the Jira cloud id inside an Atlassian gateway URL",
-    "tests/interview/support.py": "fake meeting id",
-    "tests/interview/test_granola_bridge.py": "fake meeting id",
-    "tests/jobs/test_ats_detail.py": "vendor job ids in sample URLs",
-    "tests/jobs/test_enrich.py": "vendor job ids in sample URLs",
-    "tests/jobs/test_publish.py": "vendor job ids in sample URLs",
-    "tests/jobs/test_quality.py": "vendor job ids in sample URLs",
-    "tests/platform/settings_fixture.py": "random fake source id",
-    "tests/platform/test_alert_store.py": "public vendor job ids used as sample values",
-    "tests/platform/test_runtime_config.py": "random fake source id",
-    "tests/sources/test_granola_auto.py": "fake meeting id",
-    "tests/sources/test_granola_clients.py": "fake meeting id",
-    "tests/sources/web/test_titlewatch.py": "vendor job ids in sample URLs",
+    "lifeos/platform/alert_store.py": "Bitwarden secret ids for the alert settings",
+    "lifeos/probe.py": "public vendor job ids the live probe requests",
     "tests/contracts/test_privacy.py": "this check's own random sample",
-    "tools/orca-concord-room/test/worker.test.mjs": "random fake terminal ids",
+    "tests/contracts/test_workflow.py": "the Bitwarden secret ids the workflow loaders are checked against",
+    "tests/edge/secrets/test_lifeos_secret_use.py": "the Jira cloud id inside an Atlassian gateway URL",
+    "tests/platform/test_alert_store.py": "Bitwarden secret ids for the alert settings",
 }
 NAMES = re.compile("Mark" + "unas|Matt Jas" + "per|Fusion" + "92|Austin Con" + "sulting")
 NAME_FILES = {
     "widgets/LICENSE": "the copyright holder line of the license text",
-    "lifeos/sources/apps/resume_app.py": "the resume file name pattern the app matches; renaming it is a code change",
-    "tests/hiring/test_resume_app.py": "the resume file name the app is tested against",
     "tests/contracts/test_privacy.py": "this check's own patterns",
 }
 
@@ -227,7 +210,7 @@ class BareIdsAndNames(unittest.TestCase):
     def test_a_random_id_in_a_new_file_fails_but_listed_and_bitwarden_files_pass(self):
         random_id = "9f8e7d6c-5b4a-4938-8271-605f4e3d2c1b"
         self.assertEqual(bare_id_findings([("tests/new.py", random_id)]), [("tests/new.py", "unlisted bare id")])
-        self.assertEqual(bare_id_findings([("tests/contracts/test_workflow.py", random_id)]), [])
+        self.assertEqual(bare_id_findings([("lifeos/probe.py", random_id)]), [])
         self.assertEqual(bare_id_findings([(".github/workflows/domains.yml", random_id)]), [])
 
     def test_synthetic_ids_pass(self):
