@@ -1,10 +1,14 @@
-"""Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into one small private-store table (v7_fit_profile_sync).
+"""Fit profile sync: copy the approved evidence block of the Notion page into the private store.
 
-The Fit profile loader merges that block in (profile.load(..., synced=stored_block())). Runs in its own isolated job (profile-sync.yml) with the store credentials and one Notion read token for the one page (NOTION_FIT_SYNC_PAGE_ID). Nothing writes a secret.
-Input: one JSON code block ({"capabilities": [...], "functions": [...]}, ids "nsync_*", every function "owner": "nsync") and one paragraph "APPROVED HASH: <16 hex>", the content hash of the block Jim approved. A block whose hash differs is NOT adopted.
-Adoption: read page -> parse -> validate (strict keys, size, loads as a Profile) -> approved? -> changed? -> write the row -> read it back. Any failure keeps the stored row as it was. A dry run (the default) does everything except the write.
-Output: one fixed code and counts; the page content is never printed. The reader returns the block only when the stored hash matches the block's recomputed hash; an unreadable store raises ProfileError and the Fit stage then does nothing that run."""
-# Bitwarden stays read-only for everyone. The block's reserved ids and owner mean it can never replace an entry of the secret profile; a stray edit never reaches scoring.
+The table is v7_fit_profile_sync, which profile.load merges in. The Notion page is the authority.
+
+Input: one JSON code block ({"capabilities": [...], "functions": [...]}, ids "nsync_*", every function "owner":
+"nsync") and one paragraph "APPROVED HASH: <16 hex>", the content hash of the approved block; a block whose hash
+differs is NOT adopted. Adoption: read page -> parse -> validate -> approved? -> changed? -> write the row -> read
+it back. Any failure keeps the stored row; a dry run (the default) skips the write. Output: one fixed code and
+counts, never page content. The reader returns the block only when the stored hash matches its recomputed hash; an
+unreadable store raises ProfileError and the Fit stage then does nothing.
+"""
 from hashlib import sha256
 import json
 import os
@@ -21,7 +25,7 @@ ID_PREFIX = "nsync_"
 ALLOWED_KEYS = ("capabilities", "functions")
 MAX_BYTES = 24_000
 MAX_ENTRIES = 80
-_HASH = re.compile(r"^\s*APPROVED HASH:\s*([0-9a-f]{16})\s*$", re.I)       # the WHOLE paragraph: prose that quotes the line is never an approval
+_HASH = re.compile(r"^\s*APPROVED HASH:\s*([0-9a-f]{16})\s*$", re.I)
 ROW_ID = 1
 
 
@@ -34,7 +38,6 @@ def content_hash(block):
 
 
 def read_page(client, page_id):
-    """-> (json text of the first JSON code block, the approved hash or None). Counts only on failure."""
     try:
         children = client.call("GET", f"/blocks/{Client._page_id(page_id)}/children?page_size=100")
     except NotionError as error:
@@ -58,7 +61,9 @@ def read_page(client, page_id):
 
 
 def parse(text):
-    """The managed block, validated by shape only (the secret it lands in is checked separately). Raises SyncError with a fixed code."""
+    """The managed block, validated by shape only (the secret it lands in is checked separately). Raises SyncError
+    with a fixed code.
+    """
     if len(text.encode()) > MAX_BYTES:
         raise SyncError("SYNC_BLOCK_TOO_LARGE")
     with fixed(ValueError, SyncError, "SYNC_BLOCK_NOT_JSON"):
@@ -79,14 +84,13 @@ def parse(text):
 
 
 class Store:
-    """The one row. The connection is the pipeline's own store connection (an SSH tunnel to the private database)."""
 
     def read(self):
         with store.connect() as connection, connection.cursor() as cursor:
             try:
                 cursor.execute("SELECT content_hash, block FROM v7_fit_profile_sync WHERE id = %s", (ROW_ID,))
             except Exception as error:
-                if error.args and error.args[0] == 1146:                  # the table does not exist yet (the schema step has not run since this release): nothing was ever synced
+                if error.args and error.args[0] == 1146:
                     return (None, None)
                 raise
             row = cursor.fetchone()
@@ -103,10 +107,12 @@ class Store:
 
 
 def stored_block(environ=os.environ, vault=None):
-    """-> the approved block the sync stored, or None when nothing has been synced. Raises ProfileError when the store cannot be read or the row does not match its own hash:
-    the caller then treats the profile as unavailable for this run (it never scores against a profile that silently lost its block)."""
+    """-> the approved block the sync stored, or None when nothing has been synced. Raises ProfileError when the
+    store cannot be read or the row fails its own hash: the profile is then unavailable, never scored without its
+    block.
+    """
     if vault is None and not (environ.get("LIFEOS_ACQ_DB_NAME") or "").strip():
-        return None                                                       # no store configured (a unit test, a local run): nothing was ever synced here, and the stage could not write anyway
+        return None
     try:
         digest, block = (vault or Store()).read()
         if block is None:
@@ -117,12 +123,11 @@ def stored_block(environ=os.environ, vault=None):
         return block
     except ProfileError:
         raise
-    except Exception as error:                                            # a store or JSON failure: fixed message, nothing about the data
+    except Exception as error:
         raise ProfileError("synced block unavailable") from error
 
 
 def run(limit, live, environ=os.environ, notion=None, vault=None):
-    """-> counts-only result with one fixed `code`. Everything except the write happens in a dry run."""
     out = {"code": "SYNC_DRY_RUN" if not live else "SYNC_UNCHANGED", "live": bool(live)}
     try:
         page = (environ.get("NOTION_FIT_SYNC_PAGE_ID") or "").strip()

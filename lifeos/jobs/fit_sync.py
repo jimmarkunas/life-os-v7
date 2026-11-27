@@ -1,7 +1,9 @@
-"""Fit sync: put the Fit on pages published before (or without) a score; updates only the page's machine-owned Fit fields.
+"""Fit sync: put the Fit on published pages; updates only the page's machine-owned Fit fields.
 
-Publish only creates; this updates a published page when its stored score is newer than the last sync: LIFE OS Fit, Why It Fits, Fit Authority and, with V7_FIT_GATE, the lane-policy fields
-(Admission Status, Review Reason, Work Mode, Visible Lane, Eligible Lanes). Never touches human state (Applied, Applied On, Saturn Decision) or the title, and runs only after the Job Ledger target check. Counts only."""
+Publish only creates; this updates a published page when its stored score is newer than the last sync: LIFE OS
+Fit, Why It Fits, Fit Authority and, with V7_FIT_GATE, the lane-policy fields. Never touches human state (Applied,
+Applied On, Saturn Decision) or the title, and runs only after the Job Ledger target check. Counts only.
+"""
 
 from lifeos.jobs import lanes, ledger, meta, store
 from lifeos.platform import notion_text
@@ -12,9 +14,7 @@ PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admissio
         " JOIN v7_job_fit f ON f.job_id=j.id LEFT JOIN v7_job_descriptions d ON d.job_id=j.id"
         " WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.score IS NOT NULL"
         " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at OR j.meta_v IS NULL OR j.meta_v < %s) ORDER BY f.scored_at DESC, j.id LIMIT %s")
-# LIFE-212: newest score first. A lane-policy re-score marks every published page due at once; oldest-first then left the pages the Cloud Fit batch had just
-# promoted at the back, and its check failed the run (LEDGER_SYNC_INCOMPLETE) until the whole wave had synced. The wave is finite, so nothing waits forever.
-ROLE_PAGES, ROLE_BATCH = 5, 25                         # Role-only backfill: at most 5 query pages (500 empty Roles) read and 25 pages written per run
+ROLE_PAGES, ROLE_BATCH = 5, 25
 
 
 _now = store.now
@@ -24,7 +24,7 @@ def properties(score, line, admission, reason, work_mode, lane, eligible, gated,
     props = {"LIFE OS Fit": {"number": score}, "Why It Fits": {"rich_text": rich_text(line or "")},
              "Fit Authority": {"select": {"name": "Authoritative"}}}
     if title:
-        props["Role"] = {"rich_text": rich_text(title)}                     # the Ledger's Role column: the job's own title (it was never filled before META_VERSION 2)
+        props["Role"] = {"rich_text": rich_text(title)}
     if gated and admission in lanes.ADMISSION_LABEL:
         props["Admission Status"] = {"select": {"name": lanes.ADMISSION_LABEL[admission]}}
         props["Review Reason"] = {"rich_text": rich_text(reason if admission == lanes.REVIEW and reason else "")}
@@ -35,7 +35,7 @@ def properties(score, line, admission, reason, work_mode, lane, eligible, gated,
             props["Eligible Lanes"] = {"multi_select": [{"name": n} for n in names]}
     if work_mode in ("remote", "hybrid", "onsite", "unknown"):
         props["Work Mode"] = {"select": {"name": work_mode.capitalize()}}
-    if row_meta:                                                       # Location / Work Mode, Market, Visa Route, Compensation
+    if row_meta:
         props.update(meta.properties(row_meta["location"], row_meta["salary"], row_meta["text"], row_meta["route"], eligible, lane or row_meta["lane"]))
     return props
 
@@ -54,31 +54,34 @@ def _text(page, name):
 
 
 def _empty_roles(client, counts):
-    """{page id: Stable Job Key} of every Ledger page whose Role is empty, or None when the Ledger could not be read in full (counted, so an incomplete read is never a zero)."""
+    """{page id: Stable Job Key} of every Ledger page whose Role is empty, or None when the Ledger could not be read
+    in full (counted, so an incomplete read is never a zero).
+    """
     found, cursor = {}, None
     for _ in range(ROLE_PAGES):
         body = {"page_size": 100, "filter": {"property": "Role", "rich_text": {"is_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
         try:
             answer = client.call("POST", f"/data_sources/{client.source}/query", body)
         except NotionError:
-            counts["role_failed"] += 1                                         # an unreadable Ledger leaves every page as it was; the next run asks again
+            counts["role_failed"] += 1
             return None
         results = answer.get("results") if isinstance(answer, dict) else None
         if not isinstance(results, list) or not all(isinstance(page, dict) and page.get("id") for page in results):
-            counts["role_failed"] += 1                                         # an answer that is not a page list is never read as "nothing to fill"
+            counts["role_failed"] += 1
             return None
         found.update({page["id"]: _text(page, "Stable Job Key") for page in results})
         cursor = answer.get("next_cursor") if answer.get("has_more") else None
         if not cursor:
             return found
-    counts["role_incomplete"] = 1                                              # more empty pages than this run reads: say so, never report the part read as the whole
+    counts["role_incomplete"] = 1
     return found
 
 
 def backfill_roles(client, live, limit=ROLE_BATCH):
-    """Fill an EMPTY Role on a Ledger page from the job's own title, whether or not the job has a Fit score or a stored page id. The pages are selected by what Notion actually holds (an empty Role), then matched to
-    v7_jobs by the page's id or its Stable Job Key, so no stored flag stands in for a write and a row whose page id was cleared still finds its page. Once a page reads back with its Role it is never selected again.
-    Writes the Role property only; Fit, Fit Authority, admission, lanes, human state and an existing Role are never touched. Counts say why an empty page was left: no job row, no title, or not a job page."""
+    """Fill an EMPTY Role on a Ledger page from the job's own title. Pages are selected by what Notion holds, then
+    matched to v7_jobs by page id or Stable Job Key, so no stored flag stands in for a write. Writes the Role
+    property only. Counts say why an empty page was left: no job row, no title, or not a job page.
+    """
     counts = {"role_empty": 0, "role_due": 0, "role_filled": 0, "role_failed": 0, "role_no_row": 0, "role_no_title": 0, "role_not_job": 0}
     empty = _empty_roles(client, counts)
     if not empty:
@@ -108,7 +111,7 @@ def backfill_roles(client, live, limit=ROLE_BATCH):
         return counts
     for page_id, title in sorted(titles.items())[:limit]:
         try:
-            client.call_once("PATCH", f"/pages/{page_id}", {"properties": {"Role": {"rich_text": rich_text(title)}}})      # one write, never retried blind: the read-back decides
+            client.call_once("PATCH", f"/pages/{page_id}", {"properties": {"Role": {"rich_text": rich_text(title)}}})
             ok = _text(client.call("GET", f"/pages/{page_id}"), "Role") == title
         except NotionError:
             ok = False
@@ -132,17 +135,17 @@ def run(client, live, gated=False, limit=150):
             client.call("PATCH", f"/pages/{page_id}", {"properties": properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta, title)})
         except NotionError as error:
             state = ledger.page_state(client, page_id)
-            if state == "gone":                                  # the page is in Notion's trash (deleted by hand, or trashed before the store was updated): it refuses every write and will never take this one,
-                counts["page_gone"] = counts.get("page_gone", 0) + 1       # so it is not a failure and is not asked again until the job is re-scored. The audit's trash pass clears the row.
+            if state == "gone":
+                counts["page_gone"] = counts.get("page_gone", 0) + 1
                 _mark_synced(job_id)
                 continue
             counts["failed"] += 1
-            counts["failed_why"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]            # a fixed code (and Notion's own error code), as publish reports it: the failure is diagnosable from the log
-            counts["failed_page"] = state                        # open | unreadable: the page is there (or cannot be read), so the refusal is about the request, not the page
+            counts["failed_why"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]
+            counts["failed_page"] = state
             if counts["failed"] >= 3:
                 break
             continue
         _mark_synced(job_id)
         counts["synced"] += 1
-    counts.update(backfill_roles(client, live))                              # after the main pass, so a scored page's Role arrives with its Fit and this finds only what is left
+    counts.update(backfill_roles(client, live))
     return counts

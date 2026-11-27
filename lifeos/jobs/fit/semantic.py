@@ -1,9 +1,8 @@
 """Optional semantic layer (shadow mode): a small local sentence-embedding model reads paraphrase, nothing else.
 
-It cannot invent anything: it only ranks how close a requirement line is to the phrases of the private profile's own
-capabilities, and the CLASS always comes from that capability (never from the model). Below LOW it is no match
-(fail closed: the requirement stays Unsupported); between LOW and HIGH it is one evidence step weaker than the capability.
-The model runs locally (no text leaves the runner); any failure to load it turns the layer off and scoring is unchanged.
+It only ranks how close a requirement line is to a profile capability's phrases; the CLASS comes from that
+capability. Below LOW it is no match (stays Unsupported); between LOW and HIGH it is one evidence step weaker. Any
+failure to load the model turns the layer off and scoring is unchanged.
 """
 import os
 
@@ -18,13 +17,12 @@ def _dot(a, b):
 
 
 class Matcher:
-    """embed: list[str] -> list[vector] (unit-length vectors, so a dot product is the cosine)."""
 
     def __init__(self, profile, embed):
         self.embed, self.phrases, self.rows = embed, [], []
         for row in [*profile.capabilities, *profile.functions]:
             for text in dict.fromkeys([*row.get("terms", ()), row["label"]]):
-                if len(text) > 3:                    # one- and two-letter terms say nothing in a sentence
+                if len(text) > 3:
                     self.phrases.append(text)
                     self.rows.append(row)
         self.vectors = embed(self.phrases) if self.phrases else []
@@ -37,7 +35,6 @@ class Matcher:
             pass
 
     def best_many(self, texts):
-        """[(row, similarity, class)] per text; row is None below LOW."""
         if not texts or not self.phrases:
             return [(None, 0.0, "unsupported")] * len(texts)
         vecs = self.embed(list(texts))

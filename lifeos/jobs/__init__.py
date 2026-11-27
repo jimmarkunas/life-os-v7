@@ -1,3 +1,3 @@
-"""Jobs OS: found jobs to Ledger pages, their Fit, alerts and retention (D208)."""
+"""Jobs OS: found jobs to Ledger pages, their Fit, alerts and retention."""
 
 __all__ = []

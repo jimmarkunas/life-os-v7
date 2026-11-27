@@ -1,7 +1,9 @@
-"""Pipeline funnel report (D82): where each provider's jobs end up, and how Fit and the lane policy sort them. Read-only, counts only.
+"""Pipeline funnel report: where each provider's jobs end up and how Fit and the lane policy sort them.
 
-For jobs first seen in the last 24 hours and the last 7 days: per source the count by status (found -> resolved -> ready -> published, or the terminal reason), the Fit admission by score band and lane reason,
-and how long since a job was last found and last published (a provider that stops finding or publishing shows up as a growing number). Sources, statuses and reasons are fixed codes; no title, company or link."""
+Read-only. For jobs first seen in the last 24 hours and 7 days: per source the count by status, Fit admission by
+score band and lane reason, and time since a job was last found and published. Sources, statuses and reasons are
+fixed codes.
+"""
 import json
 import re
 from datetime import timedelta
@@ -9,7 +11,7 @@ from datetime import timedelta
 from lifeos.jobs import lanes, store
 
 WINDOWS = (24, 168)
-BANDS = ((60, "lt60"), (68, "60_67"), (72, "68_71"), (80, "72_79"))      # exclusive upper edges; 80 and up is "80_up"
+BANDS = ((60, "lt60"), (68, "60_67"), (72, "68_71"), (80, "72_79"))
 _DIGITS = re.compile(r"\d+")
 
 
@@ -20,13 +22,13 @@ def band(score):
 
 
 def reason_code(reason):
-    return _DIGITS.sub("N", reason or "")[:60] or "none"          # "Fit 67 below 68" -> "Fit N below N"
+    return _DIGITS.sub("N", reason or "")[:60] or "none"
 
 
 def public_code(reason):
-    """reason_code for a PUBLIC log (the funnel report and explain). A stored reason prints only when its code is in the one allowlist of stored
-    reason codes the public diag trace already uses (alertstate.REASONS); a lane reason prints only as its enumerated code (lanes.PUBLIC_REASONS);
-    anything else is "other". No shape is trusted: a lowercase word can be a private rule name (M6I)."""
+    """reason_code for a PUBLIC log: a stored reason prints only if its code is in alertstate.REASONS, a lane reason
+    only as its lanes.PUBLIC_REASONS code, else "other" (a lowercase word can be a private rule name).
+    """
     from lifeos.jobs.alertstate import REASONS                     # noqa: PLC0415 (alertstate imports this module)
     code = reason_code(reason)
     return code if code.replace(" ", "_") in REASONS else lanes.public_reason(reason)
@@ -44,7 +46,6 @@ CANARY_PER_SOURCE = 3
 
 
 def verdict(counts):
-    """flowing | silent | found_none_published | stuck_at_link | stuck_at_read, from one source's 24h status counts."""
     found = sum(counts.values())
     if not found:
         return "silent"
@@ -59,8 +60,7 @@ def verdict(counts):
 
 
 def canary(rows, status_24h):
-    """Per source: a verdict for the last 24 hours and the trace of its newest jobs (fixed codes only): the step each reached, why it stopped,
-    attempts, how its link was proven, Fit admission and score band, age in hours. A provider that breaks shows as a verdict other than flowing."""
+    """Per source: a verdict for the last 24 hours and the trace of its newest jobs (fixed codes only)."""
     per = {}
     for source, st, reason, resolve_n, enrich_n, kind, proof, admission, score, age in rows:
         traces = per.setdefault(source, [])
@@ -73,8 +73,10 @@ def canary(rows, status_24h):
 
 
 def summary(windows):
-    """The short line: per window, the job count at each status, board-sourced (`web:*`) and every other source apart. The full report is over a megabyte and the Actions log viewer drops a line that long, so this line is
-    printed first and alone: a missing or dropped full report must never read as zero."""
+    """The short line: per window, the job count at each status, board-sourced (`web:*`) and every other source
+    apart. It is printed first and alone because the full report exceeds the Actions log line limit; a dropped
+    full report must never read as zero.
+    """
     out = {}
     for name, window in windows.items():
         board, other = {}, {}
@@ -116,5 +118,5 @@ def run(limit, live, now=None):
                            " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s ORDER BY j.first_seen DESC LIMIT 3000",
                            (now, now - timedelta(hours=48)))
             out["canary"] = canary(cursor.fetchall(), out["windows"]["24h"]["status"])
-    print("funnel-summary:", json.dumps(summary(out["windows"]), sort_keys=True))            # before the long report line; see summary()
+    print("funnel-summary:", json.dumps(summary(out["windows"]), sort_keys=True))
     return out

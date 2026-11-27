@@ -1,8 +1,9 @@
-"""LIFE-212 (a) (Jim, Oct 31 2026: "I can't see the backlog ... Add a report"): every job that is not on the Job Ledger yet and not finally bounced, with why it waits.
+"""Every job not on the Job Ledger yet and not finally bounced, with why it waits.
 
-Reads the Jobs store only and writes ONE private Notion page (lifeos.jobs.private_report), dated so each run is its own page; a dry run unless live. The log carries counts
-and fixed codes only. Statuses read: NEW (link not resolved yet), RESOLVED (description not read yet), READY (scored or waiting for a score, not published) and HOLD (parked).
-A READY job's reason comes from its Fit row: awaiting a score, waiting to publish (Admit / Review and its Fit), or excluded by the lane rules."""
+Writes ONE dated private Notion page (lifeos.jobs.private_report) per run; a dry run unless live. The log carries
+counts and fixed codes only. Statuses read: NEW (link unresolved), RESOLVED (description unread), READY (scored or
+awaiting a score, not published) and HOLD.
+"""
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -10,13 +11,13 @@ from lifeos.jobs import store
 
 OPEN = ("NEW", "RESOLVED", "READY", "HOLD")
 ORDER = {"READY": 0, "HOLD": 1, "RESOLVED": 2, "NEW": 3}
-MAX_ROWS = 8000                          # the report page holds at most 98 tables of 90 rows; beyond this the oldest are kept and the summary says how many were left out
+MAX_ROWS = 8000
 CT = ZoneInfo("America/Chicago")
 SQL = ("SELECT j.status, j.unresolved_reason, f.admission, f.admission_reason, f.score, f.cloud_status, j.company, j.title, j.lane, j.source, j.first_seen, j.posted_date,"
        " COALESCE(j.final_apply_url, j.source_url) FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id"
        " WHERE j.notion_page_id IS NULL AND j.status IN ('NEW', 'RESOLVED', 'READY', 'HOLD')")
-# LIFE-212 (Jim, Oct 31 2026: "show me the published vs bounced split"): where the jobs given their one retry in the first run after hold.MISMATCH_AT are now.
-# That run's expire-holds step stamps every job it requeues with the same recovered_at; it can also hold that day's D185 day-6 retries (hold.recover).
+# Jobs given their one retry in the first run after hold.MISMATCH_AT: that run's expire-holds step stamps each
+# requeued job with the same recovered_at.
 RELEASED = ("SELECT j.status, j.source LIKE 'linkedin%%', COUNT(*) FROM v7_jobs j WHERE j.recovered_at = (SELECT MIN(recovered_at) FROM v7_jobs WHERE recovered_at >= %s)"
             " GROUP BY 1, 2")
 OUTCOME = {"PUBLISHED": "on the board", "READY": "still on its way", "RESOLVED": "still on its way", "NEW": "still on its way", "HOLD": "still on its way",
@@ -24,7 +25,6 @@ OUTCOME = {"PUBLISHED": "on the board", "READY": "still on its way", "RESOLVED":
 
 
 def reason(status, why, admission, admission_why, score, cloud):
-    """The one-line reason a job is not on the board yet."""
     if status == "READY":
         if admission is None or score is None:
             return "ready · waiting for a Fit score"
@@ -43,7 +43,7 @@ def _days(now, then):
 
 
 def rows_of(found, now):
-    """-> (report rows, summary counts by reason group). Oldest waiting first within each status; READY first (closest to the board)."""
+    """-> (report rows, summary counts by reason group); oldest waiting first within each status, READY first."""
     out, groups = [], {}
     for status, why, admission, admission_why, score, cloud, company, title, lane, source, first_seen, posted, link in found:
         line = reason(status, why, admission, admission_why, score, cloud)
@@ -58,7 +58,6 @@ def rows_of(found, now):
 
 
 def outcome(status):
-    """A released job's current state in plain words: on the board, still moving, or bounced (and why)."""
     if status in OUTCOME:
         return OUTCOME[status]
     if status == "EXCLUDED_UNRESOLVED":
@@ -67,7 +66,6 @@ def outcome(status):
 
 
 def released_lines(rows):
-    """-> intro lines for the LIFE-212 release split, from RELEASED rows (status, is_linkedin, n)."""
     by = {}
     for status, linkedin, n in rows:
         key = outcome(status)
@@ -80,7 +78,6 @@ def released_lines(rows):
 
 
 def run(limit, live, connect=store.connect, client=None, now=None):
-    """-> counts: total, by reason group, and the report page result (private_report.publish)."""
     from lifeos.jobs import private_report
     from lifeos.platform.notion_client import Client
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)

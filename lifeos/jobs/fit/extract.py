@@ -21,8 +21,8 @@ _SPLIT = re.compile(r",|/|\band\b|\bor\b|&|\bsuch as\b|\be\.g\.|\bincluding\b|\b
 @dataclass(frozen=True)
 class Unit:
     text: str
-    section: str          # summary | required | preferred | duty | skip
-    strict: bool = False  # the heading itself makes it mandatory (Requirements / Minimum / Must have)
+    section: str
+    strict: bool = False
 
     @property
     def norm(self):
@@ -33,14 +33,15 @@ class Unit:
         return self.section == "preferred" or bool(_OPTIONAL.search(self.text))
 
 
-_BULLET = re.compile(r"^(?:[•·▪◦‣–—-]|\*(?!\*)|\d{1,2}[.)])\s")      # LIFE-41: a bullet is content, never a heading ("**Requirements**" is bold, not a bullet)
+_BULLET = re.compile(r"^(?:[•·▪◦‣–—-]|\*(?!\*)|\d{1,2}[.)])\s")
 _ABOUT = re.compile(lexicon.ABOUT_EMPLOYER)
 _ROLE_INTRO = re.compile(lexicon.ROLE_INTRO, re.I)
 
 
 def _heading(line, about=False):
-    """The section a short line opens, or None. `about`: inside an employer's own section a heading must end with its cue word ("Requirements",
-    "What you'll need"), so a product name such as "Northwind Experience Manager" stays employer copy (LIFE-41)."""
+    """The section a short line opens, or None. `about`: inside an employer's own section a heading must end with its
+    cue word ("Requirements", "What you'll need"), so a product name stays employer copy.
+    """
     bare = line.strip(" :*-•#\t").lower()
     if not bare or line.startswith("•") or _BULLET.match(line) or len(bare) > 70 or len(bare.split()) > 9:
         return None
@@ -52,14 +53,11 @@ def _heading(line, about=False):
     return None
 
 
-# D114: equal-opportunity and application-legal sentences sit under a "requirements" heading in some postings (Revolut) and match the requirement shape
-# ("background", "required"). They are not requirements and must never count as gaps.
 _BOILER = re.compile(r"encourage applications|diverse backgrounds?|by submitting (?:this|your) application|equal opportunit|we are committed to|"
                      r"privacy (?:notice|policy)|reasonable adjustments?|regardless of (?:race|gender|age)", re.I)
 
 
 def parse(text):
-    """Units in document order. A line that is a known heading switches section; long paragraphs split to sentences."""
     units, section, strict, about = [], "summary", False, False
     for line in (text or "").split("\n"):
         line = line.strip()
@@ -76,19 +74,20 @@ def parse(text):
         pieces = [line.lstrip("• ").strip()] if line.startswith("•") or len(line) < 220 else \
             [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
         kept = [p for p in pieces if len(p) > 3 and not _BOILER.search(p)]
-        if about:                                                    # LIFE-41: a role introduction inside About is the role summary, from that sentence on
+        if about:
             at = next((i for i, p in enumerate(kept) if _ROLE_INTRO.search(p)), len(kept))
             units += [Unit(p, section, strict) for p in kept[:at]] + [Unit(p, "summary", False) for p in kept[at:]]
             continue
         units += [Unit(p, section, strict) for p in kept]
     if not any(u.section in ("required", "preferred", "duty") for u in units):
-        units = [u if u.section == "skip" else Unit(u.text, "required", False) for u in units]   # no recognisable headings: every non-skip sentence is judged on its shape
+        units = [u if u.section == "skip" else Unit(u.text, "required", False) for u in units]
     return units
 
 
 def gated(unit):
-    """Does a unit state a requirement? Explicit required/preferred bullets with requirement shape, or an
-    anywhere-sentence that says required/must/minimum."""
+    """Does a unit state a requirement? Explicit required/preferred bullets with requirement shape, or a sentence
+    saying required/must/minimum.
+    """
     if unit.section in ("required", "preferred"):
         return bool(_SHAPE.search(unit.text))
     return unit.section in ("summary", "duty") and bool(re.search(r"\b(required|must have|minimum of|requires)\b", unit.text, re.I))
@@ -99,8 +98,7 @@ def requirement_units(units):
 
 
 def platform_hits(units):
-    """Distinct technology terms in requirement-bearing sections, in order of appearance, required first.
-    Returns [(term, optional)]; a term is required when any required-section, non-optional unit names it."""
+    """Distinct technology terms in requirement-bearing sections, required first -> [(term, optional)]."""
     seen = {}
     for u in units:
         if u.section not in ("required", "preferred", "duty"):
@@ -115,8 +113,6 @@ def platform_hits(units):
 
 
 def candidates(units, known):
-    """Capitalised names after 'experience with ...' that the vocabulary does not know (unsupported until the
-    profile says otherwise)."""
     out = {}
     for u in units:
         if u.section not in ("required", "preferred"):
@@ -134,7 +130,6 @@ def candidates(units, known):
 
 
 def max_years(units):
-    """The largest 'N years' demanded by a requirement unit -> (years, unit) or None."""
     best = None
     for u in units:
         if u.section not in ("required", "summary") or u.optional:
@@ -158,7 +153,6 @@ _SCOPE = (
 
 
 def scope_hits(units):
-    """{concept: number-or-True} found in requirement/duty/summary text."""
     found = {}
     for u in units:
         if u.section == "skip":

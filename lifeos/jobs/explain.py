@@ -1,8 +1,9 @@
-"""Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.
+"""Explain: where is every job of one company or source, and why? Counts and fixed codes only.
 
-Input: EXPLAIN_COMPANY (comma separated substrings of the company name or the source id, 3+ letters each; the Hourly `report` input). Output: jobs by status, by status and
-stored reason code, and one short line for every job that is still open (not published, excluded, closed or a duplicate): a six-character hash of its id (never a title,
-company, link or description), its status, Fit score, the decision reason code, the stop reason code and the kind of source. Nothing is written anywhere."""
+Input: EXPLAIN_COMPANY (comma separated substrings of a company name or source id, 3+ letters each). Output: jobs
+by status and reason code, plus one line per still-open job: a six-character hash of its id (never a title,
+company or link), status, Fit score, reason codes and source kind. Writes nothing.
+"""
 import hashlib
 import os
 
@@ -18,7 +19,6 @@ def short(job_id):
 
 
 def summarize(rows):
-    """rows: (id, status, source, score, admission_reason, unresolved_reason) -> counts. Pure."""
     by_status, by_reason, open_jobs = {}, {}, []
     for job_id, status, source, score, why, stop in rows:
         by_status[status] = by_status.get(status, 0) + 1
