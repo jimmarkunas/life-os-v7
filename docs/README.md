@@ -37,6 +37,7 @@ Every markdown file under `docs/`, grouped by area, with what it is for and whet
 - [platform/health-model.md](platform/health-model.md): what pages the phone, what only shows on the report (LIFE-690). Current.
 - [platform/ledger-claim.md](platform/ledger-claim.md): the claim every Job Ledger row creation takes first (LIFE-903). Current.
 - [platform/lint-baseline.md](platform/lint-baseline.md): advisory Ruff starting counts (LIFE-558). Historical baseline.
+- [platform/memory-gateway-plan.md](platform/memory-gateway-plan.md): the plan to finish unified memory and the LIFE OS gateway, phases 1 to 4 with rules, smoke matrix and owner decisions (LIFE-848, LIFE-1078). Current.
 - [platform/mcp-grants-proposed.md](platform/mcp-grants-proposed.md): Buzz publish grants for the chat clients (LIFE-865). Current, active despite the filename.
 - [platform/module-inventory.md](platform/module-inventory.md): inventory of `lifeos/` and the repo as of Nov 9 (LIFE-524). Historical.
 - [platform/monitoring-finish.md](platform/monitoring-finish.md): monitoring wrap-up as of Nov 10 (LIFE-528). Historical.
