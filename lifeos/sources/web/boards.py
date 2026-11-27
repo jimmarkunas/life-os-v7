@@ -1,9 +1,8 @@
 """The employer-board pass: Greenhouse, Ashby and Lever boards read through the shared web run.
 
-Same states, diff, FAILED-is-never-a-removal rule and admission as the priority boards, with bounds: more boards per run
-on fewer workers, a slower refresh unless the board lists a target job, a smaller admission budget, only targets stored
-(a job screened out while still listed is not a removal), and an ATS that keeps answering 429 is skipped for the rest
-of the run (`skipped_after_rate_limit_429`)."""
+Same states, diff and admission as the priority boards, with tighter bounds: more boards per run on fewer workers,
+slower refresh unless the board lists a target job, a smaller admission budget, only targets stored. An ATS that
+keeps answering 429 is skipped for the rest of the run (`skipped_after_rate_limit_429`)."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 import os
@@ -26,8 +25,8 @@ STRONG = re.compile(r"\b(program(?:me)? (?:manag\w*|lead|director|head)|(?:techn
                     r"implementation (?:manag\w*|lead|director|consultant)|product (?:manag\w*|lead|owner|director|head)|(?:director|vp|vice president|head) of product(?! marketing| design)|"
                     r"chief of staff|transformation (?:lead|manag\w*|director|head|program)|pmo|engagement manager|solutions? (?:architect|consultant)|portfolio (?:manag\w*|lead|director)|"
                     r"release manag\w*)\b", re.I)
-# Adjacent: operations, strategy and transformation leadership, only when no other profession or support word appears.
-# Product Marketing is deliberately not passed: Fit cannot tell it from the target family.
+# Adjacent: operations, strategy and transformation leadership, only when no profession or support word appears.
+# Product Marketing is not passed: Fit cannot tell it from the target family.
 ADJACENT = re.compile(r"\b((?:business|strategy (?:and|&)|strategic|technical) operations|(?:director|vp|vice president|head|chief) of (?:operations|strategy)|"
                       r"operations (?:director|lead|manager|head)|strategy (?:and|&) operations|transformation|(?:director|head|vp|vice president)\b[^,]{0,25}\bstrategy|"
                       r"head of (?:technology|engineering) (?:&|and) product)\b", re.I)
@@ -54,7 +53,7 @@ REMOTE = re.compile(r"\bremote\b|\banywhere\b", re.I)
 WHOLE_US = re.compile(r"^\W*(?:united states(?: of america)?|usa?|u\.s\.(?:a\.)?)\W*$", re.I)
 
 
-# A place is non-US only when it names somewhere outside the US and nothing in it is US; otherwise unresolved.
+# non-US only when it names somewhere outside the US and nothing in it is US; otherwise unresolved
 NON_US_NAMED = re.compile(r"\b(algeria|algiers|egypt|cairo|nigeria|lagos|kenya|nairobi|south africa|morocco|tunisia|saudi|riyadh|dubai|uae|qatar|turkey|istanbul|"
                           r"pakistan|karachi|lahore|bangladesh|dhaka|sri lanka|china|shanghai|beijing|shenzhen|hong kong|taiwan|taipei|korea|seoul|vietnam|hanoi|"
                           r"ho chi minh|thailand|bangkok|indonesia|jakarta|malaysia|kuala lumpur|colombia|bogot[a\u00e1]|argentina|buenos aires|brazil|s[a\u00e3]o paulo|"
@@ -67,7 +66,7 @@ NON_US_NAMED = re.compile(r"\b(algeria|algiers|egypt|cairo|nigeria|lagos|kenya|n
                           r"tel[- ]aviv)\b", re.I)
 
 
-INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anywhere)\b", re.I)     # A region that may include the US: unresolved, never non-US.
+INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anywhere)\b", re.I)  # may include the US: unresolved, never non-US
 
 
 def geography(where):
@@ -81,11 +80,8 @@ def geography(where):
 
 
 def screen(job):
-    """Return one named reason per listed job; only reasons starting with "kept_" are stored.
-
-    A US job is presumed remote unless the employer requires office attendance; an unnamed place is kept with
-    `_place_unresolved`.
-    """
+    """One named reason per listed job; only "kept_" reasons are stored. A US job is presumed remote unless the
+    employer requires office attendance; an unnamed place is `_place_unresolved`."""
     title, where, text = job["title"], job["location"] or "", job.get("content") or ""
     tier, why = role(title)
     if not tier:
@@ -123,11 +119,9 @@ class StopOnRateLimit:
 
 
 def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=None, clock=time.monotonic):
-    """Re-read boards already read once (plus curated extras and a forced board); first reads are the backfill's.
-
-    The cap is BOARDS_PER_RUN, or BOARDS_CATCHUP_PER_RUN when BOARDS_MODE=catchup. Boards are read oldest-due first.
-    BOARDS_DEADLINE_MINUTES stops new reads early so the receipt is always written; counts carry it as `receipt`.
-    """
+    """Re-read boards already read once (plus curated extras and a forced board), oldest-due first, at most
+    BOARDS_PER_RUN (BOARDS_CATCHUP_PER_RUN under BOARDS_MODE=catchup). BOARDS_DEADLINE_MINUTES stops new reads
+    early so the receipt is written."""
     environ = os.environ if environ is None else environ
     started = now or web._now()
     began = clock()
@@ -153,11 +147,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
 
 
 def tick(limit, live, now=None, environ=os.environ, running=boards_window.window_running, **kw):
-    """The due-only board pass inside the Jobs tick.
-
-    Runs only while the BOARDS_IN_TICK switch makes the tick the owner and no board window run is queued or running;
-    otherwise it reads nothing and opens no store session.
-    """
+    """The due-only board pass inside the Jobs tick; runs only while BOARDS_IN_TICK makes the tick the owner and no
+    board window run is active, else it reads nothing and opens no store session."""
     out = {"pass": "employer boards (tick)", "owner": boards_window.owner(environ)}
     if out["owner"] != "tick":
         return {**out, "skipped": True, "why": "windows_own"}
@@ -181,7 +172,6 @@ def receipt_markdown(r):
 
 
 def receipt(counts, environ, started, finished, cap, catchup):
-    """Build the per-window receipt: counts and fixed codes only, no board ids."""
     failed_why = counts.get("failed_why") or {}
     hits = {"rate_limited_429": failed_why.get("rate_limited_429", 0), "skipped_after_rate_limit_429": failed_why.get("skipped_after_rate_limit_429", 0)}
     aware = started.replace(tzinfo=timezone.utc)
@@ -206,10 +196,8 @@ def receipt(counts, environ, started, finished, cap, catchup):
 
 
 def backfill(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=os.environ):
-    """Read never-read boards, at most BOARDS_BACKFILL_PER_RUN in id order. Off unless BOARDS_BACKFILL=on.
-
-    "No v7_sources row yet" is the resume cursor. A read board joins the hourly pass; when none is left it reports `drained`.
-    """
+    """Read never-read boards, at most BOARDS_BACKFILL_PER_RUN in id order; off unless BOARDS_BACKFILL=on. "No
+    v7_sources row yet" is the resume cursor; when none is left it reports `drained`."""
     if not switches.state("BOARDS_BACKFILL", environ):
         return {"pass": "employer boards backfill", "backfill": "off"}
     counts = web.run(min(limit, limits.BOARDS_BACKFILL_PER_RUN), live, now, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources,
@@ -228,10 +216,7 @@ def acceptance_band(score):
 
 
 def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sample=600, seed=99, connection=None):
-    """Read-only preview, counts only (`live` ignored): screen a seeded sample of boards and score the kept jobs.
-
-    The store is read only to tell held and published jobs from new ones.
-    """
+    """Read-only preview, counts only (`live` ignored): screen a seeded sample of boards and score the kept jobs."""
     from lifeos.jobs import funnel, identity, store                                             # noqa: PLC0415
     from lifeos.jobs.fit import profile as fit_profile, stage as fit_stage                    # noqa: PLC0415
     pick = random.Random(seed).sample(registry.boards(), min(sample, limit or sample))

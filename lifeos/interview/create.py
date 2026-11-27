@@ -80,7 +80,7 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
 
 
 def begin_adopt(client, page_id, live, out, context=None):
-    """Put one `LIFE OS: adopt` line at the top of a hand-made page and prove every existing block is unchanged."""
+    """Put one adopt line at the top of a hand-made page and prove every existing block is unchanged."""
     blocks = notion.children(client, page_id, [notion.MAX_CALLS], context)
     labels = [notion.text(b) for b in blocks]
     if not blocks or notion.ADOPT in labels or notion.FOLD in labels or notion.JIM_NOTES in labels or any("v7-interview" in label for label in labels):
@@ -117,7 +117,7 @@ def today():
 
 
 def rendered(current, adopted=None, tail=0):
-    """(blocks, source): the machine region plus the first `tail` Jim's Notes blocks (None: all), and its digest."""
+    """(blocks, source): the machine region plus the first `tail` notes blocks (None: all), and its digest."""
     draft = opportunity_page(current, today(), adopted=adopted)
     source = hashlib.sha256(json.dumps(machine_part(draft), sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
     blocks = opportunity_page(current, today(), source, adopted=adopted)
@@ -156,7 +156,6 @@ def hand_lines(lines):
 
 
 def _undone(nodes):
-    """Nodes without the lines the Close and Manage screens append; those are not edits."""
     return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes
             if not any(p.fullmatch(n.get("text", "")) for p in (DONE_LINE, DECISION_LINE, HOLD_LINE, NEXT_LINE, SENT_LINE, UNSENT_LINE))]
 
@@ -187,7 +186,8 @@ def _differing(shown, fresh):
 
 
 def machine_region(client, page_id, context=None):
-    """(machine blocks, fold lines, top blocks): everything before Jim's Notes, minus a trailing Preserved toggle."""
+    """(machine blocks, fold lines, top blocks): everything before the notes heading, minus a trailing Preserved
+    toggle."""
     tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
     heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
     if len(heads) != 1 or not notion.is_fold(tops[0]):
@@ -236,10 +236,8 @@ def finalize(client, page_id, current, sections, before=None):
 
 
 def refresh(client, page_id, current, live, out, context=None, migrate=False):
-    """Bring a page's machine region up to date with its view.
-
-    Only a region this writer wrote (the render line names this job) is replaced; a human edit is preserved, then
-    repaired; anything unrecognized stops with a code and writes nothing."""
+    """Bring a page's machine region up to date with its view. Only a region this writer wrote is replaced; a human
+    edit is preserved, then repaired; anything unrecognized stops with a code."""
     machine, lines, tops = machine_region(client, page_id, context)
     prefold = False
     if machine is None and migrate:
@@ -398,12 +396,12 @@ MEETING = "Meeting link / location: "
 
 
 def round_calendar(client, page_id, budget=None):
-    """(ref, cancelled) recorded by a round page's Logistics callout, (None, False) when none."""
+    """(ref, cancelled) from a round page's Logistics callout, (None, False) when none."""
     return round_logistics(client, page_id, budget)[:2]
 
 
 def round_logistics(client, page_id, budget=None):
-    """(ref, cancelled, meeting), the meeting being (join link, location) or None."""
+    """(ref, cancelled, meeting): meeting is (join link, location) or None."""
     budget = budget or [notion.MAX_CALLS]
     lists = [b for b in notion.children(client, page_id, budget) if b.get("type") == "column_list"]
     columns = notion.children(client, lists[0]["id"], budget) if len(lists) == 1 else []
@@ -466,9 +464,8 @@ def _round_targets(client, page_id, edits, budget, tops=None):
 def transition(client, parent_id, child_id, current, want, live, out, context=None):
     """Move one round page in place to the state a Calendar event gives it (`want`): dated, re-dated or cancelled.
 
-    The page's recorded event reference must equal the event's. Only blocks whose text differs between the two renders
-    change, the identity line last (the commit point). A block reading as neither render is a human edit: preserved,
-    then repaired. Live and Raw Notes must not change."""
+    The page's event reference must equal the event's. Only blocks whose text differs change, the identity line
+    last (the commit point); a human edit is preserved, then repaired. Live and Raw Notes never change."""
     fresh = notion.explicit_child(client, child_id)
     if (fresh is None or fresh.identity_valid is not True or not notion.same_notion_id(fresh.parent_id, parent_id) or not valid_date(want.interview_date)
             or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)):
@@ -554,9 +551,8 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
 
 
 def _create_in_row(client, environ, source, row, parent_query, query, current, blocks, out, context, deferred):
-    """Write a new pursuit's sections onto its Job Ledger row page, creating a Manual row under a claim if none.
-
-    Stage is set to Applied last, so an interrupted run leaves a row no reader lists and the next run finishes it."""
+    """Write a new pursuit's sections onto its Ledger row page, creating a Manual row under a claim if none. Stage is
+    set last, so an interrupted run is finished by the next run."""
     company, role = parent_query.company.strip(), parent_query.role.strip()
     try:
         if row is None:
@@ -739,7 +735,6 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             return finish(check)
         scan = notion.child_scan(client, insertion, context)
         if scan.complete and not any(notion.same_notion_id(c.page_id, page_id) for c in scan.items):
-            # Notion can lag in listing a just-created page: read the new round by id.
             created = notion.explicit_child(client, page_id)
             scan = Scan(scan.items + ((created,) if created else ()), True)
         refreshed = resolve_child(parent, query, scan)

@@ -15,18 +15,15 @@ from .models import Child, Ownership, Parent, Scan
 
 MARKERS = {kind: f"v7-interview:1;owner=machine;kind={kind}" for kind in ("opportunity", "round")}
 PROTECTED = ("Live Notes", "Raw Notes")
-# Typing ADOPT as the first line of an opportunity page hands it to this writer: the line becomes the
-# opportunity marker plus ";adopted=<date>", and everything from the JIM_NOTES heading on stays the person's.
 ADOPT = "LIFE OS: adopt"
 JIM_NOTES = "Jim’s Notes"
 LEGACY_NOTES = "🔒 Jim's notes"
 NOTES = (JIM_NOTES, LEGACY_NOTES)
-# The marker (and a round's identity line) sit in one collapsed toggle at the top; older pages use plain paragraphs.
 FOLD = "⚙️ LIFE OS"
 ROUND_FOLD = "⚙️ LIFE OS · Source Health"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
-PROTECTED_MAX_DEPTH = 12                    # human blocks nest deeper than page scans reach; past this the read fails closed
+PROTECTED_MAX_DEPTH = 12  # past this depth the read fails closed
 PROTECTED_MAX_CALLS = 400
 
 
@@ -59,7 +56,7 @@ def is_fold(block):
 
 
 def machine_lines(client, page_id, size):
-    """(lines, fold): the first `size` machine lines, read from the folded toggle when the first block is one."""
+    """(lines, fold): the first `size` machine lines, read from the folded toggle when there is one."""
     blocks = client.call("GET", f"/blocks/{page_id}/children?page_size={size}")["results"]
     if blocks and is_fold(blocks[0]):
         return client.call("GET", f"/blocks/{blocks[0]['id']}/children?page_size={size}")["results"], blocks[0]
@@ -165,8 +162,7 @@ def _ledger_pages(client, source_id, body, context):
 
 
 def parents_from_ledger(client, source_id, context=None):
-    """Every Job Ledger row whose Stage is set, as a Parent. An incomplete read gives Scan((), False), never a partial
-    list."""
+    """Every Ledger row with Stage set, as a Parent. An incomplete read gives Scan((), False)."""
     try:
         rows = [row for page in _ledger_pages(client, source_id, {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}}, context)
                 for row in page["results"]]
@@ -181,9 +177,7 @@ def parents_from_ledger(client, source_id, context=None):
 
 
 def parents(client, environ, context=None):
-    """The opportunities every reader works from: Ledger rows with Stage, plus page-tree pages no row matches on company
-    AND role. An incomplete read of either is an incomplete scan.
-    """
+    """Ledger rows with Stage plus page-tree pages no row matches; an incomplete read of either is an incomplete scan."""
     tree = parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     source = ((environ or {}).get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip()
     if not source:
@@ -209,9 +203,8 @@ def _ledger_row(row):
 
 
 def ledger_row(client, source_id, company, role, key=None, context=None):
-    """The one Job Ledger row for a pursuit, by Stable Job Key when given, else by Company and Job. Reads completely
-    or not at all. -> (code, row): ledger_row_found, ledger_row_missing, ledger_row_ambiguous (nothing guessed),
-    ledger_unreadable."""
+    """The one Ledger row for a pursuit, by Stable Job Key else Company and Job. -> (code, row) with code
+    ledger_row_found, ledger_row_missing, ledger_row_ambiguous or ledger_unreadable."""
     words = tokens(company)
     if not words or not role.strip():
         return "ledger_unreadable", None
@@ -228,8 +221,7 @@ def ledger_row(client, source_id, company, role, key=None, context=None):
 
 
 def create_ledger_row(client, source_id, company, role, key=None):
-    """A new Manual Ledger row. Stage is set later, as the commit point. One request, never retried: a create whose
-    answer is lost is found by name on the next run."""
+    """A new Manual Ledger row (Stage is set later, as the commit point). One request, never retried."""
     props = {"Job": {"title": rich_text(role)}, "Company": {"rich_text": rich_text(company)}, "Source Types": {"multi_select": [{"name": MANUAL}]}}
     if key:
         props["Stable Job Key"] = {"rich_text": rich_text(key)}
@@ -243,8 +235,7 @@ def set_stage(client, row_id, stage):
 
 
 def ledger_shape(client, source_id, context=None):
-    """GET-only probe: creation is supported when Stage is a select with exactly the six expected options and Source
-    Types offers Manual."""
+    """GET-only probe: True when Stage is a select with the six expected options and Source Types offers Manual."""
     out = {"ledger_stage_options": 0, "insertion_supported": False, "code": "ledger_shape_incomplete"}
     if not source_id:
         out["code"] = "ledger_config_missing"
@@ -279,7 +270,7 @@ def is_legacy_company(environ, company):
 
 
 def legacy_round(block, child):
-    """`Interview 1: Name (9/10/26)` -> the same Child with number, interviewer and date, marked legacy; other titles
+    """`Interview 1: Name (9/10/26)` -> the same Child with number, interviewer and date, marked legacy; else
     unchanged."""
     found = LEGACY_TITLE.match(str((block.get("child_page") or {}).get("title") or ""))
     if not found:
@@ -324,7 +315,7 @@ def child_scan(client, parent_id, context=None, legacy=False):
             if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             found.append(legacy_round(block, child) if legacy and child.identity_valid is None else child)
-        if legacy:                                                              # hand-made `Interview N: Name (m/d/yy)` pages of named pursuits count, by title only
+        if legacy:
             for block, container in _nested_pages(client, blocks, budget, context):
                 if len(found) >= MAX_CALLS:
                     raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
@@ -339,9 +330,7 @@ def child_scan(client, parent_id, context=None, legacy=False):
 
 
 def explicit_child(client, page_id, home=None, via=None):
-    """The page's identity. `home` and `via` describe a page nested in a column or toggle of its parent (`via` is its API
-    parent block).
-    """
+    """The page's identity; `home` and `via` describe a page nested in a column or toggle of its parent."""
     page = client.call("GET", f"/pages/{page_id}")
     if page.get("archived") or page.get("in_trash"):
         return None
@@ -376,7 +365,7 @@ def _subtree(client, block, budget, depth=0):
         return {"id": value.get("id"), "type": value.get("type")}
     body = value.get(value.get("type"))
     if isinstance(body, dict) and body.get("type") == "file" and isinstance(body.get("file"), dict):
-        value[value["type"]] = {**body, "file": {}}                              # a Notion-hosted file's signed URL changes on every read
+        value[value["type"]] = {**body, "file": {}}  # signed file URLs change on every read
     if block.get("has_children"):
         value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
     return value
@@ -387,9 +376,8 @@ def _digest(value):
 
 
 def protected_snapshot(client, page_id, kind="round"):
-    """Call only around an authorized mutation. Hashes ordered anchors and all descendant evidence privately. An
-    opportunity's notes region runs to the end of the page but leaves out child pages (Notion appends new rounds
-    there)."""
+    """Call only around an authorized mutation. Hashes ordered anchors and descendant evidence privately; the notes
+    region runs to the page end but leaves out child pages."""
     budget, regions = [PROTECTED_MAX_CALLS], {}
     labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
@@ -448,9 +436,8 @@ def human_tail(client, page_id, blocks=None):
     return _digest([_subtree(client, b, budget) for b in blocks if b.get("type") != "child_page"])
 
 
-# A column list, column, table or tab is created with its children, and one request carries two levels:
-# write_tree sends each block with the leading children that fit and appends the rest; a column whose first child
-# cannot fit starts with an empty placeholder paragraph, deleted afterwards.
+# Container blocks go in with children, two levels per request: write_tree sends the leading children that fit and
+# appends the rest; a column whose first child cannot fit gets a placeholder paragraph, deleted afterwards.
 MUST, TREE_MAX_CALLS = ("column_list", "column", "table", "tab"), 200
 FULL_WIDTH, TEMPLATE_WAIT = notion_id("FULL_WIDTH_TEMPLATE"), 8
 PLACEHOLDER = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": []}}
@@ -501,9 +488,8 @@ FILLER_MAX = 3
 
 
 def clear_template_filler(client, page_id, budget):
-    """Delete the empty leading paragraphs a template page leaves on a page just created. The first block must be the
-    machine fold or marker, or ownership() reads the page as a human's and it is never refreshed.
-    """
+    """Delete the empty paragraphs a template leaves on a new page; the first block must be the machine fold or
+    marker."""
     top = children(client, page_id, budget)
     gone = 0
     while gone < FILLER_MAX and len(top) - gone > 1:
@@ -517,8 +503,8 @@ def clear_template_filler(client, page_id, budget):
 
 
 def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None, start=False):
-    """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title`; returns the
-    id written into. `start` puts them above existing content. Fails closed (NotionError) on an unwritable shape."""
+    """Write `blocks` under parent_id, or as a new page titled `title`; returns the id written into. `start` puts them
+    above existing content. Raises NotionError on an unwritable shape."""
     budget = budget if budget is not None else [TREE_MAX_CALLS]
     plans = [_shell(block, 0) for block in blocks]
     if any(plan is None for plan in plans):
@@ -533,7 +519,7 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
         if template:
             target = client.call("POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}})["id"]
             time.sleep(TEMPLATE_WAIT)
-            clear_template_filler(client, target, budget)               # a template landing at any time leaves an empty paragraph above the machine fold
+            clear_template_filler(client, target, budget)  # a late template leaves an empty paragraph above the fold
             written = write_tree(client, target, blocks, budget=budget)
             clear_template_filler(client, target, budget)
             return written
@@ -597,7 +583,7 @@ CONTENT = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do", "qu
 
 
 def outline(nodes, depth=0, parent="", icons=True):
-    """The structural outline of a tree (types, nesting, order, layout); text content is data, not structure."""
+    """The structural outline of a tree (types, nesting, order, layout); text is data, not structure."""
     out = []
     for node in nodes:
         kind = node["type"]
@@ -649,9 +635,8 @@ def writable(runs):
 
 
 def preserve(client, page_id, toggle, lines, stamp, after=None):
-    """Copy `lines` verbatim under `stamp` into the page's one Preserved edits toggle and read them back. Any failure is
-    one fixed code.
-    """
+    """Copy `lines` verbatim under `stamp` into the page's Preserved edits toggle and read them back; any failure is
+    one fixed code."""
     batch = [paragraph(stamp)] + [paragraph(line) for line in lines]
     try:
         head = batch[:PRESERVE_BATCH]
@@ -696,8 +681,7 @@ def derived_blocks(client, page_id):
 
 
 def readback(client, page_id, parent_id, kind, before=None):
-    """Verify a held page: live, first block is the machine marker for `kind`, protected content unchanged.
-    `parent_id` unused."""
+    """Verify a held page: live, first block is the machine marker for `kind`, protected content unchanged."""
     try:
         page = client.call("GET", f"/pages/{page_id}")
         if page.get("archived") or page.get("in_trash"):

@@ -1,10 +1,9 @@
 """The existing Recruiters data source, and nothing else: create after absence is proven, read every write back.
 
-Natural key: Week Ending + Recruiter + Company + Role (normalized, no fuzzy matching); two matches are ambiguous
-and nothing changes. A Done row is never reopened and a non-blank What they want is never replaced. A row with
-the same person, week and non-empty Source URL differing only in a blank Company or Role is enriched in place.
-First Contact is set once, on create. A Waiting row gets a Follow-up Date two business days out and returns to
-Needs Action when due; Completed, Dismissed, Done and inactive rows are history."""
+Natural key: Week Ending + Recruiter + Company + Role (normalized); two matches are ambiguous and nothing changes.
+A Done row is never reopened and a non-blank What they want is never replaced. A row for the same person, week and
+non-empty Source URL that differs only in a blank Company or Role is enriched in place. First Contact is set once.
+A Waiting row gets a Follow-up Date two business days out and returns to Needs Action when due."""
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
@@ -114,7 +113,7 @@ def _newer(candidate, existing):
 
 
 def plan(rows, candidate):
-    """-> (action, row, props) with action in "create" | "update" | "existing" | "done" | "ambiguous"."""
+    """-> (action, row, props); action is "create" | "update" | "existing" | "done" | "ambiguous"."""
     found = matches(rows, candidate) or enrichable(rows, candidate)
     if not found:
         return "create", None, None
@@ -144,8 +143,8 @@ FALLBACK_WHAT = "Reply to their message"
 
 
 def what_or_fallback(candidate):
-    """-> (text, used_fallback): the extracted ask, else `Reply to their message about <role or subject>.`; a
-    fallback makes the caller tick Needs review."""
+    """-> (text, used_fallback): the extracted ask, else `Reply to their message about <role or subject>.`; a fallback
+    ticks Needs review."""
     ask = " ".join(str(candidate.get("what") or "").split())
     if ask:
         return ask, False
@@ -179,8 +178,7 @@ def create(notion, candidate):
 
 
 def update(notion, row, props, candidate):
-    """One non-retried update, then prove: same page, Done / Active / Needs review untouched, written values
-    present."""
+    """One non-retried update, then prove: same page, Done / Active / Needs review untouched, written values present."""
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], props)
     found = matches(week_rows(notion, candidate["week_ending"]), candidate)
@@ -295,8 +293,7 @@ CLOSED_STATUSES = ("Completed", "Dismissed", DECLINED)
 
 
 def sync_plan(row):
-    """-> the properties that make Done / Active / Needs review agree with Action Status, or None. Closed statuses:
-    Done on, Active and Needs review off; Needs Action: Done off, Active on."""
+    """-> properties that make Done / Active / Needs review agree with Action Status, or None."""
     if row["action"] in CLOSED_STATUSES:
         return dict(CLOSED_FLAGS) if not _closed_flags(row) else None
     if row["action"] == NEEDS_ACTION and (row["done"] or not row["active"]):
@@ -318,8 +315,7 @@ def disagreeing_rows(notion):
 
 
 def default_follow_up(row):
-    """The reply-by date for a Needs Action row without one: one business day after First Contact, else Last
-    Contact."""
+    """The reply-by date for a Needs Action row without one: one business day after First Contact, else Last Contact."""
     if row["action"] != NEEDS_ACTION or row["done"] or not row["active"] or row["follow_up"]:
         return None
     for field in ("first_contact", "last_contact"):
@@ -342,9 +338,9 @@ def set_props(notion, row, props, expect):
 
 
 def close_row(notion, page_id, status, row=None):
-    """Close ONE row as Completed or Dismissed: Action Status plus Done on, Active and Needs review off, in one
-    write, then read back. A closed row whose flags disagree is repaired; anything else is left alone. ->
-    {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
+    """Close ONE row as Completed or Dismissed (Done on; Active and Needs review off) in one write, then read back; a
+    closed row whose flags disagree is repaired. -> {"status": "recorded" | "already_recorded" | "not_changed",
+    "verified": True, "action"}"""
     if status not in CLOSE_TO:
         raise RecruitersError("RECRUITERS_CLOSE_INVALID")
     if row is None:
