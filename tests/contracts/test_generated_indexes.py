@@ -1,4 +1,4 @@
-"""LIFE-1098: INDEX.md, docs/index.json, docs/README.md and docs/DECISIONS_INDEX.md are generated, never hand-edited."""
+"""INDEX.md, docs/index.json, docs/README.md and docs/DECISIONS_INDEX.md are generated, never hand-edited."""
 
 import sys
 import unittest
