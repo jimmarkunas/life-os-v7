@@ -1,13 +1,13 @@
-"""The Mac stdio bridge relays JSON-RPC with the Keychain credential as a bearer header, answers notifications with
-nothing, and never puts the credential on a command line or in a reply. No network: Keychain, tunnel and HTTP are fakes."""
+"""The Mac stdio bridge relays JSON-RPC to the Oracle service over ssh with the Keychain credential, answers
+notifications with nothing, and never puts the credential on a command line or in a reply. No network: Keychain and
+ssh are fakes."""
 
 import importlib.util
-import io
 import json
 import pathlib
+import subprocess
 import sys
 import unittest
-import urllib.error
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("lifeos_mcp_stdio", ROOT / "tools" / "lifeos_mcp_stdio.py")
@@ -19,33 +19,23 @@ SECRET = "S" * 43
 
 
 class Run:
-    def __init__(self, code=0, out=SECRET):
-        self.code, self.out, self.argv = code, out, None
+    def __init__(self, code=0, out=SECRET, raises=None):
+        self.code, self.out, self.raises, self.calls = code, out, raises, []
 
     def __call__(self, argv, **kw):
-        self.argv = argv
+        self.calls.append((argv, kw))
+        if self.raises:
+            raise self.raises
         return type("R", (), {"returncode": self.code, "stdout": self.out})()
-
-
-class Opener:
-    def __init__(self, reply='{"jsonrpc":"2.0","id":1,"result":{}}', error=None):
-        self.reply, self.error, self.requests = reply, error, []
-
-    def __call__(self, request, timeout):
-        self.requests.append(request)
-        if self.error:
-            raise self.error
-        return io.BytesIO(self.reply.encode())
 
 
 class Keychain(unittest.TestCase):
     def test_the_secret_comes_from_the_keychain_item_and_becomes_an_lm1_token(self):
         run = Run()
         self.assertEqual(bridge.keychain_secret("codex", run), f"lm1.codex.{SECRET}")
-        self.assertEqual(
-            run.argv[:6], ["security", "find-generic-password", "-s", "lifeos-mcp-codex", "-a", "lifeos-mcp"]
-        )
-        self.assertNotIn(SECRET, " ".join(run.argv))
+        argv = run.calls[0][0]
+        self.assertEqual(argv[:6], ["security", "find-generic-password", "-s", "lifeos-mcp-codex", "-a", "lifeos-mcp"])
+        self.assertNotIn(SECRET, " ".join(argv))
 
     def test_a_missing_item_stops_without_printing_anything_secret(self):
         with self.assertRaises(SystemExit) as stop:
@@ -54,54 +44,45 @@ class Keychain(unittest.TestCase):
 
 
 class Relay(unittest.TestCase):
-    def test_a_request_is_posted_with_the_bearer_header_and_its_reply_is_one_line(self):
-        opener = Opener('{"jsonrpc":"2.0",\n"id":1,"result":{"ok":true}}')
-        out = bridge.relay_line(
-            '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n', "http://x/mcp", "lm1.codex.S", opener
-        )
+    def test_a_request_goes_over_ssh_with_the_token_on_stdin_only_and_its_reply_is_one_line(self):
+        run = Run(out='{"jsonrpc":"2.0",\n"id":1,"result":{"ok":true}}')
+        out = bridge.relay_line('{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n', "lm1.codex.S", "/tmp/c", run)
         self.assertEqual(json.loads(out)["result"], {"ok": True})
         self.assertNotIn("\n", out)
-        self.assertEqual(opener.requests[0].get_header("Authorization"), "Bearer lm1.codex.S")
+        argv, kw = run.calls[0]
+        self.assertTrue(kw["input"].startswith("Authorization: Bearer lm1.codex.S\n"))
+        self.assertFalse(any("lm1.codex.S" in a for a in argv))  # never on the ssh command line
+        self.assertIn("opc@lifeos-edge-01", argv)
+        self.assertIn("@/dev/fd/3", argv[-1])  # the header reaches curl through a file descriptor, not argv
 
     def test_a_notification_and_a_blank_line_get_no_reply(self):
-        opener = Opener("")
+        run = Run(out="")
         self.assertIsNone(
-            bridge.relay_line('{"jsonrpc":"2.0","method":"notifications/initialized"}', "http://x/mcp", "t", opener)
+            bridge.relay_line('{"jsonrpc":"2.0","method":"notifications/initialized"}', "t", "/tmp/c", run)
         )
-        self.assertIsNone(bridge.relay_line("   \n", "http://x/mcp", "t", opener))
+        self.assertIsNone(bridge.relay_line("   \n", "t", "/tmp/c", run))
 
-    def test_errors_become_json_rpc_errors_without_the_token(self):
-        for err in (
-            urllib.error.HTTPError("u", 401, "x", {}, io.BytesIO(b'{"error":"invalid_token"}')),
-            OSError("down"),
+    def test_failures_become_json_rpc_errors_without_the_token(self):
+        for run in (
+            Run(code=255, out=""),
+            Run(raises=OSError("down")),
+            Run(raises=subprocess.TimeoutExpired("ssh", 90)),
         ):
-            out = bridge.relay_line(
-                '{"jsonrpc":"2.0","id":7,"method":"tools/list"}', "http://x/mcp", "lm1.codex.S", Opener(error=err)
-            )
+            out = bridge.relay_line('{"jsonrpc":"2.0","id":7,"method":"tools/list"}', "lm1.codex.S", "/tmp/c", run)
             doc = json.loads(out)
-            self.assertEqual(doc["id"], 7)
+            self.assertEqual((doc["id"], doc["error"]["message"]), (7, "lifeos_mcp_unreachable"))
             self.assertNotIn("lm1.codex.S", out)
-        self.assertEqual(
-            json.loads(bridge.relay_line("not json", "http://x/mcp", "t", Opener()))["error"]["code"], -32700
-        )
+        self.assertEqual(json.loads(bridge.relay_line("not json", "t", "/tmp/c", Run()))["error"]["code"], -32700)
+
+    def test_a_non_json_reply_is_wrapped_as_an_error(self):
+        out = bridge.relay_line('{"jsonrpc":"2.0","id":3,"method":"x"}', "t", "/tmp/c", Run(out="<html>"))
+        self.assertEqual(json.loads(out)["error"]["message"], "<html>")
 
 
-class Tunnel(unittest.TestCase):
-    def test_the_tunnel_targets_oracle_loopback_8787_and_carries_no_credential(self):
-        seen = {}
-
-        def popen(argv, **kw):
-            seen["argv"] = argv
-            return type("P", (), {"terminate": lambda self: None})()
-
-        class Conn:
-            def close(self):
-                pass
-
-        bridge.open_tunnel(40123, popen=popen, connect=lambda addr, timeout: Conn())
-        self.assertIn("40123:127.0.0.1:8787", seen["argv"])
-        self.assertEqual(seen["argv"][-1], "opc@lifeos-edge-01")
-        self.assertFalse(any("lm1." in a for a in seen["argv"]))
+class ControlPath(unittest.TestCase):
+    def test_the_multiplex_socket_path_fits_the_macos_limit(self):
+        path = "/tmp/lm-codex-" + "f" * 40  # %C expands to 40 hex characters
+        self.assertLess(len(path), 104)
 
 
 if __name__ == "__main__":
