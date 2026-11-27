@@ -1,7 +1,11 @@
-"""LIFE-1016: code and workflow source say what and why now; ticket history lives in Jira and git. A YAML comment in `.github/workflows-src/` (the parts agents edit) may not name a ticket; `.github/workflows-src/why.yml`, which builds docs/workflows.md, is the one home for ticket numbers there."""
+"""LIFE-1016: code and workflow source say what and why now; ticket history lives in Jira and git. A comment or docstring in `lifeos/` and a YAML comment in `.github/workflows-src/` (the parts agents edit) may not name a ticket (the first with a small allowlist); `.github/workflows-src/why.yml`, which builds docs/workflows.md, is the one home for ticket numbers there."""
+import ast
+import io
+import json
 import pathlib
 import re
 import sys
+import tokenize
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -11,6 +15,23 @@ import wfsrc  # noqa: E402
 
 SRC = ROOT / ".github/workflows-src"
 TICKET = re.compile(r"LIFE-\d+")
+ALLOWLIST = ROOT / "tests" / "contracts" / "ticket_refs_allowlist.json"
+MAX_ALLOWED = 25
+
+
+def prose_refs(path):
+    """-> sorted [(kind, ticket)] for every ticket id in a Python file's comments and docstrings (runtime strings are not prose)."""
+    text = path.read_text(encoding="utf-8")
+    found = []
+    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+        if tok.type == tokenize.COMMENT:
+            found += [("comment", ref) for ref in TICKET.findall(tok.string)]
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                found += [("docstring", ref) for ref in TICKET.findall(first.value.value)]
+    return sorted(found)
 
 
 def comment_refs(text):
@@ -44,6 +65,32 @@ class WorkflowParts(unittest.TestCase):
     def test_the_checker_finds_a_ticket_in_a_comment_but_not_in_a_script_or_a_value(self):
         text = "a:\n  # LIFE-1 says so\n  b: 1  # and LIFE-2\n  run: |\n    echo x  # LIFE-3\n  description: \"LIFE-4 # LIFE-5\"\n"
         self.assertEqual([n for n, _ in comment_refs(text)], [2, 3])
+
+
+class LifeosCode(unittest.TestCase):
+    """A LIFE-nnn in a lifeos/ comment or docstring fails unless ticket_refs_allowlist.json lists it with a reason (at most 25 entries)."""
+
+    def setUp(self):
+        self.allowed = json.loads(ALLOWLIST.read_text(encoding="utf-8"))
+
+    def test_the_allowlist_is_small_and_every_entry_says_why(self):
+        self.assertLessEqual(len(self.allowed), MAX_ALLOWED)
+        for entry in self.allowed:
+            self.assertEqual(sorted(entry), ["path", "reason", "ref"])
+            self.assertRegex(entry["ref"], r"^LIFE-\d+$")
+            self.assertTrue(entry["reason"].strip(), entry)
+
+    def test_no_comment_or_docstring_in_lifeos_names_a_ticket(self):
+        allowed = {(e["path"], e["ref"]) for e in self.allowed}
+        seen, found = set(), []
+        for path in sorted((ROOT / "lifeos").rglob("*.py")):
+            rel = path.relative_to(ROOT).as_posix()
+            for kind, ref in prose_refs(path):
+                seen.add((rel, ref))
+                if (rel, ref) not in allowed:
+                    found.append(f"{rel}: {ref} in a {kind}")
+        self.assertEqual(found, [], "ticket history belongs in Jira and git: say what and why now, or list the id in the allowlist with a reason")
+        self.assertEqual(sorted(allowed - seen), [], "allowlist entries that match no comment or docstring any more: remove them")
 
 
 if __name__ == "__main__":
