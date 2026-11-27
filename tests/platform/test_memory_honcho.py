@@ -632,8 +632,8 @@ class RecallSafeguards(unittest.TestCase):
 
     def test_each_item_carries_its_provenance_class(self):
         by_text = {i["text"]: i["provenance"] for i in self.recall(top_k=3)["items"]}
-        self.assertEqual(by_text["zebra fact 0"], "referenced")  # a ticket key
-        self.assertEqual(by_text["zebra fact 1"], "referenced")  # a link
+        self.assertEqual(by_text["zebra fact 0"], "verified")  # a ticket key
+        self.assertEqual(by_text["zebra fact 1"], "verified")  # a link
         self.assertEqual(by_text["zebra fact 2"], "client-attested")  # the storing client's word only
 
     def test_a_row_changed_or_gone_since_the_query_is_dropped_and_counted_never_shown(self):
