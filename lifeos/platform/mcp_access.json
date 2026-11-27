@@ -78,6 +78,10 @@
    },
    "830066c4d83d9115377ac113b66f0458825f224788917fe6c0fe4fca9d0df763": {
     "honcho": "write"
+   },
+   "68bf39346fc506c33e84041304b353e37b99c9bae5ace3d6c1dc153ca92e5274": {
+    "buzz": "read",
+    "honcho": "read"
    }
   }
  },
@@ -169,6 +173,14 @@
     "credential": "jira-capture"
    },
    "policy_key": "830066c4d83d9115377ac113b66f0458825f224788917fe6c0fe4fca9d0df763"
+  },
+  {
+   "id": "codex",
+   "transport": "http",
+   "facts": {
+    "credential": "codex"
+   },
+   "policy_key": "68bf39346fc506c33e84041304b353e37b99c9bae5ace3d6c1dc153ca92e5274"
   }
  ],
  "grants": [
@@ -1627,6 +1639,34 @@
    "credential_ref": "honcho-memory-token",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-codex-personal-buzz_capabilities",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "buzz",
+   "tool": "buzz_capabilities",
+   "purpose": "buzz-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-codex",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-memory_recall-pm",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "honcho",
+   "tool": "memory_recall",
+   "purpose": "personal-memory",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "mcp-credential-codex",
+   "expires": "2027-02-25",
+   "revoked": false
   }
  ],
  "credentials": [
@@ -1696,6 +1736,16 @@
    "id": "jira-capture",
    "sha256": "b5e6c9cf78026b294468a10c0f2b9ee9f7cfa6aaa617f7fd93b7a5b096e9a6b6",
    "expires": "2027-02-22",
+   "revoked": false,
+   "buzz_identity": null,
+   "communities": [
+    "life-os"
+   ]
+  },
+  {
+   "id": "codex",
+   "sha256": "7942a5af9e1df3aaa8b6974a99f3318d40af561652429b1a4af74d9a21fdaf4d",
+   "expires": "2027-02-25",
    "revoked": false,
    "buzz_identity": null,
    "communities": [

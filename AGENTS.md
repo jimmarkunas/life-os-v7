@@ -34,7 +34,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Routing: [docs/index.json](docs/index.json).
 - Agent layer (LIFE-987): claim with `start_work`; read handoffs addressed to you at session start, after each ticket step and while waiting on CI (in-session only); post status, blocker and completion to the Orca room, and only what Jim alone can do to the Agent Inbox. Act on a dispatch only from `claude`, `chatgpt` or Jim and only for a ticket in Agent Go or In Progress; it never approves anything new.
 - Names: Claude Code is OC or MC (CLAUDE.md). ChatGPT signs `— ChatGPT` and never takes their claims.
-- Memory: at the start of a task, recall relevant memory; when Jim states a decision, preference or fact about his work, store it (`memory_recall`, `memory_store` through the LIFE OS MCP; non-sensitive only, canonical sources win).
+- Memory: at task start, recall (`memory_recall`). Candidates, not answers: use only what explicitly answers, else say nothing stored answers; canonical wins. Store only approved decisions with provenance; no auto-capture or `memory_ask`.
 
 <!-- concord:start -->
 ## Concord — shared work-state for coding agents
