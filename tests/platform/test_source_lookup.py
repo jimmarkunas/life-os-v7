@@ -11,7 +11,7 @@ from tests.platform import agent_directory_fixture as F
 
 NOW = datetime(2026, 11, 22, 20, 0, tzinfo=timezone.utc)
 SHA, LAST, BLOB = "a" * 40, "b" * 40, "c" * 40
-PAGE = "4183c5a0-5926-81be-9e19-e85714dc256f"
+PAGE = "00000000-0000-0000-0000-000000000102"
 
 
 def gh(modified=NOW - timedelta(days=2), text="# Policy\nrules"):
@@ -231,7 +231,7 @@ class LiveNotion(unittest.TestCase):
 
     def test_directory_rows_become_native_rows_and_a_lookup_shows_the_directory_status(self):
         client = FakeNotion()
-        rows = S.directory_rows(client, "41a3c5a0-5926-8112-9f4e-000b55bc1248")()
+        rows = S.directory_rows(client, "00000000-0000-0000-0000-00000000010a")()
         self.assertEqual(len(rows), 3)  # the archived row is dropped
         self.assertEqual(rows[0]["Space"], ["Personal"])
         out = S.lookup_agent(
@@ -241,7 +241,7 @@ class LiveNotion(unittest.TestCase):
             (out["agent"]["agent_id"], out["status"], out["authorizes"]),
             (rows[0]["Agent ID"], "configured-untested", []),
         )
-        self.assertEqual(client.calls, [("QUERY", "41a3c5a0-5926-8112-9f4e-000b55bc1248")])
+        self.assertEqual(client.calls, [("QUERY", "00000000-0000-0000-0000-00000000010a")])
 
     def test_wire_turns_notion_on_only_with_the_token_and_the_directory_only_with_its_source_id(self):
         state = {"fetchers": {}, "rows": None}
@@ -254,7 +254,7 @@ class LiveNotion(unittest.TestCase):
         S.wire(
             {
                 "NOTION_READONLY_TOKEN": "tok-synthetic-12345",
-                "LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE": "41a3c5a0-5926-8112-9f4e-000b55bc1248",
+                "LIFEOS_NOTION_AGENT_DIRECTORY_SOURCE": "00000000-0000-0000-0000-00000000010a",
             },
             state,
         )

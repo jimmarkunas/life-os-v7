@@ -30,7 +30,7 @@ EXPLICIT = (
     ("Her therapist moved the appointment.", "health"),
     ("Call Sam at (312) 555" + "-0142 after lunch.", "others"),
     ("Email sam.jones@example.com about it.", "others"),
-    ("Lives at 4521 North Lincoln Avenue.", "others"),
+    ("Lives at 100 Example Street.", "others"),
 )
 HARMLESS = (
     "Jim wants Notion pages full width, always.",

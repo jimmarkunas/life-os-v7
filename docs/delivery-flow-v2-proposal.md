@@ -49,7 +49,7 @@ All counts below were read from Jira on Nov 5, 2026 unless marked UNVERIFIED. Ti
 - Agents wrote times without checking a clock: 4 correction comments (11849, 11850, 11851, 11853) fixed **7** wrongly timed comments on LIFE-307/293/306/304, and 11886 fixed 11800 on LIFE-298. The rule is right; the mechanism (agent types a time) is the problem.
 
 **8. One Jira identity for everyone.**
-- Every comment on these tickets shows the author "Jim Markunas", including agent receipts, because agents use your credentials. An approval and an agent claim cannot be told apart by author. Agent identities in Jira were already raised in PR #752.
+- Every comment on these tickets shows the author "Jim", including agent receipts, because agents use your credentials. An approval and an agent claim cannot be told apart by author. Agent identities in Jira were already raised in PR #752.
 
 ---
 

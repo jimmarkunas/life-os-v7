@@ -939,7 +939,7 @@ class LinkedInInMailTests(unittest.TestCase):
     INMAIL = (
         "Jim, Senior AEM Business Consultant Opportunity - Remote !\n\n        Kayte Example\n\n        Reply\n        https://www.linkedin.com/messaging/thread/2-XXX/\n\nHi Jim,\n\n"
         "Happy Friday! I'm with Example Select and am hiring for a client. If you're interested, please send your updated resume.\n\nAll the best,\nKayte Example\n\n"
-        "----------------------------------------\n\nThis email was intended for Jim Markunas (Technical Recruiter)\nYou are receiving LinkedIn notification emails.\n"
+        "----------------------------------------\n\nThis email was intended for Jim (Technical Recruiter)\nYou are receiving LinkedIn notification emails.\n"
     )
 
     def verdict(self, **kw):

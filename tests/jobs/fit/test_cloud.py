@@ -166,7 +166,7 @@ class OffByDefault(Base):
         self.assertEqual(self.run_cloud(SHADOW, endpoint, live=False)["cloud_fit"], "dry_run")
         for environ, code in (
             ({**SHADOW, "V7_CLOUD_FIT_PROFILE_REF": ""}, "PROFILE_REF_UNCONFIGURED"),
-            ({**SHADOW, "V7_CLOUD_FIT_PROFILE_REF": "Jim Markunas, 15 years"}, "PROFILE_REF_UNCONFIGURED"),
+            ({**SHADOW, "V7_CLOUD_FIT_PROFILE_REF": "Jim, 15 years"}, "PROFILE_REF_UNCONFIGURED"),
             ({**SHADOW, "IMESSAGE_ALERTS_HOST": ""}, "FIT_EDGE_NO_HOST"),
             ({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "0"}, "PER_RUN_ZERO"),
         ):

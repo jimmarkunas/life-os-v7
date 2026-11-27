@@ -1,6 +1,6 @@
 # LIFE OS Development Policy
 
-**Owner:** Jim Markunas. This one file is the whole policy. Change it by PR with Jim's yes. Edit a rule in place: replace it, never append a dated amendment. Old text goes to [docs/archive/](archive/development-policy-2026-11-20.md), which has no authority and is not read by default. The file stays under 15 KB so an agent reads it once.
+**Owner:** Jim. This one file is the whole policy. Change it by PR with Jim's yes. Edit a rule in place: replace it, never append a dated amendment. Old text goes to [docs/archive/](archive/development-policy-2026-11-20.md), which has no authority and is not read by default. The file stays under 15 KB so an agent reads it once.
 
 ## 1. Authority
 

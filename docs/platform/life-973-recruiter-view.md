@@ -33,4 +33,4 @@ Rollback: set `/opt/lifeos-close/current` back to the previous release (`readlin
 
 ## Settings rows
 
-New: `RECRUITER_COUNT_BLOCK_ID` (the callout `4233c5a059268087b278cf739e1159f7`). Now unused and safe to retire by hand: `HIRING_TABLE_BLOCK_ID`, `HIRING_STATUS_BLOCK_ID`, `V7_CLOSE_BASE_URL` (the Close links are gone).
+New: `RECRUITER_COUNT_BLOCK_ID` (the callout `notion:recruiter_count_block`). Now unused and safe to retire by hand: `HIRING_TABLE_BLOCK_ID`, `HIRING_STATUS_BLOCK_ID`, `V7_CLOSE_BASE_URL` (the Close links are gone).

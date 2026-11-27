@@ -8,7 +8,7 @@ from lifeos.recruiters import notion as store, outreach_card as card
 from tests.recruiters.fakes import FakeRecruiters, page
 
 NOW = datetime(2026, 11, 25, 10, 0, tzinfo=ZoneInfo("America/Chicago"))
-BLOCK = "4233c5a059268087b278cf739e1159f7"
+BLOCK = "00000000000000000000000000000100"
 LINK = {
     "type": "text",
     "plain_text": "All recruiter records ↗",
