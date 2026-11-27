@@ -40,13 +40,13 @@ client = _load("um_honcho_client")
 um = rt.um
 guard = client.guard
 
-RELEASE = "RELEASED-LIFE-1064:um-t2-fixture-v1+um-t6-behavioral-v1"
+RELEASE = "RELEASED-LIFE-1064:um-t2-fixture-v1+um-t6-behavioral-v1+um-t7-heldout-v1"
 HOST = "lifeos-edge-01"
 HONCHO_URL = "http://127.0.0.1:8000"
 METER_URL = "http://172.28.0.1:8081/health"
 LEDGER = "/var/lib/lifeos-honcho-meter/ledger.json"
 AUDIT = "/var/lib/lifeos-honcho-meter/audit.jsonl"
-WS_STRUCTURED, WS_BEHAVIORAL = "um-t2-fixture-v1", "um-t6-behavioral-v1"
+WS_STRUCTURED, WS_BEHAVIORAL, WS_HELDOUT = "um-t2-fixture-v1", "um-t6-behavioral-v1", "um-t7-heldout-v1"
 MAX_LIFE_S, MIN_LIFE_S = 2 * 3600 + 60, 300
 MAX_ROWS = 24
 ENV = "tests/fixtures/unified_memory"
@@ -132,8 +132,21 @@ def _token_ok(token, ws, now):
     return ""
 
 
+PHASE_TOKENS = {
+    "seed7": ("UM_T7_TOKEN",),
+    "dev": ("UM_T6_TOKEN",),
+    "accept_dev": ("UM_T6_TOKEN",),
+    "accept_H1": ("UM_T7_TOKEN",),
+    "accept_H2": ("UM_T7_TOKEN",),
+    "structured": ("UM_T2_TOKEN",),
+    "seed": ("UM_T6_TOKEN",),
+    "behavioral": ("UM_T6_TOKEN",),
+}
+TOKEN_WS = {"UM_T2_TOKEN": WS_STRUCTURED, "UM_T6_TOKEN": WS_BEHAVIORAL, "UM_T7_TOKEN": WS_HELDOUT}
+
+
 def gate(phase, env, host, now, url=HONCHO_URL):
-    """-> (True, "open") or (False, a fixed reason word). Every check fails closed; each phase needs only its own token."""
+    """-> (True, "open") or (False, a fixed reason word). Every check fails closed; each phase needs only its own token, and no two tokens may be the same."""
     if env.get("UM_LIVE_RELEASE") != RELEASE:
         return False, "not_released"
     if host != HOST:
@@ -142,13 +155,12 @@ def gate(phase, env, host, now, url=HONCHO_URL):
         return False, "url_not_loopback"
     if env.get("HONCHO_ADMIN_JWT") or env.get("HONCHO_ADMIN_TOKEN"):
         return False, "admin_token_present"
-    need = {"seed": ("UM_T6_TOKEN",), "behavioral": ("UM_T6_TOKEN",), "structured": ("UM_T2_TOKEN", "UM_T6_TOKEN")}
-    ws = {"UM_T2_TOKEN": WS_STRUCTURED, "UM_T6_TOKEN": WS_BEHAVIORAL}
-    for name in need.get(phase, ()):
-        reason = _token_ok(env.get(name), ws[name], now)
+    for name in PHASE_TOKENS.get(phase, ()):
+        reason = _token_ok(env.get(name), TOKEN_WS[name], now)
         if reason:
             return False, reason
-    if "UM_T2_TOKEN" in need.get(phase, ()) and env.get("UM_T2_TOKEN") == env.get("UM_T6_TOKEN"):
+    present = [env[n] for n in TOKEN_WS if env.get(n)]
+    if len(present) != len(set(present)):
         return False, "tokens_not_distinct"
     return True, "open"
 
@@ -213,9 +225,14 @@ class LiveRows:
         self.honcho = honcho
         self.calls = 0
 
-    def ranked(self, tenant, query, top_k):
+    def ranked(self, tenant, query, top_k, distance=None):
         self.calls += 1
-        return self.honcho.conclusions(tenant, query, top_k)
+        if distance is None:
+            return self.honcho.conclusions(tenant, query, top_k)
+        peer = client.TENANT_PEER[tenant]
+        body = {"query": query, "top_k": top_k, "distance": distance, "filters": {"observer": peer, "observed": peer}}
+        out = self.honcho.http.call("POST", self.honcho._p("/conclusions/query"), body)
+        return out if isinstance(out, list) else out.get("items", [])
 
     def tombstones(self):
         self.calls += 1
@@ -260,13 +277,15 @@ class RawMemory:
 class GuardedMemory:
     """The corrected path's reader: the same ranked facts (a wider window, because revoked and stale ones take slots) with each item's live tombstone state attached."""
 
-    def __init__(self, rows, window=3):
-        self.rows, self.window = rows, window
+    def __init__(self, rows, window=3, distance=None):
+        self.rows, self.window, self.distance = rows, window, distance
         self.last = []
 
     def recall(self, query, tenant, top_k):
         dead = self.rows.tombstones()
-        items = [i for r in self.rows.ranked(tenant, query, top_k * self.window) if (i := _item(r, dead))]
+        items = [
+            i for r in self.rows.ranked(tenant, query, top_k * self.window, self.distance) if (i := _item(r, dead))
+        ]
         self.last = items
         return items
 
@@ -398,14 +417,14 @@ def behavioral(honcho, live, registry, evidence, reps=5, meter=meter_state, floo
 STRUCT_ARMS = ("direct", "graph", "honcho_raw", "combined_old", "combined_v2")
 
 
-def structured(honcho, graph, structured_fix, corpus, evidence, reps=5, meter=meter_state):
+def structured(honcho, graph, structured_fix, corpus, evidence, reps=5, meter=meter_state, retriever_args=None):
     """The retained workspace and the graph: every arm on the same questions, `reps` times."""
     questions = {q["id"]: q for q in corpus["questions"]}
     paraphrases = {p["id"]: p for p in structured_fix["paraphrases"]}
     everything = [*corpus["questions"], *structured_fix["paraphrases"]]
     world = um.World(corpus)
     memory = honcho
-    retriever = rt.Retriever(world, memory, graph, rt.grants_for(world))
+    retriever = rt.Retriever(world, memory, graph, rt.grants_for(world), **(retriever_args or {}))
     for rep in range(1, reps + 1):
         before = meter()
         for q in everything:
@@ -647,12 +666,17 @@ def floor_sweep(rows, live, registry, floors):
 def summary(evidence, root=ROOT):
     live = json.loads((FIX / "behavioral_live.json").read_text())
     registry = json.loads((FIX / "behavioral.json").read_text())
+    held = json.loads((FIX / "acceptance_heldout.json").read_text())
     corpus = json.loads(um.CORPUS.read_text())
     fix = json.loads((FIX / "structured_live.json").read_text())
     rows = evidence.rows()
     meters = [r for r in rows if r["kind"] == "rep_meter"]
+    acc = {"dev": acceptance_summary(rows, live["queries"], registry, "dev")}
+    for name, queries in held["sets"].items():
+        acc[name] = acceptance_summary(rows, queries, held["registry"], name)
     return {
         "behavioral": behavioral_summary(rows, live, registry),
+        "acceptance": {k: v for k, v in acc.items() if v},
         "structured": structured_summary(rows, corpus, fix) if any(r["kind"] == "structured" for r in rows) else {},
         "meter_unchanged_every_rep": all(
             {k: m["before"][k] for k in ("spent_usd", "calls", "audit_rows")}
@@ -665,36 +689,381 @@ def summary(evidence, root=ROOT):
     }
 
 
+# -- the final feasibility test: dev capture, a rule-chosen gate, then one run per fresh held-out set ----------------------
+DIST_GRID = (0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60)
+TAU_GRID = tuple(round(0.5 + 0.005 * i, 3) for i in range(0, 91))
+CANDIDATE_ORDER = ("C3", "C1", "C2")
+BARS = {"exact_overall": 0.9, "absent_abstention": 1.0}
+
+
+def dev_capture(honcho, live, registry, evidence, meter=meter_state, grid=DIST_GRID):
+    """Reads, for every dev query, the guarded window of candidates (each with its live tombstone state) and which of them the server's own `distance` cutoff keeps at each value. Reads only; one evidence line per query."""
+    rows = LiveRows(honcho)
+    before = meter()
+    for q in live["queries"]:
+        guarded = GuardedMemory(rows)
+        window = guarded.recall(q["query"], q["tenant"], rt.TOP_K)
+        dist = {}
+        for d in grid:
+            kept = GuardedMemory(rows, distance=d).recall(q["query"], q["tenant"], rt.TOP_K)
+            dist[str(d)] = [i.get("live_id") for i in kept]
+        evidence.add(kind="devcand", qid=q["id"], tenant=q["tenant"], query=q["query"], window=window, dist=dist)
+    after = meter()
+    evidence.add(kind="rep_meter", phase="dev_capture", rep=1, before=before, after=after)
+    assert_unchanged(before, after, evidence, "dev capture")
+
+
+def exact(q, answers):
+    """Exact answer: the same refs (any order when the case says so), each with the same validated sources; an absent case needs no answer."""
+    want = q["expect"]["answers"]
+    if not want:
+        return not answers
+    got = [{"ref": a["ref"], "sources": a["sources"]} for a in answers]
+    key = lambda x: x["ref"]  # noqa: E731
+    wanted = [{"ref": w["ref"], "sources": w["sources"]} for w in want]
+    if q["expect"].get("unordered"):
+        return sorted(got, key=key) == sorted(wanted, key=key)
+    return got == wanted
+
+
+class CachedEmbedder:
+    def __init__(self, inner):
+        self.inner, self.cache = inner, {}
+
+    def embed(self, text, kind="doc"):
+        key = (kind, text)
+        if key not in self.cache:
+            self.cache[key] = self.inner.embed(text, kind)
+        return self.cache[key]
+
+
+def replay(rows, queries, registry, gate, embedder=None, keep=None, route_all=True):
+    """Runs the real pipeline over recorded candidates (no live call). `keep` maps a query id to the live ids a server-side cutoff kept. -> {qid: result}"""
+    world = rt.build_world(registry)
+    out = {}
+    for row in rows:
+        items = row["window"]
+        if keep is not None:
+            allowed = set(keep[row["qid"]])
+            items = [i for i in items if i.get("live_id") in allowed]
+        retriever = rt.Retriever(
+            world,
+            rt.CaseClient({"mode": "returns", "items": items}),
+            None,
+            registry["grants"],
+            registry["messages"],
+            embedder=embedder,
+            gate=gate,
+            route_all=route_all,
+        )
+        out[row["qid"]] = retriever.answer(row["tenant"], row["query"])
+    return out
+
+
+def _score(queries, results):
+    answerable = [q for q in queries if q["expect"]["answers"]]
+    quiet = [q for q in queries if not q["expect"]["answers"]]
+    ok = sum(exact(q, results[q["id"]]["answers"]) for q in queries)
+    return {
+        "exact_overall": round(ok / len(queries), 4),
+        "exact_answerable": round(
+            sum(exact(q, results[q["id"]]["answers"]) for q in answerable) / max(1, len(answerable)), 4
+        ),
+        "absent_abstention": round(sum(not results[q["id"]]["answers"] for q in quiet) / max(1, len(quiet)), 4),
+        "queries": len(queries),
+    }
+
+
+def plateau(scores):
+    """-> the midpoint of the widest run of parameter values that reach the best score (ties: the lower run). The rule is fixed before any held-out run."""
+    best = max(score for _, score in scores)
+    runs, cur = [], []
+    for value, score in scores:
+        if score == best:
+            cur.append(value)
+        elif cur:
+            runs.append(cur)
+            cur = []
+    if cur:
+        runs.append(cur)
+    widest = max(runs, key=lambda r: (r[-1] - r[0], -r[0]))
+    return round((widest[0] + widest[-1]) / 2, 4)
+
+
+def choose_gate(devcand_rows, queries, registry, embedders):
+    """Scores every free candidate on the dev capture only and picks the simplest that meets the bars. -> {"chosen": config or None, "candidates": {...}}. Nothing here reads a held-out set."""
+    q_by = {q["id"]: q for q in queries}
+    qs = [q_by[r["qid"]] for r in devcand_rows]
+    report = {}
+    # C3: Honcho's own distance cutoff, no client embedding
+    sweep = []
+    for d in DIST_GRID:
+        keep = {r["qid"]: r["dist"][str(d)] for r in devcand_rows}
+        res = replay(devcand_rows, queries, registry, {"kind": "none", "select": "top1"}, keep=keep)
+        sc = _score(qs, res)
+        sweep.append((d, (sc["exact_overall"], sc["absent_abstention"])))
+        report.setdefault("C3", {"sweep": {}})["sweep"][str(d)] = sc
+    d = plateau(sweep)
+    nearest = min(DIST_GRID, key=lambda x: abs(x - d))
+    keep = {r["qid"]: r["dist"][str(nearest)] for r in devcand_rows}
+    report["C3"]["param"] = {"distance": nearest}
+    report["C3"]["dev"] = _score(
+        qs, replay(devcand_rows, queries, registry, {"kind": "none", "select": "top1"}, keep=keep)
+    )
+    for name, emb in embedders.items():
+        sweep = []
+        cache = CachedEmbedder(emb)
+        report[name] = {"sweep": {}}
+        for tau in TAU_GRID:
+            gate_cfg = {"kind": "cosine", "tau": tau, "select": "top1"}
+            sc = _score(qs, replay(devcand_rows, queries, registry, gate_cfg, cache))
+            sweep.append((tau, (sc["exact_overall"], sc["absent_abstention"])))
+            report[name]["sweep"][str(tau)] = sc
+        tau = plateau(sweep)
+        report[name]["param"] = {"tau": tau}
+        report[name]["dev"] = _score(
+            qs, replay(devcand_rows, queries, registry, {"kind": "cosine", "tau": tau, "select": "top1"}, cache)
+        )
+    chosen = None
+    for name in CANDIDATE_ORDER:
+        dev = report.get(name, {}).get("dev")
+        if (
+            dev
+            and dev["exact_overall"] >= BARS["exact_overall"]
+            and dev["absent_abstention"] >= BARS["absent_abstention"]
+        ):
+            chosen = name
+            break
+    config = None
+    if chosen == "C3":
+        config = {
+            "candidate": "C3",
+            "gate": {"kind": "none", "select": "top1"},
+            "distance": report["C3"]["param"]["distance"],
+            "prefixes": False,
+        }
+    elif chosen in ("C1", "C2"):
+        config = {
+            "candidate": chosen,
+            "gate": {"kind": "cosine", "tau": report[chosen]["param"]["tau"], "select": "top1"},
+            "prefixes": chosen == "C2",
+        }
+    if config:
+        config["route_all"] = True
+        config["dev"] = report[chosen]["dev"]
+    for v in report.values():
+        v["sweep_summary"] = {k: [x["exact_overall"], x["absent_abstention"]] for k, x in v.pop("sweep").items()}
+    return {"chosen": config, "candidates": report}
+
+
+def make_embedder(config):
+    if config.get("prefixes"):
+        return rt.OllamaEmbedder(query_prefix="search_query: ", doc_prefix="search_document: ")
+    return rt.OllamaEmbedder()
+
+
+def acceptance(honcho, queries, registry, evidence, config, tag, reps=5, meter=meter_state, embedder=None):
+    """The frozen pipeline over one query set, `reps` times: one evidence line per query and repetition. Reads only."""
+    world = rt.build_world(registry)
+    rows = LiveRows(honcho)
+    guarded = GuardedMemory(rows, distance=config.get("distance"))
+    embedder = (
+        embedder if embedder is not None else (make_embedder(config) if config["gate"]["kind"] == "cosine" else None)
+    )
+    retriever = rt.Retriever(
+        world,
+        guarded,
+        None,
+        registry["grants"],
+        registry["messages"],
+        embedder=embedder,
+        gate=config["gate"],
+        route_all=config["route_all"],
+    )
+    for rep in range(1, reps + 1):
+        before = meter()
+        for q in queries:
+            t0 = time.perf_counter()
+            res = retriever.answer(q["tenant"], q["query"])
+            evidence.add(
+                kind="accept",
+                tag=tag,
+                rep=rep,
+                qid=q["id"],
+                tenant=q["tenant"],
+                answers=[a["ref"] for a in res["answers"]],
+                sources=[a["sources"] for a in res["answers"]],
+                authority=[a["authority"] for a in res["answers"]],
+                abstain=res["abstain"],
+                degraded=res["degraded"],
+                intent=res["intent"],
+                trace=res["trace"],
+                ms=_ms(t0),
+            )
+        after = meter()
+        evidence.add(kind="rep_meter", phase=f"accept_{tag}", rep=rep, before=before, after=after)
+        assert_unchanged(before, after, evidence, f"accept {tag} rep {rep}")
+
+
+def acceptance_summary(rows, queries, registry, tag):
+    """-> the metrics of one acceptance run against the frozen bars."""
+    mine = [r for r in rows if r.get("kind") == "accept" and r["tag"] == tag]
+    if not mine:
+        return {}
+    q_by = {q["id"]: q for q in queries}
+    src = {s["id"]: s for s in registry["sources"]}
+    first = min(r["rep"] for r in mine)
+    one = [r for r in mine if r["rep"] == first]
+    ok = lambda r: exact(q_by[r["qid"]], [{"ref": a, "sources": s} for a, s in zip(r["answers"], r["sources"])])  # noqa: E731
+    quiet = [r for r in one if not q_by[r["qid"]]["expect"]["answers"]]
+    answerable = [r for r in one if q_by[r["qid"]]["expect"]["answers"]]
+    unsafe = {"leaks": 0, "fabricated": 0, "revoked": 0, "unsupported": 0}
+    for r in mine:
+        t = q_by[r["qid"]]["tenant"]
+        for ref, srcs in zip(r["answers"], r["sources"]):
+            unsafe["leaks"] += ref in src and src[ref]["tenant"] != t
+            unsafe["fabricated"] += ref not in src
+            unsafe["revoked"] += ref in src and src[ref]["status"] in ("revoked", "stale")
+            unsafe["unsupported"] += not srcs
+    by_kind = {}
+    for r in one:
+        k = q_by[r["qid"]]["kind"]
+        by_kind.setdefault(k, [0, 0])
+        by_kind[k][0] += ok(r)
+        by_kind[k][1] += 1
+    stable = all(
+        {r["qid"]: r["answers"] for r in mine if r["rep"] == rep} == {r["qid"]: r["answers"] for r in one}
+        for rep in {r["rep"] for r in mine}
+    )
+    out = {
+        "tag": tag,
+        "queries": len(one),
+        "reps": len({r["rep"] for r in mine}),
+        "exact_overall": round(sum(ok(r) for r in one) / len(one), 4),
+        "exact_answerable": round(sum(ok(r) for r in answerable) / max(1, len(answerable)), 4),
+        "absent_abstention": round(sum(not r["answers"] for r in quiet) / max(1, len(quiet)), 4),
+        "by_kind": {k: f"{v[0]}/{v[1]}" for k, v in sorted(by_kind.items())},
+        "failures": sorted(r["qid"] for r in one if not ok(r)),
+        "unsafe": unsafe,
+        "stable_across_reps": stable,
+        "p50_ms": round(_pct([r["ms"] for r in mine], 0.5), 2),
+        "p95_ms": round(_pct([r["ms"] for r in mine], 0.95), 2),
+    }
+    out["meets_bars"] = (
+        out["exact_overall"] >= BARS["exact_overall"]
+        and out["absent_abstention"] >= BARS["absent_abstention"]
+        and not any(unsafe.values())
+        and stable
+    )
+    return out
+
+
 # -- command line ------------------------------------------------------------------------------------------------------
 def build_honcho(ws, token, mode):
     http = Allowlist(client.Http(HONCHO_URL, token), ws, mode)
     return client.Honcho(http, ws), http
 
 
+PHASES = (
+    "seed",
+    "behavioral",
+    "structured",
+    "summary",
+    "seed7",
+    "dev",
+    "select",
+    "accept_dev",
+    "accept_H1",
+    "accept_H2",
+)
+GATE_FILE = "/var/tmp/um-t6/retrieval_gate.json"
+
+
+def run_select(evidence, live, registry, gate_path, embedders=None):
+    """Scores the free candidates on the dev capture alone and writes the frozen gate (or a no-go note) to `gate_path`."""
+    rows = [r for r in evidence.rows() if r["kind"] == "devcand"]
+    embedders = embedders or {
+        "C1": rt.OllamaEmbedder(),
+        "C2": rt.OllamaEmbedder(query_prefix="search_query: ", doc_prefix="search_document: "),
+    }
+    result = choose_gate(rows, live["queries"], registry, embedders)
+    pathlib.Path(gate_path).write_text(json.dumps(result, indent=1, sort_keys=True))
+    return result
+
+
+def protocol_guard(evidence, phase):
+    """A fresh held-out set is run once; H2 only when H1 was run and failed. -> a reason word to refuse, or ''."""
+    rows = evidence.rows()
+    ran = {r["tag"] for r in rows if r.get("kind") == "accept"}
+    tag = phase.split("_", 1)[1]
+    if tag in ran:
+        return "set_already_run"
+    if tag == "H2":
+        held = json.loads((FIX / "acceptance_heldout.json").read_text())
+        if "H1" not in ran or acceptance_summary(rows, held["sets"]["H1"], held["registry"], "H1").get("meets_bars"):
+            return "h2_not_needed"
+    if tag in ("H1", "H2") and "dev" not in ran:
+        return "dev_acceptance_not_run"
+    return ""
+
+
 def main(argv=None, env=None, host=None, now=None):
     ap = argparse.ArgumentParser(prog="um_retrieval_live")
-    ap.add_argument("--phase", choices=("seed", "behavioral", "structured", "summary"), required=True)
+    ap.add_argument("--phase", choices=PHASES, required=True)
     ap.add_argument("--evidence", default="/var/tmp/um-t6/evidence.jsonl")
+    ap.add_argument("--gate", default=GATE_FILE)
     ap.add_argument("--reps", type=int, default=5)
     args = ap.parse_args(argv)
     env = os.environ if env is None else env
+    live = json.loads((FIX / "behavioral_live.json").read_text())
+    registry = json.loads((FIX / "behavioral.json").read_text())
     if args.phase == "summary":
         print(json.dumps(summary(Evidence(args.evidence)), indent=1, sort_keys=True, default=str))
+        return 0
+    if args.phase == "select":  # offline: dev evidence and the local embedding model only
+        result = run_select(Evidence(args.evidence), live, registry, args.gate)
+        print(
+            json.dumps(
+                {"chosen": result["chosen"], "dev": {k: v.get("dev") for k, v in result["candidates"].items()}},
+                indent=1,
+                sort_keys=True,
+            )
+        )
         return 0
     ok, reason = gate(args.phase, env, platform.node() if host is None else host, time.time() if now is None else now)
     if not ok:
         print(reason)
         return 2
     evidence = Evidence(args.evidence)
-    live = json.loads((FIX / "behavioral_live.json").read_text())
-    registry = json.loads((FIX / "behavioral.json").read_text())
+    held = json.loads((FIX / "acceptance_heldout.json").read_text())
     try:
+        if args.phase in ("accept_H1", "accept_H2"):
+            refused = protocol_guard(evidence, args.phase)
+            if refused:
+                evidence.add(kind="halt", phase=args.phase, why=refused)
+                print(refused)
+                return 4
         if args.phase == "seed":
             honcho, _ = build_honcho(WS_BEHAVIORAL, env["UM_T6_TOKEN"], "seed")
             seed(honcho, live, registry, evidence)
+        elif args.phase == "seed7":
+            honcho, _ = build_honcho(WS_HELDOUT, env["UM_T7_TOKEN"], "seed")
+            seed(honcho, {"seed": held["seed"]}, held["registry"], evidence)
         elif args.phase == "behavioral":
             honcho, _ = build_honcho(WS_BEHAVIORAL, env["UM_T6_TOKEN"], "read")
             behavioral(honcho, live, registry, evidence, args.reps)
+        elif args.phase == "dev":
+            honcho, _ = build_honcho(WS_BEHAVIORAL, env["UM_T6_TOKEN"], "read")
+            dev_capture(honcho, live, registry, evidence)
+        elif args.phase == "accept_dev":
+            config = json.loads(pathlib.Path(args.gate).read_text())["chosen"]
+            honcho, _ = build_honcho(WS_BEHAVIORAL, env["UM_T6_TOKEN"], "read")
+            acceptance(honcho, live["queries"], registry, evidence, config, "dev", args.reps)
+        elif args.phase in ("accept_H1", "accept_H2"):
+            tag = args.phase.split("_", 1)[1]
+            config = json.loads(pathlib.Path(args.gate).read_text())["chosen"]
+            honcho, _ = build_honcho(WS_HELDOUT, env["UM_T7_TOKEN"], "read")
+            acceptance(honcho, held["sets"][tag], held["registry"], evidence, config, tag, args.reps)
         else:
             aura = _load("um_aura_pilot")
             secrets = aura.load_secrets()
@@ -704,7 +1073,16 @@ def main(argv=None, env=None, host=None, now=None):
                 honcho, _ = build_honcho(WS_STRUCTURED, env["UM_T2_TOKEN"], "read")
                 corpus = json.loads(um.CORPUS.read_text())
                 fix = json.loads((FIX / "structured_live.json").read_text())
-                structured(honcho, aura.AuraGraph(scoped), fix, corpus, evidence, args.reps)
+                args_for = None
+                gate_file = pathlib.Path(args.gate)
+                if gate_file.exists() and json.loads(gate_file.read_text()).get("chosen"):
+                    config = json.loads(gate_file.read_text())["chosen"]
+                    args_for = {
+                        "gate": config["gate"],
+                        "route_all": config["route_all"],
+                        "embedder": make_embedder(config) if config["gate"]["kind"] == "cosine" else None,
+                    }
+                structured(honcho, aura.AuraGraph(scoped), fix, corpus, evidence, args.reps, retriever_args=args_for)
             finally:
                 getattr(driver, "close", lambda: None)()
     except (Halt, Denied, guard.HonchoError, guard.Unauthorized) as error:
