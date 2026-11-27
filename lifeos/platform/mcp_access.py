@@ -222,10 +222,12 @@ def arguments_shape(args):
 
 
 def lift_flat(args, memory_ops):
-    """A memory call whose operation fields arrive flat beside `operation` (no `arguments` object; some clients do
-    this) -> the same call with those fields as its `arguments`. `community` is dropped there: a memory call's tenant is
-    its workspace. Any other call, or one that already has `arguments`, is returned unchanged."""
-    if not isinstance(args, dict) or "arguments" in args or args.get("operation") not in memory_ops:
+    """A memory call, normalized: `community` is dropped (a memory call's tenant is its workspace, never a Buzz
+    community), and when its operation fields arrive flat beside `operation` (no `arguments` object; some clients do
+    this) they become its `arguments`. Any other call is returned unchanged."""
+    if not isinstance(args, dict) or args.get("operation") not in memory_ops:
         return args
+    if "arguments" in args:
+        return {k: v for k, v in args.items() if k != "community"}
     extras = {k: v for k, v in args.items() if k not in ("operation", "community")}
-    return {"operation": args["operation"], "arguments": extras} if extras else args
+    return {"operation": args["operation"], "arguments": extras} if extras else {"operation": args["operation"]}
