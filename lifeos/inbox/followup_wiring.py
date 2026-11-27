@@ -6,6 +6,7 @@ environment, an account LABEL comes from FOLLOWUP_ACCOUNT_<SOURCE>_<WORKSPACE>[_
 says when a credential stops being a valid grant (no expiry row, no grant: that source shows DEGRADED). TGP is
 excluded. Every read writes a receipt to `v7_inbox_access` first; if that fails nothing is read.
 """
+
 from datetime import datetime, timezone
 
 from lifeos.inbox import followup_classify, followup_stage as stage
@@ -19,19 +20,47 @@ SWITCH = "FOLLOWUP_WIRING"
 PRINCIPAL = "followup-stage"
 RELEASED = tuple(w for w in WORKSPACES if w not in UNRELEASED_WORKSPACES)
 BOTH = ("personal", "bytalos")
-SOURCE_WORKSPACES = {"jira": BOTH, "calendar": BOTH, "gmail": BOTH, "outlook": ("personal",), "todoist": ("personal",), "notion": ("personal",), "interview_os": ("personal",)}
+SOURCE_WORKSPACES = {
+    "jira": BOTH,
+    "calendar": BOTH,
+    "gmail": BOTH,
+    "outlook": ("personal",),
+    "todoist": ("personal",),
+    "notion": ("personal",),
+    "interview_os": ("personal",),
+}
 JIRA_SITE = "https://jimmarkunas.atlassian.net"
 FIXED_ACCOUNTS = {("jira", "personal"): "jira-personal", ("jira", "bytalos"): "jira-bytalos"}
-DEFAULT_LABELS = {("calendar", "personal", 1): "personal calendar", ("calendar", "bytalos", 1): "bytalos calendar", ("gmail", "personal", 1): "personal inbox", ("gmail", "bytalos", 1): "bytalos inbox",
-                  ("todoist", "personal", 1): "personal todoist", ("notion", "personal", 1): "personal notion", ("interview_os", "personal", 1): "interview os",
-                  ("outlook", "personal", 1): "personal outlook", ("outlook", "personal", 2): "work outlook"}
-INVENTORY = {"JIRA_API_TOKEN": "jira_api_token", "NOTION_API_TOKEN": "notion_api_token", "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account", "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token",
-             "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "followup_gmail_bytalos_refresh", "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "followup_todoist_personal_token"}
+DEFAULT_LABELS = {
+    ("calendar", "personal", 1): "personal calendar",
+    ("calendar", "bytalos", 1): "bytalos calendar",
+    ("gmail", "personal", 1): "personal inbox",
+    ("gmail", "bytalos", 1): "bytalos inbox",
+    ("todoist", "personal", 1): "personal todoist",
+    ("notion", "personal", 1): "personal notion",
+    ("interview_os", "personal", 1): "interview os",
+    ("outlook", "personal", 1): "personal outlook",
+    ("outlook", "personal", 2): "work outlook",
+}
+INVENTORY = {
+    "JIRA_API_TOKEN": "jira_api_token",
+    "NOTION_API_TOKEN": "notion_api_token",
+    "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account",
+    "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token",
+    "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "followup_gmail_bytalos_refresh",
+    "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "followup_todoist_personal_token",
+}
 OUTLOOK_INVENTORY = "outlook_sign_in"
 NO_EXPIRY = "2099-12-31"
 EXPIRES = {}
 # Tracked, not connected: no grant, no read, like TGP
-NOT_CONNECTED = {("outlook", "personal", "school mailbox"): "its tenant needs an admin to approve the app; Jim chose not to request it (Nov 16 2026)"}
+NOT_CONNECTED = {
+    (
+        "outlook",
+        "personal",
+        "school mailbox",
+    ): "its tenant needs an admin to approve the app; Jim chose not to request it (Nov 16 2026)"
+}
 TGP_DOMAINS = stage.TGP_DOMAINS
 
 
@@ -48,7 +77,11 @@ def _fetchers():
 
 
 def _keys(module, source, workspace):
-    return sorted((k for k in getattr(module, "CREDENTIAL_NAMES", {}) if k[:2] == (source, workspace)), key=lambda k: k[2]) if module else []
+    return (
+        sorted((k for k in getattr(module, "CREDENTIAL_NAMES", {}) if k[:2] == (source, workspace)), key=lambda k: k[2])
+        if module
+        else []
+    )
 
 
 def account_env(source, workspace, slot=1):
@@ -63,7 +96,11 @@ def _default_label(environ, key):
     fetchers = _fetchers()
     name = (getattr(fetchers, "CREDENTIAL_NAMES", {}) or {}).get(key)
     stored = bool(fetchers) and key[0] in fetchers.STORED_TOKENS
-    return DEFAULT_LABELS.get(key, "") if name and ((environ.get("OUTLOOK_CLIENT_ID") if stored else environ.get(name)) or "").strip() else ""
+    return (
+        DEFAULT_LABELS.get(key, "")
+        if name and ((environ.get("OUTLOOK_CLIENT_ID") if stored else environ.get(name)) or "").strip()
+        else ""
+    )
 
 
 def accounts(environ, source, workspace):
@@ -98,7 +135,8 @@ def configured(environ):
 
 
 def expiry_table():
-    from lifeos.platform.credential_list import CREDENTIALS                       # noqa: PLC0415
+    from lifeos.platform.credential_list import CREDENTIALS  # noqa: PLC0415
+
     rows = {row.get("key"): row for row in CREDENTIALS}
     fetchers = _fetchers()
     stored = fetchers.STORED_TOKENS if fetchers else ()
@@ -132,22 +170,33 @@ def make_audit(ledger):
     """audit(receipt) for the readers. Raises WiringError when the ledger cannot write (the readers then read
     nothing).
     """
+
     def audit(receipt):
         request = receipt_id(receipt)
         try:
             if receipt["outcome"] in ("allow", "deny"):
                 now = datetime.fromisoformat(receipt["t"])
-                ledger.record_access({"request_id": request, "principal_id": PRINCIPAL, "source": receipt["source"], "workspace": receipt["tenant"], "account": receipt["account"][:80],
-                                      "decision": receipt["outcome"], "reason": str(receipt["reason"])[:40]}, now)
+                ledger.record_access(
+                    {
+                        "request_id": request,
+                        "principal_id": PRINCIPAL,
+                        "source": receipt["source"],
+                        "workspace": receipt["tenant"],
+                        "account": receipt["account"][:80],
+                        "decision": receipt["outcome"],
+                        "reason": str(receipt["reason"])[:40],
+                    },
+                    now,
+                )
             else:
                 ledger.settle_access(request, str(receipt["outcome"])[:24])
-        except Exception:                                                          # noqa: BLE001 - only a fixed code leaves; the driver's text never does
+        except Exception:  # noqa: BLE001 - only a fixed code leaves; the driver's text never does
             raise WiringError("FOLLOWUP_AUDIT_UNAVAILABLE") from None
+
     return audit
 
 
 class DryStore:
-
     def __init__(self, store):
         self._store = store
 
@@ -173,6 +222,7 @@ def make_sink(store, clock):
         if save is None:
             raise WiringError("FOLLOWUP_PAYLOAD_STORE_MISSING")
         save(payload["workspace"], payload["account"], payload)
+
     return sink
 
 
@@ -180,6 +230,7 @@ def payload_loader(store, workspace, account):
     def load(_credential_ref):
         read = getattr(store, "load_payload", None)
         return read(workspace, account) if read else None
+
     return load
 
 
@@ -199,11 +250,41 @@ def build(environ, live=False, clock=None):
     real = FollowupStore(db.connect)
     store = real if live else DryStore(real)
     module = _fetchers()
-    fetchers = module.build_fetchers(fetcher_environment(environ)) if module and hasattr(module, "build_fetchers") else {}
-    made = tuple(stage.Scope(workspace, label, tuple(sorted({s for s, _ in members}))) for (workspace, label), members in sorted(scopes.items()))
-    return stage.Wiring(store=store, scopes=made, grants=grants_for(environ, credential_names()), fetchers=fetchers, audit=make_audit(Ledger(db.connect)), sink=make_sink(real, clock), clock=clock, production=True, env=environ,
-                        jira_base=JIRA_SITE, classify=followup_classify.classify)
+    fetchers = (
+        module.build_fetchers(fetcher_environment(environ)) if module and hasattr(module, "build_fetchers") else {}
+    )
+    made = tuple(
+        stage.Scope(workspace, label, tuple(sorted({s for s, _ in members})))
+        for (workspace, label), members in sorted(scopes.items())
+    )
+    return stage.Wiring(
+        store=store,
+        scopes=made,
+        grants=grants_for(environ, credential_names()),
+        fetchers=fetchers,
+        audit=make_audit(Ledger(db.connect)),
+        sink=make_sink(real, clock),
+        clock=clock,
+        production=True,
+        env=environ,
+        jira_base=JIRA_SITE,
+        classify=followup_classify.classify,
+    )
 
 
-__all__ = ["EXPIRES", "WiringError", "account_env", "credential_names", "accounts", "configured", "grants_for", "receipt_id",
-           "make_audit", "DryStore", "make_sink", "payload_loader", "fetcher_environment", "build"]
+__all__ = [
+    "EXPIRES",
+    "WiringError",
+    "account_env",
+    "credential_names",
+    "accounts",
+    "configured",
+    "grants_for",
+    "receipt_id",
+    "make_audit",
+    "DryStore",
+    "make_sink",
+    "payload_loader",
+    "fetcher_environment",
+    "build",
+]

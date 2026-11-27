@@ -4,6 +4,7 @@ Answers are (allowed, reason) with a fixed lower-case reason word; fail closed. 
 the principal's grant for that exact source, workspace, account and action (a grant only narrows the matrix), and the
 record's eligibility proven by its adapter.
 """
+
 import hashlib
 import hmac
 from dataclasses import dataclass, replace
@@ -22,8 +23,15 @@ MATRIX = {
 }
 # What the source's read-back must show before anything is called done (synthetic until verified)
 EXPECTED_STATUS = {
-    "accept_uat": {"Done"}, "reject_uat": {"In Progress", "Agent Go"}, "complete_task": {"completed"}, "approve": {"approved"}, "reject": {"rejected"},
-    "request_changes": {"changes_requested"}, "resume_work": {"running"}, "confirm_resolution": {"resolved"}, "update_checkpoint": {"open", "waiting"},
+    "accept_uat": {"Done"},
+    "reject_uat": {"In Progress", "Agent Go"},
+    "complete_task": {"completed"},
+    "approve": {"approved"},
+    "reject": {"rejected"},
+    "request_changes": {"changes_requested"},
+    "resume_work": {"running"},
+    "confirm_resolution": {"resolved"},
+    "update_checkpoint": {"open", "waiting"},
 }
 SOURCE_OF_ACTION = {action: source for source, actions in MATRIX.items() for action in actions - READ_ACTIONS}
 # Sources whose EXPECTED_STATUS matches the real workflow; empty: no live completion can be claimed
@@ -35,6 +43,7 @@ AUTH_TTL = timedelta(minutes=5)
 @dataclass(frozen=True)
 class Grant:
     """One source, workspace and account, the actions allowed, and the credential NAME (never its value)."""
+
     source: str
     workspace: str
     account: str
@@ -110,6 +119,7 @@ class ExactAuthorization:
     """ONE protected action on ONE record revision by ONE principal: single-use, short-lived, signed, minted after
     human confirmation.
     """
+
     principal_id: str
     record_id: str
     action: str
@@ -127,11 +137,32 @@ def _mac(key, parts):
 
 
 def _parts(auth):
-    return (auth.principal_id, auth.source, auth.workspace, auth.account, auth.record_id, auth.action, auth.revision, auth.nonce, auth.expires_at.isoformat())
+    return (
+        auth.principal_id,
+        auth.source,
+        auth.workspace,
+        auth.account,
+        auth.record_id,
+        auth.action,
+        auth.revision,
+        auth.nonce,
+        auth.expires_at.isoformat(),
+    )
 
 
 def sign(key, principal_id, record, action, nonce, expires_at):
-    draft = ExactAuthorization(principal_id, record.record_id, action, record.revision, nonce, expires_at, "", record.source, record.workspace, record.account)
+    draft = ExactAuthorization(
+        principal_id,
+        record.record_id,
+        action,
+        record.revision,
+        nonce,
+        expires_at,
+        "",
+        record.source,
+        record.workspace,
+        record.account,
+    )
     return replace(draft, mac=_mac(key, _parts(draft)))
 
 
@@ -141,7 +172,15 @@ def verify(key, auth, principal, record, action, now):
     if not hmac.compare_digest(_mac(key, _parts(auth)), auth.mac):
         return "authorization_forged"
     bound = (auth.principal_id, auth.source, auth.workspace, auth.account, auth.record_id, auth.action, auth.revision)
-    if bound != (principal.principal_id, record.source, record.workspace, record.account, record.record_id, action, record.revision):
+    if bound != (
+        principal.principal_id,
+        record.source,
+        record.workspace,
+        record.account,
+        record.record_id,
+        action,
+        record.revision,
+    ):
         return "authorization_mismatch"
     return "authorization_expired" if auth.expires_at <= now else None
 
@@ -150,8 +189,12 @@ def completion_proven(record, action, readback, synthetic):
     """True only when the read-back is for this record on a NEW revision with the status this action must end in."""
     if not synthetic and SOURCE_OF_ACTION.get(action) not in VERIFIED_COMPLETION:
         return False
-    return (isinstance(readback, dict) and readback.get("record_id") == record.record_id and readback.get("revision") not in (None, record.revision)
-            and readback.get("source_status") in EXPECTED_STATUS.get(action, ()))
+    return (
+        isinstance(readback, dict)
+        and readback.get("record_id") == record.record_id
+        and readback.get("revision") not in (None, record.revision)
+        and readback.get("source_status") in EXPECTED_STATUS.get(action, ())
+    )
 
 
 def mint(key, principal, record, action, nonce, now, ttl=AUTH_TTL):

@@ -6,6 +6,7 @@ ONE atomic claim in the ledger, execute, read-back. Executor and source reader a
 (record unchanged), in_progress, expired, refused (a gate said no, nothing ran). `reconcile` settles an uncertain
 action from the source's state, else leaves it flagged for a person. Logs carry ids and reason words only.
 """
+
 import json
 import logging
 from dataclasses import dataclass
@@ -18,7 +19,14 @@ from lifeos.inbox.ledger import digest
 LOG = logging.getLogger("lifeos.inbox")
 # older than this: a dead worker's claim or execution; `recover_stale` settles it
 LEASE = timedelta(minutes=10)
-STATUS_OF_STATE = {"completed": "completed", "uncertain": "uncertain", "not_applied": "not_applied", "claimed": "in_progress", "in_progress": "in_progress", "expired": "expired"}
+STATUS_OF_STATE = {
+    "completed": "completed",
+    "uncertain": "uncertain",
+    "not_applied": "not_applied",
+    "claimed": "in_progress",
+    "in_progress": "in_progress",
+    "expired": "expired",
+}
 
 
 @dataclass(frozen=True)
@@ -34,7 +42,14 @@ class ActionService:
         self.audit = audit if audit is not None else []
 
     def _note(self, principal, record, action, outcome, request_id):
-        line = {"principal": principal.principal_id, "record": record.record_id, "action": action, "status": outcome.status, "reason": outcome.reason, "request": request_id[:12]}
+        line = {
+            "principal": principal.principal_id,
+            "record": record.record_id,
+            "action": action,
+            "status": outcome.status,
+            "reason": outcome.reason,
+            "request": request_id[:12],
+        }
         self.audit.append(line)
         LOG.info(json.dumps(line, sort_keys=True))
         return outcome
@@ -43,10 +58,16 @@ class ActionService:
         request_id = digest(idempotency_key)
         prior = self._ledger.action(request_id)
         if prior:
-            if (prior["principal_id"], prior["record_id"], prior["action"]) != (principal.principal_id, record.record_id, action):
+            if (prior["principal_id"], prior["record_id"], prior["action"]) != (
+                principal.principal_id,
+                record.record_id,
+                action,
+            ):
                 return self._note(principal, record, action, Outcome("refused", "idempotency_key_reused"), request_id)
             return Outcome(STATUS_OF_STATE[prior["state"]], prior["reason"], replayed=True)
-        return self._note(principal, record, action, self._run(principal, record, action, auth, request_id, now), request_id)
+        return self._note(
+            principal, record, action, self._run(principal, record, action, auth, request_id, now), request_id
+        )
 
     def _run(self, principal, record, action, auth, request_id, now):
         allowed, reason = policy.decide(principal, record, action, now)
@@ -61,8 +82,18 @@ class ActionService:
         reason = policy.verify(self._key, auth, principal, record, action, now)
         if reason:
             return Outcome("refused", reason)
-        fields = {"request_id": request_id, "principal_id": principal.principal_id, "source": record.source, "workspace": record.workspace, "account": record.account,
-                  "record_id": record.record_id, "action": action, "revision": record.revision, "status_before": record.source_status, "nonce": auth.nonce}
+        fields = {
+            "request_id": request_id,
+            "principal_id": principal.principal_id,
+            "source": record.source,
+            "workspace": record.workspace,
+            "account": record.account,
+            "record_id": record.record_id,
+            "action": action,
+            "revision": record.revision,
+            "status_before": record.source_status,
+            "nonce": auth.nonce,
+        }
         claim, detail = self._ledger.claim_action(fields, now)
         if claim == "refused":
             return Outcome("refused", detail)
@@ -84,8 +115,12 @@ class ActionService:
         if policy.completion_proven(record, action, readback, self._synthetic):
             self._ledger.move(request_id, before, "completed", "read_back_verified", now)
             return Outcome("completed", "read_back_verified")
-        unchanged = (isinstance(readback, dict) and readback.get("record_id") == record.record_id and readback.get("revision") == record.revision
-                     and readback.get("source_status") == record.source_status)
+        unchanged = (
+            isinstance(readback, dict)
+            and readback.get("record_id") == record.record_id
+            and readback.get("revision") == record.revision
+            and readback.get("source_status") == record.source_status
+        )
         if unchanged and self._synthetic:
             self._ledger.move(request_id, before, "not_applied", "source_unchanged", now, release=True)
             return Outcome("not_applied", "source_unchanged")
@@ -100,7 +135,9 @@ class ActionService:
         row = self._ledger.action(request_id)
         if not row or row["state"] != "uncertain":
             return Outcome("refused", "not_reconcilable")
-        claimed = SimpleNamespace(record_id=row["record_id"], revision=row["revision"], source_status=row["status_before"])
+        claimed = SimpleNamespace(
+            record_id=row["record_id"], revision=row["revision"], source_status=row["status_before"]
+        )
         try:
             readback = read_source(row["record_id"])
         except Exception:  # noqa: BLE001 - an unreadable source settles nothing
@@ -112,13 +149,28 @@ class ActionService:
         return self._note_id(row, outcome, request_id)
 
     def _note_id(self, row, outcome, request_id):
-        line = {"principal": row["principal_id"], "record": row["record_id"], "action": row["action"], "status": outcome.status, "reason": outcome.reason, "request": request_id[:12]}
+        line = {
+            "principal": row["principal_id"],
+            "record": row["record_id"],
+            "action": row["action"],
+            "status": outcome.status,
+            "reason": outcome.reason,
+            "request": request_id[:12],
+        }
         self.audit.append(line)
         LOG.info(json.dumps(line, sort_keys=True))
         return outcome
 
     def recover_stale(self, now):
         cutoff = now - LEASE
-        expired = [r for r in self._ledger.stale("claimed", cutoff) if self._ledger.move(r, "claimed", "expired", "claim_never_started", now, release=True)]
-        uncertain = [r for r in self._ledger.stale("in_progress", cutoff) if self._ledger.move(r, "in_progress", "uncertain", "lease_expired_outcome_unknown", now)]
+        expired = [
+            r
+            for r in self._ledger.stale("claimed", cutoff)
+            if self._ledger.move(r, "claimed", "expired", "claim_never_started", now, release=True)
+        ]
+        uncertain = [
+            r
+            for r in self._ledger.stale("in_progress", cutoff)
+            if self._ledger.move(r, "in_progress", "uncertain", "lease_expired_outcome_unknown", now)
+        ]
         return len(expired), len(uncertain)

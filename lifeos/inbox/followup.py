@@ -5,6 +5,7 @@ missing, stale, mismatched or degraded-and-empty payload is `unavailable`, never
 pure: it turns evidence into native dicts for `adapters.followup` (provenance links only), with Review Needed apart
 and never counted.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -34,11 +35,13 @@ def payload_reader(load):
         if not sources.LIVE_READS_ENABLED:
             refuse_live(credential_ref)
         return lambda: load(credential_ref)
+
     return open_reader
 
 
 class FollowupSource(_Source):
     """Reads the stage's payload; `now` is an aware datetime (UTC when omitted). Returns the active threads only."""
+
     source = "followup"
 
     def __init__(self, workspace, account, identity, open_reader=refuse_followup, now=None, **kwargs):
@@ -50,7 +53,11 @@ class FollowupSource(_Source):
         if payload is None:
             raise InboxError("followup_projection_missing")
         threads = payload.get("threads") if isinstance(payload, dict) else None
-        if not isinstance(threads, list) or payload.get("component") != "followup" or payload.get("state") not in ("PASS", "DEGRADED"):
+        if (
+            not isinstance(threads, list)
+            or payload.get("component") != "followup"
+            or payload.get("state") not in ("PASS", "DEGRADED")
+        ):
             raise InboxError("listing_incomplete")
         if payload.get("workspace") != self.workspace or payload.get("account") != self.account:
             raise InboxError("payload_scope_mismatch")
@@ -78,6 +85,7 @@ class FollowupSource(_Source):
 
 class SyntheticFollowupSource(_Source):
     """Test and design aid ONLY: projects evidence handed in by the caller. Never registered as a live feed."""
+
     source = "followup"
 
     def __init__(self, workspace, account, identity, evidence, now, **kwargs):
@@ -133,8 +141,21 @@ def project(evidence, now, workspace="personal"):
         owners = {i["owner"] for i in explicit if i.get("owner") in ("jim", "external")}
         if len(owners) > 1:  # contradictory observations never auto-merge: each stays its own review-only entry
             for n, item in enumerate(explicit):
-                review.append({"id": f"{key}#{n}", "url": item["link"], "title": item.get("title", ""), "notes": "contradictory evidence", "owner": item.get("who", ""),
-                               "status": "open", "next_checkpoint": item.get("checkpoint"), "tz": "America/Chicago", "updated": item["observed_at"], "correlation_id": None, "state": "review_needed"})
+                review.append(
+                    {
+                        "id": f"{key}#{n}",
+                        "url": item["link"],
+                        "title": item.get("title", ""),
+                        "notes": "contradictory evidence",
+                        "owner": item.get("who", ""),
+                        "status": "open",
+                        "next_checkpoint": item.get("checkpoint"),
+                        "tz": "America/Chicago",
+                        "updated": item["observed_at"],
+                        "correlation_id": None,
+                        "state": "review_needed",
+                    }
+                )
             continue
         lead = (explicit or implied)[0]
         links = sorted({i["link"] for i in items})
@@ -142,16 +163,34 @@ def project(evidence, now, workspace="personal"):
         dated = next((i for i in explicit if i.get("checkpoint") and i.get("checkpoint_source") == "source"), None)
         checkpoint = override or (dated or lead).get("checkpoint")
         indicator = "jim_override" if override else "source-backed" if dated else "suggested"
-        loop = {"id": key, "url": links[0], "title": lead.get("title", ""), "notes": f"checkpoint {indicator}; evidence {len(links)}", "owner": lead.get("who", ""),
-                "status": "waiting" if (lead.get("owner") == "external") else "open", "next_checkpoint": checkpoint, "tz": "America/Chicago", "updated": max(i["observed_at"] for i in items),
-                "correlation_id": None, "state": ""}
+        loop = {
+            "id": key,
+            "url": links[0],
+            "title": lead.get("title", ""),
+            "notes": f"checkpoint {indicator}; evidence {len(links)}",
+            "owner": lead.get("who", ""),
+            "status": "waiting" if (lead.get("owner") == "external") else "open",
+            "next_checkpoint": checkpoint,
+            "tz": "America/Chicago",
+            "updated": max(i["observed_at"] for i in items),
+            "correlation_id": None,
+            "state": "",
+        }
         if implied and not explicit or lead.get("owner") == "ambiguous" or (indicator == "suggested" and not override):
             loop["state"] = "review_needed"
             review.append(loop)
             continue
         due = _dt(checkpoint)
-        loop["state"] = "waiting_aging" if loop["status"] == "waiting" else "needs_action_today" if due and due <= now else "upcoming"
+        loop["state"] = (
+            "waiting_aging"
+            if loop["status"] == "waiting"
+            else "needs_action_today"
+            if due and due <= now
+            else "upcoming"
+        )
         native.append(loop)
     counts = {s: sum(1 for loop in native if loop["state"] == s) for s in ACTIVE}
     states = {**{loop["id"]: loop["state"] for loop in native}, **{loop["id"]: "review_needed" for loop in review}}
-    return Projection([{k: v for k, v in loop.items() if k != "state"} for loop in native], review, degraded, counts, states)
+    return Projection(
+        [{k: v for k, v in loop.items() if k != "state"} for loop in native], review, degraded, counts, states
+    )

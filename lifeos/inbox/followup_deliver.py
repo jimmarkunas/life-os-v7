@@ -5,6 +5,7 @@ loop's thread id (`followup-<id>`), so a rerun never adds a second row. Only ACT
 is never sent. A row the user resolved (Done, Dismissed, Promoted) is final. A loop the store closed on strong
 proof marks its still-open row Done; nothing else sets Status. Counts and fixed reason words only reach the log.
 """
+
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -23,7 +24,7 @@ OPEN = frozenset({"New", "Snoozed"})
 
 
 def key_of(thread_id):
-    return (KEY_PREFIX + str(thread_id))[:agent_inbox.KEY_MAX]
+    return (KEY_PREFIX + str(thread_id))[: agent_inbox.KEY_MAX]
 
 
 def _due_date(text):
@@ -44,8 +45,16 @@ def urgency_of(state, checkpoint, now):
 def item_of(payload, thread, now):
     state = thread.get("state")
     details = f"{STATE_WORDS.get(state, 'Open loop')}. {str(thread.get('notes') or '')[:200]}".strip()
-    return {"from": SENDER, "subject": str(thread.get("title") or "")[:agent_inbox.SUBJECT_MAX], "urgency": urgency_of(state, thread.get("next_checkpoint"), now),
-            "workspace": str(payload.get("workspace") or "").title(), "due": thread.get("next_checkpoint") or "", "link": str(thread.get("url") or ""), "details": details, "key": key_of(thread.get("id"))}
+    return {
+        "from": SENDER,
+        "subject": str(thread.get("title") or "")[: agent_inbox.SUBJECT_MAX],
+        "urgency": urgency_of(state, thread.get("next_checkpoint"), now),
+        "workspace": str(payload.get("workspace") or "").title(),
+        "due": thread.get("next_checkpoint") or "",
+        "link": str(thread.get("url") or ""),
+        "details": details,
+        "key": key_of(thread.get("id")),
+    }
 
 
 def _plain(prop):
@@ -61,7 +70,18 @@ def _plain(prop):
 
 
 def _existing(client, source, key):
-    found = client.query_data_source(source, {"page_size": 2, "filter": {"and": [{"property": "Key", "rich_text": {"equals": key}}, {"property": "From", "rich_text": {"equals": SENDER}}]}}).get("results", [])
+    found = client.query_data_source(
+        source,
+        {
+            "page_size": 2,
+            "filter": {
+                "and": [
+                    {"property": "Key", "rich_text": {"equals": key}},
+                    {"property": "From", "rich_text": {"equals": SENDER}},
+                ]
+            },
+        },
+    ).get("results", [])
     return found[0] if found else None
 
 
@@ -77,13 +97,26 @@ def _moment(text):
 
 
 def _same(current, item):
-    due_ok = _moment(current["Due"]) == _moment(item["due"]) if item["due_given"] else bool(current["Due"] or not item["due"])
-    return (current["Subject"], current["Urgency"], current["Link"]) == (item["subject"], item["urgency"], item["link"]) and due_ok
+    due_ok = (
+        _moment(current["Due"]) == _moment(item["due"])
+        if item["due_given"]
+        else bool(current["Due"] or not item["due"])
+    )
+    return (current["Subject"], current["Urgency"], current["Link"]) == (
+        item["subject"],
+        item["urgency"],
+        item["link"],
+    ) and due_ok
 
 
 def _current(page):
     p = page.get("properties", {})
-    return {"Subject": _plain(p.get("Subject", {})), "Urgency": _plain(p.get("Urgency", {})), "Due": _plain(p.get("Due", {})), "Link": _plain(p.get("Link", {}))}
+    return {
+        "Subject": _plain(p.get("Subject", {})),
+        "Urgency": _plain(p.get("Urgency", {})),
+        "Due": _plain(p.get("Due", {})),
+        "Link": _plain(p.get("Link", {})),
+    }
 
 
 def _props(item, current_due=""):
@@ -103,7 +136,8 @@ def deliver(payloads, now=None, environ=None, client=None):
     now = now or datetime.now(timezone.utc)
     try:
         if client is None:
-            from lifeos.inbox import send_to_jim                                          # noqa: PLC0415
+            from lifeos.inbox import send_to_jim  # noqa: PLC0415
+
             client = send_to_jim._client(environ if environ is not None else {})
         source = agent_inbox.locate(client)
     except (InboxError, NotionError) as error:
@@ -124,7 +158,9 @@ def deliver(payloads, now=None, environ=None, client=None):
                 elif _same(_current(page), item):
                     out["unchanged"] += 1
                 else:
-                    client.call_once("PATCH", f"/pages/{page['id']}", {"properties": _props(item, _current(page)["Due"])})
+                    client.call_once(
+                        "PATCH", f"/pages/{page['id']}", {"properties": _props(item, _current(page)["Due"])}
+                    )
                     agent_inbox.replace_body(client, page["id"], item["details"])
                     out["updated"] += 1
             except InboxError as error:
@@ -137,7 +173,9 @@ def deliver(payloads, now=None, environ=None, client=None):
             try:
                 page = _existing(client, source, key_of(thread_id))
                 if page and _plain(page.get("properties", {}).get("Status", {})) in OPEN:
-                    client.call_once("PATCH", f"/pages/{page['id']}", {"properties": {"Status": {"select": {"name": "Done"}}}})
+                    client.call_once(
+                        "PATCH", f"/pages/{page['id']}", {"properties": {"Status": {"select": {"name": "Done"}}}}
+                    )
                     out["done"] += 1
             except NotionError as error:
                 out["failed"] += 1

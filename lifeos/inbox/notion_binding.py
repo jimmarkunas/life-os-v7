@@ -6,6 +6,7 @@ random code goes to that person out of band (valid 5 minutes, 3 tries). Step 2: 
 "Confirmation code" (a second signed event); only then is an ExactAuthorization minted. Notion proves no intent beyond
 the author id, so real execution stays off (policy.LIVE_WRITES_ENABLED); the event shape is UNVERIFIED live.
 """
+
 import hashlib
 import hmac
 import json
@@ -65,7 +66,13 @@ def parse_event(token, raw_body, header, *, notion_workspace_id, principals):
         raise InboxError("event_malformed") from None
     event_id = event.get("id")
     updated = (event.get("data") or {}).get("updated_properties")
-    if not isinstance(event_id, str) or not event_id or at.tzinfo is None or not isinstance(updated, list) or not all(isinstance(p, str) for p in updated):
+    if (
+        not isinstance(event_id, str)
+        or not event_id
+        or at.tzinfo is None
+        or not isinstance(updated, list)
+        or not all(isinstance(p, str) for p in updated)
+    ):
         raise InboxError("event_malformed")
     if event.get("type") != EVENT_TYPE:
         raise InboxError("event_type_unsupported")
@@ -95,7 +102,7 @@ def _fresh_row(read_row, row_map, row_id, principal_id):
         raise InboxError("row_unknown")
     try:
         row = read_row(row_id)
-    except Exception:                                                                        # noqa: BLE001 - never quoted
+    except Exception:  # noqa: BLE001 - never quoted
         raise InboxError("row_unavailable") from None
     if not isinstance(row, dict):
         raise InboxError("row_deleted")
@@ -131,9 +138,24 @@ def open_intent(ledger, event, *, key, row_map, read_row, read_record, principal
     record = _fresh_record(read_record, row_map[event.row_id], principal, action, now)
     intent_id, code = digest(event.event_id), new_code(rng)
     expires = now + CODE_TTL
-    ledger.open_intent({"intent_id": intent_id, "event_id": event.event_id, "principal_id": event.principal_id, "source": record.source, "workspace": record.workspace,
-                        "account": record.account, "record_id": record.record_id, "row_id": event.row_id, "action": action, "revision": record.revision, "event_at": stamp(event.at),
-                        "nonce": digest("nonce:" + intent_id)[:32], "code_mac": code_mac(key, intent_id, code), "expires_at": stamp(expires)})
+    ledger.open_intent(
+        {
+            "intent_id": intent_id,
+            "event_id": event.event_id,
+            "principal_id": event.principal_id,
+            "source": record.source,
+            "workspace": record.workspace,
+            "account": record.account,
+            "record_id": record.record_id,
+            "row_id": event.row_id,
+            "action": action,
+            "revision": record.revision,
+            "event_at": stamp(event.at),
+            "nonce": digest("nonce:" + intent_id)[:32],
+            "code_mac": code_mac(key, intent_id, code),
+            "expires_at": stamp(expires),
+        }
+    )
     deliver(event.principal_id, intent_id, code)
     return Pending(intent_id, event.principal_id, action, expires)
 
@@ -151,6 +173,7 @@ def confirm(ledger, event, *, key, row_map, read_row, read_record, principal_of,
     def refuse(reason):
         ledger.close_intent(intent_id, "invalidated")
         raise InboxError(reason)
+
     if stamp(event.at) <= intent["event_at"]:
         raise InboxError("event_out_of_order")
     if event.principal_id != intent["principal_id"]:
@@ -169,12 +192,19 @@ def confirm(ledger, event, *, key, row_map, read_row, read_record, principal_of,
         record = _fresh_record(read_record, intent["record_id"], principal, intent["action"], now)
     except InboxError as error:
         refuse(error.reason)
-    if (record.revision, record.source, record.workspace, record.account) != (intent["revision"], intent["source"], intent["workspace"], intent["account"]):
+    if (record.revision, record.source, record.workspace, record.account) != (
+        intent["revision"],
+        intent["source"],
+        intent["workspace"],
+        intent["account"],
+    ):
         refuse("record_changed")
     if not ledger.spend_attempt(intent_id, MAX_ATTEMPTS):
         raise InboxError("challenge_locked")
     typed = row.get(PROP_CODE)
-    if not isinstance(typed, str) or not hmac.compare_digest(code_mac(key, intent_id, typed.strip().upper()), intent["code_mac"]):
+    if not isinstance(typed, str) or not hmac.compare_digest(
+        code_mac(key, intent_id, typed.strip().upper()), intent["code_mac"]
+    ):
         raise InboxError("challenge_wrong")
     if not ledger.close_intent(intent_id, "confirmed"):
         raise InboxError("challenge_used")
