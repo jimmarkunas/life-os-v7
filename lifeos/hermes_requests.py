@@ -13,6 +13,7 @@ Config (names only): JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, BUZZ_URL_LIFE_OS
 BUZZ_STAGE_KEY (this stage's scoped member key), BUZZ_STAGE_CHANNEL (the channel UUID), BUZZ_STAGE_HERMES_PUBKEY (the
 approved recipient's public key).
 """
+
 import os
 import re
 
@@ -45,16 +46,20 @@ def relay_from_env(environ, live):
     """(relay, channel) from the environment. A dry run gets a relay with no write permission at all."""
     missing = [name for name in NAMES if not (environ.get(name) or "").strip()]
     if missing:
-        raise HermesError("HERMES_CONFIG_MISSING:" + ",".join(missing))            # setting names only, never values
-    url, channel, pubkey = (environ[name].strip() for name in ("BUZZ_URL_LIFE_OS", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY"))
+        raise HermesError("HERMES_CONFIG_MISSING:" + ",".join(missing))  # setting names only, never values
+    url, channel, pubkey = (
+        environ[name].strip() for name in ("BUZZ_URL_LIFE_OS", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY")
+    )
     if not (URL.match(url) and UUID.match(channel) and HEX.match(pubkey)):
         raise HermesError("HERMES_CONFIG_INVALID")
     try:
         secret = nip98.secret_from(environ["BUZZ_STAGE_KEY"].strip())
-    except Exception:                                                              # noqa: BLE001 - one fixed code whatever the parser raises
+    except Exception:  # noqa: BLE001 - one fixed code whatever the parser raises
         raise HermesError("HERMES_CONFIG_INVALID") from None
     writes = [(COMMUNITY, channel)] if live else []
-    return Relay({COMMUNITY: url}, {COMMUNITY: secret}, writes, recipients={(COMMUNITY, ALIAS): pubkey}, may_address=True), channel
+    return Relay(
+        {COMMUNITY: url}, {COMMUNITY: secret}, writes, recipients={(COMMUNITY, ALIAS): pubkey}, may_address=True
+    ), channel
 
 
 def _buzz(error):
@@ -72,23 +77,43 @@ def _exists(relay, channel, key):
 def run(limit, live, environ=os.environ, jira=None, relay=None, channel=None):
     jira = jira or Jira.from_env(environ)
     issues = search(jira, JQL, "status,labels")
-    keys = sorted({i["key"] for i in issues if isinstance(i, dict) and isinstance(i.get("key"), str) and KEY.fullmatch(i["key"])}, key=lambda k: int(k.split("-")[1]))
-    counts = {"eligible": len(keys), "invalid": len(issues) - len(keys), "already": 0, "planned": 0, "posted": 0, "already_delivered": 0, "verified": 0, "deferred": 0, "failed": 0}
+    keys = sorted(
+        {i["key"] for i in issues if isinstance(i, dict) and isinstance(i.get("key"), str) and KEY.fullmatch(i["key"])},
+        key=lambda k: int(k.split("-")[1]),
+    )
+    counts = {
+        "eligible": len(keys),
+        "invalid": len(issues) - len(keys),
+        "already": 0,
+        "planned": 0,
+        "posted": 0,
+        "already_delivered": 0,
+        "verified": 0,
+        "deferred": 0,
+        "failed": 0,
+    }
     if not keys:
-        return counts                                                              # nothing new: no Buzz read, no post
+        return counts  # nothing new: no Buzz read, no post
     if relay is None:
         relay, channel = relay_from_env(environ, live)
     pending = [key for key in keys if not _exists(relay, channel, key)]
     counts["already"], counts["planned"] = len(keys) - len(pending), len(pending)
     if not live:
         return counts
-    batch = pending[:max(limit, 0)]
+    batch = pending[: max(limit, 0)]
     counts["deferred"] = len(pending) - len(batch)
     posted = []
     for key in batch:
         try:
-            out = relay.post_message(COMMUNITY, channel, TEXT.format(case=case_of(key), key=key, status=STATUS), idempotency_of(key),
-                                     recipient=ALIAS, etype=ETYPE, case=case_of(key))
+            out = relay.post_message(
+                COMMUNITY,
+                channel,
+                TEXT.format(case=case_of(key), key=key, status=STATUS),
+                idempotency_of(key),
+                recipient=ALIAS,
+                etype=ETYPE,
+                case=case_of(key),
+            )
         except BuzzError as error:
             raise _buzz(error) from None
         status = out.get("status") if isinstance(out, dict) else None
@@ -99,7 +124,7 @@ def run(limit, live, environ=os.environ, jira=None, relay=None, channel=None):
             posted.append(key)
         else:
             raise HermesError("HERMES_BUZZ_UNEXPECTED")
-    for key in posted:                                                             # publication is not receipt: read each posted case back
+    for key in posted:  # publication is not receipt: read each posted case back
         counts["verified" if _exists(relay, channel, key) else "failed"] += 1
     if counts["failed"]:
         raise HermesError("HERMES_READBACK_MISSING")
