@@ -10,7 +10,8 @@ import argparse
 import sys
 
 from lifeos.jobs import store
-from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform import stage_timing
+from lifeos.platform.gmail import Gmail, GmailError, error_code, is_rate_limit
 from lifeos.sources.newsletters import config
 
 IN_FLIGHT = ("NEW", "RESOLVED", "READY")
@@ -107,6 +108,16 @@ def main(argv=None):
     try:
         counts = finalize(Gmail.from_env(), args.live, args.limit)
     except (GmailError, store.StoreError) as error:
+        if isinstance(error, GmailError) and is_rate_limit(error):
+            # Gmail's per-user limit, still on after every retry, while the early domains run uses the same mailbox.
+            # Closing a mail is idempotent, so nothing is lost: the stage reports degraded and the next tick closes it.
+            print(
+                f"FINALIZE DEGRADED: {error_code(error)}; nothing was closed this run, the next tick retries",
+                file=sys.stderr,
+            )
+            print("::warning title=finalize::Gmail rate limit; mail closing deferred to the next tick", flush=True)
+            stage_timing.note_counts({"degraded": True})
+            return 0
         print(f"FINALIZE FAILED: {error}", file=sys.stderr)
         return 1
     print(f"finalize {'LIVE' if args.live else 'DRY-RUN'}: {counts}")

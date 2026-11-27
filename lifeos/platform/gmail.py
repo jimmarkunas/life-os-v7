@@ -40,6 +40,12 @@ def error_code(error: BaseException) -> str:
     return "GMAIL_ERROR" if "://" in text else text[:40].upper().replace(" ", "_")
 
 
+def is_rate_limit(error: BaseException) -> bool:
+    """True for Gmail's rate limit that outlasted every retry (HTTP 429, or 403 rateLimitExceeded or userRateLimitExceeded)."""
+    code = error_code(error)
+    return code.startswith("HTTP_429") or code in ("HTTP_403_RATELIMITEXCEEDED", "HTTP_403_USERRATELIMITEXCEEDED")
+
+
 def _reason(error: urllib.error.HTTPError) -> str:
     try:
         reason = json.loads(error.read())["error"]["errors"][0]["reason"]
