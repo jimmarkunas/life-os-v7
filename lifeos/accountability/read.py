@@ -197,14 +197,17 @@ def _first_verified_done(jira, key, current_done_status_id=None):
     raise JiraError("ACCOUNTABILITY_MEJ_COMPLETION_HISTORY_UNVERIFIED")
 
 
-def _frozen_mej_membership(first, manifest=None, project="MEJ"):
-    """The approved Task->parent->goal baseline for one board; missing approval fails closed."""
+def _frozen_row(first, manifest=None, project="MEJ"):
+    """The approved quarter row for one board: tasks (key -> parent, goal), plus optional snapshot and gaps.
+
+    Schema 2 also records why, who approved and from when each key is a member (reason, approval, effective); a
+    missing approval fails closed."""
     if manifest is None:
         try:
             manifest = json.loads(MEJ_MEMBERSHIP.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") not in (1, 2):
         raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     quarter_id = f"{first.year}-q{(first.month - 1) // 3 + 1}"
     row = (manifest.get("quarters") or {}).get(quarter_id)
@@ -229,29 +232,55 @@ def _frozen_mej_membership(first, manifest=None, project="MEJ"):
             or not re.fullmatch(pattern, str(assignment.get("goal") or ""))
         ):
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
-    return row["tasks"]
+        if manifest["schema_version"] == 2 and not (
+            str(assignment.get("reason") or "").strip()
+            and str(assignment.get("approval") or "").strip()
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(assignment.get("effective") or ""))
+        ):
+            raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_INCOMPLETE")
+    return row
 
 
-def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ"):
+def _frozen_mej_membership(first, manifest=None, project="MEJ"):
+    """The approved Task->parent->goal baseline for one board; missing approval fails closed."""
+    return _frozen_row(first, manifest, project)["tasks"]
+
+
+def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ", today=None):
+    """v2 counts for one board from the approved key list alone. A member's current Jira parent never changes its
+    goal, so reparenting or a new project Epic cannot move a count; a key that is not on the list is unassigned.
+    A closed quarter with a published snapshot returns that snapshot, never a recount."""
     if not quarter_keys:
         return {}
-    frozen = _frozen_mej_membership(first, manifest, project)
-    project_goals = _mej_project_goals(jira, quarter_keys) if project == "MEJ" else {}
-    parent_keys = sorted(set(quarter_keys) | set(project_goals))
+    row = _frozen_row(first, manifest, project)
+    frozen = row["tasks"]
+    gaps = row.get("gaps")
+    if isinstance(gaps, dict) and any(goal in gaps for goal in quarter_keys):
+        raise JiraError("ACCOUNTABILITY_MEJ_BASELINE_GAP")
+    snapshot = row.get("snapshot")
+    if isinstance(snapshot, dict) and last < (today or datetime.now(ZoneInfo("America/Chicago")).date()):
+        figures = snapshot.get("figures")
+        if not snapshot.get("version") or not isinstance(figures, dict) or any(g not in figures for g in quarter_keys):
+            raise JiraError("ACCOUNTABILITY_MEJ_SNAPSHOT_INCOMPLETE")
+        return {goal: [int(figures[goal][0]), int(figures[goal][1])] for goal in quarter_keys}
     tally = {goal: [0, 0] for goal in quarter_keys}
     seen = set()
-    for issue in search(jira, f"parent in ({','.join(parent_keys)})", CHILD_FIELDS):
+    keys = sorted(frozen)
+    issues = []
+    for at in range(0, len(keys), 50):
+        issues += search(jira, f"key in ({','.join(keys[at : at + 50])})", CHILD_FIELDS)
+    for issue in issues:
         key = issue["key"]
-        if key not in frozen:
-            continue
         fields = issue.get("fields") or {}
         kind = fields.get("issuetype") or {}
-        if kind.get("subtask") or kind.get("name") not in ("Task", "Story"):
-            raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
-        parent = (fields.get("parent") or {}).get("key")
-        goal = parent if parent in quarter_keys else project_goals.get(parent)
-        expected = frozen[key]
-        if key in seen or goal not in quarter_keys or expected["goal"] != goal or expected["parent"] != parent:
+        goal = (frozen.get(key) or {}).get("goal")
+        if (
+            key in seen
+            or key not in frozen
+            or goal not in quarter_keys
+            or kind.get("subtask")
+            or kind.get("name") not in ("Task", "Story")
+        ):
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
         seen.add(key)
         done = ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done"

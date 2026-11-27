@@ -86,6 +86,9 @@ class Jira:
         if "parent in (" in jql:
             parents = set(jql.split("parent in (", 1)[1].split(")", 1)[0].split(","))
             return {"issues": [k for k in self.kids if k["fields"]["parent"]["key"] in parents], "isLast": True}
+        if jql.startswith("key in ("):
+            wanted = set(jql.split("key in (", 1)[1].split(")", 1)[0].split(","))
+            return {"issues": [k for k in self.kids if k["key"] in wanted], "isLast": True}
         return {"issues": [], "isLast": True}
 
 

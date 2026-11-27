@@ -208,5 +208,26 @@
     false,
     "A closed issue's resolution and labels contradict each other (superseded but resolved Done, or auto-closed but cancelled).",
     "Nothing was written; the region is stamped DEGRADED until a person fixes the issue."
+  ],
+  "ACCOUNTABILITY_MEJ_MEMBERSHIP_INCOMPLETE": [
+    "accountability",
+    "blocked",
+    false,
+    "An approved v2 membership key lacks its reason, approval or effective date.",
+    "Complete the membership row (reason, approval, effective date) in the existing membership file; the v2 column stays unavailable until then."
+  ],
+  "ACCOUNTABILITY_MEJ_SNAPSHOT_INCOMPLETE": [
+    "accountability",
+    "blocked",
+    false,
+    "A closed quarter's published snapshot is missing its version or a goal's figures.",
+    "Restore the published snapshot in the membership file; the closed quarter is never recounted."
+  ],
+  "ACCOUNTABILITY_MEJ_BASELINE_GAP": [
+    "accountability",
+    "blocked",
+    false,
+    "The Q4 baseline for a goal has incomplete evidence, so no figure is reconstructed.",
+    "Report the gap; add evidence to the membership file only when Jim or Matt approves it."
   ]
 }
