@@ -1,8 +1,4 @@
-"""LIFE-918 AC3: JFM and MEJ share one weekly view (grouped Sub-tasks, blocked and overdue backlog apart), OFF BY DEFAULT.
-
-All fixtures are synthetic: no live Jira or Notion, nothing is written. The default path is pinned to main's queries and text elsewhere
-(test_mej_week_focus.OffByDefault); here the new argument is proven and the default is re-pinned for the new code.
-"""
+"""AC3: JFM and MEJ share one weekly view (grouped Sub-tasks, blocked and overdue backlog apart), OFF BY DEFAULT."""
 import inspect
 import unittest
 from datetime import date, datetime
@@ -13,7 +9,7 @@ from lifeos.accountability import week as week_caller
 from lifeos.jira.snapshot import project_snapshot
 from lifeos.platform.jira import JiraError
 
-TODAY = date(2026, 11, 18)          # Wednesday; the week is Mon Nov 16 to Sun Nov 22
+TODAY = date(2026, 11, 18)  # Wednesday
 SITE = "https://example.invalid"
 
 
@@ -49,9 +45,9 @@ def fixture(project):
     p = project
     sprint = [issue(f"{p}-1", "In Progress", "2026-11-20"), issue(f"{p}-2"), issue(f"{p}-3", "blocked"),
               issue(f"{p}-11", "To Do", None, "Sub-task", f"{p}-1"), issue(f"{p}-12", "In Progress", None, "Sub-task", f"{p}-1"),
-              issue(f"{p}-13", "To Do", None, "Sub-task", f"{p}-99")]               # -99 is not an open sprint commitment
+              issue(f"{p}-13", "To Do", None, "Sub-task", f"{p}-99")]  # 99 is not an open sprint commitment
     outside = [issue(f"{p}-20", "To Do", "2026-11-10"), issue(f"{p}-21", "blocked", "2026-11-05"), issue(f"{p}-22", "blocked", None),
-               issue(f"{p}-1", "In Progress", "2026-11-20")]                         # the same key as a commitment: must never count twice
+               issue(f"{p}-1", "In Progress", "2026-11-20")]
     return Board(p, sprint, outside, [issue(f"{p}-30", "Done")])
 
 
@@ -76,9 +72,9 @@ class WeekView(unittest.TestCase):
         subs = [r["key"] for rows in got["subtasks"].values() for r in rows]
         sections = commitments + self.keys_of(got["blocked"]) + self.keys_of(got["overdue"]) + subs
         self.assertEqual(len(sections), len(set(sections)))
-        self.assertNotIn("MEJ-1", self.keys_of(got["blocked"]) + self.keys_of(got["overdue"]))      # outside list echoed a commitment: dropped
+        self.assertNotIn("MEJ-1", self.keys_of(got["blocked"]) + self.keys_of(got["overdue"]))  # outside list echoed a commitment: dropped
         for key in subs:
-            self.assertNotIn(key, commitments)                                                       # a Sub-task is never a commitment of its own
+            self.assertNotIn(key, commitments)  # a Sub-task is never a commitment of its own
 
     def test_an_overdue_item_outside_the_sprint_never_also_counts_as_a_commitment(self):
         got = read.week(fixture("JFM"), "JFM", TODAY, v3_week_view=True)
@@ -97,7 +93,7 @@ class WeekView(unittest.TestCase):
         self.assertTrue(lines[at + 3].startswith("    · MEJ-12 "))
         for heading in ("Blocked outside sprint (2):", "Overdue backlog (1):", "Done this week (1):"):
             self.assertIn(heading, lines)
-        self.assertNotIn("MEJ-13", " ".join(lines))                                                  # its parent is not a commitment: not shown under another
+        self.assertNotIn("MEJ-13", " ".join(lines))
         self.assertEqual(len([p for p in parts if p[1] == f"{SITE}/browse/MEJ-11"]), 1)
 
     def test_empty_boards_say_nothing_and_stay_inside_the_summary_limit(self):
@@ -124,7 +120,7 @@ class WeekView(unittest.TestCase):
                 board = Failing(project, [], [])
                 with self.assertRaises(JiraError):
                     read.week(board, project, TODAY, v3_week_view=True)
-                self.assertFalse(any('statusCategory = "In Progress"' in q for q in board.queries))     # never falls back to arbitrary In Progress issues
+                self.assertFalse(any('statusCategory = "In Progress"' in q for q in board.queries))  # never falls back to arbitrary In Progress issues
 
     def test_the_same_queries_run_on_both_boards_except_the_project(self):
         a, b = fixture("JFM"), fixture("MEJ")
@@ -139,7 +135,7 @@ class WeekView(unittest.TestCase):
         self.assertFalse(hasattr(board, "post") or hasattr(board, "put"))
 
 
-MAIN_WEEK_QUERIES = [   # main's queries for any project (see test_mej_week_focus.MAIN_WEEK_QUERIES)
+MAIN_WEEK_QUERIES = [
     'project = {p} AND issuetype != Epic AND statusCategory != Done AND (sprint in openSprints() OR duedate <= "2026-11-22") ORDER BY duedate ASC, key ASC',
     'project = {p} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "2026-11-16" ORDER BY key ASC',
 ]
@@ -196,7 +192,7 @@ class OffByDefault(unittest.TestCase):
 
     def test_only_the_gated_week_builder_and_never_the_scheduled_snapshot_passes_the_argument(self):
         from lifeos.jira import snapshot
-        self.assertEqual(inspect.getsource(week_caller).count("v3_week_view=True"), 1)                  # only the V3_WEEK_VIEW-gated builder passes it
+        self.assertEqual(inspect.getsource(week_caller).count("v3_week_view=True"), 1)  # only the V3_WEEK_VIEW-gated builder passes it
         self.assertIn('switches.on("V3_WEEK_VIEW"', inspect.getsource(week_caller))
         self.assertNotIn("v3_week_view", inspect.getsource(snapshot.run))
 

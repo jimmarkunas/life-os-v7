@@ -1,4 +1,4 @@
-"""D116: the Bills card renders the saved snapshot into the one 'Bills: This Week' callout."""
+"""the Bills card renders the saved snapshot into the one 'Bills: This Week' callout."""
 import copy
 import inspect
 import pathlib
@@ -23,7 +23,7 @@ def row(name, due, next_due, *, paid=False, status="Active", cycle="Monthly", am
             "Last Paid": None, "Costs per Cycle": amount, "Last Observed Amount": amount}
 
 
-# The four rows left in the live Bill Tracker on 2026-10-04: never marked Paid, so legitimately overdue, plus two current bills.
+# The four rows left in the live Bill Tracker on 2026-10-04: never marked Paid, so legitimately overdue, plus.
 STALE_FOUR = [row("Best Buy Card", "2026-09-09", "2026-10-09"), row("Google Store", "2026-09-10", "2026-10-10"),
               row("IKEA Project Card", "2026-09-11", "2026-10-11", amount=None), row("HEB Visa", "2026-09-13", "2026-10-13")]
 
@@ -38,7 +38,7 @@ def lines(blocks):
 
 class RenderTests(unittest.TestCase):
     def test_window_is_today_through_today_plus_seven_from_the_chicago_date_not_september(self):
-        """Jim's rule: the same boundary as the Bills view's native 'one week from now' filter. For 2026-10-04 that is Oct 4 through Oct 11."""
+        """Jim's rule: the same boundary as the Bills view's native 'one week from now' filter."""
         rows = [row("Today Bill", "2026-10-04", "2026-10-04"), row("Oct 10 Bill", "2026-10-10", "2026-10-10"), row("Oct 11 Bill", "2026-10-11", "2026-10-11"),
                 row("Oct 12 Bill", "2026-10-12", "2026-10-12")]
         overdue, due = card._window(rows, NOW.date())
@@ -48,8 +48,8 @@ class RenderTests(unittest.TestCase):
         blocks, counts = card.render(saved(rows), now=NOW)
         self.assertIn("3 due through one week from now", lines(blocks)[0])
         self.assertEqual(counts["due_window"], 3)
-        self.assertNotIn("due_7d", counts)                                                     # the card's metric no longer claims seven days
-        later_overdue, later_due = card._window(rows, date(2026, 12, 20))                      # another day: the window moves, nothing is stored
+        self.assertNotIn("due_7d", counts)
+        later_overdue, later_due = card._window(rows, date(2026, 12, 20))  # another day: the window moves, nothing is stored
         self.assertEqual(later_due, [])
         self.assertEqual(len(later_overdue), 4)
 
@@ -66,7 +66,7 @@ class RenderTests(unittest.TestCase):
         blocks, counts = card.render(saved(STALE_FOUR), now=NOW)
         self.assertIn("4 overdue", lines(blocks)[0])
         self.assertEqual(counts["overdue"], 4)
-        self.assertEqual(STALE_FOUR, before)                                                   # the renderer never touches the rows
+        self.assertEqual(STALE_FOUR, before)  # the renderer never touches the rows
 
     def test_the_callout_text_is_one_summary_line_the_table_carries_the_rows(self):
         blocks, _ = card.render(saved(STALE_FOUR), now=NOW)
@@ -78,7 +78,7 @@ class RenderTests(unittest.TestCase):
         rows = STALE_FOUR + [row("Water", "2026-10-06", "2026-10-06", amount=45.0), row("Power", "2026-10-08", "2026-10-08", amount=30.0)]
         blocks, counts = card.render(saved(rows), now=NOW)
         head = lines(blocks)[0]
-        self.assertEqual(card.heading_text(saved(rows), False), "Bills: This Week (10/4 · 12:10 PM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertEqual(card.heading_text(saved(rows), False), "Bills: This Week (10/4 · 12:10 PM CT)")  # the stamp is in the heading
         self.assertNotIn("Updated", head)
         self.assertIn("2 due through one week from now", head)
         self.assertIn("$75 known", head)
@@ -128,16 +128,16 @@ class WriteTests(unittest.TestCase):
         view_before = dict(next(k for k in notion.children["bills-callout"] if k["id"] == "bills-view-old"))
         counts = self.run_card(notion)
         kids = notion.children["bills-callout"]
-        self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")                 # the heading block itself is kept
-        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week (10/4 · 12:10 PM CT)")          # LIFE-609: the stamp is in the heading
-        self.assertTrue(report_region.plain(kids[1]).startswith("4 bills due"))                          # the summary sits right under the heading
-        self.assertEqual(kids[2]["id"], "bills-view-old")                                     # the Bills table is still there, below it, untouched
+        self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")  # the heading block itself is kept
+        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week (10/4 · 12:10 PM CT)")  # the stamp is in the heading
+        self.assertTrue(report_region.plain(kids[1]).startswith("4 bills due"))  # the summary sits right under the heading
+        self.assertEqual(kids[2]["id"], "bills-view-old")
         self.assertEqual(kids[2], view_before)
         self.assertNotIn("last accepted 9/14", "\n".join(lines(kids)))
-        self.assertEqual((counts["blocks_written"], counts["removed"]), (1, 0))                # the status line is rewritten in place, so nothing is removed
+        self.assertEqual((counts["blocks_written"], counts["removed"]), (1, 0))
         self.assertEqual((notion.full_tree("calendar-callout"), notion.full_tree("jira-callout"), notion.full_tree("dcc-callout")),
                          (calendar_before, jira_before, dcc_before))
-        self.assertEqual({p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")}, {"bills-status-old", "heading-bills-callout"})      # the one old status line and the heading (LIFE-609: it carries the stamp) are the only blocks touched
+        self.assertEqual({p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")}, {"bills-status-old", "heading-bills-callout"})
         self.assertFalse(any(p == f"/blocks/{notion.page_id}/children" for _, p in notion.log))
 
     def test_dry_run_writes_nothing_and_missing_config_is_not_an_error(self):
@@ -173,15 +173,13 @@ class WriteTests(unittest.TestCase):
             self.assertNotIn(extra["id"], {p.split("/")[2] for m, p in notion.log if m == "DELETE"})
 
     def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-613: the Jira and Calendar regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
         for op in ("APPEND", "DELETE"):
             for region in ("calendar-callout", "jira-callout"):
                 counts = self.run_card(BillsRegions(change_on=op, change_region=region))
                 self.assertGreater(counts["blocks_written"], 0, (op, region))
 
     def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
-        """LIFE-613 mutation proof. A writer aimed at a block of another card (Jira's callout heading) must fail with the fixed code and leave that block untouched. On the old code the write went
-        through and was only noticed afterwards (BILLS_PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        """mutation proof."""
         notion = BillsRegions()
         foreign = notion.children["jira-callout"][0]["id"]
         before = notion.full_tree("jira-callout")
@@ -195,7 +193,7 @@ class WriteTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "BILLS_WRITE_OUT_OF_SCOPE")
         self.assertEqual(notion.full_tree("jira-callout"), before)
         writes = [p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")]
-        self.assertEqual(writes, ["/blocks/heading-bills-callout", "/blocks/heading-bills-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused; LIFE-722: and it was put back (the stamp, then the old stamp)
+        self.assertEqual(writes, ["/blocks/heading-bills-callout", "/blocks/heading-bills-callout"])
 
     def test_missing_protected_ids_refuse_a_live_write(self):
         for missing in ("CALENDAR_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"):
@@ -208,14 +206,16 @@ class WriteTests(unittest.TestCase):
 
 
 class RuntimePathTests(unittest.TestCase):
-    """PRE_MERGE_RUNTIME_GATE: the production entry points actually reach the card, after the snapshot, and nothing else changed."""
+    """PRE_MERGE_RUNTIME_GATE: the production entry points actually reach the card, after the snapshot, and nothing else
+    changed.
+    """
 
     def test_the_cli_stage_points_at_the_card_and_the_whole_path_runs_from_the_saved_snapshot(self):
         from lifeos import run as runner
         self.assertEqual(runner.STAGES["bills-card"].target, ("lifeos.bills.card", "run"))
         notion = BillsRegions()
         database = BillsSnapshotDB(saved(STALE_FOUR))
-        counts = card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: database)      # saved snapshot -> exact region -> read-back -> protected regions
+        counts = card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: database)
         self.assertEqual(counts["status"], "fresh")
         self.assertEqual([c for c in database.sql if c.startswith(("INSERT", "UPDATE", "DELETE"))], [])  # the card never writes the snapshot either
 
@@ -229,9 +229,9 @@ class RuntimePathTests(unittest.TestCase):
         runs = [step.get("run", "") for step in job["steps"]]
         order = [next(i for i, r in enumerate(runs) if f"lifeos.run {stage}" in r) for stage in ("bills-paid", "bills-snapshot", "bills-card")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(set(job["needs"]), {"gate"})                                                # LIFE-613: the scope guard replaced the wait for jira and agenda
+        self.assertEqual(set(job["needs"]), {"gate"})
         self.assertTrue(next(s for s in job["steps"] if s.get("id") == "bcard")["continue-on-error"])
-        self.assertNotIn("schedule", doc[True])                                                   # no new scheduler: the job still rides the tick's workflow_run
+        self.assertNotIn("schedule", doc[True])
 
 
 class OwnershipAndSourceTests(unittest.TestCase):

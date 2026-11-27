@@ -1,4 +1,4 @@
-"""LIFE-340: model.base_url points at OpenRouter while the provider is openai-codex. A temp config shaped like the real one; nothing real is touched."""
+"""model.base_url points at OpenRouter while the provider is openai-codex."""
 import hashlib
 import os
 import shutil
@@ -69,7 +69,7 @@ class Fix(unittest.TestCase):
         self.assertNotIn("SECRET-SHOULD-NEVER-PRINT", out)
         now = open(self.conf).read()
         self.assertIn("  base_url: " + NEW, now)
-        self.assertEqual(now.count(OLD), 1)                      # the unrelated 'other.base_url' keeps its value
+        self.assertEqual(now.count(OLD), 1)  # the unrelated 'other.base_url' keeps its value
         self.assertIn("other:\n  base_url: " + OLD, now)
         self.assertEqual(now.replace("  base_url: " + NEW, "  base_url: " + OLD + "   # set during an earlier switch"), original)
         self.assertEqual(open(os.path.join(self.backup, "config.yaml")).read(), original)

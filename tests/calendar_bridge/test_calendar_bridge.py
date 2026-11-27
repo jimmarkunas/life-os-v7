@@ -48,10 +48,10 @@ class FakeGcal:
         self.items = {e["id"]: e for e in existing}
         self.log = []
         self.conflict = set()
-        self.foreign = []                                     # events V7 did not write
+        self.foreign = []  # events V7 did not write
 
     def list_events(self, a, b, prop=None):
-        assert prop is None                                   # everything in the window: V7's own copies and the person's events
+        assert prop is None
         return list(self.items.values()) + self.foreign
 
     def insert(self, body):
@@ -73,7 +73,6 @@ connect = shared.SelfCursorDb
 
 
 def day(uid, i):
-    """An event on the i-th day after Oct 8 (one id per day, so a run holds many distinct occurrences)."""
     return ev(uid, start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000")
 
 
@@ -93,7 +92,7 @@ class MirrorTests(unittest.TestCase):
     def test_ids_are_deterministic_valid_google_ids_and_per_occurrence(self):
         one = sync.google_id("personal", "uid", "2026-10-08T15:00:00")
         self.assertEqual(one, sync.google_id("personal", "uid", "2026-10-08T15:00:00"))
-        self.assertNotEqual(one, sync.google_id("personal", "uid", "2026-10-15T15:00:00"))      # a series: one id per occurrence
+        self.assertNotEqual(one, sync.google_id("personal", "uid", "2026-10-15T15:00:00"))  # a series: one id per occurrence
         self.assertNotEqual(one, sync.google_id("work", "uid", "2026-10-08T15:00:00"))
         self.assertRegex(one, r"^[a-v0-9]{5,1024}$")
 
@@ -153,7 +152,7 @@ class SyncTests(unittest.TestCase):
             go([], g)
         self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")
         self.assertEqual(len(g.items), 8)
-        self.assertEqual(printed.getvalue().split(":", 1)[0], "calendar-sync guard")                 # the refusal says what it saw: counts, nothing private
+        self.assertEqual(printed.getvalue().split(":", 1)[0], "calendar-sync guard")
         line = json.loads(printed.getvalue().split(":", 1)[1])
         self.assertEqual((line["outlook"], line["google"], line["delete"], line["create"], line["applied"]), (0, 8, 8, 0, 0))
         self.assertEqual(set(line), {"outlook", "skipped", "google", "create", "update", "already_in_google", "delete", "same", "applied", "failed"})
@@ -163,16 +162,16 @@ class SyncTests(unittest.TestCase):
 
     def test_the_brake_still_refuses_when_outlook_answers_with_too_few_events_to_replace_what_is_there(self):
         g = FakeGcal()
-        go(self.many("old", 14), g)                                         # floor = 7
+        go(self.many("old", 14), g)  # floor = 7
         with contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(BridgeError):
-                go(self.many("new", 7), g)                                  # 7 answered, 14 to delete: not enough to trust
+                go(self.many("new", 7), g)  # 7 answered, 14 to delete: not enough to trust
             with self.assertRaises(BridgeError):
-                go(self.many("old", 3), g)                                  # a partial answer with the same ids: 11 to delete
+                go(self.many("old", 3), g)  # a partial answer with the same ids: 11 to delete
         self.assertEqual(len(g.items), 14)
-        out = go(self.many("new", 8), g)                                    # 8 answered (more than half of what is there; every id changed, as on Oct 7): replaced
+        out = go(self.many("new", 8), g)  # 8 answered (more than half of what is there)
         self.assertEqual((out["delete"], out["create"], out["same"], out["applied"], out["failed"]), (14, 8, 0, 22, 0))
-        self.assertEqual(set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)})      # only the new copies remain
+        self.assertEqual(set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)})  # only the new copies remain
 
     def test_events_v7_did_not_write_are_never_edited_or_deleted(self):
         g = FakeGcal()
@@ -187,7 +186,7 @@ class SyncTests(unittest.TestCase):
                      {"id": "all-day", "iCalUID": "day", "start": {"date": "2026-10-09"}}]
         out = go([ev("dup"), ev("new"), ev("day", "2026-10-09T00:00:00.0000000", "2026-10-10T00:00:00.0000000", isAllDay=True),
                   ev("dup", start="2026-10-15T15:00:00.0000000", end="2026-10-15T16:00:00.0000000")], g, live=False)
-        # 10:00-05:00 is 15:00Z: the first occurrence and the all-day event are already there; a later occurrence and "new" are not
+        # 10:00-05:00 is 15:00Z: the first occurrence and the all-day event are already there
         self.assertEqual((out["already_in_google"], out["create"]), (2, 2))
 
     def test_missing_sign_in_or_config_fails_closed(self):
@@ -244,7 +243,7 @@ class GcalClientTests(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=flaky):
             c = self.client()
             self.assertEqual(c.list_events("a", "b"), [])
-            c.delete("gone")                                                    # 404: already gone
+            c.delete("gone")  # 404: already gone
         self.assertEqual(calls.count("GET"), 3)
 
         def denied(request, timeout=0):
@@ -286,13 +285,13 @@ class WorkflowTests(unittest.TestCase):
     def test_manual_only_with_only_the_calendar_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
-        self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),              # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
+        self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),
                          sorted(["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))      # LIFE-704: the port comes from the plain-switch loader, not a secret
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
 
     def test_no_address_in_tracked_bridge_code(self):
         for path in list((ROOT / "lifeos" / "calendar_bridge").glob("*.py")) + [ROOT / "lifeos/platform/gcal.py"]:
-            text = path.read_text().replace(SERVICE_ACCOUNT, "")  # LIFE-1023: the one calendar service-account address (an address, not a secret) is a constant
+            text = path.read_text().replace(SERVICE_ACCOUNT, "")
             self.assertNotRegex(text, r"[\w.+-]+@[\w-]+\.[\w.]+")
 
 
@@ -304,8 +303,8 @@ class HourlyJobTests(unittest.TestCase):
 
     def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
-        self.assertIn("needs.gate.outputs.due_outlook == 'true'", job.split("runs-on")[0])             # LIFE-604 item 11: the tick trigger lives once, in the gate job (tests/jobs/test_domains_events.py)
-        self.assertEqual(job.count("continue-on-error: true") - job.count("actions/doppler-load"), 3)            # calendar sync + the LIFE-85 tailnet join (no fallback, not a failure) + the LIFE-703 settings loader (NOTION_JIRA_TOKEN only; a failure leaves the GitHub values); the credential load and its retry are inside the local action (LIFE-631)
+        self.assertIn("needs.gate.outputs.due_outlook == 'true'", job.split("runs-on")[0])
+        self.assertEqual(job.count("continue-on-error: true") - job.count("actions/doppler-load"), 3)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)
 
@@ -314,11 +313,11 @@ class HourlyJobTests(unittest.TestCase):
         head, steps = job.split("    steps:")
         self.assertNotIn("secrets.", head)
         for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON", "HIRING_PIPELINE_PAGE_ID"):
-            self.assertNotIn(name, job, name)                                  # no Jobs secret is even named in this workflow
+            self.assertNotIn(name, job, name)  # no Jobs secret is even named in this workflow
         direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
-        self.assertEqual(sorted((direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))) - {"V7_RUNTIME_CONFIG_SOURCE_ID"}),                  # LIFE-859: the Runtime Configuration address is not a secret; EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
+        self.assertEqual(sorted((direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))) - {"V7_RUNTIME_CONFIG_SOURCE_ID"}),
                          sorted(["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")]))   # LIFE-85: the Oracle relay key, and the Tailscale pair for the join only
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")]))
 
 
 if __name__ == "__main__":

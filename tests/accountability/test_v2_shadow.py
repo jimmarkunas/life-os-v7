@@ -1,7 +1,6 @@
-"""LIFE-918 AC4/AC5 (synthetic, no network, no provider write): the v2 quarterly preview inside the existing Quarterly Goals & Review blocks (Jim, comment 14216: no separate block).
-
-Off by default and exactly the old two-column table when off; on, the table is upgraded in place to Lane, Progress, Done / all, New count (preview), Status; JFM and Matt alike show NEEDS Q1 MEMBER LIST
-with the shipped empty membership, the v2 count with an approved fixture list, DATA MISSING when the list and Jira disagree; legacy figures stay official; the second run writes nothing."""
+"""AC4/AC5 (synthetic, no network, no provider write): the v2 quarterly preview inside the existing Quarterly Goals &
+Review blocks.
+"""
 import contextlib
 import io
 import json
@@ -36,7 +35,7 @@ def kid(key, parent, done=False, kind="Task"):
 
 
 class Jira:
-    """JQL answered from fixtures; a status change into Done on 2026-11-10 for every done Task."""
+    """JQL answered from fixtures"""
 
     def __init__(self, kids):
         self.kids, self.queries = kids, []
@@ -57,7 +56,9 @@ class Jira:
 
 
 def board():
-    """Two Quarterly Goals & Review callouts as they stand today: the two-column table (Lane, Done / all), the note and the Quarterly Reviews toggle, plus a fixed block that must never be written."""
+    """Two Quarterly Goals & Review callouts as they stand today: the two-column table (Lane, Done / all), the note and
+    the Quarterly Reviews toggle, plus a.
+    """
     notion = TreeNotion()
     for who, lane in (("jim", "Career"), ("matt", "Creative")):
         notion.callout(f"b-{who}-goals", f"Quarterly Goals & Review — {who}", "Not updated yet", [notion.table(f"t-{who}", [(lane, "–")]), F.para(f"note-{who}", "old note"), notion.toggle(f"tg-{who}", "x")], f"pg-{who}", legacy=False)
@@ -116,13 +117,13 @@ class Table(unittest.TestCase):
         out, notion, jira = run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9")])
         self.assertEqual(table(notion, "jim"), [["Lane", "Progress", "Done / all", "New count (preview)", "Status"], ["Career", "██████████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"]])
         order = notion.kids["b-jim-goals"]
-        self.assertEqual([notion.blocks[k]["type"] for k in order[2:]], ["table", "paragraph", "toggle"])               # lanes, note and toggle kept; no second block anywhere
+        self.assertEqual([notion.blocks[k]["type"] for k in order[2:]], ["table", "paragraph", "toggle"])  # lanes, note and toggle kept
         self.assertEqual(notion.text("b-jim-goals-h"), "Quarterly Goals & Review — Jim · Q4 2026")
         self.assertEqual(notion.blocks[order[2]]["table"]["table_width"], 5)
         self.assertEqual(notion.text("fx-body"), "keep me")
         self.assertEqual(notion.text("fixed-st"), "Not updated yet")
         link = notion.blocks[notion.kids[order[2]][1]]["table_row"]["cells"][0][0]["href"]
-        self.assertEqual(link, "https://jira.example.com/browse/JFM-9")                                                  # the lane stays linked to its Epic
+        self.assertEqual(link, "https://jira.example.com/browse/JFM-9")  # the lane stays linked to its Epic
 
     def test_both_blocks_render_the_same_columns_and_jfm_shows_its_real_v2_count_with_an_approved_list(self):
         frozen = approved_both({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}}, {"JFM-20": {"parent": "JFM-9", "goal": "JFM-9"}, "JFM-21": {"parent": "JFM-9", "goal": "JFM-9"}})
@@ -196,9 +197,9 @@ class Bar(unittest.TestCase):
         for done, total, filled, color in ((5, 26, 2, "red"), (3, 7, 4, "orange"), (6, 9, 7, "orange"), (7, 10, 7, "green"), (0, 6, 0, None), (10, 10, 10, "green"), (0, 0, 0, None)):
             pieces = render.bar(done, total)
             self.assertEqual(sum(len(p[0]) for p in pieces), 10)
-            self.assertEqual(sum(len(p[0]) for p in pieces if p[3] != "gray"), filled)                         # filled cells keep their colour
-            self.assertEqual(sum(len(p[0]) for p in pieces if p[3] == "gray"), 10 - filled)                     # empty cells are the same glyph in gray
-            self.assertTrue(all(set(p[0]) == {"█"} for p in pieces))                                            # one glyph, so every bar is the same width (Jim, Nov 25 2026)
+            self.assertEqual(sum(len(p[0]) for p in pieces if p[3] != "gray"), filled)  # filled cells keep their colour
+            self.assertEqual(sum(len(p[0]) for p in pieces if p[3] == "gray"), 10 - filled)  # empty cells are the same glyph in gray
+            self.assertTrue(all(set(p[0]) == {"█"} for p in pieces))  # one glyph, so every bar is the same width
             if filled:
                 self.assertEqual(pieces[0][3], color)
 

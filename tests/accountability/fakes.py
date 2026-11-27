@@ -1,10 +1,10 @@
-"""Synthetic Jira and Notion for the accountability tests (LIFE-671): fictional keys and text only."""
+"""Synthetic Jira and Notion for the accountability tests: fictional keys and text only."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.platform.jira import JiraError
 
-NOW = datetime(2026, 11, 18, 9, 5, tzinfo=ZoneInfo("America/Chicago"))        # a Wednesday in Q4 2026
+NOW = datetime(2026, 11, 18, 9, 5, tzinfo=ZoneInfo("America/Chicago"))  # a Wednesday in Q4 2026
 
 
 def rich(content, url=None):
@@ -22,7 +22,9 @@ def summary_line(page_id):
 
 
 def canonical(url):
-    """What Notion does to an address it stores: characters it treats as safe come back unescaped (observed on the live page: %28 %29 %21 became ( ) !)."""
+    """What Notion does to an address it stores: characters it treats as safe come back unescaped (observed on the live
+    page: %28 %29 %21 became !).
+    """
     return url.replace("%28", "(").replace("%29", ")").replace("%21", "!") if url else url
 
 
@@ -122,7 +124,7 @@ class Notion:
 
 
 class Jira:
-    """JQL answered by substring of the query; `down` makes every read fail like an unreachable Jira."""
+    """JQL answered by substring of the query"""
 
     def __init__(self, answers, down=False, remote=None):
         self.answers, self.down, self.queries, self.remote = answers, down, [], remote or {}

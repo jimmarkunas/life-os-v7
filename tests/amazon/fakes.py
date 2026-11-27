@@ -109,7 +109,7 @@ class AmazonNotion:
     def query_data_source(self, source_id, body):
         self.calls.append(("QUERY", source_id, deepcopy(body)))
         self.trace.append(("notion", "QUERY"))
-        if "filter" not in body:                       # watermark read: newest Latest Event At first
+        if "filter" not in body:  # watermark read: newest Latest Event At first
             dated = [p for p in self.rows.values() if p["properties"]["Latest Event At"]["date"]]
             dated.sort(key=lambda p: p["properties"]["Latest Event At"]["date"]["start"], reverse=True)
             return {"results": [deepcopy(p) for p in dated[:body["page_size"]]], "has_more": False}

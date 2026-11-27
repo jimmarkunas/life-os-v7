@@ -1,4 +1,4 @@
-"""LIFE-945 (synthetic): the Weekly LIFE OS Review stage against an in-memory Notion and GitHub. No network, no real page."""
+"""(synthetic): the Weekly LIFE OS Review stage against an in-memory Notion and GitHub."""
 import itertools
 import unittest
 from datetime import date, datetime
@@ -17,7 +17,7 @@ FRI = datetime(2026, 11, 27, 22, 5, tzinfo=CT)
 
 
 class Notion:
-    """Blocks, pages and Weekly Reviews rows in memory. Every write is recorded; only the review's own paths are accepted."""
+    """Blocks, pages and Weekly Reviews rows in memory."""
     def __init__(self, fresh=True, cards=6, dup=False):
         self.blocks, self.rows, self.writes, self.ids = {}, [], [], itertools.count(100)
         self.add(REPORT, "page", None)
@@ -215,7 +215,7 @@ class Run(unittest.TestCase):
         go(healthy, drive=drive_ok)
         self.assertEqual(healthy.rows[-1]["properties"]["Source Health"], {"select": {"name": "Healthy"}})
         n = Notion()
-        out = go(n)                                                   # no governed reader connected
+        out = go(n)  # no governed reader connected
         self.assertEqual(n.rows[-1]["properties"]["Source Health"], {"select": {"name": "Degraded"}})
         self.assertEqual(out["weeks"][0]["degraded"], ["Drive"])
         text = " ".join(b[b["type"]]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b.get("type") in ("paragraph", "bulleted_list_item"))
@@ -321,14 +321,14 @@ class OracleDrive(unittest.TestCase):
 
     def test_the_stage_builds_the_reader_from_the_oracle_address_setting_and_a_down_oracle_leaves_the_other_five_lanes_healthy(self):
         n = Notion()
-        out = go(n, env={"IMESSAGE_ALERTS_HOST": "127.0.0.1:1"})            # nothing listens: the connection fails
+        out = go(n, env={"IMESSAGE_ALERTS_HOST": "127.0.0.1:1"})  # nothing listens: the connection fails
         self.assertEqual(out["weeks"][0]["degraded"], ["Drive"])
         text = " ".join(b[b["type"]]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b.get("type") in ("paragraph", "bulleted_list_item"))
         self.assertIn("Drive: Degraded (DRIVE_ORACLE_UNREACHABLE)", text)
 
 
 class NoDashboardLine(unittest.TestCase):
-    """Jim, Nov 24 2026 (LIFE-945, comment 14179): no Dashboard pointer line. The stage neither writes one nor treats its absence as a fault."""
+    """The stage neither writes one nor treats its absence as a fault."""
     def test_the_stage_runs_clean_with_no_dashboard_line_and_writes_none(self):
         n = Notion()
         out = go(n, drive=drive_ok)
@@ -347,7 +347,7 @@ class AutomationLane(unittest.TestCase):
         ok = {"hourly.yml": [("cancelled", self.NOW), ("failure", self.NOW)], "domains.yml": [("success", self.NOW)]}
         lane = wl.automation(ok, self.NOW)
         self.assertEqual(lane.health, "Healthy")
-        self.assertEqual(lane.items[0][0], "System Maintenance")                # the one failed run in the week is still a decision
+        self.assertEqual(lane.items[0][0], "System Maintenance")  # the one failed run in the week is still a decision
         bad = wl.automation({"hourly.yml": [("failure", self.NOW)], "domains.yml": [("success", self.NOW)]}, self.NOW)
         self.assertEqual((bad.health, bad.reason), ("Degraded", "LATEST_RUN_FAILED_HOURLY"))
         n = Notion(fresh=False)

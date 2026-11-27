@@ -1,4 +1,4 @@
-"""LIFE-320: the connector-allowlist plugin and its deploy script."""
+"""the connector-allowlist plugin and its deploy script."""
 import importlib.util
 import os
 import shutil
@@ -74,7 +74,6 @@ class Check(unittest.TestCase):
 
 
 class McpTools(unittest.TestCase):
-    """LIFE-320 follow-up (live test, Nov 6 2026): Todoist and Robinhood reached the librarian as MCP servers, tools named mcp__<server>__<tool>."""
 
     def test_every_mcp_tool_is_blocked_unless_its_server_is_listed(self):
         for tool in ("mcp__todoist__find-projects", "mcp__robinhood__place_order", "mcp__robinhood__list_resources", "MCP__Todoist__X", "mcp__", "mcp____x", "mcp__notion__x"):
@@ -90,7 +89,7 @@ class McpTools(unittest.TestCase):
         self.assertEqual(ca.check("mcp__robinhood__x", {}, allowed)["action"], "block")
         self.assertEqual(ca.check("mcp__todoist2__x", {}, allowed)["action"], "block")
         self.assertEqual(ca.check("mcp__todois__x", {}, allowed)["action"], "block")
-        self.assertEqual(ca.check("connectors__todoist__x", {}, allowed)["action"], "block")       # a connector is not an MCP server
+        self.assertEqual(ca.check("connectors__todoist__x", {}, allowed)["action"], "block")  # a connector is not an MCP server
 
     def test_a_connector_name_never_allows_an_mcp_server_and_the_reverse(self):
         self.assertEqual(ca.check("mcp__notion__x", {}, frozenset({"notion"}))["action"], "block")
@@ -131,7 +130,7 @@ class Loading(unittest.TestCase):
 
     def test_bad_lines_are_ignored_not_trusted(self):
         path = self.write("notion\n*\nall\n../x\nplaid robinhood\n$(x)\n\n")
-        self.assertEqual(ca.load_allowed(path), frozenset({"notion", "all"}))      # 'all' is just a name here, never a wildcard
+        self.assertEqual(ca.load_allowed(path), frozenset({"notion", "all"}))  # 'all' is just a name here, never a wildcard
         self.blocked_wildcard()
 
     def blocked_wildcard(self):
@@ -145,7 +144,7 @@ class Loading(unittest.TestCase):
         with open(path, "wb") as handle:
             handle.write(b"\xff\xfe\x00\x80")
         self.assertEqual(ca.load_allowed(path), frozenset())
-        self.assertEqual(ca.load_allowed(self.tmp), frozenset())                      # a folder, not a file
+        self.assertEqual(ca.load_allowed(self.tmp), frozenset())  # a folder, not a file
 
 
 class Hook(unittest.TestCase):
@@ -157,7 +156,7 @@ class Hook(unittest.TestCase):
         self.addCleanup(setattr, ca, "ALLOWLIST", old)
         ca.load_allowed.__defaults__ = (path,)
         self.addCleanup(setattr, ca.load_allowed, "__defaults__", (old,))
-        self.assertIsNotNone(ca._on_pre_tool_call(tool_name="connectors__notion__X", args={}))          # no file: nothing allowed
+        self.assertIsNotNone(ca._on_pre_tool_call(tool_name="connectors__notion__X", args={}))  # no file: nothing allowed
         with open(path, "w") as handle:
             handle.write("notion\n")
         self.assertIsNone(ca._on_pre_tool_call(tool_name="connectors__notion__X", args={}, task_id="t", session_id="s"))
@@ -193,7 +192,7 @@ class Files(unittest.TestCase):
         self.assertIn("name: connector-allowlist", text)
         self.assertIn("pre_tool_call", text)
         self.assertIn("provides_tools: []", text)
-        self.assertEqual(sorted(n for n in os.listdir(PLUGIN) if n != "__pycache__"), ["__init__.py", "plugin.yaml"])      # the allowlist is per host profile, never mastered here
+        self.assertEqual(sorted(n for n in os.listdir(PLUGIN) if n != "__pycache__"), ["__init__.py", "plugin.yaml"])
         with open(os.path.join(PLUGIN, "__init__.py")) as handle:
             code = handle.read()
         for banned in ("import os, sys", "subprocess", "socket", "urllib", "requests", "eval(", "exec(", "open(path, \"w"):
@@ -292,7 +291,7 @@ PROFILES = ("claude-hermes", "developer", "librarian", "research", "writer")
 
 
 class AllProfiles(unittest.TestCase):
-    """LIFE-321: the table, `deploy_plugin.sh --all` and `check_profiles.sh`."""
+    """the table, `deploy_plugin.sh --all` and `check_profiles.sh`."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -334,11 +333,11 @@ class AllProfiles(unittest.TestCase):
                     name, _, names = line.partition(":")
                     rows[name.strip()] = [n.strip() for n in names.split(",") if n.strip()]
         self.assertEqual(sorted(rows), sorted(PROFILES + ("main",)))
-        self.assertEqual(rows["main"], ["ALL"])                                                         # Jim, Nov 6 2026: the main bot is not limited
+        self.assertEqual(rows["main"], ["ALL"])
         for name, allowed in rows.items():
             for item in ([] if allowed == ["ALL"] else allowed):
                 self.assertRegex(item, r"^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$", name)
-                self.assertNotIn(item, ("robinhood", "plaid", "paypal", "mcp:robinhood"), name)           # nothing financial by default
+                self.assertNotIn(item, ("robinhood", "plaid", "paypal", "mcp:robinhood"), name)  # nothing financial by default
 
     def test_all_defaults_to_a_dry_run_and_writes_nothing(self):
         status, out = self.deploy()
@@ -355,21 +354,21 @@ class AllProfiles(unittest.TestCase):
         status, out = self.deploy("--apply", "--backup", self.backup)
         self.assertEqual(status, 0, out)
         self.assertIn("read-back OK", out)
-        self.assertFalse(os.path.exists(os.path.join(self.home, "plugins")))                           # main: nothing installed
+        self.assertFalse(os.path.exists(os.path.join(self.home, "plugins")))  # main: nothing installed
         for name in PROFILES:
             dst = os.path.join(self.pdir(name), "plugins", "connector-allowlist")
             for f in ("plugin.yaml", "__init__.py"):
                 with open(os.path.join(dst, f)) as got, open(os.path.join(PLUGIN, f)) as want:
                     self.assertEqual(got.read(), want.read(), (name, f))
         with open(os.path.join(self.pdir("developer"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "mcp:lifeos-buzz\n")                                         # developer: only the governed LIFE OS MCP (LIFE-961)
+            self.assertEqual(handle.read(), "mcp:lifeos-buzz\n")  # developer: only the governed LIFE OS MCP
         with open(os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "notion\nmcp:lifeos-buzz\n")                           # LIFE-961: the librarian may use the governed LIFE OS MCP
-        self.assertNotIn("       hermes plugins enable connector-allowlist", out)                         # main is never enabled
+            self.assertEqual(handle.read(), "notion\nmcp:lifeos-buzz\n")  # the librarian may use the governed LIFE OS MCP
+        self.assertNotIn("       hermes plugins enable connector-allowlist", out)  # main is never enabled
         for name in PROFILES:
             self.assertIn("hermes --profile %s plugins enable connector-allowlist" % name, out)
         self.assertIn("systemctl restart hermes-eval-backend", out)
-        for name in PROFILES + ("main",):                                                              # config untouched
+        for name in PROFILES + ("main",):  # config untouched
             with open(os.path.join(self.pdir(name), "config.yaml")) as handle:
                 self.assertNotIn("connector-allowlist", handle.read(), name)
         status, again = self.deploy("--apply", "--backup", os.path.join(self.tmp, "b2"))
@@ -416,7 +415,7 @@ class AllProfiles(unittest.TestCase):
         with open(os.path.join(self.home, "plugins", "connector-allowlist", "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "")
 
-    # ---- the auditor
+    # the auditor
     def test_the_auditor_fails_on_a_bare_host_and_names_every_profile(self):
         status, out = self.run_script("check_profiles.sh")
         self.assertEqual(status, 1, out)
@@ -429,7 +428,7 @@ class AllProfiles(unittest.TestCase):
     def test_the_auditor_passes_only_when_everything_is_installed_and_enabled(self):
         self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
         status, out = self.run_script("check_profiles.sh")
-        self.assertEqual(status, 1, out)                                                               # installed but not yet enabled
+        self.assertEqual(status, 1, out)  # installed but not yet enabled
         self.enable_everywhere()
         status, out = self.run_script("check_profiles.sh")
         self.assertEqual(status, 0, out)

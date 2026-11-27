@@ -28,7 +28,6 @@ def message(i, text=SECRET_TEXT, name=SECRET_NAME, group=False, minutes=1):
 
 
 class FakeWrapper:
-    """The real classifier (verdicts) and limits from the installed wrapper, with the paged Mac read replaced by a fixed `scan` result."""
 
     def __init__(self, recent):
         self.real = ep.load_wrapper(WRAPPER)
@@ -51,7 +50,7 @@ def recent(msgs, health="CURRENT", truncated=False, pages=1):
 
 class Endpoint(unittest.TestCase):
     def setUp(self):
-        self.uid = 0                                                           # tailscaled
+        self.uid = 0  # tailscaled
         d = tempfile.mkdtemp()
         self.key = os.path.join(d, "event-key")
         with open(self.key, "w") as f:
@@ -78,7 +77,7 @@ class Endpoint(unittest.TestCase):
         self.assertTrue(all(set(e) == {"key", "severity", "reasons", "review"} and len(e["key"]) == 32 for e in p["events"]))
         for secret in (SECRET_TEXT, "SECRET", SECRET_HANDLE, "m1", "c2", "haha", "Friday"):
             self.assertNotIn(secret, raw.decode())
-        self.assertEqual(stage.validate(raw, 3, dt.datetime(2026, 10, 14, 15, 0, 30))["events"], p["events"])     # the stage accepts exactly this shape
+        self.assertEqual(stage.validate(raw, 3, dt.datetime(2026, 10, 14, 15, 0, 30))["events"], p["events"])  # the stage accepts exactly this shape
 
     def test_keys_are_stable_per_message_and_secret_dependent(self):
         a = ep.event_key(b"k" * 32, "m1")
@@ -93,7 +92,7 @@ class Endpoint(unittest.TestCase):
 
     def test_a_truncated_scan_is_never_complete_but_what_was_read_still_counts(self):
         msgs = [message(i, text="ok", minutes=i % 50) for i in range(2000)]
-        msgs[0] = message(0)                                                              # one urgent message among them
+        msgs[0] = message(0)  # one urgent message among them
         p = json.loads(self.call(v2(RUNNER) + b"alerts 5\n", FakeWrapper(recent(msgs, "DEGRADED", truncated=True, pages=40)))[1])
         self.assertEqual((p["health"], p["complete"], p["limit_reached"], p["scanned"], p["pages"], p["limit"]), ("DEGRADED", False, True, 2000, 40, 2000))
         self.assertEqual([e["severity"] for e in p["events"]], ["TIME_CRITICAL"])
@@ -115,15 +114,15 @@ class Endpoint(unittest.TestCase):
 
     def test_refusals_return_nothing(self):
         w = FakeWrapper(recent([message(1)]))
-        for payload in (v2(OTHER) + b"alerts 2\n",                     # an untagged tailnet node (Jim's devices, Oracle itself)
-                        b"alerts 2\n",                                  # no PROXY header
-                        v2(RUNNER, cmd=0x20) + b"alerts 2\n",           # LOCAL command
+        for payload in (v2(OTHER) + b"alerts 2\n",  # an untagged tailnet node
+                        b"alerts 2\n",  # no PROXY header
+                        v2(RUNNER, cmd=0x20) + b"alerts 2\n",  # LOCAL command
                         b"PROXY TCP4 %s 127.0.0.1 1 2\r\nalerts 2\n" % RUNNER.encode(),
-                        v2(RUNNER) + v2(RUNNER) + b"alerts 2\n",        # a second, forged header is just a bad request
+                        v2(RUNNER) + v2(RUNNER) + b"alerts 2\n",  # a second, forged header is just a bad request
                         v2(RUNNER) + b"alerts 0\n", v2(RUNNER) + b"alerts 73\n", v2(RUNNER) + b"alerts 02\n", v2(RUNNER) + b"recent 2\n",
                         v2(RUNNER) + b"alerts 2; id\n", v2(RUNNER) + b"alerts " + b"9" * 40 + b"\n", v2(RUNNER) + b"GET / HTTP/1.1\r\n"):
             self.assertEqual(self.call(payload, w), (1, b""), payload[-24:])
-        self.assertEqual(w.calls, [])                                   # nothing was ever read from the Mac
+        self.assertEqual(w.calls, [])  # nothing was ever read from the Mac
 
     def test_a_local_non_root_process_cannot_present_even_a_valid_looking_header(self):
         w = FakeWrapper(recent([message(1)]))
@@ -134,9 +133,9 @@ class Endpoint(unittest.TestCase):
 
     def test_peer_uid_reads_the_connecting_socket_from_proc_net_tcp(self):
         table = ("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
-                 "   0: 0100007F:B846 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1001        0 1 1\n"     # our listener (47174)
-                 "   1: 0100007F:D431 0100007F:B846 01 00000000:00000000 00:00000000 00000000     0        0 2 1\n"     # peer 54321 -> 47174, root
-                 "   2: 0100007F:B846 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1001        0 3 1\n")    # our accepted end
+                 "   0: 0100007F:B846 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1001        0 1 1\n"  # our listener (47174)
+                 "   1: 0100007F:D431 0100007F:B846 01 00000000:00000000 00:00000000 00000000     0        0 2 1\n"  # peer 54321 -> 47174, root
+                 "   2: 0100007F:B846 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1001        0 3 1\n")  # our accepted end
         self.assertEqual(ep.peer_uid(table, ("127.0.0.1", 54321), ("127.0.0.1", 47174)), 0)
         self.assertIsNone(ep.peer_uid(table, ("127.0.0.1", 54322), ("127.0.0.1", 47174)))
         self.assertEqual(ep._hex("127.0.0.1", 47342), "0100007F:B8EE")
@@ -176,8 +175,8 @@ def ev(key, severity="ACTION_REQUIRED", review=False):
     return {"key": key * 32 if len(key) == 1 else key, "severity": severity, "reasons": ["deadline_request"], "review": review}
 
 
-DAY = dt.datetime(2026, 10, 14, 15, 0)        # 10 AM Chicago
-NIGHT = dt.datetime(2026, 10, 15, 8, 0)       # 3 AM Chicago
+DAY = dt.datetime(2026, 10, 14, 15, 0)  # 10 AM Chicago
+NIGHT = dt.datetime(2026, 10, 15, 8, 0)  # 3 AM Chicago
 
 
 class Stage(unittest.TestCase):
@@ -199,8 +198,8 @@ class Stage(unittest.TestCase):
         self.assertEqual((counts["new"], counts["pushed"], counts["failed"], counts["attention"]), (1, 1, 0, 1))
         self.assertEqual(pushes, [("topic", "Text needs a reply", "1 text needs a reply. Open Messages.", "page")])
         again, pushes = self.runs(db, DAY + dt.timedelta(minutes=60), payload([ev("a")], observed="2026-10-14T16:00:00Z"))
-        self.assertEqual((again["new"], again["deliver"], pushes), (0, 0, []))                  # same event, next hour: silent
-        self.assertNotIn("OPEN", {st for _, st in db.rows().values()})                         # never in the Jobs alert stage's OPEN set
+        self.assertEqual((again["new"], again["deliver"], pushes), (0, 0, []))  # same event, next hour: silent
+        self.assertNotIn("OPEN", {st for _, st in db.rows().values()})  # never in the Jobs alert stage's OPEN set
 
     def test_escalation_is_a_new_version(self):
         db = StageDB()
@@ -212,7 +211,7 @@ class Stage(unittest.TestCase):
         db = StageDB()
         counts, pushes = self.runs(db, NIGHT, payload([ev("a")], observed="2026-10-15T08:00:00Z"))
         self.assertEqual((counts["deliver"], counts["queued_quiet"], pushes), (0, 1, []))
-        later = dt.datetime(2026, 10, 15, 13, 5)                                                # 8:05 AM Chicago; the event is outside this scan's window
+        later = dt.datetime(2026, 10, 15, 13, 5)  # 8:05 AM Chicago
         counts, pushes = self.runs(db, later, payload([], observed="2026-10-15T13:05:00Z", hours=6))
         self.assertEqual((counts["deliver"], len(pushes)), (1, 1))
 
@@ -233,13 +232,13 @@ class Stage(unittest.TestCase):
 
     def test_a_lost_receipt_after_an_accepted_push_never_pushes_again(self):
         db = StageDB()
-        db.fail_on = ("SET status=%s WHERE alert_key=%s AND status=%s", 1)      # the receipt after the accepted push fails (the claim also sets last_notified)
+        db.fail_on = ("SET status=%s WHERE alert_key=%s AND status=%s", 1)
         with self.assertRaises(RuntimeError):
             self.runs(db, DAY, payload([ev("a")]))
         self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.PENDING))
         counts, pushes = self.runs(db, DAY + dt.timedelta(hours=1), payload([ev("a")], observed="2026-10-14T16:00:00Z"))
         self.assertEqual((pushes, counts["ambiguous"], counts["failed"], counts["deliver"]), ([], 1, 1, 0))
-        self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.UNKNOWN))                 # never claimed as delivered
+        self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.UNKNOWN))  # never claimed as delivered
         counts, pushes = self.runs(db, DAY + dt.timedelta(hours=2), payload([ev("a")], observed="2026-10-14T17:00:00Z"))
         self.assertEqual((pushes, counts["ambiguous"], counts["failed"]), ([], 0, 0))
 
@@ -269,7 +268,7 @@ class Stage(unittest.TestCase):
             self.assertNotIn(stage.MARK, db.rows())
         db = StageDB()
         counts, pushes = self.runs(db, DAY, payload([ev("a")], complete=False, health="DEGRADED", scanned=50, reached=True))
-        self.assertEqual((counts["new"], len(pushes)), (1, 1))                                  # what was seen is still delivered
+        self.assertEqual((counts["new"], len(pushes)), (1, 1))  # what was seen is still delivered
 
     def test_watermark_window_and_coverage_gap(self):
         self.assertEqual(stage.window(DAY, None), (2, False))
@@ -314,7 +313,7 @@ if __name__ == "__main__":
 
 
 class WrapperScan(unittest.TestCase):
-    """openclaw_imessage.scan over a fake paged source: complete only on a proven end; anything uncertain is incomplete."""
+    """openclaw_imessage.scan over a fake paged source: complete only on a proven end"""
     from lifeos.imessage import openclaw_imessage as w
     NOW = dt.datetime(2026, 10, 14, 15, 0, tzinfo=dt.timezone.utc)
 
@@ -344,7 +343,7 @@ class WrapperScan(unittest.TestCase):
         out, req = self.run_pages([self.page(range(1, 51), True), self.page(range(51, 101), True), self.page(range(101, 138), False)])
         self.assertEqual((out["health"], out["complete"], out["pages"], len(out["messages"])), ("CURRENT", True, 3, 137))
         self.assertEqual(req, [b"page 10\n", b"next 1050 50\n", b"next 1100 100\n"])
-        self.assertEqual(out["messages"][0]["ref"], "m137")                                     # newest first for classification
+        self.assertEqual(out["messages"][0]["ref"], "m137")  # newest first for classification
 
     def test_uncertain_coverage_is_incomplete_but_keeps_what_was_read(self):
         cases = {
@@ -381,10 +380,10 @@ class Recovery(unittest.TestCase):
         degraded = payload([ev("a")], complete=False, health="DEGRADED", scanned=50, reached=True)
         counts, pushes = Stage.runs(Stage(), db, DAY, degraded)
         self.assertEqual((counts["new"], len(pushes), counts["failed"]), (1, 1, 1))
-        self.assertNotIn(stage.MARK, db.rows())                                                  # watermark NOT advanced by the incomplete scan
+        self.assertNotIn(stage.MARK, db.rows())  # watermark NOT advanced by the incomplete scan
         later = DAY + dt.timedelta(hours=1)
         hours, _ = stage.window(later, None)
         counts, pushes = Stage.runs(Stage(), db, later, payload([ev("a"), ev("b")], observed="2026-10-14T16:00:00Z", hours=hours))
         self.assertEqual((counts["new"], counts["deliver"], counts["complete"], counts["failed"]), (1, 1, 1, 0))
-        self.assertEqual(pushes[0][2], "1 text needs a reply. Open Messages.")                   # only the new event
+        self.assertEqual(pushes[0][2], "1 text needs a reply. Open Messages.")  # only the new event
         self.assertIn(stage.MARK, db.rows())

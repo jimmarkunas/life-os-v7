@@ -1,4 +1,4 @@
-"""LIFE-918 AC6, AC11, AC12: the promotion check is pure and injected; synthetic data only, no network, no writes."""
+"""AC6, AC11, AC12: the promotion check is pure and injected"""
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -133,8 +133,8 @@ class Boundary(unittest.TestCase):
     def test_eight_central_follows_daylight_time_not_a_fixed_offset(self):
         self.assertEqual(p.boundary(2027, 1, 1).astimezone(timezone.utc).hour, 14)
         self.assertEqual(p.boundary(2027, 7, 1).astimezone(timezone.utc).hour, 13)
-        self.assertEqual(p.boundary(2027, 3, 13).astimezone(timezone.utc).hour, 14)         # Saturday before daylight time starts: CST
-        self.assertEqual(p.boundary(2027, 3, 14).astimezone(timezone.utc).hour, 13)         # the Sunday daylight time starts (2:00 AM): 8:00 AM is already CDT
+        self.assertEqual(p.boundary(2027, 3, 13).astimezone(timezone.utc).hour, 14)  # Saturday before daylight time starts: CST
+        self.assertEqual(p.boundary(2027, 3, 14).astimezone(timezone.utc).hour, 13)
         self.assertEqual(p.boundary(2027, 3, 14).utcoffset(), timedelta(hours=-5))
 
     def test_a_time_without_a_zone_is_refused(self):
@@ -172,9 +172,9 @@ class RunIfDue(unittest.TestCase):
         self.assertEqual((calls.sets, len(calls.alerts)), (0, 1))
         later = Calls(good(frozen=None))
         later.run(now=AFTER + timedelta(days=3))
-        self.assertEqual(calls.alerts[0]["key"], later.alerts[0]["key"])            # the same row every day: the inbox send updates it
+        self.assertEqual(calls.alerts[0]["key"], later.alerts[0]["key"])  # the same row every day: the inbox send updates it
         self.assertEqual(calls.alerts[0]["key"], "v2-promotion-2027Q1")
-        self.assertNotIn("MEJ-", json.dumps(calls.alerts[0]))                        # codes and counts only, never a Task key or summary
+        self.assertNotIn("MEJ-", json.dumps(calls.alerts[0]))  # codes and counts only, never a Task key or summary
 
     def test_missing_membership_with_the_shipped_empty_manifest_never_promotes(self):
         calls = Calls(good(frozen=[]))
@@ -217,7 +217,7 @@ class InboxAlerter(unittest.TestCase):
 
 
 class OneUnit(unittest.TestCase):
-    """Jim, "918 uniform new" (comment 14228): JFM and MEJ promote together or not at all; one deduped alert names the failing board."""
+    """Jim, '918 uniform new' (comment 14228): JFM and MEJ promote together or not at all"""
 
     def both(self, jfm=None, mej=None):
         return {"quarter": "2027Q1", "boards": {"JFM": board(**(jfm or {})), "MEJ": board(**(mej or {}))}}

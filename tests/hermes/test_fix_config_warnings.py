@@ -1,4 +1,4 @@
-"""LIFE-339: the two empty-setting warnings. A temp config shaped like the real one (comments, the two empty keys); nothing real is touched."""
+"""the two empty-setting warnings."""
 import hashlib
 import os
 import shutil

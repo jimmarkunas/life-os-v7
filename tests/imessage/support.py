@@ -1,9 +1,9 @@
-"""LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+"""test helpers that more than one test module (often in another domain) uses."""
 import struct
 import ipaddress
 
 
-RUNNER, OTHER = "100.64.0.20", "100.64.0.21"                                  # invented tailnet addresses
+RUNNER, OTHER = "100.64.0.20", "100.64.0.21"  # invented tailnet addresses
 
 
 SIG = b"\r\n\r\n\x00\r\nQUIT\n"

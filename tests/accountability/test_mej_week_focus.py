@@ -1,8 +1,4 @@
-"""LIFE-914: Matt's weekly view shows deliverables, not project internals.
-
-All fixtures are synthetic; these tests must not use a live Jira or Notion
-account or mutate either provider. JFM's existing contract stays unchanged.
-"""
+"""Matt's weekly view shows deliverables, not project internals."""
 import unittest
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -120,11 +116,11 @@ class SnapshotFocus(unittest.TestCase):
         self.assertTrue(all("issuetype != Sub-task" not in q for q in fake.queries))
 
 
-MAIN_WEEK_QUERIES = [   # exactly the queries main sends for any project (copied from main before LIFE-914)
+MAIN_WEEK_QUERIES = [  # exactly the queries main sends for any project
     'project = {p} AND issuetype != Epic AND statusCategory != Done AND (sprint in openSprints() OR duedate <= "2026-11-22") ORDER BY duedate ASC, key ASC',
     'project = {p} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "2026-11-16" ORDER BY key ASC',
 ]
-MAIN_SNAPSHOT_QUERIES = [   # main's snapshot queries (read by running main's snapshot.py on this fake) for one active sprint (id 178), triage_all True
+MAIN_SNAPSHOT_QUERIES = [
     "sprint = 178 AND issuetype != Epic AND statusCategory != Done ORDER BY Rank ASC",
     'project = {p} AND issuetype != Epic AND statusCategory != Done AND duedate < "2026-11-18" ORDER BY Rank ASC',
     "project = {p} AND issuetype != Epic AND status = blocked ORDER BY Rank ASC",
@@ -134,7 +130,8 @@ MAIN_SNAPSHOT_QUERIES = [   # main's snapshot queries (read by running main's sn
 
 
 class OffByDefault(unittest.TestCase):
-    """LIFE-914 isolation: with no explicit argument MEJ behaves exactly as on main (JFM, V3 blocks and the summary untouched)."""
+    """isolation: with no explicit argument MEJ behaves exactly as on main (JFM, V3 blocks and the summary untouched).
+    """
 
     def week_run(self, project, rows_open, rows_done):
         class F:

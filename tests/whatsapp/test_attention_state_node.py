@@ -1,5 +1,6 @@
-"""LIFE-643: Attention's own node tests (lifeos/whatsapp/oracle/state.test.mjs: the unread-count rules, the answer-socket rule and the proof that no message text, number or chat id reaches the snapshot or the saved state) run in the
-unit-test job too. They need only Node 20 or newer, which the runner image has; without it they skip."""
+"""Attention's own node tests (lifeos/whatsapp/oracle/state.test.mjs: the unread-count rules, the answer-socket rule and
+the proof that no message text.
+"""
 import pathlib
 import shutil
 import subprocess

@@ -1,4 +1,3 @@
-"""LIFE-921: the Honcho line and the Anthropic rows, exactly as Jim approved them (comment 13901): red only for ALERT and STOPPED, UNVERIFIED neutral, reserved and actual never swapped."""
 import datetime as dt
 import unittest
 from copy import deepcopy
@@ -8,7 +7,7 @@ from lifeos.platform import honcho_status as hs
 from tests.oraclecloud.test_card import NOW, stats
 
 UTC = dt.timezone.utc
-READ = dt.datetime(2026, 11, 23, 18, 40, tzinfo=UTC)                           # 12:40 PM CT
+READ = dt.datetime(2026, 11, 23, 18, 40, tzinfo=UTC)  # 12:40 PM CT
 GOOD = {"health": True, "failed": False, "exhausted": False, "stopped": False, "backup": {"at": "2026-11-23T09:30:27Z", "ok": True}, "meter": {"cap": 0.9, "reserved": 0.40692}}
 BILLED = {"billed_usd": 1.38, "honcho_usd": 0.02, "as_of": "2026-11-23T18:35:00Z"}
 
@@ -69,9 +68,9 @@ class Rows(unittest.TestCase):
         self.assertEqual(hs.rows(GOOD, {**BILLED, "billed_usd": 80.0}, READ)[0][5], "NEAR LIMIT")
         self.assertEqual(hs.rows(GOOD, {**BILLED, "billed_usd": 100.0}, READ)[0][5], "EXHAUSTED")
         self.assertEqual(hs.rows({**GOOD, "exhausted": True}, BILLED, READ)[1][5], "EXHAUSTED")
-        after = dt.datetime(2026, 12, 6, 0, 1, tzinfo=UTC)                          # just after Dec 5, 6:00 PM CT: a new window, never EXPIRED (LIFE-950)
+        after = dt.datetime(2026, 12, 6, 0, 1, tzinfo=UTC)
         self.assertEqual((hs.rows(GOOD, BILLED, after)[0][5], hs.rows(GOOD, BILLED, after)[1][5]), ("AVAILABLE", "AVAILABLE"))
-        self.assertEqual(hs.rows(GOOD, BILLED, after)[0][4], "Tue Jan 5, 6:00 PM CT")                  # the reset date moves to the next 5th
+        self.assertEqual(hs.rows(GOOD, BILLED, after)[0][4], "Tue Jan 5, 6:00 PM CT")  # the reset date moves to the next 5th
 
     def test_the_readings_are_validated_whole(self):
         self.assertTrue(hs.honcho_ok(GOOD) and hs.honcho_ok(None) and hs.anthropic_ok(BILLED) and hs.anthropic_ok(None))
@@ -93,10 +92,10 @@ class Read(unittest.TestCase):
         def boom(host):
             raise OSError("down")
         self.assertEqual(hs.read("h", READ, boom), (None, None))
-        self.assertEqual(hs.read("h", READ, lambda host: self.reply(observed_at="2026-11-23T17:00:00Z")), (None, None))        # older than ten minutes
+        self.assertEqual(hs.read("h", READ, lambda host: self.reply(observed_at="2026-11-23T17:00:00Z")), (None, None))  # older than ten minutes
         self.assertEqual(hs.read("h", READ, lambda host: b"x" * 5000), (None, None))
         self.assertEqual(hs.read("h", READ, lambda host: b"not json"), (None, None))
-        self.assertEqual(hs.read("h", READ, lambda host: self.reply(honcho={"health": True})), (None, BILLED))                  # each reading is kept or dropped on its own
+        self.assertEqual(hs.read("h", READ, lambda host: self.reply(honcho={"health": True})), (None, BILLED))  # each reading is kept or dropped on its own
         self.assertEqual(hs.read("h", READ, lambda host: self.reply(anthropic={"billed_usd": -1})), (GOOD, None))
 
     def test_older_oracle_stats_without_the_keys_read_as_unknown(self):
@@ -106,7 +105,9 @@ class Read(unittest.TestCase):
 
 
 class OracleCard(unittest.TestCase):
-    """LIFE-975 step 4d: Oracle's honcho and anthropic readings are rows of the System table (Honcho · Backup, Honcho · Monthly cap, Anthropic · Promo credit)."""
+    """step 4d: Oracle's honcho and anthropic readings are rows of the System table (Honcho · Backup, Honcho · Monthly
+    cap, Anthropic · Promo credit).
+    """
 
     def rows(self, **over):
         reading = card.validate(__import__("json").dumps(stats(**over)).encode(), NOW)

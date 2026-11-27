@@ -1,4 +1,4 @@
-"""LIFE-1024: administrative cancellations never count as delivered work (R1.1 to R1.6). Synthetic keys only."""
+"""administrative cancellations never count as delivered work (R1.1 to R1.6)."""
 
 import copy
 import unittest
@@ -28,23 +28,23 @@ class Tally(unittest.TestCase):
     def test_the_migration_fixture_goes_from_6_of_17_to_3_of_14(self):
         kids = creative_q4()
         without_resolution_check = [dict(k, fields=dict(k["fields"], resolution={"name": "Done"}, labels=[])) for k in kids]
-        self.assertEqual(read._counts(without_resolution_check, FIRST, LAST), {"MEJ-1": [6, 17]})   # R1.2 before
-        self.assertEqual(read._counts(kids, FIRST, LAST), {"MEJ-1": [3, 14]})                         # R1.1 and R1.2 after
+        self.assertEqual(read._counts(without_resolution_check, FIRST, LAST), {"MEJ-1": [6, 17]})  # R1.2 before
+        self.assertEqual(read._counts(kids, FIRST, LAST), {"MEJ-1": [3, 14]})  # R1.1 and R1.2 after
 
     def test_an_epic_contributes_nothing(self):
         epic = child("MEJ-375", "MEJ-1", True, RESOLVED, resolution="Won't Do", labels=["superseded"])
         epic["fields"]["issuetype"] = {"name": "Epic", "subtask": False}
-        self.assertEqual(read._counts([epic], FIRST, LAST), {})                                        # R1.3
+        self.assertEqual(read._counts([epic], FIRST, LAST), {})  # R1.3
 
     def test_missing_or_contradictory_evidence_degrades_the_calculation(self):
         missing = child("MEJ-20", "MEJ-1", True, RESOLVED)
         del missing["fields"]["resolution"]
         no_resolution = child("MEJ-21", "MEJ-1", True, RESOLVED)
         no_resolution["fields"]["resolution"] = None
-        contradictory = child("MEJ-22", "MEJ-1", True, RESOLVED, labels=["superseded"])                # superseded but resolved Done
+        contradictory = child("MEJ-22", "MEJ-1", True, RESOLVED, labels=["superseded"])  # superseded but resolved Done
         for bad in (missing, no_resolution, contradictory):
             with self.assertRaises(JiraError, msg=bad["key"]):
-                read._counts([bad], FIRST, LAST)                                                       # R1.5
+                read._counts([bad], FIRST, LAST)  # R1.5
 
 
 class Classes(unittest.TestCase):
@@ -58,7 +58,7 @@ class Classes(unittest.TestCase):
         got = {name: closure.classify(fields, at, SINCE) for name, (fields, at) in cases.items()}
         self.assertEqual(got, {"manual": "delivered_manual", "auto": "delivered_auto", "cancelled": "cancelled", "unknown": "unknown"})
         totals = closure.counts(got.values())
-        self.assertEqual(totals, {"delivered_manual": 1, "delivered_auto": 1, "cancelled": 1, "unknown": 1, "total": 4})   # R1.4
+        self.assertEqual(totals, {"delivered_manual": 1, "delivered_auto": 1, "cancelled": 1, "unknown": 1, "total": 4})  # R1.4
 
     def test_without_a_tracking_start_a_done_issue_is_unknown_never_manual(self):
         self.assertEqual(closure.classify({"resolution": {"name": "Done"}, "labels": []}, AFTER, None), "unknown")
@@ -79,7 +79,7 @@ class Snapshots(unittest.TestCase):
         original = {"MEJ-1": [6, 17]}
         before = copy.deepcopy(original)
         pair = closure.snapshot_pair(original, {"MEJ-1": [3, 14]})
-        self.assertEqual(original, before)                                                             # R1.6 originals unchanged
+        self.assertEqual(original, before)  # R1.6 originals unchanged
         self.assertEqual(pair["original"], before)
         self.assertEqual(pair["corrected"], {"MEJ-1": [3, 14]})
         self.assertEqual(pair["correction_version"], closure.CORRECTION_VERSION)

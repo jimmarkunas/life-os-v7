@@ -1,4 +1,6 @@
-"""LIFE-945 (synthetic): the private endpoint's `drive1 <days>` request and the Drive helper behind it, with fake sockets and a fake Google. No network."""
+"""(synthetic): the private endpoint's `drive1 <days>` request and the Drive helper behind it, with fake sockets and a
+fake Google.
+"""
 import io
 import json
 import os
@@ -100,7 +102,7 @@ class Helper(unittest.TestCase):
                  {"createdTime": "2026-11-23T11:00:00Z", "modifiedTime": "2026-11-23T11:00:00Z", "parents": ["FOLDER"], "md5Checksum": "m1"},
                  {"createdTime": "2026-10-01T11:00:00Z", "modifiedTime": "2026-11-22T11:00:00Z", "parents": ["FOLDER"]}]
         google = google_read.Google(self.CREDS, opener=fake_google(files))
-        google.tokens[("personal", "drive")] = "t"                               # the wrong-account check is covered in the google_read tests
+        google.tokens[("personal", "drive")] = "t"
         from datetime import datetime, timezone
         out = drive_week.summary(google, "personal", 7, now=datetime(2026, 11, 24, tzinfo=timezone.utc))
         self.assertEqual(out, {"new": 2, "changed": 1, "unfiled": 1, "duplicates": 1, "missing_metadata": 1, "complete": True})

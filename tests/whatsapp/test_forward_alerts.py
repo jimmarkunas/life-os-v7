@@ -13,7 +13,7 @@ fa = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fa)
 
 
-COPIES = ["ch-whatsapp", "ch-telegram"]                      # LIFE-75: a push is tagged for the copies it is meant for; most tests send to both
+COPIES = ["ch-whatsapp", "ch-telegram"]  # a push is tagged for the copies it is meant for
 
 
 def stream(*events):
@@ -30,7 +30,7 @@ class Stream:
 
 
 class StateDir(unittest.TestCase):
-    """A temp STATE directory (and its last-id file) for every test; the diagnostics file read back as parsed lines."""
+    """A temp STATE directory (and its last-id file) for every test"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -73,7 +73,7 @@ class ForwardTests(StateDir):
         one = stream({"event": "message", "id": "a1", "title": "One"})
         fa.follow("topic", "+447700900001", Stream(one), lambda to, body: True, channel="whatsapp")
         fa.follow("topic", "123456789", Stream(stream({"event": "message", "id": "a1", "title": "One"})), lambda to, body: False, channel="telegram")
-        self.assertEqual((fa.last_id("whatsapp"), fa.last_id("telegram")), ("a1", None))      # Telegram retries; WhatsApp does not repeat
+        self.assertEqual((fa.last_id("whatsapp"), fa.last_id("telegram")), ("a1", None))  # Telegram retries
 
     def test_the_recipient_must_be_exactly_one_allowlisted_number(self):
         def cfg(allow, channel="whatsapp"):
@@ -95,17 +95,17 @@ def done(code, stdout="", stderr=""):
     return subprocess.CompletedProcess([], code, stdout=stdout, stderr=stderr)
 
 
-def result(**fields):                                                                      # the shape of OpenClaw 2026.9.9 buildMessageCliJson
+def result(**fields):  # the shape of OpenClaw 2026.9.9 buildMessageCliJson
     return json.dumps({"action": "send", "channel": "telegram", "dryRun": False, "handledBy": "plugin", "payload": {}, **fields}, indent=2)
 
 
-DELIVERED_EXIT_1 = done(1, result(messageId="131"))                                         # the flood signature: delivered, then exit 1
+DELIVERED_EXIT_1 = done(1, result(messageId="131"))  # the flood signature: delivered, then exit 1
 OK = done(0, result(messageId="m1"))
-REFUSED = done(1, result(ok=False, error="Message send suppressed: policy.", deliveryStatus="suppressed"))      # proven never sent
+REFUSED = done(1, result(ok=False, error="Message send suppressed: policy.", deliveryStatus="suppressed"))  # proven never sent
 
 
 class Relay:
-    """A sender built on the real send() with a scripted CLI: counts every CLI run (= every delivery attempt that could reach Jim)."""
+    """A sender built on the real send with a scripted CLI: counts every CLI run."""
     def __init__(self, *results):
         self.results, self.runs = list(results), []
 
@@ -121,7 +121,7 @@ class Relay:
 
 
 class Polling(StateDir):
-    """Two scripted ntfy alerts, polled through the real follow() with a scripted sender."""
+    """Two scripted ntfy alerts, polled through the real follow with a scripted sender."""
 
     def setUp(self):
         super().setUp()
@@ -131,29 +131,30 @@ class Polling(StateDir):
         for _ in range(times):
             since = fa.last_id(channel)
             seen = list(cache or self.cache)
-            if since:                                                                            # ntfy returns only what follows `since`
+            if since:  # ntfy returns only what follows `since`
                 ids = [e["id"] for e in seen]
                 seen = seen[ids.index(since) + 1:] if since in ids else seen
             fa.follow("topic", "123456789", Stream(stream(*seen)), relay.sender(channel), channel=channel)
 
 
 class ReplaySafetyTests(Polling):
-    """LIFE-71: a delivered alert is never re-sent (whatever the exit code), an ambiguous one at most once, an explicit failure at most MAX_ATTEMPTS times;
-    a restart never replays; every outcome is visible in the diagnostics file. Nothing here sends anything: the CLI is a script."""
+    """a delivered alert is never re-sent (whatever the exit code), an ambiguous one at most once, an explicit failure at
+    most MAX_ATTEMPTS times
+    """
 
     def test_only_verified_evidence_is_delivered_and_only_a_proven_refusal_is_retried(self):
-        """Career TL review 5576359134: the exit code proves nothing either way; a generic failure is never retried."""
+        """Career TL review 5576359134: the exit code proves nothing either way"""
         cases = [
-            ((1, result(messageId="131")), (fa.DELIVERED, "message_id")),                       # exit 1 with an authoritative message id
+            ((1, result(messageId="131")), (fa.DELIVERED, "message_id")),  # exit 1 with an authoritative message id
             ((0, result(messageId="m1")), (fa.DELIVERED, "message_id")),
             ((1, "noise\n" + result(ok=False, error="partial", deliveryStatus="partial_failed", sentBeforeError=True)), (fa.DELIVERED, "sent_before_error")),
             ((1, result(ok=False, error="x", deliveryStatus="failed", sentBeforeError=True)), (fa.DELIVERED, "sent_before_error")),
             ((0, result(payload={"deliveryStatus": "sent"})), (fa.DELIVERED, "status_sent")),
-            ((1, REFUSED.stdout), (fa.NOT_DELIVERED, "suppressed_before_send")),                # confirmed pre-send refusal: the only retry
-            ((0, result(ok=False, error="send failed", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),   # exit 0 contradicting an explicit failure
+            ((1, REFUSED.stdout), (fa.NOT_DELIVERED, "suppressed_before_send")),  # confirmed pre-send refusal: the only retry
+            ((0, result(ok=False, error="send failed", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),  # exit 0 contradicting an explicit failure
             ((1, result(ok=False, error="closed after send", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),  # post-send failure, no id
             ((1, result(ok=False, error="generic")), (fa.AMBIGUOUS, "failed_unproven")),
-            ((0, result()), (fa.AMBIGUOUS, "no_delivery_evidence")),                            # exit 0 alone is not delivery evidence
+            ((0, result()), (fa.AMBIGUOUS, "no_delivery_evidence")),  # exit 0 alone is not delivery evidence
             ((0, result(payload={"status": "delivery_queued", "delivered": False})), (fa.AMBIGUOUS, "gateway_queued")),
             ((0, result(dryRun=True, messageId="x")), (fa.AMBIGUOUS, "not_a_send_result")),
             ((0, ""), (fa.AMBIGUOUS, "no_result")), ((1, "Error: gateway rejected"), (fa.AMBIGUOUS, "no_result")), ((1, "{not json"), (fa.AMBIGUOUS, "no_result")),
@@ -171,13 +172,13 @@ class ReplaySafetyTests(Polling):
 
     def test_the_flood_case_delivered_but_exit_1_is_sent_once_however_often_the_relay_polls(self):
         relay = Relay(DELIVERED_EXIT_1)
-        self.poll(relay, times=50)                                                               # ~17 minutes of 20 s polls, the Oct 18 burst length
-        self.assertEqual(len(relay.runs), 2)                                                     # a1 once, a2 once: never again
+        self.poll(relay, times=50)
+        self.assertEqual(len(relay.runs), 2)  # a1 once, a2 once: never again
         self.assertEqual(fa.last_id("telegram"), "a2")
         self.assertEqual([d["outcome"] for d in self.diagnostics()], [fa.DELIVERED, fa.DELIVERED])
 
     def test_an_ambiguous_outcome_is_never_resent(self):
-        relay = Relay(done(1, "", "Error: gateway closed"))                                    # no result at all
+        relay = Relay(done(1, "", "Error: gateway closed"))  # no result at all
         self.poll(relay, times=20)
         self.assertEqual(len(relay.runs), 2)
         self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()], [("a1", fa.AMBIGUOUS, "no_result"), ("a2", fa.AMBIGUOUS, "no_result")])
@@ -185,14 +186,14 @@ class ReplaySafetyTests(Polling):
     def test_an_explicit_failure_is_retried_a_bounded_number_of_times_in_order_then_given_up(self):
         relay = Relay(REFUSED)
         self.poll(relay, times=10)
-        self.assertEqual(len(relay.runs), 2 * fa.MAX_ATTEMPTS)                                   # a1 three times, then a2 three times: bounded, never forever
+        self.assertEqual(len(relay.runs), 2 * fa.MAX_ATTEMPTS)
         self.assertEqual(fa.last_id("telegram"), "a2")
         outcomes = [(d["id"], d["outcome"]) for d in self.diagnostics()]
         self.assertEqual(outcomes, [("a1", fa.NOT_DELIVERED)] * 3 + [("a1", fa.GAVE_UP)] + [("a2", fa.NOT_DELIVERED)] * 3 + [("a2", fa.GAVE_UP)])
 
     def test_a_transient_failure_then_success_delivers_once_and_keeps_order(self):
         relay = Relay(REFUSED, OK, OK)
-        self.poll(relay)                                                                         # a1 fails: a2 is NOT sent ahead of it
+        self.poll(relay)  # a1 fails: a2 is NOT sent ahead of it
         self.assertEqual((len(relay.runs), fa.last_id("telegram")), (1, None))
         self.poll(relay, times=5)
         self.assertEqual((len(relay.runs), fa.last_id("telegram")), (3, "a2"))
@@ -201,7 +202,7 @@ class ReplaySafetyTests(Polling):
         relay = Relay(DELIVERED_EXIT_1)
         self.poll(relay)
         self.assertEqual(len(relay.runs), 2)
-        fresh = importlib.util.module_from_spec(spec)                                            # a restarted relay: new process state, same files
+        fresh = importlib.util.module_from_spec(spec)  # a restarted relay: new process state, same files
         spec.loader.exec_module(fresh)
         with mock.patch.object(fresh, "STATE", self.dir), mock.patch.object(fresh, "LAST", os.path.join(self.dir, "last-id")):
             again = Relay(DELIVERED_EXIT_1)
@@ -209,14 +210,14 @@ class ReplaySafetyTests(Polling):
             fresh.follow("topic", "123456789", urls, again.sender(), channel="telegram")
             self.assertTrue(urls.urls[0].endswith("since=a2"))
             self.assertEqual(again.runs, [])
-        self.setUp()                                                                             # killed DURING a send: the attempt was written first
+        self.setUp()
         crash = Relay(KeyboardInterrupt())
         with self.assertRaises(KeyboardInterrupt):
             self.poll(crash)
         self.assertEqual(fa.attempts("telegram"), {"id": "a1", "count": 1, "pending": True})
         after = Relay(OK)
         self.poll(after)
-        self.assertEqual(len(after.runs), 1)                                   # only a2: a1 may have gone out, so it is not replayed
+        self.assertEqual(len(after.runs), 1)
         self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()][:1], [("a1", fa.AMBIGUOUS, "interrupted")])
         self.assertEqual(fa.last_id("telegram"), "a2")
 
@@ -238,17 +239,18 @@ class ReplaySafetyTests(Polling):
         self.assertEqual(len(lines), fa.DIAGNOSTICS_KEEP)
         self.assertEqual(lines[-1]["id"], f"x{fa.DIAGNOSTICS_KEEP + 49}")
         self.assertEqual(os.stat(os.path.join(self.dir, fa.DIAGNOSTICS)).st_mode & 0o777, 0o600)
-        self.assertNotIn("domain jobs", open(os.path.join(self.dir, fa.DIAGNOSTICS)).read())      # never the alert text
+        self.assertNotIn("domain jobs", open(os.path.join(self.dir, fa.DIAGNOSTICS)).read())  # never the alert text
 
 
 
 class CorruptStateFailsClosedTests(Polling):
-    """Career TL review 5576359134: saved state that EXISTS but is unreadable or invalid holds that channel (no poll, no send, no 10-minute fallback, one HELD
-    line); an ABSENT file is a fresh start; the other channel keeps working."""
+    """Career TL review 5576359134: saved state that EXISTS but is unreadable or invalid holds that channel (no poll, no
+    send, no 10-minute fallback, one.
+    """
 
     def held(self, channel="telegram"):
         opener, relay = Stream(stream(*self.cache)), Relay(OK)
-        for _ in range(5):                                                                       # repeated polls: still nothing, and one HELD line per cause
+        for _ in range(5):
             fa.follow("topic", "123456789", opener, relay.sender(channel), channel=channel)
         return opener.urls, relay.runs
 
@@ -267,11 +269,11 @@ class CorruptStateFailsClosedTests(Polling):
             fa.remember("a0", "telegram")
             self.write("attempts-telegram", data)
             urls, runs = self.held()
-            self.assertEqual((urls, runs), ([], []), data)                                      # no poll, no send attempt
+            self.assertEqual((urls, runs), ([], []), data)  # no poll, no send attempt
             self.assertEqual(fa.last_id("telegram"), "a0", data)
             self.assertEqual([(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_attempts")], data)
         self.setUp()
-        os.mkdir(os.path.join(self.dir, "attempts-telegram"))                                   # unreadable (a directory where the file should be)
+        os.mkdir(os.path.join(self.dir, "attempts-telegram"))  # unreadable (a directory where the file should be)
         self.assertEqual(self.held(), ([], []))
 
     def test_invalid_or_unreadable_cursor_holds_the_channel_and_never_falls_back_to_ten_minutes(self):
@@ -289,9 +291,9 @@ class CorruptStateFailsClosedTests(Polling):
         self.write("attempts-telegram", "{not json")
         self.assertEqual(self.held("telegram"), ([], []))
         whatsapp = Relay(OK)
-        self.poll(whatsapp, channel="whatsapp")                                                  # absent cursor and attempts: a first start
+        self.poll(whatsapp, channel="whatsapp")  # absent cursor and attempts: a first start
         self.assertEqual((len(whatsapp.runs), fa.last_id("whatsapp")), (2, "a2"))
-        os.unlink(os.path.join(self.dir, "attempts-telegram"))                                  # a person repaired it (removed the bad file, kept the cursor)
+        os.unlink(os.path.join(self.dir, "attempts-telegram"))
         fa.remember("a1", "telegram")
         repaired = Relay(OK)
         self.poll(repaired, channel="telegram")
@@ -299,14 +301,14 @@ class CorruptStateFailsClosedTests(Polling):
 
     def test_valid_saved_state_still_works(self):
         fa.remember("a0", "telegram")
-        fa._write_attempts("telegram", {"id": "a1", "count": 1, "pending": False})               # a proven refusal last time: retried now
+        fa._write_attempts("telegram", {"id": "a1", "count": 1, "pending": False})  # a proven refusal last time: retried now
         relay = Relay(OK)
         self.poll(relay)
         self.assertEqual((len(relay.runs), fa.last_id("telegram"), fa.attempts("telegram")), (2, "a2", {}))
 
 
 class ChannelTagTests(StateDir):
-    """LIFE-75: a copy goes to a channel only when the push carries that channel's tag (what Jim ticks on the Alert settings page)."""
+    """a copy goes to a channel only when the push carries that channel's tag."""
 
     def follow(self, tags, channel):
         sent = []
@@ -321,8 +323,8 @@ class ChannelTagTests(StateDir):
 
     def test_an_untagged_push_is_copied_nowhere_and_the_position_moves_on(self):
         self.assertEqual(self.follow([], "telegram"), [])
-        self.assertEqual(fa.last_id("telegram"), "m0002")                       # skipped, not retried
-        self.assertEqual(self.diagnostics(), [])      # silent: no diagnostics line per skipped push
+        self.assertEqual(fa.last_id("telegram"), "m0002")  # skipped, not retried
+        self.assertEqual(self.diagnostics(), [])  # silent: no diagnostics line per skipped push
 
     def test_a_missing_tags_field_counts_as_untagged(self):
         sent = []
@@ -331,9 +333,11 @@ class ChannelTagTests(StateDir):
 
 
 class HourlyCapTests(StateDir):
-    """LIFE-73: at most RELAY_CAP copies per channel per clock hour, then ONE paused notice and the rest dropped (ntfy keeps the originals)."""
+    """at most RELAY_CAP copies per channel per clock hour, then ONE paused notice and the rest dropped (ntfy keeps the
+    originals).
+    """
 
-    HOUR = 1_800_000_000 // 3600 * 3600                                    # a clock hour start
+    HOUR = 1_800_000_000 // 3600 * 3600  # a clock hour start
 
     def setUp(self):
         super().setUp()
@@ -357,7 +361,7 @@ class HourlyCapTests(StateDir):
         self.assertEqual(len(self.sent), fa.RELAY_CAP + 1)
         self.assertEqual(self.sent.count(fa.PAUSE_TEXT), 1)
         self.assertEqual(self.sent[-1], fa.PAUSE_TEXT)
-        self.assertEqual(fa.last_id(), "m0039")                                # the position moved past every dropped copy: nothing replays
+        self.assertEqual(fa.last_id(), "m0039")
 
     def test_the_diagnostics_record_the_cap_without_alert_text(self):
         self.flood(10)
@@ -399,18 +403,17 @@ class HourlyCapTests(StateDir):
 
 
 class TopicRereadAndQuietTests(StateDir):
-    """LIFE-608: the relay read the ntfy topic once at start and kept it for weeks, so a changed topic secret silenced it. These run the real step() and the real follow() with real
-    state files; only the ntfy network call (an opener that answers per topic) and the sender are replaced."""
+    """the relay read the ntfy topic once at start and kept it for weeks, so a changed topic secret silenced it."""
 
     START = 1_800_000_000
 
     def setUp(self):
         super().setUp()
         self.clock = [self.START]
-        self.topics = {}                                   # topic name -> the ntfy events that topic holds
-        self.polled = []                                   # topic names the relay asked ntfy for
+        self.topics = {}  # topic name -> the ntfy events that topic holds
+        self.polled = []  # topic names the relay asked ntfy for
         self.sent = []
-        self.secret = ["old-topic"]                        # what the secret store returns now
+        self.secret = ["old-topic"]  # what the secret store returns now
         self.state = {}
 
     def opener(self, url, timeout=None):
@@ -429,13 +432,13 @@ class TopicRereadAndQuietTests(StateDir):
 
     def test_a_changed_topic_is_picked_up_within_the_refresh_period_and_the_missed_copies_go_out(self):
         self.topics["new-topic"] = [{"event": "message", "id": "m0001", "title": "Missed"}]
-        self.cycle()                                                    # starts on the old topic, which is empty
-        self.secret[0] = "new-topic"                                    # the secret changes while the relay keeps running
+        self.cycle()  # starts on the old topic, which is empty
+        self.secret[0] = "new-topic"  # the secret changes while the relay keeps running
         self.cycle(advance=fa.POLL)
-        self.assertEqual((self.sent, set(self.polled)), ([], {"old-topic"}))                 # not read again yet: still the old topic
+        self.assertEqual((self.sent, set(self.polled)), ([], {"old-topic"}))  # not read again yet: still the old topic
         self.cycle(advance=fa.TOPIC_REFRESH)
         self.assertIn("new-topic", self.polled)
-        self.assertEqual(self.sent, ["🔔 Missed", "🔔 Missed"])         # one copy per channel
+        self.assertEqual(self.sent, ["🔔 Missed", "🔔 Missed"])  # one copy per channel
         changed = [x for x in self.diagnostics() if x["outcome"] == fa.TOPIC_CHANGED]
         self.assertEqual(len(changed), 1)
 
@@ -450,11 +453,11 @@ class TopicRereadAndQuietTests(StateDir):
 
     def test_a_failed_reread_keeps_the_working_topic_and_tries_again_soon(self):
         self.cycle()
-        self.cycle(advance=fa.TOPIC_REFRESH, resolve=lambda: None)      # the secret store is down at refresh time
-        self.assertEqual(self.polled[-1], "old-topic")                  # still polling the topic that worked
+        self.cycle(advance=fa.TOPIC_REFRESH, resolve=lambda: None)  # the secret store is down at refresh time
+        self.assertEqual(self.polled[-1], "old-topic")  # still polling the topic that worked
         self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.TOPIC_CHANGED], [])
         self.secret[0] = "new-topic"
-        self.cycle(advance=fa.TOPIC_RETRY)                              # retried after the short retry delay, not a full refresh period
+        self.cycle(advance=fa.TOPIC_RETRY)
         self.assertEqual(self.polled[-1], "new-topic")
 
     def test_an_unchanged_topic_writes_no_changed_line(self):
@@ -466,18 +469,18 @@ class TopicRereadAndQuietTests(StateDir):
         self.cycle()
         self.cycle(advance=fa.QUIET_AFTER - 100)
         self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.QUIET], [])
-        self.cycle(advance=200)                                         # past the limit
-        self.cycle(advance=fa.POLL)                                     # polling on does not repeat it
+        self.cycle(advance=200)  # past the limit
+        self.cycle(advance=fa.POLL)  # polling on does not repeat it
         self.assertEqual(len([x for x in self.diagnostics() if x["outcome"] == fa.QUIET]), 1)
-        self.cycle(advance=fa.QUIET_AFTER)                              # a whole further quiet period: one more
+        self.cycle(advance=fa.QUIET_AFTER)  # a whole further quiet period: one more
         self.assertEqual(len([x for x in self.diagnostics() if x["outcome"] == fa.QUIET]), 2)
 
     def test_a_message_of_any_kind_resets_the_quiet_clock_even_when_it_is_not_forwarded(self):
         self.cycle()
-        self.topics["old-topic"] = [{"event": "message", "id": "m0001", "title": "FYI", "tags": ["information_source"]}]     # untagged: nothing is sent
+        self.topics["old-topic"] = [{"event": "message", "id": "m0001", "title": "FYI", "tags": ["information_source"]}]  # untagged: nothing is sent
         self.cycle(advance=fa.QUIET_AFTER - 10)
         self.topics["old-topic"] = []
-        self.cycle(advance=fa.QUIET_AFTER - 10)                         # still inside a period counted from that message
+        self.cycle(advance=fa.QUIET_AFTER - 10)  # still inside a period counted from that message
         self.assertEqual(self.sent, [])
         self.assertEqual([x for x in self.diagnostics() if x["outcome"] == fa.QUIET], [])
 

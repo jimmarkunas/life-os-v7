@@ -23,7 +23,7 @@ from tests.imessage import test_reader as reader
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MAC = ROOT / "lifeos/imessage/mac"
 RELAY_SH = (MAC / "relay.sh").read_text()
-ORACLE_V4, ORACLE_V6, OTHER_V4 = "100.64.0.7", "fd7a:115c:a1e0::7", "100.64.0.8"     # invented tailnet addresses
+ORACLE_V4, ORACLE_V6, OTHER_V4 = "100.64.0.7", "fd7a:115c:a1e0::7", "100.64.0.8"  # invented tailnet addresses
 SIG = b"\r\n\r\n\x00\r\nQUIT\n"
 CC = shlex.split(os.environ.get("LIFEOS_TEST_CC", "")) or ([shutil.which("cc")] if shutil.which("cc") else [])
 
@@ -55,7 +55,8 @@ def ask(port, payload):
 
 
 class Inetd:
-    """launchd's inetdCompatibility, emulated: one process per accepted connection, the connection as its stdin/stdout."""
+    """launchd's inetdCompatibility, emulated: one process per accepted connection, the connection as its stdin/stdout.
+    """
 
     def __init__(self, listener, argv, env=None):
         self.listener, self.argv, self.env = listener, argv, env
@@ -72,8 +73,9 @@ class Inetd:
 
 
 class FakeServe:
-    """Tailscale Serve's TCP forwarder with PROXY v2, emulated as observed live: prepend the (authenticated) source, copy both directions at once,
-    and tear the whole connection down when the client half-closes (Serve does not keep a half-open connection)."""
+    """Tailscale Serve's TCP forwarder with PROXY v2, emulated as observed live: prepend the (authenticated) source, copy
+    both directions at once, and tear.
+    """
 
     def __init__(self, target_port, src):
         self.target_port, self.src = target_port, src
@@ -106,7 +108,7 @@ class FakeServe:
                     dst.sendall(chunk)
             except OSError:
                 pass
-            for s in (client, up):                                # either side ending ends both, like Serve
+            for s in (client, up):  # either side ending ends both, like Serve
                 try:
                     s.shutdown(socket.SHUT_RDWR)
                 except OSError:
@@ -127,8 +129,8 @@ class Relay(unittest.TestCase):
         cls.home = os.path.join(cls.tmp, "home")
         os.makedirs(os.path.join(cls.home, "Library/Messages"))
         os.makedirs(os.path.join(cls.home, "Library/Application Support"))
-        f = reader.Fixture()                                                        # a synthetic Messages database (and Contacts) the real helper tool reads
-        with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):      # the real reader windows on the real clock, so the rows are dated from it
+        f = reader.Fixture()
+        with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):
             f.add(10, timedelta(hours=1), text=None, attributed=reader.typedstream("Mom is in the hospital, call me now SECRET"))
             f.add(11, timedelta(hours=2), handle=2, text="haha SECRET")
             f.add(10, timedelta(hours=3), mine=1, text="on my way SECRET")
@@ -167,7 +169,7 @@ class Relay(unittest.TestCase):
 
     def test_forged_identity_inside_the_request_is_refused(self):
         self.assertEqual(ask(self.port, proxy_v2(OTHER_V4) + proxy_v2(ORACLE_V4) + b"attention\n"), b"")
-        self.assertEqual(ask(self.port, proxy_v2(ORACLE_V6)[:16] + b"\xff\xff" + b"attention\n"), b"")      # absurd length
+        self.assertEqual(ask(self.port, proxy_v2(ORACLE_V6)[:16] + b"\xff\xff" + b"attention\n"), b"")  # absurd length
 
     def test_full_chain_through_the_oracle_wrapper(self):
         serve = FakeServe(self.port, ORACLE_V4)
@@ -176,7 +178,7 @@ class Relay(unittest.TestCase):
         self.assertEqual((out["attention"], out["health"], out["sync"], out["count"]), ("NEEDS_ATTENTION", "CURRENT", "UNVERIFIED", None))
         self.assertNotIn("SECRET", json.dumps(out))
         other = FakeServe(self.port, OTHER_V4)
-        self.assertEqual(w.run(["attention"], path=self.endpoint(other.port))["health"], "DISCONNECTED")      # an unauthorized source gets nothing
+        self.assertEqual(w.run(["attention"], path=self.endpoint(other.port))["health"], "DISCONNECTED")  # an unauthorized source gets nothing
         serve.listener.close()
         other.listener.close()
 
@@ -184,12 +186,12 @@ class Relay(unittest.TestCase):
         serve = FakeServe(self.port, ORACLE_V4)
         with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
             s.sendall(b"attention\n")
-            s.shutdown(socket.SHUT_WR)                            # what the first wrapper did: Serve drops the connection before the relay answers
+            s.shutdown(socket.SHUT_WR)
             self.assertEqual(s.recv(4096), b"")
         serve.listener.close()
 
     def test_forged_identity_through_serve_is_refused(self):
-        serve = FakeServe(self.port, ORACLE_V4)                    # Serve's genuine header comes first; a forged one is just a wrong request
+        serve = FakeServe(self.port, ORACLE_V4)  # Serve's genuine header comes first
         for payload in (proxy_v2(ORACLE_V4) + b"attention\n", proxy_v2(OTHER_V4) + b"attention\n", b"send\n", b"attentionXXXXXX\n"):
             with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
                 s.settimeout(15)
@@ -209,7 +211,7 @@ class Relay(unittest.TestCase):
         self.assertEqual((urgent["summary"]["TIME_CRITICAL"], urgent["flagged"][0]["level"], urgent["flagged"][0]["sender"]["name"]), (1, "TIME_CRITICAL", "Alice Example"))
         thread = w.run(["conversation", recent["messages"][0]["chat"]], path=path)
         self.assertEqual(([m["from_me"] for m in thread["messages"]], thread["chat"]), ([False, True], "c10"))
-        self.assertEqual(w.run(["attention"], path=path)["attention"], "NEEDS_ATTENTION")       # the accepted contract is unchanged
+        self.assertEqual(w.run(["attention"], path=path)["attention"], "NEEDS_ATTENTION")  # the accepted contract is unchanged
         for refused in (b"recent 73\n", b"recent 0\n", b"conversation 0\n", b"recent 1; id\n", b"conversation c10\n", b"counts all\n", b"send 1\n"):
             with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
                 s.settimeout(15)
@@ -277,8 +279,8 @@ class RelayInstaller(unittest.TestCase):
         self.assertIn("gate 19", code)
         self.assertIn("gate 21", code)
         update = code[code.index("update_relay() {"):code.index("rollback() {")]
-        self.assertNotRegex(update, r"\$HELPER\b[^_]")                     # update never writes the signed launcher
-        self.assertNotRegex(update, r"bootout|bootstrap|serve --|serve reset")   # nor reloads agents or touches Serve
+        self.assertNotRegex(update, r"\$HELPER\b[^_]")  # update never writes the signed launcher
+        self.assertNotRegex(update, r"bootout|bootstrap|serve --|serve reset")  # nor reloads agents or touches Serve
         self.assertIn('sudo /bin/cp -p "$TOOL" "$TOOL.prev"', update)
 
     def test_serve_state_classification(self):
@@ -291,9 +293,9 @@ class RelayInstaller(unittest.TestCase):
         self.assertEqual(state("{}"), "free")
         self.assertEqual(state(""), "free")
         self.assertEqual(state(json.dumps(ours)), "ours")
-        self.assertEqual(state(json.dumps({"TCP": {"443": {"HTTPS": True}}})), "free")                     # other ports are left alone
+        self.assertEqual(state(json.dumps({"TCP": {"443": {"HTTPS": True}}})), "free")  # other ports are left alone
         self.assertEqual(state(json.dumps(dict(ours, AllowFunnel={"mac.example.ts.net:47331": True}))), "other")
-        self.assertEqual(state(json.dumps({"TCP": {"47331": {"TCPForward": "127.0.0.1:47321"}}})), "other")   # no PROXY header
+        self.assertEqual(state(json.dumps({"TCP": {"47331": {"TCPForward": "127.0.0.1:47321"}}})), "other")  # no PROXY header
         self.assertEqual(state(json.dumps({"TCP": {"47331": {"TCPForward": "0.0.0.0:22", "ProxyProtocol": 2}}})), "other")
         self.assertEqual(state("not json"), "unknown")
 
@@ -306,7 +308,7 @@ class RelayInstaller(unittest.TestCase):
         self.assertEqual(check(["tcp4       0      0  127.0.0.1.47321        *.*                    LISTEN"]), 0)
         self.assertEqual(check(["tcp46      0      0  *.47321                *.*                    LISTEN"]), 1)
         self.assertEqual(check(["tcp4       0      0  127.0.0.1.47321        *.*                    LISTEN", "tcp4  0 0  100.64.0.9.47321  *.*  LISTEN"]), 1)
-        self.assertEqual(check(["tcp4       0      0  127.0.0.1.8080         *.*                    LISTEN"]), 1)        # nothing listening is a failure
+        self.assertEqual(check(["tcp4       0      0  127.0.0.1.8080         *.*                    LISTEN"]), 1)  # nothing listening is a failure
 
 
 NOW = datetime(2026, 10, 14, 15, 0, tzinfo=timezone.utc)
@@ -380,7 +382,9 @@ if __name__ == "__main__":
 
 @unittest.skipUnless(CC, "no C compiler (set LIFEOS_TEST_CC)")
 class PagedChain(unittest.TestCase):
-    """The private alert scan through the real relay and the real reader: more than 50 messages, several pages, proven end."""
+    """The private alert scan through the real relay and the real reader: more than 50 messages, several pages, proven
+    end.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -388,10 +392,10 @@ class PagedChain(unittest.TestCase):
         home = os.path.join(cls.tmp, "home")
         os.makedirs(os.path.join(home, "Library/Messages"))
         f = reader.Fixture()
-        with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):                           # the scan windows on the real clock, so the rows are dated from it (as at line 132)
+        with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):
             cls.ids = [f.add(10 + i % 3, timedelta(minutes=400 - i), text="ok %d" % i, read=i % 2) for i in range(137)]
             for i in range(3):
-                f.add(10, timedelta(minutes=5), text="same %d" % i)                                   # same-timestamp tie at the end
+                f.add(10, timedelta(minutes=5), text="same %d" % i)  # same-timestamp tie at the end
         f.con.close()
         shutil.copy(f.db, os.path.join(home, "Library/Messages/chat.db"))
         sock = os.path.join(cls.tmp, "h.sock")
@@ -416,11 +420,11 @@ class PagedChain(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_all_messages_over_several_pages_with_a_proven_end(self):
-        out = w.scan(72, path=self.endpoint)                                                         # fixture dates follow the reader fixtures' fixed clock
+        out = w.scan(72, path=self.endpoint)
         self.assertEqual((out["health"], out["complete"], out["truncated"], out["pages"], len(out["messages"])), ("CURRENT", True, False, 3, 140))
         refs = [m["ref"] for m in out["messages"]]
         self.assertEqual(len(set(refs)), 140)
-        self.assertEqual(refs[-len(self.ids):][::-1][:5], ["m%d" % i for i in self.ids[:5]])           # oldest first on the wire, newest first returned
+        self.assertEqual(refs[-len(self.ids):][::-1][:5], ["m%d" % i for i in self.ids[:5]])  # oldest first on the wire, newest first returned
 
     def test_malformed_paging_requests_are_refused_by_the_relay(self):
         for bad in (b"page 0\n", b"page 73\n", b"page 05\n", b"next 1 0\n", b"next 01 5\n", b"next 5\n", b"next 5 5 5\n", b"next -1 1\n",

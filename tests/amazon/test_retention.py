@@ -24,11 +24,12 @@ class RetentionGmail(AmazonGmail):
 
 
 def recorded_store():
-    """One recorded order (m-1) and one message that the order row does not list (m-2), both under the Amazon label."""
+    """One recorded order (m-1) and one message that the order row does not list (m-2), both under the Amazon label.
+    """
     gmail = RetentionGmail({"m-1": message("m-1", "auto-confirm"), "m-2": message("m-2", "order-update", order_id="999-9999999-9999999")})
     notion = AmazonNotion()
     stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
-    gmail.messages["m-2"]["label_ids"] = ["label-amazon"]                 # filed by a Gmail filter, never recorded
+    gmail.messages["m-2"]["label_ids"] = ["label-amazon"]  # filed by a Gmail filter, never recorded
     notion.rows.pop("999-9999999-9999999", None)
     gmail.trashed.clear()
     return gmail, notion
@@ -48,7 +49,7 @@ class RetentionTests(unittest.TestCase):
         counts = retention.run(100, False, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertEqual((counts["candidates"], counts["recorded"], counts["kept_unrecorded"], counts["trashed"]), (2, 1, 1, 0))
         self.assertEqual(gmail.trashed, [])
-        self.assertEqual((counts["no_row"], counts["no_order_id"], counts["not_listed"]), (1, 0, 0))     # m-2's order was never recorded
+        self.assertEqual((counts["no_row"], counts["no_order_id"], counts["not_listed"]), (1, 0, 0))  # m-2's order was never recorded
         self.assertEqual(counts["oldest_days"], 0)
 
     def test_kept_mail_is_counted_by_fixed_reason_never_by_content(self):
@@ -105,7 +106,7 @@ class MultiOrderTests(unittest.TestCase):
         from lifeos.amazon import events
         got = events.extract_all(message("s1", "shipment-tracking", body=LINKS))
         self.assertEqual([(e["order_id"], e["status"], e["grand_total"]) for e in got], [(A, "SHIPPED", None), (B, "SHIPPED", None)])
-        self.assertEqual(len(events.extract_all(message("o1", "auto-confirm", body=LINKS + "\nGrand Total: $50.00"))), 2)       # a total cannot belong to one of two orders
+        self.assertEqual(len(events.extract_all(message("o1", "auto-confirm", body=LINKS + "\nGrand Total: $50.00"))), 2)  # a total cannot belong to one of two orders
 
     def test_a_message_with_an_unlinked_order_number_or_too_many_stays_review(self):
         from lifeos.amazon import events
@@ -128,7 +129,7 @@ class MultiOrderTests(unittest.TestCase):
         page = notion.rows[B]
         row = notion._row(page)
         row["Source Message IDs"] = ""
-        notion.rows[B] = notion_page(B, row, page["id"])                  # one of the two orders does not list it: it stays
+        notion.rows[B] = notion_page(B, row, page["id"])  # one of the two orders does not list it: it stays
         counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion)
         self.assertEqual((counts["recorded"], counts["kept_unrecorded"], counts["trashed"]), (0, 1, 0))
 
@@ -140,14 +141,14 @@ class ReviewAgeTests(unittest.TestCase):
         gmail = RetentionGmail({"m-9": message("m-9", "order-update", order_id=order, at=at)})
         gmail.messages["m-9"]["label_ids"] = ["label-amazon"]
         notion = AmazonNotion()
-        notion.rows[order] = notion_page(order, {"Status": "REVIEW", "Needs Review": True}, "page-9")          # a conflicted order: identity and the two review fields only
+        notion.rows[order] = notion_page(order, {"Status": "REVIEW", "Needs Review": True}, "page-9")
         return gmail, notion
 
     def test_mail_for_a_review_order_goes_to_the_trash_only_after_ninety_days(self):
-        old = self.store("2026-06-01T12:00:00+00:00")                       # 124 days before NOW
+        old = self.store("2026-06-01T12:00:00+00:00")  # 124 days before NOW
         counts = retention.run(100, True, environ=TOKEN, gmail=old[0], notion=old[1], now=NOW)
         self.assertEqual((counts["trashed"], counts["review_aged"], counts["kept_unrecorded"]), (1, 1, 0))
-        young = self.store("2026-08-01T12:00:00+00:00")                     # 63 days
+        young = self.store("2026-08-01T12:00:00+00:00")  # 63 days
         counts = retention.run(100, True, environ=TOKEN, gmail=young[0], notion=young[1], now=NOW)
         self.assertEqual((counts["trashed"], counts["kept_unrecorded"], counts["kept_detail"]), (0, 1, {"not_listed:REVIEW": 1}))
 
@@ -238,7 +239,7 @@ class TrashedConfirmationTests(unittest.TestCase):
         self.assertEqual((counts["accepted"], counts["filed"], counts["failed"]), (1, 0, 0))
         self.assertEqual(AmazonNotion._row(notion.rows["114-5655798-1950618"])["Grand Total"], 21.2)
         plain = stage.window_query(None, NOW)
-        self.assertNotIn("in:anywhere", plain)                                                # the hourly pass does not read the Trash
+        self.assertNotIn("in:anywhere", plain)  # the hourly pass does not read the Trash
 
     def test_retention_keeps_a_confirmation_until_its_row_has_taken_the_total(self):
         from tests.amazon.fakes import notion_page

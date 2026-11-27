@@ -1,4 +1,4 @@
-"""LIFE-340: slimming the main profile's config. A temp config shaped like the real one (comments, terminal.cwd '.', five MCP servers); nothing real is touched."""
+"""slimming the main profile's config."""
 import hashlib
 import os
 import shutil

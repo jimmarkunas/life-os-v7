@@ -1,4 +1,4 @@
-"""The door (find and fetch the attached file) and the stage that measures it. Fakes only; no network, no real file, no real name."""
+"""The door (find and fetch the attached file) and the stage that measures it."""
 import io
 import json
 import unittest
@@ -24,7 +24,7 @@ def file_block(name, url=OK_URL, kind="file", created="2026-09-28T00:00:00.000Z"
 
 
 class FakeClient:
-    """Serves pages of blocks to GET calls; any other method is a failure, so a write can never pass a test."""
+    """Serves pages of blocks to GET calls"""
     def __init__(self, pages):
         self.pages, self.calls = pages, []
 
