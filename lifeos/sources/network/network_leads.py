@@ -5,6 +5,7 @@ active-pursuit opportunity, and a scheduled or upcoming interview; the last two 
 (`lifeos.hiring.snapshot`). Matching is lifeos.network.match; this stage only reads and counts. A target in more than
 one class is counted in each class and once in the distinct total (by company key and role words).
 """
+
 from datetime import date, datetime, timezone
 
 from lifeos.hiring import render as hiring_render, snapshot as hiring_snapshot
@@ -24,13 +25,20 @@ def _today():
 
 def _read(connection):
     with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):
-        cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified FROM v7_network_positions s JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
-        rows = [(pid, key, title, state, verified if isinstance(verified, date) else date.fromisoformat(str(verified)[:10])) for pid, key, title, state, verified in cursor.fetchall()]
-        cursor.execute("SELECT j.id, j.company, j.title FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.admission='ADMIT'")
+        cursor.execute(
+            "SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified FROM v7_network_positions s JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'"
+        )
+        rows = [
+            (pid, key, title, state, verified if isinstance(verified, date) else date.fromisoformat(str(verified)[:10]))
+            for pid, key, title, state, verified in cursor.fetchall()
+        ]
+        cursor.execute(
+            "SELECT j.id, j.company, j.title FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.admission='ADMIT'"
+        )
         jobs = cursor.fetchall()
     try:
         pipeline = hiring_snapshot.load(connection)
-    except Exception:                                                  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pipeline = None
     return rows, jobs, pipeline
 
@@ -66,18 +74,37 @@ def targets(jobs, pipeline, now, stats=None):
 
 
 def _blank():
-    return {"considered": 0, "with_leads": 0, "without_leads": 0, "without_company_key": 0, "leads_total": 0, "leads_per_target": {str(n): 0 for n in range(match.MAX_LEADS + 1)},
-            "by_tier": {t: 0 for t in match.TIERS}, "by_freshness": {"FRESH": 0, "AGING": 0, "STALE": 0}, "top_lead_stale": 0, "capped": 0}
+    return {
+        "considered": 0,
+        "with_leads": 0,
+        "without_leads": 0,
+        "without_company_key": 0,
+        "leads_total": 0,
+        "leads_per_target": {str(n): 0 for n in range(match.MAX_LEADS + 1)},
+        "by_tier": {t: 0 for t in match.TIERS},
+        "by_freshness": {"FRESH": 0, "AGING": 0, "STALE": 0},
+        "top_lead_stale": 0,
+        "capped": 0,
+    }
 
 
 def count(rows, jobs, pipeline, today, now=None):
     if not rows:
-        raise NetworkError("NETWORK_NO_ROSTER")                        # an empty roster is a failed read, never "no leads"
+        raise NetworkError("NETWORK_NO_ROSTER")  # an empty roster is a failed read, never "no leads"
     now = now or datetime.now(timezone.utc)
     index = match.build_index(rows)
     extra = {}
     found, status = targets(jobs, pipeline, now, extra)
-    out = {"older_submitted_excluded": extra.get("older_submitted_excluded", 0), "roster_positions": len(rows), "roster_companies": len(index), "pursuit_source": status, "by_class": {c: _blank() for c in CLASSES}, "distinct_targets": 0, "distinct_with_leads": 0, "live": False}
+    out = {
+        "older_submitted_excluded": extra.get("older_submitted_excluded", 0),
+        "roster_positions": len(rows),
+        "roster_companies": len(index),
+        "pursuit_source": status,
+        "by_class": {c: _blank() for c in CLASSES},
+        "distinct_targets": 0,
+        "distinct_with_leads": 0,
+        "live": False,
+    }
     seen = {}
     for kind, company, title in found:
         stats = out["by_class"][kind]

@@ -3,6 +3,7 @@
 Text nodes, in order: [company, industry, '. seniority', match, '%', TITLE, salary?, location?, experience,
 'N minutes ago', ...]. The provider's match % is stored as evidence only (provider_score) and counts zero toward fit.
 """
+
 import re
 
 from lifeos.sources.newsletters.parsers import _anchors
@@ -32,14 +33,24 @@ def parse(html):
         company, title = texts[0], texts[marker + 1]
         score_text = texts[marker - 1] if texts[marker] == "%" else texts[marker]
         score = int(re.sub(r"\D", "", score_text)) if re.search(r"\d", score_text) else None
-        detail_end = marker - 1 if texts[marker] == "%" else marker      # instant: '89','%' | digest: '80%'
+        detail_end = marker - 1 if texts[marker] == "%" else marker  # instant: '89','%' | digest: '80%'
         detail = [t.lstrip(DOT + " ").strip() for t in texts[1:detail_end] if t.strip(DOT + " ")]
-        tail = texts[marker + 2:]
+        tail = texts[marker + 2 :]
         salary = next((t for t in tail if MONEY.search(t)), None)
         age_text = next((t for t in tail if AGE.search(t) and len(t) < 40), None)
         location = next((t for t in tail if t != salary and t != age_text and not NOT_LOCATION.search(t)), None)
-        age_days = int(AGE.search(age_text).group(1)) * AGE_DAYS[AGE.search(age_text).group(2).lower()] if age_text else None
-        cards.append(Card(company=company, title=title, salary_text=salary,
-                          location_text=" / ".join(x for x in ([location] + detail) if x) or None,
-                          url=f"https://jobright.ai/jobs/info/{job_id}", age_days=age_days, provider_score=score))
+        age_days = (
+            int(AGE.search(age_text).group(1)) * AGE_DAYS[AGE.search(age_text).group(2).lower()] if age_text else None
+        )
+        cards.append(
+            Card(
+                company=company,
+                title=title,
+                salary_text=salary,
+                location_text=" / ".join(x for x in ([location] + detail) if x) or None,
+                url=f"https://jobright.ai/jobs/info/{job_id}",
+                age_days=age_days,
+                provider_score=score,
+            )
+        )
     return cards

@@ -6,6 +6,7 @@ recruiter's
 round keyed by the same Stable Job Key, dated (MANUAL_JOB_ROUND_DAY, a Central day) or Scheduling Pending at a request
 message link (MANUAL_JOB_REQUEST_URL). Counts and fixed codes only: no link, name or title is logged.
 """
+
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -29,10 +30,29 @@ def enter(cursor, url, company, title, source, provider, received, stamp, kind):
 
     -> (Stable Job Key, new); a new job keeps the link as its final apply URL (`kind`: ats, aggregator or employer).
     """
-    key, new = intake.add_job(cursor, {"url": url, "status": "RESOLVED", "title": title, "company": company, "location": "", "salary": "", "source": source, "provider": provider,
-                                       "lane": lanes.RECRUITER, "age_days": None, "provider_score": None, "received": received}, stamp)
+    key, new = intake.add_job(
+        cursor,
+        {
+            "url": url,
+            "status": "RESOLVED",
+            "title": title,
+            "company": company,
+            "location": "",
+            "salary": "",
+            "source": source,
+            "provider": provider,
+            "lane": lanes.RECRUITER,
+            "age_days": None,
+            "provider_score": None,
+            "received": received,
+        },
+        stamp,
+    )
     if new:
-        cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind=%s, updated_at=%s WHERE dedupe_key=%s", (url, kind, stamp, key))
+        cursor.execute(
+            "UPDATE v7_jobs SET final_apply_url=%s, apply_kind=%s, updated_at=%s WHERE dedupe_key=%s",
+            (url, kind, stamp, key),
+        )
     return key, new
 
 
@@ -44,7 +64,11 @@ def add_job(url, company, title, now, live, connect=store.connect):
         if not live:
             cursor.execute("SELECT 1 FROM v7_jobs WHERE dedupe_key=%s LIMIT 1", (identity.url_hash(url),))
             return "present" if cursor.fetchone() else "new"
-        return "new" if enter(cursor, url, company, title, "manual", "Manual", stamp, stamp, classify.apply_kind(url))[1] else "present"
+        return (
+            "new"
+            if enter(cursor, url, company, title, "manual", "Manual", stamp, stamp, classify.apply_kind(url))[1]
+            else "present"
+        )
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=store.connect, context=None):
@@ -67,15 +91,23 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=store.co
     if request and not request.startswith("https://"):
         return stop("MANUAL_JOB_REQUEST_INVALID")
     if not (day or request):
-        return stop("MANUAL_JOB_ROUND_EVIDENCE_MISSING")         # a round is dated by the given day or pending at a request message: never invented
+        return stop(
+            "MANUAL_JOB_ROUND_EVIDENCE_MISSING"
+        )  # a round is dated by the given day or pending at a request message: never invented
     try:
         counts["job"] = add_job(url, company, title, now, live, connect)
-    except Exception:                                            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return stop("MANUAL_JOB_STORE_FAILED")
     key = identity.url_hash(url)
     round_query = RoundQuery(True, day or None, None, 1, source=request or None, stable_job_key=key)
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
-    counts["interview"] = stage.run(limit, live, environ, client=client or notion.make_client(environ), evidence=[(ParentQuery(company, title), round_query)],
-                                    context=context or RunContext.start(STAGE_SECONDS))
+    counts["interview"] = stage.run(
+        limit,
+        live,
+        environ,
+        client=client or notion.make_client(environ),
+        evidence=[(ParentQuery(company, title), round_query)],
+        context=context or RunContext.start(STAGE_SECONDS),
+    )
     counts["failed"] += counts["interview"].get("blocked", 0)
     return counts

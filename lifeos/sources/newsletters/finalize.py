@@ -5,6 +5,7 @@ the Ledger. A mail with no saved jobs has nothing in flight and is closed too. I
 Usage: python -m lifeos.sources.newsletters.finalize [--live] [--limit N]
 
 """
+
 import argparse
 import sys
 
@@ -13,7 +14,12 @@ from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources.newsletters import config
 
 IN_FLIGHT = ("NEW", "RESOLVED", "READY")
-TERMINAL = ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")       # plus EXCLUDED_*; anything else (HOLD included) keeps the mail open
+TERMINAL = (
+    "PUBLISHED",
+    "CLOSED",
+    "DUPLICATE",
+    "PURGED",
+)  # plus EXCLUDED_*; anything else (HOLD included) keeps the mail open
 
 
 def survivor_verified(cursor, job_id, hops=3):
@@ -42,19 +48,23 @@ def blockers(connection, message_ids):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT s.gmail_message_id, j.status, j.verified_at IS NULL, j.repost_of FROM v7_job_sources s JOIN v7_jobs j ON j.id = s.job_id"
-            f" WHERE s.gmail_message_id IN ({marks})", tuple(message_ids))
+            f" WHERE s.gmail_message_id IN ({marks})",
+            tuple(message_ids),
+        )
         for message_id, status, unverified, twin in cursor.fetchall():
             if status == "DUPLICATE" and twin and not survivor_verified(cursor, twin):
-                out.setdefault(message_id, "twin_unverified")            # a mail is finalized as DUPLICATE only once the job it duplicates has a verified Ledger row
+                out.setdefault(
+                    message_id, "twin_unverified"
+                )  # a mail is finalized as DUPLICATE only once the job it duplicates has a verified Ledger row
                 continue
             if status in IN_FLIGHT:
                 out.setdefault(message_id, "in_flight")
             elif status == "HOLD":
-                out.setdefault(message_id, "hold")                       # unreadable after every attempt: not an outcome, stays visible
+                out.setdefault(message_id, "hold")  # unreadable after every attempt: not an outcome, stays visible
             elif status == "PUBLISHED" and unverified:
                 out.setdefault(message_id, "unverified")
             elif status not in TERMINAL and not status.startswith("EXCLUDED_"):
-                out.setdefault(message_id, "other")                      # an allowlist, never "whatever is not in flight"
+                out.setdefault(message_id, "other")  # an allowlist, never "whatever is not in flight"
     return out
 
 
@@ -64,9 +74,17 @@ def finalize(gmail, live, limit, connection_factory=store.connect):
     except GmailError:
         if live:
             raise
-        done_label = None                       # a dry run before the label exists: report what would close, create nothing
+        done_label = None  # a dry run before the label exists: report what would close, create nothing
     ids = gmail.list_ids(config.FINALIZE_QUERY, limit=limit)
-    counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0, "twin_unverified": 0, "hold": 0, "other": 0}
+    counts = {
+        "candidates": len(ids),
+        "closed": 0,
+        "in_flight": 0,
+        "unverified": 0,
+        "twin_unverified": 0,
+        "hold": 0,
+        "other": 0,
+    }
     if not ids:
         return counts
     with connection_factory() as connection:

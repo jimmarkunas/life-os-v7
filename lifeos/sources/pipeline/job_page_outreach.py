@@ -7,6 +7,7 @@ reply"; a job with no conversation gets no region. Writes are bounded to the reg
 non-retried call and read back, an existing one is edited row by row, and every other block is digested before and
 after and must be identical. Live writes need JOB_PAGE_OUTREACH=on as well as --live. Fixed codes and counts only.
 """
+
 import os
 from datetime import date, datetime
 from urllib.parse import quote
@@ -55,7 +56,9 @@ def _next(r, today):
         return _two("No follow-up", r["action"] or "Closed")
     if r["action"] == store.NEEDS_ACTION:
         due = r["follow_up"]
-        return _two("Needs action: follow up", f"Overdue since {_day(due)}" if due and due < today.isoformat() else "Due now")
+        return _two(
+            "Needs action: follow up", f"Overdue since {_day(due)}" if due and due < today.isoformat() else "Due now"
+        )
     if r["action"] == store.WAITING and r["follow_up"]:
         return _two("Follow up", f"Due {_day(r['follow_up'])}")
     if r["action"] == store.CONFIRMED:
@@ -98,21 +101,34 @@ def _channel_cell(r, sent):
 
 
 def _conversation_cell(r, link):
-    cell = _two(f"Initial outreach: {_day(r['last_contact'])}" if r["last_contact"] else "Initial outreach: date not recorded", _conversation(r))
+    cell = _two(
+        f"Initial outreach: {_day(r['last_contact'])}" if r["last_contact"] else "Initial outreach: date not recorded",
+        _conversation(r),
+    )
     return cell + [("\n", None, None), ("Record reply or referral ↗", link, None)] if link and not _closed(r) else cell
 
 
 def cells(rows, today, link=None, sent=None):
-    return [[_two(r["person"], r["company"]), _channel_cell(r, sent), _conversation_cell(r, link), _next(r, today)]
-            for r in sorted(rows, key=_sort_key)]
+    return [
+        [_two(r["person"], r["company"]), _channel_cell(r, sent), _conversation_cell(r, link), _next(r, today)]
+        for r in sorted(rows, key=_sort_key)
+    ]
 
 
 def outreach_rows(notion):
     rows, cursor, seen = [], None, set()
     for _ in range(store.MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": O.JOB, "relation": {"is_not_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
+        body = {
+            "page_size": 100,
+            "filter": {"property": O.JOB, "relation": {"is_not_empty": True}},
+            **({"start_cursor": cursor} if cursor else {}),
+        }
         page = notion.query_data_source(None, body)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
+        if (
+            not isinstance(page, dict)
+            or not isinstance(page.get("results"), list)
+            or not isinstance(page.get("has_more"), bool)
+        ):
             raise fail("QUERY_INCOMPLETE")
         rows += [r for r in map(store.read, page["results"]) if r["jobs"]]
         if not page["has_more"]:
@@ -173,21 +189,48 @@ def _region(client, page_id, heading_id):
 
 
 def _shell(want, now):
-    header = {"object": "block", "type": "table_row", "table_row": {"cells": [[{"type": "text", "text": {"content": h}}] for h in HEADERS]}}
+    header = {
+        "object": "block",
+        "type": "table_row",
+        "table_row": {"cells": [[{"type": "text", "text": {"content": h}}] for h in HEADERS]},
+    }
     rows = [{"object": "block", "type": "table_row", "table_row": {"cells": R.cell_blocks(r)}} for r in want]
-    return [{"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": heading_text(now)}}]}},
-            {"object": "block", "type": "table", "table": {"table_width": 4, "has_column_header": True, "has_row_header": False, "children": [header] + rows}}]
+    return [
+        {
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": heading_text(now)}}]},
+        },
+        {
+            "object": "block",
+            "type": "table",
+            "table": {
+                "table_width": 4,
+                "has_column_header": True,
+                "has_row_header": False,
+                "children": [header] + rows,
+            },
+        },
+    ]
 
 
 def _verify(client, page_id, heading_id, want, before):
     region = _region(client, page_id, heading_id)
-    if not R.titled(R.plain(region["heading"]), TITLE) or R.cells_of(region["rows"][0]) != list(HEADERS) or [R.live_view(r) for r in region["rows"][1:]] != [R.want_view(w) for w in want]:
+    if (
+        not R.titled(R.plain(region["heading"]), TITLE)
+        or R.cells_of(region["rows"][0]) != list(HEADERS)
+        or [R.live_view(r) for r in region["rows"][1:]] != [R.want_view(w) for w in want]
+    ):
         raise fail("READBACK_MISMATCH")
     mine = {region["heading"]["id"], region["table"]["id"]}
     after = R.page_digest(client, page_id, list(mine), fail)
-    unowned = lambda d: ({k: v for k, v in d["nodes"].items() if v != "owned"},                       # digest of every other block's content and order, minus only the region
-                         {k: v for k, v in d["layout"].items() if k != page_id},
-                         [i for i in d["layout"].get(page_id, []) if i not in mine])
+    unowned = lambda d: (
+        {
+            k: v for k, v in d["nodes"].items() if v != "owned"
+        },  # digest of every other block's content and order, minus only the region
+        {k: v for k, v in d["layout"].items() if k != page_id},
+        [i for i in d["layout"].get(page_id, []) if i not in mine],
+    )
     if unowned(after) != unowned(before):
         raise fail("PROTECTED_CONTENT_CHANGED")
     return region
@@ -206,7 +249,9 @@ def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None
         if not live:
             return "would_create"
         before = R.page_digest(client, page_id, [], fail)
-        leads = [b["id"] for b in top if _is_leads(client, b)] or [b["id"] for b in top if b.get("type") == "column_list"]      # the two-column page keeps its leads inside the column_list: the region goes after it
+        leads = [b["id"] for b in top if _is_leads(client, b)] or [
+            b["id"] for b in top if b.get("type") == "column_list"
+        ]  # the two-column page keeps its leads inside the column_list: the region goes after it
         body = {"children": _shell(want, now), **({"after": leads[-1]} if leads else {})}
         try:
             client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", body)
@@ -226,7 +271,11 @@ def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None
         return "would_update"
     before = R.page_digest(client, page_id, [region["heading"]["id"], region["table"]["id"]], fail)
     R.write_floating(client, region, None, want, fail)
-    client.call("PATCH", f"/blocks/{quote(region['heading']['id'], safe='')}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading_text(now)}}]}})
+    client.call(
+        "PATCH",
+        f"/blocks/{quote(region['heading']['id'], safe='')}",
+        {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading_text(now)}}]}},
+    )
     _verify(client, page_id, region["heading"]["id"], want, before)
     return "updated"
 
@@ -236,23 +285,33 @@ def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=No
     sync."""
     now = (now or datetime.now(CT)).astimezone(CT)
     writing = live and (environ.get("JOB_PAGE_OUTREACH") or "").strip().lower() == "on"
-    recruiters = recruiters or Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+    recruiters = recruiters or Client(
+        environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID"
+    )
     ledger = ledger or Client(environ)
     client = client or ledger
-    counts = {"job_page_outreach": "live" if writing else "dry_run", "jobs": 0, "conversations": 0, "failed": 0, "codes": {}}
+    counts = {
+        "job_page_outreach": "live" if writing else "dry_run",
+        "jobs": 0,
+        "conversations": 0,
+        "failed": 0,
+        "codes": {},
+    }
     jobs = by_job(outreach_rows(recruiters))
     counts["jobs"], counts["conversations"] = len(jobs), sum(len(v) for v in jobs.values())
     base = environ.get("V7_CLOSE_BASE_URL")
 
     def sync_one(jid):
-        return sync_page(client, ledger, ledger.source, jid, jobs[jid], now, writing, action_link(base, jid), sent_link(base, jid))
+        return sync_page(
+            client, ledger, ledger.source, jid, jobs[jid], now, writing, action_link(base, jid), sent_link(base, jid)
+        )
 
     def code_of(error):
         code = str(error)[:60]
         return code if code.startswith("JOB_PAGE_OUTREACH_") else "JOB_PAGE_OUTREACH_NOTION_ERROR"
 
     # a failed page is that page's failure under its fixed code; the stage fails only if every page failed
-    done = isolate.run_items(sorted(jobs)[:limit or None], sync_one, code_of=code_of)
+    done = isolate.run_items(sorted(jobs)[: limit or None], sync_one, code_of=code_of)
     for _, result in done.results:
         counts["codes"][result] = counts["codes"].get(result, 0) + 1
     for _, code in done.failures:

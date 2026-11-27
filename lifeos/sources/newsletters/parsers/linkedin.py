@@ -2,6 +2,7 @@
 
 One job = two links (image + text) to /comm/jobs/view/<id>?<tracking tokens>. The tracking query carries personal
 tokens, so the returned URL is the clean canonical https://www.linkedin.com/jobs/view/<id>; tokens are never kept."""
+
 import re
 
 from lifeos.sources.newsletters.parsers import _anchors
@@ -32,7 +33,14 @@ def parse(html):
         company, _, location = next((t.partition(" · ") for t in texts[1:] if " · " in t), (texts[1], "", ""))
         if not title or NOISE.search(company) and not location:
             continue
-        cards.append(Card(company=company.strip(), title=title, salary_text=None,
-                          location_text=location.strip() or None,
-                          url=f"https://www.linkedin.com/jobs/view/{job_id}", age_days=None))
+        cards.append(
+            Card(
+                company=company.strip(),
+                title=title,
+                salary_text=None,
+                location_text=location.strip() or None,
+                url=f"https://www.linkedin.com/jobs/view/{job_id}",
+                age_days=None,
+            )
+        )
     return cards
