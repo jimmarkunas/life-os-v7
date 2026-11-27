@@ -1,4 +1,4 @@
-"""LIFE-704: plain switches are read from Bitwarden without masking, validated, with fixed fail modes (each one tested)."""
+"""plain switches are read from Bitwarden without masking, validated, with fixed fail modes (each one tested)."""
 import importlib.util
 import os
 import re
@@ -21,12 +21,14 @@ def run(names, bitwarden, live_mode="false"):
 
 
 class LastFourSwitches(unittest.TestCase):
-    """LIFE-699: the hourly tick's master switch, the gap between ticks, the store route and the cloud-fit pilot page leave GitHub for Bitwarden's plain-switch path."""
+    """the hourly tick's master switch, the gap between ticks, the store route and the cloud-fit pilot page leave GitHub
+    for Bitwarden's plain-switch path.
+    """
     PAGE = "3ff3c5a059268172a7e6f28a539b6d99"
 
     def test_the_pipeline_switch_unreadable_parks_the_tick(self):
         exports, report, failures = run("V7_PIPELINE", None)
-        self.assertEqual((exports, report, failures), ({"V7_PIPELINE": "false"}, {"V7_PIPELINE": "BWS_UNREADABLE"}, []))      # fail closed: a parked tick starts no Jobs job
+        self.assertEqual((exports, report, failures), ({"V7_PIPELINE": "false"}, {"V7_PIPELINE": "BWS_UNREADABLE"}, []))  # fail closed: a parked tick starts no Jobs job
 
     def test_the_pipeline_switch_accepts_only_true_or_false(self):
         self.assertEqual(run("V7_PIPELINE", {"V7_PIPELINE": "true"})[0], {"V7_PIPELINE": "true"})
@@ -36,7 +38,7 @@ class LastFourSwitches(unittest.TestCase):
     def test_the_gap_between_ticks_is_a_whole_number_from_10_to_50_else_the_default(self):
         self.assertEqual(run("GATE_MIN_GAP_MINUTES", {"GATE_MIN_GAP_MINUTES": "20"})[0], {"GATE_MIN_GAP_MINUTES": "20"})
         for junk in ("9", "51", "x", "-5", "20.5"):
-            self.assertEqual(run("GATE_MIN_GAP_MINUTES", {"GATE_MIN_GAP_MINUTES": junk})[0], {"GATE_MIN_GAP_MINUTES": ""}, junk)           # empty: the gate keeps its 50-minute default
+            self.assertEqual(run("GATE_MIN_GAP_MINUTES", {"GATE_MIN_GAP_MINUTES": junk})[0], {"GATE_MIN_GAP_MINUTES": ""}, junk)  # empty: the gate keeps its 50-minute default
         self.assertEqual(run("GATE_MIN_GAP_MINUTES", None)[0], {"GATE_MIN_GAP_MINUTES": ""})
 
     def test_the_store_route_is_oracle_or_direct_and_anything_else_is_the_direct_default(self):
@@ -55,7 +57,7 @@ class LastFourSwitches(unittest.TestCase):
     def test_mute_off_means_not_muted_and_is_accepted(self):
         for off in ("off", "OFF", " off "):
             exports, report, _ = run("ALERTS_MUTED_UNTIL", {"ALERTS_MUTED_UNTIL": off})
-            self.assertEqual((exports, report), ({"ALERTS_MUTED_UNTIL": ""}, {"ALERTS_MUTED_UNTIL": "ok"}), off)   # the Alert settings app writes "off"; it is not a refusal
+            self.assertEqual((exports, report), ({"ALERTS_MUTED_UNTIL": ""}, {"ALERTS_MUTED_UNTIL": "ok"}), off)  # the Alert settings app writes "off"
 
     def test_main_exports_the_store_route_under_the_name_the_code_reads(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -65,7 +67,7 @@ class LastFourSwitches(unittest.TestCase):
             self.assertEqual(plain.main(fake), 0)
             written = open(env_file).read().split("\n")
         self.assertIn("V7_PIPELINE=false", written)
-        self.assertNotIn("V7_STORE_VIA=", "\n".join(written))                                   # the code reads LIFEOS_ACQ_SSH_VIA
+        self.assertNotIn("V7_STORE_VIA=", "\n".join(written))  # the code reads LIFEOS_ACQ_SSH_VIA
         self.assertIn("LIFEOS_ACQ_SSH_VIA=", written)
 
 
@@ -181,7 +183,7 @@ class Plumbing(unittest.TestCase):
 
 
 class NothingPlainIsMasked(unittest.TestCase):
-    """The LIFE-703 outage: a plain switch loaded through bws-load is masked everywhere. No plain name may reach bws-load, and bws-plain may never print a mask line."""
+    """The outage: a plain switch loaded through bws-load is masked everywhere."""
 
     def test_no_plain_name_is_in_any_bws_load_secrets_block(self):
         offenders = []
@@ -202,8 +204,8 @@ class NothingPlainIsMasked(unittest.TestCase):
         self.assertEqual(hits, [])
 
     def test_the_plain_ids_are_the_items_in_the_ticket(self):
-        self.assertTrue(set(SWITCHES) <= set(plain.IDS), set(SWITCHES) - set(plain.IDS))                  # LIFE-758: no bare count; a switch this file tests may never lose its item, and new items may be added
-        self.assertEqual(len(set(plain.IDS.values())), len(plain.IDS))                                     # one item per name
+        self.assertTrue(set(SWITCHES) <= set(plain.IDS), set(SWITCHES) - set(plain.IDS))  # no bare count
+        self.assertEqual(len(set(plain.IDS.values())), len(plain.IDS))  # one item per name
         self.assertTrue(all(re.fullmatch(r"[0-9a-f-]{36}", v) for v in plain.IDS.values()))
 
 
@@ -219,7 +221,7 @@ class CalendarIdentifiers(unittest.TestCase):
         for name in self.NAMES:
             self.assertEqual(run(name, {name: "cal@example.com"})[0][name], "cal@example.com")
             self.assertEqual(run(name, {name: "two words"})[1][name], "REFUSED_USED_DEFAULT")
-            self.assertEqual(run(name, None)[2], [])                                                # an unreadable store: empty = not provisioned, never a failure
+            self.assertEqual(run(name, None)[2], [])
 
     def test_a_missing_value_falls_back_to_empty(self):
         for name in self.NAMES:

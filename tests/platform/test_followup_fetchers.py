@@ -15,7 +15,7 @@ from lifeos.platform import gcal, notion_client, todoist
 NOW = datetime(2026, 11, 16, 21, 0, tzinfo=timezone.utc)
 ACCOUNT = "jim@example.com"
 JIRA_BASE = "https://sample.atlassian.net"
-TGP = "tgp" + "international.com"                    # built at run time: no TGP address is written into the repo
+TGP = "tgp" + "international.com"
 NAMES = F.CREDENTIAL_NAMES
 
 
@@ -109,7 +109,7 @@ class FakeNotion:
 
     def call(self, method, path, body=None):
         if (method, path) == ("GET", "/users/me"):
-            return {"id": self.me}                                                      # the integration's own id; not counted as a search call
+            return {"id": self.me}  # the integration's own id
         self.calls.append((method, path, body))
         start = int((body or {}).get("start_cursor") or 0)
         chunk = self.data[start:start + self.size]
@@ -189,17 +189,17 @@ class Mapping(unittest.TestCase):
         recent, old = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), (NOW - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         client = FakeNotion([page("22222222-2222-2222-2222-222222222222", recent, "Mine", by="person-1"), page("33333333-3333-3333-3333-333333333333", recent, "Robot", by="bot-self"),
                              page("11111111-1111-1111-1111-111111111111", old, "Two days old", by="person-1")])
-        self.assertEqual([r["title"] for r in run("notion", client)], ["Mine"])                   # the bot's own refresh is dropped, the two-day-old page is outside the first-read window
+        self.assertEqual([r["title"] for r in run("notion", client)], ["Mine"])
         broken = FakeNotion([page("22222222-2222-2222-2222-222222222222", recent, "Robot", by="bot-self")])
         broken.call = lambda method, path, body=None: (_ for _ in ()).throw(RuntimeError("no")) if method == "GET" else FakeNotion.call(broken, method, path, body)
-        self.assertEqual([r["title"] for r in run("notion", broken)], ["Robot"])                  # an unreadable own id means nothing is skipped
+        self.assertEqual([r["title"] for r in run("notion", broken)], ["Robot"])  # an unreadable own id means nothing is skipped
 
     def test_notion_search_stops_at_the_checkpoint(self):
         client = FakeNotion([page("22222222-2222-2222-2222-222222222222", "2026-11-16T20:30:00.000Z", "New"), page("11111111-1111-1111-1111-111111111111", "2026-11-16T10:00:00.000Z", "Old"),
                              page("44444444-4444-4444-4444-444444444444", "2026-11-16T09:00:00.000Z", "Older")], size=1)
         rows = run("notion", client, since=NOW - timedelta(hours=1))
         self.assertEqual([r["title"] for r in rows], ["New"])
-        self.assertEqual(len(client.calls), 2)                                       # it did not page past the first older page
+        self.assertEqual(len(client.calls), 2)  # it did not page past the first older page
 
     def test_notion_search_is_row_capped_and_bounded(self):
         rows = [page(f"{i:08d}-0000-0000-0000-000000000000", "2026-11-16T20:30:00.000Z", "p") for i in range(F.MAX_ROWS + 5)]
@@ -275,11 +275,11 @@ class Credentials(Codes):
 
     def test_bytalos_calendar_uses_its_own_calendar_id_and_gmail_its_own_token(self):
         fetchers = build(env(), factories={"calendar": lambda *a: FakeCal([])})
-        self.assertEqual(self.code(lambda: fetchers["calendar"](N("calendar", "bytalos"), None)), "FOLLOWUP_CONFIG_MISSING")      # the shared service account is set; the Bytalos calendar id is a separate setting
+        self.assertEqual(self.code(lambda: fetchers["calendar"](N("calendar", "bytalos"), None)), "FOLLOWUP_CONFIG_MISSING")  # the shared service account is set
         fetchers = build(env(FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID="b@example.com"), factories={"calendar": lambda *a: FakeCal([])})
         self.assertEqual(fetchers["calendar"](N("calendar", "bytalos"), None), [])
         gmail_fetchers = build(env(), factories={"gmail": lambda *a: FakeGmail({})})
-        self.assertEqual(self.code(lambda: gmail_fetchers["gmail"](N("gmail", "bytalos"), None)), "FOLLOWUP_CREDENTIAL_MISSING")     # never falls back to the personal refresh token
+        self.assertEqual(self.code(lambda: gmail_fetchers["gmail"](N("gmail", "bytalos"), None)), "FOLLOWUP_CREDENTIAL_MISSING")  # never falls back to the personal refresh token
         self.assertEqual(self.code(lambda: gmail_fetchers["gmail"](N("calendar", "personal"), None)), "FOLLOWUP_CREDENTIAL_NOT_ALLOWED")
 
     def test_the_name_table(self):
@@ -289,15 +289,15 @@ class Credentials(Codes):
             self.assertNotIn("tgp", name.lower())
         reused = {"JIRA_API_TOKEN", "NOTION_API_TOKEN", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_REFRESH_TOKEN"}
         self.assertEqual(set(F.REUSED_NAMES), reused)
-        self.assertEqual(F.NEW_NAMES, ["FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"])      # the only new secrets
+        self.assertEqual(F.NEW_NAMES, ["FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"])  # the only new secrets
         self.assertEqual({NAMES[("jira", t, 1)] for t in F.TENANTS}, {"JIRA_API_TOKEN"})
         self.assertEqual({NAMES[(s, t, 1)] for s in ("notion", "interview_os") for t in F.TENANTS}, {"NOTION_API_TOKEN"})
         self.assertEqual({NAMES[("calendar", t, 1)] for t in F.TENANTS}, {"GCAL_SERVICE_ACCOUNT_JSON"})
         self.assertEqual(NAMES[("gmail", "personal", 1)], "GMAIL_OAUTH_REFRESH_TOKEN")
         outlook_names = [NAMES[("outlook", "personal", n)] for n in range(1, F.SLOTS[("outlook", "personal")] + 1)]
-        self.assertEqual(outlook_names, [F.OUTLOOK_LABELS[n] for n in sorted(F.OUTLOOK_LABELS)])      # labels in v7_outlook_token
-        self.assertTrue(set(outlook_names) <= set(outlook_stage.LABELS))                            # only sign-ins the outlook workflow already offers: a second label for one mailbox is refused there
-        self.assertEqual(len(set(F.GRANT_REFS.values())), len(F.GRANT_REFS))         # every grant names its own reference even when a secret is shared
+        self.assertEqual(outlook_names, [F.OUTLOOK_LABELS[n] for n in sorted(F.OUTLOOK_LABELS)])  # labels in v7_outlook_token
+        self.assertTrue(set(outlook_names) <= set(outlook_stage.LABELS))
+        self.assertEqual(len(set(F.GRANT_REFS.values())), len(F.GRANT_REFS))
         self.assertFalse([n for n in NAMES.values() if n.startswith("FOLLOWUP_OUTLOOK") or "SOURCE_IDS" in n or "_SA_JSON" in n or "READONLY_TOKEN" in n])
         self.assertEqual(F.ACCOUNT_NAMES[("outlook", "personal", 2)], "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2")
         self.assertEqual(sorted(set(F.ACCOUNT_NAMES.values())), sorted(["FOLLOWUP_ACCOUNT_" + s for s in (
@@ -305,7 +305,7 @@ class Credentials(Codes):
             "TODOIST_PERSONAL", "NOTION_PERSONAL", "NOTION_BYTALOS", "INTERVIEW_PERSONAL", "INTERVIEW_BYTALOS")]))
         self.assertEqual(F.missing({}), sorted(set(F.REUSED_NAMES) | set(F.NEW_NAMES)))
         self.assertEqual(F.missing(env()), ["FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH"])
-        self.assertEqual(F.TENANTS, ("personal", "bytalos"))                         # no TGP tenant anywhere
+        self.assertEqual(F.TENANTS, ("personal", "bytalos"))  # no TGP tenant anywhere
 
     def test_there_is_no_bytalos_outlook_or_todoist_credential(self):
         fetchers = build(env(FOLLOWUP_TODOIST_BYTALOS_TOKEN="t" * 20), tokens=FakeTokens({"followup-bytalos-1": "r" * 20}))
@@ -329,7 +329,7 @@ class Workspaces(Codes):
         self.assertEqual([r["key"] for r in run("jira", client)], ["LIFE-1"])
 
     def test_a_retired_los_key_is_never_returned_and_the_other_personal_projects_are(self):
-        """LIFE-849: LOS is retired. The personal workspace still returns LIFE and JFM keys, and a LOS key that slips into a reply is dropped."""
+        """LOS is retired."""
         row = lambda k: {"key": k, "fields": {"updated": "2026-11-16T10:00:00.000+0000"}}
         client = FakeJira([{"issues": [row("LIFE-1"), row("JFM-2"), row("LOS-3"), row("BAD-4")], "isLast": True}])
         self.assertEqual([r["key"] for r in run("jira", client)], ["LIFE-1", "JFM-2"])

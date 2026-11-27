@@ -1,5 +1,5 @@
-"""LIFE-89 (PLAT-GOV-2): decision numbers are claimed on the remote before use, so parallel sessions never take the same one. Every test runs against a
-throwaway local bare repository standing in for GitHub; nothing touches the real remote."""
+"""(PLAT-GOV-2): decision numbers are claimed on the remote before use, so parallel sessions never take the same one.
+"""
 import os
 import subprocess
 import sys
@@ -45,20 +45,20 @@ class Remote(unittest.TestCase):
 class Claim(Remote):
     def test_the_next_number_is_claimed_above_the_log_and_every_earlier_claim(self):
         session = self.clone("a")
-        self.assertEqual(decisions.claim(cwd=session), 4)                          # the log on main tops out at D3
-        self.assertEqual(decisions.claim(cwd=session), 5)                          # D4 is now claimed on the remote
+        self.assertEqual(decisions.claim(cwd=session), 4)  # the log on main tops out at
+        self.assertEqual(decisions.claim(cwd=session), 5)  # is now claimed on the remote
         self.assertEqual(decisions.claimed(cwd=session), {4, 5})
 
     def test_a_session_that_raced_for_a_taken_number_is_refused_by_the_remote_and_takes_the_next(self):
         a, b = self.clone("a"), self.clone("b")
         self.assertEqual(decisions.claim(cwd=a), 4)
-        self.assertEqual(decisions.claim(cwd=b, start=4), 5)                       # b computed D4 too (a stale read): the remote refused it
+        self.assertEqual(decisions.claim(cwd=b, start=4), 5)
         self.assertEqual(decisions.claimed(cwd=a), {4, 5})
 
     def test_two_claims_of_the_same_number_on_the_same_commit_are_still_distinct_objects(self):
         a, b = self.clone("a"), self.clone("b")
         self.assertEqual(decisions.claim(cwd=a, start=7), 7)
-        self.assertEqual(decisions.claim(cwd=b, start=7), 8)                       # an identical tag would have looked "up to date" and succeeded
+        self.assertEqual(decisions.claim(cwd=b, start=7), 8)
 
     def test_parallel_processes_never_get_the_same_number(self):
         sessions = [self.clone(f"s{i}") for i in range(4)]
@@ -66,7 +66,7 @@ class Claim(Remote):
         procs = [subprocess.Popen([sys.executable, "-m", "lifeos.sources.devtools.decisions", "claim"], cwd=s, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                  for s in sessions]
         got = [p.communicate(timeout=120)[0].strip() for p in procs]
-        self.assertEqual(sorted(got), ["D4", "D5", "D6", "D7"], got)              # four sessions at once: four different numbers, no gaps lost to errors
+        self.assertEqual(sorted(got), ["D4", "D5", "D6", "D7"], got)
 
     def test_an_unreadable_remote_is_a_named_failure(self):
         lone = tempfile.mkdtemp()
@@ -88,7 +88,7 @@ class Duplicates(unittest.TestCase):
 
 
 class Show(unittest.TestCase):
-    """LIFE-592: `show D<n>` prints one decision (with its amendments), not the whole log."""
+    """`show D<n>` prints one decision (with its amendments), not the whole log."""
 
     def test_a_decision_comes_back_with_its_amendment_and_nothing_else(self):
         text = decisions.section(LOG, 2)
@@ -108,7 +108,7 @@ class Show(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             self.assertEqual(decisions.main(["show", "D139"]), 0)
         self.assertTrue(out.getvalue().startswith("## D139"))
-        self.assertLess(len(out.getvalue().encode()), 5000)                               # one decision, not the 367 KB log
+        self.assertLess(len(out.getvalue().encode()), 5000)  # one decision, not the 367 KB log
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(decisions.main(["show", "D99999"]), 1)
         self.assertEqual(decisions.main(["show", "nonsense"]), 2)

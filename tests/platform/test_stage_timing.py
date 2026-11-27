@@ -1,4 +1,6 @@
-"""LIFE-855: one stage_timing line per stage (tick and standalone), the report numbers on fixtures (sequential, concurrent, missing, degraded), and the existing stage lines unchanged."""
+"""one stage_timing line per stage (tick and standalone), the report numbers on fixtures (sequential, concurrent,
+missing, degraded), and the existing.
+"""
 import contextlib
 import datetime as dt
 import io
@@ -42,7 +44,7 @@ class Record(unittest.TestCase):
         self.assertIsNone(stage_timing.items_of({"due": "3"}, "due"))
         self.assertIsNone(stage_timing.items_of({"due": 3}, None))
         self.assertIsNone(stage_timing.items_of({"due": True}, "due"))
-        self.assertEqual(stage_timing.items_of({"due": 0}, "due"), 0)                       # a real zero is a zero
+        self.assertEqual(stage_timing.items_of({"due": 0}, "due"), 0)  # a real zero is a zero
 
     def test_the_record_has_ct_stamps_seconds_and_the_run_id(self):
         ended = dt.datetime(2026, 11, 23, 1, 3, 20, tzinfo=UTC)
@@ -61,7 +63,7 @@ class Record(unittest.TestCase):
 class DeclaredCounts(unittest.TestCase):
     def test_a_declared_items_key_gives_the_count_and_an_undeclared_stage_stays_null(self):
         self.assertEqual(stage_timing.items_key_for("web"), "due")
-        self.assertIsNone(stage_timing.items_key_for("fit"))                                       # no declared key: unknown, never zero
+        self.assertIsNone(stage_timing.items_key_for("fit"))  # no declared key: unknown, never zero
         self.assertIsNone(stage_timing.items_key_for("no-such-stage"))
 
     def test_every_declared_key_is_a_string_on_a_real_stage(self):
@@ -80,20 +82,21 @@ class DeclaredCounts(unittest.TestCase):
 
 class ProductionPath(unittest.TestCase):
     def test_items_survive_the_real_run_main_path_where_the_stage_returns_an_exit_code(self):
-        """LIFE-974: in production the tick calls lifeos.run.main (stages=None), which notes the stage's counts and returns the integer exit code 0; the tick then noted that 0 over the counts, so `items` was
-        null on every stage. A declared stage must report its number; an undeclared one stays null."""
+        """in production the tick calls lifeos.run.main (stages=None), which notes the stage's counts and returns the
+        integer exit code 0
+        """
         from unittest import mock
         from lifeos import run
 
         def fake_main(argv):
-            stage_timing.note_counts({"due": 7, "failed": 0} if argv[0] == "web" else {"due": 9})      # what run.main does for the stage it just ran
+            stage_timing.note_counts({"due": 7, "failed": 0} if argv[0] == "web" else {"due": 9})  # what run.main does for the stage it just ran
             return 0
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(run, "main", fake_main), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             tick.tick(False, plan=[Step("web", 60, 10), Step("fit", 60, 10)], stages=None, clock=shared.Clock(), concurrency=None)
         rows = {r["stage"]: r for r in (json.loads(x.split("stage_timing: ", 1)[1]) for x in err.getvalue().splitlines() if x.startswith("stage_timing: "))}
-        self.assertEqual(rows["web"]["items"], 7)                                                  # declared items_key `due`
-        self.assertIsNone(rows["fit"]["items"])                                                    # not declared: unknown, never zero
+        self.assertEqual(rows["web"]["items"], 7)  # declared items_key `due`
+        self.assertIsNone(rows["fit"]["items"])  # not declared: unknown, never zero
         self.assertEqual(rows["web"]["outcome"], "complete")
 
 
@@ -107,7 +110,7 @@ class Standalone(unittest.TestCase):
             err = io.StringIO()
             with mock.patch.dict(os.environ, {"STAGE_TIMING_FILE": ""}), contextlib.redirect_stderr(err):
                 run._timing("x", "ok", 0.0)
-            self.assertEqual(err.getvalue(), "")                                                    # off by default: no stderr line, so no existing stage changes
+            self.assertEqual(err.getvalue(), "")
             stage_timing._local.stage = None
             with mock.patch.dict(os.environ, {"STAGE_TIMING_FILE": str(path)}), contextlib.redirect_stderr(err):
                 run._timing("x", "ok", 0.0, {"failed": 0})
@@ -116,7 +119,7 @@ class Standalone(unittest.TestCase):
             self.addCleanup(setattr, stage_timing._local, "stage", None)
             with mock.patch.dict(os.environ, {"STAGE_TIMING_FILE": str(path)}), contextlib.redirect_stderr(io.StringIO()):
                 run._timing("y", "ok", 0.0)
-            self.assertEqual(len(path.read_text().splitlines()), 1)                                  # the tick prints a stage's line itself, so run.main stays silent there
+            self.assertEqual(len(path.read_text().splitlines()), 1)
 
 
 class Tick(unittest.TestCase):
@@ -125,14 +128,14 @@ class Tick(unittest.TestCase):
         stages = {"a": lambda limit, live: {"failed": 0}, "b": lambda limit, live: (_ for _ in ()).throw(RuntimeError("x"))}
         outcome, stdout, rows = run_tick(plan, stages)
         self.assertEqual(outcome, {"a": "ok", "b": "failed"})
-        self.assertEqual([line.split(" ")[:3] for line in stdout], [["stage", "a:", "ok"], ["stage", "b:", "failed"]])                  # stdout is exactly the old lines
+        self.assertEqual([line.split(" ")[:3] for line in stdout], [["stage", "a:", "ok"], ["stage", "b:", "failed"]])  # stdout is exactly the old lines
         self.assertEqual([(r["stage"], r["outcome"], r["result"]) for r in rows], [("a", "complete", "ok"), ("b", "incomplete", "failed")])
         self.assertTrue(all(set(r) >= {"begin", "end", "elapsed_s", "wait_s", "items", "run"} for r in rows))
 
     def test_a_degraded_stage_is_degraded_and_a_stage_with_no_count_has_null_items(self):
         plan = [Step("a", 60, 10)]
         _, _, rows = run_tick(plan, {"a": lambda limit, live: {"failed": 3, "due": 9}})
-        self.assertEqual((rows[0]["outcome"], rows[0]["items"]), ("degraded", None))                # no items_key declared: unknown, not 9 and not 0
+        self.assertEqual((rows[0]["outcome"], rows[0]["items"]), ("degraded", None))  # no items_key declared: unknown, not 9 and not 0
 
     def test_the_wait_for_read_slots_counts_toward_the_stage_that_waited(self):
         read_slots.configure("zz", 1)
@@ -190,7 +193,7 @@ class Report(unittest.TestCase):
 
     def test_a_concurrent_group_contributes_only_its_latest_ending_member(self):
         rows = [row("first", at(0), at(10)), row("fast", at(10), at(20)), row("slow", at(10), at(60)), row("last", at(60), at(70))]
-        self.assertEqual([r["stage"] for r in report.critical_path(rows)], ["last", "slow", "first"])               # fast ended early, off the path
+        self.assertEqual([r["stage"] for r in report.critical_path(rows)], ["last", "slow", "first"])  # fast ended early, off the path
 
     def test_numbers_over_runs_p50_p95_max_share_and_critical_seconds(self):
         runs = {"1": [row("a", at(0), at(10)), row("b", at(10), at(30))], "2": [row("a", at(0), at(20)), row("b", at(20), at(30))], "3": [row("a", at(0), at(30)), row("b", at(30), at(60))]}
@@ -198,7 +201,7 @@ class Report(unittest.TestCase):
         a, b = result["stages"]["a"], result["stages"]["b"]
         self.assertEqual((a["runs"], a["p50"], a["p95"], a["max"]), (3, 20.0, 30.0, 30.0))
         self.assertEqual((b["p50"], b["max"], b["critical_runs"], b["critical_seconds"]), (20.0, 30.0, 3, 60.0))
-        self.assertEqual(round(a["share_of_wall"], 1), round(100 * 60 / 120, 1))                                      # summed seconds 60 over summed wall 120
+        self.assertEqual(round(a["share_of_wall"], 1), round(100 * 60 / 120, 1))  # summed seconds 60 over summed wall 120
 
     def test_a_run_with_no_artifact_or_a_missing_stage_is_unverified_never_zero(self):
         runs = {"1": [row("a", at(0), at(10)), row("b", at(10), at(20))], "2": None, "3": [row("a", at(0), at(8))]}
@@ -207,7 +210,7 @@ class Report(unittest.TestCase):
         self.assertEqual((result["stages"]["b"]["runs"], result["stages"]["b"]["missing_in_runs"]), (1, ["3"]))
         self.assertIn("UNVERIFIED", report.render(report.analyse({"1": None})) + "UNVERIFIED")
         empty = report.analyse({"1": [row("only", at(0), at(5))]}, expected=["only", "never_ran"])
-        self.assertIsNone(empty["stages"]["never_ran"]["p50"])                                                        # an expected stage with no data has no numbers
+        self.assertIsNone(empty["stages"]["never_ran"]["p50"])  # an expected stage with no data has no numbers
         self.assertIn("UNVERIFIED", report.render(empty))
 
     def test_degraded_runs_are_counted_in_the_not_complete_column(self):

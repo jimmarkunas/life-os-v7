@@ -1,4 +1,6 @@
-"""LIFE-865: client identity is derived from trusted facts only, every refusal reason reaches a real handler, two clients on one host cannot impersonate one another, a contract test fails if a tool handler skips the gate, and the seeded grants are what the data says."""
+"""client identity is derived from trusted facts only, every refusal reason reaches a real handler, two clients on one
+host cannot impersonate one.
+"""
 import ast
 import io
 import json
@@ -20,7 +22,9 @@ MAC = {"os_user": "jimmarkunas"}
 
 
 def ok_item(**over):
-    """LIFE-876: send_to_jim derives From from the authenticated client row, so a valid item names that client (the Mac client here) or omits From."""
+    """send_to_jim derives From from the authenticated client row, so a valid item names that client (the Mac client
+    here) or omits From.
+    """
     return inbox_item(**{"from": "claude-code-mac", **over})
 
 
@@ -75,7 +79,9 @@ class Identity(unittest.TestCase):
 
 
 class SendToJim(unittest.TestCase):
-    """The stdio server, through its real serve loop: the client is the OS user, never an argument, the sender field or the environment."""
+    """The stdio server, through its real serve loop: the client is the OS user, never an argument, the sender field or
+    the environment.
+    """
     def test_a_granted_call_runs_and_the_receipt_names_tenant_and_purpose(self):
         replies, receipts, client = call(tool_call(ok_item()), build())
         self.assertFalse(replies[0]["result"]["isError"])
@@ -88,7 +94,7 @@ class SendToJim(unittest.TestCase):
             return build(grants=lambda seeded: [{**g, **patch} if g["tool"] == "send_to_jim" else g for g in seeded])
         cases = (("grant_revoked", edit(revoked=True), ok_item()), ("grant_expired", edit(expires="2026-11-01"), ok_item()), ("purpose_mismatch", edit(purpose="other"), ok_item()),
                  ("no_grant", build(grants=lambda seeded: [g for g in seeded if g["tool"] != "send_to_jim"]), ok_item()),
-                 ("catalog_unknown_principal", build(), ok_item(workspace="Bytalos")),             # the seed registers the Mac client in Personal only: a cross-tenant call
+                 ("catalog_unknown_principal", build(), ok_item(workspace="Bytalos")),
                  ("unknown_tenant", build(), ok_item(workspace="Elsewhere")))
         for why, access, item in cases:
             replies, receipts, client = call(tool_call(item), access)
@@ -98,7 +104,7 @@ class SendToJim(unittest.TestCase):
             if why != "unknown_tenant":
                 self.assertEqual((receipts[-1]["outcome"], receipts[-1]["reason"]), ("deny", why))
 
-    def test_a_grant_expiry_may_carry_a_time_and_is_refused_the_second_it_passes(self):        # LIFE-877 (Jim, comment 14311): the live expiry test uses a grant that ends two minutes out
+    def test_a_grant_expiry_may_carry_a_time_and_is_refused_the_second_it_passes(self):
         from datetime import timedelta
         def run(delta):
             access = build(grants=lambda seeded: [{**g, "expires": (NOW + delta).astimezone(timezone.utc).isoformat()} if g["tool"] == "send_to_jim" else g for g in seeded])
@@ -130,24 +136,24 @@ class SendToJim(unittest.TestCase):
     def test_a_spoofed_sender_or_environment_never_changes_who_the_client_is(self):
         other = [{"id": "other-agent", "transport": "stdio", "facts": {"os_user": "someoneelse"}, "policy_key": "d" * 64}]
         access = build(clients=DOC["clients"] + other)
-        item = ok_item(**{"from": "other-agent"})                                                      # the sender field is data, never identity: a different From is refused before the gate and before any row
+        item = ok_item(**{"from": "other-agent"})
         replies, receipts, client = call(tool_call(item), access, environ={"LIFEOS_CLIENT_ID": "other-agent", "LIFEOS_PRINCIPAL": "other-agent"})
-        self.assertEqual((reason(replies), client.rows, receipts), ("from_spoofed", [], [{"tool": "send_to_jim", "principal_fp": G.fingerprint("claude-code-mac"), "outcome": "deny", "reason": "from_spoofed"}]))      # the refusal is audited under the real client
+        self.assertEqual((reason(replies), client.rows, receipts), ("from_spoofed", [], [{"tool": "send_to_jim", "principal_fp": G.fingerprint("claude-code-mac"), "outcome": "deny", "reason": "from_spoofed"}]))  # the refusal is audited under the real client
         replies, receipts, client = call(tool_call(ok_item()), access, environ={"LIFEOS_CLIENT_ID": "other-agent", "LIFEOS_PRINCIPAL": "other-agent"})
-        self.assertEqual(receipts[0]["principal_fp"], G.fingerprint("claude-code-mac"))                   # the environment names another client; the gate still sees the OS user's own
+        self.assertEqual(receipts[0]["principal_fp"], G.fingerprint("claude-code-mac"))  # the environment names another client
         replies, receipts, client = call(tool_call(ok_item(**{"from": "other-agent"})), access, facts={"os_user": "someoneelse"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
-        self.assertEqual((reason(replies), client.rows), ("denied_catalog_unknown_principal", []))                # the other OS user is its own client: the Mac client's id in the environment changes nothing
+        self.assertEqual((reason(replies), client.rows), ("denied_catalog_unknown_principal", []))
 
     def test_two_clients_on_one_host_cannot_impersonate_one_another(self):
-        """Each client has its own OS user; hermes asking as the Mac client (by id, environment or sender) is still hermes, and hermes has no grant."""
+        """Each client has its own OS user"""
         hermes = {"id": "hermes-default", "transport": "stdio", "facts": {"os_user": "hermes"}, "policy_key": "e" * 64}
         access = build(clients=DOC["clients"] + [hermes])
-        replies, receipts, client = call(tool_call(ok_item()), access, facts={"os_user": "hermes"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})      # hermes sends From = the Mac client: refused before the gate, no row
+        replies, receipts, client = call(tool_call(ok_item()), access, facts={"os_user": "hermes"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
         self.assertEqual((reason(replies), client.rows, receipts[-1]["reason"], receipts[-1]["principal_fp"]), ("from_spoofed", [], "from_spoofed", G.fingerprint("hermes-default")))
         replies, receipts, client = call(tool_call(ok_item(**{"from": "hermes-default"})), access, facts={"os_user": "hermes"}, environ={"LIFEOS_CLIENT_ID": "claude-code-mac"})
         self.assertTrue(replies[0]["result"]["isError"])
         self.assertEqual((client.rows, receipts[-1]["principal_fp"], receipts[-1]["outcome"]), ([], G.fingerprint("hermes-default"), "deny"))
-        shared = DOC["clients"] + [{**hermes, "facts": {"os_user": "jimmarkunas"}}]                     # same OS user as the Mac client: neither can be told apart
+        shared = DOC["clients"] + [{**hermes, "facts": {"os_user": "jimmarkunas"}}]
         replies, receipts, client = call(tool_call(ok_item()), build(clients=shared))
         self.assertEqual((reason(replies), client.rows, receipts), ("identity_ambiguous", [], []))
 
@@ -156,7 +162,8 @@ class EveryHandlerIsGated(unittest.TestCase):
     """A contract test: a tool handler that skips authorization_gate fails here."""
     @staticmethod
     def calls_inside_gate(source, function, target, gate):
-        """True when every call to `target` inside `function` is within a lambda that is an argument of a call to `gate`."""
+        """True when every call to `target` inside `function` is within a lambda that is an argument of a call to `gate`.
+        """
         tree = ast.parse(source)
         fn = next(n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef,)) and n.name == function)
         parents = {child: node for node in ast.walk(fn) for child in ast.iter_child_nodes(node)}
@@ -180,7 +187,7 @@ class EveryHandlerIsGated(unittest.TestCase):
         tree = ast.parse(source)
         handler = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "handler")
         rpcs = [n for n in ast.walk(handler) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "rpc"]
-        self.assertEqual(len(rpcs), 2)                                                                  # one inside governed(...), one for the methods that are not tool calls
+        self.assertEqual(len(rpcs), 2)
         parents = {child: node for node in ast.walk(handler) for child in ast.iter_child_nodes(node)}
         inside = [r for r in rpcs if any(isinstance(p, ast.Call) and getattr(p.func, "id", "") == "governed" for p in self._up(r, parents))]
         self.assertEqual(len(inside), 1)
@@ -208,76 +215,80 @@ class SeededGrants(unittest.TestCase):
         self.assertTrue(access.grants)
         rows = {(c["principal"], c["tool"], c["action"]) for c in CATALOG["capabilities"]}
         for g in access.grants:
-            self.assertTrue(g.expires.tzinfo and g.expires > datetime(2026, 11, 22, tzinfo=timezone.utc) and (g.expires.year == 2027 or (g.tool.startswith("memory_") and g.expires.date().isoformat() == "2099-12-31")), g.id)   # LIFE-950: the memory grants no longer end Dec 5 2026; no expiry in practice (2099), still revocable (Jim, Nov 23 2026)
+            self.assertTrue(g.expires.tzinfo and g.expires > datetime(2026, 11, 22, tzinfo=timezone.utc) and (g.expires.year == 2027 or (g.tool.startswith("memory_") and g.expires.date().isoformat() == "2099-12-31")), g.id)  # no expiry in practice (2099), still revocable
             self.assertFalse(g.revoked, g.id)
             self.assertRegex(g.credential_ref, r"^[a-z][a-z0-9-]+$")
             self.assertEqual(len(g.actions), 1, g.id)
             self.assertTrue(all((g.principal, g.tool, a) in rows for a in g.actions), g.id)
         self.assertEqual(sorted({g.tool for g in access.grants}), ["agent_dispatch", "agent_lookup", "agent_messages", "agent_status", "buzz_capabilities", "buzz_publish", "buzz_read", "drive_read", "drive_search", "gmail_read", "gmail_search", "memory_ask", "memory_correct", "memory_recall", "memory_revoke", "memory_store", "send_to_jim", "source_read"])
-        writes = [g for g in access.grants if "write" in g.actions]                                                # Jim, Nov 22 2026 (option A): the only writes are today's Buzz publishing for the two chat clients, in the two communities each can write to
+        writes = [g for g in access.grants if "write" in g.actions]
         self.assertEqual({(g.principal, g.tool, g.purpose, g.credential_ref) for g in writes},
                          {(p, "buzz_publish", "buzz-publish", "buzz-scoped-member-key") for p in ("claude-chat", "claude-chat-bytalos", "chatgpt-chat", "chatgpt-chat-bytalos", "muse-chat", "duet-chat", "duet-chat-bytalos")}
-                         | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}   # LIFE-949 (Jim, Nov 23 and 24 2026): real non-sensitive Personal memory for every governed client
-                         | {("jira-capture", t, "personal-memory", "honcho-memory-token") for t in ("memory_store", "memory_correct", "memory_revoke")}      # LIFE-994 (Jim, "capture jira ok"): the hourly Jira decision capture, store, correct and revoke only
-                         | {("openclaw", "buzz_publish", "buzz-publish", "mcp-credential-openclaw")}   # LIFE-877 (Jim, comment 14311): OpenClaw's own pilot-only relay identity; its credential row alone besides muse may carry the write scope
-                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")}   # LIFE-876 (Jim, comments 13748 and 13823): the Agent Inbox, Personal only
-                         | {(p, "agent_dispatch", "orchestrator-dispatch", "concord-gateway-socket") for p in ("claude-chat", "chatgpt-chat")})   # LIFE-987 (Jim, comments 14334 and 14344): the only orchestrator write, the two chats, Personal only
+                         | {(p, op, "personal-memory", "mcp-credential-" + p if p in MEMORY_CREDENTIALS else "honcho-memory-token") for p in MEMORY_CLIENTS for op in ("memory_store", "memory_correct", "memory_revoke")}
+                         | {("jira-capture", t, "personal-memory", "honcho-memory-token") for t in ("memory_store", "memory_correct", "memory_revoke")}
+                         | {("openclaw", "buzz_publish", "buzz-publish", "mcp-credential-openclaw")}  # OpenClaw's own pilot-only relay identity
+                         | {(p, "send_to_jim", "agent-inbox", "notion-readonly-token") for p in ("mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat")}  # the Agent Inbox, Personal only
+                         | {(p, "agent_dispatch", "orchestrator-dispatch", "concord-gateway-socket") for p in ("claude-chat", "chatgpt-chat")})
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
-        self.assertEqual(len(writes), 22 + 8 * 3)                                                                      # LIFE-949: three memory writes for each of eight clients
-        self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))   # a catalog row for exactly the six granted clients, none for the stdio Mac row or a Bytalos principal
+        self.assertEqual(len(writes), 22 + 8 * 3)  # three memory writes for each of eight clients
+        self.assertEqual(sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"), sorted(["mac-claude-code", "oracle-claude-code", "openclaw", "hermes-librarian", "claude-chat", "chatgpt-chat", "honcho-alerts", "muse-chat", "duet-chat"]))
 
     def test_the_shipped_seed_lets_no_one_call_send_to_jim(self):
-        """LIFE-865: no client has the send_to_jim MCP server configured, so the Mac client resolves but is refused before any inbox row."""
+        """no client has the send_to_jim MCP server configured, so the Mac client resolves but is refused before any
+        inbox row.
+        """
         replies, receipts, client = call(tool_call(ok_item()), M.load())
         self.assertEqual((reason(replies), client.rows, receipts[-1]["reason"]), ("denied_catalog_unknown_capability", [], "catalog_unknown_capability"))
 
     def test_the_five_memory_tools_are_granted_to_eight_clients_in_personal_only_with_the_personal_memory_purpose(self):
-        """LIFE-949 (Jim, Nov 23 2026 7:24 and 7:28 PM CT, Nov 24 3:53 AM CT): all governed agents share real non-sensitive Personal memory; Bytalos and TGP stay refused; no expiry in practice, revocable any time."""
+        """all governed agents share real non-sensitive Personal memory"""
         access = M.load()
-        mine = [g for g in access.grants if g.purpose == "personal-memory" and g.principal != "jira-capture"]            # LIFE-994: the capture client is pinned by its own test
+        mine = [g for g in access.grants if g.purpose == "personal-memory" and g.principal != "jira-capture"]  # the capture client is pinned by its own test
         self.assertEqual({(g.principal, g.tool) for g in mine}, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
         self.assertEqual(len(mine), 40)
         self.assertEqual({(g.tenant, g.account, g.expires.date().isoformat(), g.revoked) for g in mine}, {("personal", "honcho", "2099-12-31", False)})
         self.assertEqual({(g.tool, g.actions) for g in mine}, {("memory_ask", ("read",)), ("memory_recall", ("read",)), ("memory_store", ("write",)), ("memory_correct", ("write",)), ("memory_revoke", ("write",))})
         self.assertEqual({g.tool: g.purpose for g in access.grants if g.tool.startswith("memory_") and g.purpose == "personal-memory"}, {t: "personal-memory" for t in MEMORY_TOOLS})
-        self.assertEqual(set(json.loads(M.FILE.read_text())["tool_purpose"][t] for t in MEMORY_TOOLS), {"personal-memory"})                 # every memory tool is called with that purpose, server side
-        self.assertEqual([g for g in access.grants if g.tool.startswith("memory_") and (g.tenant != "personal" or g.principal.endswith("bytalos"))], [])   # no Bytalos or TGP memory grant of any kind
+        self.assertEqual(set(json.loads(M.FILE.read_text())["tool_purpose"][t] for t in MEMORY_TOOLS), {"personal-memory"})
+        self.assertEqual([g for g in access.grants if g.tool.startswith("memory_") and (g.tenant != "personal" or g.principal.endswith("bytalos"))], [])  # no Bytalos or TGP memory grant of any kind
         rows = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["principal"] != "jira-capture"}
         self.assertEqual(rows, {(p, t) for p in MEMORY_CLIENTS for t in MEMORY_TOOLS})
         synthetic = {(c["principal"], c["tool"]) for c in CATALOG["capabilities"] if c["tool"].startswith("memory_") and c["status"] == "synthetic" and c["principal"] != "jira-capture"}
-        self.assertEqual(synthetic, {(p, "memory_ask") for p in MEMORY_CLIENTS if p != "mac-claude-code"} | {(p, t) for p in ("duet-chat", "muse-chat") for t in MEMORY_TOOLS})   # LIFE-877 sign-off (Nov 26 2026): a row is working only with a live receipt for that client and tool
+        self.assertEqual(synthetic, {(p, "memory_ask") for p in MEMORY_CLIENTS if p != "mac-claude-code"} | {(p, t) for p in ("duet-chat", "muse-chat") for t in MEMORY_TOOLS})
 
     def test_jira_capture_holds_exactly_store_correct_and_revoke_in_personal_and_nothing_else(self):
-        """LIFE-994 (Jim, "capture jira ok" and "capture projects: LIFE", Nov 26 2026): no recall, no ask, no Gmail, Drive, Buzz, source lookup or inbox; Personal only; expiring Feb 22 2027."""
+        """no recall, no ask, no Gmail, Drive, Buzz, source lookup or inbox"""
         access = M.load()
         mine = [g for g in access.grants if g.principal == "jira-capture"]
         self.assertEqual({(g.tool, g.actions, g.tenant, g.account, g.purpose, g.expires.date().isoformat(), g.revoked) for g in mine},
                          {(t, ("write",), "personal", "honcho", "personal-memory", "2027-02-22", False) for t in ("memory_store", "memory_correct", "memory_revoke")})
         self.assertEqual(sorted(c["tool"] for c in CATALOG["capabilities"] if c["principal"] == "jira-capture"), ["memory_correct", "memory_revoke", "memory_store"])
-        self.assertEqual({c["status"] for c in CATALOG["capabilities"] if c["principal"] == "jira-capture"}, {"synthetic"})            # until its first live call
+        self.assertEqual({c["status"] for c in CATALOG["capabilities"] if c["principal"] == "jira-capture"}, {"synthetic"})  # until its first live call
         cred = next(c for c in access.credentials if c["id"] == "jira-capture")
         self.assertEqual((cred["buzz_identity"], cred.get("write", False), cred["revoked"]), (None, False, False))
 
     def test_muse_holds_the_four_personal_grants_jim_approved_plus_the_five_memory_tools_and_nothing_on_gmail_drive_or_bytalos(self):
-        """LIFE-923 (Jim, M3, comment 13891): Buzz read and publish in life-os plus send_to_jim, Personal only, expiring Feb 22 2027."""
+        """Buzz read and publish in life-os plus send_to_jim, Personal only, expiring Feb 22 2027."""
         access = M.load()
         mine = [g for g in access.grants if g.principal == "muse-chat"]
-        self.assertEqual(sorted(g.tool for g in mine), sorted(["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim", *MEMORY_TOOLS]))      # LIFE-949 added the five memory tools for every client
+        self.assertEqual(sorted(g.tool for g in mine), sorted(["buzz_capabilities", "buzz_publish", "buzz_read", "send_to_jim", *MEMORY_TOOLS]))  # added the five memory tools for every client
         self.assertEqual({(g.tenant, g.expires.date().isoformat(), g.revoked) for g in mine if not g.tool.startswith("memory_")}, {("personal", "2027-02-22", False)})
-        self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "muse-chat"], [{"credential": "muse"}])   # identified by its own bearer credential row only (Jim chose the bearer route, comment 13906)
+        self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "muse-chat"], [{"credential": "muse"}])  # identified by its own bearer credential row only
         self.assertEqual(M.identify(access, "http", {"credential": "muse"})["id"], "muse-chat")
-        with self.assertRaises(M.AccessError):                                                                    # an unknown client is refused
+        with self.assertRaises(M.AccessError):  # an unknown client is refused
             M.identify(access, "http", {"credential": "muse2"})
 
     def test_duet_holds_exactly_the_grants_claude_holds_under_its_own_client_and_nothing_wider(self):
-        """LIFE-922 (Jim, comment 13883): the claude client's Buzz read and publish in Personal and Bytalos plus send_to_jim in Personal, expiring Feb 22 2027; identified by the verified OAuth label `duet` only."""
+        """the claude client's Buzz read and publish in Personal and Bytalos plus send_to_jim in Personal, expiring Feb
+        22 2027
+        """
         access = M.load()
-        shape = lambda principal: sorted((g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked) for g in access.grants if g.principal.startswith(principal) and g.tool not in ORCHESTRATOR_TOOLS)   # LIFE-987: the orchestrator operations are granted to claude-chat and chatgpt-chat only, never to duet (Jim, 14334)
-        self.assertEqual(shape("duet-chat"), shape("claude-chat"))                                               # the same rows, the same scope, no widening
+        shape = lambda principal: sorted((g.tenant, g.tool, g.purpose, tuple(g.actions), g.credential_ref, g.expires.date().isoformat(), g.revoked) for g in access.grants if g.principal.startswith(principal) and g.tool not in ORCHESTRATOR_TOOLS)
+        self.assertEqual(shape("duet-chat"), shape("claude-chat"))  # the same rows, the same scope, no widening
         self.assertEqual(sorted({g.tool for g in access.grants if g.principal.startswith("duet-chat")}), ["buzz_capabilities", "buzz_publish", "buzz_read", *MEMORY_TOOLS, "send_to_jim"])
         self.assertEqual([c["facts"] for c in json.loads(M.FILE.read_text())["clients"] if c["id"] == "duet-chat"], [{"oauth_client": "duet"}])
         self.assertEqual(M.identify(access, "http", {"oauth_client": "duet"})["id"], "duet-chat")
-        self.assertEqual(M.identify(access, "http", {"oauth_client": "claude"})["id"], "claude-chat")              # the existing clients are unchanged
+        self.assertEqual(M.identify(access, "http", {"oauth_client": "claude"})["id"], "claude-chat")  # the existing clients are unchanged
         self.assertEqual(M.identify(access, "http", {"oauth_client": "chatgpt"})["id"], "chatgpt-chat")
         with self.assertRaises(M.AccessError):
             M.identify(access, "http", {"oauth_client": "duet2"})
@@ -291,18 +302,20 @@ class SeededGrants(unittest.TestCase):
     LIVE_877["chatgpt-chat"] |= {"buzz_publish"}
 
     def test_only_the_catalog_rows_a_live_call_exercised_are_working_and_every_other_seeded_row_stays_synthetic(self):
-        """LIFE-865 live proof (Nov 22 2026) and the LIFE-877 walk-through (Nov 25 to 26 2026, signed off by Jim): a row is `working` only where a live receipt exists for that client and tool (LIVE_877); every other governed row stays synthetic."""
+        """every other governed row stays synthetic."""
         governed = [c for c in CATALOG["capabilities"] if c["as_of"] >= "2026-11-22" and c["provider"] in ("buzz", "google", "honcho", "notion")]
         self.assertTrue(governed)
         live = {(c["principal"], c["tool"]) for c in governed if c["status"] == "working"}
         self.assertEqual(live, {(p, t) for p, tools in self.LIVE_877.items() for t in tools if any(c["principal"] == p and c["tool"] == t for c in governed)})
         self.assertEqual({c["status"] for c in governed if (c["principal"], c["tool"]) not in live}, {"synthetic"})
         out = G.Outcome("allow", "ok", True)
-        self.assertFalse(out.live_proven)                                                                                         # the gate's own flag stays False: the catalog row status is the live-proof ledger
+        self.assertFalse(out.live_proven)
 
 
 class ProposedPublishGrants(unittest.TestCase):
-    """The four Buzz publish grants of docs/platform/mcp-grants-proposed.md (Jim's decision, option A, Nov 22 2026 6:14 PM CT) are active, valid, and exactly as wide as the read configuration: two clients by two tenants of buzz_publish, nothing else."""
+    """The four Buzz publish grants of docs/platform/mcp-grants-proposed.md are active, valid, and exactly as wide as the
+    read configuration: two clients by.
+    """
     DOC = (ROOT / "docs/platform/mcp-grants-proposed.md").read_text()
     BLOCKS = re.findall(r"```json\n(.*?)\n```", DOC, re.S)
 
@@ -311,11 +324,11 @@ class ProposedPublishGrants(unittest.TestCase):
         self.assertEqual(len(grants), 4)
         active = {g["id"] for g in DOC["grants"]}
         self.assertEqual(active & {g["id"] for g in grants}, {g["id"] for g in grants})
-        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish" and c["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], rows)                    # Muse's own publish grant (LIFE-923, Jim's M3) is pinned by its own test
-        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], grants)                                   # exactly these, no other publish grant
+        self.assertEqual([c for c in CATALOG["capabilities"] if c["tool"] == "buzz_publish" and c["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], rows)  # Muse's own publish grant is pinned by its own test
+        self.assertEqual([g for g in DOC["grants"] if g["tool"] == "buzz_publish" and g["principal"] not in ("muse-chat", "duet-chat", "duet-chat-bytalos", "openclaw")], grants)  # exactly these, no other publish grant
         self.assertEqual({(g["principal"], g["tenant"], g["tool"], tuple(g["actions"]), g["purpose"], g["expires"]) for g in grants},
                          {(p, t, "buzz_publish", ("write",), "buzz-publish", "2027-02-22") for p, t in (("claude-chat", "personal"), ("claude-chat-bytalos", "bytalos"), ("chatgpt-chat", "personal"), ("chatgpt-chat-bytalos", "bytalos"))})
-        self.assertEqual({(r["principal"], r["status"]) for r in rows}, {("claude-chat", "working"), ("claude-chat-bytalos", "synthetic"), ("chatgpt-chat", "working"), ("chatgpt-chat-bytalos", "synthetic")})      # LIFE-877: the two Personal rows have live receipts
+        self.assertEqual({(r["principal"], r["status"]) for r in rows}, {("claude-chat", "working"), ("claude-chat-bytalos", "synthetic"), ("chatgpt-chat", "working"), ("chatgpt-chat-bytalos", "synthetic")})  # the two Personal rows have live receipts
         self.assertEqual({r["tool"] for r in rows}, {"buzz_publish"})
 
     def test_activated_they_allow_exactly_those_four_and_nothing_else(self):
@@ -325,8 +338,8 @@ class ProposedPublishGrants(unittest.TestCase):
             out = M.call(access, row, tenant, "buzz_publish", "write", "buzz", "buzz", lambda: {"ok": True}, [].append, NOW)
             self.assertEqual((out.decision, out.reason), ("allow", "ok"), (client, tenant))
         row = M.identify(access, "http", {"oauth_client": "claude"})
-        self.assertEqual(M.call(access, row, "tgp", "buzz_publish", "write", "buzz", "buzz", lambda: {}, [].append, NOW).decision, "deny")      # no other tenant
-        self.assertEqual(M.call(access, row, "personal", "buzz_publish", "send", "buzz", "buzz", lambda: {}, [].append, NOW).decision, "deny")   # no other action
+        self.assertEqual(M.call(access, row, "tgp", "buzz_publish", "write", "buzz", "buzz", lambda: {}, [].append, NOW).decision, "deny")  # no other tenant
+        self.assertEqual(M.call(access, row, "personal", "buzz_publish", "send", "buzz", "buzz", lambda: {}, [].append, NOW).decision, "deny")  # no other action
 
 
 if __name__ == "__main__":

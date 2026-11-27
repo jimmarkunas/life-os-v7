@@ -1,4 +1,4 @@
-"""LIFE-876 (synthetic): the governed send_to_jim operation, with the Notion double of the inbox tests. No Notion, no network."""
+"""(synthetic): the governed send_to_jim operation, with the Notion double of the inbox tests."""
 import unittest
 from datetime import datetime, timezone
 
@@ -18,14 +18,14 @@ class SendToJim(unittest.TestCase):
         first = send(client)
         self.assertEqual((first["created"], first["sender"], first["workspace"]), (1, "mac-claude-code", "Personal"))
         self.assertEqual(len(client.rows), 1)
-        again = send(client, details="a later note")                                          # same sender, subject, due and link: the derived key is the same
+        again = send(client, details="a later note")
         self.assertEqual(("updated" in again, "created" in again, len(client.rows)), (True, False, 1))
 
     def test_the_sender_is_only_ever_the_server_supplied_client_never_a_field_the_caller_sent(self):
         client = FakeClient()
-        out = send(client, **{"from": "claude-chat"})                                          # a forged From in the arguments is ignored; the row is written as the verified client
+        out = send(client, **{"from": "claude-chat"})  # a forged From in the arguments is ignored
         self.assertEqual(out["sender"], "mac-claude-code")
-        self.assertNotIn("from", S.OPS["send_to_jim"][1])                                      # and the schema offers no such field
+        self.assertNotIn("from", S.OPS["send_to_jim"][1])  # and the schema offers no such field
 
     def test_another_clients_key_is_refused_and_changes_nothing(self):
         client = FakeClient()
@@ -50,7 +50,7 @@ class SendToJim(unittest.TestCase):
 
     def test_wire_needs_the_read_write_integrations_token_by_that_one_name(self):
         state = {}
-        S.wire({"NOTION_API_TOKEN": "the-hourly-write-token-123"}, state)                      # the pipeline's token is never used
+        S.wire({"NOTION_API_TOKEN": "the-hourly-write-token-123"}, state)  # the pipeline's token is never used
         self.assertIsNone(state["client"])
         S.wire({"NOTION_READONLY_TOKEN": "tok-synthetic-12345"}, state)
         self.assertEqual(type(state["client"]).__name__, "Client")

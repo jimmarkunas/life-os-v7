@@ -1,4 +1,4 @@
-"""LIFE-891: a Notion lookup by exact title reads EVERY page of `POST /search`; the match may sit past the first page, a short or capped read is a fixed refusal, never a partial answer."""
+"""a Notion lookup by exact title reads EVERY page of `POST /search`"""
 import unittest
 
 from lifeos.accountability import region
@@ -20,7 +20,7 @@ def page(title, pid, kind="page"):
 
 
 class Search:
-    """A Notion double whose /search answers `per` results a page with a cursor; every other call goes to `other`."""
+    """A Notion double whose /search answers `per` results a page with a cursor"""
 
     def __init__(self, items, per=2, other=None, repeat_cursor=False, drop_has_more=False):
         self.items, self.per, self.other, self.repeat, self.drop = items, per, other or {}, repeat_cursor, drop_has_more
@@ -150,12 +150,12 @@ class TilePage(unittest.TestCase):
         client = Search(JUNK + [page(agent_inbox.PAGE_TITLE, "pg")], other=self.tree(**{"/databases/db": {"parent": {"type": "workspace"}}}))
         self.assertEqual(agent_inbox.locate_page(client, "src"), "pg")
         self.assertEqual(agent_inbox.locate_page(client), "pg")
-        self.assertGreaterEqual(len(client.searches), 8)                       # 4 pages a call, two calls
+        self.assertGreaterEqual(len(client.searches), 8)  # 4 pages a call, two calls
 
     def test_the_parent_page_is_used_without_any_search_for_the_old_page_title(self):
         client = Search(JUNK, other=self.tree())
         self.assertEqual(agent_inbox.locate_page(client, "src"), "pg")
-        self.assertEqual({body["query"] for body in client.searches}, {agent_inbox.MERGED_TITLE})      # LIFE-938: the merged page is looked for first; the old page is then found by its database's parent, no title search for it
+        self.assertEqual({body["query"] for body in client.searches}, {agent_inbox.MERGED_TITLE})  # the merged page is looked for first
 
     def test_a_parent_with_another_title_or_a_failed_read_falls_back_to_the_search(self):
         for over in ({"/pages/pg": page("Some other page", "pg")}, {"/pages/pg": lambda path: (_ for _ in ()).throw(NotionError("NOTION_HTTP_404"))}):

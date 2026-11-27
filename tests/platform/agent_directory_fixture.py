@@ -1,4 +1,6 @@
-"""LIFE-736: the 24 rows of the LIFE OS Agent Directory as read back from Notion on 2026-11-16 (read-only), with public partial aliases only. No key, token or private value is held here."""
+"""the 24 rows of the LIFE OS Agent Directory as read back from Notion on 2026-11-16 (read-only), with public partial
+aliases only.
+"""
 import json
 
 HERMES_ROUTE = "Hermes Oracle profile routing needs session verification"
@@ -6,7 +8,7 @@ HERMES_BOUND = "Configured allowlist is a ceiling; session/principal grants are 
 BUZZ_BOUND = "Buzz membership is transport identity, not authorization for provider tool or production action"
 GRANT_BOUND = "Exact principal, workspace, ticket and grants required; no inferred automated authority"
 ORCA_ROUTE = "Orca Concord Room; reachable agent ID must be queried from actual live Concord session"
-# agent_id, agent, platform, record type, host, interface, space, evidence, discovery state, reachability, alias, route, boundary
+# agent_id, agent, platform, record type, host, interface, space, evidence, discovery state, reachability.
 TABLE = [
     ("bot_hermes_claude-hermes", "Hermes — Claude Hermes", "Hermes", "Bot Profile", "Oracle", "Hermes Runtime", "Personal", "Repo Config", "Identified", "Configured Untested", "claude-hermes", HERMES_ROUTE, HERMES_BOUND),
     ("bot_hermes_developer", "Hermes — Developer", "Hermes", "Bot Profile", "Oracle", "Hermes Runtime", "Personal", "Repo Config", "Identified", "Configured Untested", "developer", HERMES_ROUTE, HERMES_BOUND),

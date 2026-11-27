@@ -1,4 +1,4 @@
-"""LIFE-691: every stage has a time budget; a stage over it stops, records one fixed code, and fails the run only when it is a required stage."""
+"""every stage has a time budget"""
 import contextlib
 import io
 import json
@@ -24,7 +24,7 @@ class BudgetTable(unittest.TestCase):
     def test_over_budget_counts_carry_only_the_fixed_code_and_numbers(self):
         counts, code = budget.over_budget(5, 5.7, True)
         self.assertEqual((counts, code), ({"stage_budget_exceeded": 1, "code": "STAGE_BUDGET_EXCEEDED", "budget_seconds": 5, "elapsed_seconds": 5, "required": True}, 1))
-        self.assertEqual(budget.over_budget(5, 5.7, False)[1], 0)                              # an optional stage lets the run pass
+        self.assertEqual(budget.over_budget(5, 5.7, False)[1], 0)  # an optional stage lets the run pass
 
 
 class Guard(unittest.TestCase):
@@ -48,11 +48,11 @@ class Guard(unittest.TestCase):
         self.assertEqual(signal.getsignal(signal.SIGALRM), before)
 
     def test_it_stays_out_of_the_way_where_another_alarm_is_armed_or_when_switched_off(self):
-        signal.setitimer(signal.ITIMER_REAL, 30)                                               # the Jobs tick arms one per stage
+        signal.setitimer(signal.ITIMER_REAL, 30)  # the Jobs tick arms one per stage
         try:
             with budget.guard(0.01):
-                time.sleep(0.05)                                                               # would have been stopped
-            self.assertGreater(signal.getitimer(signal.ITIMER_REAL)[0], 0)                     # and the tick's alarm is still there
+                time.sleep(0.05)  # would have been stopped
+            self.assertGreater(signal.getitimer(signal.ITIMER_REAL)[0], 0)  # and the tick's alarm is still there
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0)
         with budget.guard(0.01, environ={"STAGE_BUDGETS": "off"}):
@@ -89,7 +89,7 @@ class RunMain(unittest.TestCase):
 
 
 class TickRule(unittest.TestCase):
-    """The Jobs tick keeps its own alarm and code; an optional (bulk) stage that times out no longer fails the tick, a required one still does."""
+    """The Jobs tick keeps its own alarm and code"""
 
     def test_which_timeouts_fail_the_tick(self):
         plan = tick.PLAN
@@ -97,14 +97,13 @@ class TickRule(unittest.TestCase):
         required = next(step.name for step in plan if not step.bulk)
         self.assertEqual(tick.failing_stages({bulk: "timeout"}, plan), [])
         self.assertEqual(tick.failing_stages({required: "timeout"}, plan), [required])
-        self.assertEqual(tick.failing_stages({bulk: "failed"}, plan), [bulk])                 # a failure is a failure, bulk or not
+        self.assertEqual(tick.failing_stages({bulk: "failed"}, plan), [bulk])  # a failure is a failure, bulk or not
         self.assertEqual(tick.failing_stages({required: "ok", bulk: "skipped"}, plan), [])
 
 
 class CloudBacklogStageAlarm(unittest.TestCase):
     def test_the_backlog_stage_alarm_never_cuts_a_scheduled_batch_short(self):
-        """Nov 19 2026: the stage alarm was 180 s and cloud.remaining() honours it, so every hourly batch stopped after 2 calls (budget reached) and the backlog never drained.
-        The alarm must cover the batch's whole cap plus the one call still in flight."""
+        """The alarm must cover the batch's whole cap plus the one call still in flight."""
         seconds, _ = budget.budget_for("fit-cloud-backlog")
         self.assertGreaterEqual(seconds, cloud.BACKLOG_BUDGET_MAX + cloud.CALL_SECONDS)
 
@@ -113,7 +112,7 @@ class CloudBacklogStageAlarm(unittest.TestCase):
         previous = signal.signal(signal.SIGALRM, lambda *a: None)
         signal.setitimer(signal.ITIMER_REAL, seconds)
         try:
-            self.assertGreaterEqual(cloud.remaining(120, cloud.BACKLOG_BUDGET_MAX), cloud.CALL_SECONDS)       # 120 s in (two calls done): the next call still starts
+            self.assertGreaterEqual(cloud.remaining(120, cloud.BACKLOG_BUDGET_MAX), cloud.CALL_SECONDS)
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, previous)

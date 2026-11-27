@@ -11,8 +11,8 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(usage.granted(950, 900, 30), 0)
 
     def test_caps_leave_headroom_under_free_limits(self):
-        self.assertLessEqual(usage.FETCH_DAILY_CAP, 900)                       # free limit is 1,000/day
-        self.assertLessEqual(usage.FETCH_BATCH * 60 / usage.MIN_SECONDS_PER_BATCH, 120)   # free limit is 150/min
+        self.assertLessEqual(usage.FETCH_DAILY_CAP, 900)  # free limit is 1,000/day
+        self.assertLessEqual(usage.FETCH_BATCH * 60 / usage.MIN_SECONDS_PER_BATCH, 120)  # free limit is 150/min
 
     def test_pacer_spaces_batches(self):
         now, slept = [0.0], []

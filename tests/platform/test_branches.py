@@ -1,5 +1,4 @@
-"""D244 (LIFE-81): merged branches are archived (one tag per PR, read back) and deleted only when safe; a weekly read-only report lists stale branches
-on the run summary and in V7's one owned callout on the Weekly LIFE OS Review page. GitHub, the archive repository and Notion are stand-ins."""
+"""merged branches are archived (one tag per PR, read back) and deleted only when safe"""
 import io
 import json
 import os
@@ -151,7 +150,9 @@ class Report(unittest.TestCase):
 
 
 class ReviewPage(AgendaRegions):
-    """The Weekly LIFE OS Review page: Jim's protocol callout and a database, then (after the first live run) V7's one owned callout."""
+    """The Weekly LIFE OS Review page: Jim's protocol callout and a database, then (after the first live run) V7's one
+    owned callout.
+    """
 
     def __init__(self):
         super().__init__()
@@ -162,7 +163,7 @@ class ReviewPage(AgendaRegions):
 
     def call(self, method, path, body=None):
         clean = path.split("?", 1)[0]
-        if method == "PATCH" and clean == "/blocks/review-page/children":               # the one-time install, appended at the end of the page
+        if method == "PATCH" and clean == "/blocks/review-page/children":
             self.log.append(("INSTALL", path))
             spec = body["children"][0]
             callout = {"id": "repo-callout", "type": "callout", "has_children": True, "callout": {"rich_text": []}}
@@ -182,7 +183,7 @@ class OwnedCallout(unittest.TestCase):
         self.assertEqual([b["id"] for b in page.children["review-page"]], ["protocol", "reviews-db", "repo-callout"])
         self.assertEqual([report_region.plain(b) for b in page.children["repo-callout"]], [router.REPO_REGION, "status line", "PR #191 · docs/old · idle 20 days"])
         self.assertEqual((page.children["review-page"][:2], page.children["protocol"]), before)
-        branches.write_region(page, "review-page", ["new status"], live=True)          # the next week rewrites the same callout in place
+        branches.write_region(page, "review-page", ["new status"], live=True)  # the next week rewrites the same callout in place
         self.assertEqual([report_region.plain(b) for b in page.children["repo-callout"]], [router.REPO_REGION, "new status"])
         self.assertEqual(sum(1 for m, _ in page.log if m == "INSTALL"), 1)
 
@@ -212,7 +213,7 @@ class JimsPageIsProtected(unittest.TestCase):
 
 
 class RealClient(unittest.TestCase):
-    """Oct 20, 2:13 PM CT: the first live report built the real Notion client wrongly (NOTION_CONFIG_MISSING); every other test used a stand-in."""
+    """every other test used a stand-in."""
 
     def test_the_report_builds_the_real_notion_client_from_the_cards_token_alone(self):
         from lifeos.platform.notion_client import Client, NotionError
@@ -220,11 +221,11 @@ class RealClient(unittest.TestCase):
         self.assertIsInstance(client, Client)
         self.assertEqual(client.token, "secret-token")
         with self.assertRaises(NotionError):
-            branches.writer({})                                                       # no token: a named failure, never a client without one
+            branches.writer({})
 
 
 class PushRefusal(unittest.TestCase):
-    """Oct 20, 4:45 PM CT: the first real archive push was refused and the run only said ARCHIVE_PUSH_FAILED. Each refusal now has its own code."""
+    """Each refusal now has its own code."""
 
     def test_each_refusal_is_named_and_git_says_nothing_else(self):
         cases = {"remote: refusing to allow a Personal Access Token to create or update workflow `.github/workflows/x.yml` without `workflow` scope":

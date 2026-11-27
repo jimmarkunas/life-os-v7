@@ -1,4 +1,6 @@
-"""LIFE-699 / LIFE-859: V7 settings from the Notion Runtime Configuration source (shadow rule, last accepted recovery), and no new GitHub value."""
+"""V7 settings from the Notion Runtime Configuration source (shadow rule, last accepted recovery), and no new GitHub
+value.
+"""
 import contextlib
 import re
 import unittest
@@ -11,9 +13,8 @@ from tests.platform.settings_fixture import ENV, SOURCE, Source, from_lines, row
 ROOT = Path(__file__).resolve().parents[2]
 ID = "4183c5a0-5926-81be-9e19-e85714dc256f"
 
-# Every GitHub secret or variable the workflows use (Nov 14, 2026; LIFE-703 removed 14 names that were never set in GitHub: their steps now declare them empty for the settings page to fill). This list may only shrink: LIFE-699 moves each one to the Notion settings page or Bitwarden,
-# and the end state is LIFEOS_BWS_RUNTIME_TOKEN alone (GITHUB_TOKEN is GitHub's own and never counted). Adding a name here needs Jim's typed approval.
-FROZEN = frozenset({"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"})                 # LIFE-863 (Jim, comment 13732): DOPPLER_TOKEN is the one Doppler bootstrap token, trial workflow capacity-card.yml only (tests/platform/test_doppler_compare.py); it goes with the trial
+# Every GitHub secret or variable the workflows use.
+FROZEN = frozenset({"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"})
 
 
 def used():
@@ -82,7 +83,7 @@ class LastAccepted(unittest.TestCase):
 
     def test_an_unreadable_page_falls_back_to_the_last_accepted_map_and_says_so(self):
         run({}, Page(["GRANOLA_AUTO on", f"JIRA_CARD_BLOCK_ID {ID}"]), connect=connect)
-        self.store.rows[settings.SNAPSHOT_KEY]["values"]["V7_LIVE"] = "false"             # a safety value that got into the store is never restored
+        self.store.rows[settings.SNAPSHOT_KEY]["values"]["V7_LIVE"] = "false"
         env = {"GRANOLA_AUTO": "", "JIRA_CARD_BLOCK_ID": "", "V7_LIVE": ""}
         out = run(env, Page([], broken=True), connect=connect)
         self.assertEqual(env, {"GRANOLA_AUTO": "on", "JIRA_CARD_BLOCK_ID": ID, "V7_LIVE": ""})
@@ -133,33 +134,33 @@ class ShadowRule(unittest.TestCase):
         out = run(env, page)
         self.assertEqual(env["MEGIBOW_BLOCK_ID"], ID)
         self.assertEqual(env["INTERVIEW_TEST_COMPANIES"], "Smartsheet, Walmart")
-        self.assertEqual(env["JIRA_CARD_BLOCK_ID"], "x" * 32)                   # GitHub still holds it: never overwritten, only compared
+        self.assertEqual(env["JIRA_CARD_BLOCK_ID"], "x" * 32)
         self.assertEqual((out["status"], out["filled"], out["matched"], out["mismatched"]), ("ok", ["INTERVIEW_TEST_COMPANIES", "MEGIBOW_BLOCK_ID"], 1, ["JIRA_CARD_BLOCK_ID"]))
 
     def test_the_counts_name_every_matched_setting_and_never_a_value(self):
-        """LIFE-703: a per-name 24 hour match list needs the NAMES; every older key keeps its meaning and no value reaches the counts."""
+        """a per-name 24 hour match list needs the NAMES"""
         env = {"HIRING_AUTO_CLOSE": "on", "JIRA_CARD_BLOCK_ID": ID, "MEGIBOW_BLOCK_ID": "", "RECRUITER_OUTREACH": "off"}
         out = run(env, Page(["MEGIBOW_BLOCK_ID " + ID, "JIRA_CARD_BLOCK_ID " + ID, "HIRING_AUTO_CLOSE on", "RECRUITER_OUTREACH on"]))
         self.assertEqual((out["matched"], out["matched_names"], out["mismatched"], out["filled"]), (2, ["HIRING_AUTO_CLOSE", "JIRA_CARD_BLOCK_ID"], ["RECRUITER_OUTREACH"], ["MEGIBOW_BLOCK_ID"]))
         self.assertEqual(out["matched"], len(out["matched_names"]))
-        self.assertNotIn(ID, repr(out))                                          # names only
-        self.assertEqual(run({}, Page(["HIRING_AUTO_CLOSE on"]))["matched_names"], [])      # nothing declared, nothing matched
+        self.assertNotIn(ID, repr(out))  # names only
+        self.assertEqual(run({}, Page(["HIRING_AUTO_CLOSE on"]))["matched_names"], [])  # nothing declared, nothing matched
 
     def test_safety_values_credentials_unknown_and_bad_addresses_are_never_applied(self):
         env = {"MEGIBOW_BLOCK_ID": "", "JIRA_CARD_BLOCK_ID": "", "AMAZON_CARD_BLOCK_ID": ""}
         out = run(env, Page(["V7_LIVE true", "ALERTS_ENABLED off", "CLOUDFLARE_API_TOKEN abc", "SOMETHING_NEW 1", "MEGIBOW_BLOCK_ID not-an-id", "JIRA_CARD_BLOCK_ID " + ID, "JIRA_CARD_BLOCK_ID " + ID, "AMAZON_CARD_BLOCK_ID " + ID]))
-        self.assertEqual(env, {"MEGIBOW_BLOCK_ID": "", "JIRA_CARD_BLOCK_ID": "", "AMAZON_CARD_BLOCK_ID": ID})        # a repeated name is applied from neither row
+        self.assertEqual(env, {"MEGIBOW_BLOCK_ID": "", "JIRA_CARD_BLOCK_ID": "", "AMAZON_CARD_BLOCK_ID": ID})  # a repeated name is applied from neither row
         self.assertEqual((out["refused"], out["unknown"], out["invalid"], out["repeated"]), (["V7_LIVE", "ALERTS_ENABLED", "CLOUDFLARE_API_TOKEN"], 1, ["MEGIBOW_BLOCK_ID"], ["JIRA_CARD_BLOCK_ID"]))
 
     def test_an_unreadable_empty_or_unset_source_changes_nothing(self):
         env = {"HIRING_AUTO_CLOSE": "on"}
         self.assertEqual(run(env, Page([], broken=True))["status"], "unreadable:RUNTIME_CONFIG_UNREADABLE")
-        self.assertEqual(run(env, Page([]))["status"], "unreadable:RUNTIME_CONFIG_EMPTY")                 # never an empty override
+        self.assertEqual(run(env, Page([]))["status"], "unreadable:RUNTIME_CONFIG_EMPTY")  # never an empty override
         self.assertEqual(settings.apply({"HIRING_AUTO_CLOSE": "on", "LIFEOS_SETTINGS": "on"}, Page(["GRANOLA_AUTO on"]))["status"], "no_source_id")
         self.assertEqual(env, {"HIRING_AUTO_CLOSE": "on"})
 
     def test_a_step_holding_only_another_notion_token_reads_the_source_and_never_writes_anything(self):
-        """LIFE-699 / LIFE-859: a step's own token (the Interview, Amazon or Recruiters one) can read the source. Nothing writes a settings source any more: every call is a query of the source by ID."""
+        """a step's own token (the Interview, Amazon or Recruiters one) can read the source."""
         page, seen = Page(["GRANOLA_AUTO on"]), []
 
         def factory(env):
@@ -188,7 +189,7 @@ class ShadowRule(unittest.TestCase):
         self.assertEqual(run(env)["status"], "no_token")
 
     def test_a_private_plain_value_written_to_the_job_environment_is_masked_but_a_switch_is_not(self):
-        """LIFE-699: the repository is public. The Jira boards, the epic and the other private plain settings were masked secrets, so the settings step masks them when it exports them; a switch such as `on` is never masked (it would empty every job output)."""
+        """the repository is public."""
         import contextlib
         import io
         import tempfile
@@ -202,17 +203,17 @@ class ShadowRule(unittest.TestCase):
         printed = out.getvalue()
         self.assertIn("::add-mask::JFM:5,MEJ:38:all", printed)
         self.assertIn("::add-mask::JFM-165", printed)
-        self.assertNotIn("::add-mask::on", printed)                                       # a switch is never masked
+        self.assertNotIn("::add-mask::on", printed)  # a switch is never masked
         self.assertEqual(sorted(written.strip().split("\n")), ["GRANOLA_AUTO=on", "JIRA_BOARDS=JFM:5,MEJ:38:all", "JIRA_GTV_EPIC=JFM-165"])
 
     def test_off_outside_production_and_without_a_token(self):
         self.assertEqual(run({"LIFEOS_SETTINGS": "off"}, Page(["GRANOLA_AUTO on"]))["status"], "off")
-        self.assertEqual(run({"NOTION_API_TOKEN": "t"})["status"], "off")             # not GitHub Actions, not switched on: no Notion call at all
+        self.assertEqual(run({"NOTION_API_TOKEN": "t"})["status"], "off")
         self.assertEqual(run({"GITHUB_ACTIONS": "true"})["status"], "no_token")
 
 
 class OldPageRetired(unittest.TestCase):
-    """LIFE-859 (Jim, comment 13958): the old settings page reader is gone. The recovery route is the last accepted map, which never reads the retired page and never writes anything."""
+    """the old settings page reader is gone."""
     def setUp(self):
         self.store = FakeStore()
         patcher = mock.patch("lifeos.platform.stored_pages.STORE", self.store)
@@ -238,10 +239,10 @@ class OldPageRetired(unittest.TestCase):
         for label, client, env in (("broken", Page([], broken=True), {}), ("empty", Page([]), {}), ("unset id", Page(["GRANOLA_AUTO off"]), {"LIFEOS_SETTINGS": "on"})):
             env = {**env, "GRANOLA_AUTO": "", "JIRA_CARD_BLOCK_ID": ""}
             out = settings.apply(env, client, connect=connect) if label == "unset id" else run(env, client, connect=connect)
-            self.assertEqual((env["GRANOLA_AUTO"], env["JIRA_CARD_BLOCK_ID"]), ("on", ID), label)               # the last accepted values, not the unset id's "off"
+            self.assertEqual((env["GRANOLA_AUTO"], env["JIRA_CARD_BLOCK_ID"]), ("on", ID), label)  # the last accepted values, not the unset id's "off"
             self.assertRegex(out["last_accepted"], r"^\d+/\d+ · \d+:\d\d [AP]M CT$")
             self.assertTrue(out["status"].startswith("unreadable:") or out["status"] == "no_source_id", label)
-            self.assertNotIn("source", out, label)                                                          # the receipt never claims the new source
+            self.assertNotIn("source", out, label)  # the receipt never claims the new source
 
     def test_no_saved_map_and_no_source_leaves_the_environment_as_it_was(self):
         env = {"GRANOLA_AUTO": "off", "LIFEOS_SETTINGS": "on"}

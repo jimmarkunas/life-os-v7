@@ -1,4 +1,6 @@
-"""LIFE-595: the docstring standard (lifeos/platform/docstyle.py): the rules, and the blocking check over every package (Oracle-installed files exempt, each with a reason)."""
+"""the docstring standard (lifeos/platform/docstyle.py): the rules, and the blocking check over every package (Oracle-
+installed files exempt, each with.
+"""
 import unittest
 from pathlib import Path
 
@@ -44,7 +46,7 @@ class EveryPackage(unittest.TestCase):
             target = ROOT / key
             self.assertTrue(target.exists(), key)
             if key.endswith("/"):
-                continue                                                                       # a folder entry stays while the folder holds any Oracle-installed file
+                continue
             self.assertTrue(docstyle.check(target), f"{key} now follows the standard: delete its EXEMPT entry")
 
     def test_a_file_outside_the_exempt_list_is_not_exempt(self):

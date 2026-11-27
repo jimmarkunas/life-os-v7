@@ -1,4 +1,4 @@
-"""LIFE-627: the scheduled-jobs view. Recorded input (tests/fixtures/scheduled_jobs_runs.json: real run history of four workflows, trimmed to six runs and the fields used, Nov 12 2026) is replayed."""
+"""the scheduled-jobs view."""
 import datetime as dt
 import json
 import re
@@ -9,7 +9,7 @@ from lifeos.platform import gate, scheduled_jobs as sj
 
 ROOT = Path(__file__).resolve().parents[2]
 RECORDED = json.loads((ROOT / "tests/fixtures/scheduled_jobs_runs.json").read_text())
-NOW = dt.datetime(2026, 11, 13, 0, 30, tzinfo=dt.timezone.utc)           # 6:30 PM CT, five minutes after the newest recorded watchdog run
+NOW = dt.datetime(2026, 11, 13, 0, 30, tzinfo=dt.timezone.utc)
 JOBS = {j["job"]: j for j in sj.load()["jobs"]}
 
 
@@ -30,7 +30,7 @@ class Recorded(unittest.TestCase):
         self.assertEqual(sj.late_names(list(rows.values())), [])
 
     def test_the_same_history_two_hours_on_reads_the_hourly_run_late_then_missing_and_the_watchdog_late(self):
-        later = row(NOW + dt.timedelta(minutes=80))                                  # newest tick 6:17 PM CT, now 7:50 PM CT: 93 minutes
+        later = row(NOW + dt.timedelta(minutes=80))  # newest tick 6:17 PM CT, now 7:50 PM CT: 93 minutes
         self.assertEqual((later["hourly run"]["state"], later["watchdog"]["state"]), (sj.LATE, sj.ON_TIME))
         later = row(NOW + dt.timedelta(minutes=140))
         self.assertEqual((later["hourly run"]["state"], later["watchdog"]["state"]), (sj.MISSING, sj.LATE))
@@ -39,7 +39,7 @@ class Recorded(unittest.TestCase):
     def test_times_print_in_central_time_and_the_weekly_slot_follows_the_clock_change(self):
         text = sj.render(sj.evaluate(NOW, RECORDED))
         self.assertIn("Nov 12, 6:17 PM CT", text)
-        self.assertIn("Monday 7:17 AM CST", text)                                    # November 9: standard time
+        self.assertIn("Monday 7:17 AM CST", text)  # November 9: standard time
         self.assertIn("Monday 8:17 AM CDT", row(dt.datetime(2026, 10, 28, tzinfo=dt.timezone.utc))["weekly safety check"]["schedule"])
 
 

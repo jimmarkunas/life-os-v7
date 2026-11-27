@@ -1,5 +1,6 @@
-"""LIFE-663: tools/push_life_branch.sh is the one force-style push an agent may run: it pushes only the current life/* branch, with a lease on the tip it just fetched.
-Everything runs against throw-away local bare repositories (no network, no GitHub); the script is run with `sh`, as agents will."""
+"""tools/push_life_branch.sh is the one force-style push an agent may run: it pushes only the current life/* branch, with
+a lease on the tip it just.
+"""
 import json
 import os
 import shutil
@@ -104,7 +105,7 @@ class Wrapper(unittest.TestCase):
         git(self.work, "commit", "-q", "--amend", "-m", "one, reworded")
         new = self.head(self.work)
         self.assertNotEqual(old, new)
-        self.assertNotEqual(git(self.work, "push", "origin", BRANCH, check=False).returncode, 0)   # a plain push cannot do this: that is why the script exists
+        self.assertNotEqual(git(self.work, "push", "origin", BRANCH, check=False).returncode, 0)
         done = self.run_script()
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.remote(BRANCH), new)
@@ -128,8 +129,9 @@ class Wrapper(unittest.TestCase):
         self.assertEqual(self.remote(BRANCH), tip)
 
     def _install_race(self):
-        """A `git` stand-in first on PATH: when the script (or the control) runs `git push`, someone else's newer commit lands on the same branch just before the real
-        push starts. By then the script has already fetched, so only the lease can protect that commit."""
+        """A `git` stand-in first on PATH: when the script (or the control) runs `git push`, someone else's newer commit
+        lands on the same branch just before.
+        """
         git(self.tmp, "clone", "-q", str(self.bare), str(self.other))
         git(self.other, "checkout", "-q", BRANCH)
         theirs = self.commit(self.other, "someone else's newer commit")
@@ -149,10 +151,12 @@ class Wrapper(unittest.TestCase):
         done = self.run_script()
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("lease", done.stderr)
-        self.assertEqual(self.remote(BRANCH), theirs)                                  # their commit is still the tip
+        self.assertEqual(self.remote(BRANCH), theirs)  # their commit is still the tip
 
     def test_the_same_race_does_overwrite_with_an_ordinary_force(self):
-        """Control: the identical race with `git push --force` destroys the other commit, so the test above is measuring the lease."""
+        """Control: the identical race with `git push --force` destroys the other commit, so the test above is measuring
+        the lease.
+        """
         self.start_branch()
         theirs = self._install_race()
         git(self.work, "commit", "-q", "--amend", "-m", "mine, rewritten")
@@ -184,7 +188,7 @@ class Wrapper(unittest.TestCase):
         text = "\n".join(code)
         for forbidden in ("--delete", " -d ", "--force ", " -f ", "--mirror", "--prune", '"+', " +"):
             self.assertNotIn(forbidden, text, forbidden)
-        self.assertEqual(text.count("git push"), 2)                                   # the plain first push and the one lease push, nothing else
+        self.assertEqual(text.count("git push"), 2)
 
 
 
@@ -195,7 +199,7 @@ class Settings(unittest.TestCase):
     def test_the_wrapper_is_allowed_and_every_force_and_delete_form_stays_denied(self):
         perms = json.loads((ROOT / ".claude" / "settings.json").read_text())["permissions"]
         self.assertIn("Bash(sh tools/push_life_branch.sh:*)", perms["allow"])
-        self.assertEqual(sorted(perms["deny"]), sorted(f"Bash({rule})" for rule in self.DENY))   # LIFE-663 loosened no deny rule
+        self.assertEqual(sorted(perms["deny"]), sorted(f"Bash({rule})" for rule in self.DENY))  # loosened no deny rule
         self.assertNotIn("Bash(git push:*)", perms["deny"])
 
 

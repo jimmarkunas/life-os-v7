@@ -1,4 +1,4 @@
-"""The one-time Drive sign-in: drive.file only, PKCE, state checked, the credential only ever written to a pipe. Synthetic values only."""
+"""The one-time Drive sign-in: drive.file only, PKCE, state checked, the credential only ever written to a pipe."""
 import base64
 import hashlib
 import http.server
@@ -21,12 +21,12 @@ class Consent(unittest.TestCase):
         self.assertEqual((G.SCOPE, G.TOKEN_URL), (gdrive.SCOPE, gdrive.TOKEN_URL))
         import pathlib
         imports = [line for line in pathlib.Path(G.__file__).read_text().splitlines() if line.startswith(("import ", "from "))]
-        self.assertFalse([line for line in imports if "lifeos" in line or "webbrowser" in line])          # runs by path under python3 -I, opens no browser
+        self.assertFalse([line for line in imports if "lifeos" in line or "webbrowser" in line])  # runs by path under python3 -I, opens no browser
 
     def test_the_sign_in_asks_for_full_drive_offline_with_pkce(self):
         url = G.auth_url("cid", "http://127.0.0.1:8765", "st", "verifier")
         q = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(url).query).items()}
-        self.assertEqual(q["scope"], "https://www.googleapis.com/auth/drive")          # Jim, Oct 24: "full"
+        self.assertEqual(q["scope"], "https://www.googleapis.com/auth/drive")
         self.assertEqual((q["access_type"], q["prompt"], q["state"], q["code_challenge_method"]), ("offline", "consent", "st", "S256"))
         self.assertEqual(q["code_challenge"], base64.urlsafe_b64encode(hashlib.sha256(b"verifier").digest()).rstrip(b"=").decode())
 
@@ -36,14 +36,14 @@ class Consent(unittest.TestCase):
         raw = G.exchange("cid", "cs", "code", "http://127.0.0.1:1", "ver", opener)
         self.assertEqual(gdrive.credential(raw), ("cid", "cs", "rt"))
         self.assertIn(b"code_verifier=ver", sent[0])
-        for bad in ({"scope": gdrive.SCOPE}, {"scope": "https://www.googleapis.com/auth/drive.file", "refresh_token": "rt"}):      # no refresh token, or the narrow grant
+        for bad in ({"scope": gdrive.SCOPE}, {"scope": "https://www.googleapis.com/auth/drive.file", "refresh_token": "rt"}):  # no refresh token, or the narrow grant
             with self.assertRaises(SystemExit):
                 G.exchange("cid", "cs", "code", "r", "v", lambda req, timeout, b=bad: Reply(b))
 
     def test_a_narrower_scope_can_be_asked_for_and_demanded_exactly(self):
         narrow, grant = G.SCOPE + ".file", lambda scope: (lambda req, timeout: Reply({"scope": scope, "refresh_token": "rt"}))     # noqa: E731
         self.assertIn("auth%2Fdrive.file", G.auth_url("c", "http://127.0.0.1:1", "s", "v", narrow))
-        G.exchange("c", "s", "x", "r", "v", grant(narrow + " " + G.SCOPE), scope=narrow)                    # extra scopes pass unless the grant must be exact
+        G.exchange("c", "s", "x", "r", "v", grant(narrow + " " + G.SCOPE), scope=narrow)  # extra scopes pass unless the grant must be exact
         with self.assertRaises(SystemExit) as refused:
             G.exchange("c", "s", "x", "r", "v", grant(narrow + " " + G.SCOPE), scope=narrow, exact=True)
         self.assertIn("exactly the drive.file scope", str(refused.exception))

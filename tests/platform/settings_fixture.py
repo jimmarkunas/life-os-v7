@@ -1,4 +1,4 @@
-"""LIFE-859 test data: a fake Runtime Configuration data source (the one settings source). Anything but a query of that source by ID fails the test: no title search, no page read, no write."""
+"""test data: a fake Runtime Configuration data source (the one settings source)."""
 from lifeos.platform import runtime_config as rc
 from lifeos.platform import settings
 
@@ -39,7 +39,7 @@ class Source:
 
 
 def from_lines(lines, **kw):
-    """`NAME value` lines (comment lines skipped) -> a Source with one row each; a name the reader refuses is still a row, so it is counted and never applied."""
+    """`NAME value` lines (comment lines skipped) -> a Source with one row each"""
     rows = []
     for line in lines:
         text = line.strip()

@@ -1,4 +1,4 @@
-"""LIFE-528 step 0: the deploy drift check. UNKNOWN is never DEPLOYED; a changed, missing or stopped surface is DRIFT; one quiet incident opens and closes."""
+"""step 0: the deploy drift check."""
 import contextlib
 import io
 import json
@@ -21,7 +21,7 @@ class Classify(unittest.TestCase):
         self.assertEqual(drift.classify(drift.blob_sha(GOOD), GOOD, "active"), drift.DEPLOYED)
 
     def test_blob_sha_is_gits_object_id(self):
-        self.assertEqual(drift.blob_sha(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")             # git hash-object of an empty file
+        self.assertEqual(drift.blob_sha(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")  # git hash-object of an empty file
         self.assertEqual(drift.blob_sha(b"hello\n"), "ce013625030ba8dba906f756967f9e9ca394464a")
 
     def test_a_different_hash_a_missing_file_or_a_stopped_unit_is_drift(self):
@@ -33,9 +33,9 @@ class Classify(unittest.TestCase):
 
     def test_anything_unreadable_is_unknown_and_never_deployed(self):
         sha = drift.blob_sha(GOOD)
-        self.assertEqual(drift.classify(None, GOOD, "active"), drift.UNKNOWN)        # main could not be read
-        self.assertEqual(drift.classify(sha, None, "active"), drift.UNKNOWN)         # the installed file could not be read
-        self.assertEqual(drift.classify(sha, GOOD, None), drift.UNKNOWN)             # systemd could not be asked
+        self.assertEqual(drift.classify(None, GOOD, "active"), drift.UNKNOWN)  # main could not be read
+        self.assertEqual(drift.classify(sha, None, "active"), drift.UNKNOWN)  # the installed file could not be read
+        self.assertEqual(drift.classify(sha, GOOD, None), drift.UNKNOWN)  # systemd could not be asked
         for expected in (None, sha):
             for installed in (None, GOOD, drift.MISSING):
                 for unit in (None, "active", "inactive"):
@@ -48,7 +48,7 @@ class Check(unittest.TestCase):
         rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: GOOD, lambda u: "active", surfaces())
         self.assertEqual([r["state"] for r in rows], [drift.DEPLOYED] * 2)
         self.assertEqual(rows[0]["installed_hash"], drift.blob_sha(GOOD)[:12])
-        self.assertNotIn("installed", json.dumps(rows).replace("installed_hash", ""))                 # no file content anywhere in the rows
+        self.assertNotIn("installed", json.dumps(rows).replace("installed_hash", ""))  # no file content anywhere in the rows
 
     def test_a_reader_that_raises_reads_as_unknown(self):
         def boom(_):
@@ -60,14 +60,14 @@ class Check(unittest.TestCase):
             self.assertNotIn("secret", json.dumps(rows))
 
     def test_every_installer_under_lifeos_edge_is_covered_by_a_surface_or_named_in_the_allowlist_with_a_reason(self):
-        """LIFE-604 item 4: nothing installed on the VM may go unwatched by accident."""
+        """item 4: nothing installed on the VM may go unwatched by accident."""
         scripts = sorted(str(p) for p in Path("lifeos/edge").rglob("install-*.sh"))
-        self.assertGreaterEqual(len(scripts), 4)                                     # the four known installers: ticker, off-site backup, Close, runner
+        self.assertGreaterEqual(len(scripts), 4)
         self.assertEqual(drift.uncovered_installers(scripts), [])
         for path, reason in drift.UNCOVERED_INSTALLERS.items():
-            self.assertTrue(Path(path).is_file(), path)                              # an allowlist entry for a script that no longer exists is stale
-            self.assertGreater(len(reason.split()), 5, path)                         # a reason, not a placeholder
-            self.assertNotIn(path, {s.repo_path for s in drift.SURFACES}, path)      # covered AND allowlisted is a contradiction
+            self.assertTrue(Path(path).is_file(), path)
+            self.assertGreater(len(reason.split()), 5, path)  # a reason, not a placeholder
+            self.assertNotIn(path, {s.repo_path for s in drift.SURFACES}, path)  # covered AND allowlisted is a contradiction
 
     def test_a_new_installer_with_no_surface_and_no_allowlist_entry_is_reported(self):
         scripts = ["lifeos/edge/ticker/oracle/install-ticker.sh", "lifeos/edge/newthing/install-newthing.sh"]
@@ -151,7 +151,7 @@ class TickerIncident(unittest.TestCase):
 
 
 class Why(unittest.TestCase):
-    """LIFE-725: an UNKNOWN surface says why, in fixed codes; a check that cannot decide is visible in the journal instead of silent."""
+    """an UNKNOWN surface says why, in fixed codes"""
     def ok(self, **kwargs):
         args = {"expected_for": lambda p: drift.blob_sha(GOOD), "read": lambda p: GOOD, "unit_state_for": lambda u: "active", **kwargs}
         return drift.check(surfaces=surfaces(1), **args)
@@ -235,7 +235,7 @@ class Journal(unittest.TestCase):
 
 
 class UnitStateWithoutSystemd(unittest.TestCase):
-    """LIFE-725: inside the ticker's sandbox systemctl prints nothing; the enablement link stands in, and the journal says it is only "enabled"."""
+    """inside the ticker's sandbox systemctl prints nothing"""
     def fake_run(self, out):
         class Done:
             stdout = out
@@ -284,7 +284,9 @@ class UnitStateWithoutSystemd(unittest.TestCase):
         self.assertEqual(rows[0]["state"], drift.DRIFT)
 
     def test_the_real_check_with_no_injected_reader_uses_the_fallback_and_does_not_crash(self):
-        """LIFE-725: the host ran `drift_incident` with its own unit reader and every row failed with TypeError, because the parameter `unit_state` shadowed the reader of the same name."""
+        """the host ran `drift_incident` with its own unit reader and every row failed with TypeError, because the
+        parameter `unit_state` shadowed the reader of.
+        """
         from unittest import mock
         calls = []
         with mock.patch("subprocess.run", return_value=mock.Mock(stdout="")), mock.patch("os.listdir", return_value=["lifeos-ticker-watch.timer", "lifeos-offsite-backup.timer", "lifeos-close-release.timer"]):

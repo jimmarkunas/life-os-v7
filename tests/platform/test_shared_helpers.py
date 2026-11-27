@@ -1,4 +1,4 @@
-"""LIFE-645: the shared Notion paging loop, the fixed-code wrapper, the plain-text reader and the UTC clock."""
+"""the shared Notion paging loop, the fixed-code wrapper, the plain-text reader and the UTC clock."""
 import unittest
 from datetime import timedelta
 
@@ -60,7 +60,7 @@ class Paging(unittest.TestCase):
         fetch = lambda cursor: (count.append(1), page(1, more=f"c{len(count)}"))[1]
         self.assertEqual(codes(lambda: list(notion_pages.pages(fetch, Boom, "BAD", capped="CAP", limit=3))), "CAP")
         self.assertEqual(len(count), 3)
-        self.assertEqual(len(list(notion_pages.pages(lambda c: page(1, more=str(int(c or 0) + 1)) if int(c or 0) < 60 else page(1), Boom, "BAD"))), 61)      # no limit given: no cap
+        self.assertEqual(len(list(notion_pages.pages(lambda c: page(1, more=str(int(c or 0) + 1)) if int(c or 0) < 60 else page(1), Boom, "BAD"))), 61)  # no limit given: no cap
 
     def test_the_last_permitted_page_may_be_the_final_one(self):
         self.assertEqual(len(list(notion_pages.pages(lambda c: page(1, more="a") if c is None else page(2), Boom, "BAD", limit=2))), 2)

@@ -1,4 +1,4 @@
-"""LIFE-625: the net-size helper counts lines added and removed per area, from a real git diff, and flags growth in lifeos/."""
+"""the net-size helper counts lines added and removed per area, from a real git diff, and flags growth in lifeos/."""
 import contextlib
 import io
 import os
@@ -65,7 +65,8 @@ class Render(unittest.TestCase):
 
 
 class RealRepository(unittest.TestCase):
-    """A scratch repository: a base commit on main, then a branch that edits, adds and deletes files in three areas."""
+    """A scratch repository: a base commit on main, then a branch that edits, adds and deletes files in three areas.
+    """
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -77,9 +78,9 @@ class RealRepository(unittest.TestCase):
         git(cwd, "add", "-A")
         git(cwd, "commit", "-q", "-m", "base")
         git(cwd, "checkout", "-q", "-b", "branch")
-        write(cwd, "lifeos/a.py", ["one", "TWO", "three", "four"])               # +2 -1
-        write(cwd, "docs/d.md", ["a", "b", "c", "d"])                            # +4
-        os.remove(os.path.join(cwd, "tests/t.py"))                               # -2
+        write(cwd, "lifeos/a.py", ["one", "TWO", "three", "four"])  # +2 -1
+        write(cwd, "docs/d.md", ["a", "b", "c", "d"])  # +4
+        os.remove(os.path.join(cwd, "tests/t.py"))  # 2
         git(cwd, "add", "-A")
         git(cwd, "commit", "-q", "-m", "change")
 
@@ -112,7 +113,7 @@ class RealRepository(unittest.TestCase):
 
 
 class CeilingWarnings(unittest.TestCase):
-    """LIFE-631 (advisory): a package over its ceiling that this change makes bigger gets a warning line; shrinking it, or a package under its ceiling, gets none. Never an error."""
+    """(advisory): a package over its ceiling that this change makes bigger gets a warning line"""
     def tree(self, lines):
         folder = tempfile.mkdtemp()
         write(folder, "lifeos/sources/m.py", ["x"] * lines)

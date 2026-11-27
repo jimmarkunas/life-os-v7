@@ -25,7 +25,7 @@ class Names(unittest.TestCase):
     def test_canonical_and_malformed_titles(self):
         self.assertEqual(names.split_title("Acme — Senior Program Manager"), ("Acme", "Senior Program Manager"))
         self.assertEqual(names.split_title("Acme - Senior Program Manager"), ("Acme", "Senior Program Manager"))
-        self.assertEqual(names.split_title("Acme"), ("Acme", ""))          # never guessed into shape
+        self.assertEqual(names.split_title("Acme"), ("Acme", ""))  # never guessed into shape
 
     def test_jobs_reexports_the_same_functions(self):
         from lifeos.jobs import hiring_pipeline, names as jobs_names

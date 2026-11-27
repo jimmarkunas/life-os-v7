@@ -1,4 +1,4 @@
-"""LIFE-423 / GWT-T13-01 to GWT-T13-03: the read-only Google sign-in helper. Fake allowlist, fake token endpoint, loopback only; no Google, no browser, no real credential."""
+"""/ GWT-T13-01 to GWT-T13-03: the read-only Google sign-in helper."""
 import io
 import json
 import pathlib
@@ -38,7 +38,9 @@ def server():
 
 
 def reply_with(state_ok=True):
-    """A catcher that plays Google's redirect back to the loopback port (a fake consent endpoint), then uses the real loopback catcher."""
+    """A catcher that plays Google's redirect back to the loopback port (a fake consent endpoint), then uses the real
+    loopback catcher.
+    """
     def catcher(srv, state):
         query = urllib.parse.urlencode({"state": state if state_ok else "wrong", "code": "fake-code"})
         threading.Thread(target=lambda: urllib.request.urlopen(f"http://127.0.0.1:{srv.server_port}/?{query}", timeout=10).read(), daemon=True).start()
@@ -70,7 +72,7 @@ class LinkScopes(unittest.TestCase):
                 self.assertEqual(len(links), 1)
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(links[0]).query)
                 self.assertEqual(q["scope"], [GOOD[entry["service"]]])
-                self.assertEqual((q["code_challenge_method"], q["access_type"]), (["S256"], ["offline"]))     # the reused PKCE link
+                self.assertEqual((q["code_challenge_method"], q["access_type"]), (["S256"], ["offline"]))  # the reused PKCE link
                 self.assertEqual((receipt["outcome"], receipt["scopes_granted"]), ("stored", [GOOD[entry["service"]]]))
 
     def test_the_scope_set_is_exactly_gmail_drive_metadata_and_calendar_readonly(self):
@@ -82,13 +84,13 @@ class LinkScopes(unittest.TestCase):
 class Refusals(unittest.TestCase):
     def refused(self, receipt, out, tty, code):
         self.assertEqual((receipt["outcome"], receipt["code"], receipt["stored"], receipt["scopes_granted"]), ("refused", code, "nothing", []))
-        self.assertEqual(out, "")                                                  # nothing was stored
-        self.assertNotIn("https://", tty)                                          # and no link was produced
+        self.assertEqual(out, "")  # nothing was stored
+        self.assertNotIn("https://", tty)  # and no link was produced
         self.assertNotIn(SECRET, tty)
 
     def test_gwt_t13_02_an_account_not_on_the_allowlist_gets_no_link(self):
         self.refused(*go("acct-b-gmail", "gmail"), "DENY_ACCOUNT_AMBIGUOUS")
-        self.refused(*go("acct-a-gmail", "drive"), "DENY_ACCOUNT_AMBIGUOUS")        # listed for another service
+        self.refused(*go("acct-a-gmail", "drive"), "DENY_ACCOUNT_AMBIGUOUS")  # listed for another service
         self.refused(*go("", "gmail"), "DENY_INPUT")
         self.refused(*go("acct-a-gmail", "composio"), "DENY_INPUT")
 
@@ -116,7 +118,7 @@ class Refusals(unittest.TestCase):
     def test_a_reply_without_a_refresh_token_or_with_the_wrong_state_stores_nothing(self):
         receipt, out, tty = go(opener=token_endpoint(GOOD["gmail"], refresh=None))
         self.assertEqual((receipt["code"], out), ("DENY_INPUT", ""))
-        receipt, out, tty = go(catcher=lambda srv, state: None)                     # the catcher found no code for this state
+        receipt, out, tty = go(catcher=lambda srv, state: None)  # the catcher found no code for this state
         self.assertEqual((receipt["code"], receipt["stored"], out), ("DENY_PRINCIPAL", "nothing", ""))
 
     def test_it_refuses_to_print_the_credential_on_a_terminal(self):
@@ -129,7 +131,7 @@ class Refusals(unittest.TestCase):
         self.assertNotIn("https://", tty.getvalue())
 
 
-    def test_the_sign_in_link_uses_the_fixed_port_asked_for_and_any_free_port_by_default(self):   # the Web client registers only http://127.0.0.1:8765, so a random port is redirect_uri_mismatch
+    def test_the_sign_in_link_uses_the_fixed_port_asked_for_and_any_free_port_by_default(self):
         import socket
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
@@ -147,8 +149,8 @@ class CredentialAndReceipt(unittest.TestCase):
     def test_gwt_t13_03_the_credential_goes_only_to_the_pipe_and_no_secret_is_shown(self):
         seen = []
         receipt, out, tty = go(opener=token_endpoint(GOOD["gmail"], seen=seen))
-        self.assertEqual(json.loads(out), {"client_id": "fake-client-id", "client_secret": SECRET, "refresh_token": "fake-refresh-token"})     # the pipe only
-        self.assertEqual(seen, [base.TOKEN_URL])                                   # the (fake) token call, and no other request from the helper
+        self.assertEqual(json.loads(out), {"client_id": "fake-client-id", "client_secret": SECRET, "refresh_token": "fake-refresh-token"})  # the pipe only
+        self.assertEqual(seen, [base.TOKEN_URL])
         for shown in (tty, json.dumps(receipt)):
             for secret in (SECRET, "fake-refresh-token", "fake-code"):
                 self.assertNotIn(secret, shown)
