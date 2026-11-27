@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 
-from lifeos.platform import source_registry as registry, stage_timing
+from lifeos.platform import api_counts, source_registry as registry, stage_timing
 
 RUN_BUDGET_SECONDS = 35 * 60  # the job allows 45 minutes; the rest is setup
 FAST_FLOOR_SECONDS = 60  # a fast-path stage always gets at least this long
@@ -171,7 +171,15 @@ def _report(step, label, seconds, outcome, timings, lock=None, queued=0.0):
         print(f"stage {step.name}: {label} {seconds:.1f}s", flush=True)
     waited, counts = stage_timing.take(step.name)
     stage_timing.emit(
-        stage_timing.record(step.name, label, seconds, queued + waited, counts, stage_timing.items_key_for(step.name))
+        stage_timing.record(
+            step.name,
+            label,
+            seconds,
+            queued + waited,
+            counts,
+            stage_timing.items_key_for(step.name),
+            api_calls=api_counts.take(),
+        )
     )
 
 

@@ -25,6 +25,7 @@ EDGE = (
     "lifeos/platform/__init__.py",
     "lifeos/platform/notion_client.py",
     "lifeos/platform/limits.py",
+    "lifeos/platform/api_counts.py",
     "lifeos/hiring/__init__.py",
     "lifeos/sources/__init__.py",
     APP,

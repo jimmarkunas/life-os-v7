@@ -11,6 +11,8 @@ import sys
 import threading
 from zoneinfo import ZoneInfo
 
+from lifeos.platform import api_counts
+
 CENTRAL = ZoneInfo("America/Chicago")
 _local = threading.local()
 _lock = threading.Lock()
@@ -21,6 +23,7 @@ _unattributed = {"seconds": 0.0}
 def begin(stage):
     _local.stage = stage
     _local.counts = None
+    api_counts.begin()
     with _lock:
         _waits.pop(stage, None)
 
@@ -94,9 +97,11 @@ def items_of(counts, key):
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def record(stage, label, seconds, wait_seconds=0.0, counts=None, items_key=None, ended=None, environ=os.environ):
+def record(
+    stage, label, seconds, wait_seconds=0.0, counts=None, items_key=None, ended=None, environ=os.environ, api_calls=None
+):
     ended = ended or dt.datetime.now(dt.timezone.utc)
-    return {
+    row = {
         "stage": stage,
         "outcome": outcome_of(label, counts),
         "result": label,
@@ -107,6 +112,9 @@ def record(stage, label, seconds, wait_seconds=0.0, counts=None, items_key=None,
         "items": items_of(counts, items_key),
         "run": str(environ.get("GITHUB_RUN_ID") or "") or None,
     }
+    if api_calls:
+        row["api_calls"] = {str(k): int(v) for k, v in sorted(api_calls.items())}
+    return row
 
 
 def emit(row, environ=os.environ, err=None):
