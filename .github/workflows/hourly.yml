@@ -498,7 +498,7 @@ jobs:
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-v1
-      - name: Pip download cache for the semantic layer (keyed on requirements-fit.lock)
+      - name: Pip cache for the semantic layer (requirements-fit.lock)
         if: *a44
         uses: *a45
         with:
