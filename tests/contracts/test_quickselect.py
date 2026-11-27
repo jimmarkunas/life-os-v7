@@ -25,6 +25,16 @@ class QuickSelect(unittest.TestCase):
         )
         self.assertLess(len(got), len(everything) // 2, "a shared-path change must not escalate to the whole suite")
 
+    def test_a_change_it_cannot_place_runs_every_test_module_never_fewer(self):
+        every = sorted(testindex.module_set())
+        for change in (
+            [".github/workflows/hourly.yml"],
+            ["pyproject.toml"],
+            ["tools/blob.bin"],
+            ["tests/kit/clock.py"],
+        ):
+            self.assertEqual(quickselect.quick_targets(change), every, change)
+
     def test_a_changed_test_module_runs_itself(self):
         self.assertIn(
             "tests.contracts.test_quickselect", quickselect.quick_targets(["tests/contracts/test_quickselect.py"])
@@ -131,8 +141,8 @@ class ImportGraph(unittest.TestCase):
                 "tests/test_other.py": "PATH = 'lifeos/x/other.txt'\n",
             }
         )
-        self.assertEqual(quickselect.data_readers("lifeos/x/codes.json", root), {"tests.test_reads"})
-        self.assertEqual(quickselect.data_readers("lifeos/x/none.json", root), set())
+        self.assertEqual(testindex.data_readers("lifeos/x/codes.json", root), {"tests.test_reads"})
+        self.assertEqual(testindex.data_readers("lifeos/x/none.json", root), set())
 
 
 if __name__ == "__main__":

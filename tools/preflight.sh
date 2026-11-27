@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # LIFE-760: the ONE gate to pass before `git push` and `sh tools/automerge.sh`. LIFE-763: the default is the QUICK gate, a few seconds to about a minute in parallel processes: every contract test (docstyle, privacy, config registry, settings, workflows, net size,
-# ruff advisory, the policy manifest hash), the repo-wide scanners (tests/testindex.py REPO_WIDE) and the tests that name or mirror each changed file (tests/quickselect.py). It never runs the whole suite: CI does (Jim, Nov 16 2026). One short PASS or FAIL line with seconds.
+# ruff advisory, the policy manifest hash), the repo-wide scanners (tests/testindex.py REPO_WIDE) and the tests that name or mirror each changed file (tests/quickselect.py). It runs the whole suite only when the one selector (tests/testindex.py select, the same one PR CI uses) cannot place a change, and counts staged, unstaged and untracked files too; otherwise CI runs it (Jim, Nov 16 2026). One short PASS or FAIL line with seconds.
 #   sh tools/preflight.sh        commit first (CI sees commits only); refuses on a dirty tree
 #   sh tools/preflight.sh --all  everything in parallel shards, like a merge to main (only when you want it; CI runs it anyway)
 # LIFE-765: before testing it runs tools/regen.py --commit (a new stage's registry rows, one commit of generated files only), so a new stage is its code and its workflow step.

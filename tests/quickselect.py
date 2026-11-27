@@ -1,5 +1,6 @@
-"""The quick local gate: `python -m tests.quickselect run --base BASE` runs, in parallel processes, the tests a push most
-often needs: every contract.
+"""The quick local gate: `python -m tests.quickselect run --base BASE` runs, in parallel processes, the contracts, the repo-wide
+scanners and the tests a change reaches by name, mirror and import graph. It uses the one selector in tests/testindex.py
+(the same one PR CI runs); a change it cannot place runs every test module, never fewer.
 """
 
 import ast
@@ -17,33 +18,6 @@ from tests import shard, testindex
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MAX_JOBS = 8
 HUB_CLOSURE = 40
-
-
-def changed_files(base, root=ROOT):
-    out = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMRD", base, "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return [line for line in out.splitlines() if line]
-
-
-def importers(dotted_name, stem, root=ROOT):
-    """Test modules whose text names the production module (`lifeos.pkg.stem`, or `from lifeos.pkg import stem`)."""
-    package = dotted_name.rsplit(".", 1)[0]
-    pattern = re.compile(
-        r"\b%s\b|from\s+%s\s+import[^\n]*\b%s\b" % (re.escape(dotted_name), re.escape(package), re.escape(stem))
-    )
-    found = set()
-    for path in pathlib.Path(root, "tests").rglob("test_*.py"):
-        try:
-            if pattern.search(path.read_text(errors="replace")):
-                found.add(testindex.dotted(str(path.relative_to(root))))
-        except OSError:
-            continue
-    return found
 
 
 @functools.lru_cache(maxsize=4)
@@ -108,23 +82,11 @@ def reached(modules, root=ROOT):
 
 
 @functools.lru_cache(maxsize=4)
-def test_texts(root=ROOT):
-    """{dotted test module: source text}, read once per run."""
-    texts = {}
-    for path in pathlib.Path(root, "tests").rglob("test_*.py"):
-        try:
-            texts[testindex.dotted(str(path.relative_to(root)))] = path.read_text(errors="replace")
-        except OSError:
-            continue
-    return texts
-
-
-@functools.lru_cache(maxsize=4)
 def test_references(root=ROOT):
     """{dotted test module: the lifeos modules it imports or names in a string (a mock.patch target)}."""
     known = lifeos_modules(root)
     out = {}
-    for name, text in test_texts(root).items():
+    for name, text in testindex.test_texts(root).items():
         found = set()
         try:
             tree = ast.parse(text)
@@ -149,47 +111,15 @@ def reaching_tests(changed_modules, root=ROOT):
     return {name for name, refs in test_references(root).items() if refs & wanted}
 
 
-def data_readers(path, root=ROOT):
-    """Test modules whose source names this changed non-Python file by its repo path, or by its file name when that is
-    distinctive (`codes.json`).
-    """
-    base = pathlib.Path(path).name
-    needles = {path} | ({base} if "." in base and len(base) >= 8 else set())
-    return {name for name, text in test_texts(root).items() if any(n in text for n in needles)}
-
-
 def quick_targets(changed, root=ROOT):
-    """> sorted dotted test modules: contracts, the repo-wide scanners, and what each changed file maps to."""
-    known = testindex.module_set(root)
-    targets = set(testindex.contract_modules(root)) | {m for m in testindex.REPO_WIDE if m in known}
+    """> sorted dotted test modules for the changed paths, by the shared selector; every module when it cannot place one."""
     modules = lifeos_modules(root)
-    changed_modules = {
-        path[:-3].replace("/", ".")
-        for path in changed
-        if path.startswith("lifeos/") and path.endswith(".py") and pathlib.Path(path).name != "__init__.py"
-    }
-    targets |= reaching_tests({m for m in changed_modules if m in modules}, root)
-    for path in changed:
-        if not path.endswith(".py") and (
-            path.startswith(("lifeos/", "tests/", "tools/", "docs/", ".github/")) or "/" not in path
-        ):
-            targets |= data_readers(path, root)
-        p = pathlib.Path(path)
-        if path.startswith("tests/") and p.name.startswith("test_") and (pathlib.Path(root) / path).is_file():
-            targets.add(testindex.dotted(path))
-        elif path.startswith("lifeos/") and path.endswith(".py") and p.name != "__init__.py":
-            rel = path[len("lifeos/") :]
-            package = rel.split("/")[0] if "/" in rel else None
-            stem = p.stem
-            dotted_name = path[:-3].replace("/", ".")
-            targets |= importers(dotted_name, stem, root)
-            if package and package != "platform":  # a feature package: its whole mirror test folder
-                targets |= set(testindex.test_modules(root, "tests/" + package))
-            elif package == "platform":
-                targets |= {m for m in known if m.startswith("tests.platform.test_" + stem)}
-            else:
-                targets |= {m for m in known if m == "tests.test_" + stem}
-    return sorted(t for t in targets if t in known)
+
+    def reaching(names):
+        return reaching_tests({m for m in names if m in modules}, root)
+
+    picked = testindex.select(changed, None, root, reaching)
+    return sorted(testindex.module_set(root)) if picked == testindex.FULL else picked
 
 
 def partition(modules, n):
@@ -248,7 +178,7 @@ def main(argv=None):
         return 2
     base = argv[argv.index("--base") + 1]
     jobs = int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else min(os.cpu_count() or 2, MAX_JOBS)
-    modules = quick_targets(changed_files(base))
+    modules = quick_targets(testindex.changed_files(base, ROOT, local=True))
     if argv[0] == "select":
         print("\n".join(modules))
         return 0
