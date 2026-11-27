@@ -323,8 +323,19 @@ class Crashes(ScopeCase):
             def connect(self):
                 raise ConnectionRefusedError()
 
+        settled = threading.Event()
+        settle = self.ledger.settle
+
+        def settle_and_signal(*args, **kwargs):
+            try:
+                return settle(*args, **kwargs)
+            finally:
+                settled.set()
+
         with mock.patch.object(mp.http.client, "HTTPSConnection", lambda host, timeout=None: Dead()):
-            self.assertEqual(self.raw_post(body(2000, 100))[0], 502)
+            with mock.patch.object(self.ledger, "settle", side_effect=settle_and_signal):
+                self.assertEqual(self.raw_post(body(2000, 100))[0], 502)
+                self.assertTrue(settled.wait(timeout=5), "request handler did not settle its reservation")
         self.assertEqual((self.ledger.scope["spent_nano"], self.ledger.inflight), (0, {}))
 
     def test_a_reply_that_cost_more_than_its_reservation_breaches_the_scope_and_stops_everything(self):
