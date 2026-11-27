@@ -1,4 +1,6 @@
-"""Phase 4 and LIFE-697 (synthetic): an action started in Notion is tied to the right person, workspace, record revision and grant by two signed events and an out-of-band code. Events are fabricated."""
+"""Phase 4 and (synthetic): an action started in Notion is tied to the right person, workspace, record revision and grant
+by two signed events and an.
+"""
 import hashlib
 import hmac
 import inspect
@@ -32,7 +34,9 @@ def signed(body, token=TOKEN):
 
 
 class Flow(unittest.TestCase):
-    """One Jira Human UAT record in Personal, one Notion row for it, a durable ledger on a file, and an out-of-band code mailbox."""
+    """One Jira Human UAT record in Personal, one Notion row for it, a durable ledger on a file, and an out-of-band code
+    mailbox.
+    """
 
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -79,7 +83,7 @@ class HappyPath(Flow):
     def test_two_signed_events_and_the_out_of_band_code_mint_one_exact_authorization(self):
         pending = self.request()
         self.assertEqual((pending.principal_id, pending.action), ("jim", "accept_uat"))
-        self.assertEqual(self.mailbox[pending.intent_id][0], "jim")                                          # the code went to that person, not onto the row
+        self.assertEqual(self.mailbox[pending.intent_id][0], "jim")  # the code went to that person, not onto the row
         self.assertNotIn(self.mailbox[pending.intent_id][1], json.dumps(self.row))
         auth = self.confirm(intent=pending)
         self.assertEqual((auth.principal_id, auth.source, auth.workspace, auth.account, auth.record_id, auth.action, auth.revision),
@@ -91,7 +95,7 @@ class HappyPath(Flow):
         body = payload("req-1", 0, [N.PROP_ACTION])
         body["data"].update(requested_action="reject_uat", record_id="jira:bytalos:x:y")
         pending = N.open_intent(self.ledger, self.parse(body), deliver=lambda *a: None, now=self.now, rng=self.rng, **self.common())
-        self.assertEqual(pending.action, "accept_uat")                                                        # what the row says now, read fresh
+        self.assertEqual(pending.action, "accept_uat")  # what the row says now, read fresh
 
     def test_confirmation_takes_no_person_from_the_caller(self):
         self.assertNotIn("confirmer_principal_id", inspect.signature(N.confirm).parameters)
@@ -111,18 +115,18 @@ class ForgedOrMisattributed(Flow):
             self.refused(call, reason)
         body = payload("e6", 0, [N.PROP_ACTION])
         body["authors"].append({"id": MALLORY_NOTION, "type": "person"})
-        self.refused(lambda: self.parse(body), "author_not_a_person")                                         # several authors: no single person to hold to
+        self.refused(lambda: self.parse(body), "author_not_a_person")  # several authors: no single person to hold to
         for broken in (b"not json", json.dumps({"id": "x"}).encode(), json.dumps({**payload("e7", 0, ["a"]), "timestamp": "2026-11-14T14:00:00"}).encode()):
             self.refused(lambda broken=broken: N.parse_event(TOKEN, broken, "sha256=" + hmac.new(TOKEN, broken, hashlib.sha256).hexdigest(), notion_workspace_id="ws-1", principals={}), "event_malformed")
 
-    def test_a_different_person_confirming_voids_the_request_even_with_the_right_code(self):                  # check 6
+    def test_a_different_person_confirming_voids_the_request_even_with_the_right_code(self):  # check 6
         pending = self.request()
         self.refused(lambda: self.confirm(intent=pending, author=MALLORY_NOTION), "confirmer_mismatch")
-        self.refused(lambda: self.confirm("conf-2", intent=pending), "no_pending_request")                      # the real person must ask again
+        self.refused(lambda: self.confirm("conf-2", intent=pending), "no_pending_request")  # the real person must ask again
 
 
 class Challenge(Flow):
-    def test_wrong_codes_spend_three_tries_then_even_the_right_code_is_locked(self):                           # check 7
+    def test_wrong_codes_spend_three_tries_then_even_the_right_code_is_locked(self):  # check 7
         pending = self.request()
         for n in range(3):
             self.refused(lambda n=n: self.confirm(f"c{n}", 1 + n, code="WRONGCODE9"), "challenge_wrong")
@@ -137,8 +141,8 @@ class Challenge(Flow):
     def test_a_used_code_cannot_be_used_again_and_a_replayed_delivery_is_refused(self):
         pending = self.request()
         self.confirm(intent=pending)
-        self.refused(lambda: self.confirm("conf-2", 2, intent=pending), "no_pending_request")                   # the code was spent
-        self.refused(lambda: self.confirm("conf-1", 1, intent=pending), "event_replayed")                       # the same delivery again (Notion retries up to 8 times)
+        self.refused(lambda: self.confirm("conf-2", 2, intent=pending), "no_pending_request")  # the code was spent
+        self.refused(lambda: self.confirm("conf-1", 1, intent=pending), "event_replayed")
         self.refused(lambda: self.request("req-1"), "event_replayed")
 
     def test_a_new_request_supersedes_the_old_one_so_an_old_code_never_authorizes_the_new_action(self):
@@ -152,23 +156,23 @@ class Challenge(Flow):
 
 
 class EventOrderAndEditedRows(Flow):
-    def test_out_of_order_and_coalesced_events_change_nothing(self):                                           # check 8
+    def test_out_of_order_and_coalesced_events_change_nothing(self):  # check 8
         pending = self.request("req-1", 3)
-        self.refused(lambda: self.confirm("old", 1, intent=pending), "event_out_of_order")                       # delivered late: older than the request it answers
+        self.refused(lambda: self.confirm("old", 1, intent=pending), "event_out_of_order")  # delivered late: older than the request it answers
         both = self.parse(payload("both", 4, [N.PROP_ACTION, N.PROP_CODE]))
-        self.refused(lambda: N.confirm(self.ledger, both, now=self.now, **self.common()), "event_coalesced")      # one aggregated event that changed both cannot be ordered
+        self.refused(lambda: N.confirm(self.ledger, both, now=self.now, **self.common()), "event_coalesced")
         self.refused(lambda: N.open_intent(self.ledger, both, deliver=lambda *a: None, now=self.now, **self.common()), "event_coalesced")
         other = self.parse(payload("other", 4, ["notes"]))
         self.refused(lambda: N.confirm(self.ledger, other, now=self.now, **self.common()), "event_not_a_confirmation")
         self.refused(lambda: N.open_intent(self.ledger, other, deliver=lambda *a: None, now=self.now, **self.common()), "event_not_a_request")
-        self.assertEqual(self.confirm("ok", 4, intent=pending).action, "accept_uat")                              # the pending request itself was untouched
+        self.assertEqual(self.confirm("ok", 4, intent=pending).action, "accept_uat")  # the pending request itself was untouched
 
     def test_an_action_edited_after_the_request_never_inherits_the_old_confirmation(self):
         pending = self.request()
         self.row["requested_action"] = "reject_uat"
         self.refused(lambda: self.confirm(intent=pending), "intent_changed")
         self.row["requested_action"] = "accept_uat"
-        self.refused(lambda: self.confirm("conf-2", 2, intent=pending), "no_pending_request")                   # changing it back does not revive it
+        self.refused(lambda: self.confirm("conf-2", 2, intent=pending), "no_pending_request")  # changing it back does not revive it
 
     def test_a_record_that_changed_a_deleted_row_and_a_reassigned_row_void_the_request(self):
         for _label, change, reason in (("stale revision", lambda: self.records.update({self.record.record_id: replace(self.record, revision="r9")}), "record_changed"),
@@ -190,7 +194,7 @@ class EventOrderAndEditedRows(Flow):
 
     def test_a_process_restart_between_request_and_confirmation_keeps_the_pending_request_and_every_refusal(self):
         pending = self.request()
-        restarted = F.file_ledger(self.path, create=False)                                                      # a new process, the same durable state
+        restarted = F.file_ledger(self.path, create=False)  # a new process, the same durable state
         self.refused(lambda: self.request("req-1", ledger=restarted), "event_replayed")
         auth = self.confirm(intent=pending, ledger=restarted)
         self.assertEqual(auth.record_id, self.record.record_id)

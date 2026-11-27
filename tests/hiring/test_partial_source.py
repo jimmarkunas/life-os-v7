@@ -1,4 +1,3 @@
-"""LIFE-648: one unreadable mail source no longer fails the hiring-outcomes stage or discards what the readable sources found (the LIFE-646 shape, for outcome mail)."""
 import json
 import unittest
 from datetime import timedelta, timezone
@@ -7,7 +6,7 @@ from unittest import mock
 from lifeos.hiring import outcomes, render
 from tests.hiring import test_hiring as hiring
 from tests.hiring.support import FakeStore
-from tests.hiring import test_outcomes as base                # module import: a class imported by name would be collected and run here again
+from tests.hiring import test_outcomes as base
 from tests.hiring.test_outcomes import NOW, REJECTION, UBER, WALMART, msg
 from tests.recruiters.fakes import ReadOnlyOutlook
 
@@ -45,13 +44,13 @@ class PartialSourceTests(unittest.TestCase):
 
     def test_nothing_is_concluded_from_the_unread_source_so_prior_outcomes_stay(self):
         tables = self.accepted({UBER["key"]: OLD_UBER})
-        code, counts, *_ = self.go([], tables=tables, accounts=[("work", base.BrokenOutlook())])           # Gmail read fine and holds no outcome mail
+        code, counts, *_ = self.go([], tables=tables, accounts=[("work", base.BrokenOutlook())])  # Gmail read fine and holds no outcome mail
         self.assertEqual((code, counts["status"], counts["matched"]), (0, "partial", 0))
-        self.assertEqual(self.stored(tables)["outcomes"], {UBER["key"]: OLD_UBER})                  # not turned into "no outcome"
+        self.assertEqual(self.stored(tables)["outcomes"], {UBER["key"]: OLD_UBER})  # not turned into "no outcome"
 
     def test_new_finds_are_laid_over_prior_outcomes_and_a_newer_accepted_one_is_not_replaced_by_an_older_find(self):
         newer = {"kind": "OFFER", "received": (NOW - timedelta(days=1)).isoformat(), "match": "role", "exact": False}
-        tables = self.accepted({UBER["key"]: OLD_UBER, WALMART["key"]: newer})                       # Walmart's find below is 3 days old: the accepted offer is newer
+        tables = self.accepted({UBER["key"]: OLD_UBER, WALMART["key"]: newer})
         self.go(self.REC, tables=tables, accounts=[("work", None)])
         self.assertEqual(self.stored(tables)["outcomes"], {UBER["key"]: OLD_UBER, WALMART["key"]: newer})
         older = {"kind": "REJECTED", "received": (NOW - timedelta(days=20)).isoformat(), "match": "company", "exact": False}
@@ -99,7 +98,7 @@ class PartialSourceTests(unittest.TestCase):
         store = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "outcomes": {}})
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}, []))
-            store.row["unread"] = ["pat@example.com", "Outlook Work Name", 7, "Outlook work", "Gmail"]       # only fixed source names are ever returned, so only they can reach the card
+            store.row["unread"] = ["pat@example.com", "Outlook Work Name", 7, "Outlook work", "Gmail"]
             self.assertEqual(outcomes.load(object())[3], ["Outlook work", "Gmail"])
             store.row["unread"] = "Gmail"
             with self.assertRaises(outcomes.OutcomeError):
@@ -107,11 +106,13 @@ class PartialSourceTests(unittest.TestCase):
 
 
 class CardTests(unittest.TestCase):
-    """The Hiring card reads the record: DEGRADED naming the unread source, not fresh, and not OUTCOME_MAIL_STALE while the other sources keep succeeding."""
+    """The Hiring card reads the record: DEGRADED naming the unread source, not fresh, and not OUTCOME_MAIL_STALE while
+    the other sources keep succeeding.
+    """
     consumer = hiring.OutcomeConsumerTests
 
     def card(self, unread, scanned=None):
-        """-> (the status line the stage rendered on its last run, its counts)."""
+        """> (the status line the stage rendered on its last run, its counts)."""
         lines, real = [], render.render
 
         def spy(*args, **kwargs):
@@ -124,7 +125,7 @@ class CardTests(unittest.TestCase):
 
     def test_a_partial_record_shows_degraded_with_the_unread_source_named_in_fixed_words(self):
         text, counts = self.card(["Gmail", "Outlook work"])
-        self.assertEqual((counts["status"], counts["reasons"], counts["mail_outcomes"]), ("degraded", ["OUTCOME_MAIL_PARTIAL"], 1))      # the accepted outcome is still shown
+        self.assertEqual((counts["status"], counts["reasons"], counts["mail_outcomes"]), ("degraded", ["OUTCOME_MAIL_PARTIAL"], 1))  # the accepted outcome is still shown
         self.assertIn("outcome mail partly read (Gmail, Outlook work unread)", text)
 
     def test_a_partial_record_is_not_stale_while_scans_keep_saving(self):

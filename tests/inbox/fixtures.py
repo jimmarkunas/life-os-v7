@@ -1,4 +1,6 @@
-"""Synthetic Action Inbox fixtures: fake native records for the six sources in two workspaces, fake sources and a fake executor. Nothing here is real data, a real account or a credential."""
+"""Synthetic Action Inbox fixtures: fake native records for the six sources in two workspaces, fake sources and a fake
+executor.
+"""
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -11,10 +13,10 @@ from tests.kit.mysqlite import MySQLite
 CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 11, 14, 14, 0, tzinfo=CT)
 KEY = b"synthetic-test-key-not-a-secret!!"
-CANARY = "CANARY-TEXT-7731"                    # sits in titles and descriptions: it must never reach a log or an audit line
-ERROR_CANARY = "CANARY-ERROR-5521"            # sits in an exception message: it must never reach the Inbox health or a log
+CANARY = "CANARY-TEXT-7731"
+ERROR_CANARY = "CANARY-ERROR-5521"
 
-SAME_TITLE = "Follow up with the vendor"       # the same title in several sources and workspaces on purpose
+SAME_TITLE = "Follow up with the vendor"
 
 
 def raw(source, workspace):
@@ -41,7 +43,7 @@ class FakeSource:
         self.identity = "jim"
         self.rows = [raw(source, workspace)] if rows is None else rows
         self.error = error
-        self.calls = []                          # the credential NAMES this source was fetched with
+        self.calls = []  # the credential NAMES this source was fetched with
 
     def fetch(self, credential_ref):
         self.calls.append(credential_ref)
@@ -74,7 +76,7 @@ def record_for(inbox, source, workspace):
 
 
 class Executor:
-    """A fake source system. `outcome` maps an action to the source status its read-back reports; a call is counted, never real."""
+    """A fake source system."""
 
     def __init__(self, status=None, raises=None, revision="r2"):
         self.calls, self.status, self.raises, self.revision = [], status, raises, revision
@@ -88,7 +90,9 @@ class Executor:
 
 
 class FileDb(MySQLite):
-    """The MySQL-shaped test connection over a sqlite FILE: every worker opens its own connection to the same file, so claims race for real and survive a 'restart'."""
+    """The MySQL-shaped test connection over a sqlite FILE: every worker opens its own connection to the same file, so
+    claims race for real and survive a.
+    """
 
     def __init__(self, path):
         self.raw = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=30)
@@ -108,7 +112,9 @@ def memory_ledger():
 
 
 def file_ledger(path, create=True):
-    """A ledger over the file at `path`: a new call is a new worker (or a restarted process) seeing the same durable state."""
+    """A ledger over the file at `path`: a new call is a new worker (or a restarted process) seeing the same durable
+    state.
+    """
     @contextmanager
     def connect():
         connection = FileDb(path)

@@ -1,5 +1,6 @@
-"""LIFE-918 wiring: the daily reconcile stage, the rollover boundary with automation on, the live writers' gate, the contract check and throwaway verification, the Daily Report line and the promotion call site.
-Everything is synthetic: fake Jira, fake database, mocked writers; no network, no Jira or Notion write. With every switch off the old paths are untouched (the existing rollover and reconcile suites pin that too)."""
+"""wiring: the daily reconcile stage, the rollover boundary with automation on, the live writers' gate, the contract
+check and throwaway verification.
+"""
 import unittest
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
@@ -37,7 +38,8 @@ def issue(key, type_="Task", status="To Do", category="new", priority="Medium", 
 
 
 class World:
-    """A tiny Jira board: sprints, issues (their sprint in fields.sprint), a backlog, and a log of every mutating call."""
+    """A tiny Jira board: sprints, issues (their sprint in fields.sprint), a backlog, and a log of every mutating call.
+    """
 
     def __init__(self, sprints, issues):
         self.sprints_by_id = {s["id"]: dict(s) for s in sprints}
@@ -142,11 +144,11 @@ class Boundary(unittest.TestCase):
         self.assertEqual((world.sprints_by_id[1]["state"], new["state"]), ("closed", "active"))
         in_new = sorted(i["key"] for i in world._in(new["id"]))
         self.assertEqual(in_new[:2], ["JFM-1", "JFM-3"])
-        self.assertEqual(len(in_new), 3)                                                              # the two carried issues and exactly one clone
+        self.assertEqual(len(in_new), 3)  # the two carried issues and exactly one clone
         original = world.issues["JFM-4"]["fields"]
         self.assertEqual((original["status"]["statusCategory"]["key"], "auto-closed" in original["labels"]), ("done", True))
         self.assertIn(("close", "JFM-4", "run-7"), world.log)
-        self.assertFalse(world.issues["JFM-2"]["fields"]["sprint"])                                   # backlog, not carried
+        self.assertFalse(world.issues["JFM-2"]["fields"]["sprint"])  # backlog, not carried
 
     def test_a_crash_before_the_close_plans_from_the_actual_state_and_never_clones_twice(self):
         world = boundary_world()
@@ -176,7 +178,7 @@ class Boundary(unittest.TestCase):
         world = boundary_world()
         with patch("lifeos.jira.rollover.run_project", return_value={"not_due": 1}) as project:
             rollover.run(1, False, environ=OFF, client=world, now=self.NOW, auto=True)
-        self.assertEqual(len(project.call_args.args), 9)                                           # exactly the pre-LIFE-918 call shape, no `automation`
+        self.assertEqual(len(project.call_args.args), 9)  # exactly the pre- call shape, no `automation`
 
 
 class FakeCursor:
@@ -241,8 +243,8 @@ class Stage(unittest.TestCase):
         self.assertEqual((out["ok"], out["failed"], out["would_create"], out["would_clone"]), (1, 0, 8, 1))
         self.assertEqual(world.log, [])
         self.assertIn("would add", out["summary"])
-        self.assertEqual((db.rows, db.snapshots), ({}, {}))                                           # a dry run marks nothing and saves nothing
-        self.assertNotIn("promotion", out)                                                              # no hook given in this test; the hook itself is covered below
+        self.assertEqual((db.rows, db.snapshots), ({}, {}))  # a dry run marks nothing and saves nothing
+        self.assertNotIn("promotion", out)  # no hook given in this test
 
     def test_live_with_mock_writers_creates_the_four_sprints_and_the_clone_then_marks_the_day(self):
         db, world, pushes = FakeDb(), self.world(), []
@@ -252,7 +254,7 @@ class Stage(unittest.TestCase):
         self.assertTrue(db.snapshots["ok"])
         self.assertIn("1 of 1 boards in order", db.snapshots["line"])
         again = self.run_stage(True, ON, db, world, pushes, now=at(2026, 11, 25, 15))
-        self.assertEqual(again, {"enabled": 1, "not_due": 1})                                          # once per Chicago date
+        self.assertEqual(again, {"enabled": 1, "not_due": 1})  # once per Chicago date
 
     def test_a_second_pass_on_the_next_day_creates_nothing_new(self):
         db, world, pushes = FakeDb(), self.world(), []
@@ -270,7 +272,7 @@ class Stage(unittest.TestCase):
                     stage.run(5, True, environ=ON, client=world, now=at(2026, 11, 25, 9), connect=db.connect, sleep=lambda s: None,
                               push=lambda key, title, body, topic: pushes.append((key, title, body)) or True)
                 self.assertIn("JIRA_RECONCILE_WRITER_UNVERIFIED", str(error.exception))
-        self.assertEqual(len(pushes), 1)                                                              # the same failure the same day pushes once
+        self.assertEqual(len(pushes), 1)  # the same failure the same day pushes once
         self.assertEqual(pushes[0][0], "jira_reconcile_failed")
         self.assertFalse(db.snapshots["ok"])
         self.assertTrue(db.snapshots["line"].startswith("Jira sprints: DEGRADED"))
@@ -360,7 +362,7 @@ class Promotion(unittest.TestCase):
 
 
 class Writers(unittest.TestCase):
-    """The contract check is GET only; the throwaway verification refuses what it did not create and always cleans up."""
+    """The contract check is GET only"""
 
     class Client:
         def __init__(self, fail_at=None):
@@ -474,7 +476,7 @@ class Writers(unittest.TestCase):
         self.assertTrue(all(call[0] == "GET" for call in client.calls))
 
     def test_a_list_that_disagrees_with_the_search_is_reported_not_fatal(self):
-        client = self.ListClient({11: 4, 12: 0}, {11: 4, 12: 2})                  # the future sprint's list is empty, as in the Nov 25 live check
+        client = self.ListClient({11: 4, 12: 0}, {11: 4, 12: 2})
         rows = jw.sprint_list_check(client, self.BOARDS)
         self.assertEqual([r["equal"] for r in rows], [True, False])
 
@@ -520,13 +522,13 @@ class Writers(unittest.TestCase):
         self.assertEqual(len(out["steps"]), 8)
         self.assertTrue(client.sprint["name"].startswith(jw.TEST_PREFIX))
         self.assertEqual(client.deleted, [("issue", "JFM-900"), ("sprint", 777)])
-        self.assertIn(("POST", "link", "Cloners", "JFM-900", "JFM-1"), client.calls)           # the clone is the inward argument: "<clone> clones <origin>"
+        self.assertIn(("POST", "link", "Cloners", "JFM-900", "JFM-1"), client.calls)
         self.assertEqual(out["why"], {})
         self.assertEqual(out["cleaned_parts"], {"clone": True, "sprint": True})
 
     def test_a_failing_step_still_cleans_up(self):
         client = self.Client()
-        client.transitions = lambda key: []                                                            # no Done transition: close fails
+        client.transitions = lambda key: []  # no Done transition: close fails
         out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None)
         self.assertFalse(out["ok"])
         self.assertEqual(out["why"]["run"], "JIRA_RECONCILE_TRANSITION_AMBIGUOUS")
@@ -552,7 +554,7 @@ class Writers(unittest.TestCase):
 
         def lagging(sprint_id, jql, fields):
             seen["n"] += 1
-            return [] if seen["n"] < 3 else real(sprint_id, jql, fields)                               # the sprint lists the clone only from the third read
+            return [] if seen["n"] < 3 else real(sprint_id, jql, fields)
         client.sprint_issues = lagging
         naps = []
         out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=naps.append)
@@ -580,7 +582,7 @@ class Writers(unittest.TestCase):
 
     def test_keep_mode_keeps_the_clone_deletes_the_sprint_and_needs_no_delete_permission(self):
         client = self.Client()
-        client.missing = ("DELETE_ISSUES",)                                                            # the Free plan: nobody may delete issues
+        client.missing = ("DELETE_ISSUES",)  # the Free plan: nobody may delete issues
         out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None, keep=True)
         self.assertTrue(out["ok"], out)
         self.assertEqual(out["kept"], ["JFM-900"])
@@ -632,8 +634,8 @@ class Writers(unittest.TestCase):
                 got = {**got, "fields": {"customfield_10020": [{"id": 777}] if getattr(client, "held", None) else []}}
             return got
         client.issue = with_sprint
-        client.sprint_issues = lambda sprint_id, jql, fields: []                                       # the list never shows the clone
-        client.backlog_issues = lambda board_id, jql, fields: []                                       # nor does the backlog list
+        client.sprint_issues = lambda sprint_id, jql, fields: []  # the list never shows the clone
+        client.backlog_issues = lambda board_id, jql, fields: []  # nor does the backlog list
         out = jw.verify(client, self.BOARDS, "JFM", "JFM-1", True, now=at(2026, 11, 25, 9), sleep=lambda s: None, keep=True)
         self.assertTrue(out["ok"], out)
         self.assertEqual([out["diag"][k]["passed_by"] for k in ("clone_into_sprint", "move_to_backlog", "back_into_sprint")], ["field", "field", "field"])
@@ -667,7 +669,7 @@ class Paging(unittest.TestCase):
         return client
 
     def test_a_backlog_of_hundreds_is_read_completely_even_when_the_server_caps_the_page(self):
-        client = self.client(430, size=30)                                                             # the server returns fewer than we ask
+        client = self.client(430, size=30)  # the server returns fewer than we ask
         meta = {}
         got = client.pages("/rest/agile/1.0/board/5/backlog", {}, "issues", meta)
         self.assertEqual(len(got), 430)

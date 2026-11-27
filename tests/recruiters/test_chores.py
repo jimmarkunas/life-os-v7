@@ -1,4 +1,4 @@
-"""LIFE-973, synthetic only: Action Status is the only source of truth for Done / Active / Needs review; every Needs Action row has a reply-by date (a set one is never replaced)."""
+"""synthetic only: Action Status is the only source of truth for Done / Active / Needs review"""
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -49,7 +49,7 @@ class StatusSync(unittest.TestCase):
 
 class FollowUpDate(unittest.TestCase):
     def test_a_needs_action_row_without_a_date_gets_one_business_day_after_its_first_contact_else_its_last_contact(self):
-        a = page("A B", pid="r1", action="Needs Action", last="2026-11-20T15:00:00+00:00")          # a Friday: the next business day is Monday
+        a = page("A B", pid="r1", action="Needs Action", last="2026-11-20T15:00:00+00:00")  # a Friday: the next business day is Monday
         b = page("C D", pid="r2", action="Needs Action", last="2026-11-24T15:00:00+00:00")
         b["properties"]["First Contact"] = {"type": "date", "date": {"start": "2026-11-18T15:00:00+00:00"}}
         notion = FakeRecruiters([a, b])

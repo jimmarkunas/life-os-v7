@@ -1,4 +1,5 @@
-"""Synthetic Recruiters fakes: an in-memory Recruiters data source, and Gmail/Outlook clients that raise on any mutation."""
+"""Synthetic Recruiters fakes: an in-memory Recruiters data source, and Gmail/Outlook clients that raise on any mutation.
+"""
 from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
 
@@ -36,7 +37,9 @@ class FakeRecruiters:
         return {"results": [p for p in self.pages if self.match(p, body["filter"])], "has_more": False}
 
     def match(self, page, flt):
-        """LIFE-973: the filter shapes the Recruiters code uses: and / or, select equals, checkbox equals, date equals / is_empty, relation."""
+        """the filter shapes the Recruiters code uses: and / or, select equals, checkbox equals, date equals / is_empty,
+        relation.
+        """
         if "and" in flt:
             return all(self.match(page, f) for f in flt["and"])
         if "or" in flt:

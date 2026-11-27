@@ -10,7 +10,7 @@ from lifeos.platform import mail as platform_mail
 from lifeos.recruiters import classify as C, identity, notion as store, qualify, stage
 from tests.recruiters.fakes import FakeRecruiters, ReadOnlyGmail, ReadOnlyOutlook, mail, page
 
-NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)                          # a Thursday
+NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)  # a Thursday
 SIGNED = "Hi,\n\nI'm reaching out about a Data Engineer role for a client.\n\nBest,\nPat Example\nSenior Recruiter at Acme Staffing\n"
 INHOUSE = "Hello,\n\nWe would love to talk about the Platform Lead position.\n\nThanks,\nSam Sample\nTalent Acquisition Partner | Globex\n"
 
@@ -43,7 +43,7 @@ class ClassifierTests(unittest.TestCase):
         body = "Hi,\n\nI'd like to set up time to talk about the role on my team.\n\nThanks,\nRobin Manager\nEngineering Manager, Globex\n"
         shape, reason, (verdict, _) = classify(mail(sender_name="Robin Manager", body=body))
         self.assertEqual((shape, reason, verdict), (C.OTHER, "HIRING_MANAGER", "EXCLUDED"))
-        self.assertEqual(classify(mail(body="Our recruiter will contact you soon."))[0], C.OTHER)      # mentioning a recruiter is not being one
+        self.assertEqual(classify(mail(body="Our recruiter will contact you soon."))[0], C.OTHER)  # mentioning a recruiter is not being one
 
     def test_a_named_human_relay_qualifies_and_needs_review_without_a_company(self):
         shape, reason, (verdict, c) = classify(mail(sender_name="Lee Relay via Examplejobs", address="messages-noreply@linkedin.com", subject="New message from Lee Relay",
@@ -51,7 +51,7 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual((shape, verdict, c["person"], c["company"], c["client"], c["needs_review"]), (C.HUMAN_NAMED_RELAY, "CANDIDATE", "Lee Relay", "", "", True))
 
     def test_a_board_relay_other_than_linkedin_keeps_qualifying_on_a_name(self):
-        """D193 narrows only LinkedIn, where any member can message anyone; the recruiter boards keep their fixed-pattern rule."""
+        """narrows only LinkedIn, where any member can message anyone"""
         shape, reason, (verdict, c) = classify(mail(sender_name="Lee Relay via Examplejobs", address="messages-noreply@connect.dice.com", subject="New message from Lee Relay",
                                                     body="Lee Relay sent you a message about a role."))
         self.assertEqual((shape, reason, verdict, c["person"], c["needs_review"]), (C.HUMAN_NAMED_RELAY, "RELAY_NAMED", "CANDIDATE", "Lee Relay", True))
@@ -60,7 +60,7 @@ class ClassifierTests(unittest.TestCase):
         msg = mail(sender_name="Careers Team", address="m@linkedin.com", subject="You have a new message", body="Someone sent you a message.")
         self.assertEqual(classify(msg)[2], ("UNRESOLVED", "NAME_UNREADABLE"))
         single = mail(sender_name="Alex via Board", address="m@linkedin.com", subject="New message from Alex", body="Alex sent you a message.\nI'm a sourcer at Example Partners.")
-        self.assertEqual(classify(single)[2][1]["needs_review"], True)                                  # a one-word name is source-backed but never deterministic
+        self.assertEqual(classify(single)[2][1]["needs_review"], True)
         alert = mail(sender_name="Board", address="digest@linkedin.com", subject="Jobs for you", body="12 jobs match your search")
         self.assertEqual(classify(alert)[0], C.OTHER)
 
@@ -98,7 +98,7 @@ class MinutePrecisionTests(unittest.TestCase):
         notion = FakeRecruiters()
         msg = signed(received="2026-10-07T15:08:23+00:00")
         run([msg], notion, live=True)
-        notion.pages[0]["properties"]["Last Contact"]["date"]["start"] = "2026-10-07T15:08:00.000+00:00"      # Notion keeps minutes only
+        notion.pages[0]["properties"]["Last Contact"]["date"]["start"] = "2026-10-07T15:08:00.000+00:00"  # Notion keeps minutes only
         again = run([msg], notion, live=True)
         self.assertEqual((again["existing"], again["updated"], again["failed"], len(notion.writes)), (1, 0, 0, 1))
         later = run([signed(received="2026-10-07T15:09:59+00:00")], notion, live=True)
@@ -107,10 +107,10 @@ class MinutePrecisionTests(unittest.TestCase):
 
 class WeekTests(unittest.TestCase):
     def test_week_ending_is_the_sunday_of_the_monday_to_sunday_week_in_chicago(self):
-        self.assertEqual(identity.week_ending("2026-10-05T14:00:00+00:00"), "2026-10-11")       # Monday morning Chicago
-        self.assertEqual(identity.week_ending("2026-10-11T23:30:00-05:00"), "2026-10-11")       # Sunday night
-        self.assertEqual(identity.week_ending("2026-10-12T03:00:00+00:00"), "2026-10-11")       # still Sunday evening in Chicago
-        self.assertEqual(identity.week_ending("2026-10-12T06:00:00+00:00"), "2026-10-18")       # Monday 1 AM Chicago
+        self.assertEqual(identity.week_ending("2026-10-05T14:00:00+00:00"), "2026-10-11")  # Monday morning Chicago
+        self.assertEqual(identity.week_ending("2026-10-11T23:30:00-05:00"), "2026-10-11")  # Sunday night
+        self.assertEqual(identity.week_ending("2026-10-12T03:00:00+00:00"), "2026-10-11")  # still Sunday evening in Chicago
+        self.assertEqual(identity.week_ending("2026-10-12T06:00:00+00:00"), "2026-10-18")  # Monday 1 AM Chicago
 
 
 def source(records):
@@ -126,7 +126,7 @@ def signed(**kw):
 
 
 def failed_run(call):
-    """A live stage that counted a failed write or read-back raises the fixed code after printing its counts; -> the printed counts."""
+    """A live stage that counted a failed write or read-back raises the fixed code after printing its counts"""
     out = io.StringIO()
     with contextlib.redirect_stdout(out), unittest.TestCase().assertRaises(store.RecruitersError) as caught:
         call()
@@ -149,8 +149,8 @@ class StageTests(unittest.TestCase):
         row = store.read(notion.pages[0])
         self.assertEqual((row["person"], row["company"], row["week_ending"], row["done"], row["active"], row["needs_review"], row["what"], row["medium"]),
                          ("Pat Example", "Acme Staffing", "2026-10-11", False, True, True, row["what"], "Email"))
-        self.assertTrue(row["what"].startswith("Reply to their message"))                       # LIFE-989: never blank; a fallback ask ticks Needs review
-        self.assertEqual(row["first_contact"], row["last_contact"])                              # LIFE-20: set once, from the message the row is created from
+        self.assertTrue(row["what"].startswith("Reply to their message"))  # never blank
+        self.assertEqual(row["first_contact"], row["last_contact"])  # set once, from the message the row is created from
         again = run([signed()], notion, live=True)
         self.assertEqual((again["created"], again["existing"], len(notion.pages)), (0, 1, 1))
 
@@ -160,7 +160,7 @@ class StageTests(unittest.TestCase):
         self.assertEqual((counts["updated"], counts["created"], len(notion.pages)), (1, 0, 1))
         row = store.read(notion.pages[0])
         self.assertEqual((row["last_contact"], row["what"], row["done"]), ("2026-10-08T09:00:00+00:00", "wants a call", False))
-        self.assertEqual(row["first_contact"], "")                                                # a later message never writes First Contact, and nothing is backfilled
+        self.assertEqual(row["first_contact"], "")
         self.assertTrue(all("First Contact" not in props for _, props in notion.writes))
 
     def test_an_older_message_changes_nothing(self):
@@ -185,7 +185,7 @@ class StageTests(unittest.TestCase):
         notion = FakeRecruiters([page("Pat Example", "Acme Staffing", role="Data Engineer", client="Human Client", what="x")])
         counts = run([mail(body=body, received="2026-10-08T09:00:00+00:00")], notion, live=True)
         row = store.read(notion.pages[0])
-        self.assertEqual((counts["updated"], row["client"], row["what"]), (1, "Human Client", "x"))          # a human's value is never replaced
+        self.assertEqual((counts["updated"], row["client"], row["what"]), (1, "Human Client", "x"))
         self.assertTrue(all("What they want" not in props for _, props in notion.writes))
         blank = FakeRecruiters([page("Pat Example", "Acme Staffing", role="Data Engineer", what="")])
         run([mail(body=body, received="2026-10-08T09:00:00+00:00")], blank, live=True)
@@ -224,7 +224,7 @@ class StageTests(unittest.TestCase):
         notion = FakeRecruiters()
         broken = ReadOnlyGmail([signed()])
         broken.list_ids_complete = lambda *a, **k: (_ for _ in ()).throw(platform_mail.GmailError("GMAIL_LISTING_INCOMPLETE"))
-        with self.assertRaises(store.RecruitersError), contextlib.redirect_stdout(io.StringIO()):          # the degraded run prints its counts line; keep it out of the test log
+        with self.assertRaises(store.RecruitersError), contextlib.redirect_stdout(io.StringIO()):  # the degraded run prints its counts line
             stage.run(0, True, environ={}, gmail=broken, outlook_accounts=[], notion=notion, now=NOW, chores=False)
         self.assertEqual(notion.writes, [])
 
@@ -236,13 +236,13 @@ class StageTests(unittest.TestCase):
         notion = FakeRecruiters()
         counts = stage.run(0, True, environ={}, gmail=gmail, outlook_accounts=[("work", outlook)], notion=notion, now=NOW, chores=False)
         self.assertEqual((counts["messages"], counts["created"], counts["outlook_accounts"]), (2, 2, 1))
-        self.assertTrue(gmail.calls[0][1])                                                   # spam listed
+        self.assertTrue(gmail.calls[0][1])  # spam listed
         self.assertEqual(outlook.calls, ["inbox", "junkemail"])
 
     def test_needs_review_rows_are_flagged_on_the_existing_property(self):
         notion = FakeRecruiters()
         run([mail(body="Hi,\n\nI'm a recruiter. Interested?\n\nPat\n")], notion, live=True)
-        self.assertEqual([(store.read(p)["person"], store.read(p)["company"], store.read(p)["needs_review"]) for p in notion.pages], [("Pat Example", "", True)])   # no company in the source: review, never a guess
+        self.assertEqual([(store.read(p)["person"], store.read(p)["company"], store.read(p)["needs_review"]) for p in notion.pages], [("Pat Example", "", True)])  # no company in the source: review, never a guess
 
 
 OPPORTUNITY = (
@@ -260,7 +260,7 @@ def opportunity(**kw):
 
 
 class RecruiterFieldTests(unittest.TestCase):
-    """D193: company, role and request come only from fixed patterns in the sender's own words."""
+    """company, role and request come only from fixed patterns in the sender's own words."""
 
     def fields(self, body, **kw):
         return classify(mail(body=body, **kw))[2][1]
@@ -269,7 +269,7 @@ class RecruiterFieldTests(unittest.TestCase):
         verdict, c = classify(opportunity())[2]
         self.assertEqual((verdict, c["person"], c["company"], c["role"], c["client"], c["what"], c["needs_review"]),
                          ("CANDIDATE", "Riley Sample", "NW", "Technical Project Manager", "", WANT, False))
-        self.assertNotRegex(c["what"], r"(?i)today|tomorrow|this week")                      # an evergreen summary keeps no relative day
+        self.assertNotRegex(c["what"], r"(?i)today|tomorrow|this week")  # an evergreen summary keeps no relative day
 
     def test_company_statements_are_first_person_only_and_never_a_generic_phrase(self):
         sig = "\nRiley Sample | Technical Recruiter\n"
@@ -283,7 +283,7 @@ class RecruiterFieldTests(unittest.TestCase):
         for text, role in (("Role: Data Engineer", "Data Engineer"), ("Position: REQ-12345 - Staff Engineer", "Staff Engineer"), ("Job Title: 7788 | Senior Analyst", "Senior Analyst"),
                            ("Title: Technical Recruiter", ""), ("Role: " + "very long text " * 12, ""), ("Role: ", ""), ("Position: Remote", "")):
             self.assertEqual(self.fields("I'm with Acme.\n" + text + sig)["role"], role, text)
-        self.assertEqual(self.fields(SIGNED.replace("a Data Engineer role", "a Platform Lead role") + "Role: Other Title\n")["role"], "Platform Lead")   # an earlier key is never changed
+        self.assertEqual(self.fields(SIGNED.replace("a Data Engineer role", "a Platform Lead role") + "Role: Other Title\n")["role"], "Platform Lead")  # an earlier key is never changed
 
     def test_what_they_want_uses_only_fixed_request_patterns(self):
         sig = "\nRiley Sample | Technical Recruiter\nAcme Staffing\n"
@@ -322,7 +322,7 @@ class LinkedInNotificationTests(unittest.TestCase):
         self.assertEqual((shape, reason, verdict, detail), (C.HUMAN_NAMED_RELAY, "RELAY_RECRUITING_UNVERIFIED", "UNRESOLVED", "RELAY_RECRUITING_UNVERIFIED"))
 
     def test_the_footer_describes_jim_and_is_never_the_senders_evidence(self):
-        self.assertIn("Technical Recruiter", DIGEST)                                           # Jim's own headline in the footer contains a recruiter title
+        self.assertIn("Technical Recruiter", DIGEST)
         self.assertEqual(classify(notification())[2][0], "UNRESOLVED")
 
     def test_a_recruiting_headline_or_first_person_statement_is_evidence(self):
@@ -349,9 +349,10 @@ class LinkedInNotificationTests(unittest.TestCase):
 
 
 class EnrichmentTests(unittest.TestCase):
-    """D193: an existing row made from THIS message that only lacks company / role / request is enriched under the same page; another message, a human's value and a Done row are never touched."""
+    """an existing row made from THIS message that only lacks company / role / request is enriched under the same page
+    """
 
-    SRC = "https://mail.google.com/mail/u/0/#all/t1"                   # what the Gmail reader builds from the (fake) thread id of every message in these tests
+    SRC = "https://mail.google.com/mail/u/0/#all/t1"
     OTHER = "https://mail.google.com/mail/u/0/#all/t-earlier"
 
     def test_a_blank_row_from_the_same_message_is_enriched_in_place_and_a_replay_changes_nothing(self):
@@ -360,7 +361,7 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual((counts["updated"], counts["created"], counts["failed"], len(notion.pages)), (1, 0, 0, 1))
         row = store.read(notion.pages[0])
         self.assertEqual((row["page_id"], row["company"], row["role"], row["what"], row["done"], row["active"], row["needs_review"], row["source_url"]),
-                         ("page-riley", "NW", "Technical Project Manager", WANT, False, True, True, self.SRC))      # Needs review is the human's to clear
+                         ("page-riley", "NW", "Technical Project Manager", WANT, False, True, True, self.SRC))  # Needs review is the human's to clear
         self.assertEqual(sorted(notion.writes[0][1]), ["Company", "Role", "What they want"])
         again = run([opportunity(received="2026-10-07T15:00:00+00:00")], notion, live=True)
         self.assertEqual((again["updated"], again["created"], again["existing"], len(notion.writes), len(notion.pages)), (0, 0, 1, 1, 1))
@@ -372,7 +373,7 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual((counts["created"], counts["updated"], counts["existing"], len(notion.pages)), (1, 0, 0, 2))
         original = store.read(notion.pages[0])
         self.assertEqual((original["page_id"], original["company"], original["role"], original["what"], original["source_url"], original["last_contact"]),
-                         ("earlier", "", "", "", self.OTHER, "2026-10-06T10:00:00+00:00"))                       # untouched, original link kept
+                         ("earlier", "", "", "", self.OTHER, "2026-10-06T10:00:00+00:00"))  # untouched, original link kept
         self.assertEqual([kind for kind, _ in notion.writes], ["create"])
         created = store.read(notion.pages[1])
         self.assertEqual((created["company"], created["role"], created["source_url"]), ("NW", "Technical Project Manager", self.SRC))
@@ -395,7 +396,7 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual(sorted(notion.writes[0][1]), ["Role"])
         different = FakeRecruiters([page("Riley Sample", company="Other Corp", role="", pid="q", url=self.SRC)])
         counts = run([opportunity()], different, live=True)
-        self.assertEqual((counts["created"], counts["updated"], len(different.pages)), (1, 0, 2))      # another company is another key, not an enrichment
+        self.assertEqual((counts["created"], counts["updated"], len(different.pages)), (1, 0, 2))  # another company is another key, not an enrichment
         self.assertEqual(store.read(different.pages[0])["company"], "Other Corp")
 
     def test_an_existing_row_under_the_corrected_key_wins_over_a_blank_row(self):
@@ -412,7 +413,7 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual((counts["ambiguous"], counts["created"], counts["updated"], notion.writes), (1, 0, 0, []))
         self.assertEqual([store.read(p) for p in notion.pages], before)
         mixed = FakeRecruiters([page("Riley Sample", pid="a", url=self.SRC), page("Riley Sample", pid="b", url=self.OTHER)])
-        counts = run([opportunity()], mixed, live=True)                                                        # only one of the two is from this message: it is the one enriched
+        counts = run([opportunity()], mixed, live=True)
         self.assertEqual((counts["updated"], counts["ambiguous"], store.read(mixed.pages[0])["company"], store.read(mixed.pages[1])["company"]), (1, 0, "NW", ""))
 
     def test_a_done_row_from_the_same_message_is_kept_and_a_done_row_from_another_is_not_touched(self):
@@ -438,7 +439,9 @@ class EnrichmentTests(unittest.TestCase):
 
 
 class EntryPointTests(unittest.TestCase):
-    """The production composition: `python -m lifeos.run recruiters` -> STAGES -> stage.run, with only Gmail, Outlook and Notion faked. A failed live write or read-back exits 1 with a fixed code."""
+    """The production composition: `python -m lifeos.run recruiters` -> STAGES -> stage.run, with only Gmail, Outlook and
+    Notion faked.
+    """
 
     def go(self, records, notion, live=True, source_failed=False):
         from unittest import mock
@@ -461,7 +464,7 @@ class EntryPointTests(unittest.TestCase):
         notion = FakeRecruiters()
         code, counts, err = self.go([signed()], notion)
         self.assertEqual((code, err, counts["created"], counts["failed"], len(notion.pages)), (0, "", 1, 0, 1))
-        first = len(notion.writes)                                                   # the create, then LIFE-973's reply-by date and Company / Role / Client fill on that row
+        first = len(notion.writes)
         code, counts, err = self.go([signed()], notion)
         self.assertEqual((code, err, counts["created"], counts["existing"], counts["failed"], len(notion.writes)), (0, "", 0, 1, 0, first))
 
@@ -469,7 +472,7 @@ class EntryPointTests(unittest.TestCase):
         notion = FakeRecruiters(drop_writes=True)
         code, counts, err = self.go([signed()], notion)
         self.assertEqual((code, err), (1, "RECRUITERS FAILED: RECRUITERS_RECORDS_FAILED\n"))
-        self.assertEqual((counts["created"], counts["failed"], counts["would_create"], len(notion.pages)), (0, 1, 1, 0))      # nothing is reported created; the failure is counted
+        self.assertEqual((counts["created"], counts["failed"], counts["would_create"], len(notion.pages)), (0, 1, 1, 0))  # nothing is reported created
         self.assertNotIn("Pat", json.dumps(counts) + err)
 
     def test_an_update_that_does_not_read_back_exits_1_too(self):
@@ -509,7 +512,7 @@ class ContractTests(unittest.TestCase):
     def test_no_hostinger_table_hiring_pipeline_or_scheduler(self):
         for name, text in self.code().items():
             if name == "mail.py":
-                continue                                                                     # the shared platform record may read the Outlook token table; it creates nothing
+                continue
             self.assertNotRegex(text, r"CREATE TABLE|lifeos\.hiring|lifeos\.jobs|snapshot_store|platform import db\b|TinyFish|tinyfish", name)
         workflows = self.ROOT / ".github" / "workflows"
         self.assertNotIn("recruiters", (workflows / "hourly.yml").read_text())
@@ -537,12 +540,14 @@ class RecruitmentTitle(unittest.TestCase):
         self.assertEqual(line, "Sr Recruitment | Example Group")
         self.assertEqual(Q._company({"signature": line}), "Example Group")
         for line in ("Recruitment Team", "Recruitment Marketing | Acme", "Recruitment | Acme Corp", "Recruitment fraud notice: we never ask for fees"):
-            self.assertFalse(C.SIGNATURE.search(line), line)                                         # a bare "Recruitment" line is not a recruiter title
+            self.assertFalse(C.SIGNATURE.search(line), line)  # a bare "Recruitment" line is not a recruiter title
         self.assertFalse(C.FIRST_PERSON.search("I am the recruitment lead for this hire"[:0] + "I am in recruitment marketing"))
         self.assertTrue(C.SIGNATURE.search("Recruitment Consultant | Acme"))
 
 class LinkedInInMailTests(unittest.TestCase):
-    """LIFE-706 (Jim, Nov 14 2026): recruiters' LinkedIn InMails arrive from LinkedIn's hiring-tool senders with the recruiter's own name and subject, no 'messaged you' phrase, and were dropped as 'not a message'."""
+    """recruiters' LinkedIn InMails arrive from LinkedIn's hiring-tool senders with the recruiter's own name and subject,
+    no 'messaged you' phrase, and were.
+    """
     INMAIL = ("Jim, Senior AEM Business Consultant Opportunity - Remote !\n\n        Kayte Example\n\n        Reply\n        https://www.linkedin.com/messaging/thread/2-XXX/\n\nHi Jim,\n\n"
               "Happy Friday! I'm with Example Select and am hiring for a client. If you're interested, please send your updated resume.\n\nAll the best,\nKayte Example\n\n"
               "----------------------------------------\n\nThis email was intended for Jim Markunas (Technical Recruiter)\nYou are receiving LinkedIn notification emails.\n")
@@ -566,12 +571,12 @@ class LinkedInInMailTests(unittest.TestCase):
         self.assertEqual((shape, verdict), (C.HUMAN_NAMED_RELAY, "UNRESOLVED"))
 
     def test_every_other_linkedin_sender_keeps_its_rule(self):
-        """D193 stays for ordinary members: invitations, job alerts, news and a digest with no recruiting evidence."""
+        """stays for ordinary members: invitations, job alerts, news and a digest with no recruiting evidence."""
         for address, subject in (("invitations@linkedin.com", "I want to connect"), ("jobalerts-noreply@linkedin.com", "Manager role is hiring"), ("editors-noreply@linkedin.com", "These fans are not happy")):
             self.assertEqual(self.verdict(sender_name="Pat Example", address=address, subject=subject, body="Hello")[:2], (C.OTHER, "RELAY_NOT_A_MESSAGE"), address)
         shape, reason, _, (verdict, _) = self.verdict(sender_name="Pat Example via LinkedIn", address="messaging-digest-noreply@linkedin.com", subject="Pat just messaged you", body="1 new message awaits your response\n\nPat Example\n")
         self.assertEqual((shape, reason, verdict), (C.HUMAN_NAMED_RELAY, "RELAY_RECRUITING_UNVERIFIED", "UNRESOLVED"))
-        self.assertEqual(self.verdict(sender_name="Pat Example", address="inmail-hit-reply@example.com", subject="Opportunity", body="Hello")[:2], (C.OTHER, "NO_RECRUITER_EVIDENCE"))      # only LinkedIn's own domain
+        self.assertEqual(self.verdict(sender_name="Pat Example", address="inmail-hit-reply@example.com", subject="Opportunity", body="Hello")[:2], (C.OTHER, "NO_RECRUITER_EVIDENCE"))  # only LinkedIn's own domain
 
 
 if __name__ == "__main__":
@@ -579,7 +584,9 @@ if __name__ == "__main__":
 
 
 class ActionStateTests(unittest.TestCase):
-    """RECR-1.4 (D220): Needs Action on a new contact or a new reply, a follow-up two business days after Waiting, and Needs Action again when it comes due."""
+    """Needs Action on a new contact or a new reply, a follow-up two business days after Waiting, and Needs Action again
+    when it comes due.
+    """
     ROW = dict(person="Pat Example", company="Acme Staffing", role="Data Engineer", last="2026-10-06T15:00:00+00:00")
 
     def test_a_new_contact_starts_needs_action_and_is_read_back(self):
@@ -595,10 +602,10 @@ class ActionStateTests(unittest.TestCase):
                 row = store.read(notion.pages[0])
                 self.assertEqual((counts["updated"], counts["failed"], row["action"]), (1, 0, "Needs Action"))
                 if before == "Waiting":
-                    self.assertEqual(row["follow_up"], "2026-10-20")       # the human's date is kept; the row is simply back in Needs Action
-        for before in ("Completed", "Dismissed"):                          # history: zero writes and the full row unchanged
+                    self.assertEqual(row["follow_up"], "2026-10-20")  # the human's date is kept
+        for before in ("Completed", "Dismissed"):  # history: zero writes and the full row unchanged
             with self.subTest(before=before):
-                notion = FakeRecruiters([page(**self.ROW, action=before)])          # newer message; blank What they want / Client the open path would fill
+                notion = FakeRecruiters([page(**self.ROW, action=before)])  # newer message
                 prior = store.read(notion.pages[0])
                 counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
                 self.assertEqual((counts["updated"], counts["created"], counts["failed"], notion.writes), (0, 0, 0, []))
@@ -614,7 +621,7 @@ class ActionStateTests(unittest.TestCase):
 
     def test_waiting_without_a_date_gets_two_business_days_and_replay_is_stable(self):
         notion = FakeRecruiters([page(**self.ROW, action="Waiting")])
-        counts = run([], notion, live=True)                                  # Thursday Oct 8 -> Monday Oct 12
+        counts = run([], notion, live=True)
         row = store.read(notion.pages[0])
         self.assertEqual((counts["waiting"], counts["scheduled"], counts["failed"], row["action"], row["follow_up"]), (1, 1, 0, "Waiting", "2026-10-12"))
         again = run([], notion, live=True)
@@ -647,12 +654,14 @@ class ActionStateTests(unittest.TestCase):
 
     def test_business_days_skip_the_weekend(self):
         from datetime import date
-        self.assertEqual(store.add_business_days(date(2026, 10, 8), 2), date(2026, 10, 12))   # Thu -> Mon
+        self.assertEqual(store.add_business_days(date(2026, 10, 8), 2), date(2026, 10, 12))  # Thu -> Mon
         self.assertEqual(store.add_business_days(date(2026, 10, 10), 2), date(2026, 10, 13))  # Sat -> Tue
 
 
 class CompanyFromDomainAndText(unittest.TestCase):
-    """LIFE-971 (Jim, Nov 24 2026): company is filled from the email only when two sources agree (the sender's company domain and the same name written in the message); otherwise it stays blank."""
+    """company is filled from the email only when two sources agree (the sender's company domain and the same name
+    written in the message)
+    """
     def org(self, address, body):
         from lifeos.recruiters import qualify as Q
         return Q._org_from_domain(address, body)
@@ -663,12 +672,12 @@ class CompanyFromDomainAndText(unittest.TestCase):
         self.assertEqual(self.org("pat" + "@" + "mail.acmetech.co.uk", "Best,\nAcmeTech"), "AcmeTech")
 
     def test_one_source_alone_is_not_enough_and_nothing_is_invented(self):
-        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "Hi Jim, I have a role for you. Thanks, Pat"), "")             # domain only
-        self.assertEqual(self.org("pat" + "@" + "gmail.com", "Thanks, Gmail"), "")                                                  # free mail
-        self.assertEqual(self.org("jobs" + "@" + "greenhouse.io", "Thanks, Greenhouse team"), "")                                   # job board
-        self.assertEqual(self.org("pat" + "@" + "linkedin.com", "LinkedIn"), "")                                                    # relay
-        self.assertEqual(self.org("pat" + "@" + "abc.com", "ABC"), "")                                                              # too short to be a name
-        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "visit itbrainiac.com soon"), "")                                 # lowercase text is not a stated name
+        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "Hi Jim, I have a role for you. Thanks, Pat"), "")  # domain only
+        self.assertEqual(self.org("pat" + "@" + "gmail.com", "Thanks, Gmail"), "")  # free mail
+        self.assertEqual(self.org("jobs" + "@" + "greenhouse.io", "Thanks, Greenhouse team"), "")  # job board
+        self.assertEqual(self.org("pat" + "@" + "linkedin.com", "LinkedIn"), "")  # relay
+        self.assertEqual(self.org("pat" + "@" + "abc.com", "ABC"), "")  # too short to be a name
+        self.assertEqual(self.org("pat" + "@" + "itbrainiac.com", "visit itbrainiac.com soon"), "")  # lowercase text is not a stated name
         self.assertEqual(self.org("", "ITBrainiac"), "")
 
     def test_qualify_uses_it_last_after_the_signature_and_statement_rules(self):

@@ -1,4 +1,4 @@
-"""LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+"""test helpers that more than one test module (often in another domain) uses."""
 import copy
 
 
@@ -7,7 +7,9 @@ def writes(tree):
 
 
 class FakeStore:
-    """The projection-row store stand-in: `row` is what it holds, `saves` counts verified saves, `fail` makes the read-back refuse."""
+    """The projection-row store stand-in: `row` is what it holds, `saves` counts verified saves, `fail` makes the read-
+    back refuse.
+    """
     table = "v7_hiring_outcomes"
 
     def __init__(self, row=None, fail=False):

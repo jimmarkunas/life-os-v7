@@ -1,5 +1,4 @@
-"""LIFE-78, synthetic only: recording a reply or a referral on a conversation Mark as Sent already recorded. Offered is never Confirmed, nothing is created, nothing moves
-backwards, a closed conversation is untouched, an option the schema lacks refuses before any write, and the job-page table and roll-up say what happened."""
+"""synthetic only: recording a reply or a referral on a conversation Mark as Sent already recorded."""
 import unittest
 from datetime import date
 
@@ -118,7 +117,6 @@ class EntryPoint(unittest.TestCase):
 
 
 class MarkAsSentInTheTable(unittest.TestCase):
-    """Jim (Oct 21): Mark as Sent belongs in the Outreach table under the contact's channel, not in the page properties."""
     BASE = "https://close.example.ts.net:47443"
 
     def test_the_link_is_the_exact_job_https_only_and_absent_without_an_origin(self):
@@ -132,11 +130,11 @@ class MarkAsSentInTheTable(unittest.TestCase):
         rows = [store.read(_row(a)) for a in ("Waiting", "Referral Offered", "Declined")]
         cells = JP.cells(rows, date(2026, 10, 15), None, sent)
         for row in cells:
-            self.assertEqual([span[:2] for span in row[1] if span[1]], [("Mark as Sent ↗", sent)])      # the channel cell, under the channel and role lines
+            self.assertEqual([span[:2] for span in row[1] if span[1]], [("Mark as Sent ↗", sent)])  # the channel cell, under the channel and role lines
             self.assertEqual([span for col in (0, 2, 3) for span in row[col] if span[1]], [])
         plain = JP.cells(rows, date(2026, 10, 15))
-        self.assertTrue(all(span[1] is None for row in plain for span in row[1]))                          # no origin, no link, no dangling text
-        self.assertTrue(all(len(row[1]) == 1 or row[1][-1][0] != "Mark as Sent ↗" for row in plain))                  # and no dangling "Mark as Sent" text without a link
+        self.assertTrue(all(span[1] is None for row in plain for span in row[1]))  # no origin, no link, no dangling text
+        self.assertTrue(all(len(row[1]) == 1 or row[1][-1][0] != "Mark as Sent ↗" for row in plain))  # and no dangling "Mark as Sent" text without a link
 
 
 class Screen(unittest.TestCase):
@@ -158,7 +156,7 @@ class Screen(unittest.TestCase):
         ledger, rec = world()
         svc = Service(ledger, rec)
         self.assertEqual(record(svc, "0", "Referral Confirmed")[0], 200)
-        self.assertEqual(record(svc, "0", "Referral Confirmed")[0], 200)                       # already recorded
+        self.assertEqual(record(svc, "0", "Referral Confirmed")[0], 200)  # already recorded
         self.assertEqual(svc.after, ["recruiters"])
 
     def test_tampered_person_status_or_signature_writes_nothing(self):

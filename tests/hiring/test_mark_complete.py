@@ -1,6 +1,6 @@
-"""E05 Mark Complete (Jim, Oct 24): the opportunity page's one primary action, recorded as done on the private Close screen after two steps (the link, then
-Confirm), written as one line in that page's own fold and read back; the Interview writer carries the line forward and shows the action as done. Every name
-here is invented; nothing is live."""
+"""E05 Mark Complete: the opportunity page's one primary action, recorded as done on the private Close screen after two
+steps (the link, then Confirm).
+"""
 import re
 import unittest
 from dataclasses import replace
@@ -16,7 +16,9 @@ notion_key = template.action_key
 
 
 def page_with_fold(h, action=ACTION, done=()):
-    """The target Notes page gets the fold the Interview writer writes: marker, render line, action line and any completion lines."""
+    """The target Notes page gets the fold the Interview writer writes: marker, render line, action line and any
+    completion lines.
+    """
     ws = h.world.ws
     fold = ws.add("toggle", h.world.ws.target, notion.FOLD)
     ws.kids[ws.target].remove(fold)
@@ -40,16 +42,16 @@ class EdgeScreen(unittest.TestCase):
         fold = page_with_fold(h)
         status, body, _ = self.open(h)
         self.assertEqual(status, 200)
-        self.assertIn("What happened with this lead?", body)                                  # the lead action offers both of its outcomes (Jim, Oct 24)
+        self.assertIn("What happened with this lead?", body)  # the lead action offers both of its outcomes
         self.assertIn("I replied — mark it done", body)
-        self.assertNotIn("Close this lead instead", body)      # LIFE-973: the Close screen is retired
-        self.assertEqual(h.world.ws.writes(), [])                                          # the link (step 1) never writes
+        self.assertNotIn("Close this lead instead", body)  # the Close screen is retired
+        self.assertEqual(h.world.ws.writes(), [])  # the link (step 1) never writes
         status, body, _ = h.call("POST", "/complete", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
         self.assertIn("Marked complete", body)
         self.assertEqual(lines(h, fold)[-1], template.done_line(KEY, h.clock.date().isoformat()))
         self.assertEqual(len([w for w in h.world.ws.writes() if w[0] == "PATCH"]), 1)
-        status, body, _ = self.open(h)                                                    # the same link again: already done, nothing written
+        status, body, _ = self.open(h)  # the same link again: already done, nothing written
         self.assertIn("Already marked complete", body)
         self.assertEqual(len(h.world.ws.writes()), 1)
 
@@ -77,19 +79,19 @@ class EdgeScreen(unittest.TestCase):
         form = h.fields(self.open(h)[1])
         self.assertIn("No changes made", h.call("POST", "/complete", form={**form, "step": "cancel"})[1])
         self.assertEqual(h.call("POST", "/complete", form={**form, "step": "confirm", "t": "0" * 64})[0], 403)
-        self.assertEqual(h.call("POST", "/complete", form={**form, "step": "confirm", "a": "f" * 16})[0], 403)          # the token signs the action key
+        self.assertEqual(h.call("POST", "/complete", form={**form, "step": "confirm", "a": "f" * 16})[0], 403)  # the token signs the action key
         self.assertEqual(h.call("POST", "/complete", form={**form, "step": "confirm"}, who={**WHO, "login": "someone@example.com"})[0], 403)
         self.assertEqual(h.call("POST", "/complete", form={**form, "step": "confirm"}, now=h.clock.replace(year=h.clock.year + 1))[0], 403)
         self.assertEqual(h.world.ws.writes(), [])
 
     def test_a_link_for_another_action_another_page_or_a_page_not_written_by_life_os_is_refused(self):
         h = Harness()
-        page_with_fold(h, action="Prepare for Interview 1 on 2026-10-28.")                # the action moved on since the link was written
+        page_with_fold(h, action="Prepare for Interview 1 on 2026-10-28.")  # the action moved on since the link was written
         status, body, _ = self.open(h)
         self.assertEqual(status, 409)
         self.assertIn("ACTION_CHANGED", body)
         self.assertEqual(self.open(h, key="nothex")[0], 400)
-        bare = Harness()                                                                   # a human page: no LIFE OS fold
+        bare = Harness()  # a human page: no LIFE OS fold
         self.assertIn("NOT_A_LIFE_OS_PAGE", self.open(bare)[1])
         other = Harness()
         page_with_fold(other)
@@ -128,7 +130,9 @@ def texts(blocks):
 
 
 def live(client, block_id):
-    """The raw blocks now under `block_id` on the writable fake, links included (its block map also keeps deleted blocks)."""
+    """The raw blocks now under `block_id` on the writable fake, links included (its block map also keeps deleted
+    blocks).
+    """
     return [x for b in client.blocks.get(block_id, []) for x in [b] + live(client, b["id"])]
 
 
@@ -162,7 +166,7 @@ class PageRender(unittest.TestCase):
         self.assertNotEqual(key, template.action_key(action, "round-1,round-2"))
         self.assertTrue(any(t.startswith("✅ Done") for t in texts(template.opportunity_page(replace(first, done=((key, "2026-10-20"),)), "2026-10-24"))))
         later = replace(first, rounds=two, done=((key, "2026-10-20"),))
-        self.assertEqual(view.primary_action(later, "2026-10-24")[1], action)                          # the very same words for the next round
+        self.assertEqual(view.primary_action(later, "2026-10-24")[1], action)  # the very same words for the next round
         blocks = template.opportunity_page(later, "2026-10-24")
         self.assertFalse(any(t.startswith("✅ Done") for t in texts(blocks)))
         self.assertTrue([u for u in links(blocks) if "/complete?" in u])
@@ -183,9 +187,11 @@ class Writer(unittest.TestCase):
         self.assertEqual(create._undone(nodes), [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"]}]}, {"text": "leaf"}])
 
     def test_a_page_written_before_mark_complete_keeps_its_digest_and_still_refreshes(self):
-        """With no completion lines, the region digest is the plain tree digest main stores in every render line, so no existing page reads as edited."""
+        """With no completion lines, the region digest is the plain tree digest main stores in every render line, so no
+        existing page reads as edited.
+        """
         from tests.interview import support as U
-        client, page_id = U.written()                                                               # written and finalized as main writes it
+        client, page_id = U.written()  # written and finalized as main writes it
         machine, lines, _ = create.machine_region(client, page_id)
         skip = {b["id"] for b in lines if create.RENDER.fullmatch(notion.text(b))}
         nodes = notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)
@@ -200,20 +206,20 @@ class Writer(unittest.TestCase):
         current = replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm", close_base="https://edge.example.test")
         client, page_id = U.written(current)
         out = {"writes": 0}
-        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")          # its own page id joins the view: the link appears
+        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")  # its own page id joins the view: the link appears
         shown = U.texts(client, page_id)
         key = template.action_key(ACTION)
         self.assertIn(template.action_line(ACTION), shown)
         self.assertIn(f"https://edge.example.test/complete?o={page_id.replace('-', '')}&a={key}", str(live(client, page_id)))
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_unchanged")
         fold = client.blocks[page_id][0]["id"]
-        client.blocks[fold].append(TN.block(template.done_line(key, "2026-10-24"), id="done-1"))           # the Close screen's one appended line
+        client.blocks[fold].append(TN.block(template.done_line(key, "2026-10-24"), id="done-1"))  # the Close screen's one appended line
         kept = (notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"])
-        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")          # not an edit: the line is carried into the rewrite
+        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")  # not an edit: the line is carried into the rewrite
         shown = U.texts(client, page_id)
         self.assertIn(template.done_line(key, "2026-10-24"), shown)
         self.assertTrue(any(t.startswith("✅ Done Oct 24") for t in shown))
-        self.assertNotIn("/complete?", str(live(client, page_id)))                                         # the rewrite carries no Mark Complete link
+        self.assertNotIn("/complete?", str(live(client, page_id)))  # the rewrite carries no Mark Complete link
         self.assertEqual((notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"]), kept)
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_unchanged")
         self.assertIn(template.done_line(key, "2026-10-24"), U.texts(client, page_id))
@@ -221,16 +227,15 @@ class Writer(unittest.TestCase):
 
 class DecisionLineCarry(unittest.TestCase):
     def test_a_close_or_reopen_line_in_the_fold_is_carried_by_the_refresh_and_never_counts_as_an_edit(self):
-        """Jim, Oct 25 (Smith): the decision record lives in the fold, so the hourly refresh must keep it, not wipe it or stop as `machine_region_edited`."""
         from tests.interview import support as TN, support as U
         current = replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm")
         client, page_id = U.written(current)
         out = {"writes": 0}
         line = "Hiring decision (V7) · Reopened · 2026-10-25 · Reopened on the Close screen · op 8ca760e14d5d63d3"
         fold = client.blocks[page_id][0]["id"]
-        client.blocks[fold].append(TN.block(line, id="decision-1"))                                       # what decision.move_page appends
+        client.blocks[fold].append(TN.block(line, id="decision-1"))  # what decision.move_page appends
         kept = (notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"])
-        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")          # not an edit: carried into the rewrite
+        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")  # not an edit: carried into the rewrite
         self.assertIn(line, U.texts(client, page_id))
         self.assertEqual((notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"]), kept)
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_unchanged")
@@ -240,8 +245,9 @@ class DecisionLineCarry(unittest.TestCase):
 
 
 class LeadRefresh(unittest.TestCase):
-    """A recruiter lead's page has no rounds, so no round evidence ever refreshed it: the refresh-only item brings it up to date (its Mark Complete link)
-    and never creates a page or a round."""
+    """A recruiter lead's page has no rounds, so no round evidence ever refreshed it: the refresh-only item brings it up
+    to date (its Mark Complete link).
+    """
 
     def run_(self, client, query, live=True):
         from lifeos.interview import stage
@@ -254,7 +260,7 @@ class LeadRefresh(unittest.TestCase):
         from tests.interview import support as U
         current = replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm")
         client, page_id = U.written(current)
-        client.blocks[page_id] = [b for b in client.blocks[page_id] if b["type"] != "child_page"]        # a lead: no interview page yet
+        client.blocks[page_id] = [b for b in client.blocks[page_id] if b["type"] != "child_page"]  # a lead: no interview page yet
         query = RoundQuery(True, source=U.REQUEST, stable_job_key="recruiter-exampleco-pm", refresh_only=True)
         posts = len(client.posts)
         first = self.run_(client, query)
@@ -262,7 +268,7 @@ class LeadRefresh(unittest.TestCase):
         self.assertIn("/complete?o=", str(live(client, page_id)))
         again = self.run_(client, query)
         self.assertEqual((again["writes"], again["why"].get("parent_exists"), again["blocked"]), (0, 1, 0))
-        self.assertEqual(len(client.posts), posts)                                                   # no page and no round created
+        self.assertEqual(len(client.posts), posts)  # no page and no round created
 
     def test_refresh_only_never_creates_adopts_or_touches_a_page_with_rounds(self):
         from lifeos.interview.models import RoundQuery
@@ -270,8 +276,8 @@ class LeadRefresh(unittest.TestCase):
         query = RoundQuery(True, source=U.REQUEST, stable_job_key="recruiter-exampleco-pm", refresh_only=True)
         empty = U.Sim()
         out = self.run_(empty, query)
-        self.assertEqual((out["why"], out["blocked"], empty.posts), ({"refresh_not_machine": 1}, 0, []))   # no page: nothing is created, and it is no failure
-        client, page_id = U.written(replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm"))    # it has an interview page
+        self.assertEqual((out["why"], out["blocked"], empty.posts), ({"refresh_not_machine": 1}, 0, []))  # no page: nothing is created, and it is no failure
+        client, page_id = U.written(replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm"))  # it has an interview page
         posts = len(client.posts)
         out = self.run_(client, query)
         self.assertEqual((out["writes"], len(client.posts), "parent_refreshed" in out["why"]), (0, posts, False))
@@ -296,7 +302,7 @@ class LeadRefresh(unittest.TestCase):
         from tests.interview import support as U
         quiet = stage.run(1, False, environ=ENV, client=U.Sim(), evidence=[real, lead, lead])
         self.assertNotIn("pipeline_incomplete", quiet["why"])
-        self.assertEqual((quiet["why"].get("refresh_deferred"), quiet["blocked"]), (2, 0))             # counted, never an alarm
+        self.assertEqual((quiet["why"].get("refresh_deferred"), quiet["blocked"]), (2, 0))  # counted, never an alarm
         loud = stage.run(1, False, environ=ENV, client=U.Sim(), evidence=[real, real])
         self.assertEqual(loud["why"].get("pipeline_incomplete"), 1)
 

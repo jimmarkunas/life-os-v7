@@ -1,4 +1,4 @@
-"""LIFE-791: the Agent Inbox: what a writer may add, where it may write, and the tile recount. A fake Notion client: no network, no token."""
+"""the Agent Inbox: what a writer may add, where it may write, and the tile recount."""
 import io
 import json
 import unittest
@@ -22,10 +22,10 @@ class FakeClient:
     """A Notion double that keeps rows, answers the four calls the inbox makes, and remembers every write."""
 
     def __init__(self, found=1, tiles=True, source=SOURCE, parent_is_page=False):
-        self.source, self.rows, self.writes, self.blocks, self.calls_made, self.row_blocks = source, [], [], {}, [], {}      # row_blocks: the page body of each row (LIFE-988)
+        self.source, self.rows, self.writes, self.blocks, self.calls_made, self.row_blocks = source, [], [], {}, [], {}  # row_blocks: the page body of each row
         self.found = found
         self.tiles = tiles
-        self.parent_is_page = parent_is_page                    # LIFE-891: the database sits inside the Agent Inbox page
+        self.parent_is_page = parent_is_page  # the database sits inside the Agent Inbox page
         self._build_page()
 
     def _build_page(self):
@@ -122,7 +122,7 @@ class Validation(unittest.TestCase):
     def test_a_good_item_normalizes_with_a_stable_key(self):
         a, b = agent_inbox.normalize(ok_item(), NOW), agent_inbox.normalize(ok_item(), NOW)
         self.assertEqual(a["key"], b["key"])
-        self.assertEqual((a["urgency"], a["workspace"], a["due"], a["due_given"], a["link"]), ("Today", "Personal", agent_inbox.due_for("Today", NOW), False, ""))      # LIFE-988: Today means 11:59 PM CT that day
+        self.assertEqual((a["urgency"], a["workspace"], a["due"], a["due_given"], a["link"]), ("Today", "Personal", agent_inbox.due_for("Today", NOW), False, ""))  # Today means 11:59 PM CT that day
 
     def test_defaults_are_today_and_personal(self):
         item = agent_inbox.normalize({"from": "codex", "subject": "x"})
@@ -281,7 +281,7 @@ class Tool(unittest.TestCase):
         self.assertFalse(replies[2]["result"]["isError"])
         self.assertEqual(replies[3]["error"]["message"], "method_not_found")
         self.assertEqual((len(client.rows), client.rows[0]["from"]), (1, "claude-code-mac"))
-        self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")])           # LIFE-865: the gate's receipt first, then the result
+        self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")])  # the gate's receipt first, then the result
 
 
 class SpoofedFrom(unittest.TestCase):
@@ -325,24 +325,24 @@ class Stage(unittest.TestCase):
 
 
 class DueRule(unittest.TestCase):
-    """LIFE-988: Due replaces Urgency. The sender's urgency becomes a real due date and time in CT; an explicit due wins; FYI has none."""
+    """Due replaces Urgency."""
     def at(self, y, mo, d, h, mi, tz="America/Chicago"):
         from zoneinfo import ZoneInfo
         return datetime(y, mo, d, h, mi, tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
 
     def test_each_urgency_maps_to_its_due_and_the_ct_day_boundary_decides_the_day(self):
         due = agent_inbox.due_for
-        late, early = self.at(2026, 11, 25, 23, 30), self.at(2026, 11, 26, 0, 30)                  # 11:30 PM and 12:30 AM CT, a different UTC day for the first
+        late, early = self.at(2026, 11, 25, 23, 30), self.at(2026, 11, 26, 0, 30)
         self.assertEqual((due("Now", late), due("Today", late), due("Today", early)), ("2026-11-25T23:30:00-06:00", "2026-11-25T23:59:00-06:00", "2026-11-26T23:59:00-06:00"))
         self.assertEqual(due("FYI", late), "")
 
     def test_this_week_is_the_coming_sunday_and_the_same_day_on_a_sunday_and_across_a_dst_change(self):
         due = agent_inbox.due_for
-        self.assertEqual(due("This week", self.at(2026, 11, 25, 10, 0)), "2026-11-29T23:59:00-06:00")               # a Wednesday
-        self.assertEqual(due("This week", self.at(2026, 11, 29, 10, 0)), "2026-11-29T23:59:00-06:00")               # a Sunday: the same day
-        self.assertEqual(due("This week", self.at(2026, 11, 30, 10, 0)), "2026-12-06T23:59:00-06:00")               # a Monday: the next Sunday
-        self.assertEqual(due("This week", self.at(2027, 3, 13, 12, 0)), "2027-03-14T23:59:00-05:00")                # Saturday before the spring change: Sunday is already daylight time
-        self.assertEqual(due("Today", self.at(2026, 11, 1, 12, 0)), "2026-11-01T23:59:00-06:00")                   # the day the clocks went back
+        self.assertEqual(due("This week", self.at(2026, 11, 25, 10, 0)), "2026-11-29T23:59:00-06:00")  # a Wednesday
+        self.assertEqual(due("This week", self.at(2026, 11, 29, 10, 0)), "2026-11-29T23:59:00-06:00")  # a Sunday: the same day
+        self.assertEqual(due("This week", self.at(2026, 11, 30, 10, 0)), "2026-12-06T23:59:00-06:00")  # a Monday: the next Sunday
+        self.assertEqual(due("This week", self.at(2027, 3, 13, 12, 0)), "2027-03-14T23:59:00-05:00")
+        self.assertEqual(due("Today", self.at(2026, 11, 1, 12, 0)), "2026-11-01T23:59:00-06:00")  # the day the clocks went back
 
     def test_an_explicit_due_wins_fyi_has_none_and_the_key_never_depends_on_the_computed_due(self):
         explicit = agent_inbox.normalize(ok_item(due="2026-12-01"), NOW)
@@ -351,7 +351,7 @@ class DueRule(unittest.TestCase):
         self.assertEqual((fyi["due"], fyi["due_given"]), ("", False))
         a, b = agent_inbox.normalize(ok_item(), NOW), agent_inbox.normalize(ok_item(), NOW + timedelta(days=3))
         self.assertNotEqual(a["due"], b["due"])
-        self.assertEqual(a["key"], b["key"])                                                                        # a repeat on another day is still the same row
+        self.assertEqual(a["key"], b["key"])  # a repeat on another day is still the same row
 
     def test_a_row_is_created_with_its_computed_due_and_a_resend_never_moves_it_unless_the_sender_names_one(self):
         client = FakeClient()
@@ -368,7 +368,7 @@ class DueRule(unittest.TestCase):
         for n, (urgency, status, due) in enumerate((("Now", "New", ""), ("Today", "New", ""), ("This week", "New", ""), ("FYI", "New", ""), ("Today", "New", "2026-12-01"), ("Today", "Done", ""))):
             client.rows.append({"id": f"row{n}", "status": status, "urgency": urgency, "due": due, "key": f"k{n}", "from": "x", "created": NOW})
         for r in client.rows:
-            r["created_time"] = "2026-11-17T02:00:00.000Z"                                                          # 8:00 PM CT on Monday Nov 16
+            r["created_time"] = "2026-11-17T02:00:00.000Z"
             r["properties"] = {"Urgency": {"select": {"name": r["urgency"]}}}
         out = agent_inbox.fill_missing_due(client, SOURCE)
         self.assertEqual(out, {"filled": 3, "left": 1})
@@ -377,7 +377,7 @@ class DueRule(unittest.TestCase):
 
 
 class StyledBody(unittest.TestCase):
-    """LIFE-988 target 6: the page body carries the content; Details is one line of at most 120 characters; an update replaces the body."""
+    """target 6: the page body carries the content"""
     TEXT = "Approve the plan, about 3 minutes\nTicket | Your step | Where\n987 | reply **987 ok** | Jira\n988 | reply **988 ok** | Jira\n- first bullet\n1. first step\n# A heading\nplain words"
 
     def test_the_text_becomes_a_callout_a_table_lists_headings_and_bold(self):

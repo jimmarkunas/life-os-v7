@@ -1,5 +1,6 @@
-"""LIFE-918 AC10: the permanent manual runs go through the one existing entry point, `python -m lifeos.run jira-rollover [--live]`, and each mode is pinned here without a live Jira call:
-synthetic (an injected client and date: no network), dry run (live=False: zero writes) and live (writes only with live=True, which lifeos.run sets only behind the V7_LIVE gates)."""
+"""AC10: the permanent manual runs go through the one existing entry point, `python -m lifeos.run jira-rollover
+[--live]`, and each mode is pinned here.
+"""
 import unittest
 from unittest.mock import patch
 

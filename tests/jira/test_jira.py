@@ -32,7 +32,7 @@ class FakeJira:
     """A tiny Jira: sprints, issues per sprint, and a log of every mutating call."""
 
     def __init__(self, sprints, issues=(), scrum=True, lag=0, subtasks=None):
-        self.subtasks = dict(subtasks or {})                     # sub-task key -> parent key
+        self.subtasks = dict(subtasks or {})  # sub-task key -> parent key
         self.sprints_by_id = {s["id"]: dict(s) for s in sprints}
         self.members = {}
         for key, sid, status in issues:
@@ -66,7 +66,7 @@ class FakeJira:
             self.lag -= 1
             return
         moving = {}
-        keys = list(keys) + [child for child, parent in self.subtasks.items() if parent in keys]     # Jira moves a parent's sub-tasks with it
+        keys = list(keys) + [child for child, parent in self.subtasks.items() if parent in keys]  # Jira moves a parent's sub-tasks with it
         for sid, items in self.members.items():
             for key in keys:
                 if key in items and sid != sprint_id:
@@ -180,10 +180,10 @@ class RolloverTests(unittest.TestCase):
         self.assertEqual(client.log, [])
 
     def test_ambiguous_or_unexpected_boards_fail_closed_with_no_writes(self):
-        cases = (FakeJira(week([sprint(2, "active", at(28), at(4))])),                 # two active sprints
-                 FakeJira([], []),                                                     # nothing to roll
-                 FakeJira(week(), scrum=False),                                        # not a scrum board
-                 FakeJira([sprint(1, "active", at(29), datetime(2026, 10, 7, 23, 59, 59, tzinfo=TZ))]),   # ends Wednesday
+        cases = (FakeJira(week([sprint(2, "active", at(28), at(4))])),  # two active sprints
+                 FakeJira([], []),  # nothing to roll
+                 FakeJira(week(), scrum=False),  # not a scrum board
+                 FakeJira([sprint(1, "active", at(29), datetime(2026, 10, 7, 23, 59, 59, tzinfo=TZ))]),  # ends Wednesday
                  FakeJira(week([sprint(2, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ)),
                                 sprint(3, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ))])))
         for client in cases:
@@ -211,7 +211,6 @@ class RolloverTests(unittest.TestCase):
         self.assertNotIn("closed", stuck.log)
 
     def test_a_subtask_whose_parent_is_done_is_stranded_not_carried(self):
-        # Oct 12 incident: MEJ-10 (to do) under MEJ-122 (done) stays in the closed sprint, so carrying it failed the verification every hour
         issues = [("K-1", 1, "To Do"), ("K-9", 1, "Done"), ("K-10", 1, "To Do")]
         client = FakeJira(week(), issues, subtasks={"K-10": "K-9"})
         dry = run(client, False, at(5, 7))
@@ -249,7 +248,7 @@ class RolloverTests(unittest.TestCase):
         with self.assertRaises(JiraError) as error:
             rollover.run(1, True, environ=env, client=client, now=at(5, 6), sleep=lambda s: None)
         self.assertEqual(str(error.exception), "JIRA_ROLLOVER_FAILED:1of2:JIRA_HTTP_404@2")
-        self.assertIn("closed", client.log)            # the healthy project still rolled
+        self.assertIn("closed", client.log)  # the healthy project still rolled
 
 
 
@@ -268,7 +267,6 @@ class RolloverTests(unittest.TestCase):
         done = run(client, True, now)
         self.assertEqual((done["created"], done["closed"], done["started"], done["carried"]), (0, 1, 1, 1))
         self.assertEqual(client.log, ["move", "closed", "active"])
-        # Nov 9 is in CST, unlike the October start date in CDT.
         final = rollover.target_week(client.sprints_by_id[2], TZ)
         self.assertEqual((final[1].date().isoformat(), final[2].date().isoformat()), ("2026-11-09", "2026-11-22"))
 
@@ -326,7 +324,7 @@ class RolloverTests(unittest.TestCase):
         self.assertEqual(client.log, [])
 
 class ScheduledRolloverTests(unittest.TestCase):
-    """Scheduled runs act only once the sprint has ended and it is Monday 00:00 local; every other hour is a quiet no-op."""
+    """Scheduled runs act only once the sprint has ended and it is Monday 00:00 local"""
 
     def go(self, now, client=None, live=True):
         client = client or FakeJira(week(), issues=[("AAA-1", 1, "To Do"), ("AAA-2", 1, "Done")])
@@ -349,7 +347,7 @@ class ScheduledRolloverTests(unittest.TestCase):
 
 
 class SharedBoardTests(unittest.TestCase):
-    """A board whose filter spans projects lists the other project's sprint too; cross-assigned work rides along."""
+    """A board whose filter spans projects lists the other project's sprint too"""
     ENV2 = {"JIRA_BOARDS": "AAA:11,BBB:22:readonly"}
 
     def shared(self):
@@ -362,7 +360,7 @@ class SharedBoardTests(unittest.TestCase):
         env = {"JIRA_BOARDS": "AAA:11,BBB:22:readonly"}
         out = rollover.run(1, True, environ=env, client=client, now=datetime(2026, 10, 5, 0, 5, tzinfo=TZ))
         self.assertEqual((out["carried"], out["skipped_readonly"], out["closed"]), (2, 1, 1))
-        self.assertEqual(client.sprints_by_id[7]["state"], "active")          # the other project's sprint is untouched
+        self.assertEqual(client.sprints_by_id[7]["state"], "active")  # the other project's sprint is untouched
         self.assertEqual(client.members[7], {"BBB-2": "To Do"})
         self.assertEqual(client.sprints_by_id[1]["state"], "closed")
 
@@ -412,7 +410,7 @@ class SnapshotTests(unittest.TestCase):
         mine = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7), (), "AAA-9")
         other = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7), (), "ZZZ-9")
         none = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7))
-        self.assertEqual(len(mine["gtv"]), 4)            # tasks under the epic plus their sub-tasks
+        self.assertEqual(len(mine["gtv"]), 4)  # tasks under the epic plus their sub-tasks
         self.assertIsNone(other["gtv"])
         self.assertIsNone(none["gtv"])
 
@@ -467,18 +465,18 @@ class WorkflowTests(unittest.TestCase):
 
     def job(self):
         start = self.domains.index("\n  jira:\n")
-        return self.domains[start:self.domains.index("\n  followup:\n")]       # LIFE-757: the followup job sits between jira and outlook
+        return self.domains[start:self.domains.index("\n  followup:\n")]  # the followup job sits between jira and outlook
 
     def test_workflow_stays_within_githubs_25_dispatch_inputs(self):
         for text in (self.text, self.domains):
             block = text[text.index("  workflow_dispatch:\n    inputs:\n"):min(i for i in (text.find("\nenv:\n"), text.find("\npermissions:\n")) if i > 0)]
-            self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)       # no yaml dependency in CI
-        self.assertNotIn("\n      jira:\n", self.text)                                     # the Jira mode input moved with the job
+            self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)  # no yaml dependency in CI
+        self.assertNotIn("\n      jira:\n", self.text)  # the Jira mode input moved with the job
 
     def test_automatic_runs_refresh_snapshot_and_card_but_never_roll_over_or_probe(self):
         job = self.job()
         self.assertRegex(self.domains, r'jira:\n(?:.*\n)*?\s+default: "none"')
-        auto = "needs.gate.outputs.due_jira == 'true'"                                            # after an hourly tick, never after a manual run (decided once, in the gate job)
+        auto = "needs.gate.outputs.due_jira == 'true'"
         self.assertIn(auto, job.split("runs-on")[0])
         for step_id, nxt in (("jrollauto", "jsnap"), ("jsnap", "jcard"), ("jcard", "jprobe")):
             step = job[job.index(f"id: {step_id}"):job.index(f"id: {nxt}")]
@@ -490,7 +488,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        blocks = job.split("\n      - ")[1:]                                    # LIFE-758: every stage step (it has an id; the Bitwarden load is the one exception) and the LIFE-85 tailnet join must be continue-on-error, whatever their number
+        blocks = job.split("\n      - ")[1:]  # every stage step (it has an id)
         stage = [b for b in blocks if re.search(r"^(        )?id: ", b, re.M) and "id: bws_jira" not in b]
         self.assertTrue(stage)
         for block in stage + [b for b in blocks if "LIFE-85" in b.split("\n")[0]]:
@@ -505,12 +503,12 @@ class WorkflowTests(unittest.TestCase):
         snap = steps[steps.index("id: jsnap"):steps.index("id: jcard")]
         roll = steps[steps.index("id: jroll\n"):steps.index("Jira warning")]
         self.assertNotIn("NOTION_JIRA_TOKEN", snap)
-        self.assertIn("outputs.LIFEOS_ACQ_DB_PASSWORD", snap)                  # EDGE-1.3: a migrated value reaches a step only as that step's own masked loader output
+        self.assertIn("outputs.LIFEOS_ACQ_DB_PASSWORD", snap)
         self.assertNotIn("secrets.", roll)
-        self.assertNotIn("outputs.LIFEOS_ACQ", roll)                           # the sprint rollover still gets no database value
+        self.assertNotIn("outputs.LIFEOS_ACQ", roll)  # the sprint rollover still gets no database value
         self.assertNotIn("outputs.NOTION", roll)
-        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), [])   # LIFE-699: no GitHub secret; the three Jira values come from the V7 settings page through one pre-step that alone holds the Notion token
-        self.assertNotIn("outputs.", head.replace("needs.gate.outputs.", ""))     # nothing is exported job-wide (the gate's run flag is the only output this header reads)
+        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), [])  # no GitHub secret
+        self.assertNotIn("outputs.", head.replace("needs.gate.outputs.", ""))
 
     def test_no_jira_value_appears_anywhere_in_tracked_workflow_or_code(self):
         self.assertNotRegex(self.text, r"atlassian\.net|api\.atlassian\.com")
@@ -519,7 +517,6 @@ class WorkflowTests(unittest.TestCase):
 
 
 class DstReuseTests(unittest.TestCase):
-    """Nov 1, 2026 clock change: a future sprint stamped before it (CDT) or after it (CST) must be reused, never duplicated."""
 
     def staged(self, start_utc, end_utc):
         first = sprint(1, "active", datetime(2026, 10, 26, tzinfo=TZ), datetime(2026, 11, 1, 23, 30, tzinfo=TZ), "AAA Sprint 1")
@@ -529,14 +526,14 @@ class DstReuseTests(unittest.TestCase):
         return client
 
     def test_legacy_cdt_stamped_sprint_is_reused_after_the_clock_change(self):
-        client = self.staged("2026-11-02T05:00:00.000Z", "2026-11-09T04:30:00.000Z")            # midnight / 23:30 CDT
+        client = self.staged("2026-11-02T05:00:00.000Z", "2026-11-09T04:30:00.000Z")  # midnight / 23:30 CDT
         out = rollover.run(1, True, environ=ENV, client=client, now=datetime(2026, 11, 2, 0, 5, tzinfo=TZ), sleep=lambda s: None, auto=True)
         self.assertNotIn("create", client.log)
         self.assertEqual(sum(1 for s in client.sprints_by_id.values() if s["state"] != "closed"), 1)
         self.assertTrue(out)
 
     def test_cst_stamped_sprint_is_reused(self):
-        client = self.staged("2026-11-02T06:00:00.000Z", "2026-11-09T05:30:00.000Z")            # midnight / 23:30 CST
+        client = self.staged("2026-11-02T06:00:00.000Z", "2026-11-09T05:30:00.000Z")  # midnight / 23:30 CST
         rollover.run(1, True, environ=ENV, client=client, now=datetime(2026, 11, 2, 0, 5, tzinfo=TZ), sleep=lambda s: None, auto=True)
         self.assertNotIn("create", client.log)
 

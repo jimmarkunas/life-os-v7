@@ -61,7 +61,7 @@ class BucketTests(unittest.TestCase):
         self.assertEqual(keys["overdue"], ["AAA-6"])
         self.assertEqual(keys["blocked"], ["AAA-7"])
         self.assertEqual(sorted(keys["today"]), ["AAA-1", "AAA-5"])
-        self.assertEqual(sorted(keys["this_week"]), ["AAA-2", "AAA-3", "AAA-4"])     # parent AAA-9 suppressed, its children shown
+        self.assertEqual(sorted(keys["this_week"]), ["AAA-2", "AAA-3", "AAA-4"])  # parent AAA-9 suppressed, its children shown
         self.assertEqual(keys["done"], ["AAA-8"])
 
     def test_a_ticket_that_is_both_overdue_and_blocked_is_listed_under_blocked_only_and_overdue_is_oldest_first(self):
@@ -79,7 +79,7 @@ class BucketTests(unittest.TestCase):
         every = [i["key"] for items in b.values() for i in items]
         self.assertEqual(sorted(every), ["AAA-1", "AAA-8"])
         unset = dict(snap, gtv=None)
-        self.assertIn("AAA-168", [i["key"] for i in card.buckets(unset, date(2026, 10, 7))["today"]])          # no visa epic configured: nothing is left out
+        self.assertIn("AAA-168", [i["key"] for i in card.buckets(unset, date(2026, 10, 7))["today"]])  # no visa epic configured: nothing is left out
 
     def test_a_goal_due_on_the_last_day_of_the_quarter_is_left_out_of_today_and_capacity_but_shows_under_overdue_when_late(self):
         goal = issue("AAA-30", priority="High", due="2026-12-31")
@@ -90,11 +90,11 @@ class BucketTests(unittest.TestCase):
         late = card.buckets(snap, date(2027, 1, 2))
         self.assertIn("AAA-30", [i["key"] for i in late["overdue"]])
         body, counts = card.render([snap], date(2026, 11, 25), NOW, None)
-        self.assertEqual((counts["today"], counts["this_week"]), (1, 0))                                       # not pushed into this week's number either
+        self.assertEqual((counts["today"], counts["this_week"]), (1, 0))  # not pushed into this week's number either
         self.assertIn("Capacity 1/3", "".join(texts(body)))
 
     def test_this_week_counts_a_non_epic_parents_children_once_and_an_epics_children_one_each(self):
-        kids = [dict(issue(f"AAA-{n}", parent="AAA-70"), parent_type="Task") for n in range(100, 170)]       # a parent with 70 children
+        kids = [dict(issue(f"AAA-{n}", parent="AAA-70"), parent_type="Task") for n in range(100, 170)]  # a parent with 70 children
         epic = [dict(issue(f"AAA-{n}", parent="AAA-71"), parent_type="Epic") for n in range(171, 174)]
         alone = [issue("AAA-180")]
         snap = snapshot(current_tasks=kids + epic + alone, overdue=[], blocked=[])
@@ -133,7 +133,7 @@ class LayoutTests(unittest.TestCase):
         snap = snapshot(current_tasks=[], overdue=[issue("AAA-40", due="2026-10-01", parent="AAA-9"), issue("AAA-41", due="2026-10-02", parent="AAA-9")], blocked=[])
         body, _ = card.render([snap], date(2026, 10, 7), NOW, "https://example.invalid")
         text = json.dumps(body)
-        self.assertEqual(text.count("AAA-9 \\u2014 Parent work"), 1)                                           # the parent once, as a header over both children
+        self.assertEqual(text.count("AAA-9 \\u2014 Parent work"), 1)  # the parent once, as a header over both children
         self.assertIn("https://example.invalid/browse/AAA-9", text)
 
 
@@ -157,9 +157,9 @@ class GtvTests(unittest.TestCase):
     def test_priority_then_due_then_rank_and_blocked_never_chosen(self):
         snap = self.gtv(issue("AAA-50", status="Blocked", priority="Highest"), issue("AAA-51"), issue("AAA-52", priority="High"),
                         issue("AAA-53", priority="High", due="2026-10-09"))
-        self.assertEqual(card.gtv_action(snap, None)["key"], "AAA-53")           # High beats Medium; earlier due beats none
-        self.assertEqual(card.gtv_action(snap, "AAA-51")["key"], "AAA-51")       # sticky until done or blocked
-        self.assertEqual(card.gtv_action(snap, "AAA-50")["key"], "AAA-53")       # a blocked sticky is dropped
+        self.assertEqual(card.gtv_action(snap, None)["key"], "AAA-53")  # High beats Medium
+        self.assertEqual(card.gtv_action(snap, "AAA-51")["key"], "AAA-51")  # sticky until done or blocked
+        self.assertEqual(card.gtv_action(snap, "AAA-50")["key"], "AAA-53")  # a blocked sticky is dropped
 
     def test_leaves_only_and_done_work_is_ignored(self):
         snap = self.gtv(issue("AAA-60"), issue("AAA-61", parent="AAA-60"), issue("AAA-62", category="done"))
@@ -181,13 +181,13 @@ class GtvTests(unittest.TestCase):
         client = FakeBlocks([heading(), old(1)])
         out = card.run(1, True, environ=dict(ENV, GTV_CARD_BLOCK_ID="gtv-card", JIRA_GTV_EPIC="AAA-1", JIRA_GTV_CONTEXT_URL="https://example.invalid/ctx"), client=client, gtv_client=visa, now=NOW, connect=conn(snaps))
         self.assertEqual((out["gtv"], out["gtv_written"]), (1, 1))
-        self.assertEqual([k["id"] for k in visa.kids], ["gh", "gp"])                                           # same blocks, only the text changed
+        self.assertEqual([k["id"] for k in visa.kids], ["gh", "gp"])  # same blocks, only the text changed
         line = card._plain(visa.kids[1])
-        self.assertIn("AAA-71", line)                                                                         # not AAA-70: the earlier pick stays until done
+        self.assertIn("AAA-71", line)  # not AAA-70: the earlier pick stays until done
         self.assertIn("due Oct 20 \u00b7 In Progress", line)
         self.assertIn("GTV Notion Context", line)
-        self.assertEqual(visa.log.count("APPEND") + visa.log.count("DELETE"), 0)                               # nothing created, nothing deleted
-        self.assertNotIn("GTV Action", json.dumps(client.kids))                                                # and nothing of it inside Jira Execution
+        self.assertEqual(visa.log.count("APPEND") + visa.log.count("DELETE"), 0)  # nothing created, nothing deleted
+        self.assertNotIn("GTV Action", json.dumps(client.kids))  # and nothing of it inside Jira Execution
 
     def test_a_second_run_changes_nothing_and_a_dry_run_writes_nothing(self):
         snaps = {"AAA": self.gtv(issue("AAA-71"))}
@@ -209,7 +209,7 @@ class GtvTests(unittest.TestCase):
                 card.run(1, True, environ=env, client=client, gtv_client=visa, now=NOW, connect=conn(snaps))
             self.assertEqual(str(ctx.exception), code)
             self.assertEqual(set(visa.log), {"GET"})
-            self.assertEqual(client.kids[0]["id"], "h")                                                       # the Jira card itself was still written before the stage failed
+            self.assertEqual(client.kids[0]["id"], "h")
             self.assertTrue(any(k["type"] == "bulleted_list_item" or k["type"] == "toggle" for k in client.kids))
 
     def test_no_visa_block_setting_means_the_line_is_not_written_anywhere(self):
@@ -218,10 +218,12 @@ class GtvTests(unittest.TestCase):
 
 
 class AdjacentCalloutTests(unittest.TestCase):
-    """LIFE-975 follow-up (Jim moved the Global Talent Visa callout directly under JIRA Execution, Nov 25 2026): neighbours in one column, never each other's writer."""
+    """follow-up: neighbours in one column, never each other's writer."""
 
     class Page:
-        """One client for the page: routes each call to the fake that owns the block, and records every write with the callout it landed in."""
+        """One client for the page: routes each call to the fake that owns the block, and records every write with the
+        callout it landed in.
+        """
         def __init__(self, jira, visa):
             self.fakes, self.writes = {"card-1": jira, "gtv-card": visa}, []
 
@@ -252,11 +254,11 @@ class AdjacentCalloutTests(unittest.TestCase):
         snaps = {"AAA": snapshot(gtv=[issue("AAA-71", status="In Progress")])}
         card.run(1, True, environ=dict(ENV, GTV_CARD_BLOCK_ID="gtv-card", JIRA_GTV_EPIC="AAA-1"), client=page, gtv_client=page, now=NOW, connect=conn(snaps))
         visa_writes = [w for w in page.writes if w[0] == "gtv-card"]
-        self.assertEqual([(m, p) for _, m, p in visa_writes], [("PATCH", "/blocks/gp")])                       # the visa callout got exactly one in-place text edit
-        self.assertEqual([k["id"] for k in visa.kids], ["gh", "gp"])                                           # nothing emptied, nothing deleted, nothing added
+        self.assertEqual([(m, p) for _, m, p in visa_writes], [("PATCH", "/blocks/gp")])
+        self.assertEqual([k["id"] for k in visa.kids], ["gh", "gp"])  # nothing emptied, nothing deleted, nothing added
         self.assertIn("AAA-71", card._plain(visa.kids[1]))
         self.assertTrue(all(o == "card-1" for o, _, _ in page.writes if o != "gtv-card"))
-        self.assertTrue(any(o == "card-1" for o, _, _ in page.writes))                                          # and the Jira callout was written too
+        self.assertTrue(any(o == "card-1" for o, _, _ in page.writes))  # and the Jira callout was written too
 
     def test_each_writer_refuses_the_neighbours_blocks_before_sending(self):
         from lifeos.platform import report_region
@@ -302,9 +304,9 @@ class WriteTests(unittest.TestCase):
         self.assertEqual((out["written"], out["removed"], out["overdue"], out["blocked"], out["today"], out["this_week"], out["done"]),
                          (1, 2, 1, 1, 2, 2, 1))
         self.assertEqual(client.kids[0]["id"], "h")
-        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (10/7 · 9:00 AM CT)")   # the update time shares the heading
-        self.assertFalse(any(card._plain(k).startswith(("V7 ·", "Updated")) for k in client.kids[1:]))                   # no separate status line
-        self.assertLess(client.log.index("APPEND"), client.log.index("DELETE"))      # add first, remove after
+        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (10/7 · 9:00 AM CT)")  # the update time shares the heading
+        self.assertFalse(any(card._plain(k).startswith(("V7 ·", "Updated")) for k in client.kids[1:]))  # no separate status line
+        self.assertLess(client.log.index("APPEND"), client.log.index("DELETE"))  # add first, remove after
 
     def test_a_block_that_does_not_open_with_the_heading_is_never_touched(self):
         client = FakeBlocks([old(1)])
@@ -317,15 +319,15 @@ class WriteTests(unittest.TestCase):
         out, client = self.run_card([heading("JIRA Execution (Updated 6:00 AM CT)"), old(1), old(2)], snaps={"AAA": snapshot(taken=datetime(2026, 10, 7, 4, 0, tzinfo=TZ))})
         self.assertEqual((out["stale"], out["written"]), (1, 1))
         self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (STALE · last accepted 10/7 · 4:00 AM CT)")
-        self.assertEqual(len(client.kids), 3)                          # no content rewritten, no false zero
+        self.assertEqual(len(client.kids), 3)  # no content rewritten, no false zero
 
     def test_the_combined_heading_is_still_ours_and_lookalikes_are_not(self):
         self.assertTrue(card._owned([heading("JIRA Execution (Updated 2:10 PM CT)")]))
         for text in ("JIRA Execution notes", "JIRA Executions (Updated 2:10 PM CT)", "JIRA Execution (Updated 2:10 PM CT) extra"):
             self.assertFalse(card._owned([heading(text)]), text)
-        out, client = self.run_card([heading("JIRA Execution (Updated 6:00 AM CT)"), old(1)])        # last hour's combined heading
+        out, client = self.run_card([heading("JIRA Execution (Updated 6:00 AM CT)"), old(1)])  # last hour's combined heading
         self.assertEqual(out["written"], 1)
-        self.assertEqual(client.kids[0]["id"], "h")                                                  # the same heading block, edited in place
+        self.assertEqual(client.kids[0]["id"], "h")  # the same heading block, edited in place
 
     def test_stale_without_a_baseline_and_missing_snapshot_fail_closed(self):
         with self.assertRaises(CardError) as ctx:

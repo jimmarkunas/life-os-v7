@@ -1,4 +1,4 @@
-"""LIFE-747 (synthetic): the Followup state store keeps replay, suppression, cursor and failure behavior safe. A sqlite shim stands in for MySQL; no real database is touched."""
+"""(synthetic): the Followup state store keeps replay, suppression, cursor and failure behavior safe."""
 import unittest
 import unittest.mock
 from contextlib import contextmanager
@@ -42,7 +42,7 @@ class Replay(unittest.TestCase):
         again = accept(store, [item(), item("loop-2")], now=NOW + timedelta(hours=1))
         self.assertEqual((first["written"], first["unchanged"]), (2, 0))
         self.assertEqual((again["written"], again["unchanged"]), (0, 2))
-        self.assertEqual(store.threads("personal", ACCOUNT), before)                            # not even a timestamp or version moved
+        self.assertEqual(store.threads("personal", ACCOUNT), before)  # not even a timestamp or version moved
         self.assertEqual(db.count("v7_followup_threads"), 2)
 
     def test_changed_content_updates_one_row_and_bumps_the_version(self):
@@ -80,7 +80,7 @@ class Cursor(unittest.TestCase):
         out = accept(store, [item()], cursor="c1")
         self.assertTrue(out["cursor_advanced"])
         self.assertEqual(store.cursor_for("personal", ACCOUNT, "gmail")["cursor"], "c1")
-        partial = accept(store, [item("loop-9")], cursor="c2", complete=False)                   # a failed, denied or truncated read
+        partial = accept(store, [item("loop-9")], cursor="c2", complete=False)  # a failed, denied or truncated read
         self.assertFalse(partial["cursor_advanced"])
         self.assertEqual(store.cursor_for("personal", ACCOUNT, "gmail")["cursor"], "c1")
 
@@ -99,7 +99,7 @@ class Cursor(unittest.TestCase):
         with self.assertRaises(S.FollowupStoreError) as failed:
             accept(store, [item(state="needs_action", owner="jim"), item("loop-2")], cursor="c2")
         self.assertEqual(str(failed.exception), "FOLLOWUP_STORE_UNAVAILABLE")
-        self.assertEqual(store.threads("personal", ACCOUNT), good)                               # the new row was rolled back too
+        self.assertEqual(store.threads("personal", ACCOUNT), good)  # the new row was rolled back too
         self.assertEqual(store.cursor_for("personal", ACCOUNT, "gmail")["cursor"], "c1")
 
     def test_a_failed_cursor_write_rolls_the_threads_back(self):
@@ -116,7 +116,7 @@ class Cursor(unittest.TestCase):
 
         def lying(self, cursor, row, stamped, out):
             wanted = original(self, cursor, row, stamped, out)
-            return {**wanted, "owner": "ambiguous"} if wanted else wanted                      # the write "succeeded" but would not read back as intended
+            return {**wanted, "owner": "ambiguous"} if wanted else wanted
         S.FollowupStore._upsert = lying
         self.addCleanup(setattr, S.FollowupStore, "_upsert", original)
         with self.assertRaises(S.FollowupStoreError) as bad:
@@ -132,7 +132,7 @@ class Isolation(unittest.TestCase):
         store, db = make()
         accept(store, [item()], workspace="personal")
         accept(store, [item(source_refs=["https://example.test/mail/2"])], workspace="bytalos")
-        self.assertEqual(db.count("v7_followup_threads"), 2)                                    # the same identity key is two threads
+        self.assertEqual(db.count("v7_followup_threads"), 2)  # the same identity key is two threads
         self.assertNotEqual(S.thread_id("personal", ACCOUNT, "loop-1"), S.thread_id("bytalos", ACCOUNT, "loop-1"))
         self.assertEqual([t["source_refs"] for t in store.threads("personal", ACCOUNT)], [["https://example.test/mail/1"]])
         self.assertEqual([t["source_refs"] for t in store.threads("bytalos", ACCOUNT)], [["https://example.test/mail/2"]])
@@ -143,7 +143,7 @@ class Isolation(unittest.TestCase):
         accept(store, [item()], workspace="bytalos")
         self.assertTrue(store.resolve("bytalos", ACCOUNT, "loop-1", "closed", digest("x"), NOW))
         self.assertEqual(store.threads("personal", ACCOUNT)[0]["resolution"], "open")
-        self.assertFalse(store.set_override("personal", "other@example.com", "loop-1", "2026-12-01T15:00:00Z", "jim", NOW))      # a different account owns no such thread
+        self.assertFalse(store.set_override("personal", "other@example.com", "loop-1", "2026-12-01T15:00:00Z", "jim", NOW))  # a different account owns no such thread
         self.assertEqual(store.cursor_for("bytalos", ACCOUNT, "gmail"), store.cursor_for("bytalos", ACCOUNT, "gmail"))
 
     def test_tgp_and_unknown_workspaces_are_refused_everywhere(self):
@@ -171,9 +171,9 @@ class Override(unittest.TestCase):
         self.assertTrue(store.set_override("personal", ACCOUNT, "loop-1", "2026-12-05T15:00:00Z", "jim", NOW))
         (thread,) = store.threads("personal", ACCOUNT)
         self.assertEqual((thread["effective_checkpoint"], thread["checkpoint_basis_effective"]), ("2026-12-05T15:00:00Z", "override"))
-        self.assertEqual(thread["checkpoint_at"], "2026-11-20T15:00:00Z")                      # the source's own date is untouched
+        self.assertEqual(thread["checkpoint_at"], "2026-11-20T15:00:00Z")  # the source's own date is untouched
         accept(store, [item(checkpoint_at="2026-11-22T15:00:00Z")], now=NOW + timedelta(hours=1))
-        self.assertEqual(store.threads("personal", ACCOUNT)[0]["effective_checkpoint"], "2026-12-05T15:00:00Z")      # a new source date does not undo it
+        self.assertEqual(store.threads("personal", ACCOUNT)[0]["effective_checkpoint"], "2026-12-05T15:00:00Z")  # a new source date does not undo it
         self.assertEqual(db.count("v7_followup_overrides"), 1)
 
     def test_a_suggested_checkpoint_stays_visibly_suggested_and_needs_a_basis(self):
@@ -193,10 +193,10 @@ class Storage(unittest.TestCase):
             with self.assertRaises(S.FollowupRejected) as refused:
                 accept(store, [item(**bad)])
             self.assertEqual(str(refused.exception), reason)
-        columns = {c for table in S.SCHEMA[:4] for c in table.split("(", 1)[1].lower().split()}              # the four state tables never hold a source payload
+        columns = {c for table in S.SCHEMA[:4] for c in table.split("(", 1)[1].lower().split()}  # the four state tables never hold a source payload
         for forbidden in ("body", "snippet", "payload", "token", "password", "secret"):
             self.assertNotIn(forbidden, columns)
-        payload_table = S.SCHEMA[4].split("(", 1)[1].lower()                                                    # the fifth holds Followup's own derived payload, nothing else
+        payload_table = S.SCHEMA[4].split("(", 1)[1].lower()
         for forbidden in ("body", "snippet", "token", "password", "secret"):
             self.assertNotIn(forbidden, payload_table)
         self.assertEqual([c.split()[0] for c in payload_table.split("primary key")[0].split(",") if c.strip()], ["scope_key", "payload", "generated_at", "state"])
@@ -233,7 +233,7 @@ class Payload(unittest.TestCase):
         newer = payload(state="DEGRADED", generated_at="2026-11-16T21:00:00+00:00", counts={"needs_me": 2})
         self.assertTrue(store.save_payload("personal", ACCOUNT, newer))
         self.assertEqual(store.load_payload("personal", ACCOUNT), newer)
-        self.assertEqual(db.count("v7_followup_payload"), 1)                         # replaced in place: one row per scope, never a history
+        self.assertEqual(db.count("v7_followup_payload"), 1)
 
     def test_the_write_is_one_statement(self):
         store, db = make()
@@ -251,7 +251,7 @@ class Payload(unittest.TestCase):
             return cursor
         db.cursor = spy
         store.save_payload("personal", ACCOUNT, payload())
-        self.assertEqual(seen, ["INSERT", "SELECT"])                                 # one write statement, then the read-back
+        self.assertEqual(seen, ["INSERT", "SELECT"])  # one write statement, then the read-back
 
     def test_scopes_never_share_a_row_and_one_scope_never_reads_another(self):
         store, db = make()
@@ -263,7 +263,7 @@ class Payload(unittest.TestCase):
         self.assertEqual(store.load_payload("bytalos", ACCOUNT)["state"], "DEGRADED")
         self.assertEqual(store.load_payload("personal", "other@example.com")["counts"], {"needs_me": 9})
         self.assertNotEqual(S.scope_key("personal", ACCOUNT), S.scope_key("bytalos", ACCOUNT))
-        self.assertLessEqual(len(S.scope_key("bytalos", "a" * 80)), 190)             # fits the VARCHAR(190) key
+        self.assertLessEqual(len(S.scope_key("bytalos", "a" * 80)), 190)  # fits the VARCHAR(190) key
 
     def test_tgp_unknown_workspaces_and_bad_payloads_are_refused_before_a_write(self):
         store, db = make()
@@ -278,7 +278,7 @@ class Payload(unittest.TestCase):
             with self.assertRaises(S.FollowupRejected) as refused:
                 store.save_payload("personal", ACCOUNT, bad)
             self.assertEqual(str(refused.exception), reason)
-        self.assertEqual(db.count("v7_followup_payload"), 0)                         # nothing was written by any refusal
+        self.assertEqual(db.count("v7_followup_payload"), 0)  # nothing was written by any refusal
 
     def test_a_row_that_disagrees_with_its_own_columns_is_a_fixed_mismatch(self):
         store, db = make()

@@ -1,4 +1,5 @@
-"""LIFE-697 (synthetic): the durable ledger makes replay, concurrency, timeouts and recovery safe across workers and restarts. Workers are threads with their own connection to one sqlite file."""
+"""(synthetic): the durable ledger makes replay, concurrency, timeouts and recovery safe across workers and restarts.
+"""
 import os
 import tempfile
 import threading
@@ -50,29 +51,29 @@ class Durable(unittest.TestCase):
 
 
 class Replay(Durable):
-    def test_an_authorization_cannot_be_replayed_after_a_restart(self):                                        # check 1
+    def test_an_authorization_cannot_be_replayed_after_a_restart(self):  # check 1
         executor = Counting()
         first = self.worker(executor).request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW)
         self.assertEqual(first.status, "completed")
-        restarted = self.worker(executor)                                                                       # nothing is remembered in memory
+        restarted = self.worker(executor)  # nothing is remembered in memory
         again = restarted.request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW)
-        self.assertEqual((again.status, again.replayed), ("completed", True))                                   # the same request: the stored answer
-        self.assertEqual(restarted.request(self.who, self.record, "accept_uat", self.auth(), "k2", F.NOW).reason, "authorization_used")      # a new key, the spent nonce
-        self.assertEqual(self.worker(executor).request(self.who, self.record, "accept_uat", self.auth("n2"), "k3", F.NOW).reason, "already_applied")   # a new nonce, the same revision
+        self.assertEqual((again.status, again.replayed), ("completed", True))  # the same request: the stored answer
+        self.assertEqual(restarted.request(self.who, self.record, "accept_uat", self.auth(), "k2", F.NOW).reason, "authorization_used")  # a new key, the spent nonce
+        self.assertEqual(self.worker(executor).request(self.who, self.record, "accept_uat", self.auth("n2"), "k3", F.NOW).reason, "already_applied")  # a new nonce, the same revision
         self.assertEqual(restarted.request(self.who, self.record, "reject_uat", self.auth("n3", "reject_uat"), "k1", F.NOW).reason, "idempotency_key_reused")
         self.assertEqual(len(executor.calls), 1)
 
-    def test_the_two_workspaces_never_block_or_replay_each_other(self):                                        # check 9
+    def test_the_two_workspaces_never_block_or_replay_each_other(self):  # check 9
         service = self.worker()
         personal, bytalos = F.record_for(self.result, "jira", "personal"), F.record_for(self.result, "jira", "bytalos")
         self.assertEqual(service.request(self.who, personal, "accept_uat", self.auth("n1", record=personal), "kp", F.NOW).status, "completed")
         self.assertEqual(service.request(self.who, bytalos, "accept_uat", self.auth("n2", record=bytalos), "kb", F.NOW).status, "completed")
         personal_only = F.principal(workspaces=("personal",))
         self.assertEqual(service.request(personal_only, bytalos, "accept_uat", self.auth("n3", record=bytalos), "kx", F.NOW).reason, "no_grant")
-        self.assertEqual(self.worker().request(self.who, replace(bytalos, workspace="tgp"), "accept_uat", None, "kt", F.NOW).reason, "workspace_not_released")     # check 10
-        self.assertEqual(len(self.rows()["v7_inbox_actions"]), 2)                                                # the refusals left no claim behind
+        self.assertEqual(self.worker().request(self.who, replace(bytalos, workspace="tgp"), "accept_uat", None, "kt", F.NOW).reason, "workspace_not_released")  # check 10
+        self.assertEqual(len(self.rows()["v7_inbox_actions"]), 2)  # the refusals left no claim behind
 
-    def test_calendar_and_asana_mutations_leave_no_claim(self):                                                # check 11
+    def test_calendar_and_asana_mutations_leave_no_claim(self):  # check 11
         service = self.worker()
         for source in ("calendar", "asana"):
             record = F.record_for(self.result, source, "personal")
@@ -84,16 +85,16 @@ class Replay(Durable):
         executor = Counting()
         live = self.worker(executor, synthetic=False)
         self.assertEqual(live.request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW).reason, "live_execution_disabled")
-        self.assertEqual(live.request(self.who, self.record, "open", None, "k2", F.NOW).status, "completed")     # reading is unaffected
+        self.assertEqual(live.request(self.who, self.record, "open", None, "k2", F.NOW).status, "completed")  # reading is unaffected
         self.assertEqual(executor.calls, [])
         good = {"record_id": self.record.record_id, "revision": "r2", "source_status": "Done"}
         self.assertTrue(policy.completion_proven(self.record, "accept_uat", good, True))
-        self.assertFalse(policy.completion_proven(self.record, "accept_uat", good, False))                       # no source is in VERIFIED_COMPLETION
+        self.assertFalse(policy.completion_proven(self.record, "accept_uat", good, False))  # no source is in VERIFIED_COMPLETION
 
 
 class Concurrent(Durable):
     def race(self, jobs):
-        """Run every job at once, each on its own worker; -> the outcomes."""
+        """Run every job at once, each on its own worker"""
         barrier, out = threading.Barrier(len(jobs)), [None] * len(jobs)
 
         def run(i, job):
@@ -107,43 +108,43 @@ class Concurrent(Durable):
             t.join(timeout=20)
         return out
 
-    def test_two_workers_cannot_execute_the_same_claimed_operation_twice(self):                              # check 2
-        executor = Counting(delay=0.1)                                                                          # the first claimer sits in the source call while the others arrive
-        same = self.race([{"service": self.worker(executor), "auth": self.auth(), "key": "k1"} for _ in range(6)])                                  # one delivery, six workers
+    def test_two_workers_cannot_execute_the_same_claimed_operation_twice(self):  # check 2
+        executor = Counting(delay=0.1)
+        same = self.race([{"service": self.worker(executor), "auth": self.auth(), "key": "k1"} for _ in range(6)])  # one delivery, six workers
         self.assertEqual(len(executor.calls), 1)
         self.assertEqual(sum(o.status == "completed" and not o.replayed for o in same), 1)
-        self.assertTrue(all(o.replayed or o.status == "completed" for o in same), same)                         # the rest got the stored or in-flight answer, never a second run
+        self.assertTrue(all(o.replayed or o.status == "completed" for o in same), same)
         self.setUp()
         executor = Counting(delay=0.1)
-        mixed = self.race([{"service": self.worker(executor), "auth": self.auth(f"n{i}"), "key": f"k{i}"} for i in range(6)])                         # six requests, six authorizations, one revision
+        mixed = self.race([{"service": self.worker(executor), "auth": self.auth(f"n{i}"), "key": f"k{i}"} for i in range(6)])  # six requests, six authorizations, one revision
         self.assertEqual(len(executor.calls), 1)
         self.assertEqual(sum(o.status == "completed" for o in mixed), 1)
         self.assertTrue({o.reason for o in mixed if o.status == "refused"} <= {"already_applied", "authorization_used"})
-        shared = self.race([{"service": self.worker(executor), "auth": self.auth("same"), "key": f"j{i}"} for i in range(6)])                        # six keys, one authorization, already applied
+        shared = self.race([{"service": self.worker(executor), "auth": self.auth("same"), "key": f"j{i}"} for i in range(6)])  # six keys, one authorization, already applied
         self.assertEqual(len(executor.calls), 1)
         self.assertTrue(all(o.status == "refused" for o in shared), shared)
 
 
 class Uncertain(Durable):
-    def test_a_timeout_is_recoverable_and_never_retried_blindly(self):                                       # check 3
+    def test_a_timeout_is_recoverable_and_never_retried_blindly(self):  # check 3
         executor = Counting(raises=TimeoutError("source did not answer"))
         service = self.worker(executor)
         out = service.request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW)
         self.assertEqual((out.status, out.reason), ("uncertain", "executor_outcome_unknown"))
         retry = self.worker(executor).request(self.who, self.record, "accept_uat", self.auth("n2"), "k2", F.NOW)
-        self.assertEqual((retry.status, retry.reason), ("refused", "outcome_uncertain"))                       # a fresh authorization does not repeat a possibly-successful action
+        self.assertEqual((retry.status, retry.reason), ("refused", "outcome_uncertain"))
         same = self.worker(executor).request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW)
         self.assertEqual((same.status, same.replayed), ("uncertain", True))
         self.assertEqual(len(executor.calls), 1)
 
-    def test_a_source_confirmed_result_reconciles_an_uncertain_action(self):                                  # check 4
+    def test_a_source_confirmed_result_reconciles_an_uncertain_action(self):  # check 4
         executor = Counting(raises=TimeoutError("x"))
         self.worker(executor).request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW)
         applied = lambda rid: {"record_id": rid, "revision": "r2", "source_status": "Done"}                    # noqa: E731
         out = self.worker(executor).reconcile("k1", applied, F.NOW)
         self.assertEqual((out.status, out.reason), ("completed", "read_back_verified"))
         self.assertEqual(self.worker(executor).request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW).status, "completed")
-        self.assertEqual(self.worker(executor).reconcile("k1", applied, F.NOW).reason, "not_reconcilable")        # settled once
+        self.assertEqual(self.worker(executor).reconcile("k1", applied, F.NOW).reason, "not_reconcilable")  # settled once
         self.assertEqual(len(executor.calls), 1)
 
     def test_a_source_that_shows_nothing_applied_frees_the_record_for_a_fresh_authorization(self):
@@ -154,9 +155,9 @@ class Uncertain(Durable):
         self.assertEqual((out.status, out.reason), ("not_applied", "source_unchanged"))
         healthy = Counting()
         self.assertEqual(self.worker(healthy).request(self.who, self.record, "accept_uat", self.auth("n2"), "k2", F.NOW).status, "completed")
-        self.assertEqual(self.worker(healthy).request(self.who, self.record, "accept_uat", self.auth(), "k3", F.NOW).reason, "authorization_used")   # the old nonce stays spent
+        self.assertEqual(self.worker(healthy).request(self.who, self.record, "accept_uat", self.auth(), "k3", F.NOW).reason, "authorization_used")  # the old nonce stays spent
 
-    def test_a_source_result_that_cannot_be_verified_never_completes_and_waits_for_a_person(self):             # check 5
+    def test_a_source_result_that_cannot_be_verified_never_completes_and_waits_for_a_person(self):  # check 5
         executor = Counting(raises=TimeoutError("x"))
         self.worker(executor).request(self.who, self.record, "accept_uat", self.auth(), "k1", F.NOW)
         def broken(rid):                                                                                          # noqa: E306
@@ -177,18 +178,18 @@ class Uncertain(Durable):
             self.assertEqual(ledger.claim_action(fields, F.NOW)[0], "claimed")
         self.assertTrue(ledger.move(L.digest("dead-run"), "claimed", "in_progress", "executing", F.NOW))
         service = self.worker()
-        self.assertEqual(service.recover_stale(F.NOW + actions.LEASE - timedelta(seconds=1)), (0, 0))              # not old enough
+        self.assertEqual(service.recover_stale(F.NOW + actions.LEASE - timedelta(seconds=1)), (0, 0))  # not old enough
         self.assertEqual(service.recover_stale(F.NOW + actions.LEASE + timedelta(seconds=1)), (1, 1))
-        self.assertEqual(ledger.action(L.digest("dead-claim"))["state"], "expired")                              # it never started: nothing ran
-        self.assertEqual(ledger.action(L.digest("dead-run"))["state"], "uncertain")                              # it may have run: reconcile decides
+        self.assertEqual(ledger.action(L.digest("dead-claim"))["state"], "expired")  # it never started: nothing ran
+        self.assertEqual(ledger.action(L.digest("dead-run"))["state"], "uncertain")  # it may have run: reconcile decides
         executor, later = Counting(), F.NOW + actions.LEASE + timedelta(seconds=2)
-        fresh = policy.mint(F.KEY, self.who, self.record, "accept_uat", "fresh", later)                          # the expired claim freed the revision: a fresh authorization may run it
+        fresh = policy.mint(F.KEY, self.who, self.record, "accept_uat", "fresh", later)
         self.assertEqual(self.worker(executor).request(self.who, self.record, "accept_uat", fresh, "k-new", later).status, "completed")
         self.assertEqual(len(executor.calls), 1)
 
 
 class Hygiene(Durable):
-    def test_audit_logs_and_stored_rows_exclude_contents_credentials_and_exception_payloads(self):             # check 12
+    def test_audit_logs_and_stored_rows_exclude_contents_credentials_and_exception_payloads(self):  # check 12
         failing = Counting(raises=RuntimeError(F.ERROR_CANARY))
         with self.assertLogs("lifeos.inbox", level="INFO") as logs:
             service = self.worker(failing)

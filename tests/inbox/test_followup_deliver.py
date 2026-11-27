@@ -1,4 +1,4 @@
-"""LIFE-716: Followup open loops delivered to the Agent Inbox as items. A fake Notion: no network, no token."""
+"""Followup open loops delivered to the Agent Inbox as items."""
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -8,7 +8,7 @@ from lifeos.inbox.followup_store import thread_id
 from tests.inbox.test_followup_stage import ACCOUNT, Rig, T0, mail, promise
 
 UTC = timezone.utc
-NOW = datetime(2026, 11, 17, 15, 0, tzinfo=UTC)          # Nov 17, 9:00 AM CT
+NOW = datetime(2026, 11, 17, 15, 0, tzinfo=UTC)
 SOURCE = "a1" * 16
 TID = "ab" * 32
 
@@ -26,9 +26,9 @@ def _store(prop):
         if kind in prop:
             value = prop[kind]
             if kind in ("title", "rich_text"):
-                value = [{**piece, "plain_text": piece["text"]["content"]} for piece in value]               # Notion returns plain_text on every piece
+                value = [{**piece, "plain_text": piece["text"]["content"]} for piece in value]  # Notion returns plain_text on every piece
             if kind == "date" and value:
-                value = {"start": value["start"].replace("Z", ".000+00:00") if "T" in value["start"] else value["start"]}       # and spells a date-time its own way
+                value = {"start": value["start"].replace("Z", ".000+00:00") if "T" in value["start"] else value["start"]}  # and spells a date-time its own way
             return {"type": kind, kind: value}
     return {"type": "unknown"}
 
@@ -50,7 +50,7 @@ class FakeNotion:
         self.pages, self.writes = [], []
 
     def call(self, method, path, body=None):
-        if path.startswith("/blocks/"):                                                  # LIFE-988: the page body of a row (none kept here)
+        if path.startswith("/blocks/"):  # the page body of a row (none kept here)
             return {"results": [], "has_more": False}
         if path == "/search":
             return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}], "has_more": False}
@@ -151,10 +151,10 @@ class Delivery(unittest.TestCase):
         self.go(payload([thread()]))
         counts = self.go(payload([], closed=[TID]))
         self.assertEqual((counts["done"], self.n.row()["Status"]), (1, "Done"))
-        self.assertEqual(self.go(payload([], closed=[TID]))["done"], 0)                      # already Done: untouched
-        self.assertEqual(self.go(payload([], closed=["cd" * 32]))["done"], 0)                  # no such row: nothing happens
+        self.assertEqual(self.go(payload([], closed=[TID]))["done"], 0)  # already Done: untouched
+        self.assertEqual(self.go(payload([], closed=["cd" * 32]))["done"], 0)  # no such row: nothing happens
         self.n.set_status(self.key, "New")
-        self.go(payload([]))                                                                   # a loop merely absent from a run is NOT proof: the row stays open
+        self.go(payload([]))
         self.assertEqual(self.n.row()["Status"], "New")
 
     def test_only_followup_rows_are_ever_touched(self):
@@ -171,7 +171,7 @@ class Delivery(unittest.TestCase):
 
     def test_tgp_and_unknown_workspaces_are_never_delivered(self):
         counts = self.go(payload([thread()], workspace="tgp"), payload([thread(tid="cd" * 32)], workspace="other"))
-        self.assertEqual((counts["created"], counts["skipped"], self.n.pages), (0, 0, []))                  # dropped before any validation or call, not merely refused by it
+        self.assertEqual((counts["created"], counts["skipped"], self.n.pages), (0, 0, []))
 
     def test_the_sender_rate_limit_stops_a_flood_and_counts_it(self):
         threads = [thread(tid=f"{i:02x}" + "0" * 62, title=f"Loop {i} outcome") for i in range(agent_inbox.RATE_PER_HOUR + 3)]

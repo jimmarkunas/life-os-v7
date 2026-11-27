@@ -1,4 +1,6 @@
-"""LIFE-727 and LIFE-729 (synthetic): the auto-release rule moves only what is ready, and the stall check names only tickets idle without a reason."""
+"""and (synthetic): the auto-release rule moves only what is ready, and the stall check names only tickets idle without a
+reason.
+"""
 import unittest
 from datetime import datetime, timezone
 
@@ -55,11 +57,13 @@ class Release(unittest.TestCase):
                     issue("LIFE-14", description=OPEN_JIM_FIRST), issue("LIFE-15", blockers=[("LIFE-5", True)])]
         fake = FakeJira(["LIFE-10"], children)
         out = release.run(0, True, jira=fake)
-        self.assertEqual(out["skipped"], {"blocked_by_open": 1, "no_done_when": 1, "not_ready_label": 1, "jim_first_open": 1})       # Jim, Nov 21 2026: an unchecked Jim must do first item is never released
+        self.assertEqual(out["skipped"], {"blocked_by_open": 1, "no_done_when": 1, "not_ready_label": 1, "jim_first_open": 1})
         self.assertEqual((out["released"], [p for p, _ in fake.posts][0]), (1, "/rest/api/3/issue/LIFE-15/transitions"))
 
     def test_only_a_child_with_exactly_one_ready_label_is_released(self):
-        """LIFE-850 (policy section 7): needs-jim, needs-prep, no readiness label and two readiness labels each stop a release with their own fixed reason; other labels (lane, agent) neither help nor block."""
+        """(policy section 7): needs-jim, needs-prep, no readiness label and two readiness labels each stop a release
+        with their own fixed reason
+        """
         for labels, reason in ((["needs-jim", "lane-platform"], "not_ready_label"), (["needs-prep"], "not_ready_label"), (["lane-platform", "agent-claude-code"], "no_readiness_label"),
                                ([], "no_readiness_label"), (["ready", "needs-jim"], "two_readiness_labels"), (["ready", "needs-prep"], "two_readiness_labels")):
             out = release.run(0, True, jira=FakeJira(["LIFE-10"], [issue("LIFE-11", labels=labels)]))
@@ -68,19 +72,19 @@ class Release(unittest.TestCase):
         self.assertEqual(out["released"], 1)
 
     def test_an_epic_in_scoping_releases_only_a_research_or_verdict_child_and_an_unread_epic_status_releases_nothing(self):
-        """LIFE-850: epic_scoping for build work; a research or verdict child passes when otherwise eligible; a parent whose status the read did not return is never assumed Ready; Ready, In Progress and Done Epics release build work."""
+        """epic_scoping for build work"""
         kids = [issue("LIFE-11", epic="Scoping"), issue("LIFE-12", labels=["ready", "research"], epic="Scoping"), issue("LIFE-13", labels=["ready", "verdict"], epic="Scoping"),
                 issue("LIFE-14", epic=None), issue("LIFE-15", epic="Ready"), issue("LIFE-16", epic="In Progress")]
         out = release.run(0, False, jira=FakeJira(["LIFE-10"], kids))
-        self.assertEqual((out["would_release"], out["skipped"]), (3, {"epic_scoping": 1, "epic_status_unread": 1, "over_limit": 1}))      # four are eligible, RELEASE_LIMIT is three
+        self.assertEqual((out["would_release"], out["skipped"]), (3, {"epic_scoping": 1, "epic_status_unread": 1, "over_limit": 1}))  # four are eligible, RELEASE_LIMIT is three
         for key, labels, epic, why in (("A", ["ready"], "Scoping", "epic_scoping"), ("B", ["ready", "research"], "Scoping", None), ("C", ["ready", "verdict"], "Scoping", None),
                                        ("D", ["ready"], "Ready", None), ("E", ["ready", "research"], "Ready", None)):
             self.assertEqual(release.eligible(issue(key, labels=labels, epic=epic)), why, key)
-        self.assertEqual(release.eligible(issue("F", labels=["research"], epic="Scoping")), "no_readiness_label")          # the exception does not waive the readiness label
-        self.assertEqual(release.eligible(issue("G", labels=["ready", "research"], epic="Scoping", blockers=[("LIFE-5", False)])), "blocked_by_open")   # nor an open blocker
+        self.assertEqual(release.eligible(issue("F", labels=["research"], epic="Scoping")), "no_readiness_label")  # the exception does not waive the readiness label
+        self.assertEqual(release.eligible(issue("G", labels=["ready", "research"], epic="Scoping", blockers=[("LIFE-5", False)])), "blocked_by_open")  # nor an open blocker
 
     def test_an_unfinished_blocking_link_always_stops_a_release_even_without_any_label(self):
-        """LIFE-780: blocking is by Blocks links only. Remove the blockers_done check and this fails."""
+        """blocking is by Blocks links only."""
         fake = FakeJira(["LIFE-10"], [issue("LIFE-13", blockers=[("LIFE-5", False)]), issue("LIFE-14", blockers=[("LIFE-5", True), ("LIFE-6", False)])])
         out = release.run(0, True, jira=fake)
         self.assertEqual((out["released"], out["skipped"], fake.posts), (0, {"blocked_by_open": 2}, []))
