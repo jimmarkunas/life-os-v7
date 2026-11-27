@@ -1,7 +1,7 @@
 """Record ALL historical Amazon order mail in the canonical Amazon Orders data source, one calendar month at a time.
+
 Each month is a normal ingest (stage.run) bounded by `after:` and `before:`; a failed month is reported and
-rerunning resumes. AMAZON_SINCE=YYYY-MM-DD is the first day. Dry run unless live.
-"""
+rerunning resumes. AMAZON_SINCE=YYYY-MM-DD is the first day. Dry run unless live."""
 import os
 from datetime import datetime, timezone
 

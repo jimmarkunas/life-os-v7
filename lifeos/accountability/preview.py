@@ -1,8 +1,8 @@
-"""The v2 quarterly preview inside the Quarterly Goals & Review blocks. OFF BY DEFAULT; legacy (v1) figures stay
-official. With V2_QUARTER_SHADOW exactly "on" the goals table gains New count (preview) and Status columns: the v2
-count when an approved frozen quarter list exists, else a dash and a red reason. A v2 problem never fails the goals
-stage.
-"""
+"""The v2 quarterly preview inside the Quarterly Goals & Review blocks.
+
+OFF BY DEFAULT; legacy (v1) figures stay official. With V2_QUARTER_SHADOW exactly "on" the goals table gains New
+count (preview) and Status columns: the v2 count when an approved frozen quarter list exists, else a dash and a red
+reason. A v2 problem never fails the goals stage."""
 import re
 import sys
 
@@ -33,8 +33,7 @@ def reading(jira, person, mine, first, last):
 
 def cells(found, view):
     """-> {lane: [progress, done / all, new count, status]}, cells [(text, link, bold, color)]. `found` is [(lane,
-    done, all, epic key)].
-    """
+    done, all, epic key)]."""
     out = {}
     for lane, done, total, key in found:
         if not view["applies"]:

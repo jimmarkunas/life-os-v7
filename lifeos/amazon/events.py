@@ -67,8 +67,7 @@ def _money(text):
 def _grouped_by_total(body):
     """A multi-order confirmation lists each order's lines then its own total. Split after every total: accepted only
     when every part holds exactly one order number, none repeats, and nothing after the last total names an order.
-    -> [(order_id, total)] or None.
-    """
+    -> [(order_id, total)] or None."""
     found = sorted(list(TOTAL_RE.finditer(body)) + list(LINE_TOTAL_RE.finditer(body)), key=lambda m: m.start())
     parts, cursor = [], 0
     for match in found:
@@ -95,8 +94,7 @@ def _grouped_by_total(body):
 def extract_all(message):
     """The events a message carries, normally one. A message naming several orders is accepted ONLY when each order is
     followed by its own total, or every order number is one of its own order-detail links (orderID=...) with no
-    total. Anything else is REVIEW. Never returns body text.
-    """
+    total. Anything else is REVIEW. Never returns body text."""
     first = extract(message)
     if first.get("reason") != "ORDER_ID_AMBIGUOUS":
         return [first]

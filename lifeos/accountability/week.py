@@ -1,6 +1,7 @@
-"""Stage `accountability-week`: This week for Jim and Matt on V3. With V3_WEEK_VIEW exactly "on" (fail closed), BOTH
-boards get the sprint view as native blocks (lifeos.accountability.weekview); otherwise the plain weekly view.
-"""
+"""Stage `accountability-week`: This week for Jim and Matt on V3.
+
+With V3_WEEK_VIEW exactly "on" (fail closed), BOTH boards get the sprint view as native blocks
+(lifeos.accountability.weekview); otherwise the plain weekly view."""
 import os
 
 from lifeos.accountability import common, read, region, render, switches, weekview

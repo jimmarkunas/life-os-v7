@@ -1,7 +1,6 @@
-"""Shared run of one V3 accountability stage: for Jim then Matt, read Jira, write the callout and summary page, read
-both back. A person whose Jira read fails gets a DEGRADED stamp (body kept); the other is still written, then the
-stage fails.
-"""
+"""Shared run of one V3 accountability stage: for Jim then Matt, read Jira, write the callout and summary page, read both back.
+
+A person whose Jira read fails gets a DEGRADED stamp (body kept); the other is still written, then the stage fails."""
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo

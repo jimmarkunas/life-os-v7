@@ -1,10 +1,10 @@
 """Remote MCP server for Buzz (Streamable HTTP, JSON replies, stateless), shared by Claude Chat and ChatGPT Chat.
+
 Loopback only; a TLS proxy is the one public path. Serves three permanent tools (buzz_capabilities, buzz_read,
 buzz_publish). Every /mcp call needs an OAuth access token (lifeos.buzz.auth); writes also need the buzz:write
 scope and an allowlisted (community, channel), so they are off by default. Output is one {ok, contract, operation,
 data, next_cursor} envelope or a stable error code; audit lines carry no token, key or text. Config comes from the
-environment or systemd credentials, never logged (BUZZ_* names; see docs/buzz-remote-mcp-deploy.md).
-"""
+environment or systemd credentials, never logged (BUZZ_* names; see docs/buzz-remote-mcp-deploy.md)."""
 import hashlib, json, os, sys
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -122,9 +122,7 @@ def fingerprint():
 
 
 def _check(params, args):
-    """Validate against a registry entry: no unknown keys, required present, right primitive types. The relay
-    validates formats.
-    """
+    """Validate against a registry entry: no unknown keys, required present, right primitive types."""
     if not isinstance(args, dict) or set(args) - set(params) or any(req and k not in args for k, (_, req) in params.items()):
         raise BuzzError("invalid_argument")
     for k, v in args.items():
@@ -239,8 +237,7 @@ def _receipt(record):
 def governed(who, name, args, msg, effect, receipts, access=None, now=None):
     """The one gate in front of a Buzz tool call. -> effect()'s reply when authorization_gate.execute allowed it, else
     a fixed error. The client is the verified OAuth client, never an argument. Platform modules load lazily, so a
-    release with lifeos/buzz alone refuses every call (governance_unavailable).
-    """
+    release with lifeos/buzz alone refuses every call (governance_unavailable)."""
     try:
         from lifeos.platform import mcp_access
         access = access or mcp_access.load()
@@ -272,9 +269,8 @@ def _only_granted(reply, who, access):
 
 
 def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=_receipt):
-    """relays: {client label: Relay}. The signing key is chosen by the verified client label and the requested
-    community; there is no fallback identity.
-    """
+    """relays: {client label: Relay}; the key is chosen by verified client label and community, with no fallback
+    identity."""
     # the public host a request came in on names its own resource and metadata; unknown hosts get the primary
     bases = {base[8:]: base, **{a[8:-4]: a[:-4] for a in auth.extra_audiences}}
     ids = {(c, k): nip98.pubkey(v)[:16] for c, r in relays.items() for k, v in r.keys.items()}
@@ -312,8 +308,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
 
         def _credential(self):
             """A scoped `lm1.` credential (Claude Code, Hermes, OpenClaw). The identity is the credential row alone;
-            its Buzz key is the row's `buzz_identity` (null: capabilities only). Read scope only.
-            """
+            its Buzz key is the row's `buzz_identity` (null: capabilities only). Read scope only."""
             try:
                 from lifeos.platform import mcp_access
                 row = mcp_access.verify_credential(access or mcp_access.load(), self.headers.get("Authorization", ""))
@@ -430,9 +425,7 @@ def from_env(env):
 
 
 def credentials(env):
-    """Overlay systemd LoadCredential(Encrypted) files (name -> ENV_NAME) on the environment so keys stay out of unit
-    files.
-    """
+    """Overlay systemd credential files (name -> ENV_NAME) on the environment so keys stay out of unit files."""
     out = dict(env)
     for f in Path(env["CREDENTIALS_DIRECTORY"]).iterdir() if env.get("CREDENTIALS_DIRECTORY") else ():
         out[f.name.upper()] = f.read_text().strip()

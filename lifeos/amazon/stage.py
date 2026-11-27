@@ -192,8 +192,7 @@ def _watermark(client, source_id):
 
 def window_query(watermark, now, since=None, until=None):
     """Bounded Gmail search: allowlisted senders after (last accepted state - overlap), and before `until` when a
-    backfill window closes. Never mailbox-wide.
-    """
+    backfill window closes. Never mailbox-wide."""
     start = since or ((watermark - OVERLAP) if watermark else (now - BOOTSTRAP))
     # An explicit start (backfill or recovery) also reads the Trash, where retention moves recorded mail.
     return f"{SENDERS_QUERY} after:{int(start.timestamp())}" + (f" before:{int(until.timestamp())}" if until else "") + (" in:anywhere" if since else "")
@@ -264,8 +263,7 @@ def _sort_events(messages, counts):
 
 def decide_order(order_id, existing, order_events, order_reviews, now):
     """PURE: what one order row should hold. -> (desired row, conflict flag, cause code). A conflict freezes the row
-    in REVIEW.
-    """
+    in REVIEW."""
     conflict = bool(order_reviews)
     cause = ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in order_reviews])) if conflict else None
     desired = _review_desired(order_id) if conflict else None
@@ -310,8 +308,7 @@ def _plan_orders(notion, source_id, events_by_order, review_by_order, accepted_i
 
 def _apply_plans(gmail, notion, source_id, label_id, plans, already_filed, review_by_order, counts):
     """APPLY each order (write, then Notion read-back), then file its mail (then Gmail read-back). Failures are
-    collected and raised once.
-    """
+    collected and raised once."""
     failures, filed_now = [], set()
     for order_id, existing, desired, review_only, file_ids in plans:
         try:

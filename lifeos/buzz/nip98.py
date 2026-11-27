@@ -1,6 +1,6 @@
-"""NIP-98 request signing for the Buzz relay: BIP-340 Schnorr over secp256k1 for event kind 27235. Stdlib only.
-Nothing is stored or logged; no key is read from disk or the environment.
-"""
+"""NIP-98 request signing for the Buzz relay: BIP-340 Schnorr over secp256k1 for event kind 27235.
+
+Stdlib only. Nothing is stored or logged; no key is read from disk or the environment."""
 import base64, hashlib, json, os, time, uuid
 
 P = 2**256 - 2**32 - 977

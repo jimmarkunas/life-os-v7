@@ -1,7 +1,7 @@
-"""The V3 weekly sprint view as native Notion blocks. Pure: no Notion, no Jira, no clock. `spec` gives block specs
-{"type", "rich": [(text, link, bold, color)], "children": [spec], "icon": emoji, "color": block colour} for
-`region.write_tree`.
-"""
+"""The V3 weekly sprint view as native Notion blocks.
+
+Pure: no Notion, no Jira, no clock. `spec` gives block specs {"type", "rich": [(text, link, bold, color)],
+"children": [spec], "icon": emoji, "color": block colour} for `region.write_tree`."""
 import sys
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo

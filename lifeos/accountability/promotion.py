@@ -1,11 +1,11 @@
-"""The v2 quarterly promotion check (off by default, not wired; V2_PROMOTION is the kill switch). On the first run at
-or after Fri Jan 1 2027, 8:00 AM America/Chicago, `run_if_due` evaluates the checks: a pass sets V2_OFFICIAL
-through an injected setter; a fail keeps legacy official and sends ONE Agent Inbox alert through an injected
-alerter. Any missing, ambiguous, duplicate or wrong-date datum is a hard fail, never excused (frozen quarter list
-100% counted, no key with two goals, completion dates from the first verified Done transition, v1 figures
-unchanged, manual and automatic closures distinct). `reconcile` allows at most ONE unexplained discrepancy per
-board per quarter.
-"""
+"""The v2 quarterly promotion check (off by default, not wired; V2_PROMOTION is the kill switch).
+
+On the first run at or after Fri Jan 1 2027, 8:00 AM America/Chicago, `run_if_due` evaluates the checks: a pass
+sets V2_OFFICIAL through an injected setter; a fail keeps legacy official and sends ONE Agent Inbox alert through
+an injected alerter. Any missing, ambiguous, duplicate or wrong-date datum is a hard fail, never excused (frozen
+quarter list 100% counted, no key with two goals, completion dates from the first verified Done transition, v1
+figures unchanged, manual and automatic closures distinct). `reconcile` allows at most ONE unexplained discrepancy
+per board per quarter."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -48,8 +48,7 @@ def due(now):
 
 def reconcile(discrepancies):
     """`discrepancies`: [{"key", "explanation": {"by", "what", "source"} or None}] -> {"explained": [keys],
-    "unexplained": [keys]}. An explanation needs all three fields non-blank.
-    """
+    "unexplained": [keys]}. An explanation needs all three fields non-blank."""
     explained, unexplained, seen = [], [], set()
     for item in discrepancies or []:
         key = str((item or {}).get("key") or "")
@@ -102,8 +101,7 @@ def _board(name, data):
 
 def evaluate(inputs):
     """-> {"verdict": "PASS"|"FAIL", "reasons": [codes], "quarter", "boards": {name: {"hard": [...], "unexplained": n,
-    "explained": n}}}. PASS needs both boards with no hard failure and at most one unexplained discrepancy each.
-    """
+    "explained": n}}}. PASS needs both boards with no hard failure and at most one unexplained discrepancy each."""
     reasons, boards = set(), {}
     if not isinstance(inputs, dict) or not isinstance(inputs.get("boards"), dict) or not inputs.get("quarter"):
         return {"verdict": "FAIL", "reasons": [INPUT_INVALID], "quarter": str((inputs or {}).get("quarter") or "") if isinstance(inputs, dict) else "", "boards": {}}
@@ -136,8 +134,7 @@ def refusing_setter():
 def run_if_due(now, switches, readers, setters, alerter):
     """-> {"status": ..., ...}, fixed words and codes only. Order: kill switch off -> not_enabled (nothing read,
     written or sent); already official -> already_official; before the first run instant -> not_due; else read,
-    evaluate, set or alert.
-    """
+    evaluate, set or alert."""
     if not (switches or {}).get("V2_PROMOTION"):
         return {"status": "not_enabled"}
     if (switches or {}).get("V2_OFFICIAL"):
@@ -169,8 +166,7 @@ def run_if_due(now, switches, readers, setters, alerter):
 
 def inbox_alerter(deliver=None):
     """Alerter over the Agent Inbox delivery, which the CALLER passes in (this package never imports the inbox). A
-    delivery that is not ok raises, so run_if_due records it as not sent.
-    """
+    delivery that is not ok raises, so run_if_due records it as not sent."""
     if deliver is None:
         raise PromotionError(ALERT_FAILED)
 

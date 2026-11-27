@@ -138,8 +138,7 @@ COMPARED = tuple(field for field in FIELDS if field != "Last Reconciled At")
 
 def equal(left_row, right_row, fields, moment=_time, text=_text):
     """True when two Notion-normalized rows agree on `fields`: times by `moment`, the total by value, the count as an
-    integer, the flag by truth, anything else by `text`.
-    """
+    integer, the flag by truth, anything else by `text`."""
     for field in fields:
         left, right = left_row.get(field), right_row.get(field)
         if field in TIMES:

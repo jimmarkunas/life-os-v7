@@ -1,7 +1,7 @@
-"""Read-only Jira reads (GET only) for the V3 accountability regions. A quarter's epics carry the label
-goals-<year>-q<n>; an epic keeps its older Done tasks, so a quarter counts only tasks open now or completed inside
-it. Ticket text goes to Notion only, never to a log.
-"""
+"""Read-only Jira reads (GET only) for the V3 accountability regions.
+
+A quarter's epics carry the label goals-<year>-q<n>; an epic keeps its older Done tasks, so a quarter counts only
+tasks open now or completed inside it. Ticket text goes to Notion only, never to a log."""
 import json
 import os
 import re
@@ -24,8 +24,7 @@ TAIL = re.compile(r"\s+Q[1-4]\s+\d{4}$")
 
 def site_url(environ=None):
     """Base for Jira issue links: JIRA_SITE_URL, else JIRA_BASE_URL unless it is a gateway address (host starting
-    "api."); None gives plain text.
-    """
+    "api."); None gives plain text."""
     environ = os.environ if environ is None else environ
     for raw in (environ.get("JIRA_SITE_URL"), environ.get("JIRA_BASE_URL")):
         value = (raw or "").strip().rstrip("/")
@@ -67,8 +66,7 @@ def starts(year):
 
 def quarter(today):
     """-> (year, n, first day, last day) of the quarter `today` falls in. A quarter begins on the first Wednesday of
-    January, April, July and October, so earlier days belong to last year's Q4.
-    """
+    January, April, July and October, so earlier days belong to last year's Q4."""
     for year in (today.year, today.year - 1):
         for n in (4, 3, 2, 1):
             if starts(year)[n] <= today:
@@ -108,8 +106,7 @@ def epics(jira, year, n):
 
 def _counts(children, first, last):
     """{epic: [done, all]}: open tasks count in all; a completed task counts only when resolved inside [first, last].
-    Sub-tasks and Epics are not counted.
-    """
+    Sub-tasks and Epics are not counted."""
     out = {}
     for issue in children:
         fields = issue.get("fields") or {}
@@ -131,8 +128,7 @@ def _counts(children, first, last):
 
 def _mej_project_goals(jira, quarter_keys):
     """Project Epic key -> quarter Epic key by one explicit Jira Relates link, for Epics labelled 'mej-project' only.
-    Links to non-quarter issues are ignored; several quarter targets fail closed.
-    """
+    Links to non-quarter issues are ignored; several quarter targets fail closed."""
     if not quarter_keys:
         return {}
     projects = search(jira, 'project = MEJ AND issuetype = Epic AND labels = "mej-project" ORDER BY key ASC',
@@ -156,8 +152,7 @@ def _mej_project_goals(jira, quarter_keys):
 
 def _first_verified_done(jira, key, current_done_status_id=None):
     """First historical transition INTO Done, including earlier Done/reopen cycles. The live status-category-change
-    field and resolutiondate are never proof; absent or incomplete history is a degraded metric, not an estimate.
-    """
+    field and resolutiondate are never proof; absent or incomplete history is a degraded metric, not an estimate."""
     start, first = 0, None
     path = f"/rest/api/3/issue/{quote(key, safe='')}/changelog"
     for _ in range(MAX_PAGES):
@@ -195,8 +190,7 @@ def _first_verified_done(jira, key, current_done_status_id=None):
 
 def _frozen_mej_membership(first, manifest=None, project="MEJ"):
     """Load the approved, version-controlled Task->parent->goal baseline for one board. A project Epic's live Relates
-    link NEVER assigns its whole child backlog to a quarter; missing approval or quarter fails closed.
-    """
+    link NEVER assigns its whole child backlog to a quarter; missing approval or quarter fails closed."""
     if manifest is None:
         try:
             manifest = json.loads(MEJ_MEMBERSHIP.read_text(encoding="utf-8"))
@@ -253,8 +247,7 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ")
 
 def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membership=None):
     """v1 direct-child metrics, or opt-in v2 frozen metrics (needs `mej_metric_version="v2"` AND an approved frozen
-    quarter list); the default is v1.
-    """
+    quarter list); the default is v1."""
     if not found:
         return {}
     keys = ",".join(e["key"] for e in found)
@@ -303,8 +296,7 @@ def _v3_week(jira, project, today, monday):
     """Group the V3 week view (reached only through `week(..., v3_week_view=True)`); each issue key lands in one
     section: `open` (open Tasks/Stories of the active sprint), `subtasks` ({parent key: open Sub-tasks}), `blocked`
     and `overdue` (unfinished issues outside the sprint's commitments), `done` (moved to Done this week). Any Jira
-    failure propagates so the V3 writer keeps the last accepted content and reports DEGRADED.
-    """
+    failure propagates so the V3 writer keeps the last accepted content and reports DEGRADED."""
     tail = " ORDER BY duedate ASC, key ASC"
     standard = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
     sprint = "(sprint in openSprints())"
@@ -334,8 +326,7 @@ def _v3_week(jira, project, today, monday):
 def week(jira, project, today, mej_task_focus=False, v3_week_view=False):
     """Read this week's commitments and completions. Default is the plain query and summary; the code argument
     `mej_task_focus=True` gives MEJ a view separating open sprint commitments from work due outside it, and
-    `v3_week_view=True` gives BOTH boards the V3 view.
-    """
+    `v3_week_view=True` gives BOTH boards the V3 view."""
     sunday = today + timedelta(days=6 - today.weekday())
     monday = today - timedelta(days=today.weekday())
     if v3_week_view:
@@ -374,8 +365,7 @@ GOOGLE_FILE = re.compile(r"https://docs\.google\.com/(document|spreadsheets)/d/(
 
 def google_files(jira, project):
     """-> {Google file id: {kind, keys}} for every Google Doc or Sheet a project issue links in its description or
-    comments. Only link text is read.
-    """
+    comments. Only link text is read."""
     out = {}
     for issue in search(jira, f"project = {project} ORDER BY key ASC", "description,comment"):
         fields = issue.get("fields") or {}

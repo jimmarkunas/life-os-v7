@@ -1,8 +1,7 @@
-"""OAuth 2.1 resource-server checks for the remote Buzz MCP: RS256 access tokens from one issuer, a client allowlist
-and a user allowlist. Stdlib only. Output: a verified identity (subject, label, communities) or an AuthError with a
-fixed code. Client (client_id/azp) and user (`sub`) must both be allowlisted; the label comes only from the
-verified `sub`.
-"""
+"""OAuth 2.1 resource-server checks for the remote Buzz MCP: RS256 access tokens from one issuer, a client allowlist and a user allowlist.
+
+Stdlib only. Output: a verified identity (subject, label, communities) or an AuthError with a fixed code. Client
+(client_id/azp) and user (`sub`) must both be allowlisted; the label comes only from the verified `sub`."""
 import base64, hashlib, hmac, json, threading, time, urllib.request
 from lifeos.buzz.relay import _NoRedirect
 

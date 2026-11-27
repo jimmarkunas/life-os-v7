@@ -1,7 +1,7 @@
-"""The five cutover rows of the Runtime Configuration source (MEJ_SPRINT_AUTOMATION, V3_WEEK_VIEW, V2_QUARTER_SHADOW,
-V2_PROMOTION, V2_OFFICIAL), read so they fail CLOSED: on only when the value is exactly "on" (case and spaces
-ignored).
-"""
+"""The five cutover rows of the Runtime Configuration source, read so they fail CLOSED.
+
+MEJ_SPRINT_AUTOMATION, V3_WEEK_VIEW, V2_QUARTER_SHADOW, V2_PROMOTION and V2_OFFICIAL are on only when the value is
+exactly "on" (case and spaces ignored)."""
 import os
 
 SWITCHES = ("MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PROMOTION", "V2_OFFICIAL")

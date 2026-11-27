@@ -1,8 +1,8 @@
-"""Packages from stores other than Amazon, for the Daily Report. Stateless and read-only: each run reads the last
-WINDOW_DAYS of shipping mail and folds it into packages (Amazon mail and Physical Mail FedEx notices are excluded).
-A package is "in transit" until a delivered mail for its tracking number (or, with none, its store) arrives or
-STALE_DAYS pass.
-"""
+"""Packages from stores other than Amazon, for the Daily Report.
+
+Stateless and read-only: each run reads the last WINDOW_DAYS of shipping mail and folds it into packages (Amazon
+mail and Physical Mail FedEx notices are excluded). A package is "in transit" until a delivered mail for its
+tracking number (or, with none, its store) arrives or STALE_DAYS pass."""
 import re
 from datetime import datetime, timedelta
 from email.utils import parseaddr
@@ -119,8 +119,7 @@ def fold(extracted):
 
 def read(gmail, now):
     """-> packages. Complete or raises GmailError: a partial read would show a package as undelivered that a later
-    mail closed.
-    """
+    mail closed."""
     ids = gmail.list_ids_complete(query(now), LIMIT)
     return fold(extract(gmail.message_record(message_id, keep_lines=True)) for message_id in ids)
 

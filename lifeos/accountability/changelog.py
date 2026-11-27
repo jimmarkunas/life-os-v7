@@ -1,5 +1,4 @@
-"""Stage `accountability-changelog`: appends one dated Canon / Change Log line when a quarter begins; earlier lines
-are never edited.
+"""Stage `accountability-changelog`: appends one dated Canon / Change Log line when a quarter begins; earlier lines are never edited.
 """
 import os
 from datetime import datetime

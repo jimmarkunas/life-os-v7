@@ -63,8 +63,7 @@ URL = re.compile(r"https?://[^\s<>\"']+")
 
 def _location_parts(location, meeting_link=None):
     """The location as ` · text`; a web address becomes a small link named for its site, unless the Join link already
-    carries it.
-    """
+    carries it."""
     pieces, last = [], 0
     for found in URL.finditer(location):
         url = found.group(0).rstrip(".,;)")
@@ -107,8 +106,7 @@ def _line(event):
 
 def _merged(events):
     """One line per title and time: a Gmail copy beside the event you made shows once, as the richer of the two.
-    Display only.
-    """
+    Display only."""
     kept = {}
     for event in events:
         rank = (bool(event.get("meeting_link")), len(event.get("location") or ""))

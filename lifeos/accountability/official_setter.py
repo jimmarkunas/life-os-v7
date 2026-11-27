@@ -1,8 +1,8 @@
-"""The one writer of a Runtime Configuration row, and it can change exactly one: `V2_OFFICIAL`, only its Value (and
-Revision + 1). Any other row fails closed (RUNTIME_CONFIG_WRITE_NOT_ALLOWED) before any read or write. A dry run
-(the default) only reports; a live write is read back and fails (RUNTIME_CONFIG_WRITE_VERIFY_FAILED) unless the new
-Value and Revision are seen.
-"""
+"""The one writer of a Runtime Configuration row, and it can change exactly one: `V2_OFFICIAL`, only its Value (and Revision + 1).
+
+Any other row fails closed (RUNTIME_CONFIG_WRITE_NOT_ALLOWED) before any read or write. A dry run (the default)
+only reports; a live write is read back and fails (RUNTIME_CONFIG_WRITE_VERIFY_FAILED) unless the new Value and
+Revision are seen."""
 from lifeos.platform import runtime_config
 
 ALLOWED = ("V2_OFFICIAL",)

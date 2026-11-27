@@ -1,7 +1,7 @@
-"""Render the saved Bills snapshot into V7's one "Bills: This Week" callout on the Daily Report. Reads only the
-accepted private snapshot and writes only the callout it owns; never touches the Bill Tracker or a Due Date. The
-window is [today, today + 7] in America/Chicago.
-"""
+"""Render the saved Bills snapshot into V7's one "Bills: This Week" callout on the Daily Report.
+
+Reads only the accepted private snapshot and writes only the callout it owns; never touches the Bill Tracker or a
+Due Date. The window is [today, today + 7] in America/Chicago."""
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo

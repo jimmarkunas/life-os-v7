@@ -1,6 +1,6 @@
-"""Pure text for the V3 accountability regions: no Notion, no Jira, no clock. A summary page is at most SUMMARY_MAX
-characters.
-"""
+"""Pure text for the V3 accountability regions: no Notion, no Jira, no clock.
+
+A summary page is at most SUMMARY_MAX characters."""
 from lifeos.accountability import read
 from lifeos.platform import ct_stamp
 
@@ -146,8 +146,7 @@ REVIEWS_NONE = "Review pages are not indexed yet."
 
 def artifact_lines(items):
     """-> (lines, plain lines, bulleted): one linked line per verified artifact; None (no index) or empty gives one
-    plain message line.
-    """
+    plain message line."""
     if items is None:
         return [[p(NO_INDEX)]], [NO_INDEX], False
     if not items:

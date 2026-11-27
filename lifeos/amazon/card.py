@@ -1,7 +1,7 @@
-"""Render the canonical Amazon Orders rows into V7's one "Amazon Orders" callout on the Daily Report. Reads the
-canonical orders and writes only the callout it owns; when the ingest step just failed the line says DEGRADED and
-the last accepted orders stay visible.
-"""
+"""Render the canonical Amazon Orders rows into V7's one "Amazon Orders" callout on the Daily Report.
+
+Reads the canonical orders and writes only the callout it owns; when the ingest step just failed the line says
+DEGRADED and the last accepted orders stay visible."""
 import os
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -122,8 +122,7 @@ def _package_bullet(pkg, label):
 
 def package_blocks(packages, now, error=False):
     """-> (blocks, counts) for other-store packages. None with error=True means the read failed: shown as unavailable,
-    never as 'no packages'.
-    """
+    never as 'no packages'."""
     if packages is None:
         return ([_paragraph("Other packages · unavailable (mail read failed this run)")] if error else []), {"packages_in_transit": 0, "packages_delivered": 0, "packages_status": "unavailable" if error else "off"}
     transit, delivered = packages_mod.split(packages, now)

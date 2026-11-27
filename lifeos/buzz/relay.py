@@ -1,7 +1,6 @@
-"""Scoped Buzz relay client: reads through POST /query, writes through POST /events, with an injectable transport so
-tests never touch a network. A write needs its exact (community, channel) in `writes`. Raises BuzzError with a
-fixed code.
-"""
+"""Scoped Buzz relay client: reads through POST /query, writes through POST /events, with an injectable transport so tests never touch a network.
+
+A write needs its exact (community, channel) in `writes`. Raises BuzzError with a fixed code."""
 import base64, hashlib, hmac, json, re, threading, time, urllib.error, urllib.request
 from lifeos.buzz import nip98
 
@@ -104,8 +103,7 @@ class Relay:
     def _paged(self, community, op, flt, limit=None, cursor=None):
         """Lossless newest-first paging by (created_at, id), whatever order the relay returns ties in. A full window
         may have cut its oldest second short, so only newer seconds count as complete; more matching events than
-        the relay's max_limit in ONE second is reported as unsupported.
-        """
+        the relay's max_limit in ONE second is reported as unsupported."""
         if community not in self.keys:
             raise BuzzError("key_not_configured")
         lim = self._limit(limit, 20)
@@ -153,8 +151,7 @@ class Relay:
 
     def get_addressed(self, community, channel=None, limit=None, before=None):
         """Messages whose signed `p` tag names THIS identity, newest first; reading never marks anything delivered.
-        Pass `next_before` back as `before` for older ones; the boundary second may repeat, so dedupe by event_id.
-        """
+        Pass `next_before` back as `before` for older ones; the boundary second may repeat, so dedupe by event_id."""
         if community not in self.keys:
             raise BuzzError("key_not_configured")
         flt = {"kinds": [9], "#p": [nip98.pubkey(self.keys[community])], "limit": self._limit(limit, 20)}
@@ -201,8 +198,7 @@ class Relay:
 
     def _recipient(self, community, channel, alias):
         """A recipient is an owner-approved alias for this community AND a current member of the destination channel;
-        never a caller-supplied key.
-        """
+        never a caller-supplied key."""
         if not isinstance(alias, str) or not ALIAS.match(alias):
             raise BuzzError("invalid_argument")
         pk = self.recipients.get((community, alias.lower()))

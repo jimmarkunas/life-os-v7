@@ -1,8 +1,8 @@
-"""The two Notion index pages the stages read (reviews, artifacts); read only. A page is found by its V3 block ID
-register row and accepted only with its expected title, else None. Review bullet: `<Person> | <Qn YYYY> | current
-or past → <record page>`. Artifact bullet: `<Owner> | <Title> | <file id> | <Jira keys> | <Doc or Sheet> |
-<verified, unresolved or excluded> | <date>`.
-"""
+"""The two Notion index pages the stages read (reviews, artifacts); read only.
+
+A page is found by its V3 block ID register row and accepted only with its expected title, else None. Review
+bullet: `<Person> | <Qn YYYY> | current or past → <record page>`. Artifact bullet: `<Owner> | <Title> | <file id> |
+<Jira keys> | <Doc or Sheet> | <verified, unresolved or excluded> | <date>`."""
 from urllib.parse import quote
 
 from lifeos.accountability import region
@@ -46,8 +46,7 @@ def reviews(notion, person):
 
 def artifacts(notion, person):
     """-> ([{title, url, file_id, keys, kind, state}] verified, unresolved count, {excluded file ids}); None when no
-    index.
-    """
+    index."""
     found = rows(notion, "index.artifacts")
     if found is None:
         return None

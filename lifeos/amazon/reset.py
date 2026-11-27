@@ -1,6 +1,6 @@
 """Clear Amazon Orders rows that never got a Grand Total: each moves to the Notion trash (recoverable for 30 days).
-Dry run unless live; at most 100 a run. A row with a total is never touched.
-"""
+
+Dry run unless live; at most 100 a run. A row with a total is never touched."""
 import os
 from urllib.parse import quote
 

@@ -1,7 +1,7 @@
-"""Amazon order mail older than 30 days goes to the Gmail Trash once its order is recorded in the canonical Amazon
-Orders data source. Only the three allowlisted senders, mail under the Amazon label, and mail whose message id is
-on its order row; anything else is counted and left alone. Dry run unless live.
-"""
+"""Amazon order mail older than 30 days goes to the Gmail Trash once its order is recorded in the canonical Amazon Orders data source.
+
+Only the three allowlisted senders, mail under the Amazon label, and mail whose message id is on its order row;
+anything else is counted and left alone. Dry run unless live."""
 import hashlib
 import os
 from datetime import datetime, timezone
@@ -37,8 +37,7 @@ def _status(notion, source_id, message, age_days=0):
 
 def _judge(notion, source_id, message_id, digest, age_days=0):
     """-> (why, detail). why: recorded, no_order_id (unreadable), no_row (order never recorded), not_listed (order
-    recorded, this message not on it). A multi-order message is recorded only when EVERY order lists it.
-    """
+    recorded, this message not on it). A multi-order message is recorded only when EVERY order lists it."""
     extracted_all = digest["events"]
     first = extracted_all[0]
     order_ids = [e.get("order_id") for e in extracted_all]
@@ -64,8 +63,7 @@ def _judge(notion, source_id, message_id, digest, age_days=0):
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, seen=None):
     """`seen`: the checkpoint, (load() -> {message id: digest}, save(digests) -> bool); default is the private store
-    when this job has credentials, else none.
-    """
+    when this job has credentials, else none."""
     counts = {"candidates": 0, "recorded": 0, "kept_unrecorded": 0, "no_order_id": 0, "no_row": 0, "not_listed": 0, "oldest_days": 0, "trashed": 0, "failed": 0}
     now = now or datetime.now(timezone.utc)
     if seen is None and (environ.get("LIFEOS_ACQ_DB_NAME") or "").strip():
