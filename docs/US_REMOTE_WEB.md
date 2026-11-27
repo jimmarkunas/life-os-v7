@@ -1,7 +1,7 @@
 # US Remote Web: incremental acquisition plan
 
 Status: PHASE 1 BUILT (shadow-safe: `python -m lifeos.run web`, counts only unless live); phases 2-5 scoped. Authority: the US Remote web contract (v3, 2026-09-28) and `docs/LANES.md`. The source universe is in
-`lifeos/sources/web/us_remote.json` (43 sources harvested from V2: 30 employers, 10 staffing agencies, 3 discovery helpers).
+`lifeos/sources/web/us_remote.json` (43 sources harvested from the retired system: 30 employers, 10 staffing agencies, 3 discovery helpers).
 
 ## Principle
 Never crawl the world in one run. Boards are polled when due, diffed against Hostinger state, and only NEW or MATERIAL_CHANGE vacancies

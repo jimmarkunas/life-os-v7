@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from lifeos.platform.http import Fetched, fetch
 
-HONEST_UA = "Mozilla/5.0 (compatible; LIFE-OS-Scale-up/1.0; +https://github.com/jimmarkunas/life-os-automation)"
+HONEST_UA = "Mozilla/5.0 (compatible; LIFE-OS-Scale-up/1.0; +https://github.com/jimmarkunas/life-os-v7)"
 
 
 def honest(url, **kwargs):

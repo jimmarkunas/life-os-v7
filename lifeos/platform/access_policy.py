@@ -12,7 +12,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 LEVELS = ("off", "read", "write")
-SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz", "honcho")
+SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz", "honcho", "todoist")
 CAP = {
     "jira": "read",
     "notion": "write",
@@ -22,6 +22,7 @@ CAP = {
     "calendar": "read",
     "buzz": "write",
     "honcho": "write",
+    "todoist": "write",
 }
 KINDS = ("read", "write", "delete", "bulk")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")

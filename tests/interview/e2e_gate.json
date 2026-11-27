@@ -211,7 +211,7 @@
     "E15": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "V1 old-writer retirement is merged (life-os-automation PR #57, 83a9a5a; main's contract says INTERVIEW_CANON_WRITE_AUTHORIZED: false and the old runtime acts only on true). INTERVIEW_OS_WRITER is a repository variable CI cannot read, and no live V7 write has been read back yet",
+      "missing": "The retired system's old-writer retirement is merged (its PR #57, 83a9a5a; main's contract says INTERVIEW_CANON_WRITE_AUTHORIZED: false and the old runtime acts only on true). INTERVIEW_OS_WRITER is a repository variable CI cannot read, and no live V7 write has been read back yet",
       "tests": [
         "tests.sources.test_interview_evidence.Refresh.test_nothing_is_written_without_jims_switch",
         "tests.sources.test_interview_evidence.Registered.test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched",

@@ -107,6 +107,14 @@ class Governed(unittest.TestCase):
         g.run("todoist_comments", {"task_id": "1"}, state(fake, enabled=False))
         self.assertTrue(all(c[0] == "GET" and c[2] == "Bearer " + RD for c in fake.calls))
 
+    def test_a_refusal_carries_its_fixed_reason_for_the_mcp_to_show(self):
+        try:
+            g.run("todoist_task_complete", {"task_id": "1"}, state(Fake(), enabled=False))
+        except ValueError as error:
+            self.assertEqual((str(error), error.reason), ("writes_disabled", "writes_disabled"))
+        else:
+            self.fail("expected a refusal")
+
     def test_every_write_is_refused_while_off_and_nothing_is_sent(self):
         fake = Fake([{"id": "1", "content": "a", "project_id": "p1"}])
         for op, args in (
@@ -143,6 +151,26 @@ class Governed(unittest.TestCase):
             code("todoist_task_create", {"content": "buy SALT", "project_id": "p1"}, state(fake)), "duplicate_found"
         )
         self.assertEqual(len([t for t in fake.tasks.values()]), 1)
+
+    def test_simultaneous_identical_creates_make_exactly_one_task(self):
+        import threading
+        import time
+
+        class Slow(Fake):
+            def route(self, method, path, body, url):
+                if method == "POST" and path == "/tasks":
+                    time.sleep(0.05)  # widen the window between the duplicate check and the create
+                return super().route(method, path, body, url)
+
+        fake, results = Slow(), []
+
+        def go():
+            results.append(code("todoist_task_create", {"content": "Buy salt", "project_id": "p1"}, state(fake)))
+
+        threads = [threading.Thread(target=go) for _ in range(4)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual((sorted(r or "ok" for r in results), len(fake.tasks)), (["duplicate_found"] * 3 + ["ok"], 1))
 
     def test_update_move_complete_reopen_comment_are_each_verified(self):
         fake = Fake([{"id": "1", "content": "a", "project_id": "p1", "checked": False}])

@@ -173,7 +173,7 @@ One PR per slice; the first four steps of the roadmap run these census slices ea
 - **Notion:** the bounded MegIBOW block and the MegIBOW Review database, both created by Jim inside the dashboard page (V7 never creates a missing block), and the dashboard page shared with the Notion integration V7 uses. The Jira accountability view may also write to this page (to confirm), so the page-level protection check must cover it.
 - **Secrets:** the dashboard block id, the review database id, a token if the existing one is not shared with that page, a private list of excluded domains.
 - **Workflow and tests:** a `domains.yml` job, a `DOMAIN_SECRETS` entry, a router entry, an optional field list on the Outlook events and messages calls.
-- **Other repository:** the scheduler wording, **made** in `life-os-automation` on the task branch (production contract 2.15.12); it takes effect when Jim merges it.
+- **Other repository:** the scheduler wording, **made** in the retired system's repository on the task branch (production contract 2.15.12); it takes effect when Jim merges it.
 - **Hiring Pipeline and Network Intelligence** are inputs, not blockers: MEG-2 works with the Job Ledger and Interview data alone and gets better as they land.
 
 ## 12. Decisions: all settled, one thing for Jim later

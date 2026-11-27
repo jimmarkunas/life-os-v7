@@ -2,7 +2,7 @@
 
 > Binding decisions and hard constraints live in [DECISIONS.md](DECISIONS.md) and win over anything below.
 
-## Rules that prevent the V1/V2 spin
+## Rules that prevent the retired-system spin
 1. **One step at a time.** A step ships only when its acceptance check passes on real data. No step starts before the previous one is green.
 2. **One table is the queue.** Every stage reads rows in status X and writes status Y. No orchestrator, no framework, no shared "engine".
 3. **Stages are independent and idempotent.** Re-running any stage is safe. Any stage can be disabled without breaking the others.

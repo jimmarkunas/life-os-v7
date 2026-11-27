@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -23,8 +24,12 @@ CONTENT_MAX, COMMENT_MAX = 500, 2000
 UPDATE_FIELDS = ("content", "description", "due_string")
 
 
-class GovernedError(RuntimeError):
-    """The message is always a fixed lower-case code."""
+class GovernedError(ValueError):
+    """The message and `reason` are always the same fixed lower-case code (the MCP shows a ValueError's reason to the caller)."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
 
 
 OPS = {
@@ -69,6 +74,7 @@ OPS = {
 READS = ("todoist_tasks", "todoist_projects", "todoist_comments")
 
 
+CREATE_LOCK = threading.Lock()  # the service is threaded: the duplicate check and the create must not interleave
 TOKEN_TTL_S = (
     300  # the access tokens last an hour and the refresher renews them at 30 minutes; a few minutes of cache is safe
 )
@@ -214,16 +220,17 @@ def run(op, args, state):
         content, project = _text(given.get("content"), CONTENT_MAX), _id(given.get("project_id"))
         if project not in _projects(state):
             raise GovernedError("project_not_allowed")
-        for task in _pages(token, "/tasks", {"project_id": project}, opener):
-            if str(task.get("content") or "").strip().casefold() == content.casefold():
-                raise GovernedError("duplicate_found")
         body = {"content": content, "project_id": project}
         for field in ("description", "due_string"):
             if given.get(field):
                 body[field] = _text(given[field], COMMENT_MAX)
-        made = _http(token, "POST", "/tasks", body, opener=opener)
-        task_id = _id(str(made.get("id") or ""))
-        back = _task(token, task_id, opener)
+        with CREATE_LOCK:
+            for task in _pages(token, "/tasks", {"project_id": project}, opener):
+                if str(task.get("content") or "").strip().casefold() == content.casefold():
+                    raise GovernedError("duplicate_found")
+            made = _http(token, "POST", "/tasks", body, opener=opener)
+            task_id = _id(str(made.get("id") or ""))
+            back = _task(token, task_id, opener)
         if str(back.get("project_id")) != project or str(back.get("content") or "").strip() != content:
             raise GovernedError("readback_failed")
         return {"task_id": task_id, "verified": True}
@@ -281,4 +288,4 @@ def route(op, args, tenant):
     """-> (tenant, action, account, service) for the gate; an unknown operation is refused before the gate."""
     if op not in OPS:
         raise GovernedError("unknown_operation")
-    return tenant, "read" if op in READS else "write", "todoist-primary", "buzz"
+    return tenant, "read" if op in READS else "write", "todoist-primary", "todoist"
