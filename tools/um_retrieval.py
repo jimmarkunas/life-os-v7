@@ -17,6 +17,7 @@ import socket
 import statistics
 import sys
 import time
+import urllib.request
 from collections import Counter
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -88,6 +89,77 @@ def _subject(rec):
     return value if isinstance(value, str) and value else None
 
 
+class OllamaEmbedder:
+    """The host's local embedding model, the one Honcho itself uses. Loopback only: no spend, no other route, nothing stored. `kind` is "query" or "doc" so a model that wants prefixes can have them."""
+
+    def __init__(
+        self,
+        url="http://127.0.0.1:11434/api/embeddings",
+        model="nomic-embed-text",
+        opener=urllib.request.urlopen,
+        query_prefix="",
+        doc_prefix="",
+    ):
+        if not url.startswith("http://127.0.0.1:") and not url.startswith("http://localhost:"):
+            raise ValueError("embedder_not_loopback")
+        self.url, self.model, self.opener = url, model, opener
+        self.query_prefix, self.doc_prefix = query_prefix, doc_prefix
+        self.calls = 0
+
+    def embed(self, text, kind="doc"):
+        self.calls += 1
+        prompt = (self.query_prefix if kind == "query" else self.doc_prefix) + text
+        request = urllib.request.Request(
+            self.url,
+            data=json.dumps({"model": self.model, "prompt": prompt}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with self.opener(request, timeout=30) as answer:
+            return json.loads(answer.read())["embedding"]
+
+
+class OllamaJudge:
+    """A small local model asked one question per candidate: does this stored note state what the question asks for? Loopback only, no spend; the answer is YES or NO and anything else is NO."""
+
+    def __init__(self, url="http://127.0.0.1:11434/api/generate", model="qwen3:0.6b", opener=urllib.request.urlopen):
+        if not url.startswith("http://127.0.0.1:") and not url.startswith("http://localhost:"):
+            raise ValueError("judge_not_loopback")
+        self.url, self.model, self.opener, self.calls, self.cache = url, model, opener, 0, {}
+
+    def answers(self, query, text):
+        key = (query, text)
+        if key not in self.cache:
+            self.calls += 1
+            prompt = (
+                "You decide whether a stored note answers a question.\n"
+                f"Question: {query}\nNote: {text}\n"
+                "Does the note state the specific thing the question asks for? Answer with one word: YES or NO."
+            )
+            body = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "think": False,
+                "options": {"temperature": 0, "num_predict": 3},
+            }
+            request = urllib.request.Request(
+                self.url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
+            )
+            with self.opener(request, timeout=60) as answer:
+                reply = json.loads(answer.read()).get("response", "")
+            self.cache[key] = reply.strip().upper().startswith("YES")
+        return self.cache[key]
+
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
+LEGACY_GATE = {"kind": "lexical", "select": "all"}
+
+
 def _epoch(value):
     """-> seconds since the epoch from a number or an ISO time (naive means UTC); ValueError when it is neither."""
     if isinstance(value, bool):
@@ -105,12 +177,28 @@ class Retriever:
     graph: .answer(tenant, text) and .deps(case) or None (the lexical graph then answers); grants: {tenant: [permissions]} or {tenant: {perms, expires, revoked}};
     no grants at all means nothing is granted; messages: [{id, tenant}] the provenance ids that exist; clock: seconds, for grant expiry; floor: share of topical words a memory record must cover."""
 
-    def __init__(self, world, client=None, graph=None, grants=None, messages=None, clock=time.time, floor=FLOOR):
+    def __init__(
+        self,
+        world,
+        client=None,
+        graph=None,
+        grants=None,
+        messages=None,
+        clock=time.time,
+        floor=FLOOR,
+        embedder=None,
+        gate=None,
+        route_all=False,
+        judge=None,
+    ):
         self.world, self.client, self.graph, self.grants = world, client, graph, grants
         self.messages = {m["id"]: m["tenant"] for m in messages or []}
         self.tenants = {s["tenant"] for s in world.src.values()}
         self.client_calls = 0
         self.clock, self.floor = clock, floor
+        self.embedder, self.gate, self.route_all = embedder, dict(gate or LEGACY_GATE), route_all
+        self.judge, self._judged = judge, 0
+        self._doc_vecs, self._qvec, self._sims = {}, None, {}
         self._trace = []
         self._clean = None
 
@@ -182,7 +270,10 @@ class Retriever:
         return out
 
     def _note(self, ref, decision):
-        self._trace.append({"ref": ref if isinstance(ref, str) else None, "decision": decision})
+        row = {"ref": ref if isinstance(ref, str) else None, "decision": decision}
+        if self.gate["kind"] == "cosine" and row["ref"] in self._sims:
+            row["sim"] = round(self._sims[row["ref"]], 4)
+        self._trace.append(row)
 
     # -- canonical --------------------------------------------------------------------------------------------------
     def _canonical_ids(self, tenant, query, stats):
@@ -220,6 +311,30 @@ class Retriever:
 
     # -- memory -----------------------------------------------------------------------------------------------------
     def _relevant(self, query, rec_id):
+        """-> a positive relevance, or 0 when the record does not answer the query. The gate is lexical (the original floor), `none` (the source already filtered) or `cosine` (local embeddings)."""
+        kind = self.gate["kind"]
+        if kind == "none":
+            return 1.0
+        if kind == "judge":
+            if self.gate.get("tau") is not None:  # an optional similarity pre-filter keeps the judge to plausible notes
+                if self._qvec is None or self._qvec[0] != query:
+                    self._qvec = (query, self.embedder.embed(query, "query"))
+                if rec_id not in self._doc_vecs:
+                    self._doc_vecs[rec_id] = self.embedder.embed(self.world.src[rec_id]["text"], "doc")
+                if cosine(self._qvec[1], self._doc_vecs[rec_id]) < self.gate["tau"]:
+                    return 0.0
+            self._judged = getattr(self, "_judged", 0) + 1
+            if self._judged > self.gate.get("max", 4):
+                return 0.0
+            return 1.0 if self.judge.answers(query, self.world.src[rec_id]["text"]) else 0.0
+        if kind == "cosine":
+            if self._qvec is None or self._qvec[0] != query:
+                self._qvec = (query, self.embedder.embed(query, "query"))
+            if rec_id not in self._doc_vecs:
+                self._doc_vecs[rec_id] = self.embedder.embed(self.world.src[rec_id]["text"], "doc")
+            sim = cosine(self._qvec[1], self._doc_vecs[rec_id])
+            self._sims[rec_id] = sim
+            return sim if sim >= self.gate["tau"] else 0.0
         rest = um.tokens(query) - BEHAVIOR
         need = max(2, math.ceil(self.floor * len(rest)))
         hit = len(rest & self.world.tok[rec_id])
@@ -263,7 +378,11 @@ class Retriever:
             return self._reject(stats, ref, "text_mismatch")  # the live text is not what the registry holds
         if rec.get("malformed") or not isinstance(rec.get("text"), str):
             return self._reject(stats, ref, "malformed_record")
-        relevance = self._relevant(query, rec["id"])
+        try:
+            relevance = self._relevant(query, rec["id"])
+        except Exception:  # noqa: BLE001  a gate that cannot run admits nothing and says so
+            stats["degraded"] = "embedder_unavailable"
+            return self._reject(stats, ref, "embedder_unavailable")
         if not relevance:
             return self._reject(stats, ref, "irrelevant")
         claimed = item.get("refs")
@@ -273,6 +392,7 @@ class Retriever:
         if self.client is None:
             return []
         self.client_calls += 1
+        self._judged = 0
         try:
             items = self.client.recall(query, tenant, TOP_K)
         except Exception:  # noqa: BLE001  an outage is reported, not retried or guessed around
@@ -282,7 +402,7 @@ class Retriever:
             stats["malformed"] += 1
             return []
         admitted = []
-        for item in items:
+        for position, item in enumerate(items):
             try:
                 row = self._admit(item, tenant, query, stats)
                 if row is None:
@@ -292,11 +412,11 @@ class Retriever:
                 if sources is None:
                     self._reject(stats, rec["id"], "unsupported")
                     continue
-                admitted.append((rec, relevance, sources, _at(rec), _subject(rec)))
+                admitted.append((rec, relevance, sources, _at(rec), _subject(rec), position))
             except GUARDED:
                 self._reject(stats, item.get("source_ref") if isinstance(item, dict) else None, "malformed_record")
         groups = {}
-        for rec, relevance, sources, at, subject in sorted(admitted, key=lambda row: row[0]["id"]):
+        for rec, relevance, sources, at, subject, position in sorted(admitted, key=lambda row: row[0]["id"]):
             key = (subject or rec["id"], _norm(rec["text"]))
             if (
                 key in groups
@@ -306,6 +426,8 @@ class Retriever:
                     g["merged"].append(rec["id"])
                 g["sources"] += [s for s in sources if s not in g["sources"]]
                 g["at"] = max(g["at"], at)
+                g["rank"] = min(g["rank"], position)
+                g["relevance"] = max(g["relevance"], relevance)
                 continue
             groups[key] = {
                 "ref": rec["id"],
@@ -316,6 +438,7 @@ class Retriever:
                 "at": at,
                 "subject": subject,
                 "relevance": relevance,
+                "rank": position,
             }
         # records with the same text merge under the lowest id so the answer is stable
         out, by_subject = [], {}
@@ -326,7 +449,15 @@ class Retriever:
             if len(rows) > 1:
                 stats["conflicts"] += len(rows) - 1  # the newest valid record of a subject wins
             out.append(rows[0])
-        out.sort(key=lambda g: (-g["relevance"], _neg(g["at"]), g["ref"]))
+        if self.gate.get("select", "all") == "all":
+            out.sort(key=lambda g: (-g["relevance"], _neg(g["at"]), g["ref"]))
+        else:  # the source's own ranking decides the order; one answer, or every answer close to the best
+            out.sort(key=lambda g: (g["rank"], g["ref"]))
+            if self.gate["select"] == "top1":
+                out = out[:1]
+            elif self.gate["select"] == "within" and out:
+                best = max(g["relevance"] for g in out)
+                out = [g for g in out if g["relevance"] >= best - self.gate["margin"]]
         for g in out:
             self._note(g["ref"], "admitted")
         return out
@@ -348,6 +479,8 @@ class Retriever:
         stats = Counter()
         self._trace = []
         intent = route(query)
+        if self.route_all and intent == "canonical":
+            intent = "behavioral"  # memory is asked about every question that is not a typed dependency or unknown; canonical still wins
         result = {
             "intent": intent,
             "answers": [],
