@@ -27,7 +27,7 @@ DEFAULT = "main"
 KEEP = {"main", "claude/life41-edge-fixtures"}
 STALE_DAYS = 7
 IDLE_DELETE_DAYS = 14
-# The repo switch for deleting unmerged and abandoned branches (LIFE-1071): the file's text is exactly "on" to delete;
+# The repo switch for deleting unmerged and abandoned branches: the file's text is exactly "on" to delete;
 # anything else, or a missing file, is off (dry run: the report lists what it would delete and nothing is written).
 SWITCH_FILE = Path(__file__).resolve().parents[2] / ".github" / "branch-deletes"
 TZ = ZoneInfo("America/Chicago")
