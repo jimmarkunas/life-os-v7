@@ -43,7 +43,7 @@ class LinkProblemTests(unittest.TestCase):
 
 
 class QueryIdTests(unittest.TestCase):
-    """A vacancy whose id lives in the query is one vacancy; a listing that merely has a parameter is not."""
+    """A vacancy whose id lives in the query is one vacancy"""
 
     def test_an_id_parameter_makes_a_generic_or_root_page_a_vacancy(self):
         for url in ("https://acme.example/careers?gh_jid=4567890", "https://acme.example/?gh_jid=4567890",
@@ -62,6 +62,6 @@ class QueryIdTests(unittest.TestCase):
         for url in ("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567890", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=4567890",
                     "https://acme.eightfold.ai/careers?pid=123456789&domain=acme.example"):
             self.assertIsNone(quality.url_problem(url), url)
-        for url in ("https://acme.example/careers?token=4567890", "https://acme.example/careers?pid=123456789",       # the same names elsewhere prove nothing
+        for url in ("https://acme.example/careers?token=4567890", "https://acme.example/careers?pid=123456789",  # the same names elsewhere prove nothing
                     "https://boards.greenhouse.io/embed/job_app?for=acme", "https://boards.greenhouse.io/embed/job_board?for=acme"):
             self.assertIsNotNone(quality.url_problem(url), url)

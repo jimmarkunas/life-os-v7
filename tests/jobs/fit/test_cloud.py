@@ -1,5 +1,4 @@
-"""D214 (LIFE-41 10472 C, 10474, 10475): the cloud-Fit shadow. Production SQL over the sqlite kit, the production request builder, edge.invoke and judge.accept; only the Oracle endpoint is
-a fake that follows its wire contract. Nothing here calls a model or the network, and the switch is never set in any workflow (test_edge.Dormant)."""
+"""the cloud-Fit shadow."""
 import contextlib
 import datetime
 import json
@@ -23,7 +22,7 @@ class Base(unittest.TestCase):
         from tests.jobs.fakes_jobsdb import JobsDB
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
-        clock = mock.patch.object(stage, "_now", return_value=T)           # the fixtures are dated T; the stage's age gates (LIFE-212: 14 days) must judge them as of T, not the wall clock
+        clock = mock.patch.object(stage, "_now", return_value=T)  # the fixtures are dated T
         clock.start()
         self.addCleanup(clock.stop)
 
@@ -36,7 +35,7 @@ class Base(unittest.TestCase):
                        scored_at=seen, admission=admission, admission_reason=None, lane="US Remote", eligible="US Remote", exclusion=exclusion, cloud_status=cloud_status)
 
     def fit_stage(self, *extra):
-        """The Fit stage over this test's store with its profile and sponsor register stubbed; `extra` are more patches."""
+        """The Fit stage over this test's store with its profile and sponsor register stubbed"""
         stack = contextlib.ExitStack()
         for patch in (mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"),
                       mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), *extra):
@@ -65,8 +64,8 @@ class OffByDefault(Base):
     def test_on_is_refused_and_canary_outside_the_fit_stage_asks_nothing(self):
         self.job(1)
         endpoint = Endpoint()
-        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT": "on"}, endpoint)["cloud_fit"], "DEGRADED(MODE_NOT_AUTHORIZED)")      # G8 full on: a separate decision
-        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT": "canary"}, endpoint)["cloud_fit"], "DEGRADED(CANARY_WITHOUT_PROMOTION)")   # admission is the stage's
+        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT": "on"}, endpoint)["cloud_fit"], "DEGRADED(MODE_NOT_AUTHORIZED)")  # full on: a separate decision
+        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT": "canary"}, endpoint)["cloud_fit"], "DEGRADED(CANARY_WITHOUT_PROMOTION)")  # admission is the stage's
         self.assertEqual(endpoint.sent, [])
 
     def test_a_dry_run_and_missing_configuration_ask_nothing(self):
@@ -81,7 +80,7 @@ class OffByDefault(Base):
 
     def test_the_fit_stage_composes_it_after_its_static_write_and_off_leaves_the_stage_counts_unchanged(self):
         self.job(1)
-        self.db.raw.execute("DELETE FROM v7_job_fit")                                          # a new job: the stage scores it
+        self.db.raw.execute("DELETE FROM v7_job_fit")  # a new job: the stage scores it
         endpoint = Endpoint()
         with self.fit_stage(mock.patch.object(edge, "exchange", endpoint)):
             counts = stage.run(10, True, {})
@@ -92,23 +91,23 @@ class OffByDefault(Base):
 
 class Selection(Base):
     def test_only_new_eligible_unasked_records_are_asked_in_a_stable_order(self):
-        self.job(1, status="PUBLISHED", page="page1")                                          # published: never, whatever changes on it later
-        self.job(2, page="page2")                                                              # has a Ledger page
+        self.job(1, status="PUBLISHED", page="page1")  # published: never, whatever changes on it later
+        self.job(2, page="page2")  # has a Ledger page
         self.job(3, admission="EXCLUDE")
         self.job(4, exclusion="named employer")
-        self.job(5, cloud_status="OK")                                                         # already asked
+        self.job(5, cloud_status="OK")  # already asked
         self.job(6, status="EXCLUDED_FIT")
         self.job(8, seen=T + datetime.timedelta(hours=1))
         self.job(7, status="RESOLVED", admission="REVIEW")
-        self.job(9, kind="title_only")                                                         # LIFE-41 10500: not a public employer / ATS posting
+        self.job(9, kind="title_only")  # 10500: not a public employer / ATS posting
         self.job(10, kind="title_watch")
         asked = []
-        for _ in range(4):                                                                     # one a tick, oldest first, then nothing left
+        for _ in range(4):  # one a tick, oldest first, then nothing left
             counts = self.run_cloud({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "2"}, Endpoint())
             asked.append((counts["cloud_fit"], counts["cloud_calls"]))
         self.assertEqual(asked, [("OK", 1), ("OK", 1), ("OK", 0), ("OK", 0)])
         done = [r[0] for r in self.db.raw.execute("SELECT job_id FROM v7_job_fit WHERE cloud_status IS NOT NULL AND job_id <> 5 ORDER BY job_id")]
-        self.assertEqual(done, [7, 8])                                                         # 7 (RESOLVED, first seen T) then 8; never 1-4, 6, 9 or 10
+        self.assertEqual(done, [7, 8])  # 7 (RESOLVED, first seen T) then 8
 
     def test_a_published_job_whose_description_changed_is_still_never_asked(self):
         self.job(1, status="PUBLISHED", page="page1")
@@ -126,18 +125,19 @@ class Selection(Base):
             self.assertEqual(self.run_cloud({**SHADOW, **({"V7_CLOUD_FIT_PER_RUN": value} if value else {})}, endpoint)["cloud_calls"], 1, value)
             self.assertEqual(len(endpoint.sent), 1, value)
         self.assertEqual(cloud.MAX_PER_RUN, 1)
-        self.assertEqual((cloud.per_run({}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "x"}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "-3"})), (1, 0, 0))     # an invalid explicit value fails closed
+        self.assertEqual((cloud.per_run({}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "x"}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "-3"})), (1, 0, 0))  # an invalid explicit value fails closed
 
 
 class ScanPastSkips(Base):
-    """LIFE-41 G6 (proof run 39202038517 picked one candidate, skipped it and made no call): skips cost no network, so a run examines up to SCAN candidates and
-    asks the first sendable one. Still at most one call; later candidates stay unasked and untouched; the counts say why rows were skipped, never which."""
+    """(proof run 39202038517 picked one candidate, skipped it and made no call): skips cost no network, so a run
+    examines up to SCAN candidates and asks.
+    """
 
     def unsendable(self):
-        self.job(1, url="https://www.dice.com/job-detail/abc", source="dice")                 # NOT_PUBLIC_POSTING
+        self.job(1, url="https://www.dice.com/job-detail/abc", source="dice")  # NOT_PUBLIC_POSTING
         self.job(2, seen=T + datetime.timedelta(minutes=1))
-        self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=2", ("Senior Technical Program Manager London",))   # TITLE_LOCATION
-        self.job(3, seen=T + datetime.timedelta(minutes=2), text="Short.")                     # NO_SUBSTANTIVE_TEXT
+        self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=2", ("Senior Technical Program Manager London",))  # TITLE_LOCATION
+        self.job(3, seen=T + datetime.timedelta(minutes=2), text="Short.")  # NO_SUBSTANTIVE_TEXT
 
     def test_unsendable_oldest_candidates_do_not_use_up_the_one_call(self):
         self.unsendable()
@@ -149,9 +149,9 @@ class ScanPastSkips(Base):
         self.assertEqual(counts["cloud_skip_reasons"], {"NOT_PUBLIC_POSTING": 1, "TITLE_LOCATION": 1, "NO_SUBSTANTIVE_TEXT": 1})
         self.assertEqual([self.row(i, ("cloud_status", "cloud_reason")) for i in (1, 2, 3, 4)],
                          [("SKIPPED", "NOT_PUBLIC_POSTING"), ("SKIPPED", "TITLE_LOCATION"), ("SKIPPED", "NO_SUBSTANTIVE_TEXT"), ("OK", None)])
-        self.assertEqual(self.row(5, CLOUD), (None,) * len(CLOUD))                             # after the one call: never examined, never written
+        self.assertEqual(self.row(5, CLOUD), (None,) * len(CLOUD))  # after the one call: never examined, never written
         again = Endpoint()
-        self.assertEqual((self.run_cloud(SHADOW, again)["cloud_calls"], len(again.sent)), (1, 1))     # the next tick asks job 5, and only it
+        self.assertEqual((self.run_cloud(SHADOW, again)["cloud_calls"], len(again.sent)), (1, 1))  # the next tick asks job 5, and only it
         self.assertEqual(self.row(5, ("cloud_status",))[0], "OK")
 
     def test_the_scan_is_bounded_and_resumes_on_the_next_run(self):
@@ -183,8 +183,9 @@ class ScanPastSkips(Base):
 
 
 class AuditGuardBeforeEgress(Base):
-    """LIFE-41 G6 (run 39219054103 spent its only call on a row the same tick's audit then demoted with audit_url_listing_url): the precision audit's own
-    verdict (lifeos.jobs.audit.judge, same inputs) is the last gate before egress, so a listing, root or no-job-id link never consumes the call."""
+    """(run 39219054103 spent its only call on a row the same tick's audit then demoted with audit_url_listing_url): the
+    precision audit's own verdict.
+    """
     BAD = (("https://boards.greenhouse.io/acme/jobs/search?q=program+manager", "AUDIT_URL_LISTING_URL"),
            ("https://boards.greenhouse.io/", "AUDIT_URL_ROOT"),
            ("https://jobs.lever.co/acme/", "AUDIT_URL_NO_JOB_ID"))
@@ -201,23 +202,23 @@ class AuditGuardBeforeEgress(Base):
         for i, (_, code) in enumerate(self.BAD, 1):
             self.assertEqual(self.row(i, ("cloud_status", "cloud_reason", "cloud_score")), ("SKIPPED", code, None))
         status, score, confidence, model, run_id, request_hash = self.row(4, ("cloud_status", "cloud_score", "cloud_confidence", "cloud_model", "cloud_run_id", "cloud_request_hash"))
-        self.assertEqual(status, "OK")                                                          # the valid Oracle result persists privately
+        self.assertEqual(status, "OK")  # the valid Oracle result persists privately
         self.assertIsInstance(score, int)
         self.assertTrue(confidence and model and run_id and request_hash)
-        self.assertEqual(self.row(5, CLOUD), (None,) * len(CLOUD))                             # after the one call: untouched
+        self.assertEqual(self.row(5, CLOUD), (None,) * len(CLOUD))  # after the one call: untouched
 
     def test_the_verdict_is_exactly_the_audits_including_its_title_proof_exemption(self):
         from lifeos.jobs import audit
         for url, code in self.BAD:
             self.assertEqual(cloud.audit_problem(url, GOOD, None, "jobright", "Acme", "Technical Program Manager"), code)
             self.assertEqual(code, audit.judge(url, GOOD).upper())
-        ambiguous = "https://jobs.lever.co/acme/"                                               # no_job_id is ambiguous: a page proven by title is kept by the audit
+        ambiguous = "https://jobs.lever.co/acme/"
         self.assertIsNone(audit.judge(ambiguous, GOOD, proven=True))
         self.assertIsNone(cloud.audit_problem(ambiguous, GOOD, "title", "jobright", "Acme", "Technical Program Manager"))
         self.job(1, url=ambiguous)
         self.db.raw.execute("UPDATE v7_jobs SET link_proof='title' WHERE id=1")
         endpoint = Endpoint()
-        self.assertEqual((self.run_cloud(SHADOW, endpoint)["cloud_ok"], len(endpoint.sent)), (1, 1))     # so the shadow sends it too
+        self.assertEqual((self.run_cloud(SHADOW, endpoint)["cloud_ok"], len(endpoint.sent)), (1, 1))  # so the shadow sends it too
         self.assertEqual(cloud.audit_problem("https://boards.greenhouse.io/", GOOD, "title", "jobright", "Acme", "Technical Program Manager"), "AUDIT_URL_ROOT")  # a root never qualifies
 
     def test_an_audit_skip_writes_only_the_private_cloud_columns(self):
@@ -225,13 +226,12 @@ class AuditGuardBeforeEgress(Base):
         before = self.row(1, STATIC)
         job_before = self.db.raw.execute("SELECT status, final_apply_url, notion_page_id FROM v7_jobs WHERE id=1").fetchone()
         self.run_cloud(SHADOW, Endpoint())
-        self.assertEqual(self.row(1, STATIC), before)                                          # static Fit and admission unchanged; the audit itself still decides demotion
+        self.assertEqual(self.row(1, STATIC), before)  # static Fit and admission unchanged
         self.assertEqual(self.db.raw.execute("SELECT status, final_apply_url, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), job_before)
 
 
 class CloudFitCanary(Base):
-    """D226 (Jim, LIFE-41 10555): canary. The one job a tick the model judges gets the accepted cloud score as its visible Fit, decided by the Fit stage's own lane
-    rules and gate, provenance 'Cloud Fit ...' in Why It Fits; the static scorer never overwrites it; every failure leaves the visible Fit exactly as the static one."""
+    """canary."""
     CANARY = {**SHADOW, "V7_CLOUD_FIT": "canary", "V7_FIT_GATE": "true"}
 
     def stage_run(self, environ, endpoint):
@@ -259,10 +259,10 @@ class CloudFitCanary(Base):
         counts = self.stage_run(self.CANARY, endpoint)
         self.assertEqual((counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)), (1, 1, 1, 1))
         score, decision, line, admission, cloud_status = self.visible(1)
-        self.assertEqual((score, decision, admission, cloud_status), (90, "Go", "ADMIT", "CANARY"))            # the fake Oracle judged 90
+        self.assertEqual((score, decision, admission, cloud_status), (90, "Go", "ADMIT", "CANARY"))  # the fake Oracle judged 90
         self.assertTrue(line.startswith("Cloud Fit 90% (gpt-6-luna): "))
         self.assertEqual(self.row(1, ("cloud_score", "cloud_model")), (90, "gpt-6-luna"))
-        self.assertEqual(self.published_fit(1), (90, line))                                     # the Ledger page would carry LIFE OS Fit 90 and the Cloud Fit line
+        self.assertEqual(self.published_fit(1), (90, line))
 
     def test_a_low_cloud_score_is_judged_by_the_same_floor_and_gate_and_never_published(self):
         self.job(1)
@@ -276,7 +276,7 @@ class CloudFitCanary(Base):
     def test_the_static_scorer_never_overwrites_a_canary_score(self):
         self.job(1)
         self.stage_run(self.CANARY, Endpoint())
-        self.db.raw.execute("UPDATE v7_job_descriptions SET fingerprint='changed' WHERE job_id=1")      # a description change would normally re-score
+        self.db.raw.execute("UPDATE v7_job_descriptions SET fingerprint='changed' WHERE job_id=1")  # a description change would normally re-score
         self.db.raw.execute("UPDATE v7_job_fit SET profile_hash='other' WHERE job_id=1")
         endpoint = Endpoint()
         counts = self.stage_run({**SHADOW, "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true"}, endpoint)
@@ -303,28 +303,28 @@ class CloudFitCanary(Base):
             self.assertEqual(counts["cloud_promoted"], 0, label)
             self.assertNotEqual(cloud_status, "CANARY", label)
             self.assertFalse((line or "").startswith("Cloud Fit"), label)
-            self.assertNotEqual(score, 90, label)                                               # the visible Fit is the static scorer's
+            self.assertNotEqual(score, 90, label)  # the visible Fit is the static scorer's
 
     def test_a_failed_promotion_after_a_valid_answer_leaves_the_named_failure_not_a_stuck_canary_and_stays_recoverable(self):
         self.job(1)
         self.stage_run({**self.CANARY, "V7_CLOUD_FIT": "off"}, Endpoint())
-        static = self.visible(1)[:4]                                                            # what the static scorer alone makes visible
+        static = self.visible(1)[:4]  # what the static scorer alone makes visible
         self.setUp()
         self.job(1)
-        endpoint = Endpoint()                                                                   # a valid Oracle answer (90) is received and stored
+        endpoint = Endpoint()  # a valid Oracle answer (90) is received and stored
         with mock.patch.object(stage, "promote_cloud", return_value=False):
             counts = self.stage_run(self.CANARY, endpoint)
         self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)),
                          ("DEGRADED(CANARY_PROMOTION_FAILED)", 1, 0, 0, 1))
-        self.assertEqual(self.visible(1)[:4], static)                                           # no visible overwrite
-        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), ("DEGRADED", "CANARY_PROMOTION_FAILED"))   # no stuck CANARY
+        self.assertEqual(self.visible(1)[:4], static)  # no visible overwrite
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), ("DEGRADED", "CANARY_PROMOTION_FAILED"))  # no stuck CANARY
         published = self.published_fit(1)
-        self.assertFalse(published and published[1].startswith("Cloud Fit"))                  # the Ledger would carry the static Fit, never the unpromoted answer
+        self.assertFalse(published and published[1].startswith("Cloud Fit"))
         again = Endpoint()
         self.db.raw.execute("UPDATE v7_job_descriptions SET fingerprint='changed' WHERE job_id=1")
         counts = self.stage_run(self.CANARY, again)
-        self.assertEqual((counts["picked"], again.sent), (1, []))                              # the static scorer still owns it; the model is not asked again
-        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL WHERE job_id=1")   # an operator clear makes it askable again
+        self.assertEqual((counts["picked"], again.sent), (1, []))  # the static scorer still owns it
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL WHERE job_id=1")  # an operator clear makes it askable again
         self.assertEqual(self.stage_run(self.CANARY, Endpoint())["cloud_promoted"], 1)
         self.assertEqual(self.visible(1)[0::4], (90, "CANARY"))
 
@@ -335,15 +335,15 @@ class CloudFitCanary(Base):
         self.setUp()
         self.job(1)
 
-        def racing(data):                                                                       # another writer records this row while the answer is in flight
+        def racing(data):
             self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='SKIPPED', cloud_reason='RACE' WHERE job_id=1")
             return reply(data)
         endpoint = Endpoint(racing)
         counts = self.stage_run(self.CANARY, endpoint)
         self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)),
-                         ("DEGRADED(CANARY_WRITE_CONFLICT)", 1, 0, 0, 1))                       # WRITE rowcount 0: no success, no retry, no second call
-        self.assertEqual(self.visible(1)[:4], static)                                           # the static result stays visible
-        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("SKIPPED", "RACE", None))   # never CANARY, nothing of the answer stored
+                         ("DEGRADED(CANARY_WRITE_CONFLICT)", 1, 0, 0, 1))
+        self.assertEqual(self.visible(1)[:4], static)  # the static result stays visible
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("SKIPPED", "RACE", None))  # never CANARY, nothing of the answer stored
         published = self.published_fit(1)
         self.assertFalse(published and published[1].startswith("Cloud Fit"))
 
@@ -353,22 +353,22 @@ class CloudFitCanary(Base):
         real = stage._gate
 
         def broken(cursor, job_id, decision, gate, counts):
-            if decision.status == "EXCLUDE":                                                    # only the canary's gate write fails (the static pass admits this job)
+            if decision.status == "EXCLUDE":
                 raise RuntimeError("store write failed")
             return real(cursor, job_id, decision, gate, counts)
         with mock.patch.object(stage, "_gate", side_effect=broken), self.assertRaises(RuntimeError):
-            self.stage_run(self.CANARY, low)                                                    # never reported as success
+            self.stage_run(self.CANARY, low)  # never reported as success
         self.assertEqual((self.visible(1)[0], self.visible(1)[3], self.visible(1)[4]), (41, "EXCLUDE", "CANARY"))
-        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")    # promoted but not yet gated
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")  # promoted but not yet gated
         endpoint = Endpoint()
         counts = self.stage_run(self.CANARY, endpoint)
         self.assertEqual((counts["canary_regated"], endpoint.sent), (1, []))
         self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
         self.assertIsNone(self.published_fit(1))
-        self.assertEqual(self.stage_run(self.CANARY, Endpoint())["canary_regated"], 0)            # idempotent
+        self.assertEqual(self.stage_run(self.CANARY, Endpoint())["canary_regated"], 0)  # idempotent
 
     def test_a_rejected_candidate_is_never_asked_or_promoted(self):
-        self.job(1, url="https://boards.greenhouse.io/acme/jobs/search?q=program+manager")      # the audit would demote it
+        self.job(1, url="https://boards.greenhouse.io/acme/jobs/search?q=program+manager")  # the audit would demote it
         endpoint = Endpoint()
         counts = self.stage_run(self.CANARY, endpoint)
         self.assertEqual((counts["cloud_calls"], counts["cloud_promoted"], endpoint.sent), (0, 0, []))
@@ -388,7 +388,7 @@ class ShadowNeverChangesWhatIsVisible(Base):
         self.assertEqual((status, reason, score, confidence, model, run_id, fingerprint), ("OK", None, 90, "high", "gpt-6-luna", "run-1234567890", "fp1"))
         self.assertTrue(rationale and at and len(request_hash) == 16)
         sent = json.loads(endpoint.sent[0].split(b"\n", 1)[1])["request"]
-        self.assertEqual(sent["profile"], {"ref": REF})                                        # V7 sends a reference to Oracle's brief, never profile text
+        self.assertEqual(sent["profile"], {"ref": REF})
 
     def test_the_counts_line_carries_no_identifier_or_model_text(self):
         self.job(1)
@@ -399,7 +399,7 @@ class ShadowNeverChangesWhatIsVisible(Base):
         self.job(2, seen=T + datetime.timedelta(hours=1))
         failed = json.dumps(self.run_cloud(SHADOW, Endpoint(lambda data: reply(data, receipt={**json.loads(reply(data))["receipt"], "fallback": True}))))
         self.assertIn("DEGRADED(FIT_EDGE_RECEIPT_REJECTED)", failed)
-        for private in ("k002", "fallback", "Run delivery", "Technical Program Manager", "8+ years", REF):      # no field name, JD text, title or reference
+        for private in ("k002", "fallback", "Run delivery", "Technical Program Manager", "8+ years", REF):  # no field name, JD text, title or reference
             self.assertNotIn(private, failed)
 
 
@@ -411,7 +411,7 @@ class FailuresAreVisiblyDegraded(Base):
             endpoint = Endpoint(lambda data, reason=reason: refusal(data, reason))
             counts = self.run_cloud(SHADOW, endpoint)
             self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], len(endpoint.sent)), (f"DEGRADED(FIT_EDGE_REFUSED_{reason})", 1, 1))
-            self.assertEqual([self.row(i, ("cloud_status",))[0] for i in (1, 2)], [None, None])     # asked again on a later tick, never shown as a cloud answer
+            self.assertEqual([self.row(i, ("cloud_status",))[0] for i in (1, 2)], [None, None])
 
     def test_transport_and_receipt_failures_are_named_codes(self):
         self.job(1)
@@ -424,7 +424,7 @@ class FailuresAreVisiblyDegraded(Base):
             self.job(1)
             counts = self.run_cloud(SHADOW, Endpoint(answer))
             self.assertEqual(counts["cloud_fit"], f"DEGRADED({code})")
-            # D219: BUSY ran no model, so the claim is released and the job asked later; anything else may have run a model, so it is recorded, never repeated
+            # BUSY ran no model, so the claim is released and the job asked later
             self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), (None, None) if code == "FIT_EDGE_BUSY" else ("DEGRADED", code), code)
 
     def test_an_unusable_judgment_is_recorded_on_its_job_never_as_a_score_and_the_next_tick_moves_on(self):
@@ -464,7 +464,7 @@ class CapsApplyToTheCloudScore(Base):
             self.setUp()
             self.job(1)
             self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=1", (title,))
-            self.assertEqual(self.run_cloud(SHADOW, Endpoint())["cloud_ok"], 1, title)          # the fake model answers 90
+            self.assertEqual(self.run_cloud(SHADOW, Endpoint())["cloud_ok"], 1, title)  # the fake model answers 90
             self.assertEqual(self.row(1, ("cloud_score",))[0], cap, title)
 
     def test_without_the_stage_profile_nothing_is_asked(self):
@@ -476,8 +476,7 @@ class CapsApplyToTheCloudScore(Base):
 
 
 class EgressProvenance(Base):
-    """LIFE-41 10500 (TL review of #339): the description's reading method proves nothing about the site. The same source_kind is sent from an employer ATS or
-    the employer's own board, and refused before any frame from Dice, LinkedIn, an aggregator, an unknown host reached through a newsletter, or no URL."""
+    """10500 (TL review of #339): the description's reading method proves nothing about the site."""
 
     def test_the_same_reading_method_is_allowed_only_from_an_employer_or_its_ats(self):
         allowed = (("https://boards.greenhouse.io/acme/jobs/1", "jobright"), ("https://acme.wd1.myworkdayjobs.com/en-US/careers/job/R1", "linkedin"),
@@ -485,7 +484,7 @@ class EgressProvenance(Base):
         blocked = (("https://www.dice.com/job-detail/abc", "dice"), ("https://www.linkedin.com/jobs/view/123", "linkedin"), ("https://jobright.ai/jobs/info/x", "jobright"),
                    ("https://www.lensa.com/job/1", "lensa"), ("https://talentfirm-recruiting.com/jobs/1", "jobright"), ("https://careers.acme.com/jobs/1", "web:openjobs"),
                    (None, "jobright"), ("", "jobright"))
-        for kind in ("jsonld", "page_text", "ats_list"):                     # ats_list: the employer ATS board listing text (LIFE-41 G6)
+        for kind in ("jsonld", "page_text", "ats_list"):  # ats_list: the employer ATS board listing text
             for url, source in allowed:
                 self.setUp()
                 self.job(1, kind=kind, url=url, source=source)
@@ -502,7 +501,9 @@ class EgressProvenance(Base):
 
 
 class ContactDetailsNeverLeave(Base):
-    """LIFE-41 10500: a duties or requirements line with an email, phone, link or contact instruction is dropped before the frame is built."""
+    """10500: a duties or requirements line with an email, phone, link or contact instruction is dropped before the frame
+    is built.
+    """
     TEXT = GOOD.replace("• Strong communication skills\n", "• Strong communication skills\n• Questions? Email jane.doe@example.com or call +44 20 7946 0958\n"
                         "• Apply via https://apply.example/xyz or reach out to the recruiter on linkedin.com/in/janedoe\n• Contact us at hiring@example.com with 8+ years of experience\n")
 
@@ -515,7 +516,7 @@ class ContactDetailsNeverLeave(Base):
         body = json.dumps(sent).lower()
         for private in ("jane.doe", "@", "7946", "+44", "https://", "linkedin", "recruiter", "hiring@", "contact us"):
             self.assertNotIn(private, body, private)
-        self.assertIn("program roadmap", sent["description"].lower())                         # the role's own duties still go
+        self.assertIn("program roadmap", sent["description"].lower())  # the role's own duties still go
 
     def test_a_title_with_a_contact_detail_sends_nothing(self):
         self.job(1)
@@ -543,7 +544,9 @@ class TitlePlaceNeverLeaves(Base):
 
 
 class DegradedIsAFailedFitStage(Base):
-    """TL review of #339: an enabled shadow that fails makes the Fit stage fail through the existing run.PARTIAL_FAILURE exit; off never does. Static Fit is written either way."""
+    """TL review of #339: an enabled shadow that fails makes the Fit stage fail through the existing run.PARTIAL_FAILURE
+    exit
+    """
 
     def stage_run(self, environ, endpoint):
         self.job(1)
@@ -557,7 +560,7 @@ class DegradedIsAFailedFitStage(Base):
         self.setUp()
         refused = self.stage_run(SHADOW, Endpoint(lambda data: refusal(data, "DAILY_LIMIT")))
         self.assertEqual((refused["cloud_fit"], refused["failed"]), ("DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", 1))
-        self.assertEqual(self.row(1, ("decision", "cloud_status"))[1], None)                    # the static Fit is stored; no cloud answer is claimed
+        self.assertEqual(self.row(1, ("decision", "cloud_status"))[1], None)  # the static Fit is stored
         self.assertIsNotNone(self.row(1, ("score",))[0])
         self.setUp()
         ok = self.stage_run(SHADOW, Endpoint())
@@ -587,12 +590,13 @@ class StaticWritePreservesCloudColumns(Base):
         self.assertEqual(self.row(2, ("score", "cloud_status")), (70, None))
 
     def test_the_replaced_statement_was_the_hazard(self):
-        """Negative control: the old REPLACE INTO deletes the row first, so the cloud columns it does not name are lost."""
+        """Negative control: the old REPLACE INTO deletes the row first, so the cloud columns it does not name are lost.
+        """
         self.job(1, cloud_status="OK")
         old = "REPLACE INTO v7_job_fit (" + ", ".join(stage._STATIC) + ") VALUES (" + ",".join(["%s"] * len(stage._STATIC)) + ")"
         self.db.cursor().execute(old, self._static(1, 65))
         self.assertIsNone(self.row(1, ("cloud_status",))[0])
-        self.assertNotIn("\"REPLACE INTO", open(stage.__file__).read())                       # no statement uses it any more
+        self.assertNotIn("\"REPLACE INTO", open(stage.__file__).read())  # no statement uses it any more
         self.assertTrue(stage.WRITE.startswith("INSERT INTO v7_job_fit"))
 
     def test_rejudge_marks_stale_and_keeps_the_cloud_result(self):
@@ -603,7 +607,7 @@ class StaticWritePreservesCloudColumns(Base):
 
 
 class OracleContract10504(Base):
-    """LIFE-41 10504: the installed Oracle fit1 front (front.py 8e8d724b…) as V7 sees it. Synthetic stub vectors only; no Oracle or model is reached."""
+    """10504: the installed Oracle fit1 front (front.py 8e8d724b…) as V7 sees it."""
     VECTOR = {"title": "Technical Program Manager", "description": "Synthetic duty: lead delivery of an invented platform migration across five teams.",
               "profile": {"ref": "976d1682938e988e"}}
 
@@ -635,13 +639,13 @@ class OracleContract10504(Base):
             self.assertEqual(framed["request"]["profile"], {"ref": REF})
             self.assertGreaterEqual(wait, 150)
             nonces.append(framed["nonce"])
-        self.assertEqual(len(set(nonces)), 2)                                                    # fresh for every request
+        self.assertEqual(len(set(nonces)), 2)  # fresh for every request
 
     def test_busy_without_hash_or_nonce_is_busy_not_a_hash_mismatch(self):
         self.job(1)
         counts = self.run_cloud(SHADOW, Endpoint(lambda data: json.dumps({"schema": "lifeos.fit.v1", "status": "BUSY"}).encode()))
         self.assertEqual((counts["cloud_fit"], counts["cloud_calls"]), ("DEGRADED(FIT_EDGE_BUSY)", 1))
-        self.assertIsNone(self.row(1, ("cloud_status",))[0])                                     # asked again on a later tick, never a score
+        self.assertIsNone(self.row(1, ("cloud_status",))[0])  # asked again on a later tick, never a score
 
     def test_every_installed_refusal_reason_keeps_its_fixed_code_and_never_scores(self):
         for reason in ("NOT_ALLOWLISTED", "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE", "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH",
@@ -675,7 +679,7 @@ class OracleContract10504(Base):
             self.job(1)
             counts = self.run_cloud(SHADOW, Endpoint(lambda data, receipt=receipt: reply(data, fixture="REAL", receipt=receipt)))
             self.assertEqual(counts["cloud_fit"], "DEGRADED(FIT_EDGE_RECEIPT_REJECTED)")
-            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", "FIT_EDGE_RECEIPT_REJECTED", None))     # D219: never re-asked
+            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", "FIT_EDGE_RECEIPT_REJECTED", None))  # never re-asked
 
     def test_a_synthetic_receipt_without_purge_still_passes(self):
         self.assertIsNone(edge.bad_receipt_field(self.receipt()))
@@ -693,15 +697,15 @@ class OracleContract10504(Base):
             self.job(1)
             endpoint = Endpoint(answer)
             counts = self.run_cloud(SHADOW, endpoint)
-            self.assertEqual((counts["cloud_fit"], len(endpoint.sent)), (f"DEGRADED({code})", 1), code)     # one attempt, no retry
-            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", code, None), code)   # D219: a model may have run: never re-asked
+            self.assertEqual((counts["cloud_fit"], len(endpoint.sent)), (f"DEGRADED({code})", 1), code)  # one attempt, no retry
+            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", code, None), code)  # a model may have run: never re-asked
 
     def test_the_call_respects_the_ticks_actual_remaining_alarm(self):
         import signal
         self.job(1)
         previous = signal.signal(signal.SIGALRM, lambda *a: None)
         try:
-            for alarm, calls in ((100, 0), (200, 1)):                                            # a short tick cut the stage to 100 s: one 165 s call cannot start
+            for alarm, calls in ((100, 0), (200, 1)):
                 signal.alarm(alarm)
                 counts = self.run_cloud(SHADOW, Endpoint())
                 signal.alarm(0)
@@ -714,11 +718,11 @@ class OracleContract10504(Base):
 
 class StaticPublishingIsNeverSuppressed(unittest.TestCase):
     def test_a_failed_fit_stage_does_not_stop_publish_or_the_rest_of_the_tick(self):
-        """D214: an enabled shadow that fails makes `fit` exit 1; the tick still runs audit, publish and finalize (each stage independent), and reports fit=failed."""
+        """an enabled shadow that fails makes `fit` exit 1"""
         from lifeos.jobs import tick
         ran = []
         stages = {s.name: (lambda limit, live, name=s.name: ran.append(name) or (1 if name == "fit" else 0)) for s in tick.PLAN}
-        finalize = mock.Mock(main=lambda argv: ran.append("finalize") or 0)                    # the module stage (finalize) is stubbed the same way
+        finalize = mock.Mock(main=lambda argv: ran.append("finalize") or 0)
         with mock.patch.object(tick.importlib, "import_module", return_value=finalize):
             outcome = tick.tick(True, stages=stages)
         self.assertEqual(outcome["fit"], "failed")

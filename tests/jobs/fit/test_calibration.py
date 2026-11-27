@@ -1,12 +1,12 @@
 """The eight accepted calibration fixtures, encoded exactly as frozen: title evidence + material requirement rows with
-dimension, priority and evidence class. They are regression tests of the arithmetic, not production candidate truth.
-Rows are never enriched or altered to make a result come out (see docs/FIT_MODEL.md)."""
+dimension, priority and evidence.
+"""
 from fractions import Fraction as F
 import unittest
 
 from lifeos.jobs.fit.score import Req, calculate
 
-R, N = F(2), F(1)                      # REQUIRED / NORMAL priority weight
+R, N = F(2), F(1)  # REQUIRED / NORMAL priority weight
 D, A, M, U = "direct", "adjacent", "method", "unsupported"
 ROLE, FUNC, TECH, DELIV, ADV = "role", "functional", "technical", "delivery", "advantage"
 
@@ -56,7 +56,7 @@ class CalibrationFixtures(unittest.TestCase):
         calc = calculate(rows, title, capped=capped)
         self.assertEqual(calc.final, final)
         if uncapped is not None:
-            self.assertEqual(calc.uncapped, uncapped)             # exact, not rounded
+            self.assertEqual(calc.uncapped, uncapped)  # exact, not rounded
         if maximum is not None:
             self.assertEqual(calc.applicable_max, maximum)
         for dim, value in (contributions or {}).items():
@@ -98,12 +98,12 @@ class CalibrationFixtures(unittest.TestCase):
         c = self.check(CLOUD_ENGINEER, 40, F(3440, 57), capped=True, maximum=F(285, 4),
                        contributions={ROLE: F(0), FUNC: F(2320, 57), TECH: F(0), DELIV: F(1120, 57)})
         self.assertAlmostEqual(float(c.uncapped), 60.350877, places=6)
-        self.assertEqual(calculate(rows, title).final, 60)        # without the cap it would pass the 40 line
+        self.assertEqual(calculate(rows, title).final, 60)  # without the cap it would pass the 40 line
 
     def test_arithmetic_boundaries_and_cap_ceiling(self):
-        self.assertEqual(calculate(GPM_1[1], D, bonus=True).final, 100)        # never above 100
-        self.assertEqual(calculate(CLOUD_ENGINEER[1], U, bonus=True, capped=True).final, 40)   # the cap wins after the bonus
-        self.assertEqual(calculate([], D).final, 100)                          # title alone is never scored: evaluate() refuses it
+        self.assertEqual(calculate(GPM_1[1], D, bonus=True).final, 100)  # never above 100
+        self.assertEqual(calculate(CLOUD_ENGINEER[1], U, bonus=True, capped=True).final, 40)  # the cap wins after the bonus
+        self.assertEqual(calculate([], D).final, 100)  # title alone is never scored: evaluate refuses it
 
 
 
@@ -111,5 +111,5 @@ class BritishSpellingTests(unittest.TestCase):
     def test_programme_is_program(self):
         from lifeos.jobs.fit.profile import norm
         self.assertEqual(norm("Technical Programme Manager"), norm("Technical Program Manager"))
-        self.assertEqual(norm("Programmer"), " programmer ")                       # not a programme
+        self.assertEqual(norm("Programmer"), " programmer ")  # not a programme
         self.assertEqual(norm("Organisational optimisation"), " organizational optimization ")

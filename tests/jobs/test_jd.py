@@ -17,7 +17,7 @@ class JdTests(unittest.TestCase):
         self.assertIn("5+ years", d["requirements"])
         self.assertIn("Jira", d["qualifications"])
         self.assertNotIn("var x", d["full_text"])
-        self.assertIn("Plan launches", d["full_text"])          # nothing is lost
+        self.assertIn("Plan launches", d["full_text"])  # nothing is lost
         self.assertEqual(len(d["fingerprint"]), 64)
 
     def test_unknown_headings_keep_everything_in_summary(self):

@@ -7,7 +7,7 @@ ROW = (1, "https://www.linkedin.com/comm/jobs/view/product-manager-at-acme-39123
 
 
 class PageFallbackTests(unittest.TestCase):
-    """D3 rank 4: a definite 'no employer link found' lands on the LinkedIn posting, flagged aggregator; nothing else does."""
+    """rank 4: a definite 'no employer link found' lands on the LinkedIn posting, flagged aggregator"""
 
     def test_a_definite_no_match_lands_on_the_clean_linkedin_job_url(self):
         got = linkedin.page_fallback(ROW, {"outcome": "no_match_no_board+no_result"})

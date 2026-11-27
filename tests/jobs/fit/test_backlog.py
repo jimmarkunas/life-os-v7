@@ -1,5 +1,4 @@
-"""D219 (LIFE-41, Jim): the Cloud Fit backlog batch. Production SQL over the sqlite kit, the real Fit-stage promotion and the production request builder; only the Oracle
-endpoint (and the Ledger page read) are fakes. Nothing here calls a model, Notion or the network."""
+"""the Cloud Fit backlog batch."""
 import json
 import threading
 import time
@@ -12,7 +11,7 @@ from tests.jobs.fit.test_edge import RECEIPT, Endpoint, refusal, reply
 
 USAGE = {"input_tokens": 1389, "cached_input_tokens": 0, "cache_write_tokens": 0, "output_tokens": 69, "reasoning_tokens": "unavailable", "total_tokens": 1458}
 ENV = {"V7_CLOUD_FIT_PROFILE_REF": "0123456789abcdef", "IMESSAGE_ALERTS_HOST": "oracle.example", "V7_FIT_GATE": "true", "V7_CLOUD_FIT_BACKLOG_MAX": "10",
-       "V7_CLOUD_FIT": "off"}                                                                   # the batch never reads V7_CLOUD_FIT: off here proves it
+       "V7_CLOUD_FIT": "off"}
 
 
 def measured(data, score=90, **kw):
@@ -23,8 +22,9 @@ _EVALUATED = {}
 
 
 def _memo_evaluate(real):
-    """`score.evaluate` is a pure function of its arguments and a batch run scores every job (about 30 ms each): the tests that run the same jobs through many batches
-    score them once. Keyed on the arguments, so a different job, profile or day is still scored for real."""
+    """`score.evaluate` is a pure function of its arguments and a batch run scores every job (about 30 ms each): the
+    tests that run the same jobs through.
+    """
     def evaluate(title, company, text, profile, today, semantic=None):
         key = (title, company, text, id(profile), today, id(semantic))
         if key not in _EVALUATED:
@@ -41,13 +41,13 @@ class Batch(Base):
                 mock.patch.object(backlog.ledger, "verify", return_value=backlog.ledger.OK), \
                 mock.patch.object(backlog.edge, "limits", side_effect=self.report), \
                 mock.patch.object(backlog.guard, "protection", side_effect=ledger or (lambda client, page_id, company, title, opportunities=(): None)):
-            self.client = mock.Mock()                                                           # the Notion client: records every call, answers nothing
+            self.client = mock.Mock()
             return backlog.run(limit, live, environ, client=self.client)
 
     reported = None
 
     def report(self, host, backlog=None, **kw):
-        """LIFE-77: the batch's backlog report to Oracle, recorded instead of sent; set `report_fails` to make it fail."""
+        """the batch's backlog report to Oracle, recorded instead of sent"""
         if getattr(self, "report_fails", None):
             raise edge.EdgeError(self.report_fails)
         self.reported = (host, backlog)
@@ -65,7 +65,9 @@ class Batch(Base):
         return self.row(job_id, ("cloud_status",))[0]
 
     def audit(self, protection=None):
-        """The production gated precision audit over the same store: only Notion (the page trash) and the guard's page read are fakes."""
+        """The production gated precision audit over the same store: only Notion (the page trash) and the guard's page
+        read are fakes.
+        """
         from lifeos.jobs import audit
         client = mock.Mock()
         with mock.patch.object(audit.store, "connect", return_value=self.db), mock.patch.object(audit.store, "ensure_schema"), \
@@ -76,8 +78,7 @@ class Batch(Base):
 
 
 class BudgetIsALimitNotAFailure(Batch):
-    """LIFE-41 (first scheduled batch, run 39356515961): 19 of 20 calls fit the 480 s budget and the run was marked failed. A batch that stops at its time limit
-    after real work is normal; only a batch with no time for even one call is a shortfall."""
+    """(first scheduled batch, run 39356515961): 19 of 20 calls fit the 480 s budget and the run was marked failed."""
 
     def test_reaching_the_budget_after_calls_is_ok_and_the_rest_wait(self):
         for i in (1, 2, 3):
@@ -86,7 +87,7 @@ class BudgetIsALimitNotAFailure(Batch):
         with mock.patch.object(cloud, "remaining", side_effect=[1000, 1000, 0]):
             counts = self.batch(5, endpoint)
         self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_budget_reached"], counts["failed"]), ("OK", 2, 1, 0))
-        self.assertEqual(self.status(3), None)                                                            # unasked, unclaimed: the next run takes it
+        self.assertEqual(self.status(3), None)  # unasked, unclaimed: the next run takes it
 
     def test_no_time_for_even_one_call_is_still_a_shortfall(self):
         self.titled(1, "Program Manager 1")
@@ -104,14 +105,14 @@ class BoundedBatch(Batch):
         self.titled(5, "Program Manager E", score=70)
         endpoint = Endpoint(measured)
         counts = self.batch(3, endpoint)
-        self.assertEqual(self.asked(endpoint), ["Program Manager D", "Program Manager B", "Program Manager A"])    # Admit before Review, higher static Fit first
+        self.assertEqual(self.asked(endpoint), ["Program Manager D", "Program Manager B", "Program Manager A"])  # Admit before Review, higher static Fit first
         self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"]), ("OK", 3, 3, 3))
         self.assertEqual((counts["cloud_tokens_input"], counts["cloud_tokens_output"], counts["cloud_tokens_total"], counts["cloud_usage_unavailable"]), (4167, 207, 4374, 0))
         self.assertEqual(counts["remaining_before"]["unpublished_admit"], 4)
         self.assertEqual(counts["remaining_after"], {"unpublished_admit": 1, "unpublished_review": 1, "published_admit": 0, "published_review": 0})
         self.assertEqual([self.status(i) for i in (1, 2, 3, 4, 5)], ["CANARY", "CANARY", None, "CANARY", None])
         again = Endpoint(measured)
-        self.batch(10, again)                                                                    # a second batch resumes: only the two never-asked jobs
+        self.batch(10, again)
         self.assertEqual(sorted(self.asked(again)), ["Program Manager C", "Program Manager E"])
 
     def test_nothing_is_asked_without_jims_ceiling_and_the_request_is_bounded_by_it(self):
@@ -127,8 +128,8 @@ class BoundedBatch(Batch):
         self.assertEqual((counts["backlog_calls_allowed"], counts["cloud_calls"], len(endpoint.sent)), (2, 2, 2))
         self.assertEqual(self.batch(0, Endpoint(measured))["cloud_fit"], "DEGRADED(BACKLOG_NOT_AUTHORIZED)")
         capped = self.batch(10 ** 6, Endpoint(measured), environ={**ENV, "V7_CLOUD_FIT_BACKLOG_MAX": "999"}, live=False)
-        self.assertEqual(capped["backlog_calls_allowed"], cloud.BACKLOG_CALLS_MAX)               # the code's hard ceiling holds whatever is asked or configured
-        self.assertEqual((cloud.BACKLOG_CALLS_MAX, cloud.BACKLOG_SCAN_MAX), (600, 3000))           # D240: Jim's ceiling, and enough candidates to fill it
+        self.assertEqual(capped["backlog_calls_allowed"], cloud.BACKLOG_CALLS_MAX)
+        self.assertEqual((cloud.BACKLOG_CALLS_MAX, cloud.BACKLOG_SCAN_MAX), (600, 3000))  # Jim's ceiling, and enough candidates to fill it
 
     def test_a_dry_run_counts_the_backlog_and_asks_nothing(self):
         self.titled(1, "Program Manager A")
@@ -138,8 +139,8 @@ class BoundedBatch(Batch):
 
 
 class TargetedPilot(Batch):
-    """LIFE-41 G6: Jim names one preapproved Ledger page; the batch asks that job or nothing, never the next one in rank."""
-    PAGE = "00000000-0000-0000-0000-000000000008".replace("3ed3c5a0", "0a0b0c0d")                 # an invented id in the Ledger's dashed form
+    """Jim names one preapproved Ledger page"""
+    PAGE = "00000000-0000-0000-0000-000000000008".replace("3ed3c5a0", "0a0b0c0d")  # an invented id in the Ledger's dashed form
 
     def env(self, page):
         return {**ENV, "V7_CLOUD_FIT_BACKLOG_PAGE": page}
@@ -153,13 +154,13 @@ class TargetedPilot(Batch):
         self.assertEqual(self.asked(endpoint), ["Program Manager B"])
         self.assertEqual((counts["backlog_calls_allowed"], counts["backlog_targeted"], counts["cloud_calls"], counts["cloud_promoted"]), (1, 1, 1, 1))
         self.assertEqual((self.status(1), self.status(2)), (None, "CANARY"))
-        self.assertNotIn(self.PAGE.replace("-", ""), json.dumps(counts))                          # the id never reaches the log
+        self.assertNotIn(self.PAGE.replace("-", ""), json.dumps(counts))  # the id never reaches the log
 
     def test_a_target_the_batch_would_not_ask_is_refused_with_no_call_and_nothing_else_is_asked(self):
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
         self.titled(2, "Program Manager B", status="PUBLISHED", page=self.PAGE)
-        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='HELD' WHERE job_id=2")         # already asked
-        for page, why in ((self.PAGE, "ASKED_HELD"), ("f" * 32, "NOT_IN_STORE")):               # asked before; not in the store at all
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='HELD' WHERE job_id=2")  # already asked
+        for page, why in ((self.PAGE, "ASKED_HELD"), ("f" * 32, "NOT_IN_STORE")):  # asked before
             endpoint = Endpoint(measured)
             counts = self.batch(5, endpoint, environ=self.env(page))
             self.assertEqual((counts["cloud_fit"], counts["backlog_target_reason"], endpoint.sent, self.status(1)), ("DEGRADED(BACKLOG_TARGET_NOT_ELIGIBLE)", why, [], None))
@@ -204,17 +205,17 @@ class Concurrency(Batch):
         second = {}
 
         def first_worker(data):
-            if not second:                                                                      # while job 1 is in flight, a second worker starts its own batch
-                inner = Endpoint(lambda d: refusal(d, status="BUSY"))                            # Oracle: one request in flight, a second gets BUSY (no model call)
+            if not second:
+                inner = Endpoint(lambda d: refusal(d, status="BUSY"))
                 second["counts"] = self.batch(5, inner)
                 second["asked"] = self.asked(inner)
             return measured(data)
         endpoint = Endpoint(first_worker)
         self.batch(1, endpoint)
         self.assertEqual(self.asked(endpoint), ["Program Manager A"])
-        self.assertEqual(second["asked"], ["Program Manager B"])                                # never the claimed job 1
+        self.assertEqual(second["asked"], ["Program Manager B"])  # never the claimed job 1
         self.assertEqual((second["counts"]["cloud_fit"], second["counts"]["cloud_ok"]), ("DEGRADED(FIT_EDGE_BUSY)", 0))
-        self.assertEqual((self.status(1), self.status(2)), ("CANARY", None))                    # B's claim released: still askable, no model ran for it
+        self.assertEqual((self.status(1), self.status(2)), ("CANARY", None))
         later = Endpoint(measured)
         self.batch(5, later)
         self.assertEqual(self.asked(later), ["Program Manager B"])
@@ -225,11 +226,11 @@ class Concurrency(Batch):
 
         def other_worker_claims_first(client, page_id, company, title, opportunities=()):
             self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='CLAIMED', cloud_run_id='claim:other' WHERE job_id=1 AND cloud_status IS NULL")
-            return None                                                                         # both picked job 1; the other worker's claim lands first
+            return None  # both picked job 1
         endpoint = Endpoint(measured)
         counts = self.batch(5, endpoint, ledger=other_worker_claims_first)
         self.assertEqual((self.asked(endpoint), counts["cloud_claim_lost"]), (["Program Manager B"], 1))
-        self.assertEqual(self.row(1, ("cloud_status", "cloud_run_id")), ("CLAIMED", "claim:other"))   # untouched: the other worker owns it
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_run_id")), ("CLAIMED", "claim:other"))  # untouched: the other worker owns it
 
     def test_a_lost_claim_is_never_asked_and_a_lost_write_is_a_named_conflict(self):
         self.titled(1, "Program Manager A")
@@ -241,11 +242,11 @@ class Concurrency(Batch):
         self.titled(1, "Program Manager A")
 
         def stolen(data):
-            self.db.raw.execute("UPDATE v7_job_fit SET cloud_run_id='claim:other' WHERE job_id=1")   # another writer took the row while the answer was in flight
+            self.db.raw.execute("UPDATE v7_job_fit SET cloud_run_id='claim:other' WHERE job_id=1")
             return measured(data)
         counts = self.batch(5, Endpoint(stolen))
         self.assertEqual((counts["cloud_fit"], counts["cloud_ok"], counts["cloud_promoted"]), ("DEGRADED(CANARY_WRITE_CONFLICT)", 0, 0))
-        self.assertEqual(self.row(1, ("score", "cloud_status")), (80, "CLAIMED"))               # nothing visible changed; never re-asked by a batch
+        self.assertEqual(self.row(1, ("score", "cloud_status")), (80, "CLAIMED"))  # nothing visible changed
 
 
 class Interruption(Batch):
@@ -257,11 +258,11 @@ class Interruption(Batch):
         def crashes_on_third(data):
             calls.append(data)
             if len(calls) == 3:
-                raise RuntimeError("runner killed mid-call")                                    # not an Oracle answer: the process dies here
+                raise RuntimeError("runner killed mid-call")  # not an Oracle answer: the process dies here
             return measured(data)
         with self.assertRaises(RuntimeError):
             self.batch(4, Endpoint(crashes_on_third))
-        self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], ["CANARY", "CANARY", "CLAIMED", None])   # two answers kept; the third may have run: held, not re-asked
+        self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], ["CANARY", "CANARY", "CLAIMED", None])  # two answers kept
         resumed = Endpoint(measured)
         counts = self.batch(4, resumed)
         self.assertEqual(self.asked(resumed), ["Program Manager D"])
@@ -290,7 +291,7 @@ class Interruption(Batch):
     def test_missing_token_counts_stop_the_batch_after_keeping_that_answer(self):
         self.titled(1, "Program Manager A")
         self.titled(2, "Program Manager B", score=70)
-        endpoint = Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": "unavailable"}))   # an upgraded OpenClaw without the pass-through
+        endpoint = Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": "unavailable"}))  # an upgraded OpenClaw without the pass-through
         counts = self.batch(5, endpoint)
         self.assertEqual((counts["cloud_fit"], len(endpoint.sent), counts["cloud_promoted"], counts["cloud_usage_unavailable"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 1, 1))
         self.assertEqual((self.status(1), self.status(2)), ("CANARY", None))
@@ -306,25 +307,25 @@ class PublishedJobs(Batch):
         self.assertEqual((score, admission, status), (90, "ADMIT", "CANARY"))
         self.assertTrue(line.startswith("Cloud Fit 90% (gpt-6-luna): "))
         self.assertEqual(self.db.raw.execute("SELECT status, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), ("PUBLISHED", "page-1"))
-        self.assertEqual(counts["ledger_pages_pending"], 0)                                     # the batch synced the page itself (see the backlog-only test)
+        self.assertEqual(counts["ledger_pages_pending"], 0)
         with mock.patch.object(fit_sync.store, "connect", return_value=self.db):
             again = fit_sync.run(mock.Mock(), live=True, gated=True)
-        self.assertEqual(again["due"], 0)                                                        # nothing left for the next tick's sync: written exactly once
+        self.assertEqual(again["due"], 0)
 
     def test_a_backlog_only_dispatch_updates_the_existing_ledger_page_itself_with_machine_fields_only(self):
-        """Review of #350: the publish step (which runs fit_sync) does not run on a cloud_backlog-only dispatch; the batch must reach the page by itself."""
+        """Review of #350: the publish step (which runs fit_sync) does not run on a cloud_backlog-only dispatch"""
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
-        self.titled(2, "Program Manager B", score=70)                                           # an unpublished job promoted in the same batch: no page to write
+        self.titled(2, "Program Manager B", score=70)
         self.db.raw.execute("UPDATE v7_jobs SET fit_synced_at=? WHERE id=1", (T,))
         counts = self.batch(5, Endpoint(measured))
         self.assertEqual((counts["cloud_fit"], counts["cloud_promoted"], counts["ledger_pages_promoted"], counts["ledger_pages_pending"], counts["failed"]), ("OK", 2, 1, 0, 0))
         patches = [c.args for c in self.client.call.call_args_list if c.args[0] == "PATCH"]
-        self.assertEqual([(m, p) for m, p, _ in patches], [("PATCH", "/pages/page-1")])                # exactly the one existing page; nothing created, nothing trashed
+        self.assertEqual([(m, p) for m, p, _ in patches], [("PATCH", "/pages/page-1")])  # exactly the one existing page
         props = patches[0][2]["properties"]
         self.assertEqual(props["LIFE OS Fit"], {"number": 90})
         self.assertTrue(props["Why It Fits"]["rich_text"][0]["text"]["content"].startswith("Cloud Fit 90% (gpt-6-luna): "))
         self.assertEqual(props["Admission Status"], {"select": {"name": "Admitted"}})
-        self.assertFalse({"Applied", "Applied On", "Saturn Decision", "Job"} & set(props))      # human state and the title are never written
+        self.assertFalse({"Applied", "Applied On", "Saturn Decision", "Job"} & set(props))  # human state and the title are never written
         self.assertFalse([c for c in self.client.call.call_args_list if c.args[0] in ("POST", "DELETE") and not c.args[1].endswith("/query")] or any("in_trash" in (c.args[2] if len(c.args) > 2 else {}) for c in self.client.call.call_args_list))
         synced, scored = self.db.raw.execute("SELECT j.fit_synced_at, f.scored_at FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.id = 1").fetchone()
         self.assertGreaterEqual(str(synced), str(scored))
@@ -335,12 +336,11 @@ class PublishedJobs(Batch):
         with mock.patch.object(backlog.fit_sync, "run", side_effect=lambda client, live, gated=False, limit=150: {"due": 1, "synced": 0, "failed": 1}):
             counts = self.batch(5, Endpoint(measured))
         self.assertEqual((counts["cloud_fit"], counts["ledger_pages_pending"], counts["failed"]), ("DEGRADED(LEDGER_SYNC_INCOMPLETE)", 1, 1))
-        self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))                # kept: the next sync (any tick) retries the page
+        self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))  # kept: the next sync (any tick) retries the page
         self.assertTrue(NotionError)
 
     def test_a_published_job_the_cloud_excludes_is_promoted_and_the_gated_audit_removes_its_page(self):
-        """Jim (LIFE-41, Oct 20: "Apply the exclusion", replacing the D219 hold): the cloud verdict is final. The answer becomes the visible Fit, the page shows
-        Excluded, and the next tick's audit trashes it and parks the job EXCLUDED_FIT, never published again."""
+        """Jim: the cloud verdict is final."""
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
         counts = self.batch(5, Endpoint(lambda d: measured(d, score=41)))
         self.assertEqual(counts["cloud_promoted"], 1)
@@ -349,7 +349,7 @@ class PublishedJobs(Batch):
         self.assertEqual((score, admission, status), (41, "EXCLUDE", "CANARY"))
         self.assertTrue(line.startswith("Cloud Fit 41% (gpt-6-luna): "))
         synced = [c.args[2]["properties"] for c in self.client.call.call_args_list if c.args[:2] == ("PATCH", "/pages/page-1")]
-        self.assertEqual([p["Admission Status"]["select"]["name"] for p in synced], ["Excluded"])           # the page tells the truth until the audit removes it
+        self.assertEqual([p["Admission Status"]["select"]["name"] for p in synced], ["Excluded"])
         audited, trashed = self.audit()
         self.assertEqual((trashed, audited["excluded_cleared"]), (["/pages/page-1"], 1))
         self.assertEqual(self.db.raw.execute("SELECT status, notion_page_id, unresolved_reason FROM v7_jobs WHERE id=1").fetchone(), ("EXCLUDED_FIT", None, "excluded_fit"))
@@ -389,12 +389,13 @@ class PublishedJobs(Batch):
         self.batch(5, Endpoint(lambda d: measured(d, score=41)))
         with mock.patch.object(publish, "_now", return_value=T):
             rows, _ = publish._pick(self.db, 10, gated=True)
-        self.assertEqual(rows, [])                                                               # publish creates pages only for READY jobs: no duplicate page
+        self.assertEqual(rows, [])
 
 
 class FailureReachesTheRun(Batch):
-    """Career TL review of #350 (3b07c08): the batch step is continue-on-error, so its failure must be carried by the finish job's lane aggregation; a clean batch,
-    and every run that does not ask for a batch (a tick, any other dispatch), must leave the run green."""
+    """Career TL review of #350 (3b07c08): the batch step is continue-on-error, so its failure must be carried by the
+    finish job's lane aggregation
+    """
 
     def workflow(self):
         import pathlib
@@ -417,14 +418,14 @@ class FailureReachesTheRun(Batch):
 
     def test_a_failed_batch_fails_the_finish_job_and_names_the_stage_while_a_clean_or_absent_batch_stays_green(self):
         data, steps, step, lanes = self.workflow()
-        self.assertTrue(step.get("continue-on-error"))                                           # later stages still run after a failed batch ...
+        self.assertTrue(step.get("continue-on-error"))  # later stages still run after a failed batch...
         self.assertIn("python -m lifeos.run fit-cloud-backlog", step["run"])
-        self.assertNotIn("|| true", step["run"])                                                 # ... and nothing swallows its exit code
+        self.assertNotIn("|| true", step["run"])  # ...
         self.assertEqual((lanes.get("if"), data["jobs"]["finish"]["outputs"]["failed"]), ("${{ always() }}", "${{ steps.lanes.outputs.failed }}"))
         self.assertLess(steps.index(step), steps.index(lanes))
         self.assertEqual(self.lanes(lanes, "failure"), (1, "FAILED STAGES: fit_cloud_backlog", "failed=fit_cloud_backlog"))
         self.assertEqual(self.lanes(lanes, "success"), (0, "", "failed="))
-        self.assertEqual(self.lanes(lanes, "skipped"), (0, "", "failed="))                       # a tick or any other dispatch never runs the step
+        self.assertEqual(self.lanes(lanes, "skipped"), (0, "", "failed="))  # a tick or any other dispatch never runs the step
 
     def test_the_stage_exits_1_on_a_degraded_batch_and_0_on_a_clean_one(self):
         import contextlib
@@ -452,13 +453,15 @@ class FailureReachesTheRun(Batch):
                 mock.patch.object(backlog, "run", side_effect=lambda limit, live: real(limit, live, os.environ, client=mock.Mock())), \
                 contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
             code = lifeos_run.main(["fit-cloud-backlog", "--limit", "3", "--live"])
-        self.assertEqual((code, err.getvalue().strip()), (1, "FIT-CLOUD-BACKLOG FAILED: FIT_CLOUD_DEGRADED"))    # the batch's own failure -> exit 1 -> a failed step
+        self.assertEqual((code, err.getvalue().strip()), (1, "FIT-CLOUD-BACKLOG FAILED: FIT_CLOUD_DEGRADED"))  # the batch's own failure -> exit 1 -> a failed step
         self.assertIn('"cloud_fit": "DEGRADED(LEDGER_SYNC_INCOMPLETE)"', out.getvalue())
-        self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))                # the score is kept; only the signal is a failure
+        self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))  # the score is kept
 
 
 class HeldAnswersAreApplied(Batch):
-    """The jobs the D219 hold kept private (cloud_status HELD) get Jim's decision from their stored answer: no second model call, the same promotion."""
+    """The jobs the hold kept private (cloud_status HELD) get Jim's decision from their stored answer: no second model
+    call, the same promotion.
+    """
 
     def held(self, job_id, score=41, page="page-1"):
         self.titled(job_id, f"Program Manager {job_id}", status="PUBLISHED", page=page)
@@ -479,7 +482,7 @@ class HeldAnswersAreApplied(Batch):
             score, line, admission, status, reason = self.row(job_id, ("score", "line", "admission", "cloud_status", "cloud_reason"))
             self.assertEqual((score, admission, status, reason), (41, "EXCLUDE", "CANARY", None))
             self.assertEqual(line, "Cloud Fit 41% (gpt-6-luna): Thin delivery ownership.")
-        self.assertEqual(self.release(), (0, 0))                                                                # nothing HELD is left: a no-op every later tick
+        self.assertEqual(self.release(), (0, 0))  # nothing HELD is left: a no-op every later tick
         self.assertEqual(sorted(self.audit()[1]), ["/pages/page-1", "/pages/page-2"])
 
     def test_a_held_answer_that_cannot_be_promoted_stays_a_named_failure_and_is_never_held_or_asked_again(self):
@@ -502,7 +505,9 @@ class HeldAnswersAreApplied(Batch):
 
 
 class KeepListRolesAreRedecided(Batch):
-    """A role put on Jim's keep list AFTER the cloud had scored and excluded it is re-decided from its stored cloud score by the current lane policy; no other role is."""
+    """A role put on Jim's keep list AFTER the cloud had scored and excluded it is re-decided from its stored cloud score
+    by the current lane policy
+    """
 
     def excluded(self, job_id, title, company="Revolut Ltd", score=58):
         self.titled(job_id, title, status="EXCLUDED_FIT", admission="EXCLUDE", cloud_status="CANARY")
@@ -524,10 +529,10 @@ class KeepListRolesAreRedecided(Batch):
         self.assertEqual((score, admission, cloud_status), (58, "REVIEW", "CANARY"))
         self.assertIn("keep list", reason)
         self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")
-        self.assertEqual(self.redecide(), (0, 0))                                                          # decided once: nothing is left to re-decide
+        self.assertEqual(self.redecide(), (0, 0))  # decided once: nothing is left to re-decide
 
     def test_a_role_the_audit_excluded_after_it_was_published_is_put_back_for_publishing(self):
-        """audit.py leaves a trashed-page job as EXCLUDED_FIT / 'excluded_fit' with no page id; _gate's own revive does not cover that reason."""
+        """audit.py leaves a trashed-page job as EXCLUDED_FIT / 'excluded_fit' with no page id"""
         self.excluded(1, "Product Owner (UX)")
         self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', notion_page_id=NULL WHERE id=1")
         self.assertEqual(self.redecide(), (1, 0))
@@ -536,7 +541,7 @@ class KeepListRolesAreRedecided(Batch):
 
     def test_an_audit_excluded_role_that_the_policy_still_excludes_stays_excluded(self):
         self.excluded(1, "Product Owner (UX)")
-        self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', location_text='Lagos, Nigeria' WHERE id=1")        # a place that is not London: the lane still excludes it
+        self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', location_text='Lagos, Nigeria' WHERE id=1")
         self.redecide()
         self.assertEqual(self.row(1, ("admission",)), ("EXCLUDE",))
         self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
@@ -568,7 +573,9 @@ class KeepListRolesAreRedecided(Batch):
 
 
 class KeepListRolesAreAskedAgainWithTheNewBrief(Batch):
-    """The Oracle brief changed at stage.BRIEF_CHANGED_AT: a keep-list role the cloud answered before that goes back to 'never asked'; nothing else does."""
+    """The Oracle brief changed at stage.BRIEF_CHANGED_AT: a keep-list role the cloud answered before that goes back to
+    'never asked'
+    """
 
     def answered(self, job_id, title, company="Revolut Ltd", at="2026-10-20 12:00:00", status="PUBLISHED", admission="REVIEW"):
         self.titled(job_id, title, status=status, admission=admission, cloud_status="CANARY", page=f"page-{job_id}" if status == "PUBLISHED" else None)
@@ -584,24 +591,26 @@ class KeepListRolesAreAskedAgainWithTheNewBrief(Batch):
         self.answered(1, "Product Owner (Technical)")
         self.assertEqual(self.clear(), 1)
         self.assertEqual(self.row(1, ("cloud_status", "cloud_run_id", "cloud_score")), (None, None, 68))
-        self.assertEqual(self.clear(), 0)                                                                   # cleared once
+        self.assertEqual(self.clear(), 0)  # cleared once
 
     def test_a_keep_list_role_admitted_over_a_static_exclusion_is_asked_again_and_the_stored_exclusion_stops_hiding_it(self):
-        """Credit Manager (Product): the cloud answered under the old brief, the static financial-risk exclusion is still stored, and both the re-ask and the backlog skipped any row with an exclusion."""
+        """Credit Manager (Product): the cloud answered under the old brief, the static financial-risk exclusion is still
+        stored, and both the re-ask and the.
+        """
         self.answered(1, "Credit Manager (Product)", admission="ADMIT")
         self.db.raw.execute("UPDATE v7_job_fit SET exclusion='financial risk / fincrime / treasury / audit domain role' WHERE job_id=1")
         self.assertEqual(self.clear(), 1)
         self.assertEqual(self.row(1, ("cloud_status", "cloud_score", "exclusion")), (None, 68, None))
-        self.answered(2, "Technology Manager", admission="REVIEW")                                           # on no keep-list override: an exclusion it carries is left alone
+        self.answered(2, "Technology Manager", admission="REVIEW")
         self.db.raw.execute("UPDATE v7_job_fit SET exclusion='some other exclusion' WHERE job_id=2")
         self.assertEqual(self.clear(), 0)
         self.assertEqual(self.row(2, ("cloud_status", "exclusion")), ("CANARY", "some other exclusion"))
 
     def test_nothing_else_is_cleared(self):
-        self.answered(1, "Product Owner (Crypto)")                                                            # not on the keep list
-        self.answered(2, "Product Owner (Technical)", company="Acme Ltd")                                      # another company
-        self.answered(3, "Product Owner (Technical)", at="2026-10-21 06:00:00")                                # already answered with the new brief
-        self.answered(4, "Product Owner (Technical)", status="EXCLUDED_FIT", admission="EXCLUDE")              # not a candidate for the backlog anyway
+        self.answered(1, "Product Owner (Crypto)")  # not on the keep list
+        self.answered(2, "Product Owner (Technical)", company="Acme Ltd")  # another company
+        self.answered(3, "Product Owner (Technical)", at="2026-10-21 06:00:00")  # already answered with the new brief
+        self.answered(4, "Product Owner (Technical)", status="EXCLUDED_FIT", admission="EXCLUDE")  # not a candidate for the backlog anyway
         self.assertEqual(self.clear(), 0)
         for job_id in (1, 2, 3, 4):
             self.assertEqual(self.row(job_id, ("cloud_status",)), ("CANARY",))
@@ -624,8 +633,7 @@ def metered(used_5h, used_week=1, stop=50):
 
 
 class AccountAllowance(Batch):
-    """LIFE-77 (Jim, Oct 19): Oracle reads the account's own allowance before each call and refuses QUOTA_RESERVE at Jim's 50 % stop. That is a normal stop for the
-    batch; a missing policy or an unreadable meter is a named failure. Each call's reading becomes an estimate of what the allowance has left."""
+    """Oracle reads the account's own allowance before each call and refuses QUOTA_RESERVE at Jim's 50 % stop."""
 
     def test_the_reserve_is_a_clean_stop_the_refused_job_waits_and_the_estimate_is_logged(self):
         for i in (1, 2, 3, 4):
@@ -637,10 +645,10 @@ class AccountAllowance(Batch):
             return measured(data, quota=metered(u)) if u is not None else reply(data, status="REFUSED", reason="QUOTA_RESERVE", judgment_raw=None, receipt=None, quota=metered(50))
         counts = self.batch(10, Endpoint(answer))
         self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_quota_reserve"], counts["cloud_promoted"]), ("OK", 0, 1, 3))
-        self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], ["CANARY", "CANARY", "CANARY", None])     # released, asked after the reset
+        self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], ["CANARY", "CANARY", "CANARY", None])  # released, asked after the reset
         five = counts["cloud_quota"]["windows"]["5h"]
         self.assertEqual((five["used_first"], five["used_last"], five["estimate"], five["per_call_percent"], five["calls_left"]), (47, 50, "ESTIMATED", 1.0, 0))
-        self.assertEqual(five["resets"], "Oct 20 02:12 AM CDT")                                             # Central time, the way Jim reads it
+        self.assertEqual(five["resets"], "Oct 20 02:12 AM CDT")  # Central time, the way Jim reads it
         week = counts["cloud_quota"]["windows"]["Week"]
         self.assertEqual((week["estimate"], week["per_call_below"], week["calls_left_at_least"]), ("BELOW_RESOLUTION", 0.3333, 147))
 
@@ -654,7 +662,7 @@ class AccountAllowance(Batch):
 
     def test_a_run_without_meter_readings_reports_no_estimate(self):
         self.titled(1, "Program Manager 1")
-        self.assertNotIn("cloud_quota", self.batch(5, Endpoint(measured)))                                   # an Oracle without the meter: nothing invented
+        self.assertNotIn("cloud_quota", self.batch(5, Endpoint(measured)))  # an Oracle without the meter: nothing invented
 
 
 class QuotaReading(Batch):
@@ -676,14 +684,14 @@ class QuotaReading(Batch):
 
 class ReceiptFieldIsNamed(Batch):
     def test_a_rejected_receipt_names_its_field_so_a_stop_is_never_a_guess(self):
-        """LIFE-77 batch 1 (Oct 19): 45 good calls, then FIT_EDGE_RECEIPT_REJECTED with nothing to say which field. The fixed field name is now counted."""
+        """The fixed field name is now counted."""
         self.titled(1, "Program Manager A")
         counts = self.batch(5, Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": USAGE, "run_finished": False}, judgment_raw=json.dumps({"score": 90, "rationale": "x", "confidence": "high"}))))
         self.assertEqual((counts["cloud_fit"], counts["cloud_receipt_fields"]), ("DEGRADED(FIT_EDGE_RECEIPT_REJECTED)", {"RUN_FINISHED": 1}))
 
 
 class BacklogIsReportedToOracle(Batch):
-    """LIFE-77: the AI Capacity card's proposed-usage line needs the backlog count, which only V7's store knows; the batch reports it to Oracle at its end."""
+    """the AI Capacity card's proposed-usage line needs the backlog count, which only V7's store knows"""
 
     def test_a_live_batch_reports_what_is_left_and_a_dry_run_reports_nothing(self):
         for i in (1, 2, 3):
@@ -704,14 +712,13 @@ class BacklogIsReportedToOracle(Batch):
 
 
 class ParallelLanes(Batch):
-    """D232 (parallel Luna, Jim Oct 20): a batch keeps up to V7_CLOUD_FIT_PARALLEL calls in flight, one per Oracle lane. Only the calls run at once: every claim,
-    write, promotion and count stays on the batch's own thread, each job is asked once, and a stop lets the calls already sent finish and be recorded."""
+    """a batch keeps up to V7_CLOUD_FIT_PARALLEL calls in flight, one per Oracle lane."""
     TWO = {**ENV, "V7_CLOUD_FIT_PARALLEL": "2"}
 
     def test_two_calls_are_in_flight_at_once_and_every_job_is_asked_once_and_promoted(self):
         for i in range(1, 6):
             self.titled(i, f"Program Manager {i}", score=90 - i)
-        both = threading.Barrier(2, timeout=5)                                                  # the first two calls must be on Oracle together, or this times out
+        both = threading.Barrier(2, timeout=5)
         arrivals, lock = [], threading.Lock()
 
         def answer(data):
@@ -720,7 +727,7 @@ class ParallelLanes(Batch):
                 n = len(arrivals)
             if n <= 2:
                 both.wait()
-            return reply(data, receipt={**RECEIPT, "usage": USAGE, "agent": "fit2" if n % 2 == 0 else "fit"},     # each lane names its own agent
+            return reply(data, receipt={**RECEIPT, "usage": USAGE, "agent": "fit2" if n % 2 == 0 else "fit"},  # each lane names its own agent
                          judgment_raw=json.dumps({"score": 90, "rationale": "Aligned on delivery ownership.", "confidence": "high"}))
         endpoint = Endpoint(answer)
         counts = self.batch(10, endpoint, environ=self.TWO)
@@ -737,7 +744,7 @@ class ParallelLanes(Batch):
         def one_lane(data):
             with lock:
                 if active[0]:
-                    return refusal(data, status="BUSY")                                         # Oracle has one lane open: no model runs for a second call
+                    return refusal(data, status="BUSY")
                 active[0] += 1
             time.sleep(0.5)
             with lock:
@@ -746,7 +753,7 @@ class ParallelLanes(Batch):
         counts = self.batch(10, Endpoint(one_lane), environ={**ENV, "V7_CLOUD_FIT_PARALLEL": "3"})
         statuses = [self.status(i) for i in range(1, 6)]
         self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_busy"], counts["cloud_promoted"]), ("OK", 0, 2, 3))
-        self.assertEqual((statuses.count("CANARY"), statuses.count(None)), (3, 2))                # the two refused jobs were released: asked by the next batch
+        self.assertEqual((statuses.count("CANARY"), statuses.count(None)), (3, 2))
 
     def test_a_stop_while_another_call_is_in_flight_records_that_answer_and_sends_nothing_more(self):
         for i in range(1, 5):
@@ -759,7 +766,7 @@ class ParallelLanes(Batch):
                 n = len(arrivals)
             if n == 1:
                 refused.wait(5)
-                time.sleep(0.3)                                                                 # still running on Oracle after the other call was refused
+                time.sleep(0.3)
                 return measured(data)
             refused.set()
             return reply(data, status="REFUSED", reason="QUOTA_RESERVE", judgment_raw=None, receipt=None, quota=metered(50))
@@ -767,7 +774,7 @@ class ParallelLanes(Batch):
         counts = self.batch(10, endpoint, environ=self.TWO)
         self.assertEqual((len(endpoint.sent), counts["cloud_calls"], counts["cloud_quota_reserve"], counts["cloud_promoted"], counts["cloud_fit"]), (2, 2, 1, 1, "OK"))
         statuses = [self.status(i) for i in range(1, 5)]
-        self.assertEqual((statuses.count("CANARY"), statuses.count(None)), (1, 3))                # the in-flight answer kept; the refused job and the rest wait
+        self.assertEqual((statuses.count("CANARY"), statuses.count(None)), (1, 3))  # the in-flight answer kept
 
     def test_a_job_failure_in_one_lane_is_recorded_while_the_other_lanes_answer_is_kept(self):
         for i in range(1, 4):
@@ -779,7 +786,7 @@ class ParallelLanes(Batch):
                 arrivals.append(data)
                 n = len(arrivals)
             if n == 1:
-                return reply(data, status="TIMEOUT", judgment_raw=None)                         # a model may have run: recorded, never re-asked, and the batch stops
+                return reply(data, status="TIMEOUT", judgment_raw=None)
             time.sleep(0.3)
             return measured(data)
         counts = self.batch(10, Endpoint(answer), environ=self.TWO)
@@ -788,29 +795,28 @@ class ParallelLanes(Batch):
         self.assertEqual(sorted(s or "-" for s in statuses), ["-", "CANARY", "DEGRADED"])
 
     def test_a_job_too_large_to_ask_is_recorded_and_counted_but_never_fails_the_batch_or_the_run(self):
-        # Oct 24 2026 (LIFE-76): board backfill jobs with very long descriptions overflowed the 16 KB request frame and turned every tick red.
-        long = GOOD + "".join(f"• Own program delivery stream {n} across engineering, data and finance teams\n" for n in range(400))      # a real description, far over the frame
-        self.titled(1, "Program Manager 1", score=90, text=long)                                  # frame() refuses it before anything is sent
+        long = GOOD + "".join(f"• Own program delivery stream {n} across engineering, data and finance teams\n" for n in range(400))  # a real description, far over the frame
+        self.titled(1, "Program Manager 1", score=90, text=long)  # frame refuses it before anything is sent
         for i in (2, 3):
             self.titled(i, f"Program Manager {i}", score=90 - i)
         endpoint = Endpoint(measured)
         counts = self.batch(10, endpoint)
-        self.assertEqual((counts["cloud_fit"], counts["cloud_degraded"], counts["failed"]), ("OK", 0, 0))      # not DEGRADED, and run.PARTIAL_FAILURE sees no failure
-        self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_REQUEST_TOO_LARGE": 1})                    # still reported, by code
-        self.assertEqual((counts["cloud_promoted"], len(endpoint.sent)), (2, 2))                              # the batch went on with the other two
-        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason"))[:2], ("DEGRADED", "FIT_EDGE_REQUEST_TOO_LARGE"))   # recorded on its row: never re-asked
-        self.assertEqual(self.batch(10, Endpoint(measured))["cloud_calls"], 0)                                 # a second batch asks nobody again
+        self.assertEqual((counts["cloud_fit"], counts["cloud_degraded"], counts["failed"]), ("OK", 0, 0))
+        self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_REQUEST_TOO_LARGE": 1})  # still reported, by code
+        self.assertEqual((counts["cloud_promoted"], len(endpoint.sent)), (2, 2))  # the batch went on with the other two
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason"))[:2], ("DEGRADED", "FIT_EDGE_REQUEST_TOO_LARGE"))  # recorded on its row: never re-asked
+        self.assertEqual(self.batch(10, Endpoint(measured))["cloud_calls"], 0)  # a second batch asks nobody again
 
     def test_oracle_refusing_every_job_for_size_stops_after_three_and_degrades_the_run(self):
-        # review of #525: an Oracle limit fault must not quietly mark the whole backlog DEGRADED while the run stays green
+        # review of #525: an Oracle limit fault must not quietly mark the whole backlog DEGRADED while the run stays.
         for i in range(1, 8):
             self.titled(i, f"Program Manager {i}", score=90 - i)
         endpoint = Endpoint(lambda data: reply(data, status="OVERSIZE", judgment_raw=None))
         counts = self.batch(10, endpoint)
-        self.assertEqual(len(endpoint.sent), cloud.SIZE_STOP)                                               # stopped: only three rows were marked
+        self.assertEqual(len(endpoint.sent), cloud.SIZE_STOP)  # stopped: only three rows were marked
         self.assertEqual((counts["cloud_fit"], counts["failed"]), ("DEGRADED(FIT_EDGE_ALL_TOO_LARGE)", 1))
         self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_OVERSIZE": cloud.SIZE_STOP})
-        self.assertEqual(sum(1 for i in range(1, 8) if self.status(i) is None), 7 - cloud.SIZE_STOP)        # the rest stay unasked
+        self.assertEqual(sum(1 for i in range(1, 8) if self.status(i) is None), 7 - cloud.SIZE_STOP)  # the rest stay unasked
 
     def test_a_few_oversize_jobs_among_judged_ones_never_stop_or_degrade(self):
         for i in range(1, 6):
@@ -843,14 +849,14 @@ class ParallelLanes(Batch):
                 n = len(seen)
             if n == 4:
                 time.sleep(0.3)
-                return measured(data)                                         # a lane already in flight answers after the stop
+                return measured(data)  # a lane already in flight answers after the stop
             return reply(data, status="OVERSIZE", judgment_raw=None)
         counts = self.batch(10, Endpoint(answer), environ=self.TWO)
         self.assertEqual((counts["cloud_fit"], counts["failed"]), ("DEGRADED(FIT_EDGE_ALL_TOO_LARGE)", 1))
         self.assertLess(len(seen), 8)
 
     def batch_with_rejections(self, total, rejected):
-        """`total` jobs; the model's answer is refused by the judge for the first `rejected` calls and accepted for the rest."""
+        """`total` jobs"""
         for i in range(1, total + 1):
             self.titled(i, f"Program Manager {i}", score=90)
         arrivals = []
@@ -858,22 +864,22 @@ class ParallelLanes(Batch):
         def answer(data):
             arrivals.append(1)
             if len(arrivals) <= rejected:
-                return reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw='{"ok": true}')       # not the contracted shape: JUDGMENT_REJECTED
+                return reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw='{"ok": true}')  # not the contracted shape: JUDGMENT_REJECTED
             return measured(data)
-        return self.batch(total + 5, Endpoint(answer), environ={**ENV, "V7_CLOUD_FIT_BACKLOG_MAX": str(total + 5)})      # the ceiling is Jim's: lift it so every call is asked
+        return self.batch(total + 5, Endpoint(answer), environ={**ENV, "V7_CLOUD_FIT_BACKLOG_MAX": str(total + 5)})
 
     def test_a_few_rejected_judgments_are_counted_but_do_not_fail_the_batch_or_the_run(self):
-        # Oct 25 2026 (LIFE-76): one refused answer in 85 turned an hourly run red. More than 3 AND more than 10% of the calls fails; fewer is noise.
-        for total, rejected in ((10, 1), (10, 3), (40, 4)):         # 1 of 10; 3 of 10 (not MORE than 3); 4 of 40 = exactly 10% (not MORE than 10%)
+        # More than 3 AND more than 10% of the calls fails
+        for total, rejected in ((10, 1), (10, 3), (40, 4)):  # 1 of 10
             with self.subTest(total=total, rejected=rejected):
                 self.setUp()
                 counts = self.batch_with_rejections(total, rejected)
                 self.assertEqual((counts["cloud_fit"], counts["cloud_degraded"], counts["cloud_failed"], counts["failed"]), ("OK", 0, 0, 0))
                 self.assertEqual((counts["cloud_job_rejected"], counts["cloud_calls"]), (rejected, total))
-                self.assertEqual((counts["cloud_promoted"], self.status(1)), (total - rejected, "DEGRADED"))     # recorded on its row, never re-asked
+                self.assertEqual((counts["cloud_promoted"], self.status(1)), (total - rejected, "DEGRADED"))  # recorded on its row, never re-asked
 
     def test_many_rejected_judgments_still_fail_the_batch(self):
-        for total, rejected in ((10, 4), (20, 4), (30, 5), (10, 10)):                 # 40%, 20%, 17%, 100%: more than 3 and more than 10%
+        for total, rejected in ((10, 4), (20, 4), (30, 5), (10, 10)):  # 40%, 20%, 17%, 100%: more than 3 and more than 10%
             with self.subTest(total=total, rejected=rejected):
                 self.setUp()
                 counts = self.batch_with_rejections(total, rejected)
@@ -886,8 +892,9 @@ class ParallelLanes(Batch):
 
 
 class LapsedSignIn(Batch):
-    """D239 (Oct 20, 12:08 PM CT): an expired Luna sign-in turned every call into FIT_EDGE_ERROR, so each hourly batch lost one job for good. Oracle now refuses such a
-    call AUTH_UNAVAILABLE (no model answered): the job goes back to the queue, the batch stops, and the failure is named."""
+    """Oracle now refuses such a call AUTH_UNAVAILABLE (no model answered): the job goes back to the queue, the batch
+    stops, and the failure is named.
+    """
 
     def test_a_lapsed_sign_in_puts_the_job_back_and_stops_the_batch_by_name(self):
         for i in (1, 2, 3):
@@ -899,11 +906,13 @@ class LapsedSignIn(Batch):
             return measured(data) if len(seen) == 1 else refusal(data, "AUTH_UNAVAILABLE")
         counts = self.batch(3, Endpoint(lapsed_after_one))
         self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_promoted"], len(seen)), ("DEGRADED(FIT_EDGE_REFUSED_AUTH_UNAVAILABLE)", 1, 1, 2))
-        self.assertEqual([self.status(i) for i in (1, 2, 3)], ["CANARY", None, None])          # the refused job was released: asked again once signed in
+        self.assertEqual([self.status(i) for i in (1, 2, 3)], ["CANARY", None, None])
 
 
 class ConnectFailed(Batch):
-    """D241: a request that never reached Oracle used no model: the job goes back to the queue and the batch stops by name, never recording it as a model call."""
+    """a request that never reached Oracle used no model: the job goes back to the queue and the batch stops by name,
+    never recording it as a model call.
+    """
 
     def test_a_connect_failure_releases_the_job_and_names_the_stop(self):
         for i in (1, 2):
@@ -921,7 +930,6 @@ class ConnectFailed(Batch):
 
 
 class ScaleUpCallsFromJim(Batch):
-    """Oct 21: the cloud-excluded Scale-Up roles are judged again under the new brief, and the roles stuck behind a failing link on two boards are retired."""
 
     def excluded_cloud(self, job_id, source="web:su-example-ltd", at="2026-10-20 12:00:00", status="EXCLUDED_FIT", page=None):
         self.titled(job_id, f"Program Manager {job_id}", status=status, admission="EXCLUDE", cloud_status="CANARY")
@@ -934,10 +942,10 @@ class ScaleUpCallsFromJim(Batch):
                 return stage.reopen_scale_up(cursor, limit)
 
     def test_only_scale_up_roles_the_cloud_excluded_before_the_new_brief_are_reopened_and_each_only_once(self):
-        self.excluded_cloud(1)                                                    # a Scale-Up board role, answered under the old brief
-        self.excluded_cloud(2, source="web:greenhouse-acme")                      # another lane
-        self.excluded_cloud(3, at="2026-10-21 06:00:00")                          # already answered with the new brief
-        self.excluded_cloud(4, page="page-4")                                     # it has a page: never touched here
+        self.excluded_cloud(1)
+        self.excluded_cloud(2, source="web:greenhouse-acme")  # another lane
+        self.excluded_cloud(3, at="2026-10-21 06:00:00")  # already answered with the new brief
+        self.excluded_cloud(4, page="page-4")  # it has a page: never touched here
         self.assertEqual(self.reopen(), 1)
         self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], [None, "CANARY", "CANARY", "CANARY"])
         self.assertEqual(self.reopen(), 0)
@@ -961,7 +969,7 @@ class ScaleUpCallsFromJim(Batch):
     def test_roles_stuck_at_new_on_the_two_boards_are_retired_and_nothing_else(self):
         self.stuck(1, "web:su-prepaid-financial-services-lim")
         self.stuck(2, "web:su-futuristic-technologies-ltd", reason="audit_url_listing_url")
-        self.stuck(3, "web:su-other-ltd")                                          # another board
+        self.stuck(3, "web:su-other-ltd")  # another board
         self.stuck(4, "web:su-prepaid-financial-services-lim", reason="jd_thin")  # not a link failure
         self.stuck(5, "web:su-prepaid-financial-services-lim", status="PUBLISHED", page="page-5")
         self.assertEqual(self.retire(), 2)

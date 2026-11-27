@@ -1,4 +1,3 @@
-"""LIFE-76 (Oct 25): the Fit stage scores and WRITES a few rows at a time, so a run that hits its stage timeout keeps the rows it finished, and it prints where it is."""
 import contextlib
 import io
 import json
@@ -51,13 +50,13 @@ class ChunkedStage(Base):
         def slow(rows, *a, **kw):
             calls.append(len(rows))
             if len(calls) == 3:
-                raise StageTimeout()                                             # the alarm fires while the third chunk is being scored
+                raise StageTimeout()
             return stage_score(rows, *a, **kw)
         stage_score = stage.score_rows
         with self.assertRaises(StageTimeout):
             self.run_stage(25, real_score=slow)
         self.assertEqual(calls, [stage.CHUNK, stage.CHUNK, 5])
-        self.assertEqual(self.scored(), 2 * stage.CHUNK)                          # two full chunks were already saved: the next run starts at row 21, not row 1
+        self.assertEqual(self.scored(), 2 * stage.CHUNK)
 
     def test_the_next_run_after_a_timeout_picks_only_what_is_left(self):
         self.stale(25)
@@ -81,6 +80,6 @@ class ChunkedStage(Base):
         phases = [l["phase"] for l in lines]
         self.assertEqual(phases[:3], ["profile", "embedder", "prepared"])
         self.assertIn("picked", phases)
-        self.assertEqual(phases.count("scored"), 2)                               # 12 rows = chunks of 10 and 2
+        self.assertEqual(phases.count("scored"), 2)  # 12 rows = chunks of 10 and 2
         self.assertEqual(lines[-1], {"phase": "scored", "seconds": lines[-1]["seconds"], "done": 12, "of": 12})
         self.assertTrue(all(set(l) <= {"phase", "seconds", "picked", "semantic", "done", "of"} for l in lines))

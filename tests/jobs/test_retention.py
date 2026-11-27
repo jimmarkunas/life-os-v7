@@ -16,8 +16,9 @@ def page(page_id, posted=None, first=None):
 
 
 def database(rows, lanes=("US Remote",), boards=None, markers=None, log=None):
-    """store.connect() stand-in: the lane query returns the given lanes, the per-page lookup returns the stored job row (id, keys, company, title,
-    source), and the board lookup returns (items still CURRENT, items REMOVED) for a job id."""
+    """store.connect stand-in: the lane query returns the given lanes, the per-page lookup returns the stored job row
+    (id, keys, company, title, source).
+    """
     def handler(sql, args, cursor):
         if sql.startswith("SELECT DISTINCT lane"):
             cursor.fetchall = lambda: [(lane,) for lane in lanes]
@@ -34,7 +35,7 @@ def database(rows, lanes=("US Remote",), boards=None, markers=None, log=None):
 
 class FilterShape(unittest.TestCase):
     def test_the_weekly_query_filter_is_no_deeper_than_notion_allows(self):
-        # Notion refuses a compound filter nested past two levels with HTTP 400. This is what failed every Sunday purge.
+        # Notion refuses a compound filter nested past two levels with HTTP 400.
         self.assertLessEqual(filter_depth(retention.query_filter(NOW, "US Remote")), 2)
 
     def test_the_fake_ledger_refuses_what_notion_refuses(self):
@@ -66,19 +67,20 @@ class Purge(unittest.TestCase):
         with mock.patch.object(retention.tombstone, "write"):
             client, counts = self.run_purge(pages, rows, live=True)
         trashed = [path for method, path in client.log if method == "PATCH"]
-        self.assertEqual(trashed, ["/pages/old", "/pages/undated-old"])                # a recent Posting Date keeps a reposted job; a recent First Surfaced keeps an undated one
+        self.assertEqual(trashed, ["/pages/old", "/pages/undated-old"])  # a recent Posting Date keeps a reposted job
         self.assertEqual((counts["retired"], counts["failed"]), (2, 0))
 
     def retire(self, source, board, lane="Skilled Worker", posted="2026-08-01", pipeline=()):
-        """-> counts and the pages trashed, for one unapplied job of `lane` read from `source`, whose board record is `board` = (CURRENT, REMOVED).
-        D167 is exercised in Skilled Worker, which keeps it; US Remote and Scale-Up retire by age (LIFE-212)."""
+        """> counts and the pages trashed, for one unapplied job of `lane` read from `source`, whose board record is
+        `board` = (CURRENT, REMOVED).
+        """
         with mock.patch.object(retention.tombstone, "write"), mock.patch.object(retention.hiring_pipeline, "handoff_for",
                                                                                lambda company, title, opportunities: mock.Mock(protected=(company, title) in pipeline)):
             client, counts = self.run_purge([page("p1", posted)], {"p1": (7, "k", "f", "Acme", "Role", source)}, True, lanes=(lane,), boards={7: board})
         return counts, [path for method, path in client.log if method == "PATCH"]
 
     def test_a_role_still_listed_on_its_employers_board_is_kept_however_old(self):
-        counts, trashed = self.retire("web:acme", (1, 0))                              # D111: open means open (Skilled Worker)
+        counts, trashed = self.retire("web:acme", (1, 0))  # open means open (Skilled Worker)
         self.assertEqual((trashed, counts["kept_open"], counts["retired"]), ([], 1, 0))
 
     def test_a_role_with_no_board_record_is_kept_because_nothing_proves_it_closed(self):
@@ -86,7 +88,7 @@ class Purge(unittest.TestCase):
         self.assertEqual((trashed, counts["kept_open"]), ([], 1))
 
     def test_a_role_the_board_no_longer_lists_is_retired_by_age(self):
-        counts, trashed = self.retire("web:acme", (0, 1))                              # the web pass marked it REMOVED after a complete listing
+        counts, trashed = self.retire("web:acme", (0, 1))
         self.assertEqual((trashed, counts["kept_open"], counts["retired"]), (["/pages/p1"], 0, 1))
 
     def test_feed_aggregator_and_newsletter_roles_keep_the_posting_age_rule(self):
@@ -99,16 +101,16 @@ class Purge(unittest.TestCase):
         self.assertEqual((counts["ours"], counts["kept_open"], counts["retired"]), (1, 1, 0))
 
     def test_a_us_remote_employer_board_role_over_14_days_is_retired_though_still_listed(self):
-        # LIFE-212 (Jim, Oct 31 2026): NOW is Oct 11; 15 days old is retired, 14 is kept, listed on its board or not
+        # 15 days old is retired, 14 is kept, listed on its board or not
         counts, trashed = self.retire("web:acme", (1, 0), lane="US Remote", posted="2026-09-26")
         self.assertEqual((trashed, counts["kept_open"], counts["retired"]), (["/pages/p1"], 0, 1))
         counts, trashed = self.retire("web:acme", (1, 0), lane="US Remote", posted="2026-09-27")
         self.assertEqual((trashed, counts["retired"]), ([], 0))
 
     def test_a_scale_up_employer_board_role_retires_after_30_days(self):
-        counts, trashed = self.retire("web:acme", (1, 0), lane="Scale-Up", posted="2026-09-10")       # 31 days
+        counts, trashed = self.retire("web:acme", (1, 0), lane="Scale-Up", posted="2026-09-10")  # 31 days
         self.assertEqual((trashed, counts["kept_open"], counts["retired"]), (["/pages/p1"], 0, 1))
-        counts, trashed = self.retire("web:acme", (1, 0), lane="Scale-Up", posted="2026-09-11")       # 30 days
+        counts, trashed = self.retire("web:acme", (1, 0), lane="Scale-Up", posted="2026-09-11")  # 30 days
         self.assertEqual((trashed, counts["retired"]), ([], 0))
 
     def test_the_query_asks_each_lane_for_its_own_age(self):
@@ -124,12 +126,12 @@ class Purge(unittest.TestCase):
         text = str(retention.query_filter(NOW - dt.timedelta(days=retention.retire_days("US Remote")[0]), "US Remote"))
         for part in ("'Applied'", "'Applied On'", "'Saturn Decision'", "2026-09-27"):
             self.assertIn(part, text)
-        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, True, None, NOW.date(), 15), None)                 # applied: kept (UNKNOWN until the handoff)
-        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, "Go", NOW.date(), 15), None)                # a Saturn Decision: kept
+        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, True, None, NOW.date(), 15), None)  # applied: kept (UNKNOWN until the handoff)
+        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, "Go", NOW.date(), 15), None)  # a Saturn Decision: kept
         self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, None, NOW.date(), 15), "retire")
 
     def test_the_ledgers_own_spelling_of_a_lane_is_asked_for_not_the_databases(self):
-        # The database says `Scale-Up`, the Ledger option is `Scale-up`; Notion refused the former with HTTP 400 on both Sundays (run 38153372055).
+        # The database says `Scale-Up`, the Ledger option is `Scale-up`
         client, counts = self.run_purge([], {}, False, lanes=("Newsletter", "Scale-Up", "US Remote"))
         asked = sorted(f["and"][3]["select"]["equals"] for f in client.queries)
         self.assertEqual((asked, counts["lanes"]), (["Newsletter", "Scale-up", "US Remote"], 3))
@@ -161,16 +163,17 @@ HOURS = lambda n: dt.timedelta(hours=n)
 
 
 class CatchUp(unittest.TestCase):
-    """D168: the purge is about weekly, catches up after a missed or failed run, and a quiet fail-closed run is a failure."""
+    """the purge is about weekly, catches up after a missed or failed run, and a quiet fail-closed run is a failure.
+    """
 
     def test_due_only_when_no_recent_success_and_no_recent_attempt(self):
         d = retention.due
-        self.assertTrue(d(NOW, None, None))                                         # never ran
-        self.assertFalse(d(NOW, NOW - HOURS(24 * 6), None))                          # succeeded 6 days ago
-        self.assertTrue(d(NOW, NOW - HOURS(24 * 6 + 13), None))                      # 6.5 days: due again
-        self.assertFalse(d(NOW, NOW - HOURS(24 * 8), NOW - HOURS(2)))                # missed a week, but tried 2 hours ago
-        self.assertTrue(d(NOW, NOW - HOURS(24 * 8), NOW - HOURS(7)))                 # a failed attempt is retried after 6 hours
-        self.assertTrue(d(NOW, NOW - HOURS(1), NOW - HOURS(1), force=True))          # a manual run ignores both
+        self.assertTrue(d(NOW, None, None))  # never ran
+        self.assertFalse(d(NOW, NOW - HOURS(24 * 6), None))  # succeeded 6 days ago
+        self.assertTrue(d(NOW, NOW - HOURS(24 * 6 + 13), None))  # 6.5 days: due again
+        self.assertFalse(d(NOW, NOW - HOURS(24 * 8), NOW - HOURS(2)))  # missed a week, but tried 2 hours ago
+        self.assertTrue(d(NOW, NOW - HOURS(24 * 8), NOW - HOURS(7)))  # a failed attempt is retried after 6 hours
+        self.assertTrue(d(NOW, NOW - HOURS(1), NOW - HOURS(1), force=True))  # a manual run ignores both
 
     def run_stage(self, markers, live=True, force=False, notion=None):
         log, calls = [], []
@@ -201,9 +204,9 @@ class CatchUp(unittest.TestCase):
                 retention.run(True, now=NOW, force=False)
         self.assertEqual(log, [retention.TRY_KEY])
         result, calls, log = self.run_stage({retention.OK_KEY: NOW - HOURS(24 * 8), retention.TRY_KEY: NOW - HOURS(2)})
-        self.assertEqual(result["purge"], "not_due")                                  # inside the six-hour back-off
+        self.assertEqual(result["purge"], "not_due")  # inside the six-hour back-off
         result, calls, log = self.run_stage({retention.OK_KEY: NOW - HOURS(24 * 8), retention.TRY_KEY: NOW - HOURS(7)})
-        self.assertEqual(calls, ["db", "notion"])                                     # after it, the catch-up runs
+        self.assertEqual(calls, ["db", "notion"])  # after it, the catch-up runs
 
     def test_a_fail_closed_purge_is_a_failure_with_a_fixed_code_and_no_success_marker(self):
         for notion in ({"target": "target_mismatch", "handoff": "ok"}, {"target": "ok", "handoff": "unreadable"}, {"target": "lane_options_unreadable", "handoff": "ok"}):

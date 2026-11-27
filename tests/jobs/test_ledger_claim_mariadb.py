@@ -1,8 +1,6 @@
-"""LIFE-903 (comment 13848): the two-process Ledger-creation race on a real MariaDB with the real `v7_jobs` schema (the two claim columns and the UNIQUE `dedupe_key`), not sqlite.
-
-Runs only when LIFEOS_RACE_DB_NAME is set, which only .github/workflows/mariadb-race.yml does, against a throwaway MariaDB service container on the runner's own loopback. It refuses any host that is not
-127.0.0.1 or localhost and any database not named `race_...`, so it can never touch the production store. The schema is built by the production `store.ensure_schema`. Four real OS processes (publish, Interview lead,
-opportunity, publish) race one key: exactly one WON and one row in the stand-in Ledger; the same race without the claim makes two rows, which proves the test bites."""
+"""(comment 13848): the two-process Ledger-creation race on a real MariaDB with the real `v7_jobs` schema (the two claim
+columns and the UNIQUE.
+"""
 import glob
 import os
 import pathlib
@@ -55,7 +53,7 @@ class MariaDbRace(unittest.TestCase):
             open(ledger_file, "w").close()
             procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", "mariadb", ledger_file, KEY, role, go_file, mode, str(len(roles))], cwd=ROOT, stdout=subprocess.PIPE, text=True)
                      for role in roles]
-            deadline = time.monotonic() + 60                                     # LIFE-966: every worker is ready (no fixed sleep), then they are released together
+            deadline = time.monotonic() + 60
             while len(glob.glob(go_file + ".ready.*")) < len(roles) and time.monotonic() < deadline:
                 time.sleep(0.005)
             open(go_file, "w").close()
@@ -72,7 +70,7 @@ class MariaDbRace(unittest.TestCase):
         self.assertEqual(sorted(outs), [lc.HELD, lc.HELD, lc.HELD, lc.WON])
         with connect() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE dedupe_key=%s", (KEY,))
-            self.assertEqual(cursor.fetchone()[0], 1)                       # one store row for the key, however many tried
+            self.assertEqual(cursor.fetchone()[0], 1)  # one store row for the key, however many tried
 
 
 if __name__ == "__main__":

@@ -1,6 +1,4 @@
-"""LIFE-903 (AC04, AC07, AC08): one Stable Job Key makes at most one Ledger row from every creator; an unresolved create is settled by read-back, never repeated; a mail is finalized as DUPLICATE only against a
-verified twin; the short-title twin converges; the update paths never touch human state. The claim runs over the production SQL (in-memory sqlite for the unit tests, one on-disk file shared by real OS processes
-for the race). The store in production is MariaDB/InnoDB: the claim is one conditional UPDATE on a UNIQUE key, which InnoDB row-locks; sqlite proves the statement, not InnoDB itself."""
+"""(AC04, AC07, AC08): one Stable Job Key makes at most one Ledger row from every creator"""
 import glob
 import os
 import pathlib
@@ -70,17 +68,17 @@ class Claim(unittest.TestCase):
 
 
 class TwoProcessRace(unittest.TestCase):
-    """Real OS processes, one store file, one ledger file standing in for Notion. The naive run proves the test bites: lookup-then-create makes two rows."""
+    """Real OS processes, one store file, one ledger file standing in for Notion."""
 
     def race(self, mode, roles):
         with tempfile.TemporaryDirectory() as tmp:
             store_file, ledger_file = os.path.join(tmp, "store.db"), os.path.join(tmp, "ledger.txt")
-            JobsDB(store_file)                                              # the schema, once
+            JobsDB(store_file)  # the schema, once
             open(ledger_file, "w").close()
             go_file = os.path.join(tmp, "go")
             procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", store_file, ledger_file, KEY, role, go_file, mode, str(len(roles))], cwd=ROOT, stdout=subprocess.PIPE, text=True)
                      for role in roles]
-            deadline = time.monotonic() + 60                                     # LIFE-966: wait until every worker says it is ready (not a fixed 1.5 s: on a loaded runner a worker can start late), then release them together
+            deadline = time.monotonic() + 60
             while len(glob.glob(go_file + ".ready.*")) < len(roles) and time.monotonic() < deadline:
                 time.sleep(0.005)
             open(go_file, "w").close()
@@ -89,12 +87,12 @@ class TwoProcessRace(unittest.TestCase):
 
     def test_without_the_claim_two_processes_make_two_rows(self):
         outs, rows = self.race("naive", ("publish", "lead"))
-        self.assertEqual(len(rows), 2)                                      # the failure mode LIFE-903 exists for
+        self.assertEqual(len(rows), 2)  # the failure mode exists for
 
     def test_with_the_claim_publish_interview_lead_and_the_opportunity_creator_make_exactly_one_row(self):
         outs, rows = self.race("claim", ("publish", "lead", "opportunity", "publish"))
         self.assertEqual(rows, [KEY])
-        self.assertEqual(sorted(outs), [lc.HELD, lc.HELD, lc.HELD, lc.WON])           # one winner; the other three created nothing
+        self.assertEqual(sorted(outs), [lc.HELD, lc.HELD, lc.HELD, lc.WON])  # one winner
 
 
 class Finalize(unittest.TestCase):
@@ -134,12 +132,12 @@ class Finalize(unittest.TestCase):
         self.assertEqual(self.blockers("m2"), {"m2": "twin_unverified"})
 
     def test_a_duplicate_with_no_twin_recorded_stays_terminal_as_before(self):
-        self.mail("m1", self.job("DUPLICATE"))                              # in_ledger: the Ledger row exists outside the store
+        self.mail("m1", self.job("DUPLICATE"))  # in_ledger: the Ledger row exists outside the store
         self.assertEqual(self.blockers("m1"), {})
 
 
 class ShortTitleTwins(unittest.TestCase):
-    """LIFE-903: a title of fewer than three words converges only on a proven equal ATS vacancy id."""
+    """a title of fewer than three words converges only on a proven equal ATS vacancy id."""
 
     def setUp(self):
         self.db, self.n = JobsDB(), 0
@@ -164,7 +162,7 @@ class ShortTitleTwins(unittest.TestCase):
         self.assertIsNone(self.same("Product Manager", "https://www.linkedin.com/jobs/view/4478543856"))
         self.assertIsNone(self.same("Product Manager", "https://careers.acme.example/pm"))
         self.published("Designer", "https://careers.acme.example/designer")
-        self.assertIsNone(self.same("Designer", "https://careers.acme.example/designer-2"))          # neither names an id: still two words, still not merged
+        self.assertIsNone(self.same("Designer", "https://careers.acme.example/designer-2"))
 
     def test_a_short_title_is_never_merged_on_an_aggregators_place(self):
         self.published("Project Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Chicago-IL/Project-Manager_JR1001")
@@ -183,7 +181,7 @@ class UpdatePathsKeepHumanState(unittest.TestCase):
     def test_an_adopted_applied_page_is_only_filled_never_overwritten(self):
         import inspect
         source = inspect.getsource(publish.run)
-        self.assertIn("body.fill(client, page_id, desc, strict=False)", source)             # an adopted page gets its body completed; no PATCH of properties exists on that branch
+        self.assertIn("body.fill(client, page_id, desc, strict=False)", source)  # an adopted page gets its body completed
         self.assertEqual(source.count('"PATCH"'), 0)
 
     def test_the_lead_row_only_ever_creates_and_an_existing_row_is_left_untouched(self):
@@ -195,7 +193,7 @@ class UpdatePathsKeepHumanState(unittest.TestCase):
                 mock.patch.object(lc.db, "connect", lambda: db):
             self.assertEqual(ie.lead_row(writer, "Acme", "Program Manager", KEY, "https://x", NOW.date()), "present")
         writer.create.assert_not_called()
-        writer.call.assert_not_called()                                                   # no PATCH of the existing row either
+        writer.call.assert_not_called()  # no PATCH of the existing row either
 
 
 if __name__ == "__main__":

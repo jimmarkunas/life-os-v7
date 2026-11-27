@@ -1,5 +1,6 @@
-"""D212: the Ledger read-back reads Notion for every page (one batch property query per KEY_CHUNK keys plus the per-page body marker), refuses a pagination answer it cannot
-follow, and a page that does not read back fails the publish stage. Production SQL over the sqlite kit; only the Notion client is doubled."""
+"""the Ledger read-back reads Notion for every page (one batch property query per KEY_CHUNK keys plus the per-page body
+marker), refuses a pagination.
+"""
 import datetime
 import unittest
 from unittest import mock
@@ -18,7 +19,6 @@ def props(key, url="https://boards.example.com/a/1", fit=80):
 
 
 class Ledger:
-    """Answers the batched key query, the body-marker GET and nothing else: a page GET is a test failure (the batch query replaced it)."""
     source = "ledger"
 
     def __init__(self, pages, bodies=None):
@@ -66,8 +66,8 @@ class BatchedReadback(ReadbackBase):
         ledger = Ledger({f"page{i}": props(f"k{i}") for i in range(1, 31)})
         counts = self.run_with(readback.run, ledger, True)
         self.assertEqual((counts["checked"], counts["verified"], counts["failed"]), (30, 30, 0))
-        self.assertEqual(ledger.queries, [readback.KEY_CHUNK, 30 - readback.KEY_CHUNK])            # 30 keys: two queries, not 30 page GETs
-        self.assertEqual(ledger.calls, 2 + 30)                                                      # plus each page's body-marker read
+        self.assertEqual(ledger.queries, [readback.KEY_CHUNK, 30 - readback.KEY_CHUNK])  # 30 keys: two queries, not 30 page GETs
+        self.assertEqual(ledger.calls, 2 + 30)  # plus each page's body-marker read
         self.assertTrue(all(self.verified().values()))
 
     def test_a_page_the_query_does_not_return_is_gone_and_stays_unverified(self):
@@ -105,7 +105,7 @@ class BatchedReadback(ReadbackBase):
 
     def test_a_missing_or_repeated_pagination_cursor_is_refused_never_read_as_no_page(self):
         self.published(1, "page1")
-        for cursor in (None, "c1"):                                              # has_more with no cursor, or the same cursor handed back again
+        for cursor in (None, "c1"):
             class Paged(Ledger):
                 def call(self, method, path, body=None, cursor=cursor):
                     if path.endswith("/query"):
@@ -149,7 +149,7 @@ class PublishNeverVerifies(unittest.TestCase):
                 mock.patch.object(publish, "_pick", return_value=([], set())), mock.patch.object(fit_sync, "run", return_value={}), \
                 mock.patch.object(readback, "run", return_value={"checked": 2, "verified": 1, "failed": 1, "why": {"page_gone": 1}}):
             counts = publish.run(10, True, {})
-        self.assertEqual(counts["failed"], 1)                                                         # run.PARTIAL_FAILURE turns it into PUBLISH_RECORDS_FAILED, exit 1
+        self.assertEqual(counts["failed"], 1)
         from lifeos import run
         self.assertIn("publish", run.PARTIAL_FAILURE)
 
@@ -157,7 +157,7 @@ class PublishNeverVerifies(unittest.TestCase):
         import pathlib
         source = pathlib.Path(readback.__file__).with_name("publish.py").read_text()
         import re
-        self.assertIsNone(re.search(r"verified_at\s*=", source))                                     # D212: only the read-back writes verified_at
+        self.assertIsNone(re.search(r"verified_at\s*=", source))  # only the read-back writes verified_at
         self.assertIn("fit_synced_at=%s, meta_v=%s", source)
 
 

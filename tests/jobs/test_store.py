@@ -16,7 +16,9 @@ class StoreSchemaTests(unittest.TestCase):
 
 
 class RacingCursor:
-    """Every column starts missing, each ALTER is refused with `error`, and a check made after a refused ALTER answers `landed` (did the other lane's column or key land?)."""
+    """Every column starts missing, each ALTER is refused with `error`, and a check made after a refused ALTER answers
+    `landed` (did the other lane's column.
+    """
     def __init__(self, error, landed):
         self.error, self.landed, self.altered, self.last = error, landed, [], ""
 
@@ -34,7 +36,7 @@ class RacingCursor:
 
     def fetchone(self):
         if "CHARACTER_MAXIMUM_LENGTH" in self.last:
-            return (2000,)                                                      # the widened column is already wide
+            return (2000,)  # the widened column is already wide
         return (1 if self.landed and self.altered else 0,)
 
     def fetchall(self):
@@ -57,7 +59,7 @@ def ensure(error, landed=True):
 class SchemaRaceTests(unittest.TestCase):
     def test_a_column_or_key_another_lane_added_first_is_not_a_failure_once_it_is_confirmed_present(self):
         for code in (1060, 1061):
-            ensure(Exception(code, "Duplicate"))                                    # no exception: the column and key are there either way
+            ensure(Exception(code, "Duplicate"))
 
     def test_a_collision_that_leaves_the_column_or_key_missing_is_still_an_error(self):
         for code in (1060, 1061):

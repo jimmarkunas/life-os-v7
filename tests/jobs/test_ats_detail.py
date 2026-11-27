@@ -7,7 +7,7 @@ from lifeos.platform.http import Fetched
 
 
 def serve(routes):
-    """fetch() double: the first route whose key is contained in the URL answers; anything else is a 404."""
+    """fetch double: the first route whose key is contained in the URL answers"""
     def fake(url, **kwargs):
         for key, (status, body) in routes.items():
             if key in url:
@@ -29,7 +29,7 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual((job["title"], job["html"], job["posted"]), ("PM", "<p>desc</p>", "2026-09-24"))
         self.assertEqual(read("https://acme.wd5.myworkdayjobs.com/Careers/job/x/PM_R2", {}), {"closed": True})
         applied = read("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Remote/PM_R1/apply/autostart",
-                       {"/wday/cxs/acme/Careers/job/Remote/PM_R1": (200, info)})           # the apply form is cut off the path
+                       {"/wday/cxs/acme/Careers/job/Remote/PM_R1": (200, info)})  # the apply form is cut off the path
         self.assertEqual(applied["title"], "PM")
 
     def test_workday_url_and_browser_wrapped_json(self):
@@ -75,7 +75,7 @@ class ReaderTests(unittest.TestCase):
         board = {"jobs": [{"id": "abc-1", "title": "PM", "descriptionHtml": "<p>d</p>", "publishedAt": "2026-09-23"}]}
         self.assertEqual(read("https://jobs.ashbyhq.com/acme/abc-1", {"job-board/acme": (200, board)})["posted"], "2026-09-23")
         self.assertEqual(read("https://jobs.ashbyhq.com/acme/gone-2", {"job-board/acme": (200, board)}), {"closed": True})
-        single = {"title": "PM", "descriptionHtml": "<p>one</p>", "publishedAt": "2026-09-25"}          # V2's per-job endpoint
+        single = {"title": "PM", "descriptionHtml": "<p>one</p>", "publishedAt": "2026-09-25"}  # V2's per-job endpoint
         job = read("https://jobs.ashbyhq.com/acme/abcdef-12345/application", {"job-postings/abcdef-12345": (200, single)})
         self.assertEqual((job["html"], job["posted"]), ("<p>one</p>", "2026-09-25"))
 

@@ -12,11 +12,11 @@ class SqlSmokeTests(unittest.TestCase):
         self.assertGreater(len(found), 100)
         for path, line, sql in found:
             marks = safety._placeholders(sql)
-            sql % tuple(1 for _ in range(marks))                          # a stray '%' (the 5 PM crash) fails here, before any database
+            sql % tuple(1 for _ in range(marks))
             self.assertEqual(len(safety._params(sql)), marks)
 
     def test_a_sentence_that_starts_with_a_verb_word_is_not_a_statement(self):
-        # LIFE-732: "replaces v7_sponsors with ..." (a stage contract's prose) starts with the prefix REPLACE and was run through EXPLAIN: MySQL 1064 on sponsor_register.py:103
+        # "replaces v7_sponsors with..." (a stage contract's prose) starts with the prefix REPLACE and was run through.
         import tempfile
         from pathlib import Path
         with tempfile.TemporaryDirectory() as folder:
@@ -33,7 +33,7 @@ class SqlSmokeTests(unittest.TestCase):
             self.assertEqual([line for _, line, _ in safety.statements(root)], [3, 4, 5, 6, 7])
 
     def test_the_pieces_of_an_f_string_statement_are_not_taken_as_statements(self):
-        # LIFE-634: the weekly check failed 1064 on audit.py:62 and ledger_layout:60, the first piece of an f-string statement ("... WHERE j.status IN " cut at the {...})
+        # the weekly check failed 1064 on audit.py:62 and ledger_layout:60, the first piece of an f-string statement.
         import tempfile
         from pathlib import Path
         with tempfile.TemporaryDirectory() as folder:

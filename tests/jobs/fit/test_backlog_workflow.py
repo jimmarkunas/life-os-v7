@@ -1,14 +1,11 @@
-"""D219 (LIFE-41 10586): a Cloud Fit backlog dispatch runs alone. The real hourly.yml `if:` expressions are evaluated (a small exact evaluator for the forms the
-file uses: literals, property paths, ! == != && || ( ), always(), startsWith()) for each trigger shape, so the job/step plan is proven without running Actions:
-a cloud_backlog-only live dispatch never reaches the newsletter sweep, extract, a resolver job, discovery, web, publish or any TinyFish/Gmail stage; cloud_backlog
-with any other action input fails at prep's first step before any credential or stage; ticks and every other manual run keep their plan."""
+"""a Cloud Fit backlog dispatch runs alone."""
 import pathlib
 import re
 import unittest
 
 try:
     import yaml
-except ImportError:                                                         # the workflow contract tests skip without PyYAML, as the others do
+except ImportError:
     yaml = None
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml"
@@ -60,14 +57,14 @@ def evaluate(text, ctx):
             take()
             assert t in ("always", "startsWith", "cancelled", "contains"), t
             if t == "cancelled":
-                return False                                                  # a simulated run is never cancelled part-way
+                return False  # a simulated run is never cancelled part-way
             if t == "contains":
                 haystack = args[0]
                 return (str(args[1]).lower() in [str(x).lower() for x in haystack]) if isinstance(haystack, list) else str(args[1]).lower() in str(haystack or "").lower()
             return True if t == "always" else isinstance(args[0], str) and args[0].lower().startswith(str(args[1]).lower())
         cur = ctx
         for part in t.split("."):
-            if part == "*":                                               # needs.*.result: the values of every entry
+            if part == "*":  # needs.*.result: the values of every entry
                 cur = list(cur.values()) if isinstance(cur, dict) else None
             elif isinstance(cur, list):
                 cur = [x.get(part) if isinstance(x, dict) else None for x in cur]
@@ -109,16 +106,15 @@ def context(doc, event, variables=None, **given):
     inputs.update(given)
     ctx = {"github": {"event_name": event}, "inputs": inputs, "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true", **(variables or {})}, "steps": {}}
     tick = event == "schedule" or (event == "workflow_dispatch" and bool(inputs.get("tick")))
-    pipeline = "true" if tick and ctx["vars"].get("V7_PIPELINE") == "true" else "false"                                   # LIFE-699: what the prep job's "Pipeline decision" step computes from the Bitwarden switch
+    pipeline = "true" if tick and ctx["vars"].get("V7_PIPELINE") == "true" else "false"
     ctx["env"] = {"PIPELINE": pipeline,
-                  **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT")}}      # LIFE-704: the plain-switch loader exports the spend values (and, LIFE-699, the pilot page) to the job environment
-    ctx["needs"] = {"prep": {"result": "success", "outputs": {"pipeline": pipeline}}}                                        # the other jobs read the decision from the prep job
+                  **{k: v for k, v in ctx["vars"].items() if k.startswith("V7_CLOUD_FIT")}}
+    ctx["needs"] = {"prep": {"result": "success", "outputs": {"pipeline": pipeline}}}  # the other jobs read the decision from the prep job
     return ctx
 
 
 def plan(doc, event, variables=None, **given):
-    """-> {job: (result, [executed steps])} for jobs that run. A step runs only while nothing before it failed unless its `if` calls always()/failure()/cancelled()
-    (GitHub's implicit success() &&); the combined-input guard fails its job."""
+    """> {job: (result, [executed steps])} for jobs that run."""
     ctx = context(doc, event, variables, **given)
     out, results = {}, {}
     for name, job in doc["jobs"].items():
@@ -132,7 +128,7 @@ def plan(doc, event, variables=None, **given):
         steps, failed = [], False
         for step in job.get("steps", []):
             cond = str(step.get("if") or "")
-            status_aware = any(f in cond for f in ("always(", "failure(", "cancelled("))       # otherwise GitHub prefixes an implicit success() &&
+            status_aware = any(f in cond for f in ("always(", "failure(", "cancelled("))  # otherwise GitHub prefixes an implicit success &&
             if (not failed or status_aware) and (truthy(evaluate(cond, ctx)) if cond else True):
                 steps.append(step)
                 failed = failed or "CLOUD_BACKLOG_COMBINED_INPUTS" in str(step.get("run", ""))
@@ -153,7 +149,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
 
     def test_a_cloud_backlog_only_live_dispatch_runs_only_the_batch_and_never_a_source_newsletter_gmail_or_tinyfish_stage(self):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
-        self.assertEqual(sorted(p), ["finish", "prep", "report"])                                    # jobright / linkedin / lensa / interview never start
+        self.assertEqual(sorted(p), ["finish", "prep", "report"])
         self.assertTrue(all(result == "success" for result, _ in p.values()))
         ran = [s for _, steps in p.values() for s in steps]
         names = [s.get("id") or s.get("name") or s.get("uses") for s in ran]
@@ -163,16 +159,16 @@ class CloudBacklogRunsAlone(unittest.TestCase):
         for step in ran:
             run = str(step.get("run") or "")
             if run:
-                self.assertTrue(any(a in run for a in ALLOWED_RUNS), (step.get("name"), run[:80]))       # every command that runs is one of these
+                self.assertTrue(any(a in run for a in ALLOWED_RUNS), (step.get("name"), run[:80]))  # every command that runs is one of these
             env = step.get("env") or {}
             if "TINYFISH_API_KEY" in env or any(k.startswith("GMAIL_") for k in env):
-                self.assertIn("python3 -m lifeos.platform.gate", run, step.get("name"))                 # only the gate step is handed them, and it never reads them
+                self.assertIn("python3 -m lifeos.platform.gate", run, step.get("name"))
         gate = (WORKFLOW.parents[2] / "lifeos" / "platform" / "gate.py").read_text()
         self.assertNotIn("TINYFISH", gate)
         self.assertNotRegex(gate, r"GMAIL_OAUTH")
 
     def test_cloud_backlog_with_any_other_action_input_fails_first_before_any_credential_or_stage(self):
-        actions = [k for k in self.inputs if k not in ("live", "cloud_backlog", "publish_limit")]     # every other action, read from the workflow: a new input is covered
+        actions = [k for k in self.inputs if k not in ("live", "cloud_backlog", "publish_limit")]
         self.assertGreater(len(actions), 20)
         for name in actions:
             value = "x" if self.inputs[name].get("type") == "string" else True
@@ -180,7 +176,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertEqual(list(p), ["prep"], name)
             result, steps = p["prep"]
             self.assertEqual(result, "failure", name)
-            self.assertEqual([st.get("name") for st in steps[:1]], ["Checkout the exact commit (own fetch, token never stored)"], name)          # only the repository checkout ran before it: no credential
+            self.assertEqual([st.get("name") for st in steps[:1]], ["Checkout the exact commit (own fetch, token never stored)"], name)
             self.assertEqual(len(steps), 2, name)
             self.assertIn("CLOUD_BACKLOG_COMBINED_INPUTS", steps[1]["run"])
             self.assertIn("exit 1", steps[1]["run"])
@@ -201,7 +197,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
             self.assertNotIn("Cloud Fit backlog runs alone", " ".join(str(n) for n in names(p, "prep")), given)
             self.assertNotIn("fit_cloud_backlog", names(p, "finish"), given)
             if not given.get("quick"):
-                self.assertTrue({"jobright", "linkedin", "lensa"} <= set(p), given)                    # a non-backlog manual run still starts the resolver jobs
+                self.assertTrue({"jobright", "linkedin", "lensa"} <= set(p), given)
 
     def test_a_failed_batch_still_fails_the_run(self):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
@@ -211,8 +207,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
 class ScheduledBatch(unittest.TestCase):
-    """LIFE-41 (Jim, Oct 19 2026): "the canary is too little - we need the jobs coming in on schedule". V7_CLOUD_FIT_SCHEDULED=N runs the same batch after every
-    tick, N calls, with N as its own ceiling; unset or 0 keeps ticks exactly as they were."""
+    """'the canary is too little - we need the jobs coming in on schedule'."""
 
     def setUp(self):
         self.doc = yaml.safe_load(WORKFLOW.read_text())
@@ -226,17 +221,16 @@ class ScheduledBatch(unittest.TestCase):
         return {k: evaluate(v, ctx) for k, v in self.step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))}
 
     def test_a_tick_with_the_variable_no_longer_runs_the_batch_in_the_hourly_run_it_runs_in_the_after_tick_domains_run(self):
-        """LIFE-856 change 4 (Jim, Nov 25 2026, 4:36 PM CT): the scheduled batch moved out of hourly.yml's finish job into domains.yml's fit_cloud_backlog job, so the hourly run no longer waits for it."""
         on = {"V7_CLOUD_FIT_SCHEDULED": "20", "V7_CLOUD_FIT_BACKLOG_PAGE": "0" * 32, "V7_CLOUD_FIT_BACKLOG_MAX": "1"}
         for event, given in (("schedule", {}), ("workflow_dispatch", {"tick": True, "live": True})):
             names = self.names(plan(self.doc, event, on, **given))
             self.assertIn("tick", names, event)
             self.assertNotIn("fit_cloud_backlog", names, event)
-            self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), event)                     # the tick's own cloud fit canary still needs the route to Oracle
+            self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), event)
         domains = yaml.safe_load((WORKFLOW.parent / "domains.yml").read_text())["jobs"]["fit_cloud_backlog"]
         step = next(s for s in domains["steps"] if s.get("id") == "fit_cloud_backlog")
         self.assertEqual({k: v for k, v in step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))},
-                         {"CLOUD_BACKLOG": "${{ env.V7_CLOUD_FIT_SCHEDULED }}", "V7_CLOUD_FIT_BACKLOG_MAX": "${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}", "V7_CLOUD_FIT_BACKLOG_BUDGET": "", "V7_CLOUD_FIT_BACKLOG_PAGE": ""})   # the scheduled count is its own ceiling; a leftover pilot page never narrows a tick
+                         {"CLOUD_BACKLOG": "${{ env.V7_CLOUD_FIT_SCHEDULED }}", "V7_CLOUD_FIT_BACKLOG_MAX": "${{ env.V7_CLOUD_FIT_SCHEDULED || '0' }}", "V7_CLOUD_FIT_BACKLOG_BUDGET": "", "V7_CLOUD_FIT_BACKLOG_PAGE": ""})  # the scheduled count is its own ceiling
 
     def test_without_the_variable_a_tick_is_unchanged(self):
         for variables in ({}, {"V7_CLOUD_FIT_SCHEDULED": "0"}, {"V7_CLOUD_FIT_SCHEDULED": ""}):
@@ -244,7 +238,7 @@ class ScheduledBatch(unittest.TestCase):
                 names = self.names(plan(self.doc, event, variables, **given))
                 self.assertIn("tick", names)
                 self.assertNotIn("fit_cloud_backlog", names, (variables, event))
-                self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), (variables, event))      # LIFE-85: the finish job always joins (the store's Oracle fallback)
+                self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), (variables, event))
 
     def test_a_parked_pipeline_never_runs_it(self):
         p = plan(self.doc, "schedule", {"V7_PIPELINE": "false", "V7_CLOUD_FIT_SCHEDULED": "20"})
@@ -259,15 +253,16 @@ class ScheduledBatch(unittest.TestCase):
 
 
 class TheHourIsFilled(unittest.TestCase):
-    """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 45-minute cap (D238) or the finish job's 58 minutes,
-    and skips (exit 0) rather than fail when too little time is left. The step's own script runs here with a stand-in clock."""
+    """a tick's batch runs until about:55, never past the code's 45-minute cap or the finish job's 58 minutes, and skips
+    (exit 0) rather than fail when too.
+    """
 
     def budget(self, minute, second, job_seconds):
         import os
         import subprocess
         import tempfile
         import yaml
-        doc = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "domains.yml")))      # LIFE-856: the scheduled batch runs in the after-tick domains run now
+        doc = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "domains.yml")))
         script = next(s["run"] for s in doc["jobs"]["fit_cloud_backlog"]["steps"] if s.get("id") == "fit_cloud_backlog")
         now = 1792500000 - (1792500000 % 3600) + minute * 60 + second
         with tempfile.TemporaryDirectory() as d:
@@ -282,17 +277,17 @@ class TheHourIsFilled(unittest.TestCase):
         return out.stdout.strip()
 
     def test_a_quick_tick_runs_until_the_job_limit_most_of_the_hour(self):
-        self.assertEqual(self.budget(10, 0, 9 * 60), "BUDGET=2640")                 # 58 min - 9 min run - 5 min kept, before :55
-        self.assertEqual(self.budget(6, 0, 2 * 60), "BUDGET=2700")                  # never past the code's 45-minute cap
+        self.assertEqual(self.budget(10, 0, 9 * 60), "BUDGET=2640")  # 58 min - 9 min run - 5 min kept, before:55
+        self.assertEqual(self.budget(6, 0, 2 * 60), "BUDGET=2700")  # never past the code's 45-minute cap
 
     def test_the_batch_still_ends_by_five_to_the_hour(self):
-        self.assertEqual(self.budget(20, 0, 9 * 60), "BUDGET=2100")                 # :20 to :55
+        self.assertEqual(self.budget(20, 0, 9 * 60), "BUDGET=2100")  # 20 to:55
 
     def test_a_later_tick_runs_until_five_to_the_hour(self):
         self.assertEqual(self.budget(35, 0, 9 * 60), "BUDGET=1200")
 
     def test_the_job_limit_wins_when_the_tick_was_slow(self):
-        self.assertEqual(self.budget(30, 0, 48 * 60), "BUDGET=300")                  # 58 min - 48 min run - 5 min kept
+        self.assertEqual(self.budget(30, 0, 48 * 60), "BUDGET=300")  # 58 min - 48 min run - 5 min kept
 
     def test_too_little_time_skips_without_failing(self):
         self.assertIn("skipped this hour", self.budget(53, 0, 9 * 60))

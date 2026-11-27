@@ -22,7 +22,7 @@ class OutcomeTests(unittest.TestCase):
 
 
 class JobResultLinkTests(unittest.TestCase):
-    """The employer link comes from THIS job's jobResult only; a link of another job in the page data never does (link_mismatch HOLDs)."""
+    """The employer link comes from THIS job's jobResult only"""
     def data(self, job, **extra):
         import json
         return json.dumps({"props": {"pageProps": {"dataSource": {"jobResult": job, **extra}}}})
