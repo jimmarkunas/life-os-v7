@@ -1,12 +1,11 @@
-"""Nightly off-site backup of the Oracle state that cannot be rebuilt, run as root by systemd. The archive is
-encrypted with a PUBLIC key before it leaves the machine (the private key is never on Oracle) and goes to a Google
-Drive. `run`: snapshot -> tar.gz -> gpg -> Drive (own folder, `drive.file` scope) -> checksum check -> keep newest 14
--> status file. `check`: exit 0 only when the last run succeeded recently. What goes in is an explicit list (SQLITE,
-FILES, TREES, SECRET_TREES); credential material is collected only from SECRET_TREES, every other list stays behind
-DENY. Every error is a fixed code; status and output hold counts and codes, never a path, name, token or response
-body. The Drive credential is one JSON object {"client_id", "client_secret", "refresh_token"} (systemd credential
-`drive`). Stdlib only.
-"""
+"""Nightly off-site backup of the Oracle state that cannot be rebuilt, run as root by systemd.
+
+The archive is encrypted with a PUBLIC key (the private key is never on Oracle) and goes to a Google Drive. `run`:
+snapshot -> tar.gz -> gpg -> Drive (`drive.file` scope) -> checksum check -> keep newest 14 -> status file.
+`check`: exit 0 only when the last run succeeded recently. What goes in is an explicit list (SQLITE, FILES, TREES,
+SECRET_TREES); credentials only from SECRET_TREES, every other list stays behind DENY. Every error is a fixed code;
+status and output hold counts and codes, never a path, name, token or response body. Drive credential: systemd
+credential `drive`, one JSON object {"client_id", "client_secret", "refresh_token"}. Stdlib only."""
 import datetime
 import hashlib
 import json
@@ -31,20 +30,18 @@ UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 FOLDER_NAME, FOLDER_TAG, FILE_TAG = "LIFE OS Backups", "offsite-backup-folder", "offsite-backup"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 KEEP = 14
-MAX_DELETE = 3  # never more than this many removals in one run (a bug cannot empty the folder)
+MAX_DELETE = 3
 MAX_ARCHIVE = 200 * 1024 * 1024
 STALE_SECONDS = 36 * 3600
 STATE = "/var/lib/lifeos-offsite"
 KEY_FILE = "/etc/lifeos-offsite/recipient.asc"
-# SFTP-only drop folder the MacBook Pro pushes its encrypted archive to (mac_push.py); only the newest file is taken
 MAC_INBOX = "/srv/mac-inbox/in"
 MAC_NAME = re.compile(r"^mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
-MAC_STALE_SECONDS = 9 * 86400  # the Mac pushes weekly: a week and two days without a new file is the warning line
+MAC_STALE_SECONDS = 9 * 86400
 CENTRAL = ZoneInfo("America/Chicago")
 
 UBUNTU, GRANS = "/home/ubuntu", "/home/grans"
 HERMES = "/var/lib/hermeseval/home/.hermes"
-# (archive name, source path, owner, required): databases are snapshotted by their owner through the sqlite backup API
 SQLITE = (
     ("grans/grans.db", GRANS + "/.local/share/grans/grans.db", "grans", True),
     ("openclaw/state/openclaw.sqlite", UBUNTU + "/.openclaw/state/openclaw.sqlite", "ubuntu", True),
@@ -53,7 +50,6 @@ SQLITE = (
     ("openclaw/agents/fit/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit/agent/openclaw-agent.sqlite", "ubuntu", False),
     ("openclaw/agents/fit2/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit2/agent/openclaw-agent.sqlite", "ubuntu", False),
     ("openclaw/agents/fit3/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit3/agent/openclaw-agent.sqlite", "ubuntu", False),
-    # every Hermes entry is optional: a Hermes problem must not stop the Granola and OpenClaw copies
     ("hermes/state.db", HERMES + "/state.db", "hermes", False),
     ("hermes/shared-state.db", HERMES + "/shared-state.db", "hermes", False),
     ("hermes/kanban.db", HERMES + "/kanban.db", "hermes", False),
@@ -89,7 +85,7 @@ TREES = (
     ("config/lifeos-fit", UBUNTU + "/.config/lifeos-fit"),
     ("config/lifeos-resume", UBUNTU + "/.config/lifeos-resume"),
     ("config/lifeos-alerts", UBUNTU + "/.config/lifeos-alerts"),
-    # code is VM-only by design, never in the public repo
+    # VM-only by design, never in the public repo
     ("code/lifeos-fit", UBUNTU + "/.local/lib/lifeos-fit"),
     ("code/lifeos-resume", UBUNTU + "/.local/lib/lifeos-resume"),
     ("openclaw/workspace", UBUNTU + "/.openclaw/workspace"),
@@ -101,14 +97,12 @@ TREES = (
     ("hermes/profiles/research/memories", HERMES + "/profiles/research/memories"),
     ("hermes/profiles/writer/memories", HERMES + "/profiles/writer/memories"),
 )
-# credential material that is deliberately backed up: exempt from DENY, only these; never named in any output
 SECRET_TREES = (
     ("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),
 )
 CODE_PRUNE = ("node_modules", "__pycache__")
 
 
-# never collected; a test holds every list above clear of it
 DENY = re.compile(r"credential|secret|token|passw|\.env\b|auth|key|bws|/gh/|notion|\.pem|id_rsa|\.bak", re.I)
 
 
@@ -135,9 +129,6 @@ _SNAP = ("import sqlite3, sys\n"
 
 
 def snapshot(source, dest, owner, run=subprocess.run):
-    """One database -> a consistent copy made by its owner (so the owner's -wal/-shm files are never created or
-    changed by root). Code, never a path.
-    """
     done = run(["runuser", "-u", owner, "--", "python3", "-I", "-c", _SNAP, source, dest], capture_output=True, timeout=300)
     if done.returncode == 3:
         raise BackupError("backup_db_corrupt")
@@ -147,7 +138,7 @@ def snapshot(source, dest, owner, run=subprocess.run):
 
 def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None, mac_inbox=None):
     """Everything on the list -> {archive name: file in `work`}, plus counts. A missing required source stops the run;
-    a missing optional one is counted, as is an optional database that cannot be snapshotted (`optional_db_failed`).
+    optional ones are counted.
     """
     sqlite, files, trees, chown = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees, chown or shutil.chown
     secret_trees = SECRET_TREES if secret_trees is None else secret_trees
@@ -166,7 +157,6 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
         dest = os.path.join(holder, hashlib.sha256(name.encode()).hexdigest()[:16] + ".sqlite")
         try:
             snapshot(source, dest, owner, run)
-        # a corrupt, locked or hung optional database is counted and skipped; a required one stops the run
         except (BackupError, subprocess.TimeoutExpired):
             if required:
                 raise
@@ -211,13 +201,13 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
     try:
         newest = sorted(n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n)))
     except OSError:
-        newest = None  # no inbox folder on this machine: not configured
+        newest = None
     if newest:
         if denied("mac/" + newest[-1], os.path.join(inbox, newest[-1])):
             raise BackupError("backup_secret_path")
-        out["mac/" + newest[-1]] = os.path.join(inbox, newest[-1])  # already encrypted to the same public key
+        out["mac/" + newest[-1]] = os.path.join(inbox, newest[-1])
     elif newest is not None:
-        missing += 1  # the folder exists but holds no archive: shows as `missing` in the status
+        missing += 1
     if not out:
         raise BackupError("backup_nothing_to_save")
     counts = {"missing": missing, "skipped": skipped, "credentials": credentials}
@@ -351,9 +341,7 @@ class Drive:
 
 
 def prune(drive, folder_id, keep=KEEP, limit=MAX_DELETE):
-    """Newest `keep` stay. Only this app's own tagged files in its own folder are listed; at most `limit` are removed
-    per run. -> (kept, removed)
-    """
+    """Keep the newest `keep` of this app's tagged files; remove at most `limit`. -> (kept, removed)"""
     files = drive.kept(folder_id)
     extra = files[keep:]
     removed = 0
@@ -377,7 +365,7 @@ def write_status(state_dir, ok, code, clock=time.time, **counts):
 
 def run(raw_credential, state_dir=STATE, key_file=KEY_FILE, drive=None, sh=subprocess.run, clock=time.time, dry=False):
     """One night's backup -> the status record (also written to the state dir). Never raises; a failure is the
-    record's `code`. `dry` stops after the encrypted copy exists (no Drive, no status file).
+    record's `code`. `dry` stops after the encrypted copy exists.
     """
     work = snaps = None
     counts = {}
@@ -386,7 +374,6 @@ def run(raw_credential, state_dir=STATE, key_file=KEY_FILE, drive=None, sh=subpr
         os.makedirs(state_dir, mode=0o700, exist_ok=True)
         work = tempfile.mkdtemp(prefix="work-", dir=state_dir)
         os.chmod(work, 0o700)
-        # traversable by the database owners, who write their own snapshot here
         snaps = tempfile.mkdtemp(prefix="offsite-snap-", dir="/var/tmp")
         os.chmod(snaps, 0o711)
         entries, extra = collect(snaps, sh)
@@ -431,7 +418,7 @@ def check(state_dir=STATE, clock=time.time, limit=STALE_SECONDS):
 
 def mac_check(inbox=MAC_INBOX, clock=time.time, limit=MAC_STALE_SECONDS):
     """-> (ok, code, whole days old or None) for the newest Mac archive in the inbox. Warn-only: `verify` prints it
-    and never fails on it. Codes: mac_backup_ok | mac_backup_stale | mac_backup_none | mac_backup_unreadable.
+    and never fails on it.
     """
     try:
         names = [n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n))]

@@ -37,13 +37,12 @@ DOMAINS_TITLE = "domains (after tick)"
 
 
 def is_tick_event(environ):
-    """True for a domains run that belongs to a tick: the workflow_run after it, or the early run its prep job
-    dispatches."""
+    """True for a domains run that belongs to a tick (the workflow_run after it, or its early prep-job run)."""
     return environ.get("GITHUB_EVENT_NAME") == "workflow_run" or environ.get("DOMAINS_PHASE") == "tick"
 PENDING = "push-pending"
 REMIND_HOURS = 3
 CONFLICT_RUNS_MAX = 30
-CONFLICT_BYTES_MAX = 40_000_000  # most log bytes downloaded in all
+CONFLICT_BYTES_MAX = 40_000_000
 CONFLICT_SECONDS_MAX = 90
 CONFLICT_COUNT_FROM = dt.datetime(2026, 11, 15, 6, 5, tzinfo=dt.timezone.utc)  # older conflicts are not counted
 CONFLICT_CODE = re.compile(r"NOTION_HTTP_409|[A-Z0-9_]*PAGE_WALK_NOTION_HTTP_404|PROTECTED_REGION_CHANGED|NOTION_HTTP_429")
@@ -75,8 +74,6 @@ def _now():
 
 
 def min_gap(environ=None):
-    """GATE_MIN_GAP_MINUTES when it is a whole number from GAP_FLOOR_MINUTES to MIN_GAP_MINUTES, else
-    MIN_GAP_MINUTES."""
     raw = ((environ if environ is not None else os.environ).get("GATE_MIN_GAP_MINUTES") or "").strip()
     return int(raw) if raw.isdigit() and GAP_FLOOR_MINUTES <= int(raw) <= MIN_GAP_MINUTES else MIN_GAP_MINUTES
 
@@ -85,14 +82,12 @@ STUCK_MINUTES = 40
 
 
 def stuck(run, now, minutes=STUCK_MINUTES):
-    """True for a run that has no conclusion yet and was created more than `minutes` ago."""
     created = _t(run.get("created_at"))
     return run.get("conclusion") is None and created is not None and (now - created) > dt.timedelta(minutes=minutes)
 
 
 def stuck_ticks(runs, now):
-    """Tick runs queued or running with no conclusion for more than STUCK_MINUTES; the gate ignores them so later
-    ticks run."""
+    """Tick runs queued or running with no conclusion for more than STUCK_MINUTES; the gate ignores them."""
     return [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("status") in ACTIVE and stuck(r, now)]
 
 
@@ -100,7 +95,6 @@ REAP_GRACE_MINUTES = 20
 
 
 def reap(runs, now, call=None):
-    """Ask GitHub to cancel every stuck tick run."""
     call = call or _api
     out = {"found": 0, "cancelled": [], "refused": [], "still_stuck": []}
     for run in stuck_ticks(runs, now):
@@ -116,15 +110,15 @@ def reap(runs, now, call=None):
 
 
 def reaper_alerts(reaped):
-    """True (open) when GitHub refused a cancel or an accepted cancel left the run active past the grace period;
-    None while pending; False when none is stuck."""
+    """True (open) when a cancel was refused or left the run active past the grace period; None while pending; False
+    when none is stuck.
+    """
     if reaped["refused"] or reaped["still_stuck"]:
         return True
     return None if reaped["found"] else False
 
 
 def decide(runs, now, current_id, gap=None):
-    """-> 'run' | 'skip'. Cancelled and manual runs do not count, nor does a tick stuck past STUCK_MINUTES."""
     gap = min_gap() if gap is None else gap
     for run in runs:
         if run["id"] == current_id or run.get("conclusion") == "cancelled" or run.get("display_title") != TICK_TITLE:
@@ -142,17 +136,14 @@ WAIT_MINUTES = 25
 
 
 def active(runs, current_id, title, now=None):
-    """Other runs of this workflow with this title (tick | manual) that are queued or running."""
     return [r for r in runs if r["id"] != current_id and r.get("status") in ACTIVE and r.get("display_title") == title and not (now is not None and stuck(r, now))]
 
 
 def ahead(runs, current_id, title, created, now=None):
-    """Active runs of this title created before this run."""
     return [r for r in active(runs, current_id, title, now) if (r.get("created_at") or "") < created]
 
 
 def wait_turn(title, current_id, created, fetch, sleep, minutes=WAIT_MINUTES, clock=None):
-    """Wait while an older `title` run is active."""
     waited = 0
     while True:
         if not ahead(fetch(), current_id, title, created, clock() if clock else None):
@@ -176,21 +167,18 @@ def finished_ticks(runs):
 
 
 def passes(runs):
-    """True when the last RECOVER_PASSES finished ticks all succeeded: the rule every run-based incident closes on."""
     return health_model.recovered([run.get("conclusion") for run in finished_ticks(runs)], RECOVER_PASSES)
 
 
 def stalled(runs, now, current_id=0):
-    """-> True (open) | False (recovered) | None. Open while no tick succeeded for STALE_MINUTES; closes only after
-    RECOVER_PASSES passes."""
+    """-> True (open) | False (recovered) | None. No tick succeeded for STALE_MINUTES; closes after RECOVER_PASSES."""
     if stale(runs, now, current_id):
         return True
     return False if passes(runs) else None
 
 
 def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
-    """-> True (open) | False (recovered) | None. Failed ticks only; recovered at once when the last RECOVER_PASSES
-    ticks succeeded."""
+    """-> True (open) | False (recovered) | None. Failed ticks only; closes after RECOVER_PASSES."""
     if passes(runs):
         return False
     cutoff = now - dt.timedelta(hours=window_hours)
@@ -202,15 +190,13 @@ def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
 
 
 def last_tick_passed(runs):
-    """True when the newest finished tick succeeded: the failing incident stays open until failures age out but is not
-    re-paged."""
+    """True when the newest finished tick succeeded: the failing incident stays open but is not re-paged."""
     finished = [run for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")]
     newest = max(finished, key=lambda run: run.get("updated_at") or run.get("created_at") or "", default=None)
     return bool(newest) and newest.get("conclusion") == "success"
 
 
 def digest_due(now):
-    """True only inside the normal send window (the first half hour of DIGEST_HOUR_UTC)."""
     return now.hour == DIGEST_HOUR_UTC and now.minute < 30
 
 
@@ -224,7 +210,6 @@ def _ct(moment):
 
 
 def checkin_decision(now, watchdog_runs, own_id=None):
-    """The daily check-in goes out once per check-in day even when GitHub skips the normal send window."""
     start = now.replace(hour=DIGEST_HOUR_UTC, minute=0, second=0, microsecond=0)
     if now < start:
         return False, "", None
@@ -245,12 +230,10 @@ def checkin_decision(now, watchdog_runs, own_id=None):
 
 
 def coverage(observed, window_hours=24):
-    """Runs seen against runs expected in the window (one tick an hour) -> (observed, expected, missing)."""
     return observed, window_hours, max(0, window_hours - observed)
 
 
 def health(runs, domain_runs, now, window_hours=24, late=(), conflicts=""):
-    """-> (title, body): the daily check-in, counts only."""
     cutoff = now - dt.timedelta(hours=window_hours)
     recent = [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("conclusion") in ("success", "failure")
               and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff]
@@ -301,7 +284,6 @@ def _logs(run_id, limit):
 
 
 def conflict_codes_in(archive_bytes):
-    """-> {(job, code): 1} for the fixed codes in one run's job logs, each once per run."""
     found = {}
     with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
         for name in archive.namelist():
@@ -317,8 +299,9 @@ def conflict_codes_in(archive_bytes):
 
 
 def write_conflicts(domain_runs, now, logs=None, clock=time.monotonic, window_hours=24, count_from=CONFLICT_COUNT_FROM):
-    """The daily write-conflict count over the last `window_hours` of domains runs: per job, write conflicts and,
-    apart, rate limits. Never raises for one run; never pages."""
+    """Daily write-conflict count over the last `window_hours` of domains runs: per job, conflicts and, apart, rate
+    limits. Never raises; never pages.
+    """
     isolate = importlib.import_module("lifeos.platform.isolate")
     logs = logs or _logs
     cutoff = now - dt.timedelta(hours=window_hours)
@@ -350,7 +333,6 @@ def write_conflicts(domain_runs, now, logs=None, clock=time.monotonic, window_ho
 
 
 def conflict_line(result):
-    """The one check-in line: conflicts in the last 24 hours per job, rate limits apart."""
     if result is None:
         return f"Notion write conflicts: unavailable ({CONFLICT_UNAVAILABLE})."
 
@@ -368,7 +350,6 @@ def conflict_line(result):
 
 
 def _push(title, body, severity, key):
-    """Push through the alert registry by key; the registry sets severity (a test checks `severity` agrees)."""
     from lifeos.platform import alerts  # noqa: PLC0415
     return alerts.push(key, title, body)
 
@@ -379,7 +360,6 @@ def _hours_open(issue, now):
 
 
 def remind_due(issue, now, hours=REMIND_HOURS):
-    """True when the issue has been quiet for `hours`."""
     quiet = _t(issue.get("updated_at") or issue.get("created_at"))
     return bool(quiet) and (now - quiet) >= dt.timedelta(hours=hours)
 
@@ -422,7 +402,6 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
 
 
 def scheduled_signal(runs, passes):
-    """True when the newest finished scheduled run failed, False when the newest `passes` runs passed, else None."""
     finished = sorted((r for r in runs if r.get("event", "schedule") == "schedule" and r.get("conclusion") in SCHEDULED_FAILED + ("success",)),
                       key=lambda r: r.get("created_at") or "", reverse=True)
     if not finished:
@@ -433,8 +412,6 @@ def scheduled_signal(runs, passes):
 
 
 def _own_alert_fired(workflow, runs, api):
-    """True when the newest failed scheduled run of `workflow` already pushed its own alert, so the central check
-    stays quiet."""
     step = SCHEDULED_OWN_ALERT.get(workflow)
     failed = [r for r in runs if r.get("conclusion") in SCHEDULED_FAILED]
     if not step or not failed:
@@ -445,8 +422,6 @@ def _own_alert_fired(workflow, runs, api):
 
 
 def scheduled_checks(now, push=None, api=None):
-    """Page ONCE when a scheduled workflow with no alert of its own goes red and once (INFO) on recovery; one
-    GitHub issue per workflow."""
     api, out = api or _api, {"changes": {}, "unreadable": []}
     for workflow, passes in SCHEDULED_WORKFLOWS.items():
         try:
@@ -468,7 +443,6 @@ def scheduled_checks(now, push=None, api=None):
 
 
 def watch(now=None, push=None, checkin=True):
-    """Independent watchdog (its own workflow): a total stall would leave the gate silent."""
     runs = _api("actions/workflows/hourly.yml/runs?per_page=60")["workflow_runs"]
     now = now or dt.datetime.now(dt.timezone.utc)
     reaped = reap(runs, now)

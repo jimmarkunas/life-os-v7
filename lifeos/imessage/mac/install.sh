@@ -23,7 +23,7 @@ SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 OPENCLAW_APP="/Applications/OpenClaw.app"
 FDA="kTCCServiceSystemPolicyAllFiles"
 # sha256 of the three source files at the published commit (a test keeps these in step with the repository)
-SHA_TOOL="24d0cbda96975136cab6a0b6b709c48c20b01c13998824fc25f6c6f766a69498"
+SHA_TOOL="bc2a75ecc7b7a88d51e759d2799151430187c153b20dfc06545685aa4d90bf06"
 SHA_LAUNCHER="cc275afab87d5f1d817055641ca04985bbe1c4e3ae2ad54f49a9ca8954b4005c"
 SHA_PLIST="6e22bffc15943491fdf547a8e6e06cc55bc18c356e6fad159fd78036907cadd0"
 
