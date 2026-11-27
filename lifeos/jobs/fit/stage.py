@@ -4,65 +4,32 @@ A job is re-scored when the model version, profile or description changes, then 
 With V7_FIT_GATE=true an EXCLUDE READY job becomes EXCLUDED_FIT; without it decisions are recorded only.
 
 """
-
 from datetime import datetime
 import json
 import os
 import time
 
 from lifeos.jobs import lanes, quality, sponsors, store
-from lifeos.jobs.fit import (
-    GO_THRESHOLD,
-    MODEL_VERSION,
-    UNIVERSAL_FIT_FLOOR,
-    cloud as fit_cloud,
-    profile as fit_profile,
-    profile_sync,
-    semantic as fit_semantic,
-)
+from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cloud as fit_cloud, profile as fit_profile, profile_sync, semantic as fit_semantic
 from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
 
 ORDER = " ORDER BY (SUBSTR(j.source, 1, 4) = 'web:'), j.first_seen"
-PICK = (
-    "SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
-    " j.posted_date, j.first_seen, j.route_evidence, j.source, j.link_proof FROM v7_jobs j"
-    " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-    " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"
-    " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
-    " OR f.jd_fingerprint <> d.fingerprint)" + ORDER + " LIMIT %s"
-)
+PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
+        " j.posted_date, j.first_seen, j.route_evidence, j.source, j.link_proof FROM v7_jobs j"
+        " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
+        " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"
+        " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
+        " OR f.jd_fingerprint <> d.fingerprint)" + ORDER + " LIMIT %s")
 OPEN = ("'READY'", "'RESOLVED'")
 AUTO = OPEN + ("'PUBLISHED'",)
 ALL = AUTO + ("'EXCLUDED_FIT'",)
 
 
-_STATIC = (
-    "job_id",
-    "score",
-    "decision",
-    "line",
-    "why",
-    "exclusion",
-    "confidence",
-    "buckets",
-    "trace",
-    "model_version",
-    "profile_hash",
-    "jd_fingerprint",
-    "scored_at",
-    "shadow_score",
-    "shadow_changes",
-    "admission",
-    "admission_reason",
-    "work_mode",
-    "lane",
-    "eligible",
-)
-WRITE = (
-    f"INSERT INTO v7_job_fit ({', '.join(_STATIC)}) VALUES ({','.join(['%s'] * len(_STATIC))})"
-    " ON DUPLICATE KEY UPDATE " + ", ".join(f"{c}=VALUES({c})" for c in _STATIC[1:])
-)
+_STATIC = ("job_id", "score", "decision", "line", "why", "exclusion", "confidence", "buckets", "trace", "model_version", "profile_hash", "jd_fingerprint", "scored_at",
+           "shadow_score", "shadow_changes", "admission", "admission_reason", "work_mode", "lane", "eligible")
+WRITE = (f"INSERT INTO v7_job_fit ({', '.join(_STATIC)}) VALUES ({','.join(['%s'] * len(_STATIC))})"
+         " ON DUPLICATE KEY UPDATE " + ", ".join(f"{c}=VALUES({c})" for c in _STATIC[1:]))
 
 
 PROFILE_TAG_WIDTH = 16
@@ -89,11 +56,7 @@ _now = store.now
 
 
 def progress(phase, started, **fields):
-    print(
-        "fit-progress:",
-        json.dumps({"phase": phase, "seconds": int(time.monotonic() - started), **fields}, sort_keys=True),
-        flush=True,
-    )
+    print("fit-progress:", json.dumps({"phase": phase, "seconds": int(time.monotonic() - started), **fields}, sort_keys=True), flush=True)
 
 
 def tally(counts, scored):
@@ -126,22 +89,9 @@ def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
         score = (fit or {}).get(job_id, result.score)
-        facts = lanes.facts_for(
-            score,
-            title,
-            location,
-            text,
-            salary,
-            posted,
-            first_seen or today,
-            route=route,
-            first_party=lanes.first_party_source(source),
-            kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin or listing,
-            title_only=lanes.title_watch_source(source),
-            listing=listing,
-            thin=thin,
-            thin_admit=lanes.thin_review_source(source),
-        )
+        facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
+                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin or listing,
+                                title_only=lanes.title_watch_source(source), listing=listing, thin=thin, thin_admit=lanes.thin_review_source(source))
         exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
@@ -150,29 +100,19 @@ def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
 
 def _gate(cursor, job_id, decision, gate, counts):
     if gate and decision.status in (lanes.ADMIT, lanes.REVIEW):
-        cursor.execute(
-            "UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
-            " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL",
-            (_now(), job_id),
-        )
+        cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
+                       " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
         counts["revived"] += cursor.rowcount
     if gate and decision.status == lanes.EXCLUDE:
-        cursor.execute(
-            "UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
-            " WHERE id=%s AND status='READY'",
-            ("lane_exclude", _now(), job_id),
-        )
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
+                       " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
         counts["gated"] += cursor.rowcount
 
 
-CANARY_ROW = (
-    "SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source"
-    " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id = %s"
-)
-PROMOTE = (
-    "UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confidence=%s, admission=%s, admission_reason=%s, work_mode=%s, lane=%s, eligible=%s,"
-    " scored_at=%s, cloud_status='CANARY', cloud_reason=NULL WHERE job_id=%s AND cloud_status='DEGRADED' AND cloud_reason=%s"
-)
+CANARY_ROW = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source"
+              " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id = %s")
+PROMOTE = ("UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confidence=%s, admission=%s, admission_reason=%s, work_mode=%s, lane=%s, eligible=%s,"
+           " scored_at=%s, cloud_status='CANARY', cloud_reason=NULL WHERE job_id=%s AND cloud_status='DEGRADED' AND cloud_reason=%s")
 
 
 def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts, register=None):
@@ -184,28 +124,10 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
     row = cursor.fetchone()
     if row is None or judgment.score is None:
         return False
-    ((_, _, _, decision, lane_name, work_mode, eligible),) = score_rows(
-        [row], profile, today, None, register, fit={job_id: judgment.score}
-    )
+    (_, _, _, decision, lane_name, work_mode, eligible), = score_rows([row], profile, today, None, register, fit={job_id: judgment.score})
     line = f"Cloud Fit {judgment.score}% ({model}): {judgment.rationale}"
-    cursor.execute(
-        PROMOTE,
-        (
-            judgment.score,
-            judgment.decision,
-            line[:600],
-            judgment.rationale[:300],
-            judgment.confidence,
-            decision.status,
-            (decision.reason or "")[:80],
-            work_mode,
-            lane_name,
-            ",".join(eligible),
-            _now(),
-            job_id,
-            fit_cloud.PROMOTION_FAILED,
-        ),
-    )
+    cursor.execute(PROMOTE, (judgment.score, judgment.decision, line[:600], judgment.rationale[:300], judgment.confidence, decision.status,
+                             (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible), _now(), job_id, fit_cloud.PROMOTION_FAILED))
     if cursor.rowcount != 1:
         return False
     _gate(cursor, job_id, decision, gate, counts)
@@ -213,25 +135,17 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
 
 
 def regate_canary(cursor):
-    cursor.execute(
-        "UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='EXCLUDED_FIT', j.unresolved_reason='lane_exclude', j.updated_at=%s"
-        " WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='READY'",
-        (_now(),),
-    )
+    cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='EXCLUDED_FIT', j.unresolved_reason='lane_exclude', j.updated_at=%s"
+                   " WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='READY'", (_now(),))
     moved = int(cursor.rowcount or 0)
-    cursor.execute(
-        "UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
-        " WHERE f.cloud_status='CANARY' AND f.admission IN ('ADMIT', 'REVIEW') AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude'"
-        " AND j.notion_page_id IS NULL",
-        (_now(),),
-    )
+    cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
+                   " WHERE f.cloud_status='CANARY' AND f.admission IN ('ADMIT', 'REVIEW') AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude'"
+                   " AND j.notion_page_id IS NULL", (_now(),))
     return moved + int(cursor.rowcount or 0)
 
 
-HELD_ROWS = (
-    "SELECT job_id, cloud_score, cloud_confidence, cloud_rationale, cloud_model, exclusion FROM v7_job_fit"
-    " WHERE cloud_status='HELD' AND cloud_reason='PUBLISHED_WOULD_EXCLUDE' AND cloud_score IS NOT NULL ORDER BY job_id LIMIT 200"
-)
+HELD_ROWS = ("SELECT job_id, cloud_score, cloud_confidence, cloud_rationale, cloud_model, exclusion FROM v7_job_fit"
+             " WHERE cloud_status='HELD' AND cloud_reason='PUBLISHED_WOULD_EXCLUDE' AND cloud_score IS NOT NULL ORDER BY job_id LIMIT 200")
 UNHOLD = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='HELD' AND cloud_reason='PUBLISHED_WOULD_EXCLUDE'"
 
 
@@ -243,12 +157,7 @@ def release_held(cursor, profile, today, gate, counts, register=None):
         cursor.execute(UNHOLD, (fit_cloud.PROMOTION_FAILED, job_id))
         if cursor.rowcount != 1:
             continue
-        judgment = Judgment(
-            int(score),
-            "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go",
-            rationale or "",
-            confidence or "low",
-        )
+        judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")
         if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
             released += 1
         else:
@@ -256,15 +165,11 @@ def release_held(cursor, profile, today, gate, counts, register=None):
     return released, failed
 
 
-KEPT_CANARY_ROWS = (
-    "SELECT f.job_id, j.title, j.company, f.cloud_score, f.cloud_confidence, f.cloud_rationale, f.cloud_model, f.exclusion FROM v7_job_fit f"
-    " JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='EXCLUDED_FIT'"
-    " AND j.unresolved_reason IN ('lane_exclude', 'excluded_fit') AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500"
-)
-REVIVE_AUDITED = (
-    "UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
-    " WHERE j.id=%s AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='excluded_fit' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW')"
-)
+KEPT_CANARY_ROWS = ("SELECT f.job_id, j.title, j.company, f.cloud_score, f.cloud_confidence, f.cloud_rationale, f.cloud_model, f.exclusion FROM v7_job_fit f"
+                    " JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='EXCLUDED_FIT'"
+                    " AND j.unresolved_reason IN ('lane_exclude', 'excluded_fit') AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
+REVIVE_AUDITED = ("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
+                  " WHERE j.id=%s AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='excluded_fit' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW')")
 RETURN_TO_PROMOTION = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='CANARY' AND admission='EXCLUDE'"
 
 
@@ -278,12 +183,7 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
         cursor.execute(RETURN_TO_PROMOTION, (fit_cloud.PROMOTION_FAILED, job_id))
         if cursor.rowcount != 1:
             continue
-        judgment = Judgment(
-            int(score),
-            "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go",
-            rationale or "",
-            confidence or "low",
-        )
+        judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")
         if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
             redecided += 1
             if gate:
@@ -294,17 +194,11 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
 
 
 BRIEF_CHANGED_AT = datetime(2026, 10, 21, 5, 28, 14)
-KEPT_ASKED_BEFORE = (
-    "SELECT f.job_id, j.title, j.company, f.exclusion FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
-    " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY f.job_id LIMIT 500"
-)
-CLEAR_OVERRIDDEN_EXCLUSION = (
-    "UPDATE v7_job_fit SET exclusion=NULL WHERE job_id=%s AND cloud_status IS NULL AND exclusion IS NOT NULL"
-)
-CLEAR_FOR_REASK = (
-    "UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL, cloud_run_id=NULL, cloud_request_hash=NULL"
-    " WHERE job_id=%s AND cloud_status='CANARY' AND cloud_at < %s"
-)
+KEPT_ASKED_BEFORE = ("SELECT f.job_id, j.title, j.company, f.exclusion FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
+                     " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY f.job_id LIMIT 500")
+CLEAR_OVERRIDDEN_EXCLUSION = "UPDATE v7_job_fit SET exclusion=NULL WHERE job_id=%s AND cloud_status IS NULL AND exclusion IS NOT NULL"
+CLEAR_FOR_REASK = ("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL, cloud_run_id=NULL, cloud_request_hash=NULL"
+                   " WHERE job_id=%s AND cloud_status='CANARY' AND cloud_at < %s")
 
 
 def reask_kept(cursor):
@@ -323,10 +217,8 @@ def reask_kept(cursor):
     return cleared
 
 
-REOPEN_ROWS = (
-    "SELECT f.job_id FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s AND j.status='EXCLUDED_FIT'"
-    " AND j.notion_page_id IS NULL AND j.source LIKE 'web:su-%%' ORDER BY f.job_id LIMIT %s"
-)
+REOPEN_ROWS = ("SELECT f.job_id FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s AND j.status='EXCLUDED_FIT'"
+               " AND j.notion_page_id IS NULL AND j.source LIKE 'web:su-%%' ORDER BY f.job_id LIMIT %s")
 REOPEN_BATCH = 2000
 
 
@@ -340,10 +232,8 @@ def reopen_scale_up(cursor, limit=REOPEN_BATCH):
     return cleared
 
 
-RETIRE_STUCK = (
-    "UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason='retired_by_jim', updated_at=%s WHERE status='NEW' AND notion_page_id IS NULL"
-    " AND source IN ('web:su-prepaid-financial-services-lim', 'web:su-futuristic-technologies-ltd') AND unresolved_reason LIKE 'audit_url_%%'"
-)
+RETIRE_STUCK = ("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason='retired_by_jim', updated_at=%s WHERE status='NEW' AND notion_page_id IS NULL"
+                " AND source IN ('web:su-prepaid-financial-services-lim', 'web:su-futuristic-technologies-ltd') AND unresolved_reason LIKE 'audit_url_%%'")
 
 
 def retire_stuck(cursor):
@@ -355,55 +245,34 @@ def cloud_promoter(profile, gate, counts, register):
     def promote(job_id, judgment, model):
         with store.connect() as connection, connection.cursor() as cursor:
             return promote_cloud(cursor, job_id, judgment, model, profile, _now().date(), gate, counts, register)
-
     return promote
 
 
 def requeue_floor(cursor):
-    cursor.execute(
-        "UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_floor', j.updated_at=%s"
-        " WHERE j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL"
-        " AND f.admission_reason LIKE 'Fit %% below 72' AND f.score >= 60",
-        (_now(),),
-    )
+    cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_floor', j.updated_at=%s"
+                   " WHERE j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL"
+                   " AND f.admission_reason LIKE 'Fit %% below 72' AND f.score >= 60", (_now(),))
     return int(cursor.rowcount or 0)
 
 
 def _title_description(cursor, job_id, title):
-    from lifeos.jobs import jd  # noqa: PLC0415
-
+    from lifeos.jobs import jd                                                      # noqa: PLC0415
     d = jd.describe(f"{title}\n{lanes.TITLE_ONLY_REASON}.", is_html=False)
-    cursor.execute(
-        "INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
-        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
-        (
-            job_id,
-            "title_only",
-            d["full_text"],
-            d["summary"],
-            d["responsibilities"],
-            d["requirements"],
-            d["qualifications"],
-            d["fingerprint"],
-            _now(),
-        ),
-    )
+    cursor.execute("INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
+                   " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
+                   (job_id, "title_only", d["full_text"], d["summary"], d["responsibilities"], d["requirements"], d["qualifications"], d["fingerprint"], _now()))
 
 
 def rejudge_excluded(cursor):
     """Mark READY EXCLUDE Fit rows stale (model_version '0') so the pick re-scores them. -> count."""
-    cursor.execute(
-        "UPDATE v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id SET f.model_version='0' WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission='EXCLUDE'"
-    )
+    cursor.execute("UPDATE v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id SET f.model_version='0' WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission='EXCLUDE'")
     return int(cursor.rowcount or 0)
 
 
 def promote_kept(cursor):
     """A RESOLVED keep-list or title-search job with a link and ADMIT / REVIEW becomes READY. -> counts."""
-    cursor.execute(
-        "SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL, j.status, j.link_proof"
-        " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status IN ('RESOLVED', 'READY') LIMIT 5000"
-    )
+    cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL, j.status, j.link_proof"
+                   " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status IN ('RESOLVED', 'READY') LIMIT 5000")
     out = {"promoted": 0, "kept_resolved": 0, "no_link": 0, "no_description": 0, "no_decision": 0, "has_page": 0}
     for job_id, company, title, source, link, text, admission, page, status, proof in cursor.fetchall():
         if not (lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or lanes.from_listing(proof)):
@@ -421,40 +290,16 @@ def promote_kept(cursor):
         if link and not page and admission in (lanes.ADMIT, lanes.REVIEW):
             if not text:
                 _title_description(cursor, job_id, title)
-            cursor.execute(
-                "UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'",
-                (_now(), job_id),
-            )
+            cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
             out["promoted"] += 1
     return out
 
 
 def run(limit, live, environ=os.environ):
     started = time.monotonic()
-    counts = {
-        "picked": 0,
-        "go": 0,
-        "no_go": 0,
-        "excluded": 0,
-        "unscorable": 0,
-        "low_confidence": 0,
-        "gated": 0,
-        "profile": "ok",
-        "semantic": "off",
-        "lane_admit": 0,
-        "lane_review": 0,
-        "lane_exclude": 0,
-        "shadow_jobs_changed": 0,
-        "shadow_flips": 0,
-        "shadow_reclassified": 0,
-        "sim_72_77": 0,
-        "sim_77_82": 0,
-        "sim_82_up": 0,
-        "fcap_moved": 0,
-        "fcap_go_lost": 0,
-        "revived": 0,
-        "promoted": 0,
-    }
+    counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
+              "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
+              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0, "promoted": 0}
     try:
         profile = fit_profile.load(environ, profile_sync.stored_block(environ))
     except fit_profile.ProfileError:
@@ -476,9 +321,7 @@ def run(limit, live, environ=os.environ):
             counts["rejudged"] = rejudge_excluded(cursor) if live and gate else 0
             counts["canary_regated"] = regate_canary(cursor) if live and gate else 0
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
-            query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(
-                ORDER, extra_sql + ORDER
-            )
+            query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(ORDER, extra_sql + ORDER)
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
@@ -486,48 +329,23 @@ def run(limit, live, environ=os.environ):
     register = sponsors.load()
     if live and gate:
         with store.connect() as connection, connection.cursor() as cursor:
-            counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(
-                cursor, profile, _now().date(), gate, counts, register
-            )
-            counts["kept_redecided"], counts["kept_redecide_failed"] = repromote_kept(
-                cursor, profile, _now().date(), gate, counts, register
-            )
+            counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(cursor, profile, _now().date(), gate, counts, register)
+            counts["kept_redecided"], counts["kept_redecide_failed"] = repromote_kept(cursor, profile, _now().date(), gate, counts, register)
             counts["kept_reasked"] = reask_kept(cursor)
             counts["scale_up_reopened"] = reopen_scale_up(cursor)
             counts["jim_retired"] = retire_stuck(cursor)
     progress("maintained", started)
     progress("scoring", started, picked=len(rows))
     for start in range(0, len(rows), CHUNK):
-        scored = score_rows(rows[start : start + CHUNK], profile, _now().date(), matcher, register)
+        scored = score_rows(rows[start:start + CHUNK], profile, _now().date(), matcher, register)
         tally(counts, scored)
         if live and scored:
             with store.connect() as connection, connection.cursor() as cursor:
                 for job_id, fingerprint, r, decision, lane_name, work_mode, eligible in scored:
-                    cursor.execute(
-                        WRITE,
-                        (
-                            job_id,
-                            r.score,
-                            r.decision,
-                            r.line[:600],
-                            r.why[:300],
-                            r.exclusion,
-                            r.confidence,
-                            json.dumps(r.buckets),
-                            json.dumps(r.items),
-                            MODEL_VERSION,
-                            tag,
-                            fingerprint,
-                            _now(),
-                            r.shadow_score,
-                            r.shadow_changes,
-                            decision.status,
-                            (decision.reason or "")[:80],
-                            work_mode,
-                            lane_name,
-                            ",".join(eligible),
-                        ),
-                    )
+                    cursor.execute(WRITE,
+                        (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
+                         json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
+                         decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
                     _gate(cursor, job_id, decision, gate, counts)
         progress("scored", started, done=min(start + CHUNK, len(rows)), of=len(rows))
     promote = cloud_promoter(profile, gate, counts, register)
