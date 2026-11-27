@@ -31,6 +31,20 @@
           case "$VERIFY_KEEP" in ""|keep) ;; *) echo "::error title=jira::the fourth word must be keep or absent"; exit 1;; esac
           [ -z "$VERIFY_KEEP" ] || [ "$VERIFY_LIVE" = "yes" ] || { echo "::error title=jira::keep needs yes before it"; exit 1; }
           if [ "$VERIFY_LIVE" = "yes" ] && [ "$VERIFY_KEEP" = "keep" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live --keep; elif [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
+      - id: jsetterproof
+        continue-on-error: true
+        name: V2_OFFICIAL setter proof (manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'setter-proof' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+          JIRA_SETTER_PROOF: ${{ inputs.verify }}
+        run: |
+          set -f; set -- $JIRA_SETTER_PROOF; PROOF_REVISION="$1"; PROOF_LIVE="${2:-}"
+          [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "::error title=jira::verify must be REVISION [yes]"; exit 1; }
+          printf '%s' "$PROOF_REVISION" | grep -Eq '^[0-9]{1,6}$' || { echo "::error title=jira::the revision must be a number"; exit 1; }
+          case "$PROOF_LIVE" in ""|yes) ;; *) echo "::error title=jira::the second word must be yes or absent"; exit 1;; esac
+          if [ "$PROOF_LIVE" = "yes" ]; then python -m lifeos.accountability.setter_proof --live --revision "$PROOF_REVISION"; else python -m lifeos.accountability.setter_proof --revision "$PROOF_REVISION"; fi
       - id: jroll
         continue-on-error: true
         name: Jira sprint rollover (dry run unless live)
@@ -40,11 +54,11 @@
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jsetterproof.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
       # the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
       - name: Fail the job if any stage step failed
-        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
+        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jsetterproof.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 

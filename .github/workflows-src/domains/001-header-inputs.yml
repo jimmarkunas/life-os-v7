@@ -7,16 +7,16 @@
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, reconcile = the LIFE-918 daily Jira reconcile once now (JFM and MEJ as one unit; the live box makes it write), writers-verify = the throwaway-sprint writer verification (dry unless the verify input ends in yes)"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, reconcile = the LIFE-918 daily Jira reconcile once now (JFM and MEJ as one unit; the live box makes it write), writers-verify = the throwaway-sprint writer verification (dry unless the verify input ends in yes), setter-proof = the one same-value V2_OFFICIAL update proof (verify input: the expected Revision, then yes to really send it)"
         type: choice
-        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify", "reconcile"]
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify", "reconcile", "setter-proof"]
         default: "none"
       reconcile_force:
         description: "Manual LIFE-918 reconcile only: bypass today's already-ran check after 8 AM CT; still dry run unless Actually write is ticked"
         type: boolean
         default: false
       verify:
-        description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes), and a fourth, keep, to keep the test clone because the Free plan cannot delete issues (JFM JFM-123 yes keep). Only that sprint and that one issue are touched"
+        description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes), and a fourth, keep, to keep the test clone because the Free plan cannot delete issues (JFM JFM-123 yes keep). Only that sprint and that one issue are touched. For setter-proof the input is REVISION [yes]: the Revision the V2_OFFICIAL row must hold (a dry run reads the row and reports), then yes to send the one same-value update"
         type: string
         default: ""
       refresh:
