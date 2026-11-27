@@ -5,6 +5,9 @@
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_outlook == 'true' && needs.gate.outputs.early == 'true') || inputs.calendar_sync) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write  # the keyless Google calendar sign-in
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -56,7 +59,6 @@
           GCAL_CALENDAR_ID: ""
           CALENDAR_ALLOW_MASS_DELETE: ${{ inputs.allow_mass_delete && 'true' || '' }}
           NTFY_TOPIC: ${{ steps.bws_outlook.outputs.NTFY_TOPIC }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_outlook.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}

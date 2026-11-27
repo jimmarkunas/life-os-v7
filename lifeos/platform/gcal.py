@@ -1,6 +1,8 @@
-"""Minimal Google Calendar client (stdlib plus the system openssl for the JWT signature).
+"""Minimal Google Calendar client (stdlib; the retired key path also uses the system openssl).
 
-Service-account auth: the account sees only the calendar shared with it. Every error is a fixed code."""
+Service-account auth: the account sees only the calendar shared with it. Inside GitHub Actions it is keyless: the job's
+OIDC token is exchanged at Google's Security Token Service (workload identity federation) and then impersonates the
+calendar service account, so no key exists. Every error is a fixed code and no token is ever logged."""
 
 import base64
 import json
@@ -20,10 +22,28 @@ API = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar.events"
 SCOPE_READONLY = "https://www.googleapis.com/auth/calendar.readonly"
 MAX_PAGES = 40
+# Addresses, not secrets: the workload identity provider the job's OIDC token is exchanged at, and the account it may impersonate.
+WIF_AUDIENCE = "//iam.googleapis.com/projects/632113041729/locations/global/workloadIdentityPools/github/providers/life-os-v7"
+STS_URL = "https://sts.googleapis.com/v1/token"
+SERVICE_ACCOUNT = "life-os-v7-calendar@life-os-gmail-508407.iam.gserviceaccount.com"
+IAM_URL = f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{SERVICE_ACCOUNT}:generateAccessToken"
+CLOUD_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+KEYLESS = "keyless"  # stands in for the key JSON where a caller passes a credential: the keyless path needs none
 
 
 class GcalError(RuntimeError):
     """The message is always a fixed code."""
+
+
+def keyless_available(environ=os.environ):
+    """True inside a GitHub Actions job that may request an OIDC token (`permissions: id-token: write`)."""
+    return bool((environ.get("ACTIONS_ID_TOKEN_REQUEST_URL") or "").strip())
+
+
+def _mask(value, out):
+    """Tell Actions to mask `value` in every later log line (one line, no newlines)."""
+    if value and "\n" not in value and "\r" not in value:
+        out(f"::add-mask::{value}")
 
 
 def _b64(data):
@@ -60,10 +80,18 @@ class GoogleCalendar:
         sign=openssl_sign,
         clock=time.time,
         scope=SCOPE,
+        environ=None,
+        out=print,
     ):
-        with fixed((ValueError, KeyError, TypeError), GcalError, "GCAL_CONFIG_INVALID"):
-            info = json.loads(service_account_json)
-            self._email, self._key = info["client_email"], info["private_key"]
+        self._keyless = service_account_json == KEYLESS
+        self._environ = os.environ if environ is None else environ
+        self._out = out
+        if self._keyless:
+            self._email = self._key = None
+        else:
+            with fixed((ValueError, KeyError, TypeError), GcalError, "GCAL_CONFIG_INVALID"):
+                info = json.loads(service_account_json)
+                self._email, self._key = info["client_email"], info["private_key"]
         if not calendar_id:
             raise GcalError("GCAL_CONFIG_INVALID")
         self._calendar = urllib.parse.quote(calendar_id, safe="")
@@ -78,16 +106,77 @@ class GoogleCalendar:
 
     @classmethod
     def from_env(cls, environ=os.environ, **kwargs):
-        raw, cal = (
-            (environ.get("GCAL_SERVICE_ACCOUNT_JSON") or "").strip(),
-            (environ.get("GCAL_CALENDAR_ID") or "").strip(),
-        )
+        cal = (environ.get("GCAL_CALENDAR_ID") or "").strip()
+        if keyless_available(environ):
+            if not cal:
+                raise GcalError("GCAL_CONFIG_MISSING:GCAL_CALENDAR_ID")
+            return cls(KEYLESS, cal, environ=environ, **kwargs)
+        raw = (environ.get("GCAL_SERVICE_ACCOUNT_JSON") or "").strip()  # the retired key path, kept one release
         missing = [n for n, v in (("GCAL_SERVICE_ACCOUNT_JSON", raw), ("GCAL_CALENDAR_ID", cal)) if not v]
         if missing:
             raise GcalError("GCAL_CONFIG_MISSING:" + ",".join(missing))
         return cls(raw, cal, **kwargs)
 
+    def _post_json(self, url, doc, headers, code):
+        request = urllib.request.Request(
+            url,
+            method="POST",
+            headers={"Content-Type": "application/json", **headers},
+            data=json.dumps(doc).encode(),
+        )
+        with fixed((urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError), GcalError, code):
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                return json.loads(response.read())
+
+    def _keyless_token(self):
+        """GitHub OIDC token -> Google STS federated token -> impersonated calendar access token (no key anywhere)."""
+        url, bearer = (self._environ.get("ACTIONS_ID_TOKEN_REQUEST_URL") or "").strip(), (
+            self._environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN") or ""
+        ).strip()
+        if not url or not bearer:
+            raise GcalError("GCAL_OIDC_UNAVAILABLE")
+        request = urllib.request.Request(
+            url + ("&" if "?" in url else "?") + urllib.parse.urlencode({"audience": WIF_AUDIENCE}),
+            headers={"Authorization": "Bearer " + bearer, "User-Agent": "life-os-v7"},
+        )
+        with fixed(
+            (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError),
+            GcalError,
+            "GCAL_OIDC_UNAVAILABLE",
+        ):
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                subject = str(json.loads(response.read())["value"])
+        _mask(subject, self._out)
+        federated = self._post_json(
+            STS_URL,
+            {
+                "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "audience": WIF_AUDIENCE,
+                "scope": CLOUD_SCOPE,
+                "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+                "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+                "subjectToken": subject,
+            },
+            {},
+            "GCAL_STS_REFUSED",
+        )
+        federated = str(federated["access_token"]) if isinstance(federated, dict) and federated.get("access_token") else ""
+        if not federated:
+            raise GcalError("GCAL_STS_REFUSED")
+        _mask(federated, self._out)
+        issued = self._post_json(
+            IAM_URL, {"scope": [self._scope], "lifetime": "3600s"}, {"Authorization": "Bearer " + federated}, "GCAL_IAM_REFUSED"
+        )
+        token = str(issued["accessToken"]) if isinstance(issued, dict) and issued.get("accessToken") else ""
+        if not token:
+            raise GcalError("GCAL_IAM_REFUSED")
+        _mask(token, self._out)
+        self._out("gcal auth: keyless ok")
+        return token
+
     def _access(self):
+        if self._token is None and self._keyless:
+            self._token = self._keyless_token()
         if self._token is None:
             now = int(self._clock())
             head = _b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())

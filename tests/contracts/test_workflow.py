@@ -772,22 +772,22 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
                   "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"},   # LIFE-34 Communications card (Notion writer + region anchors). LIFE-31: the Tailscale OAuth pair goes only to the pinned join action (see TAILSCALE_WITH)
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "LIFEOS_MCP_JIRA_CAPTURE", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-    "followup": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "OUTLOOK_CLIENT_ID", "NOTION_API_TOKEN", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"},   # LIFE-757: the Action Inbox followup job (dry run, switch FOLLOWUP_WIRING): the store credentials plus the existing Jira token, email and site name; no other source credential yet
-    "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
+    "followup": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "OUTLOOK_CLIENT_ID", "NOTION_API_TOKEN", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"},   # LIFE-757: the Action Inbox followup job (dry run, switch FOLLOWUP_WIRING): the store credentials plus the existing Jira token, email and site name; no other source credential yet
+    "outlook": DB | {"GCAL_CALENDAR_ID", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "bills": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
-    "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
-    "megibow": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
+    "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
+    "megibow": DB | {"GCAL_CALENDAR_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "dcc": {"V7_RUNTIME_CONFIG_SOURCE_ID", "WEEKLY_ARCHIVE_PAGE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "GITHUB_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-694: GITHUB_TOKEN is the run's own read-only token (job permissions: contents, actions, issues read), for the Platform Stability card
     "recruiters": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
                      "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "RECRUITERS_SCAN", "RECRUITERS_SCAN_AT",      # LIFE-610: step outputs, not secrets
                      "HIRING_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"},   # LIFE-20: the Recruiter Outreach step (the Daily Report writer and the pinned Hiring Pipeline table it is anchored on); LIFE-10: the job-page outreach step reads and writes Job Ledger pages
     "hiring_outcomes": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},   # LIFE-632: the Hiring outcome mail scan beside the Recruiters job; it reads mail and saves one store record
     "interview": DB | {"V7_RUNTIME_CONFIG_SOURCE_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN",
-                       "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},   # LIFE-632 (LIFE-88): the Interview OS step; the Recruiters token is read-only here (LIFE-78 E10)
+                       "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL", "GCAL_CALENDAR_ID", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},   # LIFE-632 (LIFE-88): the Interview OS step; the Recruiters token is read-only here (LIFE-78 E10)
     "interview_mail": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OUTLOOK_CLIENT_ID"},   # LIFE-894: the early, read-only Interview mail read: the interview job's own mail and store credentials, none of its Notion or Calendar ones
     "mail": DB | {"AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                   "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
-    "hiring": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_API_TOKEN",
+    "hiring": DB | {"GCAL_CALENDAR_ID", "HIRING_CARD_BLOCK_ID", "HIRING_PIPELINE_PAGE_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_API_TOKEN",
                     "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL"},
     "amazon": {"V7_RUNTIME_CONFIG_SOURCE_ID", "AMAZON_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
@@ -1032,7 +1032,6 @@ UUIDS = {
     "FIT_PROFILE_JSON": "31a07198-aa35-450f-913c-b4db015a690d",
     "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "c87d470c-b351-4004-a5ea-b50401885f98",
     "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "89238d39-3528-44b6-90f4-b5040188c384",
-    "GCAL_SERVICE_ACCOUNT_JSON": "e697c607-f798-4528-9967-b4db015a6940",
     "GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967",
     "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987",
     "JIRA_API_TOKEN": "3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3",
@@ -1083,9 +1082,9 @@ HRL_PREP = HRL - {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "JOBRIGHT_EMAIL"
 HRL_LANE = HRL - {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"}
 LOADED = {
     "branches": {"report": {"NOTION_JIRA_TOKEN"}, "archive": {"V7_ARCHIVE_TOKEN"}},
-    "agenda": {"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
+    "agenda": {"agenda": DB | {"NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
-    "calendar": {"calendar": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"}},
+    "calendar": {"calendar": DB | {"OUTLOOK_CLIENT_ID"}},
     "hourly": {"prep": DB | JUMP | TS | HRL_PREP, "jobright": DB | JUMP | TS | HRL_LANE, "linkedin": DB | JUMP | TS | HRL_LANE, "lensa": DB | JUMP | TS | HRL_LANE, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"}, "report": {"NTFY_TOPIC"}},
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},        # LIFE-854: the employer-board windows load the store and tailnet credentials the hourly job's boards step used, and nothing else
@@ -1278,7 +1277,8 @@ class BitwardenConsumerTests(unittest.TestCase):
     def test_every_workflow_is_read_only_queues_its_runs_and_bounds_every_job(self):
         for name, doc in self.doc.items():
             self.assertTrue({"pull_request_target", "issue_comment"}.isdisjoint(doc[True]), name)                 # no trigger that runs with secrets on a stranger's input
-            self.assertEqual({k: v for k, v in doc["permissions"].items() if v != "read"}, {"issues": "write"} if name == "watchdog" else {}, name)
+            extra = {"watchdog": {"issues": "write"}, "calendar": {"id-token": "write"}, "agenda": {"id-token": "write"}}  # LIFE-1023: id-token is the keyless Google sign-in
+            self.assertEqual({k: v for k, v in doc["permissions"].items() if v != "read"}, extra.get(name, {}), name)
             self.assertTrue(doc.get("concurrency") or name == "watchdog", name)                                     # runs queue; only the read-only watchdog has no group
             self.assertIs((doc.get("concurrency") or {}).get("cancel-in-progress", False), False, name)           # and a waiting run is never cancelled by the next
             for job, body in doc["jobs"].items():
