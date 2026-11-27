@@ -1,9 +1,8 @@
-"""The one private row that carries the Hiring Pipeline between runs (one key, replaced each run, saved with
-read-back).
+"""The one private row that carries the Hiring Pipeline between runs.
 
-It holds only what carry-forward and freshness need: the compiled rows (structure, never display text) and when state
-was last fully accepted. A cache, not a hiring database: the canonical sources are the Ledger, Notion pages and
-Calendar."""
+It is replaced each run under one key and saved with read-back. It holds only what carry-forward and freshness
+need: the compiled rows (structure, never display text) and when state was last fully accepted. A cache, not a hiring
+database: the canonical sources are the Ledger, Notion pages and Calendar."""
 from datetime import datetime
 
 from lifeos.platform.fixed_code import fixed

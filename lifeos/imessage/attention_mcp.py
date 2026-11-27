@@ -1,15 +1,24 @@
-"""The read-only Messages reader, served over MCP stdio on the Mac Mini by the signed launchd helper in `mac/` (the
-one process with Full Disk Access).
+"""COMM-1.4: the read-only Messages reader, served over MCP stdio on the Mac Mini by the signed launchd helper in `mac/` (the one process with Full Disk Access).
 
-Runs on the system /usr/bin/python3 (3.9, stdlib only; `python3 -I` cannot import siblings, so every tool lives in
-this file). Each tool is fixed SQL over the read-only database with at most one bounded integer argument:
-`imessage_attention`, `imessage_counts`, `imessage_recent`, `imessage_conversation` and `imessage_page` (oldest first;
-`more` is decided by fetching one extra row, so the end is proven). Nothing is written, logged or kept; failures are
-fixed states, never exception text.
-Semantics: `health` is only the local read (CURRENT, DISCONNECTED, DEGRADED; STALE is the consumer's call). `sync` is
-always UNVERIFIED. `attention` is NEEDS_ATTENTION only on an incoming unread message from the last 7 days, else
-UNKNOWN; CLEAR is never returned. `count` stays null and `count_reliable` false until cross-device read state is
-reconciled."""
+Runs on the Mac with the system /usr/bin/python3 (3.9, stdlib only); `python3 -I` cannot import sibling modules, so every tool lives in this one file. Four tools,
+each fixed SQL over the read-only database with at most one bounded integer argument: no caller-controlled path, query, command or flag exists.
+- `imessage_attention` (no arguments): the accepted aggregate contract; it selects one COUNT(*) and never reads text, handles, chats or GUIDs.
+- `imessage_counts` (no arguments): unread messages and unread conversations by defined window, service and group/direct; never presented as the iPhone badge.
+- `imessage_recent` (`hours` 1-72): the newest incoming messages (at most 50) with sender, time, conversation reference and text, for on-demand reading.
+- `imessage_conversation` (`chat` reference from `imessage_recent`): the last 20 messages of that one conversation, both directions.
+- `imessage_page` (`hours` 1-72 for the first page, or the integer cursor `after_date` + `after_rowid` it returned): ALL incoming messages of the window,
+  oldest first in strict (date, ROWID) order, one row per message, PAGE at a time; `more` is decided by fetching one extra row, so the end of results is
+  proven, never assumed. Used only by the private alert scan on Oracle, which pages until `more` is false.
+Content is returned to the caller only; nothing is written to disk, logged or kept. Never writes stderr; any failure is a fixed state, never an exception text.
+
+What one observation can and cannot establish:
+- `health` is the local read only: CURRENT = this Mac's database was read at `observed_at`; DISCONNECTED = it could not be opened (missing, no Full Disk Access);
+  DEGRADED = it opened but did not have the expected shape. STALE is never set here: a quiet week is not a sync failure, so freshness is the consumer's call on
+  `observed_at`.
+- `sync` is always UNVERIFIED: nothing local proves that iCloud is still delivering to this Mac, so a readable database is never reported as a healthy sync.
+- `attention` is NEEDS_ATTENTION only on positive local evidence (an incoming unread message from the last 7 days); otherwise UNKNOWN. CLEAR needs both a verified
+  sync and no outstanding unread anywhere in the history (this Mac holds historical unread rows whose state disagrees with Jim's other devices), so it is never returned.
+- `count` stays null and `count_reliable` false until the cross-device read/unread history is reconciled."""
 import glob
 import json
 import os
@@ -55,7 +64,7 @@ COUNT_LIMITATION = ("These are this Mac's local read flags. This Mac holds histo
 
 
 def _ticks(moment):
-    """Messages `date`: nanoseconds since 2001-01-01 UTC (old macOS rows used seconds)."""
+    """Messages `date`: nanoseconds since 2001-01-01 UTC (rows from old macOS used seconds; they are years old and never fall in the recent window)."""
     return int((moment - APPLE_EPOCH).total_seconds()) * 1_000_000_000
 
 
@@ -66,7 +75,7 @@ def snapshot(db=DB, now=None):
     try:
         con = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=2)
     except Exception:
-        return out
+        return out                                                      # missing file or no Full Disk Access
     try:
         con.execute("PRAGMA query_only = ON")
         unread = con.execute(RECENT_UNREAD, (_ticks(now - RECENT),)).fetchone()[0]
@@ -74,7 +83,7 @@ def snapshot(db=DB, now=None):
         out["health"] = "DISCONNECTED" if "unable to open" in str(e) else "DEGRADED"
         return out
     except Exception:
-        out["health"] = "DEGRADED"
+        out["health"] = "DEGRADED"                                      # not a database, wrong schema, anything unexpected
         return out
     finally:
         con.close()
@@ -93,6 +102,7 @@ def _iso(ticks):
 
 
 def _body(text, attributed):
+    """Message text: the `text` column, or the string inside the `attributedBody` typedstream (recent macOS leaves `text` empty). None when neither decodes."""
     if isinstance(text, str) and text:
         return text
     if not isinstance(attributed, bytes):
@@ -116,6 +126,8 @@ def _body(text, attributed):
 
 
 def _contacts(handles, root=CONTACTS):
+    """handle -> display name from the local Contacts databases (phone numbers by their last 10 digits, emails case-insensitively). Best effort: any failure
+    leaves names unknown and is reported as such, never guessed."""
     wanted = {h for h in handles if h}
     if not wanted:
         return {}, "NOT_NEEDED"
@@ -150,6 +162,7 @@ def _base(now, db, health="DISCONNECTED"):
 
 
 def _read(db, now, work):
+    """Open read-only, run `work(con, cols)`, map failures to the fixed health states. Returns (health, result)."""
     try:
         con = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=2)
     except Exception:
@@ -169,6 +182,7 @@ def _read(db, now, work):
 
 
 def _real(cols, incoming=True):
+    """The fixed filter for a real message row: no reactions, no retracted (unsent) messages, no system rows."""
     where = ["m.item_type = 0"] + (["m.is_from_me = 0"] if incoming else [])
     if "associated_message_type" in cols:
         where.append("m.associated_message_type = 0")
@@ -206,13 +220,14 @@ def _messages(con, cols, where, args, limit, names_root):
                        " LEFT JOIN handle h ON h.ROWID = m.handle_id WHERE " + where + " ORDER BY m.date DESC, m.ROWID DESC LIMIT ?", args + (limit * 2,)).fetchall()
     seen, picked = set(), []
     for row in rows:
-        if row[1] not in seen and len(picked) < limit:
+        if row[1] not in seen and len(picked) < limit:                 # one entry per message even when it is joined to two chats
             seen.add(row[1])
             picked.append(row)
     return _shape(picked, names_root)
 
 
 def _shape(picked, names_root):
+    """Rows (ROWID, guid, text, attributedBody, attachment, edited, date, service, mine, read, handle, chat, style, chat_name) -> message dicts."""
     names, contacts = _contacts([r[10] for r in picked if not r[8]], names_root)
     out = []
     for rowid, _, text, attributed, attachment, edited, date, service, mine, read, handle, chat, style, chat_name in picked:
@@ -226,9 +241,9 @@ def _shape(picked, names_root):
 
 
 def page(hours=None, after=None, db=DB, now=None, contacts_root=CONTACTS):
-    """One page of ALL incoming messages after a cursor, oldest first.
-
-    The first page starts at now - hours; later ones start strictly after the previous page's last (date, ROWID)."""
+    """One page of ALL incoming messages after a cursor, oldest first. The first page starts at now - hours; each later one strictly after the (date, ROWID)
+    of the previous page's last message, so a page boundary between messages that share a timestamp neither skips nor repeats one. A message joined to
+    several conversations is one row (its lowest conversation id)."""
     now = now or datetime.now(timezone.utc)
     after_date, after_rowid = after if after else (_ticks(now - timedelta(hours=hours)), 0)
     box = {}
@@ -291,6 +306,7 @@ def _error(mid, code, message):
 
 
 def handle(msg, snap=snapshot, ops=None):
+    """One JSON-RPC message -> one reply (None for notifications)."""
     ops = ops or {"imessage_counts": lambda args: counts(), "imessage_recent": lambda args: recent(args["hours"]),
                   "imessage_conversation": lambda args: conversation(args["chat"]),
                   "imessage_page": lambda args: page(args["hours"]) if "hours" in args else page(after=(args["after_date"], args["after_rowid"]))}
@@ -326,7 +342,7 @@ def handle(msg, snap=snapshot, ops=None):
 
 
 def main():
-    sys.stdin.reconfigure(errors="replace")
+    sys.stdin.reconfigure(errors="replace")                            # undecodable bytes from a socket client are a refused line, never a crash
     for line in sys.stdin:
         try:
             msg = json.loads(line)

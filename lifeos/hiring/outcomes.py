@@ -1,5 +1,4 @@
-"""Outcome mail for the Hiring Pipeline: finds a rejection or an offer in Gmail and Outlook that arrived after the
-pipeline last heard from an opportunity.
+"""Outcome mail for the Hiring Pipeline: rejections and offers found in Gmail and Outlook since the last evidence.
 
 Reads mail only (nothing marked, moved or sent) for companies already in the pipeline and saves one private row for
 the pipeline to read; it never closes anything itself, and stores only the row key, kind, received time and role-match
