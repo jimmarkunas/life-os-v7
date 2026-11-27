@@ -22,7 +22,6 @@ def _matches(h, domains):
 
 
 def apply_kind(url):
-    """'ats' | 'aggregator' | 'employer' for a resolved destination URL."""
     h = host(url)
     if _matches(h, ATS):
         return "ats"

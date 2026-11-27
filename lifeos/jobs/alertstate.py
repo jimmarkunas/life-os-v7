@@ -1,7 +1,8 @@
-"""Read-only diagnostic: which alerts are open and why. Counts only; writes nothing (D53)."""
-# Prints: open alert keys (source names only); per source the new jobs in the last 24 hours against the 14-day daily baseline; the jobs the stuck_jobs alert counts, grouped by status;
-# whether a link and a Notion page exist; the Fit admission and the stop reason code; the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts).
-# With ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id itself) it returns only that message's trace instead: see trace().
+"""Read-only diagnostic: which alerts are open and why. Counts only; writes nothing."""
+# Prints: open alert keys (source names only); per source the new jobs in the last 24 hours against the 14-day
+# baseline; the jobs stuck_jobs counts, by status; link and Notion page presence; Fit admission and stop reason code;
+# and the page-body shape publish would send. With ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) it returns
+# only that message's trace.
 import datetime as dt
 import os
 import re
@@ -11,15 +12,17 @@ from lifeos.jobs import alerts, funnel, store
 from lifeos.platform import codes
 from lifeos.platform.fixed_code import fixed
 
-IN_FLIGHT, TERMINAL = ("NEW", "RESOLVED", "READY"), ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")          # the newsletter finalize stage's sets (jobs cannot import sources; a test holds them equal)
+IN_FLIGHT, TERMINAL = ("NEW", "RESOLVED", "READY"), ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")
 MESSAGE_REF = re.compile(r"[0-9a-f]{64}")
 KNOWN_STATUSES = frozenset(IN_FLIGHT + TERMINAL + ("HOLD", "EXCLUDED_FIT", "EXCLUDED_STALE", "EXCLUDED_UNRESOLVED"))
-SOURCES = frozenset("dice jobright lensa linkedin-alerts linkedin-search reed".split())                  # the newsletter rules; anything else prints as "other"
-REASONS = codes.public_reasons()                                                                                  # LIFE-72: built from the registry (lifeos/platform/codes.py), no longer kept by hand
+SOURCES = frozenset("dice jobright lensa linkedin-alerts linkedin-search reed".split())
+REASONS = codes.public_reasons()
 
 
 def stuck(cursor, now):
-    """The rows stuck_jobs counts (READY or RESOLVED, untouched for over a day) as {status|link|page|admission|reason: [count, oldest_hours]}; no job, company or URL leaves the store."""
+    """The rows stuck_jobs counts as {status|link|page|admission|reason: [count, oldest_hours]}; no job, company or
+    URL leaves the store.
+    """
     cutoff = now - dt.timedelta(hours=alerts.QUIET_HOURS)
     cursor.execute("SELECT j.status, j.final_apply_url IS NOT NULL, j.notion_page_id IS NOT NULL, COALESCE(f.admission, 'none'), j.unresolved_reason, COUNT(*), MIN(j.updated_at)"
                    " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status IN ('READY','RESOLVED') AND j.updated_at < %s GROUP BY 1, 2, 3, 4, 5", (cutoff,))
@@ -36,8 +39,10 @@ def _units(text):
 
 
 def body_shape(blocks):
-    """Counts only for the page body publish would send: per block the rich-text lengths in characters and in UTF-16 units (Notion's 2000 limit may count either), and the characters Notion can refuse
-    (control, NUL, lone surrogate, private-use), plus whether a block is empty. No text leaves the store. Third block (children[2]) is reported on its own: that is the one a refusal names."""
+    """Counts only for the page body publish would send: per block the rich-text length in characters and UTF-16
+    units (Notion's 2000 limit may count either), characters Notion can refuse, and whether a block is empty.
+    children[2] is reported on its own: it is the one a refusal names.
+    """
     out = {"blocks": len(blocks), "over_2000_chars": 0, "over_2000_units": 0, "empty": 0, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0, "max_chars": 0, "max_units": 0, "child2": None}
     for index, block in enumerate(blocks):
         kind = block["type"]
@@ -62,7 +67,6 @@ def body_shape(blocks):
 
 
 def publish_bodies(cursor):
-    """The READY jobs the gate would admit that have no Notion page yet (at most 5, oldest first): the body publish builds for each, as body_shape counts."""
     from lifeos.jobs import publish                                                  # noqa: PLC0415
     cursor.execute("SELECT d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id"
                    " LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY j.first_seen LIMIT 5")
@@ -70,13 +74,12 @@ def publish_bodies(cursor):
     for summary, resp, req, qual, full in cursor.fetchall():
         desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
         if not any(desc.values()):
-            desc["summary"] = (full or "")[:6000]                                    # the same fallback publish.run applies
+            desc["summary"] = (full or "")[:6000]
         out.append(body_shape(publish.body_blocks("diag", desc)))
     return out
 
 
 def _select(cursor, sql, args):
-    """The only way trace() touches the database: a SELECT, refused before it reaches the driver otherwise."""
     if not sql.lstrip().upper().startswith("SELECT"):
         raise store.StoreError("ALERT_STATE_NOT_READ_ONLY")
     cursor.execute(sql, args)
@@ -84,18 +87,19 @@ def _select(cursor, sql, args):
 
 
 def trace(message_ref, now=None):
-    """One message's vacancies in saved order, read-only and counts only: status, reason code, whether a Ledger page and a verification are recorded, and the outcome finalize would give each
-    (a source row with no job is "unlinked", never absent). Totals: associations, terminal, blockers. A repeat link belongs to the message that first carried it."""
+    """One message's vacancies in saved order, read-only, counts only: status, reason code, whether a Ledger page and
+    a verification exist, and the outcome finalize would give each. Totals: associations, terminal, blockers.
+    """
     if not MESSAGE_REF.fullmatch(message_ref):
         raise store.StoreError("ALERT_STATE_MESSAGE_REF_INVALID")
     with fixed(Exception, store.StoreError, "ALERT_STATE_QUERY_FAILED", keep=store.StoreError), store.connect() as connection, connection.cursor() as cursor:
         rows = _select(cursor, "SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
-                       " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id", (message_ref,))     # the id is matched inside the query, never held or printed
+                       " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id", (message_ref,))
     vacancies, blockers = [], {}
     for n, (source, linked, status, reason, page, verified) in enumerate(rows, 1):
         status = status if isinstance(status, str) else None
         why = ("unlinked" if not linked else "malformed" if status is None else "in_flight" if status in IN_FLIGHT else "hold" if status == "HOLD"
-               else "unverified" if status == "PUBLISHED" and not verified else None if status in TERMINAL or status.startswith("EXCLUDED_") else "other")      # finalize.blockers' rule
+               else "unverified" if status == "PUBLISHED" and not verified else None if status in TERMINAL or status.startswith("EXCLUDED_") else "other")
         if why:
             blockers[why] = blockers.get(why, 0) + 1
         code = funnel.reason_code(reason if isinstance(reason, str) else None).replace(" ", "_")

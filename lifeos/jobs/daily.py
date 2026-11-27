@@ -1,6 +1,9 @@
-"""Daily counts per day and name (board reads and failures, search calls and failures, the HOLD pile), kept about two weeks for the monitors (LIFE-74)."""
-# A few integers per day and name that the stages' own counts lines cannot give the monitors, because a log line is gone after a run and the store keeps only a job's CURRENT status.
-# Counts only; no title, company or link. `record` is called by lifeos.run after a live stage and never raises: a missed row costs a monitor one day of evidence, never a run. Days are UTC dates, like the TinyFish spend.
+"""Daily counts per day and name (board reads, search calls, the HOLD pile), kept about two weeks.
+
+These are the monitors' evidence.
+"""
+# Counts only; no title, company or link. `record` is called by lifeos.run after a live stage and never raises: a
+# missed row costs a monitor one day of evidence, never a run. Days are UTC dates.
 import datetime as dt
 
 from lifeos.jobs import store
@@ -15,7 +18,7 @@ def deltas(stage, counts):
     num = lambda key: counts.get(key) if type(counts.get(key)) is int else 0                  # noqa: E731
     if stage in ("boards", "boards-backfill", "web", "web-scale-up"):
         failed = num("failed")
-        dead = counts.get("failed_why", {}).get("not_found", 0) if isinstance(counts.get("failed_why"), dict) else 0       # a dead board answers not_found: tracked in dead_ids, not a failure of the reader
+        dead = counts.get("failed_why", {}).get("not_found", 0) if isinstance(counts.get("failed_why"), dict) else 0
         return {"board_reads": num("complete") + failed, "board_failed": max(0, failed - (dead if type(dead) is int else 0))}
     if stage == "discover-jobs":
         return {"search_calls": num("searched") + num("search_errors"), "search_failed": num("search_errors")}
@@ -33,12 +36,10 @@ def add(cursor, day, name, n):
 
 
 def put(cursor, day, name, n):
-    """Set a snapshot (the HOLD pile): the last run of the day wins."""
     cursor.execute("INSERT INTO v7_daily_counts (day, name, value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)", (day, name, int(n)))
 
 
 def read(cursor, since):
-    """-> {name: {iso day: value}} for the days from `since` on."""
     cursor.execute("SELECT day, name, value FROM v7_daily_counts WHERE day >= %s", (since,))
     out = {}
     for day, name, value in cursor.fetchall():
@@ -57,7 +58,7 @@ def record(stage, counts, connect=None, now=None):
         return {}
     try:
         with (connect or store.connect)() as connection:
-            with connection.cursor() as cursor:                                                  # the stages that ran before this call have already made the table (store.SCHEMA)
+            with connection.cursor() as cursor:
                 day = today(now)
                 for name, n in found.items():
                     add(cursor, day, name, n)

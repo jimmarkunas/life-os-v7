@@ -1,8 +1,7 @@
-"""Direct readers for ATS job pages that are JavaScript shells: one public-JSON call per job, no browser.
+"""Direct readers for ATS job pages that are JavaScript shells: one public-JSON call per job.
 
-The job URL already names the tenant and the job, so each reader asks the ATS's public JSON (or the JSON embedded in the page) for that one job. No daily cap.
-Input: read(url). Output: dict(title, html, posted) | {"closed": True} | None."""
-# Endpoint shapes follow open-jobs (CC0) and career-ops (MIT).
+Input: read(url). Output: dict(title, html, posted) | {"closed": True} | None.
+"""
 import html as htmllib
 import json
 import re
@@ -30,11 +29,11 @@ def _fetch(url, **kwargs):
 
 def _get_json(url):
     page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, headers={"Accept": "application/json"})
-    if page.status == 403:                       # some tenants refuse a browser user agent on their JSON endpoint
+    if page.status == 403:
         page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2,
                       headers={"Accept": "application/json", "User-Agent": "lifeos-jobs/0.1"})
     if page.status in (404, 410):
-        raise Gone                               # read() turns it into {"closed": True}
+        raise Gone
     if page.status != 200:
         return None
     try:
@@ -56,7 +55,7 @@ def workday_cxs_url(url):
     if segs and LOCALE.match(segs[0]):
         segs = segs[1:]
     if "apply" in segs:
-        segs = segs[:segs.index("apply")]        # the apply form lives under the job path; the job is what precedes it
+        segs = segs[:segs.index("apply")]
     if len(segs) < 3 or segs[1] != "job":
         return None
     return f"https://{host}/wday/cxs/{host.split('.')[0]}/{segs[0]}/{'/'.join(segs[1:])}"
@@ -74,7 +73,6 @@ def parse_workday(text):
 
 
 def workday(parts):
-    """https://{tenant}.wd{N}.myworkdayjobs.com[/{locale}]/{site}/job/... -> /wday/cxs/{tenant}/{site}/job/..."""
     api = workday_cxs_url(f"https://{parts.hostname}{parts.path}")
     if not api:
         return None
@@ -84,7 +82,6 @@ def workday(parts):
 
 
 def workable(parts):
-    """https://apply.workable.com/{account}/j/{SHORTCODE}/ -> the account widget (all published jobs, with descriptions)."""
     segs = [s for s in parts.path.split("/") if s]
     if len(segs) < 3 or segs[1] != "j":
         return None
@@ -95,11 +92,10 @@ def workable(parts):
     for job in jobs:
         if str(job.get("shortcode", "")).lower() == segs[2].lower():
             return _job(job.get("title"), job.get("description"), job.get("published_on"))
-    return {"closed": True}                      # the account lists every published job; this one is not among them
+    return {"closed": True}
 
 
 def bamboohr(parts):
-    """https://{slug}.bamboohr.com/careers/{id} -> /careers/{id}/detail"""
     segs = [s for s in parts.path.split("/") if s]
     if len(segs) < 2 or segs[0] != "careers" or not segs[1].isdigit():
         return None
@@ -109,7 +105,6 @@ def bamboohr(parts):
 
 
 def oraclecloud(parts):
-    """https://{host}.oraclecloud.com/.../job/{id} -> recruitingCEJobRequisitionDetails?q=Id={id}"""
     match = re.search(r"/job/(\d+)", parts.path)
     if not match:
         return None
@@ -120,7 +115,7 @@ def oraclecloud(parts):
         return None
     items = data.get("items") or []
     if not items:
-        return {"closed": True}                  # unknown or closed requisitions answer with an empty list
+        return {"closed": True}
     item = items[0]
     body = "\n\n".join(item.get(k) for k in ("ExternalDescriptionStr", "ExternalResponsibilitiesStr",
                                               "ExternalQualificationsStr") if item.get(k))
@@ -128,8 +123,9 @@ def oraclecloud(parts):
 
 
 def paylocity(parts):
-    """The detail page carries a JSON-LD JobPosting whose description is entity-encoded HTML. (Its datePosted is the
-    render time, so it is ignored.)"""
+    """The detail page carries a JSON-LD JobPosting with entity-encoded HTML; its datePosted is the render time, so
+    it is ignored.
+    """
     page = _fetch(f"https://{parts.hostname}{parts.path}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
     if page.status in (404, 410) or "JobNotFound" in page.final_url:
         return {"closed": True}
@@ -144,7 +140,6 @@ def paylocity(parts):
 
 
 def ukg(parts):
-    """UKG / UltiPro job boards embed the opportunity JSON in the page; read its Description string."""
     page = _fetch(f"https://{parts.hostname}{parts.path}" + (f"?{parts.query}" if parts.query else ""),
                  timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
     if page.status in (404, 410):
@@ -159,7 +154,6 @@ def ukg(parts):
 
 
 def smartrecruiters(parts):
-    """https://jobs.smartrecruiters.com/{company}/{id}[-slug] -> api.smartrecruiters.com/v1/companies/{company}/postings/{id}"""
     segs = [s for s in parts.path.split("/") if s]
     match = re.match(r"(\d+)", segs[1]) if len(segs) >= 2 else None
     if not match:
@@ -174,7 +168,6 @@ def smartrecruiters(parts):
 
 
 def _ashby_single(org, ident):
-    """Ashby's single-job endpoint (the one V2 proved) -> job dict | {"closed": True} | None."""
     data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(org)}/job-postings/{quote(ident)}")
     if isinstance(data, dict) and data.get("descriptionHtml"):
         return _job(data.get("title"), data.get("descriptionHtml"), data.get("publishedAt") or data.get("updatedAt"))
@@ -182,7 +175,6 @@ def _ashby_single(org, ident):
 
 
 def ashby(parts):
-    """https://jobs.ashbyhq.com/{org}/{id}[/application] -> the single-job endpoint, else the org's public job board."""
     segs = [s for s in parts.path.split("/") if s]
     if len(segs) < 2:
         return None
@@ -200,7 +192,6 @@ def ashby(parts):
 
 
 def shopify(parts):
-    """https://www.shopify.com/careers/{slug}_{uuid} -> Shopify's Ashby board, job {uuid}."""
     match = re.search(r"^/careers/[^/]+_([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", parts.path, re.I)
     return _ashby_single("shopify", match.group(1)) if match else None
 
@@ -222,7 +213,9 @@ KEYWORDS = {"job", "jobs", "j", "careers", "details", "sites", "apply"}
 
 
 def misses():
-    """Reader failures since the last call, as counts: {'workday:http_406:w/job/w/w': n}. Fixed codes and path shapes only."""
+    """Reader failures since the last call, as counts: {'workday:http_406:w/job/w/w': n}. Fixed codes and path shapes
+    only.
+    """
     out = dict(_misses)
     _misses.clear()
     return out

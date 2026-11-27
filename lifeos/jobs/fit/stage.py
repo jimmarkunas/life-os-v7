@@ -1,9 +1,8 @@
 """The `fit` stage: score every job that has a full description and no current score. Counts only in the log.
 
-Reads and writes are separate short connections; scoring is pure CPU between them. A job is re-scored when the model
-version, the private profile or the description changes. Each job is then judged by its lane policy (lifeos.jobs.lanes: Fit 72, work mode, explicit pay, age; a Newsletter job is judged
-as US Remote) and the decision is stored. With V7_FIT_GATE=true an EXCLUDE READY job becomes EXCLUDED_FIT (never published) and
-only ADMIT / REVIEW publish; without it everything is recorded in shadow mode and publishing is unchanged.
+A job is re-scored when the model version, the private profile or the description changes, then judged by its lane
+policy (lifeos.jobs.lanes: Fit 72, work mode, explicit pay, age). With V7_FIT_GATE=true an EXCLUDE READY job
+becomes EXCLUDED_FIT and only ADMIT / REVIEW publish; without it decisions are recorded in shadow mode.
 """
 from datetime import datetime
 import json
@@ -15,36 +14,35 @@ from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cl
 from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
 
-ORDER = " ORDER BY (SUBSTR(j.source, 1, 4) = 'web:'), j.first_seen"   # Jim, Oct 24 (LIFE-76): mail and other non-board jobs first, then boards, oldest first in each
+ORDER = " ORDER BY (SUBSTR(j.source, 1, 4) = 'web:'), j.first_seen"
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
         " j.posted_date, j.first_seen, j.route_evidence, j.source, j.link_proof FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-        " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"     # D226: a cloud-Fit canary score is never overwritten by the static scorer
+        " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"
         " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint)" + ORDER + " LIMIT %s")
 OPEN = ("'READY'", "'RESOLVED'")
-AUTO = OPEN + ("'PUBLISHED'",)                          # D94: every tick also re-scores published jobs whose score is stale (model, policy, profile or description changed); the audit then clears the ones now excluded
-ALL = AUTO + ("'EXCLUDED_FIT'",)                         # FIT_ALL=true (by hand): also re-score excluded jobs (calibration)
+AUTO = OPEN + ("'PUBLISHED'",)
+ALL = AUTO + ("'EXCLUDED_FIT'",)
 
 
-# D214: an upsert of the static columns only. REPLACE INTO deleted the row first, so it wiped every column it did not name (the cloud shadow's private result).
 _STATIC = ("job_id", "score", "decision", "line", "why", "exclusion", "confidence", "buckets", "trace", "model_version", "profile_hash", "jd_fingerprint", "scored_at",
            "shadow_score", "shadow_changes", "admission", "admission_reason", "work_mode", "lane", "eligible")
 WRITE = (f"INSERT INTO v7_job_fit ({', '.join(_STATIC)}) VALUES ({','.join(['%s'] * len(_STATIC))})"
          " ON DUPLICATE KEY UPDATE " + ", ".join(f"{c}=VALUES({c})" for c in _STATIC[1:]))
 
 
-PROFILE_TAG_WIDTH = 16                                   # v7_job_fit.profile_hash is CHAR(16)
+PROFILE_TAG_WIDTH = 16
 
 
 def fit_tag(profile_hash, matcher):
-    """What a stored score is compared with: the profile, the lane policy and the semantic layer. It must fit the column: a longer tag was cut on write, never
-    matched on read, and so every run re-scored the same oldest jobs and never reached the newer ones (D107). The tail is kept, so a policy change always shows."""
+    """What a stored score is compared with (profile, lane policy, semantic layer). It must fit the CHAR(16) column;
+    the tail is kept so a policy change always shows.
+    """
     return (profile_hash[:12] + lanes.POLICY_VERSION + ("s1" if matcher else ""))[-PROFILE_TAG_WIDTH:]
 
 
 def only_clause(raw):
-    """D109: a dispatch may name companies (comma separated, 3+ letters each; the Hourly `report` input) whose stale jobs are scored first. -> (sql, params)."""
     names = [n.strip() for n in (raw or "").split(",") if len(n.strip()) >= 3 and n.strip().lower() != "funnel"][:12]
     if not names:
         return "", ()
@@ -53,25 +51,23 @@ def only_clause(raw):
     return sql, tuple(p for like in likes for p in (like, like))
 
 
-CHUNK = 10                       # rows scored and written together
+CHUNK = 10
 
 
 _now = store.now
 
 
 def progress(phase, started, **fields):
-    """One short line per phase to the run log (counts and seconds only), so a stage that hits its timeout shows where it was."""
     print("fit-progress:", json.dumps({"phase": phase, "seconds": int(time.monotonic() - started), **fields}, sort_keys=True), flush=True)
 
 
 def tally(counts, scored):
-    """Add one scored batch to the stage's counts."""
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
         key = {"Go": "go", "No-Go": "no_go", "Unscorable": "unscorable"}[result.decision]
         counts[key] += 1
         counts["excluded"] += bool(result.exclusion)
-        if result.score is not None and result.pre_functional is not None and result.pre_functional > result.score:          # D103 calibration: what the Functional cap moved
+        if result.score is not None and result.pre_functional is not None and result.pre_functional > result.score:
             counts["fcap_moved"] += 1
             counts["fcap_go_lost"] += result.pre_functional >= GO_THRESHOLD > result.score
         counts["low_confidence"] += result.confidence == "low" and result.decision != "Unscorable"
@@ -83,30 +79,30 @@ def tally(counts, scored):
 
 
 def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
-    """[(job_id, fingerprint, Result, Decision, lane, work_mode, eligible)] for rows of (id, title, company, full_text, fingerprint,
-    [lane, location, salary_text, posted_date, first_seen, route_evidence]). `register`: the sponsor register (Skilled Worker route evidence).
-    `fit` (D226 cloud-Fit canary): {job_id: score} replaces the static score in the lane decision; every other rule is the same code. Pure."""
+    """[(job_id, fingerprint, Result, Decision, lane, work_mode, eligible)] for rows of (id, title, company,
+    full_text, fingerprint, [lane, location, salary_text, posted_date, first_seen, route_evidence]). `fit`
+    {job_id: cloud-Fit canary score} replaces the static score. Pure.
+    """
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
         lane, location, salary, posted, first_seen, route, source, proof = (list(rest) + [None] * 8)[:8]
-        listing = lanes.from_listing(proof)                                                    # LIFE-723
+        listing = lanes.from_listing(proof)
         result = evaluate(title, company, text, profile, today, semantic)
-        thin = lanes.thin_review_source(source) and quality.jd_problem(text) == "thin"        # Jim, Oct 21: Review from the apply link, never held, never excluded for Fit alone
+        thin = lanes.thin_review_source(source) and quality.jd_problem(text) == "thin"
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
         score = (fit or {}).get(job_id, result.score)
         facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
                                 kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin or listing,
                                 title_only=lanes.title_watch_source(source), listing=listing, thin=thin, thin_admit=lanes.thin_review_source(source))
-        exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion       # a keep-list role Jim chose over a title rule
+        exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
     return out
 
 
 def _gate(cursor, job_id, decision, gate, counts):
-    """The lane gate's effect on the job row, for a static score and a cloud-Fit canary score alike."""
-    if gate and decision.status in (lanes.ADMIT, lanes.REVIEW):          # D106: an excluded job that now qualifies (a wrong place, a profile that now knows its evidence) comes back
+    if gate and decision.status in (lanes.ADMIT, lanes.REVIEW):
         cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
                        " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
         counts["revived"] += cursor.rowcount
@@ -123,13 +119,12 @@ PROMOTE = ("UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confid
 
 
 def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts, register=None):
-    """D226 (Jim, LIFE-41 10555): the cloud-Fit canary. The model's accepted score (judge.accept: the family and junior caps already applied) becomes this job's
-    visible Fit: the same score_rows lane decision decides admission with it, and the same gate moves the job. The provenance is in the line ('Cloud Fit ...'),
-    which publish writes to Why It Fits. Only the row the shadow has just stored as CANARY_PROMOTION_FAILED is touched, and the one UPDATE that writes the
-    visible Fit is the one that marks it CANARY, so the marker and the visible score exist together or not at all. A published job the cloud excludes is promoted
-    the same way (D224, replacing the D219 hold): its stored admission becomes EXCLUDE and the gated precision audit, which runs right after Fit
-    in the tick, trashes its page under lifeos.jobs.guard (Applied, Applied On, a Saturn Decision or an active pipeline opportunity keeps it) and the job becomes
-    EXCLUDED_FIT, never published again. -> True when promoted, else False."""
+    """Make the model's accepted score (judge.accept: caps already applied) this job's visible Fit: the same lane
+    decision decides admission and the same gate moves the job. Only a row stored as CANARY_PROMOTION_FAILED is
+    touched, and the one UPDATE that writes the visible Fit also marks it CANARY, so marker and score exist
+    together or not at all. A published job the cloud excludes is promoted the same way and the gated precision
+    audit then trashes its page under lifeos.jobs.guard. -> True when promoted.
+    """
     cursor.execute(CANARY_ROW, (job_id,))
     row = cursor.fetchone()
     if row is None or judgment.score is None:
@@ -145,8 +140,9 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
 
 
 def regate_canary(cursor):
-    """D226: every tick re-applies the lane gate to each CANARY row from its stored admission (the same two idempotent moves as _gate), because the static pass never
-    re-picks a canary row. A promotion whose gate write failed (the tick then fails loudly) is therefore moved on the next tick; an already-gated job is untouched. -> jobs moved."""
+    """Re-apply the lane gate to each CANARY row from its stored admission (the static pass never re-picks canary
+    rows). -> jobs moved.
+    """
     cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='EXCLUDED_FIT', j.unresolved_reason='lane_exclude', j.updated_at=%s"
                    " WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='READY'", (_now(),))
     moved = int(cursor.rowcount or 0)
@@ -162,17 +158,16 @@ UNHOLD = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE j
 
 
 def release_held(cursor, profile, today, gate, counts, register=None):
-    """Jim's decision on the D219 holds (LIFE-41, Oct 20: "Apply the exclusion"): each published job the cloud had already judged and HELD is promoted from its
-    stored private answer, through promote_cloud exactly as a new answer (no model call). The row first returns to the named canary failure, so a promotion that
-    cannot complete stays visible as CANARY_PROMOTION_FAILED, never HELD again and never re-asked. Idempotent: once no row is HELD this does nothing.
-    -> (released, failed)."""
+    """Promote each published job the cloud had already judged and HELD from its stored private answer, through
+    promote_cloud (no model call). Idempotent. -> (released, failed).
+    """
     cursor.execute(HELD_ROWS)
     released = failed = 0
     for job_id, score, confidence, rationale, model, exclusion in cursor.fetchall():
         cursor.execute(UNHOLD, (fit_cloud.PROMOTION_FAILED, job_id))
         if cursor.rowcount != 1:
             continue
-        judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")     # judge.accept's own rule
+        judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")
         if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
             released += 1
         else:
@@ -183,18 +178,16 @@ def release_held(cursor, profile, today, gate, counts, register=None):
 KEPT_CANARY_ROWS = ("SELECT f.job_id, j.title, j.company, f.cloud_score, f.cloud_confidence, f.cloud_rationale, f.cloud_model, f.exclusion FROM v7_job_fit f"
                     " JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='EXCLUDED_FIT'"
                     " AND j.unresolved_reason IN ('lane_exclude', 'excluded_fit') AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
-# A published job the precision audit excluded had its page trashed and its row left as EXCLUDED_FIT / 'excluded_fit' (audit.py), a reason _gate's own revive does not cover:
-# a keep-list role that the current policy now admits or reviews is put back for publishing here, and only here.
 REVIVE_AUDITED = ("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
                   " WHERE j.id=%s AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='excluded_fit' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW')")
 RETURN_TO_PROMOTION = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='CANARY' AND admission='EXCLUDE'"
 
 
 def repromote_kept(cursor, profile, today, gate, counts, register=None):
-    """Jim's keep list (D115) changed after a role was already cloud-scored and excluded for Fit: the static pass never re-picks a canary row and regate_canary only replays
-    the stored admission, so the role would stay excluded under the policy that has since been changed. Each such role (lanes.on_keep_list, nothing else) is re-decided from
-    its stored cloud score by the current lane policy, through the same promotion as release_held (no model call). A role the policy still excludes stays excluded and is
-    simply re-stored; one that cannot be promoted stays visible as CANARY_PROMOTION_FAILED. -> (re-decided, failed)."""
+    """The keep list changed after a role was cloud-scored and excluded: re-decide each such role
+    (lanes.on_keep_list) from its stored cloud score by the current lane policy, through the same promotion as
+    release_held. -> (re-decided, failed).
+    """
     cursor.execute(KEPT_CANARY_ROWS)
     redecided = failed = 0
     for job_id, title, company, score, confidence, rationale, model, exclusion in cursor.fetchall():
@@ -213,8 +206,6 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
     return redecided, failed
 
 
-# The Oracle-held brief (what the cloud model is told about Jim) was replaced with Jim's confirmed evidence at this moment (UTC). A keep-list role the cloud scored before it was
-# judged on the old brief; clearing its answer lets the existing backlog batch ask again with the new one. Cleared once: a new answer is stamped after this time.
 BRIEF_CHANGED_AT = datetime(2026, 10, 21, 5, 28, 14)
 KEPT_ASKED_BEFORE = ("SELECT f.job_id, j.title, j.company, f.exclusion FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
                      " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY f.job_id LIMIT 500")
@@ -224,32 +215,34 @@ CLEAR_FOR_REASK = ("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL, 
 
 
 def reask_kept(cursor):
-    """Keep-list roles (lanes.on_keep_list, nothing else) whose cloud answer predates the new Oracle brief go back to 'never asked' so the cloud backlog batch (D219, its own
-    quota and 50 % allowance stop) asks again. The stored score and decision stay until the new answer replaces them; no model call is made here. -> roles cleared."""
+    """Keep-list roles whose cloud answer predates the new brief go back to 'never asked' so the backlog batch asks
+    again; the stored score stays until the new answer replaces it. -> roles cleared.
+    """
     cursor.execute(KEPT_ASKED_BEFORE, (BRIEF_CHANGED_AT,))
     cleared = 0
     for job_id, title, company, exclusion in cursor.fetchall():
         if not lanes.on_keep_list(company, title):
             continue
         if exclusion and not lanes.keep_overrides_exclusion(company, title):
-            continue                                                       # a static exclusion Jim's keep list does not override: the backlog would never ask this role
+            continue
         cursor.execute(CLEAR_FOR_REASK, (job_id, BRIEF_CHANGED_AT))
         done = int(cursor.rowcount or 0)
         if done and exclusion:
-            cursor.execute(CLEAR_OVERRIDDEN_EXCLUSION, (job_id,))          # Credit Manager (Product): admitted by the keep list over the static financial-risk exclusion, so the stored exclusion no longer applies and must not hide it from the backlog
+            cursor.execute(CLEAR_OVERRIDDEN_EXCLUSION, (job_id,))
         cleared += done
     return cleared
 
 
 REOPEN_ROWS = ("SELECT f.job_id FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s AND j.status='EXCLUDED_FIT'"
                " AND j.notion_page_id IS NULL AND j.source LIKE 'web:su-%%' ORDER BY f.job_id LIMIT %s")
-REOPEN_BATCH = 2000                      # per run: clearing a marker is one cheap UPDATE, and the whole excluded Scale-Up backlog (about 800) is re-scored by one manual run after it
+REOPEN_BATCH = 2000
 
 
 def reopen_scale_up(cursor, limit=REOPEN_BATCH):
-    """Jim (Oct 21): the Scale-Up roles the cloud excluded under the OLD brief are judged again under the new profile and brief. A cloud-scored (CANARY) row is never re-picked by the
-    static pass, so its marker is cleared (once: a later answer is stamped after BRIEF_CHANGED_AT); a manual Fit run with `fit_all` and a company filter then re-scores it
-    statically, a role that now qualifies is revived (_gate), and the existing cloud backlog (its own quota, stop at Jim's 50 %) asks only those. No model call here. -> rows cleared."""
+    """Clear the CANARY marker of Scale-Up roles the cloud excluded under the OLD brief so a manual Fit run
+    (`fit_all` with a company filter) re-scores them statically; a role that now qualifies is revived (_gate). No
+    model call. -> rows cleared.
+    """
     cursor.execute(REOPEN_ROWS, (BRIEF_CHANGED_AT, limit))
     cleared = 0
     for (job_id,) in cursor.fetchall():
@@ -263,14 +256,14 @@ RETIRE_STUCK = ("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason='re
 
 
 def retire_stuck(cursor):
-    """Jim (Oct 21): the roles from these two boards that sit at NEW because their link fails the audit are retired for good ('Kill them'). The reason `retired_by_jim`
-    is not one any revive step reads, so they stay retired. Idempotent. -> roles retired."""
+    """Retire for good the roles from these two boards that sit at NEW because their link fails the audit.
+    Idempotent. -> roles retired.
+    """
     cursor.execute(RETIRE_STUCK, (_now(),))
     return int(cursor.rowcount or 0)
 
 
 def cloud_promoter(profile, gate, counts, register):
-    """-> promote(job_id, judgment, model): one store session per promotion (D219: the cloud run writes each job's answer right after its call)."""
     def promote(job_id, judgment, model):
         with store.connect() as connection, connection.cursor() as cursor:
             return promote_cloud(cursor, job_id, judgment, model, profile, _now().date(), gate, counts, register)
@@ -278,8 +271,10 @@ def cloud_promoter(profile, gate, counts, register):
 
 
 def requeue_floor(cursor):
-    """D84, one time: jobs excluded only for Fit under the old floor (reason text 'Fit N below 72', score 60 and up) go back to READY so the new
-    floor and the Review band judge them. The new decision text never says 'below 72', so a job is requeued at most once."""
+    """One time: jobs excluded only for Fit under the old floor (reason text 'Fit N below 72', score 60 and up) go
+    back to READY for the new floor and the Review band to judge. The new decision text never says 'below 72', so
+    a job is requeued at most once.
+    """
     cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_floor', j.updated_at=%s"
                    " WHERE j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL"
                    " AND f.admission_reason LIKE 'Fit %% below 72' AND f.score >= 60", (_now(),))
@@ -287,7 +282,6 @@ def requeue_floor(cursor):
 
 
 def _title_description(cursor, job_id, title):
-    """Publishing needs a stored description row. A kept role whose page cannot be read gets the title and a plain note, never invented content."""
     from lifeos.jobs import jd                                                      # noqa: PLC0415
     d = jd.describe(f"{title}\n{lanes.TITLE_ONLY_REASON}.", is_html=False)
     cursor.execute("INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
@@ -296,25 +290,26 @@ def _title_description(cursor, job_id, title):
 
 
 def rejudge_excluded(cursor):
-    """A READY job whose stored decision is EXCLUDE is judged again: its Fit row is made stale so the pass below re-scores it, and the gate then moves it to EXCLUDED_FIT (or admits it
-    if the facts changed). The gate acts only on a job scored in that pass, so a job that came back to READY with an old EXCLUDE (an age or place rule since changed) was never re-picked
-    and sat READY for days (40 on Oct 12). Same mechanism as the D111 title and place correction. D214: the row is marked stale (model_version '0', which PICK
-    re-scores) instead of deleted, so its private cloud columns survive. -> rows marked."""
+    """A READY job whose stored decision is EXCLUDE is judged again: its Fit row is made stale (model_version '0',
+    which the pick re-scores; not deleted, so private cloud columns survive) so the gate re-decides it. -> rows
+    marked.
+    """
     cursor.execute("UPDATE v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id SET f.model_version='0' WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission='EXCLUDE'")
     return int(cursor.rowcount or 0)
 
 
 def promote_kept(cursor):
-    """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored link, and whose stored Fit decision is ADMIT or REVIEW
-    becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
-    -> counts: promoted, and (counts only) how many kept RESOLVED jobs lack a stored link, a description or a Review/Admit decision, or already have a page."""
+    """A RESOLVED job on the keep list or found by title search, with a stored link and an ADMIT or REVIEW decision,
+    becomes READY (its own page answers 403 to Enrich, so nothing else would move it). -> counts: promoted, and
+    how many kept RESOLVED jobs lack a link, a description or a Review/Admit decision, or already have a page.
+    """
     cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL, j.status, j.link_proof"
                    " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status IN ('RESOLVED', 'READY') LIMIT 5000")
     out = {"promoted": 0, "kept_resolved": 0, "no_link": 0, "no_description": 0, "no_decision": 0, "has_page": 0}
     for job_id, company, title, source, link, text, admission, page, status, proof in cursor.fetchall():
         if not (lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or lanes.from_listing(proof)):
             continue
-        if status == "READY":                                                        # already promoted: only the missing description row is added
+        if status == "READY":
             if not text and link:
                 _title_description(cursor, job_id, title)
                 out["described"] = out.get("described", 0) + 1
@@ -346,9 +341,9 @@ def run(limit, live, environ=os.environ):
     progress("profile", started)
     embed = fit_semantic.load_embedder(environ)
     progress("embedder", started, semantic=bool(embed))
-    matcher = fit_semantic.Matcher(profile, embed) if embed else None      # shadow only: never changes a score
+    matcher = fit_semantic.Matcher(profile, embed) if embed else None
     counts["semantic"] = "on" if matcher else "off"
-    tag = fit_tag(profile.hash, bool(matcher))         # a profile, lane-policy or semantic change re-scores
+    tag = fit_tag(profile.hash, bool(matcher))
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
@@ -373,8 +368,8 @@ def run(limit, live, environ=os.environ):
             counts["jim_retired"] = retire_stuck(cursor)
     progress("maintained", started)
     progress("scoring", started, picked=len(rows))
-    for start in range(0, len(rows), CHUNK):                                        # LIFE-76 (Oct 25): score and WRITE a few rows at a time. All-or-nothing meant a slow run lost everything at the stage timeout and retried the same rows forever
-        scored = score_rows(rows[start:start + CHUNK], profile, _now().date(), matcher, register)      # slow work: no connection is open here
+    for start in range(0, len(rows), CHUNK):
+        scored = score_rows(rows[start:start + CHUNK], profile, _now().date(), matcher, register)
         tally(counts, scored)
         if live and scored:
             with store.connect() as connection, connection.cursor() as cursor:
@@ -385,7 +380,7 @@ def run(limit, live, environ=os.environ):
                          decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
                     _gate(cursor, job_id, decision, gate, counts)
         progress("scored", started, done=min(start + CHUNK, len(rows)), of=len(rows))
-    promote = cloud_promoter(profile, gate, counts, register)          # D226: canary only
-    counts.update(fit_cloud.run(environ, live, started, profile, promote=promote))   # D214: after the static write; off by default, shadow never changes it
-    counts["failed"] = counts["cloud_degraded"] + counts.get("cloud_held_failed", 0)     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
+    promote = cloud_promoter(profile, gate, counts, register)
+    counts.update(fit_cloud.run(environ, live, started, profile, promote=promote))
+    counts["failed"] = counts["cloud_degraded"] + counts.get("cloud_held_failed", 0)
     return counts
