@@ -5,3 +5,4 @@ V2_PROMOTION flag LIFE-918: the promotion kill switch; on lets the first reconci
 V2_OFFICIAL flag LIFE-918: on makes the v2 quarterly figures official; set only by the promotion run, off or anything else keeps legacy official
 JIRA_WRITERS_VERIFIED flag LIFE-918: yes (exactly) lets the live Jira writers run; set by MC only after the throwaway-sprint verification passed, anything else keeps every live Jira write failing closed
 MEJ_AUTOMATION_SINCE flag LIFE-918: the activation time as an ISO time with a zone; the manual and automatic closure split counts only closures from then on, unset shows the total only
+JIRA_SETTER_PROOF flag LIFE-1026: manual dispatch only, never scheduled; the expected Revision of the V2_OFFICIAL row, then yes to send the one same-value (off over off) update, otherwise a dry run that only reads the row

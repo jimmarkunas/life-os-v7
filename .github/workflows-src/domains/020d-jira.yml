@@ -33,14 +33,14 @@
           if [ "$VERIFY_LIVE" = "yes" ] && [ "$VERIFY_KEEP" = "keep" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live --keep; elif [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
       - id: jsetterproof
         continue-on-error: true
-        name: V2_OFFICIAL setter proof (manual only; one same-value update)
+        name: V2_OFFICIAL setter proof (manual only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'setter-proof' }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
-          SETTER_PROOF: ${{ inputs.verify }}
+          JIRA_SETTER_PROOF: ${{ inputs.verify }}
         run: |
-          set -f; set -- $SETTER_PROOF; PROOF_REVISION="$1"; PROOF_LIVE="${2:-}"
+          set -f; set -- $JIRA_SETTER_PROOF; PROOF_REVISION="$1"; PROOF_LIVE="${2:-}"
           [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "::error title=jira::verify must be REVISION [yes]"; exit 1; }
           printf '%s' "$PROOF_REVISION" | grep -Eq '^[0-9]{1,6}$' || { echo "::error title=jira::the revision must be a number"; exit 1; }
           case "$PROOF_LIVE" in ""|yes) ;; *) echo "::error title=jira::the second word must be yes or absent"; exit 1;; esac
