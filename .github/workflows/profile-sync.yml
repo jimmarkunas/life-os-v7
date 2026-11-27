@@ -1,7 +1,7 @@
 name: profile-sync
 # Fit profile sync: Jim's Notion page is the authority; its approved evidence block is copied into one small table of the private store (v7_fit_profile_sync) and the Fit profile loader merges it in.
 # Nothing is written to Bitwarden: the job only READS the store credentials from it, like the other store jobs. It holds one Notion read token for the one sync page and prints one fixed code.
-# Manual dispatch (dry run unless "live"), and after every successful hourly tick when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own.
+# Manual dispatch (dry run unless "live"), and after the successful hourly tick that started at 11:xx or 23:xx UTC (twice a day) when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own.
 on:
   workflow_dispatch:
     inputs:
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   settings:
     # LIFE-703: a job's own `if` cannot read its own steps, so this small first job reads the V7 settings page and publishes the one switch the sync job's condition needs.
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains('11 23', substring(github.event.workflow_run.run_started_at, 11, 2)) }}  # the hourly runs that started at 11:xx and 23:xx UTC (5 to 6 AM and 5 to 6 PM CT): twice a day, not 24 times; a manual dispatch still runs it at once
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:

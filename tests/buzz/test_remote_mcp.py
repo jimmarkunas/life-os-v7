@@ -1014,6 +1014,18 @@ class Credentials(Server):
             )
             self.assertNotIn("probe", json.dumps(out))
 
+    def test_a_flat_memory_call_with_community_beside_operation_routes_to_personal_like_the_nested_one(self):
+        """Muse's shape: operation, community, workspace and query all at the top level of buzz_read."""
+        self.start(access=self.access())
+        status, out = self.tool(
+            self.tok(), "buzz_read", operation="memory_recall", community="life-os", workspace="Personal", query="probe"
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn(out.get("reason"), ("unknown_tenant", "invalid_argument"))
+        self.assertEqual(self.receipts[-2]["tenant"], "personal")  # it reached the gate as a Personal call
+        status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="life-os", workspace="x")
+        self.assertEqual((status, out["error"]), (200, "invalid_argument"))  # only memory calls are lifted
+
     def test_one_credential_never_becomes_another_client_whatever_the_caller_sends(self):
         self.start(access=self.access())
         status, raw, _ = self.req(

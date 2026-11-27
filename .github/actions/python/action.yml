@@ -9,6 +9,11 @@ runs:
         python3 --version | grep -q '^Python 3\.12\.' || { echo "::error::the runner image's python3 is not 3.12"; exit 1; }
         python3 -m venv "$RUNNER_TEMP/venv"
         echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+    - name: Pip download cache (keyed on requirements.lock; a miss installs exactly as before, the hashes are still checked)
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ~/.cache/pip
+        key: pip-${{ runner.os }}-${{ hashFiles('requirements.lock') }}
     - name: Install dependencies
       shell: bash
       run: pip install --require-hashes -r requirements.lock
