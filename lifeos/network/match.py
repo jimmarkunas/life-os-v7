@@ -10,7 +10,21 @@ from lifeos.platform import names
 CURRENT, PREVIOUS, POSSIBLE = "CURRENT", "PREVIOUS", "POSSIBLE"
 TIERS = (CURRENT, PREVIOUS, POSSIBLE)
 FRESH_DAYS, AGING_DAYS, MAX_LEADS = 45, 120, 5
-ROLE_STOP = {"and", "the", "for", "of", "senior", "sr", "junior", "jr", "lead", "head", "principal", "staff", "associate"}
+ROLE_STOP = {
+    "and",
+    "the",
+    "for",
+    "of",
+    "senior",
+    "sr",
+    "junior",
+    "jr",
+    "lead",
+    "head",
+    "principal",
+    "staff",
+    "associate",
+}
 
 
 def freshness(age_days):
@@ -36,7 +50,7 @@ def build_index(rows):
 def _prefix(a, b):
     x, y = a.split(), b.split()
     short, long_ = (x, y) if len(x) <= len(y) else (y, x)
-    return a != b and bool(short) and long_[:len(short)] == short
+    return a != b and bool(short) and long_[: len(short)] == short
 
 
 def leads_for(company_key, job_title, index, today, aliases=None, limit=MAX_LEADS):
@@ -57,12 +71,25 @@ def leads_for(company_key, job_title, index, today, aliases=None, limit=MAX_LEAD
         for person_id, tier, words, verified, position_id in entries:
             tier = kind or tier
             rank = TIERS.index(tier)
-            lead = {"person_id": person_id, "tier": tier, "age_days": max((today - verified).days, 0), "overlap": len(wanted & words), "company_key": key, "_verified": verified}
+            lead = {
+                "person_id": person_id,
+                "tier": tier,
+                "age_days": max((today - verified).days, 0),
+                "overlap": len(wanted & words),
+                "company_key": key,
+                "_verified": verified,
+            }
             if position_id is not None:
                 lead["position_id"] = position_id
-            if person_id not in best or rank < TIERS.index(best[person_id]["tier"]) or (rank == TIERS.index(best[person_id]["tier"]) and verified > best[person_id]["_verified"]):
+            if (
+                person_id not in best
+                or rank < TIERS.index(best[person_id]["tier"])
+                or (rank == TIERS.index(best[person_id]["tier"]) and verified > best[person_id]["_verified"])
+            ):
                 best[person_id] = lead
-    ordered = sorted(best.values(), key=lambda l: (TIERS.index(l["tier"]), -l["overlap"], l["age_days"], l["person_id"]))
+    ordered = sorted(
+        best.values(), key=lambda l: (TIERS.index(l["tier"]), -l["overlap"], l["age_days"], l["person_id"])
+    )
     for lead in ordered:
         lead["freshness"] = freshness(lead["age_days"])
         del lead["_verified"]

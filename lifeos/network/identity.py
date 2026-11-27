@@ -2,6 +2,7 @@
 
 A person exists only when identity is deterministic: a valid, unique LinkedIn profile address. No address is
 HELD, a non-profile address is REJECTED, rows sharing an address are HELD together. Email is never read."""
+
 from collections import Counter
 import hashlib
 
@@ -28,11 +29,24 @@ def classify(rows, malformed=0):
         else:
             ckey = parse.company_key(row["company"])
             usable = bool(ckey) and not parse.not_an_employer(row["company"], row["first"], row["last"])
-            people.append({"url_key": key, "name": f"{row['first']} {row['last']}".strip(), "connected_on": parse.parse_date(row["connected"]),
-                           "company_key": ckey if usable else None, "company_name": row["company"].strip() if usable else None, "title": row["title"].strip() or None})
+            people.append(
+                {
+                    "url_key": key,
+                    "name": f"{row['first']} {row['last']}".strip(),
+                    "connected_on": parse.parse_date(row["connected"]),
+                    "company_key": ckey if usable else None,
+                    "company_name": row["company"].strip() if usable else None,
+                    "title": row["title"].strip() or None,
+                }
+            )
     people.sort(key=lambda p: p["url_key"])
-    out = {"people": people, "source_rows": len(rows), "ambiguous_held": held, "rejected": rejected - malformed,
-           "positions": sum(1 for p in people if p["company_key"])}
+    out = {
+        "people": people,
+        "source_rows": len(rows),
+        "ambiguous_held": held,
+        "rejected": rejected - malformed,
+        "positions": sum(1 for p in people if p["company_key"]),
+    }
     assert out["source_rows"] == len(people) + held + out["rejected"]
     return out
 

@@ -3,6 +3,7 @@
 Only words that appear in the message; nothing inferred. A field the message does not state is written `Not
 stated`; a set value is never replaced. Logs carry source labels and page ids, never names or companies (public
 repository)."""
+
 import re
 
 from lifeos.platform.fixed_code import fixed
@@ -13,19 +14,28 @@ NOT_STATED = "Not stated"
 FIELDS = (("company", "Company"), ("role", "Role"), ("client", "Client"))
 
 
-TITLE_WORDS = (r"engineer|developer|architect|manager|director|analyst|consultant|administrator|designer|scientist|specialist|lead|officer|programmer|technician|"
-               r"strategist|coordinator|supervisor|owner|head of [A-Za-z]+|vp|vice president|cto|cio|ciso|devops|sre|sdet|qa|tester|writer|editor|producer|planner|advisor|executive")
-TITLE = re.compile(rf"\b(?:(?:senior|sr\.?|junior|jr\.?|staff|principal|lead|associate|chief|global|regional|technical|enterprise|cloud|data|software|solutions?|systems?|network|security|"
-                   rf"infrastructure|platform|product|program|project|ai|ml|full[- ]stack|front[- ]end|back[- ]end|it|ux|ui)[ /-]+){{0,4}}(?:{TITLE_WORDS})\b(?:\s+(?:i{{1,3}}|iv|v|[1-5]))?", re.I)
+TITLE_WORDS = (
+    r"engineer|developer|architect|manager|director|analyst|consultant|administrator|designer|scientist|specialist|lead|officer|programmer|technician|"
+    r"strategist|coordinator|supervisor|owner|head of [A-Za-z]+|vp|vice president|cto|cio|ciso|devops|sre|sdet|qa|tester|writer|editor|producer|planner|advisor|executive"
+)
+TITLE = re.compile(
+    rf"\b(?:(?:senior|sr\.?|junior|jr\.?|staff|principal|lead|associate|chief|global|regional|technical|enterprise|cloud|data|software|solutions?|systems?|network|security|"
+    rf"infrastructure|platform|product|program|project|ai|ml|full[- ]stack|front[- ]end|back[- ]end|it|ux|ui)[ /-]+){{0,4}}(?:{TITLE_WORDS})\b(?:\s+(?:i{{1,3}}|iv|v|[1-5]))?",
+    re.I,
+)
 SUBJECT_NOISE = re.compile(r"^(?:\s*(?:re|fw|fwd)\s*:\s*)+", re.I)
 SEPARATORS = re.compile(r"\s+(?:[|\-–—:@]|at|with|for)\s+")
-DISPLAY = re.compile(r"^(?P<n>[^|@\-–—()]{2,40}?)\s*(?:[|@]|\s[-–—]\s|\()\s*(?P<c>[A-Z0-9][A-Za-z0-9&'’.\- ]{1,50}?)\)?\s*$")
+DISPLAY = re.compile(
+    r"^(?P<n>[^|@\-–—()]{2,40}?)\s*(?:[|@]|\s[-–—]\s|\()\s*(?P<c>[A-Z0-9][A-Za-z0-9&'’.\- ]{1,50}?)\)?\s*$"
+)
 SIGNATURE_LINES = 14
 MAX_WORDS_ROLE = 9
 
 
 def _words_in(value, message):
-    haystack = " ".join(str(message.get(k) or "") for k in ("sender_name", "sender_address", "subject", "body")).casefold()
+    haystack = " ".join(
+        str(message.get(k) or "") for k in ("sender_name", "sender_address", "subject", "body")
+    ).casefold()
     return all(w in haystack for w in re.findall(r"[a-z0-9]+", value.casefold()))
 
 
@@ -46,7 +56,13 @@ def _display_company(message):
     if not m:
         return ""
     name, company = m.group("n").strip(), m.group("c").strip(" .|-")
-    if not company or company.casefold() == name.casefold() or "@" in company or company.casefold() in Q.NOT_AN_ORG or len(company.split()) > 5:
+    if (
+        not company
+        or company.casefold() == name.casefold()
+        or "@" in company
+        or company.casefold() in Q.NOT_AN_ORG
+        or len(company.split()) > 5
+    ):
         return ""
     return company
 
@@ -59,7 +75,11 @@ def _domain_company(message):
 
 
 def company(message, evidence):
-    for source, value in (("signature", _signature_company(message, evidence)), ("display name", _display_company(message)), ("domain", _domain_company(message))):
+    for source, value in (
+        ("signature", _signature_company(message, evidence)),
+        ("display name", _display_company(message)),
+        ("domain", _domain_company(message)),
+    ):
         if value and _words_in(value, message):
             return value.strip(), source
     return "", ""
@@ -136,7 +156,10 @@ def apply(notion, row, message, write):
 
 
 def blank_rows(notion):
-    rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in (store.NEEDS_ACTION, store.WAITING)]})
+    rows = store.rows_where(
+        notion,
+        {"or": [{"property": "Action Status", "select": {"equals": s}} for s in (store.NEEDS_ACTION, store.WAITING)]},
+    )
     return [r for r in rows if r["active"] and not r["done"] and any(not str(r[f] or "").strip() for f, _ in FIELDS)]
 
 
@@ -149,11 +172,15 @@ def ask_of(message):
     verdict, detail = Q.qualify(message, shape, reason, evidence)
     found = detail if verdict == "CANDIDATE" and isinstance(detail, dict) else {}
     subject = SUBJECT_NOISE.sub("", str(message.get("subject") or "")).strip()
-    return store.what_or_fallback({"what": found.get("what", ""), "role": found.get("role") or role(message)[0], "subject": subject})
+    return store.what_or_fallback(
+        {"what": found.get("what", ""), "role": found.get("role") or role(message)[0], "subject": subject}
+    )
 
 
 def blank_ask_rows(notion):
-    rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in ASK_STATUSES]})
+    rows = store.rows_where(
+        notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in ASK_STATUSES]}
+    )
     return [r for r in rows if not str(r["what"] or "").strip()]
 
 

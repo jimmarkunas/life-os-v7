@@ -4,6 +4,7 @@ Returns ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 Company comes only from the signature, a first-person statement, or an agreeing sender domain; Client only when
 stated; Role from a fixed pattern; What they want from intent.py. A missing company or ambiguous request makes
 the row Needs review; an unreadable name or a LinkedIn notification without recruiting evidence is UNRESOLVED."""
+
 import re
 from datetime import datetime
 
@@ -11,16 +12,65 @@ from . import classify as C
 from .identity import clean_name, week_ending
 from .intent import request
 
-CLIENT = re.compile(r"(?:\bon behalf of\b|\bour client,?|\bmy client,?)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?)\s*(?:[,.;]|\bis\b|\bhas\b|\bare\b|$)")
-ROLE = re.compile(r"\b(?:for|regarding|about)\s+(?:a|an|the|our)\s+(?P<r>[A-Z][A-Za-z0-9/&+.\- ]{2,60}?)\s+(?:role|position|opening|opportunity)\b")
-TITLE_AT = re.compile(rf"{C.TITLE}\s*(?:(?:\bat\b|\bwith\b|[|@,\-–—])\s*)(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{{1,60}}?)\s*(?:$|[|,.;(])", re.I)
-ORG_LINE = re.compile(r"^[\s|\-–—•*]*(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?\s(?:Inc\.?|LLC|L\.L\.C\.|Ltd\.?|Corp\.?|Corporation|Technologies|Technology|Solutions|Systems|Staffing|Consulting|Group|Networks|Services|Partners|Global|Labs|Software|Infotech))[\s|,.\-–—]*$")
+CLIENT = re.compile(
+    r"(?:\bon behalf of\b|\bour client,?|\bmy client,?)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?)\s*(?:[,.;]|\bis\b|\bhas\b|\bare\b|$)"
+)
+ROLE = re.compile(
+    r"\b(?:for|regarding|about)\s+(?:a|an|the|our)\s+(?P<r>[A-Z][A-Za-z0-9/&+.\- ]{2,60}?)\s+(?:role|position|opening|opportunity)\b"
+)
+TITLE_AT = re.compile(
+    rf"{C.TITLE}\s*(?:(?:\bat\b|\bwith\b|[|@,\-–—])\s*)(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{{1,60}}?)\s*(?:$|[|,.;(])", re.I
+)
+ORG_LINE = re.compile(
+    r"^[\s|\-–—•*]*(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?\s(?:Inc\.?|LLC|L\.L\.C\.|Ltd\.?|Corp\.?|Corporation|Technologies|Technology|Solutions|Systems|Staffing|Consulting|Group|Networks|Services|Partners|Global|Labs|Software|Infotech))[\s|,.\-–—]*$"
+)
 ORG = r"\(?(?P<c>[A-Z0-9][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,4}?)\)?(?=\s*[,;:\n]|\.(?:\s|$)|\s+(?:and|a|an|the|who|which|where|in|on|for|as)\b|$)"
 STATED_COMPANY = re.compile(r"\bI(?:(?:'m|’m|\s+am)\s+(?:with|at|from)|\s+work\s+(?:with|for|at))\s+" + ORG)
-ROLE_LABEL = re.compile(r"^[ \t>*•\-]*(?:role|position|job title)[ \t]*[:：][ \t]*(?P<v>[^\n]{2,120}?)[ \t]*$", re.I | re.M)
-REQUISITION = re.compile(r"^(?:(?:req(?:uisition)?|job|ref)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*)?(?P<req>[A-Z]{0,4}[-_]?\d{3,10})\s*[-–—:|]\s*(?P<r>\S.*)$", re.I)
-NOT_A_TITLE = {"remote", "hybrid", "onsite", "on-site", "full time", "full-time", "part time", "part-time", "contract", "w2", "c2c", "tbd", "n/a", "open", "various"}
-NOT_AN_ORG = {"you", "your", "me", "us", "our", "my", "them", "this", "that", "one", "several", "many", "top", "leading", "various", "clients", "companies", "team", "everyone"}
+ROLE_LABEL = re.compile(
+    r"^[ \t>*•\-]*(?:role|position|job title)[ \t]*[:：][ \t]*(?P<v>[^\n]{2,120}?)[ \t]*$", re.I | re.M
+)
+REQUISITION = re.compile(
+    r"^(?:(?:req(?:uisition)?|job|ref)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*)?(?P<req>[A-Z]{0,4}[-_]?\d{3,10})\s*[-–—:|]\s*(?P<r>\S.*)$",
+    re.I,
+)
+NOT_A_TITLE = {
+    "remote",
+    "hybrid",
+    "onsite",
+    "on-site",
+    "full time",
+    "full-time",
+    "part time",
+    "part-time",
+    "contract",
+    "w2",
+    "c2c",
+    "tbd",
+    "n/a",
+    "open",
+    "various",
+}
+NOT_AN_ORG = {
+    "you",
+    "your",
+    "me",
+    "us",
+    "our",
+    "my",
+    "them",
+    "this",
+    "that",
+    "one",
+    "several",
+    "many",
+    "top",
+    "leading",
+    "various",
+    "clients",
+    "companies",
+    "team",
+    "everyone",
+}
 SUFFIX_DOT = {"inc", "corp", "ltd", "co", "llc", "l.l.c", "l.p", "plc"}
 MEDIUM = "Email"
 
@@ -63,7 +113,13 @@ def _role(subject, body):
         title = (found.group("r") if found else value).strip(" .;|")
         if found and len(title) <= 80:
             req = found.group("req").strip()
-        if not role and 3 <= len(title) <= 80 and len(title.split()) <= 10 and not title.endswith(("?", ":")) and title.casefold() not in NOT_A_TITLE:
+        if (
+            not role
+            and 3 <= len(title) <= 80
+            and len(title.split()) <= 10
+            and not title.endswith(("?", ":"))
+            and title.casefold() not in NOT_A_TITLE
+        ):
             role = title
         elif role and role.casefold() != title.casefold():
             req = ""
@@ -78,11 +134,71 @@ def _org_from_signature(body):
     return ""
 
 
-FREE_MAIL = {"gmail", "googlemail", "yahoo", "outlook", "hotmail", "live", "msn", "icloud", "me", "mac", "aol", "proton", "protonmail", "pm", "gmx", "mail", "comcast", "att", "verizon", "sbcglobal", "zoho", "yandex"}
-ATS = {"greenhouse", "lever", "workday", "myworkday", "icims", "smartrecruiters", "bamboohr", "jobvite", "monster", "careerbuilder", "recruitee", "ashbyhq", "workable", "taleo", "paylocity", "ultipro", "adp", "linkedin", "indeed"}
+FREE_MAIL = {
+    "gmail",
+    "googlemail",
+    "yahoo",
+    "outlook",
+    "hotmail",
+    "live",
+    "msn",
+    "icloud",
+    "me",
+    "mac",
+    "aol",
+    "proton",
+    "protonmail",
+    "pm",
+    "gmx",
+    "mail",
+    "comcast",
+    "att",
+    "verizon",
+    "sbcglobal",
+    "zoho",
+    "yandex",
+}
+ATS = {
+    "greenhouse",
+    "lever",
+    "workday",
+    "myworkday",
+    "icims",
+    "smartrecruiters",
+    "bamboohr",
+    "jobvite",
+    "monster",
+    "careerbuilder",
+    "recruitee",
+    "ashbyhq",
+    "workable",
+    "taleo",
+    "paylocity",
+    "ultipro",
+    "adp",
+    "linkedin",
+    "indeed",
+}
 SECOND_LEVEL = {"co", "com", "org", "net", "ac", "gov", "edu"}
 WORD = re.compile(r"[A-Za-z0-9&](?:[A-Za-z0-9&.'’-]*[A-Za-z0-9&])?")
-SUFFIX_WORDS = {"inc", "inc.", "llc", "ltd", "ltd.", "corp", "corp.", "corporation", "solutions", "technologies", "systems", "staffing", "consulting", "group", "services", "global"}
+SUFFIX_WORDS = {
+    "inc",
+    "inc.",
+    "llc",
+    "ltd",
+    "ltd.",
+    "corp",
+    "corp.",
+    "corporation",
+    "solutions",
+    "technologies",
+    "systems",
+    "staffing",
+    "consulting",
+    "group",
+    "services",
+    "global",
+}
 
 
 def _domain_label(address):
@@ -104,17 +220,26 @@ def _org_from_domain(address, body):
     words = list(WORD.finditer(text))
     for i, first in enumerate(words):
         for width in range(1, 5):
-            window = words[i:i + width]
+            window = words[i : i + width]
             if len(window) < width:
                 break
-            if any(text[a.end():b.start()] not in (" ", " & ") for a, b in zip(window, window[1:])):
+            if any(text[a.end() : b.start()] not in (" ", " & ") for a, b in zip(window, window[1:])):
                 break
-            span = text[window[0].start():window[-1].end()]
-            if re.sub(r"[^a-z0-9]", "", span.lower()) == label and all(w.group()[0].isupper() or w.group()[0].isdigit() for w in window) and span.casefold() not in NOT_AN_ORG:
+            span = text[window[0].start() : window[-1].end()]
+            if (
+                re.sub(r"[^a-z0-9]", "", span.lower()) == label
+                and all(w.group()[0].isupper() or w.group()[0].isdigit() for w in window)
+                and span.casefold() not in NOT_AN_ORG
+            ):
                 nxt = words[i + width] if i + width < len(words) else None
-                if nxt and text[window[-1].end():nxt.start()] == " " and nxt.group().casefold() in SUFFIX_WORDS and nxt.group().casefold() != window[-1].group().casefold():
-                    span = text[window[0].start():nxt.end()]
-                    if nxt.group().casefold() in ("inc", "ltd", "corp") and text[nxt.end():nxt.end() + 1] == ".":
+                if (
+                    nxt
+                    and text[window[-1].end() : nxt.start()] == " "
+                    and nxt.group().casefold() in SUFFIX_WORDS
+                    and nxt.group().casefold() != window[-1].group().casefold()
+                ):
+                    span = text[window[0].start() : nxt.end()]
+                    if nxt.group().casefold() in ("inc", "ltd", "corp") and text[nxt.end() : nxt.end() + 1] == ".":
                         span += "."
                 return span
     return ""
@@ -138,10 +263,30 @@ def qualify(message, shape, reason, evidence):
     if relay and reason == C.RELAY_UNVERIFIED:
         return "UNRESOLVED", reason
     body = message.get("body", "")[:6000]
-    company = "" if relay else (_company(evidence) or _stated_company(body) or _org_from_signature(message.get("body", "")) or _org_from_domain(message.get("sender_address", ""), message.get("body", "")))
+    company = (
+        ""
+        if relay
+        else (
+            _company(evidence)
+            or _stated_company(body)
+            or _org_from_signature(message.get("body", ""))
+            or _org_from_domain(message.get("sender_address", ""), message.get("body", ""))
+        )
+    )
     client = _search(CLIENT, "c", body)
     role, requisition = _role(message.get("subject", ""), body)
     what, ambiguous = ("", False) if relay else request(body, role, requisition)
     review = relay or not company or len(person.split()) < 2 or ambiguous
-    return "CANDIDATE", {"person": person, "company": company, "client": client, "role": role, "medium": MEDIUM, "what": what, "last_contact": minute(message["received"]),
-                         "week_ending": week_ending(message["received"]), "source_url": message.get("url", ""), "needs_review": review, "shape": shape}
+    return "CANDIDATE", {
+        "person": person,
+        "company": company,
+        "client": client,
+        "role": role,
+        "medium": MEDIUM,
+        "what": what,
+        "last_contact": minute(message["received"]),
+        "week_ending": week_ending(message["received"]),
+        "source_url": message.get("url", ""),
+        "needs_review": review,
+        "shape": shape,
+    }

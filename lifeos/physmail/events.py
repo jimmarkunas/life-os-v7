@@ -4,6 +4,7 @@
 verb). Anything else from the vendor is IGNORED; unknown or contradictory evidence is REVIEW with a fixed
 reason. The vendor address is built with chr(64) so no location-identifying literal enters the public
 repository."""
+
 import re
 from datetime import datetime, timezone
 from email.utils import getaddresses
@@ -18,7 +19,16 @@ FEDEX_SUBJECT = re.compile(r"^\s*(?:re\s*:\s*)?online\s+fedex\s+tracking\s*-\s*(
 FEDEX_ACTIVITY = re.compile(r"^\s*\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*[ap]m\s+(.+?)\s*$", re.I)
 NEW_MAIL = re.compile(r"^\s*(?:re\s*:\s*)?new\s+mail\b", re.I)
 COMPLETED = re.compile(r"^\s*(?:re\s*:\s*)?completed\s+action\s+requests?\b", re.I)
-VERBS = {"scan": "SCAN", "scanned": "SCAN", "shred": "SHRED", "shredded": "SHRED", "recycle": "RECYCLE", "recycled": "RECYCLE", "forward": "FORWARD", "forwarded": "FORWARD"}
+VERBS = {
+    "scan": "SCAN",
+    "scanned": "SCAN",
+    "shred": "SHRED",
+    "shredded": "SHRED",
+    "recycle": "RECYCLE",
+    "recycled": "RECYCLE",
+    "forward": "FORWARD",
+    "forwarded": "FORWARD",
+}
 MAIL_NO = re.compile(r"(?:\b(?:mail|item)\s*(?:number|no\.?|#)?\s*[:#]?\s*|#\s*)(\d{3,})\b", re.I)
 SUBJECT_COUNT = re.compile(r"new\s+mail\D{0,20}?(\d{1,3})\b", re.I)
 BODY_COUNT = re.compile(r"\b(\d{1,3})\s+(?:new\s+)?(?:mail\s+)?(?:items?|pieces?|letters?|packages?)\b", re.I)
@@ -76,7 +86,13 @@ def extract(message):
     if not _vendor(message.get("sender")):
         return {"kind": "IGNORED", "reason": "SENDER_NOT_VENDOR"}
     at = _received(message.get("received_at"))
-    if not isinstance(message_id, str) or not message_id.strip() or at is None or not isinstance(body, str) or not isinstance(subject, str):
+    if (
+        not isinstance(message_id, str)
+        or not message_id.strip()
+        or at is None
+        or not isinstance(body, str)
+        or not isinstance(subject, str)
+    ):
         return _review(message_id if isinstance(message_id, str) else "", at, "MESSAGE_INCOMPLETE")
     message_id = message_id.strip()
     if NEW_MAIL.match(subject):
@@ -114,7 +130,12 @@ def extract(message):
 
 def _shipment(message):
     """A FedEx follow-the-shipment update -> {"kind": "SHIPMENT", id, at, number, state, delivered}."""
-    message_id, body, subject, at = message.get("id"), message.get("body_text"), message.get("subject"), _received(message.get("received_at"))
+    message_id, body, subject, at = (
+        message.get("id"),
+        message.get("body_text"),
+        message.get("subject"),
+        _received(message.get("received_at")),
+    )
     found = FEDEX_SUBJECT.match(subject) if isinstance(subject, str) else None
     if not found:
         return {"kind": "IGNORED", "reason": "SUBJECT_NOT_SCOPED"}
@@ -123,4 +144,11 @@ def _shipment(message):
     activity = next((m.group(1) for m in (FEDEX_ACTIVITY.match(line) for line in body.splitlines()) if m), None)
     if not activity:
         return _review(message_id.strip(), at, "SHIPMENT_STATE_MISSING")
-    return {"kind": "SHIPMENT", "id": message_id.strip(), "at": at, "number": found.group(1), "state": activity[:80], "delivered": activity.lower().startswith("delivered")}
+    return {
+        "kind": "SHIPMENT",
+        "id": message_id.strip(),
+        "at": at,
+        "number": found.group(1),
+        "state": activity[:80],
+        "delivered": activity.lower().startswith("delivered"),
+    }

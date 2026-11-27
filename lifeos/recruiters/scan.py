@@ -3,6 +3,7 @@
 A scheduled tick reads every 3 hours (skipped in between); the first read after 09:00 CT each day is the full
 14-day scan. Manual runs are never skipped. No usable ledger record also means the full scan, and the reason
 says so."""
+
 import datetime as dt
 import json
 from pathlib import Path

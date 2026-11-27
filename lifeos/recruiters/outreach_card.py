@@ -3,6 +3,7 @@
 V7 writes ONE thing: the count line's text, in the callout named by RECRUITER_COUNT_BLOCK_ID. The callout's
 title, link and view are untouched. Live writes need --live AND RECRUITER_OUTREACH=on. If the Recruiters stage
 failed or the source is unreadable the line is left as it was and the step is a warning."""
+
 import json
 import os
 import re
@@ -27,7 +28,12 @@ def fail(code):
 
 
 def writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def source(environ):
@@ -55,7 +61,11 @@ def retext(parts, text):
     gray = [i for i, p in enumerate(head) if p.get("type") == "text" and _gray(p)]
     if not gray and link_at is None:
         return None
-    new = {"type": "text", "text": {"content": text + (" · " if link_at is not None else "")}, "annotations": {"color": "gray"}}
+    new = {
+        "type": "text",
+        "text": {"content": text + (" · " if link_at is not None else "")},
+        "annotations": {"color": "gray"},
+    }
     if gray:
         out = [p for i, p in enumerate(parts) if i not in gray[1:]]
         out[gray[0]] = new
@@ -93,7 +103,13 @@ def region(client, environ):
         block = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     except NotionError as error:
         raise fail(f"ANCHOR_GET:{error}") from None
-    if not isinstance(block, dict) or block.get("type") != "callout" or not R.same_id(block.get("id"), block_id) or block.get("archived") or block.get("in_trash"):
+    if (
+        not isinstance(block, dict)
+        or block.get("type") != "callout"
+        or not R.same_id(block.get("id"), block_id)
+        or block.get("archived")
+        or block.get("in_trash")
+    ):
         raise fail("ANCHOR_INVALID")
     return block
 
