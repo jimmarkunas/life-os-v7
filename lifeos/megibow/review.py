@@ -3,14 +3,29 @@
 V7 adds a row per uncertain item, reads the Resolution on the next run and hands the decisions back; rows go Applied,
 then Archived 14 days later (never deleted).
 """
+
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from lifeos.platform.notion_client import NotionError, rich_text
 
-SCHEMA = {"Item": "title", "Week of": "date", "Candidate": "select", "Why uncertain": "select", "Person or company": "rich_text", "Resolution": "select",
-          "Status": "select", "Source key": "rich_text"}
-WHY = {"relevance": "Relevance", "occurrence": "Occurrence", "contact_type": "Contact type", "creation_time_unknown": "Creation time unknown", "deferred": "Deferred"}
+SCHEMA = {
+    "Item": "title",
+    "Week of": "date",
+    "Candidate": "select",
+    "Why uncertain": "select",
+    "Person or company": "rich_text",
+    "Resolution": "select",
+    "Status": "select",
+    "Source key": "rich_text",
+}
+WHY = {
+    "relevance": "Relevance",
+    "occurrence": "Occurrence",
+    "contact_type": "Contact type",
+    "creation_time_unknown": "Creation time unknown",
+    "deferred": "Deferred",
+}
 ARCHIVE_AFTER = timedelta(days=14)
 
 
@@ -42,8 +57,15 @@ def read(notion, source_id):
         page = notion.query_data_source(source_id, body)
         for p in page.get("results", []):
             props = p.get("properties") or {}
-            rows.append({"id": p["id"], "key": _text(props.get("Source key")), "resolution": ((props.get("Resolution") or {}).get("select") or {}).get("name") or "",
-                         "status": ((props.get("Status") or {}).get("select") or {}).get("name") or "", "edited": p.get("last_edited_time") or ""})
+            rows.append(
+                {
+                    "id": p["id"],
+                    "key": _text(props.get("Source key")),
+                    "resolution": ((props.get("Resolution") or {}).get("select") or {}).get("name") or "",
+                    "status": ((props.get("Status") or {}).get("select") or {}).get("name") or "",
+                    "edited": p.get("last_edited_time") or "",
+                }
+            )
         if not page.get("has_more"):
             return rows
         cursor = page.get("next_cursor")
@@ -54,7 +76,13 @@ def plan(items, rows, now):
     """items: [{key, candidate, why, week, who}] now uncertain. -> {create, decisions{key: resolution}, applied[id], superseded[id], archive[id]}."""
     by_key = {r["key"]: r for r in rows if r["key"]}
     active = {i["key"] for i in items}
-    out = {"create": [i for i in items if i["key"] not in by_key], "decisions": {}, "applied": [], "superseded": [], "archive": []}
+    out = {
+        "create": [i for i in items if i["key"] not in by_key],
+        "decisions": {},
+        "applied": [],
+        "superseded": [],
+        "archive": [],
+    }
     for r in rows:
         if r["resolution"] and r["resolution"] != "Defer" and r["status"] != "Applied":
             out["decisions"][r["key"]] = r["resolution"]
@@ -72,14 +100,24 @@ def plan(items, rows, now):
 
 
 def _props(i):
-    return {"Item": {"title": rich_text(f"{i['candidate']} · {i['who']}")}, "Week of": {"date": {"start": i["week"]}}, "Candidate": {"select": {"name": i["candidate"]}},
-            "Why uncertain": {"select": {"name": WHY.get(i["why"], "Relevance")}}, "Person or company": {"rich_text": rich_text(i["who"])},
-            "Status": {"select": {"name": "Open"}}, "Source key": {"rich_text": rich_text(i["key"])}}
+    return {
+        "Item": {"title": rich_text(f"{i['candidate']} · {i['who']}")},
+        "Week of": {"date": {"start": i["week"]}},
+        "Candidate": {"select": {"name": i["candidate"]}},
+        "Why uncertain": {"select": {"name": WHY.get(i["why"], "Relevance")}},
+        "Person or company": {"rich_text": rich_text(i["who"])},
+        "Status": {"select": {"name": "Open"}},
+        "Source key": {"rich_text": rich_text(i["key"])},
+    }
 
 
 def write(notion, source_id, plan_):
     for item in plan_["create"]:
-        notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(item)})
+        notion.call_once(
+            "POST",
+            "/pages",
+            {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(item)},
+        )
     for page_id in plan_["applied"]:
         notion.update_page_properties(page_id, {"Status": {"select": {"name": "Applied"}}})
     for page_id in plan_["superseded"]:

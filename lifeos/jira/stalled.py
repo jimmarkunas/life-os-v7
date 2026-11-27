@@ -2,6 +2,7 @@
 
 Read only, no phone push; `needs-jim` tickets are not stalled.
 """
+
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -25,7 +26,9 @@ def json_text(node):
 
 
 def stalled(jira, now):
-    found = search(jira, 'project = LIFE AND status in ("In Progress", "Agent Go") AND issuetype != Epic', "status,updated,labels")
+    found = search(
+        jira, 'project = LIFE AND status in ("In Progress", "Agent Go") AND issuetype != Epic', "status,updated,labels"
+    )
     out = []
     for issue in found:
         fields = issue.get("fields") or {}

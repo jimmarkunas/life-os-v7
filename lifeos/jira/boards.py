@@ -3,6 +3,7 @@
 JIRA_BOARDS is "KEY:board_id[:flag...],...". Flags: all = triage every non-Epic item; readonly = snapshot only, no
 rollover. Failure: JIRA_CONFIG_MISSING:JIRA_BOARDS.
 """
+
 import os
 
 from lifeos.platform.jira import JiraError
@@ -17,8 +18,13 @@ def boards(environ=os.environ):
     for entry in raw.split(","):
         parts = [p.strip() for p in entry.split(":")]
         flags = parts[2:]
-        if len(parts) < 2 or not parts[0].isalnum() or not parts[1].isdigit() or any(f not in ("all", "readonly") for f in flags) \
-                or len(set(flags)) != len(flags):
+        if (
+            len(parts) < 2
+            or not parts[0].isalnum()
+            or not parts[1].isdigit()
+            or any(f not in ("all", "readonly") for f in flags)
+            or len(set(flags)) != len(flags)
+        ):
             raise JiraError("JIRA_CONFIG_INVALID")
         out.append((parts[0], int(parts[1]), "all" in flags, "readonly" in flags))
     if len({entry[0] for entry in out}) != len(out):

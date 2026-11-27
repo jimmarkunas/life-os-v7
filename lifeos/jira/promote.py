@@ -1,4 +1,5 @@
 """May an agent move this ticket to Agent Go itself, or must it wait for Jim? A pure check on a fetched Jira issue: no network, no write."""
+
 # Agents promote on their own except for the scary list below (policy: docs/life-os-development-policy.md section 4).
 # The agent makes transition 17 (To Do to Agent Go) and posts the one comment, or `[waiting on] Jim: <the one thing>`.
 import re
@@ -44,7 +45,7 @@ def protected_steps(description):
 def decide(issue):
     """-> ("promote", []) | ("wait", [categories]) | ("skip", [reason]). `skip` changes nothing in Jira."""
     fields = issue.get("fields") or {}
-    status = ((fields.get("status") or {}).get("name") or "To Do")
+    status = (fields.get("status") or {}).get("name") or "To Do"
     if status not in ("To Do", "To do"):
         return "skip", ["not_to_do"]
     if fields.get("issuetype", {}).get("name") == "Epic":
@@ -71,4 +72,13 @@ def act(issue):
     decision, reasons = decide(issue)
     if decision != "wait":
         return {"decision": decision, "reasons": reasons, "label": None, "comment": None}
-    return {"decision": decision, "reasons": reasons, "label": WAITING_LABEL, "comment": ("[waiting on] Jim: clear the Jim must do first items before this ticket moves to Agent Go" if reasons == ["jim_first"] else f"[waiting on] Jim: approve {', '.join(r.replace('_', ' ') for r in reasons)} before this ticket moves to Agent Go")}
+    return {
+        "decision": decision,
+        "reasons": reasons,
+        "label": WAITING_LABEL,
+        "comment": (
+            "[waiting on] Jim: clear the Jim must do first items before this ticket moves to Agent Go"
+            if reasons == ["jim_first"]
+            else f"[waiting on] Jim: approve {', '.join(r.replace('_', ' ') for r in reasons)} before this ticket moves to Agent Go"
+        ),
+    }

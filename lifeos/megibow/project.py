@@ -3,6 +3,7 @@
 The open week is recomputed; a closed week comes from the frozen store, and a week before the cut-over Monday is None
 (a dash).
 """
+
 from lifeos.megibow import classify as C
 from lifeos.megibow.windows import monday, visible_weeks
 
@@ -50,7 +51,9 @@ def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=Non
         if w == current:
             counts[w] = live[w]
         elif cutover is not None and w < cutover:
-            counts[w] = dict(history[w]) if w in history else None          # before the cutover Jim's own recorded week, never V7's reading of the mailbox
+            counts[w] = (
+                dict(history[w]) if w in history else None
+            )  # before the cutover Jim's own recorded week, never V7's reading of the mailbox
         elif w in frozen:
             counts[w] = dict(frozen[w])
         else:

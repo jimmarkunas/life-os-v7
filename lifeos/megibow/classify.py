@@ -3,6 +3,7 @@
 A candidate (a sent message or calendar event occurrence) becomes one outcome: COUNTED, EXCLUDED, REVIEW or DEGRADED;
 uncertain evidence goes to REVIEW. Keys are hashed before they are stored or shown.
 """
+
 from datetime import timedelta
 import hashlib
 import re
@@ -10,17 +11,46 @@ import re
 from lifeos.megibow.windows import week_of
 
 COUNTED, EXCLUDED, REVIEW = "COUNTED", "EXCLUDED", "REVIEW"
-OUTREACH, SCHEDULED, NETWORKING, RECRUITER, COMPANY = "Outreach", "Scheduled", "Networking Calls", "Recruiter Calls", "Company Calls"
+OUTREACH, SCHEDULED, NETWORKING, RECRUITER, COMPANY = (
+    "Outreach",
+    "Scheduled",
+    "Networking Calls",
+    "Recruiter Calls",
+    "Company Calls",
+)
 ACTIVITIES = (OUTREACH, SCHEDULED, NETWORKING, RECRUITER, COMPANY)
 CALLS = (NETWORKING, RECRUITER, COMPANY)
 CORROBORATION_DAYS = 3
 
-PERSONAL = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "icloud.com", "me.com", "aol.com", "proton.me", "protonmail.com"}
-AUTOMATED_LOCAL = re.compile(r"^(no-?reply|do-?not-?reply|notifications?|mailer|alerts?|bounce|support|billing|invoice|calendar-notification)\b", re.I)
+PERSONAL = {
+    "gmail.com",
+    "googlemail.com",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "msn.com",
+    "yahoo.com",
+    "icloud.com",
+    "me.com",
+    "aol.com",
+    "proton.me",
+    "protonmail.com",
+}
+AUTOMATED_LOCAL = re.compile(
+    r"^(no-?reply|do-?not-?reply|notifications?|mailer|alerts?|bounce|support|billing|invoice|calendar-notification)\b",
+    re.I,
+)
 RESOURCE = re.compile(r"resource\.calendar\.google\.com$|zoom\.us$", re.I)
-RECRUITER_WORDS = re.compile(r"\b(recruit\w*|talent acquisition|sourcer|staffing|headhunt\w*|search firm|phone screen)\b", re.I)
-NETWORK_WORDS = re.compile(r"\b(networking|listening tour|coffee chat|catch[- ]?up|intro(duction)? call|informational)\b", re.I)
-PLAUSIBLE_WORDS = re.compile(r"\b(recruit\w*|talent|interview\w*|referr\w*|hiring|job|opportunit\w*|r[eé]sum[eé]|introduc\w*|networking|career|listening tour|coffee chat|informational)\b", re.I)
+RECRUITER_WORDS = re.compile(
+    r"\b(recruit\w*|talent acquisition|sourcer|staffing|headhunt\w*|search firm|phone screen)\b", re.I
+)
+NETWORK_WORDS = re.compile(
+    r"\b(networking|listening tour|coffee chat|catch[- ]?up|intro(duction)? call|informational)\b", re.I
+)
+PLAUSIBLE_WORDS = re.compile(
+    r"\b(recruit\w*|talent|interview\w*|referr\w*|hiring|job|opportunit\w*|r[eé]sum[eé]|introduc\w*|networking|career|listening tour|coffee chat|informational)\b",
+    re.I,
+)
 RESPONSES_OK = ("accepted", "organizer")
 
 
@@ -91,7 +121,7 @@ def message(msg, ctx):
 
 def _decided(decision, default_activity, week, key):
     if decision.startswith("Count as "):
-        wanted = decision[len("Count as "):]
+        wanted = decision[len("Count as ") :]
         if wanted in ACTIVITIES or wanted + "s" in ACTIVITIES:
             return _out(COUNTED, wanted if wanted in ACTIVITIES else wanted + "s", week, "jim_decision", key)
     if decision == "Exclude":
@@ -129,7 +159,11 @@ def event(ev, ctx, now):
     if _excluded_domain(people, ctx) and not known(people, ctx):
         return [_out(EXCLUDED, None, start_week, "work_or_client", call_key)]
     text = f"{ev.get('title', '')} {ev.get('preview', '')}"
-    strong = known(people, ctx) or any(key_hash("contact", p) in ctx["contacts"] for p in people) or bool(RECRUITER_WORDS.search(text) or NETWORK_WORDS.search(text))
+    strong = (
+        known(people, ctx)
+        or any(key_hash("contact", p) in ctx["contacts"] for p in people)
+        or bool(RECRUITER_WORDS.search(text) or NETWORK_WORDS.search(text))
+    )
     plausible = strong or bool(PLAUSIBLE_WORDS.search(text))
     if not plausible:
         return [_out(EXCLUDED, None, start_week, "no_job_search_evidence", call_key)]
@@ -152,7 +186,10 @@ def event(ev, ctx, now):
         out.append(_decided(decided, "Call", start_week, call_key))
         return out
     occurred = ev.get("my_response") in RESPONSES_OK and any(
-        ev["end"] <= sent <= ev["end"] + timedelta(days=CORROBORATION_DAYS) for p in people for sent in ctx["sent_to"].get(p, []))
+        ev["end"] <= sent <= ev["end"] + timedelta(days=CORROBORATION_DAYS)
+        for p in people
+        for sent in ctx["sent_to"].get(p, [])
+    )
     if not occurred:
         out.append(_out(REVIEW, "Call", start_week, "occurrence", call_key, "Call"))
         return out

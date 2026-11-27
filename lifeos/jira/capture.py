@@ -3,6 +3,7 @@
 A comment on a ticket updated in the last two hours is a decision when it has an `[approvals]` line; each becomes one
 Personal memory item. Output: counts and fixed words, never text.
 """
+
 # A comment never stores twice (one private state row each); an edit corrects its item, a deletion revokes it; nothing
 # older than the window is backfilled.
 # Writes go through the governed MCP as the `jira-capture` client, whose server applies the sensitive-text filter; a
@@ -25,7 +26,9 @@ MAX_ISSUES, WRITE_CAP, TEXT_MAX = 40, 30, 500
 URL_DEFAULT = "https://lifeos-buzz.tail96b07f.ts.net/mcp"
 SOURCE = "jira-decision"
 TAG = re.compile(r"\[approvals\]", re.I)
-LEAD = re.compile(r"^\W*(?:jim'?s (?:decisions?|rules?|approvals?)\b|jim,\s+[A-Z][a-z]{2,8}\s+\d{1,2}\b[^\n:]{0,60}:)", re.I)
+LEAD = re.compile(
+    r"^\W*(?:jim'?s (?:decisions?|rules?|approvals?)\b|jim,\s+[A-Z][a-z]{2,8}\s+\d{1,2}\b[^\n:]{0,60}:)", re.I
+)
 COMMENT_STORE = Store("jira_capture_comment", "comment_id", "BIGINT")
 ISSUE_STORE = Store("jira_capture_issue", "issue_key", "VARCHAR(32)")
 
@@ -34,7 +37,11 @@ def flatten(node):
     if isinstance(node, dict):
         inner = "".join(flatten(c) for c in node.get("content") or ())
         text = node.get("text", "") + inner
-        return text + "\n" if node.get("type") in ("paragraph", "heading", "listItem", "hardBreak", "bulletList", "orderedList") else text
+        return (
+            text + "\n"
+            if node.get("type") in ("paragraph", "heading", "listItem", "hardBreak", "bulletList", "orderedList")
+            else text
+        )
     return str(node or "")
 
 
@@ -49,7 +56,6 @@ def decision_text(body):
 
 
 class Memory:
-
     def __init__(self, url, token, urlopen=urllib.request.urlopen):
         self.url, self.token, self.urlopen = url, token, urlopen
         self.down = ""  # the error class of the first failed call; later calls fail at once instead of waiting out 30 seconds each
@@ -57,9 +63,26 @@ class Memory:
     def call(self, operation, arguments):
         if self.down:
             return {"ok": False, "error": "capture_unreachable"}
-        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": operation, "arguments": arguments}}}).encode()
-        request = urllib.request.Request(self.url, data=body, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18",
-                                                                                      "Authorization": "Bearer " + self.token, "User-Agent": "life-os-v7"})
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "buzz_read", "arguments": {"operation": operation, "arguments": arguments}},
+            }
+        ).encode()
+        request = urllib.request.Request(
+            self.url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "MCP-Protocol-Version": "2025-06-18",
+                "Authorization": "Bearer " + self.token,
+                "User-Agent": "life-os-v7",
+            },
+        )
         try:
             with self.urlopen(request, timeout=30) as reply:
                 return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
@@ -79,7 +102,6 @@ class Memory:
 
 
 class State:
-
     def __init__(self, connection):
         self.connection = connection
         COMMENT_STORE.ensure(connection)
@@ -136,7 +158,11 @@ def capture_issue(jira, key, memory, state, live, now, total):
             continue
         total["writes"] += 1
         text, source = _item(key, cid, decision), f"{SOURCE}:{key}#{cid}"
-        reply = memory.correct(prior["memory_id"], text, source) if prior and prior.get("state") == "stored" else memory.store(text, source)
+        reply = (
+            memory.correct(prior["memory_id"], text, source)
+            if prior and prior.get("state") == "stored"
+            else memory.store(text, source)
+        )
         new = (reply.get("data") or {}).get("id")
         if reply.get("ok") and new:
             _tick(total, "corrected" if prior and prior.get("state") == "stored" else "stored")
@@ -165,13 +191,28 @@ def capture_issue(jira, key, memory, state, live, now, total):
 def run(limit, live, environ=os.environ, jira=None, now=None, connect=None, memory=None):
     """Counts and fixed words only; not configured is the fixed `capture_not_configured`, never a failure."""
     now = now or datetime.now(timezone.utc)
-    total = {"issues": 0, "decisions": 0, "stored": 0, "corrected": 0, "revoked": 0, "unchanged": 0, "filtered": 0, "failed": 0, "deferred": 0, "would_write": 0, "writes": 0, "why": {}}
+    total = {
+        "issues": 0,
+        "decisions": 0,
+        "stored": 0,
+        "corrected": 0,
+        "revoked": 0,
+        "unchanged": 0,
+        "filtered": 0,
+        "failed": 0,
+        "deferred": 0,
+        "would_write": 0,
+        "writes": 0,
+        "why": {},
+    }
     token = (environ.get("LIFEOS_MCP_JIRA_CAPTURE") or "").strip()
     if live and memory is None and not token:
         return {**total, "why": {"capture_not_configured": 1}}
     memory = memory or Memory((environ.get("LIFEOS_MCP_URL") or URL_DEFAULT).strip(), token)
     jira = jira or Jira.from_env(environ)
-    issues = search(jira, f"project = {PROJECT} AND updated >= -{WINDOW_HOURS}h ORDER BY updated DESC", "summary")[:MAX_ISSUES]
+    issues = search(jira, f"project = {PROJECT} AND updated >= -{WINDOW_HOURS}h ORDER BY updated DESC", "summary")[
+        :MAX_ISSUES
+    ]
     total["issues"] = len(issues)
     state = None
     if live or connect:

@@ -3,6 +3,7 @@
 Every write is read back. Nothing around the block changes; a block of unexpected shape is DEGRADED and nothing is
 written.
 """
+
 from urllib.parse import quote
 
 from lifeos.platform import readback, report_region
@@ -20,7 +21,10 @@ def _fail(code):
 
 
 def _cells(row):
-    return [report_region.plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
+    return [
+        report_region.plain({"type": "x", "x": {"rich_text": cell}})
+        for cell in (row.get("table_row") or {}).get("cells") or []
+    ]
 
 
 def _plain_callout(meta):
@@ -50,21 +54,39 @@ def write(client, block_id, text, table_rows, live):
             raise _fail("RENDER_SHAPE")
         changed = [(r["id"], want) for r, want in zip(rows, table_rows) if _cells(r) != want]
     text_changed = _plain_callout(meta) != text
-    result = {"rows_written": 0, "text_written": False, "verified": True, "rows_changed": len(changed), "text_changed": text_changed}
+    result = {
+        "rows_written": 0,
+        "text_written": False,
+        "verified": True,
+        "rows_changed": len(changed),
+        "text_changed": text_changed,
+    }
     if not live:
         return result
     last_id = rows[-1]["id"] if rows else None
     for row_id, want in changed:
         bold = {"annotations": {"bold": True}} if row_id == last_id else {}
-        client.call("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}, **bold}] for c in want]}})
+        client.call(
+            "PATCH",
+            f"/blocks/{quote(row_id, safe='')}",
+            {"table_row": {"cells": [[{"type": "text", "text": {"content": c}, **bold}] for c in want]}},
+        )
         result["rows_written"] += 1
     if text_changed:
-        client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
+        client.call(
+            "PATCH",
+            f"/blocks/{quote(block_id, safe='')}",
+            {"callout": {"rich_text": [{"type": "text", "text": {"content": text}}]}},
+        )
         result["text_written"] = True
     if not (changed or text_changed):
         return result
-    ok, _ = readback.confirmed(lambda: locate(client, block_id),
-                               lambda after: (table_rows is None or [_cells(r) for r in after[2]] == table_rows) and _plain_callout(after[0]) == text)
+    ok, _ = readback.confirmed(
+        lambda: locate(client, block_id),
+        lambda after: (
+            (table_rows is None or [_cells(r) for r in after[2]] == table_rows) and _plain_callout(after[0]) == text
+        ),
+    )
     if ok:
         return result
     raise _fail("VERIFY_FAILED")
@@ -73,6 +95,7 @@ def write(client, block_id, text, table_rows, live):
 def read_legacy(client, block_id):
     """The one-time Cumulative seed: a "Legacy totals: Outreach 20, ..." paragraph -> counts, or None."""
     from lifeos.megibow import classify as C  # noqa: PLC0415
+
     for block in report_region.children(client, block_id, _fail):
         text = report_region.plain(block)
         if block.get("type") == "paragraph" and text.lower().startswith("legacy totals:"):
@@ -89,10 +112,11 @@ MANUAL = "phone calls:"
 
 
 def parse_manual(text, today):
-    """"Phone calls: Oct 5 Recruiter Calls 1; ..." -> ({monday: {activity: n}}, unreadable entry count)."""
+    """ "Phone calls: Oct 5 Recruiter Calls 1; ..." -> ({monday: {activity: n}}, unreadable entry count)."""
     from datetime import date, datetime as dt, timedelta  # noqa: PLC0415
     from lifeos.megibow import classify as C  # noqa: PLC0415
     from lifeos.megibow.windows import monday  # noqa: PLC0415
+
     out, bad = {}, 0
     body = text.split(":", 1)[1] if ":" in text else ""
     for entry in body.replace("\n", ";").split(";"):
@@ -125,4 +149,16 @@ def read_manual(client, block_id, today):
 
 
 def ensure_manual_line(client, block_id):
-    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Phone calls: none"}}]}}]})
+    client.call_once(
+        "PATCH",
+        f"/blocks/{quote(block_id, safe='')}/children",
+        {
+            "children": [
+                {
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Phone calls: none"}}]},
+                }
+            ]
+        },
+    )

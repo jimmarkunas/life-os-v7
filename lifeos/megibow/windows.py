@@ -1,4 +1,5 @@
 """MegIBOW weeks: Monday to Sunday in America/Chicago, the current week plus the prior seven. Pure."""
+
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
