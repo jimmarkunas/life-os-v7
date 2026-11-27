@@ -21,6 +21,9 @@ import time
 
 import yaml
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import wfsrc  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REPO = ROOT                                            # where `lifeos` is imported from (tests swap ROOT for a scratch repo)
 LEVEL = {"none": 0, "read": 1, "write": 2}
@@ -161,6 +164,7 @@ def expand_sets(text, sets_text):
     """LIFE-1013: a `bws-load` step names its credential list with `set: <name>` (the lists live in sets.yml); the gate judges the inline `secrets:` block that stands for it, so adding a name to sets.yml is a new credential like adding it inline."""
     sets = yaml.safe_load(sets_text) if sets_text else None
     sets = sets if isinstance(sets, dict) else {}
+    text = wfsrc.expand_aliases(text)                       # LIFE-1013: the generated workflows write repeats as YAML aliases; the gate judges the plain text
     return SET_REF.sub(lambda m: f"{m.group(1)}secrets: |\n" + "".join(f"{m.group(1)}  {line}\n" for line in str(sets.get(m.group(2), "")).splitlines()), text)
 
 

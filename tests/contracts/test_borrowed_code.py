@@ -53,7 +53,8 @@ def unpinned_mcp_commands(files, inventory):
 
 
 def _files():
-    return {str(path.relative_to(ROOT)): path.read_text() for path in sorted((ROOT / ".github").rglob("*")) if path.suffix in (".yml", ".yaml", ".sh") and "__pycache__" not in path.parts}
+    from tests import wftext
+    return {str(path.relative_to(ROOT)): wftext.text(path) if path.parent == ROOT / ".github" / "workflows" else path.read_text() for path in sorted((ROOT / ".github").rglob("*")) if path.suffix in (".yml", ".yaml", ".sh") and "__pycache__" not in path.parts}
 
 
 class BorrowedCodeTests(unittest.TestCase):

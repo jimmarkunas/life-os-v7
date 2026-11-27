@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import unittest
 
+from tests import wftext
+
 from lifeos.jobs import audit, guard, ledger, publish, retention
 from lifeos.jobs import lanes
 from lifeos.platform.notion_client import NotionError
@@ -251,7 +253,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
     """The Interview job gets only its own token: every Jobs secret is blanked, it is dispatch-only, and its failure is a warning, not a failed run."""
 
     def block(self):
-        text = (ROOT / ".github/workflows/hourly.yml").read_text()
+        text = wftext.text(ROOT / ".github/workflows/hourly.yml")
         start = text.index("\n  interview:\n")
         return text[start:text.index("\n  report:\n")]
 

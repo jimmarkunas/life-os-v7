@@ -4,6 +4,8 @@ import pathlib
 import tempfile
 import unittest
 
+from tests import wftext
+
 try:
     import yaml
 except ImportError:
@@ -84,7 +86,7 @@ class Workflows(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.hourly = yaml.safe_load((ROOT / ".github/workflows/hourly.yml").read_text())
-        cls.domains = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
+        cls.domains = yaml.safe_load(wftext.text(ROOT / ".github/workflows/domains.yml"))
 
     def dispatch_step(self):
         steps = self.hourly["jobs"]["prep"]["steps"]
@@ -148,7 +150,7 @@ class Workflows(unittest.TestCase):
         exceptions = ("if: ${{ github.event_name == 'workflow_run' }}",                       # the cover step: only the run after a tick looks for the early run
                       "late: ${{ inputs.all || github.event_name == 'workflow_run' }}",       # the late jobs belong to the run after the tick
                       "early: ${{ inputs.all || inputs.phase == 'tick' ||")                   # already names the phase
-        for number, line in enumerate((ROOT / ".github/workflows/domains.yml").read_text().splitlines(), 1):
+        for number, line in enumerate(wftext.text(ROOT / ".github/workflows/domains.yml").splitlines(), 1):
             code = line.split("      #")[0] if "${{" in line else line
             if code.lstrip().startswith("#") or "github.event_name == 'workflow_run'" not in code or any(code.strip().startswith(e) for e in exceptions):
                 continue
@@ -157,7 +159,7 @@ class Workflows(unittest.TestCase):
             self.assertIn("inputs.phase == 'tick'", code, f"domains.yml:{number} treats only the run after a tick as a tick")
 
     def test_every_automatic_live_decision_treats_the_early_run_as_a_tick(self):
-        text = (ROOT / ".github/workflows/domains.yml").read_text()
+        text = wftext.text(ROOT / ".github/workflows/domains.yml")
         self.assertEqual(text.count("github.event_name == 'workflow_run' && 'follow'"), 0)
         self.assertGreaterEqual(text.count("(github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow'"), 17)   # one per job that loads plain switches
 
