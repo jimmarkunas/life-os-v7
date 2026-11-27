@@ -4,6 +4,7 @@ leave this file.
               Central Time date)
   message  -> `ok=yes|no` (the one tiny message produced a non-error result)
 """
+
 import json
 import re
 import sys
@@ -27,6 +28,7 @@ def as_date(value):
             return "unknown"
         try:
             from zoneinfo import ZoneInfo
+
             when = when.astimezone(ZoneInfo("America/Chicago"))
         except Exception:
             pass

@@ -11,6 +11,7 @@ GRAN_BAD_OP, GRAN_NOT_FOUND, GRAN_SYNC_FAILED, GRAN_AUTH_EXPIRED (the Mac and Or
 GRAN_TIMEOUT, GRAN_OVERSIZE, GRAN_HASH_MISMATCH or the contract's TRANSCRIPT_* code; never a message, path or
 transcript content. Stdlib only.
 """
+
 import json
 import os
 import re
@@ -82,6 +83,7 @@ class Context:
         if self._contract is None:
             sys.path.insert(0, CONTRACT_DIR)
             import granola_contract
+
             self._contract = granola_contract
         return self._contract
 
@@ -128,16 +130,34 @@ def _calendar_start(raw):
         return None
     if isinstance(start, dict):
         start = start.get("dateTime")
-    return start if isinstance(start, str) and "T" in start and (start.endswith("Z") or "+" in start[10:] or "-" in start[10:]) else None
+    return (
+        start
+        if isinstance(start, str) and "T" in start and (start.endswith("Z") or "+" in start[10:] or "-" in start[10:])
+        else None
+    )
 
 
 def op_list(req, ctx, nonce):
     try:
         db = ctx.database()
         meetings = []
-        for doc_id, created, event, title in db.execute("select id, created_at, google_calendar_event_json, title from documents where deleted_at is null order by created_at"):
-            people = [(email or name or "") for email, name in db.execute("select email, full_name from document_people where document_id=?", (doc_id,))]
-            meetings.append({"id": doc_id, "start": _calendar_start(event) or created, "title": title or "", "attendees": [p for p in people if p]})
+        for doc_id, created, event, title in db.execute(
+            "select id, created_at, google_calendar_event_json, title from documents where deleted_at is null order by created_at"
+        ):
+            people = [
+                (email or name or "")
+                for email, name in db.execute(
+                    "select email, full_name from document_people where document_id=?", (doc_id,)
+                )
+            ]
+            meetings.append(
+                {
+                    "id": doc_id,
+                    "start": _calendar_start(event) or created,
+                    "title": title or "",
+                    "attendees": [p for p in people if p],
+                }
+            )
         db.close()
     except sqlite3.Error:
         return fail("GRAN_SYNC_FAILED", nonce)
@@ -188,10 +208,19 @@ def _notes(ctx, doc_id):
     """-> (notes, summary): Granola's notes (markdown, else plain) and AI summary, each cut at MAX_TEXT."""
     try:
         db = ctx.database()
-        row = db.execute("select notes_markdown, notes_plain, summary from documents where id=?", (doc_id,)).fetchone() or (None, None, None)
+        row = db.execute(
+            "select notes_markdown, notes_plain, summary from documents where id=?", (doc_id,)
+        ).fetchone() or (None, None, None)
         summary = row[2] or ""
         if not summary.strip():
-            summary = "\n\n".join(p for (p,) in db.execute("select content_markdown from panels where document_id=? and deleted_at is null order by created_at", (doc_id,)) if p)
+            summary = "\n\n".join(
+                p
+                for (p,) in db.execute(
+                    "select content_markdown from panels where document_id=? and deleted_at is null order by created_at",
+                    (doc_id,),
+                )
+                if p
+            )
         db.close()
     except sqlite3.Error:
         return "", ""
@@ -200,7 +229,13 @@ def _notes(ctx, doc_id):
 
 def op_purge(req, ctx, nonce):
     doc_id, want, scope = req.get("id"), req.get("content_sha256"), req.get("scope")
-    if not isinstance(doc_id, str) or not ID.match(doc_id) or not isinstance(want, str) or not HEX64.match(want) or scope not in (None, "all"):
+    if (
+        not isinstance(doc_id, str)
+        or not ID.match(doc_id)
+        or not isinstance(want, str)
+        or not HEX64.match(want)
+        or scope not in (None, "all")
+    ):
         return fail("GRAN_BAD_FRAME", nonce)
     if not _known(ctx, doc_id):
         return good(nonce, purged=0, scope="all") if scope == "all" else fail("GRAN_NOT_FOUND", nonce)
@@ -217,7 +252,11 @@ def op_purge(req, ctx, nonce):
     try:
         db = ctx.database(write=True)
         db.execute("pragma secure_delete=on")
-        removed = _purge_all(db, doc_id) if scope == "all" else db.execute("delete from transcript_utterances where document_id=?", (doc_id,)).rowcount
+        removed = (
+            _purge_all(db, doc_id)
+            if scope == "all"
+            else db.execute("delete from transcript_utterances where document_id=?", (doc_id,)).rowcount
+        )
         db.commit()
         db.execute("pragma wal_checkpoint(truncate)")
         db.close()
@@ -239,9 +278,18 @@ def _purge_all(db, doc_id):
     except (TypeError, ValueError, AttributeError):
         pass
     if "chunks" in have and "embeddings" in have:
-        removed += db.execute("delete from embeddings where chunk_id in (select id from chunks where document_id=?)", (doc_id,)).rowcount
-    for table, column in (("chunks", "document_id"), ("panels", "document_id"), ("transcript_utterances", "document_id"), ("transcript_sync_log", "document_id"),
-                          ("panel_sync_log", "document_id"), ("document_people", "document_id"), ("documents", "id")):
+        removed += db.execute(
+            "delete from embeddings where chunk_id in (select id from chunks where document_id=?)", (doc_id,)
+        ).rowcount
+    for table, column in (
+        ("chunks", "document_id"),
+        ("panels", "document_id"),
+        ("transcript_utterances", "document_id"),
+        ("transcript_sync_log", "document_id"),
+        ("panel_sync_log", "document_id"),
+        ("document_people", "document_id"),
+        ("documents", "id"),
+    ):
         if table in have:
             removed += db.execute("delete from %s where %s=?" % (table, column), (doc_id,)).rowcount
     if isinstance(event, str) and "events" in have:
@@ -261,7 +309,7 @@ def handle(req, ctx):
         return fail("GRAN_BAD_OP", nonce)
     try:
         return op(req, ctx, nonce)
-    except Exception:                                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return fail("GRAN_SYNC_FAILED", nonce)
 
 

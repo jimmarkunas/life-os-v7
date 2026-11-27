@@ -7,6 +7,7 @@ since the current credit window began (the 5th at 6:00 PM CT); the report's `amo
 same figure when exactly one API key shows usage, else null (a second key would make attribution a guess). Stdlib
 only.
 """
+
 import json
 import os
 import sys
@@ -41,7 +42,9 @@ def get(path, params, key, opener=urllib.request.urlopen):
     if path not in ALLOWED:
         raise Refused("path")
     query = urllib.parse.urlencode(params, doseq=True)
-    request = urllib.request.Request(f"https://{HOST}{path}?{query}", headers={"x-api-key": key, "anthropic-version": VERSION}, method="GET")
+    request = urllib.request.Request(
+        f"https://{HOST}{path}?{query}", headers={"x-api-key": key, "anthropic-version": VERSION}, method="GET"
+    )
     with opener(request, timeout=TIMEOUT) as reply:
         return json.loads(reply.read())
 
@@ -69,7 +72,9 @@ def billed_usd(key, opener, since):
 
 def one_key(key, opener, since):
     keys = set()
-    for bucket in pages(ALLOWED[1], {"starting_at": since, "bucket_width": "1d", "limit": 31, "group_by[]": "api_key_id"}, key, opener):
+    for bucket in pages(
+        ALLOWED[1], {"starting_at": since, "bucket_width": "1d", "limit": 31, "group_by[]": "api_key_id"}, key, opener
+    ):
         for result in bucket.get("results", []):
             keys.add(result.get("api_key_id"))
     return len(keys) <= 1
@@ -81,11 +86,11 @@ def reading(key, opener=urllib.request.urlopen, now=None):
     since = since_now(now)
     try:
         billed = billed_usd(key, opener, since)
-    except Exception:                                                  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {"billed_usd": None, "honcho_usd": None, "as_of": None}
     try:
         attributed = billed if one_key(key, opener, since) else None
-    except Exception:                                                  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         attributed = None
     return {"billed_usd": billed, "honcho_usd": attributed, "as_of": moment}
 

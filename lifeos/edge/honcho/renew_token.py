@@ -5,6 +5,7 @@ token, proves it on the live API, swaps only that config.env line atomically (mo
 it answers 401 without credentials; if a step after the swap fails the old line is restored. Any failure sends one
 Agent Inbox alert and exits non-zero. The token is never printed, logged or alerted. Stdlib only.
 """
+
 import base64
 import json
 import os
@@ -21,12 +22,23 @@ PEER = "lifeos-memory"
 LIFETIME = "60d"
 # renew when this much or less is left: the token always has at least 30 days, so it never reaches its end
 RENEW_WITHIN = 30 * 86400
-MIN_NEW = 50 * 86400                                        # a freshly minted token must be good for at least this long
+MIN_NEW = 50 * 86400  # a freshly minted token must be good for at least this long
 API = "http://127.0.0.1:8000"
 MCP = "http://127.0.0.1:8787/mcp"
 ALERT = "/opt/lifeos-buzz-mcp/current/bin/honcho-alert"
 SERVICE = "lifeos-buzz-mcp"
-MINT = ["docker", "exec", "honcho-api-1", "/app/.venv/bin/python", "scripts/generate_jwt.py", "--workspace", WORKSPACE, "--expires", LIFETIME, "--print-only"]
+MINT = [
+    "docker",
+    "exec",
+    "honcho-api-1",
+    "/app/.venv/bin/python",
+    "scripts/generate_jwt.py",
+    "--workspace",
+    WORKSPACE,
+    "--expires",
+    LIFETIME,
+    "--print-only",
+]
 
 
 def claims(token):
@@ -68,14 +80,22 @@ def write_token(token, path=CONFIG):
 
 def mint(run=subprocess.run):
     out = run(MINT, capture_output=True, text=True, timeout=60)
-    token = (out.stdout or "").strip().splitlines()[-1].strip() if out.returncode == 0 and (out.stdout or "").strip() else ""
+    token = (
+        (out.stdout or "").strip().splitlines()[-1].strip()
+        if out.returncode == 0 and (out.stdout or "").strip()
+        else ""
+    )
     c = claims(token)
     return token if c and c.get("w") == WORKSPACE and "exp" in c else ""
 
 
 def answers(token, opener=urllib.request.urlopen):
-    request = urllib.request.Request(f"{API}/v3/workspaces/{WORKSPACE}/conclusions/list?page=1&size=1", data=json.dumps({"filters": {"observer_id": PEER}}).encode(), method="POST",
-                                     headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    request = urllib.request.Request(
+        f"{API}/v3/workspaces/{WORKSPACE}/conclusions/list?page=1&size=1",
+        data=json.dumps({"filters": {"observer_id": PEER}}).encode(),
+        method="POST",
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+    )
     try:
         with opener(request, timeout=20) as reply:
             return reply.status == 200
@@ -88,7 +108,12 @@ def mcp_ok(run=subprocess.run, opener=urllib.request.urlopen, sleep=time.sleep):
     if run(["systemctl", "is-active", "--quiet", SERVICE]).returncode != 0:
         return False
     try:
-        request = urllib.request.Request(MCP, data=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}', method="POST", headers={"Content-Type": "application/json"})
+        request = urllib.request.Request(
+            MCP,
+            data=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
         opener(request, timeout=20)
         return False
     except urllib.error.HTTPError as err:
@@ -99,7 +124,17 @@ def mcp_ok(run=subprocess.run, opener=urllib.request.urlopen, sleep=time.sleep):
 
 def alert(why, run=subprocess.run):
     try:
-        run([ALERT, "send", "Honcho memory token renewal failed", why + " The current token keeps working until it ends; memory is untouched.", "--urgency", "Today"], timeout=60)
+        run(
+            [
+                ALERT,
+                "send",
+                "Honcho memory token renewal failed",
+                why + " The current token keeps working until it ends; memory is untouched.",
+                "--urgency",
+                "Today",
+            ],
+            timeout=60,
+        )
     except (OSError, subprocess.SubprocessError):
         pass
 
