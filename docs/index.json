@@ -38,6 +38,20 @@
    "retrieval": "Read the section for the workload a task changes"
   },
   {
+   "path": "lifeos/platform/public_repo_guard.py",
+   "authority": "Enforced by test: the one scan for personal emails and real Notion ids; list in `tools/public_repo_guard_allow.txt`",
+   "purpose": "What a public repo may not hold and how a finding reads",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a commit or PR is blocked, or a value needs listing"
+  },
+  {
+   "path": "tools/install_hooks.sh",
+   "authority": "Tool: installs the pre-commit and commit-msg guard hooks",
+   "purpose": "Step 0 of the agent loop; one install per clone",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Once per clone"
+  },
+  {
    "path": "docs/agent-reference.md",
    "authority": "Reference: no rule of its own beyond its test-enforced list",
    "purpose": "Code map, commands, the nine epic delivery rules",
