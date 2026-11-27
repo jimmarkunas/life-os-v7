@@ -27,7 +27,7 @@ def classify(fields, closed_at=None, since=None):
     """-> one of CLASSES for a closed issue's `fields`. `since` is when manual/automatic tracking began (aware datetime)."""
     resolution, labels = _evidence(fields)
     cancelled = resolution is not None and resolution != DELIVERED_RESOLUTION
-    if (SUPERSEDED_LABEL in labels and not cancelled) or (AUTO_LABEL in labels and cancelled):
+    if (SUPERSEDED_LABEL in labels and resolution == DELIVERED_RESOLUTION) or (AUTO_LABEL in labels and cancelled):
         raise JiraError("ACCOUNTABILITY_CLOSURE_EVIDENCE_CONTRADICTORY")
     if cancelled or SUPERSEDED_LABEL in labels:
         return "cancelled"
