@@ -10,7 +10,7 @@ on:
         default: false
 permissions:
   contents: read
-  id-token: write  # LIFE-1023: the keyless Google calendar sign-in (workload identity federation)
+  id-token: write  # the keyless Google calendar sign-in (workload identity federation)
 concurrency:
   group: life-os-v7-calendar
   cancel-in-progress: false

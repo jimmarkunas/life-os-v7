@@ -45,7 +45,7 @@ DEFAULT_LABELS = {
 INVENTORY = {
     "JIRA_API_TOKEN": "jira_api_token",
     "NOTION_API_TOKEN": "notion_api_token",
-    "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account",  # RETIRED (LIFE-1023): calendar is keyless; the name stays only so the grant keys still resolve
+    "GCAL_SERVICE_ACCOUNT_JSON": "gcal_service_account",  # RETIRED: calendar is keyless; the name stays only so the grant keys still resolve
     "GMAIL_OAUTH_REFRESH_TOKEN": "gmail_oauth_refresh_token",
     "FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH": "followup_gmail_bytalos_refresh",
     "FOLLOWUP_TODOIST_PERSONAL_TOKEN": "followup_todoist_personal_token",

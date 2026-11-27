@@ -114,7 +114,8 @@ class Workflows(unittest.TestCase):
         self.assertEqual(grants, {"gate": {"contents": "read", "actions": "read"},      # the gate already read Actions: it looks up the early run with that
                                   "dcc": {"contents": "read", "actions": "read", "issues": "read"},   # exactly the two grants the file had before LIFE-775; no job gained one
                                   "weekly_review": {"contents": "read", "actions": "read"},   # LIFE-945 (Jim, 945 workflow approve, comment 14158): the Actions API read for the Automation lane, nothing more
-                                  "chain": {"contents": "read", "actions": "read"}})   # LIFE-904: the chain receipt only reads the Actions API, the same two reads the gate has
+                                  "chain": {"contents": "read", "actions": "read"},
+                                  **{j: {"contents": "read", "id-token": "write"} for j in ("followup", "outlook", "agenda", "hiring", "megibow", "interview")}})   # the keyless Google calendar sign-in   # LIFE-904: the chain receipt only reads the Actions API, the same two reads the gate has
         self.assertNotIn("secrets.", str(self.dispatch_step()[1]))
 
     def test_the_early_run_takes_exactly_the_jobs_that_read_nothing_the_tick_writes_and_the_late_run_the_rest(self):
