@@ -2,16 +2,29 @@
 
 import base64
 import hashlib
+import http.client
+import importlib.machinery
+import importlib.util
+import io
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
+import urllib.error
+from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
+
+from lifeos.platform import agent_inbox
+from tests.inbox.test_agent_inbox import FakeClient
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy/buzz-mcp/honcho-alert"
 FAKE_CREDS = (
@@ -21,9 +34,9 @@ FAKE_CREDS = (
 
 
 class FakeMcp(ThreadingHTTPServer):
-    def __init__(self, reply):
+    def __init__(self, reply, delay=0):
         super().__init__(("127.0.0.1", 0), self.Handler)
-        self.reply, self.seen = reply, []
+        self.reply, self.seen, self.delay = reply, [], delay
         threading.Thread(target=lambda: self.serve_forever(poll_interval=0.01), daemon=True).start()
 
     def stop(self):
@@ -37,6 +50,9 @@ class FakeMcp(ThreadingHTTPServer):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             self.server.seen.append((self.headers.get("Authorization"), body["params"]["arguments"]))
+            time.sleep(
+                self.server.delay
+            )  # the write is recorded first: a late reply is a committed write whose answer the client may never see
             code, payload = self.server.reply
             data = json.dumps({"result": {"content": [{"text": json.dumps(payload)}]}} if code == 200 else {}).encode()
             self.send_response(code)
@@ -54,9 +70,10 @@ class HonchoAlert(unittest.TestCase):
         (self.tmp / "bin/systemd-creds").chmod(0o755)
         self.cred = self.tmp / "etc/honcho_alerts_mcp.cred"
 
-    def run_script(self, *args, server=None, unit_dir=None):
+    def run_script(self, *args, server=None, unit_dir=None, extra_env=None):
         env = {
             **os.environ,
+            **(extra_env or {}),
             "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}",
             "HONCHO_ALERT_CRED_FILE": str(self.cred),
             "HONCHO_ALERT_URL": f"http://127.0.0.1:{server.server_address[1]}/mcp"
@@ -132,6 +149,134 @@ class HonchoAlert(unittest.TestCase):
 
     def test_the_source_prints_no_credential_and_is_executable(self):
         self.assertEqual(os.stat(SCRIPT).st_mode & 0o111, 0o111)
+
+    def test_a_delayed_reply_past_the_timeout_is_one_request_one_word_and_no_retry(self):
+        self.run_script("issue")
+        server = FakeMcp((200, {"ok": True, "data": {"created": 1}}), delay=3)
+        self.addCleanup(server.stop)
+        done = self.run_script(
+            "send", "Honcho budget stopped", server=server, extra_env={"HONCHO_ALERT_TIMEOUT_S": "1"}
+        )
+        self.assertEqual((done.stdout.strip(), done.returncode), ("alert_failed timeout", 1))
+        self.assertEqual(len(server.seen), 1)  # the write reached the server; the client did not resend
+        self.assertNotIn(self.token(), done.stdout + done.stderr)
+
+    def test_a_committed_write_with_a_lost_reply_is_not_duplicated_by_the_next_send(self):
+        """The server's own key: sender and subject, with the sender fixed by the authenticated client. The lost reply is the first send; the next alert run replays it."""
+        client = FakeClient()
+        item = {
+            "from": "honcho-alerts",
+            "subject": "Honcho budget stopped (EXHAUSTED)",
+            "urgency": "Today",
+            "details": "d",
+        }
+        when = datetime(2026, 11, 27, 6, 0, tzinfo=timezone.utc)
+        self.assertEqual(
+            agent_inbox.send(client, dict(item), now=when), {"created": 1}
+        )  # committed; its reply is the one the client never saw
+        self.assertEqual(agent_inbox.send(client, dict(item), now=when), {"updated": 1})
+        self.assertEqual(len(client.rows), 1)
+        self.assertEqual(agent_inbox.normalize(dict(item), when)["key"], agent_inbox.normalize(dict(item), when)["key"])
+        other = agent_inbox.normalize({**item, "subject": "Honcho nightly backup failed"}, when)["key"]
+        self.assertNotEqual(other, agent_inbox.normalize(dict(item), when)["key"])
+        with self.assertRaises(agent_inbox.InboxError):  # another sender can never take the key
+            agent_inbox.send(
+                client,
+                {**item, "from": "someone-else", "key": agent_inbox.normalize(dict(item), when)["key"]},
+                now=when,
+            )
+
+
+def load_script():
+    loader = importlib.machinery.SourceFileLoader("honcho_alert_under_test", str(SCRIPT))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+class Reply:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self.body
+
+
+class Timeouts(unittest.TestCase):
+    """One request, a 60 s timeout, a distinct word for each failure, and no blind retry after an ambiguous outcome."""
+
+    def words(self, error=None, body=None):
+        module = load_script()
+        calls = []
+
+        def urlopen(request, timeout=None):
+            calls.append(timeout)
+            if error is not None:
+                raise error
+            return Reply(body)
+
+        out = io.StringIO()
+        with (
+            mock.patch.object(module, "decrypt", return_value="lm1.honcho-alerts." + "A" * 43),
+            mock.patch.object(module.urllib.request, "urlopen", urlopen),
+            redirect_stdout(out),
+        ):
+            code = module.send("subject", "", "Today")
+        return out.getvalue().strip(), code, calls
+
+    def test_the_default_timeout_is_sixty_seconds_and_an_override_must_be_sane(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("HONCHO_ALERT_TIMEOUT_S", None)
+            self.assertEqual(load_script().TIMEOUT_S, 60.0)
+            for bad in ("0", "-5", "500", "abc"):
+                os.environ["HONCHO_ALERT_TIMEOUT_S"] = bad
+                self.assertEqual(load_script().TIMEOUT_S, 60.0, bad)
+            os.environ["HONCHO_ALERT_TIMEOUT_S"] = "2"
+            self.assertEqual(load_script().TIMEOUT_S, 2.0)
+
+    def test_the_request_uses_the_timeout_and_is_made_exactly_once(self):
+        ok = json.dumps({"result": {"content": [{"text": json.dumps({"ok": True, "data": {"created": 1}})}]}}).encode()
+        word, code, calls = self.words(body=ok)
+        self.assertEqual((word, code, calls), ("alert created", 0, [60.0]))
+
+    def test_a_direct_and_a_wrapped_timeout_are_both_the_timeout_word_and_never_retried(self):
+        for error in (
+            TimeoutError("t"),
+            socket.timeout("t"),
+            urllib.error.URLError(TimeoutError("t")),
+            urllib.error.URLError(socket.timeout("t")),
+        ):
+            word, code, calls = self.words(error=error)
+            self.assertEqual((word, code, len(calls)), ("alert_failed timeout", 1, 1), repr(error))
+
+    def test_other_failures_keep_their_own_bounded_words(self):
+        cases = (
+            (urllib.error.URLError(ConnectionRefusedError()), "alert_failed unreachable"),
+            (OSError("down"), "alert_failed unreachable"),
+            (ConnectionResetError(), "alert_failed interrupted"),
+            (BrokenPipeError(), "alert_failed interrupted"),
+            (http.client.RemoteDisconnected("gone"), "alert_failed interrupted"),
+            (urllib.error.HTTPError("http://x", 503, "no", {}, io.BytesIO(b"")), "alert_failed http_503"),
+        )
+        for error, want in cases:
+            word, code, calls = self.words(error=error)
+            self.assertEqual((word, code, len(calls)), (want, 1, 1), repr(error))
+        for bad in (b"not json", b"{}", json.dumps({"result": {"content": []}}).encode()):
+            self.assertEqual(self.words(body=bad)[:2], ("alert_failed malformed_reply", 1), bad)
+
+    def test_a_failure_line_carries_no_credential_subject_or_payload(self):
+        for error in (TimeoutError("t"), ConnectionResetError("secret-ish"), urllib.error.URLError("secret-ish")):
+            word = self.words(error=error)[0]
+            self.assertRegex(word, r"^alert_failed [a-z_0-9]+$")
+            self.assertNotIn("AAAA", word)
+            self.assertNotIn("subject", word)
 
 
 if __name__ == "__main__":

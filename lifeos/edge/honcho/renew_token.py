@@ -133,7 +133,7 @@ def alert(why, run=subprocess.run):
                 "--urgency",
                 "Today",
             ],
-            timeout=60,
+            timeout=90,  # the alert command waits up to 60 s for the Inbox, so the caller waits longer
         )
     except (OSError, subprocess.SubprocessError):
         pass
