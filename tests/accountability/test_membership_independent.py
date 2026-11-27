@@ -1,4 +1,4 @@
-"""LIFE-1025: quarterly membership is the approved key list, never the Jira hierarchy (R2.1 to R2.8). Synthetic keys only."""
+"""quarterly membership is the approved key list, never the Jira hierarchy (R2.1 to R2.8). Synthetic keys only."""
 
 import copy
 import unittest
