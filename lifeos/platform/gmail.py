@@ -43,7 +43,10 @@ def error_code(error: BaseException) -> str:
 def is_rate_limit(error: BaseException) -> bool:
     """True for Gmail's rate limit that outlasted every retry (HTTP 429, or 403 rateLimitExceeded or userRateLimitExceeded)."""
     http = re.search(r"HTTP (\d{3}) ?([A-Za-z]*)\s*$", str(error))
-    return bool(http) and (http.group(1) == "429" or (http.group(1) == "403" and http.group(2) in RATE_LIMITED))
+    if http is None:
+        return False
+    status, reason = http.group(1), http.group(2)
+    return status == "429" or (status == "403" and reason in RATE_LIMITED)
 
 
 def _reason(error: urllib.error.HTTPError) -> str:
