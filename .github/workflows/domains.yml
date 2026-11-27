@@ -79,16 +79,16 @@ on:
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, reconcile = the LIFE-918 daily Jira reconcile once now (JFM and MEJ as one unit; the live box makes it write), writers-verify = the throwaway-sprint writer verification (dry unless the verify input ends in yes)"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or (LIFE-918) writers-check = the read-only Jira writer contract check, reconcile = the LIFE-918 daily Jira reconcile once now (JFM and MEJ as one unit; the live box makes it write), writers-verify = the throwaway-sprint writer verification (dry unless the verify input ends in yes), setter-proof = the one same-value V2_OFFICIAL update proof (verify input: the expected Revision, then yes to really send it)"
         type: choice
-        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify", "reconcile"]
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "writers-check", "writers-verify", "reconcile", "setter-proof"]
         default: "none"
       reconcile_force:
         description: "Manual LIFE-918 reconcile only: bypass today's already-ran check after 8 AM CT; still dry run unless Actually write is ticked"
         type: boolean
         default: false
       verify:
-        description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes), and a fourth, keep, to keep the test clone because the Free plan cannot delete issues (JFM JFM-123 yes keep). Only that sprint and that one issue are touched"
+        description: "LIFE-918, writers-verify only: BOARD ISSUE to verify the Jira writers on a throwaway ZZ-LIFE918-TEST sprint, for example JFM JFM-123 (a dry run: contract check and plan). Add a third word, yes, to really write (JFM JFM-123 yes), and a fourth, keep, to keep the test clone because the Free plan cannot delete issues (JFM JFM-123 yes keep). Only that sprint and that one issue are touched. For setter-proof the input is REVISION [yes]: the Revision the V2_OFFICIAL row must hold (a dry run reads the row and reports), then yes to send the one same-value update"
         type: string
         default: ""
       refresh:
@@ -424,7 +424,7 @@ jobs:
         env:
           JIRA_API_TOKEN: *a21
           JIRA_EMAIL: *a22
-          JIRA_WRITERS_VERIFY: ${{ inputs.verify }}
+          JIRA_WRITERS_VERIFY: &a35 ${{ inputs.verify }}
         run: |
           set -f; set -- $JIRA_WRITERS_VERIFY; VERIFY_BOARD="$1"; VERIFY_ISSUE="$2"; VERIFY_LIVE="${3:-}"; VERIFY_KEEP="${4:-}"
           [ "$#" -ge 2 ] && [ "$#" -le 4 ] || { echo "::error title=jira::verify must be BOARD ISSUE [yes [keep]]"; exit 1; }
@@ -434,6 +434,20 @@ jobs:
           case "$VERIFY_KEEP" in ""|keep) ;; *) echo "::error title=jira::the fourth word must be keep or absent"; exit 1;; esac
           [ -z "$VERIFY_KEEP" ] || [ "$VERIFY_LIVE" = "yes" ] || { echo "::error title=jira::keep needs yes before it"; exit 1; }
           if [ "$VERIFY_LIVE" = "yes" ] && [ "$VERIFY_KEEP" = "keep" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live --keep; elif [ "$VERIFY_LIVE" = "yes" ]; then python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE" --live; else python -m lifeos.jira.writers verify --board "$VERIFY_BOARD" --issue "$VERIFY_ISSUE"; fi
+      - id: jsetterproof
+        continue-on-error: true
+        name: V2_OFFICIAL setter proof (manual only; one same-value update)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.jira == 'setter-proof' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a18
+          NOTION_JIRA_TOKEN: *a19
+          SETTER_PROOF: *a35
+        run: |
+          set -f; set -- $SETTER_PROOF; PROOF_REVISION="$1"; PROOF_LIVE="${2:-}"
+          [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "::error title=jira::verify must be REVISION [yes]"; exit 1; }
+          printf '%s' "$PROOF_REVISION" | grep -Eq '^[0-9]{1,6}$' || { echo "::error title=jira::the revision must be a number"; exit 1; }
+          case "$PROOF_LIVE" in ""|yes) ;; *) echo "::error title=jira::the second word must be yes or absent"; exit 1;; esac
+          if [ "$PROOF_LIVE" = "yes" ]; then python -m lifeos.accountability.setter_proof --live --revision "$PROOF_REVISION"; else python -m lifeos.accountability.setter_proof --revision "$PROOF_REVISION"; fi
       - id: jroll
         continue-on-error: true
         name: Jira sprint rollover (dry run unless live)
@@ -441,10 +455,10 @@ jobs:
         env: *m5
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jsetterproof.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
+        if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jsetterproof.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1
 
 
@@ -589,7 +603,7 @@ jobs:
         if: ${{ always() && steps.calsync.outcome == 'failure' }}
         run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: &a35 ${{ always() && contains(steps.*.outcome, 'failure') }}
+        if: &a36 ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=outlook::a stage step failed in the outlook job (see the step marked failed above)"; exit 1
 
 
@@ -639,16 +653,16 @@ jobs:
         env: &m6
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           NOTION_BILLS_DATA_SOURCE_ID: ""
-          LIFEOS_ACQ_DB_NAME: &a36 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a37 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a38 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a39 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a40 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a41 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a42 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a43 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a44 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a45 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_DB_NAME: &a37 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a38 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a39 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a40 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a41 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a42 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a43 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a44 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a45 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a46 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
         run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
       - id: bsnap
@@ -659,30 +673,30 @@ jobs:
       - id: bcard
         continue-on-error: true
         name: Bills card
-        if: &a46 ${{ always() }}
+        if: &a47 ${{ always() }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           BILLS_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
-          LIFEOS_ACQ_DB_NAME: *a36
-          LIFEOS_ACQ_DB_PASSWORD: *a37
-          LIFEOS_ACQ_DB_USER: *a38
-          LIFEOS_ACQ_SSH_HOST: *a39
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a40
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a41
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a42
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a43
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a44
-          LIFEOS_ACQ_SSH_USER: *a45
+          LIFEOS_ACQ_DB_NAME: *a37
+          LIFEOS_ACQ_DB_PASSWORD: *a38
+          LIFEOS_ACQ_DB_USER: *a39
+          LIFEOS_ACQ_SSH_HOST: *a40
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a41
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a42
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a43
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a44
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a45
+          LIFEOS_ACQ_SSH_USER: *a46
           NOTION_JIRA_TOKEN: ${{ steps.bws_bills.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run bills-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
         run: echo "::warning title=Bills::the Bill Tracker snapshot or card failed; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=bills::a stage step failed in the bills job (see the step marked failed above)"; exit 1
 
 
@@ -733,18 +747,18 @@ jobs:
         name: Agenda snapshot (read-only; saved only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
-          NOTION_JIRA_TOKEN: &a47 ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
+          NOTION_JIRA_TOKEN: &a48 ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
           GCAL_CALENDAR_ID: ""
-          LIFEOS_ACQ_DB_NAME: &a48 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a49 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a50 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a51 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a52 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a53 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a54 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a55 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a56 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a57 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_DB_NAME: &a49 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a50 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a51 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a52 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a53 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a54 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a55 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a56 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a57 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a58 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run agenda-snapshot --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
@@ -754,23 +768,23 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
-          LIFEOS_ACQ_DB_NAME: *a48
-          LIFEOS_ACQ_DB_PASSWORD: *a49
-          LIFEOS_ACQ_DB_USER: *a50
-          LIFEOS_ACQ_SSH_HOST: *a51
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a52
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a53
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a54
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a55
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a56
-          LIFEOS_ACQ_SSH_USER: *a57
-          NOTION_JIRA_TOKEN: *a47
+          LIFEOS_ACQ_DB_NAME: *a49
+          LIFEOS_ACQ_DB_PASSWORD: *a50
+          LIFEOS_ACQ_DB_USER: *a51
+          LIFEOS_ACQ_SSH_HOST: *a52
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a53
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a54
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a55
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a56
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a57
+          LIFEOS_ACQ_SSH_USER: *a58
+          NOTION_JIRA_TOKEN: *a48
         run: python -m lifeos.run agenda-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Agenda warning (does not fail the Jobs run)
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=agenda::a stage step failed in the agenda job (see the step marked failed above)"; exit 1
 
 
@@ -812,16 +826,16 @@ jobs:
         name: Amazon Orders (Gmail to Notion; archive after read-back)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
-          GMAIL_OAUTH_CLIENT_ID: &a58 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_ID: &a59 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ""
-          GMAIL_OAUTH_CLIENT_SECRET: &a59 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: &a60 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          NOTION_AMAZON_TOKEN: &a61 ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
+          GMAIL_OAUTH_CLIENT_SECRET: &a60 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: &a61 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: &a62 ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
         run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
         name: Amazon card
-        if: *a46
+        if: *a47
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           NOTION_AMAZON_DATA_SOURCE_ID: ""
@@ -831,10 +845,10 @@ jobs:
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
-          GMAIL_OAUTH_CLIENT_ID: *a58
-          GMAIL_OAUTH_CLIENT_SECRET: *a59
-          GMAIL_OAUTH_REFRESH_TOKEN: *a60
-          NOTION_AMAZON_TOKEN: *a61
+          GMAIL_OAUTH_CLIENT_ID: *a59
+          GMAIL_OAUTH_CLIENT_SECRET: *a60
+          GMAIL_OAUTH_REFRESH_TOKEN: *a61
+          NOTION_AMAZON_TOKEN: *a62
           NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Amazon Orders warning (does not fail the Jobs run)
@@ -842,7 +856,7 @@ jobs:
         run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
 
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1
   amazon_retention:
     needs: [amazon, gate]
@@ -903,7 +917,7 @@ jobs:
         if: ${{ always() && steps.aretain.outcome == 'failure' }}
         run: echo "::warning title=Amazon retention::the Amazon retention stage failed; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=amazon_retention::a stage step failed in the amazon_retention job (see the step marked failed above)"; exit 1
 
   mail:
@@ -944,32 +958,32 @@ jobs:
         continue-on-error: true
         name: Physical Mail (Gmail read-only; saved with read-back)
         env:
-          GMAIL_OAUTH_CLIENT_ID: &a62 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_ID: &a63 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
           PHYSICAL_MAIL_EXPECT: ""
           PHYSICAL_MAIL_TRACKING_ENTRY: ${{ inputs.physical_mail_tracking }}
-          GMAIL_OAUTH_CLIENT_SECRET: &a63 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: &a64 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: &a65 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a66 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a67 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a68 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a69 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a70 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a71 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a72 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a73 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a74 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER }}
+          GMAIL_OAUTH_CLIENT_SECRET: &a64 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: &a65 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: &a66 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a67 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a68 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a69 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a70 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a71 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a72 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a73 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a74 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a75 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER }}
           NTFY_TOPIC: ${{ steps.bws_mail.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run mail-alerts $([ "$LIVE" = "true" ] && echo --live)
       - id: mfile
         continue-on-error: true
         name: Physical Mail filing
-        if: *a46
+        if: *a47
         env:
-          GMAIL_OAUTH_CLIENT_ID: *a62
-          GMAIL_OAUTH_CLIENT_SECRET: *a63
-          GMAIL_OAUTH_REFRESH_TOKEN: *a64
+          GMAIL_OAUTH_CLIENT_ID: *a63
+          GMAIL_OAUTH_CLIENT_SECRET: *a64
+          GMAIL_OAUTH_REFRESH_TOKEN: *a65
         run: python -m lifeos.run mail-filing $([ "$LIVE" = "true" ] && echo --live)
       - id: bws_runtime_config
         continue-on-error: true
@@ -979,7 +993,7 @@ jobs:
       - id: mcard
         continue-on-error: true
         name: Mail Alerts card
-        if: *a46
+        if: *a47
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           MAIL_ALERTS_CARD_BLOCK_ID: ""
@@ -989,23 +1003,23 @@ jobs:
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
           MAIL_SYNC_OUTCOME: ${{ steps.mail.outcome }}
-          LIFEOS_ACQ_DB_NAME: *a65
-          LIFEOS_ACQ_DB_PASSWORD: *a66
-          LIFEOS_ACQ_DB_USER: *a67
-          LIFEOS_ACQ_SSH_HOST: *a68
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a69
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a70
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a71
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a72
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a73
-          LIFEOS_ACQ_SSH_USER: *a74
+          LIFEOS_ACQ_DB_NAME: *a66
+          LIFEOS_ACQ_DB_PASSWORD: *a67
+          LIFEOS_ACQ_DB_USER: *a68
+          LIFEOS_ACQ_SSH_HOST: *a69
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a70
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a71
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a72
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a73
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a74
+          LIFEOS_ACQ_SSH_USER: *a75
           NOTION_JIRA_TOKEN: ${{ steps.bws_mail.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run mail-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Mail Alerts warning (does not fail the Jobs run)
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1
 
   hiring:
@@ -1083,7 +1097,7 @@ jobs:
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=hiring::a stage step failed in the hiring job (see the step marked failed above)"; exit 1
 
   megibow:
@@ -1159,7 +1173,7 @@ jobs:
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
         run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=megibow::a stage step failed in the megibow job (see the step marked failed above)"; exit 1
 
   dcc:
@@ -1204,25 +1218,25 @@ jobs:
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           GITHUB_TOKEN: *a1
-          DCC_CARD_BLOCK_ID: &a75 ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          DCC_CARD_BLOCK_ID: &a76 ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ""
           CALENDAR_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
           AMAZON_CARD_BLOCK_ID: ""
           MAIL_ALERTS_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
-          NOTION_JIRA_TOKEN: &a76 ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+          NOTION_JIRA_TOKEN: &a77 ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: archive
         continue-on-error: true
         name: Weekly Reports Archive
         env:
           GITHUB_TOKEN: *a1
-          DCC_CARD_BLOCK_ID: *a75
+          DCC_CARD_BLOCK_ID: *a76
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           WEEKLY_ARCHIVE_PAGE_ID: ""
           LIFEOS_NOTION_IDS: ""
-          NOTION_JIRA_TOKEN: *a76
+          NOTION_JIRA_TOKEN: *a77
         run: python -m lifeos.run report-archive --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Weekly Reports Archive warning (does not fail the Jobs run)
         if: ${{ always() && steps.archive.outcome == 'failure' }}
@@ -1231,7 +1245,7 @@ jobs:
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
         run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1
 
   weekly_review:
@@ -1294,7 +1308,7 @@ jobs:
         if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
         run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=weekly_review::a stage step failed in the weekly_review job (see the step marked failed above)"; exit 1
   recruiters:
     needs: [gate, jira, hiring]
@@ -1336,7 +1350,7 @@ jobs:
         uses: *a7
         with: *m4
       - id: recruiters
-        if: &a77 ${{ inputs.refresh != 'recruiters' }}
+        if: &a78 ${{ inputs.refresh != 'recruiters' }}
         continue-on-error: true
         name: Recruiters (read-only mail to its data source; counts)
         env:
@@ -1357,7 +1371,7 @@ jobs:
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_RECRUITERS_TOKEN: &a78 ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+          NOTION_RECRUITERS_TOKEN: &a79 ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: routreach
         continue-on-error: true
@@ -1372,11 +1386,11 @@ jobs:
           HIRING_TABLE_BLOCK_ID: ""
           RECRUITER_COUNT_BLOCK_ID: ""
           V7_CLOSE_BASE_URL: ""
-          NOTION_RECRUITERS_TOKEN: *a78
+          NOTION_RECRUITERS_TOKEN: *a79
           NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
-        if: *a77
+        if: *a78
         continue-on-error: true
         name: Job-page outreach
         env:
@@ -1386,13 +1400,13 @@ jobs:
           JOB_PAGE_OUTREACH: ""
           V7_CLOSE_BASE_URL: ""
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN }}
-          NOTION_RECRUITERS_TOKEN: *a78
+          NOTION_RECRUITERS_TOKEN: *a79
         run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Recruiters warning (does not fail the Jobs run)
         if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
         run: echo "::warning title=Recruiters::the Recruiters stage, the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=recruiters::a stage step failed in the recruiters job (see the step marked failed above)"; exit 1
 
   network_surface:
@@ -1465,7 +1479,7 @@ jobs:
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
         run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, the other stages are unaffected. See the step log for the counts."
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=network_surface::a stage step failed in the network_surface job (see the step marked failed above)"; exit 1
   fit_cloud_backlog:
     needs: [gate]
@@ -1549,7 +1563,7 @@ jobs:
           export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
           python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=fit_cloud_backlog::a stage step failed in the fit_cloud_backlog job (see the step marked failed above)"; exit 1
   last_seen_purge:
     needs: [gate]
@@ -1598,17 +1612,17 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
-          LIFEOS_ACQ_DB_NAME: &a79 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a80 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a81 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a82 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a83 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a84 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a85 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a86 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a87 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a88 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: &a89 ${{ steps.bws_last_seen_purge.outputs.NOTION_API_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: &a80 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a81 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a82 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a83 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a84 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a85 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a86 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a87 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a88 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a89 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: &a90 ${{ steps.bws_last_seen_purge.outputs.NOTION_API_TOKEN }}
         run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
       - id: purge
         continue-on-error: true
@@ -1619,17 +1633,17 @@ jobs:
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
           PURGE_FORCE: ""
-          LIFEOS_ACQ_DB_NAME: *a79
-          LIFEOS_ACQ_DB_PASSWORD: *a80
-          LIFEOS_ACQ_DB_USER: *a81
-          LIFEOS_ACQ_SSH_HOST: *a82
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a83
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a84
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a85
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a86
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a87
-          LIFEOS_ACQ_SSH_USER: *a88
-          NOTION_API_TOKEN: *a89
+          LIFEOS_ACQ_DB_NAME: *a80
+          LIFEOS_ACQ_DB_PASSWORD: *a81
+          LIFEOS_ACQ_DB_USER: *a82
+          LIFEOS_ACQ_SSH_HOST: *a83
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a84
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a85
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a86
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a87
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a88
+          LIFEOS_ACQ_SSH_USER: *a89
+          NOTION_API_TOKEN: *a90
           NTFY_TOPIC: ${{ steps.bws_last_seen_purge.outputs.NTFY_TOPIC }}
         run: |
           # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
@@ -1647,7 +1661,7 @@ jobs:
             exit 1
           fi
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=last_seen_purge::a stage step failed in the last_seen_purge job (see the step marked failed above)"; exit 1
   hiring_outcomes:
     needs: [gate]
@@ -1689,7 +1703,7 @@ jobs:
           oauth-secret: ${{ steps.bws_hiring_outcomes.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: houtcomes
-        if: *a77
+        if: *a78
         continue-on-error: true
         name: Hiring outcome mail
         env:
@@ -1714,7 +1728,7 @@ jobs:
         if: ${{ always() && steps.houtcomes.outcome == 'failure' }}
         run: echo "::warning title=Hiring outcome mail::the hiring outcome-mail scan failed or a source was unread; the Hiring card keeps the last accepted outcomes"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=hiring_outcomes::a stage step failed in the hiring_outcomes job (see the step marked failed above)"; exit 1
   interview_mail:
     needs: [gate]
@@ -1766,7 +1780,7 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_interview_mail.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run interview-mail $([ "$LIVE" = "true" ] && echo --live)
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=interview_mail::a stage step failed in the interview_mail job (see the step marked failed above)"; exit 1
 
   interview:
@@ -1778,7 +1792,7 @@ jobs:
       contents: read
       id-token: write
     concurrency:
-      group: &a90 life-os-v7-interview-writer
+      group: &a91 life-os-v7-interview-writer
       cancel-in-progress: false
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
@@ -1810,13 +1824,13 @@ jobs:
           oauth-secret: ${{ steps.bws_interview.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
       - id: bws_runtime_config
-        if: *a77
+        if: *a78
         continue-on-error: true
         name: *a17
         uses: *a7
         with: *m4
       - id: interview
-        if: *a77
+        if: *a78
         continue-on-error: true
         name: Interview OS
         env:
@@ -1857,7 +1871,7 @@ jobs:
         if: ${{ always() && steps.interview.outcome == 'failure' }}
         run: echo "::warning title=Interview OS::the Interview OS stage (DEGRADED or failed) or a source was unread; the Jobs pipeline is unaffected"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=interview::a stage step failed in the interview job (see the step marked failed above)"; exit 1
 
   imessage:
@@ -1897,18 +1911,18 @@ jobs:
         continue-on-error: true
         name: IMessage urgent alerts
         env:
-          LIFEOS_ACQ_DB_NAME: &a91 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a92 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a93 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a94 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a95 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a96 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a97 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a98 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a99 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a100 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER }}
-          NTFY_TOPIC: &a101 ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
-          IMESSAGE_ALERTS_HOST: &a102 ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+          LIFEOS_ACQ_DB_NAME: &a92 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a93 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a94 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a95 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a96 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a97 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a98 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a99 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a100 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a101 ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: &a102 ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
+          IMESSAGE_ALERTS_HOST: &a103 ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
         run: python -m lifeos.run imessage-alerts $([ "$LIVE" = "true" ] && echo --live)
       - name: iMessage alerts warning (does not fail the run)
         if: ${{ always() && steps.imsg.outcome == 'failure' }}
@@ -1920,12 +1934,12 @@ jobs:
         with: *m4
       - id: comms
         continue-on-error: true
-        if: *a46
+        if: *a47
         name: Communications card, Messages row
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
-          IMESSAGE_ALERTS_HOST: *a102
-          NOTION_JIRA_TOKEN: &a103 ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          IMESSAGE_ALERTS_HOST: *a103
+          NOTION_JIRA_TOKEN: &a104 ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
           FOLLOWUP_TODOIST_PERSONAL_TOKEN: ${{ steps.bws_imessage.outputs.FOLLOWUP_TODOIST_PERSONAL_TOKEN }}
           AMAZON_CARD_BLOCK_ID: ""
           BILLS_CARD_BLOCK_ID: ""
@@ -1938,23 +1952,23 @@ jobs:
         run: echo "::warning title=Communications card::the Messages row was not updated; the Daily Report keeps its previous update time"
       - id: oracle
         continue-on-error: true
-        if: *a46
+        if: *a47
         name: System card (every tick; writes only when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
-          LIFEOS_ACQ_DB_NAME: *a91
-          LIFEOS_ACQ_DB_PASSWORD: *a92
-          LIFEOS_ACQ_DB_USER: *a93
-          LIFEOS_ACQ_SSH_HOST: *a94
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a95
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a96
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a97
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a98
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a99
-          LIFEOS_ACQ_SSH_USER: *a100
-          NTFY_TOPIC: *a101
-          IMESSAGE_ALERTS_HOST: *a102
-          NOTION_JIRA_TOKEN: *a103
+          LIFEOS_ACQ_DB_NAME: *a92
+          LIFEOS_ACQ_DB_PASSWORD: *a93
+          LIFEOS_ACQ_DB_USER: *a94
+          LIFEOS_ACQ_SSH_HOST: *a95
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a96
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a97
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a98
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a99
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a100
+          LIFEOS_ACQ_SSH_USER: *a101
+          NTFY_TOPIC: *a102
+          IMESSAGE_ALERTS_HOST: *a103
+          NOTION_JIRA_TOKEN: *a104
           GITHUB_TOKEN: *a1
           GITHUB_REPOSITORY: ${{ github.repository }}
           LIFEOS_NOTION_IDS: ""
@@ -1968,7 +1982,7 @@ jobs:
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
         run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
       - name: Fail the job if any stage step failed
-        if: *a35
+        if: *a36
         run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1
 
   granola:
@@ -1977,7 +1991,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
-      group: *a90
+      group: *a91
       cancel-in-progress: false
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
@@ -2036,10 +2050,10 @@ jobs:
           GRANOLA_LIVE: ${{ env.LIVE == 'true' && needs.gate.outputs.granola_auto == 'on' && 'true' || 'false' }}
         run: python -m lifeos.run granola-auto $([ "$GRANOLA_LIVE" = "true" ] && echo --live)
       - name: Granola auto warning
-        if: &a104 ${{ always() && steps.gran.outcome == 'failure' }}
+        if: &a105 ${{ always() && steps.gran.outcome == 'failure' }}
         run: echo "::warning title=Granola auto::the automatic Granola run stopped; nothing is purged from Oracle that is not safely in Notion and the catalog"
       - name: Granola auto stopped - fail this job
-        if: *a104
+        if: *a105
         run: exit 1
 
   report:
