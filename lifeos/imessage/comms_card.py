@@ -5,6 +5,7 @@ generated). It writes the link text `Messages (N)` (`(—)` when the source is n
 line and the heading time, then Telegram the same way; everything else in the callout is sent back as read and every
 write is read back. Names are unscrambled only in memory just before the Notion write and never printed, logged or
 stored elsewhere."""
+
 import hashlib
 import hmac
 import json
@@ -13,7 +14,10 @@ import socket
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-from lifeos.imessage.alerts_endpoint import TG_COUNTS, _keystream      # the Oracle endpoint file is stdlib-only, so the runner imports from it and never the other way
+from lifeos.imessage.alerts_endpoint import (
+    TG_COUNTS,
+    _keystream,
+)  # the Oracle endpoint file is stdlib-only, so the runner imports from it and never the other way
 from lifeos.platform import ct_stamp, report_region, router
 from lifeos.platform.fixed_code import fixed
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -24,7 +28,7 @@ PORT = 47341
 SCHEMA = "lifeos.imessage.comms.v3"
 TG_KEYS = {"health", "auth", "error", "observed_at", "latest_state", "latest", *TG_COUNTS}
 MAX_REPLY = 8192
-WAIT = 100                                                             # seconds: the endpoint may spend up to 90 (Telegram start-up included)
+WAIT = 100  # seconds: the endpoint may spend up to 90 (Telegram start-up included)
 REPLY_TTL_SECONDS = 600
 LAUNCHES = {"messages": "/launch/messages/", "telegram": "/launch/telegram/", "whatsapp": "/launch/whatsapp/"}
 LABELS = {"messages": "Messages", "telegram": "Telegram", "whatsapp": "WhatsApp"}
@@ -32,8 +36,13 @@ TODOIST_LAUNCH = "/launch/todoist/"
 TODOIST_LIMIT = 99
 CHANNEL_BLOCKS = ("telegram", "whatsapp")
 STATES = ("PRESENT", "NONE", "UNAVAILABLE")
-PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
+PROTECTED = (
+    ("JIRA_CARD_BLOCK_ID", router.JIRA_REGION),
+    ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION),
+    ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
+    ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION),
+    ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION),
+)
 
 
 class CommsError(Exception):
@@ -71,9 +80,15 @@ def _count(n):
 
 
 def _block_ok(b):
-    return (isinstance(b, dict) and set(b) == TG_KEYS and b["health"] in ("CURRENT", "DEGRADED", "UNAVAILABLE") and b["latest_state"] in STATES
-            and all(_count(b[k]) for k in TG_COUNTS) and (b["latest_state"] == "PRESENT") == isinstance(b["latest"], dict)
-            and (b["health"] == "CURRENT" or (b["latest_state"] == "UNAVAILABLE" and all(b[k] is None for k in TG_COUNTS))))
+    return (
+        isinstance(b, dict)
+        and set(b) == TG_KEYS
+        and b["health"] in ("CURRENT", "DEGRADED", "UNAVAILABLE")
+        and b["latest_state"] in STATES
+        and all(_count(b[k]) for k in TG_COUNTS)
+        and (b["latest_state"] == "PRESENT") == isinstance(b["latest"], dict)
+        and (b["health"] == "CURRENT" or (b["latest_state"] == "UNAVAILABLE" and all(b[k] is None for k in TG_COUNTS)))
+    )
 
 
 def validate(raw, key, now):
@@ -86,9 +101,15 @@ def validate(raw, key, now):
         p = json.loads(raw)
         seen = datetime.fromisoformat(p["observed_at"].replace("Z", "+00:00"))
     unread, state = p.get("unread_7d"), p.get("latest_state")
-    if (set(p) != {"schema", "observed_at", "health", "unread_7d", "latest_state", "latest", *CHANNEL_BLOCKS} or p["schema"] != SCHEMA
-            or p["health"] not in ("CURRENT", "DEGRADED") or state not in STATES or not _count(unread)
-            or (state == "PRESENT") != isinstance(p["latest"], dict) or not all(_block_ok(p[c]) for c in CHANNEL_BLOCKS)):
+    if (
+        set(p) != {"schema", "observed_at", "health", "unread_7d", "latest_state", "latest", *CHANNEL_BLOCKS}
+        or p["schema"] != SCHEMA
+        or p["health"] not in ("CURRENT", "DEGRADED")
+        or state not in STATES
+        or not _count(unread)
+        or (state == "PRESENT") != isinstance(p["latest"], dict)
+        or not all(_block_ok(p[c]) for c in CHANNEL_BLOCKS)
+    ):
         raise _fail("COMMS_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("COMMS_STALE")
@@ -96,7 +117,11 @@ def validate(raw, key, now):
     detail = {}
     for c in CHANNEL_BLOCKS:
         b = p[c]
-        rows[c] = (b["unread_messages_unmuted"], b["latest_state"], unscramble(key, b["latest"]) if b["latest_state"] == "PRESENT" else None)
+        rows[c] = (
+            b["unread_messages_unmuted"],
+            b["latest_state"],
+            unscramble(key, b["latest"]) if b["latest_state"] == "PRESENT" else None,
+        )
         detail[c] = {k: b[k] for k in ("health", "auth", "error", *TG_COUNTS)}
     return rows, detail
 
@@ -104,7 +129,9 @@ def validate(raw, key, now):
 NONE_LINE = {"messages": "Latest: none in 3 days", "telegram": "Latest: none", "whatsapp": "Latest: none"}
 
 
-KEEP_LAST = ("whatsapp",)   # a CURRENT WhatsApp source with no message since restart keeps Notion's last name (names are never on disk)
+KEEP_LAST = (
+    "whatsapp",
+)  # a CURRENT WhatsApp source with no message since restart keeps Notion's last name (names are never on disk)
 
 
 def render(rows, now):
@@ -130,7 +157,11 @@ def _callouts(client, parent_id, depth=0):
     for block in _children(client, parent_id):
         if block.get("type") == "callout":
             kids = _children(client, block["id"])
-            if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
+            if (
+                kids
+                and kids[0].get("type") in report_region.HEADINGS
+                and report_region.titled(report_region.plain(kids[0]), TITLE)
+            ):
                 found.append(kids)
         elif block.get("type") in ("column_list", "column") and depth < 4:
             found += _callouts(client, block["id"], depth + 1)
@@ -151,7 +182,7 @@ def locate(client, anchor):
     if len(found) != 1:
         raise _fail("CARD_NOT_OWNED")
     heading, rest = found[0][0], found[0][1:]
-    lists = []                                                     # the one column list whose left column holds a launch link; other rows are never read or written
+    lists = []  # the one column list whose left column holds a launch link; other rows are never read or written
     for block in rest:
         if block.get("type") == "column_list":
             columns = _children(client, block["id"])
@@ -160,7 +191,14 @@ def locate(client, anchor):
                 lists.append(columns)
     if len(lists) != 1 or len(lists[0]) != 2:
         raise _fail("CARD_NOT_OWNED")
-    todoists = [b for block in rest if block.get("type") == "column_list" for column in _children(client, block["id"]) for b in _children(client, column["id"]) if _todoist_item(b) is not None]
+    todoists = [
+        b
+        for block in rest
+        if block.get("type") == "column_list"
+        for column in _children(client, block["id"])
+        for b in _children(client, column["id"])
+        if _todoist_item(b) is not None
+    ]
     if len(todoists) > 1:
         raise _fail("CARD_NOT_OWNED")
     left, right = (_children(client, c["id"]) for c in lists[0])
@@ -180,8 +218,11 @@ def _items(block):
 def _launch_item(block, launch):
     if not isinstance(block, dict) or block.get("type") != "paragraph":
         return None
-    hits = [i for i, item in enumerate(_items(block))
-            if item.get("type") == "text" and launch in str(((item.get("text") or {}).get("link") or {}).get("url") or "")]
+    hits = [
+        i
+        for i, item in enumerate(_items(block))
+        if item.get("type") == "text" and launch in str(((item.get("text") or {}).get("link") or {}).get("url") or "")
+    ]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -197,9 +238,15 @@ def _sendable(item):
     kind, out = item.get("type"), {}
     if kind == "text":
         text = item.get("text") or {}
-        out = {"type": "text", "text": {"content": text.get("content", ""), **({"link": text["link"]} if text.get("link") else {})}}
+        out = {
+            "type": "text",
+            "text": {"content": text.get("content", ""), **({"link": text["link"]} if text.get("link") else {})},
+        }
     elif kind == "mention" and (item.get("mention") or {}).get("type") == "custom_emoji":
-        out = {"type": "mention", "mention": {"type": "custom_emoji", "custom_emoji": {"id": item["mention"]["custom_emoji"]["id"]}}}
+        out = {
+            "type": "mention",
+            "mention": {"type": "custom_emoji", "custom_emoji": {"id": item["mention"]["custom_emoji"]["id"]}},
+        }
     elif kind == "mention":
         sub = item["mention"]["type"]
         out = {"type": "mention", "mention": {"type": sub, sub: item["mention"][sub]}}
@@ -242,9 +289,10 @@ def todoist_count(environ, tasks=None):
     if not token:
         return None
     try:
-        from lifeos.platform import todoist                                                      # noqa: PLC0415
+        from lifeos.platform import todoist  # noqa: PLC0415
+
         return len((tasks or todoist.Todoist(token).tasks)(TODOIST_LIMIT + 1))
-    except Exception:                                                                            # noqa: BLE001 - a fixed word only: never the token, a URL or a body
+    except Exception:  # noqa: BLE001 - a fixed word only: never the token, a URL or a body
         print("imessage-comms: todoist unavailable", json.dumps({"code": "TODOIST_UNREADABLE"}))
         return None
 
@@ -273,12 +321,19 @@ def write(client, heading, rows, lines, heading_text):
 
 
 def _writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, keygen=os.urandom, tasks=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
-    anchor = (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()                          # the Communications callout sits in the Calendar card's column
+    anchor = (
+        environ.get("CALENDAR_CARD_BLOCK_ID") or ""
+    ).strip()  # the Communications callout sits in the Calendar card's column
     if not host or not anchor:
         raise _fail("COMMS_NOT_CONFIGURED")
     router.check_write(MODULE, [TITLE])
@@ -288,7 +343,10 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     except OSError:
         raw = b""
     now = now or datetime.now(timezone.utc)
-    detail = {c: {"health": "UNAVAILABLE", "auth": None, "error": None, **{k: None for k in TG_COUNTS}} for c in CHANNEL_BLOCKS}
+    detail = {
+        c: {"health": "UNAVAILABLE", "auth": None, "error": None, **{k: None for k in TG_COUNTS}}
+        for c in CHANNEL_BLOCKS
+    }
     try:
         rows, detail = validate(raw, key, now)
     except CommsError as e:
@@ -298,13 +356,20 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     client = client or _writer(environ)
     heading, blocks, todoist = locate(client, anchor)
     count = todoist_count(environ, tasks) if todoist is not None else None
-    counts = {"unread_7d": rows["messages"][0], "latest": rows["messages"][1].lower(),
-              **{f"{c}_latest": rows[c][1].lower() for c in CHANNEL_BLOCKS},
-              **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()}, "todoist": "none" if todoist is None else "unread" if count is None else count, "written": 0}
+    counts = {
+        "unread_7d": rows["messages"][0],
+        "latest": rows["messages"][1].lower(),
+        **{f"{c}_latest": rows[c][1].lower() for c in CHANNEL_BLOCKS},
+        **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()},
+        "todoist": "none" if todoist is None else "unread" if count is None else count,
+        "written": 0,
+    }
     if not live:
         return counts
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
-    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(*(b["id"] for pair in blocks.values() for b in pair), *([todoist["id"]] if todoist else []))      # only the blocks located above can be written
+    scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(
+        *(b["id"] for pair in blocks.values() for b in pair), *([todoist["id"]] if todoist else [])
+    )  # only the blocks located above can be written
     with fixed(NotionError, _fail, "COMMS_WRITE_FAILED"):
         write(scoped, heading, blocks, lines, heading_text)
         counts["written"] = 2 * len(blocks) + 1

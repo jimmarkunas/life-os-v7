@@ -2,6 +2,7 @@
 
 Date labels are derived from the stored event start and `now`, never stored. Source is ONE `Opportunity Notes` link
 when exactly one parent was resolved, else `Needs Notes`."""
+
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
@@ -15,11 +16,26 @@ TZ = ZoneInfo("America/Chicago")
 STALE_HOURS = 6
 MAX_ROWS = 80
 NOTES_URL = "https://www.notion.so/"
-KIND_LABEL = {"assessment": "assessment", "hiring_manager": "hiring-manager interview", "recruiter_screen": "recruiter screen", "interview": "interview"}
-REASON_TEXT = {"LEDGER_UNAVAILABLE": "Job Ledger unreadable", "OPPORTUNITIES_UNAVAILABLE": "Hiring Pipeline pages unreadable", "CALENDAR_UNAVAILABLE": "Calendar unreadable",
-               "IDENTITY_AMBIGUOUS": "an opportunity matches more than one page", "CALENDAR_AMBIGUOUS": "a calendar event matches more than one opportunity",
-               "EVENT_NOT_ON_CALENDAR": "a scheduled event is no longer on the Calendar", "PARENT_IDENTITY_UNREADABLE": "an opportunity page title is unreadable",
-               "SNAPSHOT_STALE": "evidence is stale", "OUTCOME_MAIL_STALE": "outcome mail not read recently", "OUTCOME_MAIL_UNREADABLE": "outcome mail state unreadable", "OUTCOME_MAIL_PARTIAL": "outcome mail partly read", "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role"}
+KIND_LABEL = {
+    "assessment": "assessment",
+    "hiring_manager": "hiring-manager interview",
+    "recruiter_screen": "recruiter screen",
+    "interview": "interview",
+}
+REASON_TEXT = {
+    "LEDGER_UNAVAILABLE": "Job Ledger unreadable",
+    "OPPORTUNITIES_UNAVAILABLE": "Hiring Pipeline pages unreadable",
+    "CALENDAR_UNAVAILABLE": "Calendar unreadable",
+    "IDENTITY_AMBIGUOUS": "an opportunity matches more than one page",
+    "CALENDAR_AMBIGUOUS": "a calendar event matches more than one opportunity",
+    "EVENT_NOT_ON_CALENDAR": "a scheduled event is no longer on the Calendar",
+    "PARENT_IDENTITY_UNREADABLE": "an opportunity page title is unreadable",
+    "SNAPSHOT_STALE": "evidence is stale",
+    "OUTCOME_MAIL_STALE": "outcome mail not read recently",
+    "OUTCOME_MAIL_UNREADABLE": "outcome mail state unreadable",
+    "OUTCOME_MAIL_PARTIAL": "outcome mail partly read",
+    "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role",
+}
 
 
 def local(value):
@@ -42,7 +58,7 @@ def when(start, now):
     return False, f"Upcoming {at.strftime('%b %-d')}, {clock(at)}"
 
 
-RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actionable or due · waiting · verified upcoming activity
+RED, YELLOW, GREEN = "🔴", "🟡", "🟢"  # actionable or due · waiting · verified upcoming activity
 HELD = "⏸"
 
 
@@ -51,7 +67,11 @@ def next_step(row, now):
     invented; a hand-set hold has no to-do and no due date."""
     outcome, kind = row.get("outcome"), KIND_LABEL.get(row.get("event_kind"), "interview")
     if row.get("hold"):
-        return HELD, f"No to-do · {M.HOLD_LABEL[row['hold']['state']].lower()} (set by Jim {local(row['hold']['at']).strftime('%b %-d')})", ""
+        return (
+            HELD,
+            f"No to-do · {M.HOLD_LABEL[row['hold']['state']].lower()} (set by Jim {local(row['hold']['at']).strftime('%b %-d')})",
+            "",
+        )
     dot, step, due = _step(row, now, outcome, kind)
     gone = row.get("hold_cleared")
     if gone and (local(now).date() - local(gone["on"]).date()).days < M.AWAIT_DAYS:
@@ -66,14 +86,26 @@ def _step(row, now, outcome, kind):
         sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
         if outcome["kind"] == "OFFER":
             return RED, f"{'Offer' if sure else 'Possible offer'} email received {day} · review and respond", ""
-        where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"
+        where = (
+            "confirm, then move the Notes page to Retired"
+            if row.get("parent_state") == "one" and row.get("parent")
+            else "confirm (Applied stays as history)"
+        )
         return RED, f"{'Rejection' if sure else 'Possible rejection'} email received {day} · {where}", ""
     if row.get("stage") == M.LEAD and not outcome:
-        start, waiting, quiet = row["replied"], f"Replied {local(row['replied'] + 'T12:00:00').strftime('%b %-d')} · awaiting the recruiter", "reply"
+        start, waiting, quiet = (
+            row["replied"],
+            f"Replied {local(row['replied'] + 'T12:00:00').strftime('%b %-d')} · awaiting the recruiter",
+            "reply",
+        )
     elif row.get("event_start"):
         past, label = when(row["event_start"], now)
         if not past:
-            return (YELLOW if row.get("carried") else GREEN), f"Prepare for the {kind} · {label}", local(row["event_start"]).date().isoformat()
+            return (
+                (YELLOW if row.get("carried") else GREEN),
+                f"Prepare for the {kind} · {label}",
+                local(row["event_start"]).date().isoformat(),
+            )
         start, waiting, quiet = row["event_start"], f"Awaiting outcome of the {kind} held {label}", "news"
     elif row.get("rounds"):
         return YELLOW, f"Awaiting next step · {row['rounds']} round(s) logged in Notes", "9"
@@ -92,24 +124,41 @@ def _step(row, now, outcome, kind):
 
 def close_url(base, pid):
     """The private Close screen link, or None. `base` must be a bare https origin and `pid` one 32-hex page id."""
-    return f"{base.rstrip('/')}/?{urlencode({'o': pid})}" if re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?", base or "") and re.fullmatch(r"[0-9a-f]{32}", pid or "") else None
+    return (
+        f"{base.rstrip('/')}/?{urlencode({'o': pid})}"
+        if re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?", base or "") and re.fullmatch(r"[0-9a-f]{32}", pid or "")
+        else None
+    )
 
 
 def row_cells(row, now, close=None):
     """-> [(text, link)] x 4 (Company — Role, Stage, Next step · Due, Notes). Plain text."""
     _, step, _ = next_step(row, now)
-    source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
+    source = (
+        (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", ""))
+        if row.get("parent_state") == "one" and row.get("parent")
+        else (M.NO_NOTES, None)
+    )
     source = [source, (" · ", None), ("Close ↗", close)] if close else source
     held = M.HOLD_LABEL[row["hold"]["state"]] + " · " if row.get("hold") else ""
-    return [(M.label(row['company'], row['role']), None), (held + row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
+    return [
+        (M.label(row['company'], row['role']), None),
+        (held + row["stage"] + (" (last accepted)" if row.get("carried") else ""), None),
+        (step, None),
+        source,
+    ]
 
 
 def _older(row, now):
-    return (row["stage"] == M.SUBMITTED and row.get("applied_on") and not row.get("carried")
-            and (now.date() - local(row["applied_on"]).date()).days > M.APPLIED_DAYS)
+    return (
+        row["stage"] == M.SUBMITTED
+        and row.get("applied_on")
+        and not row.get("carried")
+        and (now.date() - local(row["applied_on"]).date()).days > M.APPLIED_DAYS
+    )
 
 
-older_submitted = _older                                             # the one active-row rule, shared with network matching
+older_submitted = _older  # the one active-row rule, shared with network matching
 
 
 def render(result, stored, now, close=(None, {})):
@@ -123,13 +172,29 @@ def render(result, stored, now, close=(None, {})):
         reasons.append("SNAPSHOT_STALE")
     rows = result["rows"]
     unread = result.get("outcome_unread")
-    note = " · ".join(REASON_TEXT.get(r, r.lower()) + (f" ({', '.join(unread)} unread)" if r == "OUTCOME_MAIL_PARTIAL" and unread else "") for r in reasons)
+    note = " · ".join(
+        REASON_TEXT.get(r, r.lower())
+        + (f" ({', '.join(unread)} unread)" if r == "OUTCOME_MAIL_PARTIAL" and unread else "")
+        for r in reasons
+    )
     if rows is None:
-        return (f"DEGRADED · Hiring Pipeline unavailable at {ct_stamp.when(now)} · {note} · no accepted state yet",
-                None, {"status": "unavailable", "rows": 0, "reasons": reasons})
+        return (
+            f"DEGRADED · Hiring Pipeline unavailable at {ct_stamp.when(now)} · {note} · no accepted state yet",
+            None,
+            {"status": "unavailable", "rows": 0, "reasons": reasons},
+        )
     hidden_older = sum(1 for r in rows if _older(r, now))
     rows = [r for r in rows if not _older(r, now)]
-    rows.sort(key=lambda r: ((n := next_step(r, now))[0] == HELD, n[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))
+    rows.sort(
+        key=lambda r: (
+            (n := next_step(r, now))[0] == HELD,
+            n[0] != RED,
+            n[0] != YELLOW,
+            n[2],
+            r["company"].lower(),
+            r["role"].lower(),
+        )
+    )
     shown = rows[:MAX_ROWS]
     cells = [row_cells(r, now, close_url(close[0], close[1].get(r["key"]))) for r in shown]
     extra = []
@@ -144,5 +209,9 @@ def render(result, stored, now, close=(None, {})):
         when_text = ct_stamp.when(local(accepted)) if accepted else "never"
         text = f"DEGRADED · Hiring Pipeline {note} at {ct_stamp.when(now)} · showing last accepted state ({when_text}) · {len(rows) - held} active{tail}"
     else:
-        text = f"{ct_stamp.when(now)} · {len(rows) - held} active{tail}" if rows else f"{ct_stamp.when(now)} · no submitted or interviewing opportunities{tail}"
+        text = (
+            f"{ct_stamp.when(now)} · {len(rows) - held} active{tail}"
+            if rows
+            else f"{ct_stamp.when(now)} · no submitted or interviewing opportunities{tail}"
+        )
     return text, cells, {"status": "degraded" if reasons else "fresh", "rows": len(shown), "reasons": reasons}

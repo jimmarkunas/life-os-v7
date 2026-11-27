@@ -3,6 +3,7 @@
 It is replaced each run under one key and saved with read-back. It holds only what carry-forward and freshness
 need: the compiled rows (structure, never display text) and when state was last fully accepted. A cache, not a hiring
 database: the canonical sources are the Ledger, Notion pages and Calendar."""
+
 from datetime import datetime
 
 from lifeos.platform.fixed_code import fixed
@@ -27,7 +28,13 @@ def build(result, prior, now):
         return None
     clean = not result["reasons"]
     accepted = now.isoformat() if clean else (prior or {}).get("accepted_at")
-    return {"schema": SCHEMA_V, "taken_at": now.isoformat(), "accepted_at": accepted, "reasons": result["reasons"], "rows": rows}
+    return {
+        "schema": SCHEMA_V,
+        "taken_at": now.isoformat(),
+        "accepted_at": accepted,
+        "reasons": result["reasons"],
+        "rows": rows,
+    }
 
 
 def load(connection):

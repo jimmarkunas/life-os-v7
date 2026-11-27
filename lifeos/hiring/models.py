@@ -2,22 +2,34 @@
 
 A stage appears only when deterministic evidence supports it: nothing here is a default. `rank` orders the stages so
 a missing source can never roll a row backward."""
+
 import re
 from datetime import datetime, timezone
 
 from lifeos.platform import names
 
-TITLE = "📈 Hiring Pipeline"                                   # the floating heading, exactly (router.HIRING_REGION)
+TITLE = "📈 Hiring Pipeline"  # the floating heading, exactly (router.HIRING_REGION)
 HEADERS = ("Company — Role", "Stage", "Next step · Due", "Notes")
 OLD_HEADERS = ("Company / Role", "Stage / Update", "Action Needed", "Source")
 NOTES_LABEL, NO_NOTES = "Opportunity Page ↗", "Needs Notes"
 
 SUBMITTED, RECRUITER_SCREEN, HM_SCHEDULED, INTERVIEWING, ASSESSMENT = (
-    "Submitted", "Recruiter Screen", "Hiring-Manager Interview Scheduled", "Interviewing", "Assessment")
+    "Submitted",
+    "Recruiter Screen",
+    "Hiring-Manager Interview Scheduled",
+    "Interviewing",
+    "Assessment",
+)
 LEAD = "Recruiter lead"
-LEAD_REASONS = {"I'm passing": ("Withdrew", "Passed: not interested"), "Not a real job": ("Other", "Not a real job"), "Went nowhere": ("Other", "Went nowhere")}
+LEAD_REASONS = {
+    "I'm passing": ("Withdrew", "Passed: not interested"),
+    "Not a real job": ("Other", "Not a real job"),
+    "Went nowhere": ("Other", "Went nowhere"),
+}
 RANK = {SUBMITTED: 1, RECRUITER_SCREEN: 2, ASSESSMENT: 2, HM_SCHEDULED: 3, INTERVIEWING: 4}
-AWAIT_DAYS = 7                                                 # 7 calendar days without direct contact since the last evidence is Stale: a reversible prompt, never a closure
+AWAIT_DAYS = (
+    7  # 7 calendar days without direct contact since the last evidence is Stale: a reversible prompt, never a closure
+)
 APPLIED_DAYS = 30
 
 OUTCOMES = ("Rejected", "Withdrew", "Position filled", "Declined offer", "Hired", "Other")
@@ -30,12 +42,16 @@ KINDS = ("assessment", "hiring_manager", "recruiter_screen", "interview")
 PAUSED, WAITING, ACTIVE = "paused", "waiting", "active"
 HOLD_LABEL = {PAUSED: "Paused", WAITING: "Waiting on employer"}
 _AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
-HOLD_LINE = re.compile(rf"v7-hold:1;state=({PAUSED}|{WAITING}|{ACTIVE});at=({_AT});op=([0-9a-f]{{16}})")          # the Interview writer keeps its own copies (contract-tested)
+HOLD_LINE = re.compile(
+    rf"v7-hold:1;state=({PAUSED}|{WAITING}|{ACTIVE});at=({_AT});op=([0-9a-f]{{16}})"
+)  # the Interview writer keeps its own copies (contract-tested)
 NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
 NEXT_MAX = 200
 FORM, FILE = "form", "file"
 SENT_KINDS = {FORM: "Application form / portal answers", FILE: "Google Drive file"}
-SENT_LINE = re.compile(rf"v7-sent:1;kind=({FORM}|{FILE});at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")
+SENT_LINE = re.compile(
+    rf"v7-sent:1;kind=({FORM}|{FILE});at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)"
+)
 SENT_MAX = 20
 UNSENT_LINE = re.compile(rf"v7-unsent:1;at=({_AT});op=([0-9a-f]{{16}});of=([0-9a-f]{{16}})")
 
@@ -57,7 +73,11 @@ def unsent_line(of, at, op):
 
 
 def hand_lines(text):
-    return tuple(t for t in (text or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t))
+    return tuple(
+        t
+        for t in (text or "").splitlines()
+        if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t)
+    )
 
 
 def sent_of(lines):
@@ -66,7 +86,15 @@ def sent_of(lines):
     for m in sorted(filter(None, map(SENT_LINE.fullmatch, lines)), key=lambda m: datetime.fromisoformat(m.group(2))):
         if m.group(3) not in seen:
             seen.add(m.group(3))
-            out.append({"kind": m.group(1), "text": m.group(5).strip(), "url": None if m.group(4) == "none" else m.group(4), "at": m.group(2), "op": m.group(3)})
+            out.append(
+                {
+                    "kind": m.group(1),
+                    "text": m.group(5).strip(),
+                    "url": None if m.group(4) == "none" else m.group(4),
+                    "at": m.group(2),
+                    "op": m.group(3),
+                }
+            )
     return out
 
 
@@ -85,10 +113,15 @@ def next_of(lines):
     m = _latest(lines, NEXT_LINE)
     if not m or not (m.group(4).strip() or m.group(1) != "none"):
         return None
-    return {"text": m.group(4).strip(), "due": None if m.group(1) == "none" else m.group(1), "at": m.group(2), "op": m.group(3)}
+    return {
+        "text": m.group(4).strip(),
+        "due": None if m.group(1) == "none" else m.group(1),
+        "at": m.group(2),
+        "op": m.group(3),
+    }
 
 
-WHEN = r"(?:(?:[A-Z][a-z]{2} \d{1,2}|\d{1,2}/\d{1,2}) · )?\d{1,2}:\d{2} [AP]M CT"       # `11/13 · 3:31 PM CT`; the `Nov 13 · ...` and time-only forms are read too (no ct_stamp import: shipped in the Close closure)
+WHEN = r"(?:(?:[A-Z][a-z]{2} \d{1,2}|\d{1,2}/\d{1,2}) · )?\d{1,2}:\d{2} [AP]M CT"  # `11/13 · 3:31 PM CT`; the `Nov 13 · ...` and time-only forms are read too (no ct_stamp import: shipped in the Close closure)
 _DEGRADED = re.compile(rf"^DEGRADED · (?P<what>.*?) at (?P<clock>{WHEN})(?P<rest> · .*)?$")
 _UPDATED = re.compile(rf"^(?P<stamp>(?:Updated )?{WHEN})(?: · (?P<rest>.*))?$")
 
@@ -103,7 +136,7 @@ def split_status(text):
     if found:
         return f"DEGRADED at {found.group('clock')}", (found.group("what") + (found.group("rest") or "")).strip()
     if text.startswith("DEGRADED"):
-        return "DEGRADED", text[len("DEGRADED"):].lstrip(" ·")
+        return "DEGRADED", text[len("DEGRADED") :].lstrip(" ·")
     found = _UPDATED.match(text)
     if found:
         return found.group("stamp"), found.group("rest") or ""
@@ -125,7 +158,7 @@ def label(company, role):
 
 def contains(haystack, needle):
     n = len(needle)
-    return n > 0 and any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
+    return n > 0 and any(haystack[i : i + n] == needle for i in range(len(haystack) - n + 1))
 
 
 def moment(value):
