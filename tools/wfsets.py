@@ -6,6 +6,8 @@ import re
 
 import yaml
 
+import wfsrc
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SETS = ROOT / ".github/actions/bws-load/sets.yml"
 REF = re.compile(r"(?m)^( +)set: ([A-Za-z0-9_-]+)\s*$")
@@ -17,7 +19,9 @@ def load(path=None):
 
 
 def expand_text(text, sets=None):
+    """Plain text of a workflow: the YAML aliases the generator wrote (LIFE-1013) and the `set:` names are both written out."""
     sets = load() if sets is None else sets
+    text = wfsrc.expand_aliases(text)
 
     def inline(found):
         indent = found.group(1)
