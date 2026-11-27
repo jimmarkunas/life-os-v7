@@ -26,6 +26,15 @@ class Compare(unittest.TestCase):
         self.assertEqual((code, result["code"], result["matched"], result["total"], result["doppler_ms"]), (0, "match", 4, 4, 250))
         self.assertTrue(all(x.startswith(("::add-mask::", "doppler-compare: ")) for x in lines))          # masks and one counts line, nothing else
 
+    def test_a_multi_line_doppler_value_is_masked_one_line_per_command_and_never_printed_as_text(self):
+        value = "{\n  \"type\": \"service_account\",\n  \"private_key\": \"LINE-TWO-SECRET\"\n}"
+        lines = []
+        dc.main({"COMPARE_NAMES": "K", "DOPPLER_TOKEN": "t", "DOPPLER_PROJECT": "p", "DOPPLER_CONFIG": "c", "BITWARDEN": "{}"},
+                fetcher=lambda *a: ("ok", {"K": value}), clock=lambda: 0.0, out=lines.append)
+        self.assertTrue(all(x.startswith(("::add-mask::", "doppler-compare: ")) for x in lines))
+        self.assertTrue(all("\n" not in x for x in lines))
+        self.assertEqual([x for x in lines if x.startswith("::add-mask::")], ["::add-mask::" + l for l in value.splitlines() if l.strip()])
+
     def test_a_mismatch_names_the_secret_never_the_value(self):
         code, result, lines = run({**BW, "NOTION_JIRA_TOKEN": "different-VALUE"})
         self.assertEqual((code, result["code"], result["matched"], result["mismatched"]), (0, "mismatch", 3, ["NOTION_JIRA_TOKEN"]))

@@ -98,8 +98,9 @@ def main(environ=os.environ, fetcher=fetch, clock=time.monotonic, out=print):
             result["code"] = status
         else:
             for value in doppler.values():
-                if value:
-                    out(f"::add-mask::{value}")
+                for line in str(value or "").splitlines():                       # one mask command per line: a multi-line value after "::add-mask::" would print its later lines as plain log text
+                    if line.strip():
+                        out(f"::add-mask::{line}")
             found = compare(names, bitwarden, doppler)
             result.update(
                 matched=len(found["matched"]),
