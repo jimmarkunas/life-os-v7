@@ -1,6 +1,8 @@
 import json
 import re
 import unittest
+
+from tests import wftext
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -460,8 +462,8 @@ class SnapshotTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    text = (ROOT / ".github/workflows/hourly.yml").read_text()
-    domains = (ROOT / ".github/workflows/domains.yml").read_text()
+    text = wftext.text(ROOT / ".github/workflows/hourly.yml")
+    domains = wftext.text(ROOT / ".github/workflows/domains.yml")
 
     def job(self):
         start = self.domains.index("\n  jira:\n")

@@ -67,7 +67,8 @@ class Workflow(unittest.TestCase):
         for path in (ROOT / ".github").rglob("*.yml"):
             if path == ROOT / ".github/actions/bws-load/action.yml":
                 continue                                                                              # LIFE-1010: the loader runs the compare with the token its caller passes in
-            text = path.read_text()
+            from tests import wftext
+            text = wftext.text(path)
             self.assertEqual(len(re.findall(r"secrets\.DOPPLER_TOKEN", text)), text.count("uses: ./.github/actions/doppler-load") + len(re.findall(r"^\s+doppler_compare: \$\{\{ secrets\.DOPPLER_TOKEN \}\}$", text, re.M)), str(path))   # LIFE-1010: a loader's doppler_compare input is a compare too
 
     def test_the_trial_step_cannot_fail_the_job_and_nothing_uses_doppler_values(self):
