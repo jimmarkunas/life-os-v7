@@ -1,4 +1,4 @@
-"""quarterly membership is the approved key list, never the Jira hierarchy (R2.1 to R2.8). Synthetic keys only."""
+"""Quarterly membership is the approved key list, never the Jira hierarchy (R2.1 to R2.8). Synthetic keys only."""
 
 import copy
 import unittest
