@@ -281,4 +281,4 @@ def route(op, args, tenant):
     """-> (tenant, action, account, service) for the gate; an unknown operation is refused before the gate."""
     if op not in OPS:
         raise GovernedError("unknown_operation")
-    return tenant, "read" if op in READS else "write", "todoist-primary", "buzz"
+    return tenant, "read" if op in READS else "write", "todoist-primary", "todoist"

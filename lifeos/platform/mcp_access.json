@@ -19,7 +19,16 @@
   "memory_recall": "personal-memory",
   "memory_correct": "personal-memory",
   "memory_revoke": "personal-memory",
-  "memory_ask": "personal-memory"
+  "memory_ask": "personal-memory",
+  "todoist_tasks": "todoist-read",
+  "todoist_projects": "todoist-read",
+  "todoist_comments": "todoist-read",
+  "todoist_task_create": "todoist-write",
+  "todoist_task_update": "todoist-write",
+  "todoist_task_move": "todoist-write",
+  "todoist_task_complete": "todoist-write",
+  "todoist_task_reopen": "todoist-write",
+  "todoist_comment_add": "todoist-write"
  },
  "communities": {
   "life-os": "personal",
@@ -32,36 +41,43 @@
    "a30dfe04a1f81697c49e0eed5efa07707c6bc5f585074b729882eda33e3af7d0": {
     "buzz": "write",
     "honcho": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "7d4fa4108e914ff1958854ab529279c84e7063d649f6d1a65e9507af7aa176bc": {
     "buzz": "write",
     "honcho": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "e3004cee2bee990add283ff8a7e99517a13a3cf51e077b1e239ea8dc7b6356f6": {
     "buzz": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "2c8c6ccd88c3c2845a6d68fce3cfaa408e5aaebf35327550fc9d040177a53772": {
     "buzz": "read",
     "honcho": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "5dbd6b29730a3a8a2ee16220a6565743559805e532145389d436b5d4bce512e5": {
     "buzz": "read",
     "honcho": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "2b7ba37fbdfcc2839223417b879d835df0eb9b51d886d6051bb5043694028d6f": {
     "buzz": "write",
     "honcho": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "5a10b1e50b771566e61f818b437d3224927e5bf2798b4157cbbeba420309e1fa": {
     "buzz": "read",
     "honcho": "write",
-    "notion": "write"
+    "notion": "write",
+    "todoist": "write"
    },
    "9d238d6471fc5568f5b54860d0c2e191a8948e63770ed36d124566595b9fc031": {
     "notion": "write"
@@ -1666,6 +1682,888 @@
    ],
    "credential_ref": "mcp-credential-codex",
    "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_tasks",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_projects",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_comments",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_task_create",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_task_update",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_task_move",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_task_complete",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_task_reopen",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-chat-personal-todoist_comment_add",
+   "principal": "claude-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_tasks",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_projects",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_comments",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_task_create",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_task_update",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_task_move",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_task_complete",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_task_reopen",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-chatgpt-chat-personal-todoist_comment_add",
+   "principal": "chatgpt-chat",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_tasks",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_projects",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_comments",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_task_create",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_task_update",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_task_move",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_task_complete",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_task_reopen",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-claude-code-mac-personal-todoist_comment_add",
+   "principal": "claude-code-mac",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_tasks",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_projects",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_comments",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_task_create",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_task_update",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_task_move",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_task_complete",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_task_reopen",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-mac-claude-code-personal-todoist_comment_add",
+   "principal": "mac-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_tasks",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_projects",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_comments",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_task_create",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_task_update",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_task_move",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_task_complete",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_task_reopen",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-oracle-claude-code-personal-todoist_comment_add",
+   "principal": "oracle-claude-code",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_tasks",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_projects",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_comments",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_task_create",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_task_update",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_task_move",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_task_complete",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_task_reopen",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-openclaw-personal-todoist_comment_add",
+   "principal": "openclaw",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_tasks",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_projects",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_comments",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_task_create",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_task_update",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_task_move",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_task_complete",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_task_reopen",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
+   "revoked": false
+  },
+  {
+   "id": "g-hermes-librarian-personal-todoist_comment_add",
+   "principal": "hermes-librarian",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-22",
    "revoked": false
   }
  ],
