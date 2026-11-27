@@ -537,7 +537,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
 
     def test_it_runs_on_pull_requests_and_main_only_read_only_and_holds_no_secret(self):
         text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
-        self.assertEqual(list(doc[True]), ["pull_request", "push"])
+        self.assertEqual(list(doc[True]), ["pull_request", "merge_group", "push"])
+        self.assertEqual(doc[True]["merge_group"], {"types": ["checks_requested"]})  # the merge queue (LIFE-1096)
         self.assertEqual(doc[True]["push"], {"branches": ["main"]})
         self.assertEqual(doc["permissions"], {"contents": "read"})
         for word in ("secrets.", "bitwarden", "NOTION_", "GMAIL_", "--live"):
@@ -570,7 +571,9 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertLess(
             unit.index(restore), names.index(next(n for n in names if n.startswith("Pick the tests")))
         )  # restored before `select` reads it
-        self.assertEqual(restore["if"], "${{ github.event_name == 'pull_request' }}")
+        self.assertEqual(
+            restore["if"], "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}"
+        )
         self.assertEqual(
             (restore["with"]["path"], restore["with"]["key"], restore["with"]["restore-keys"]),
             ("docs/test-index.json", key + "${{ github.sha }}", key),
@@ -637,10 +640,19 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())
         steps = doc["jobs"]["unit-tests"]["steps"]
-        self.assertEqual(
-            [s.get("name") or s.get("uses") for s in steps[:2]],
-            ["Checkout the exact commit (own fetch, token never stored)", "./.github/actions/python"],
+        names = [s.get("name") or s.get("uses") for s in steps]
+        self.assertEqual(names[0], "Checkout the exact commit (own fetch, token never stored)")
+        self.assertIn("./.github/actions/python", names)
+        self.assertLess(
+            names.index("./.github/actions/python"), next(i for i, n in enumerate(names) if "Unit tests" in n)
         )
+        base = next(s for s in steps if s.get("name", "").startswith("Fetch the merge group's base"))
+        self.assertEqual(
+            base["if"], "${{ github.event_name == 'merge_group' }}"
+        )  # the queue's group holds up to five PRs
+        trailer = next(s for s in steps if s.get("name", "").startswith("Agent trailer"))
+        self.assertEqual(trailer["if"], "${{ github.event_name == 'pull_request' }}")
+        self.assertEqual(trailer["run"], "python tools/agent_trailer_check.py")
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         for k in (1, 2, 3, 4):
             self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
