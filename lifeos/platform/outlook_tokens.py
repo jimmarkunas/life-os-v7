@@ -1,6 +1,7 @@
 """Private storage for Outlook refresh tokens: one row per account label, replaced when Microsoft rotates it.
 
 The database is private; this repo and its logs are not (labels like 'personal' are not addresses)."""
+
 from datetime import datetime, timezone
 
 SCHEMA = (
@@ -17,18 +18,23 @@ def ensure_schema(connection):
         for statement in SCHEMA:
             cursor.execute(statement)
         for column, alter in COLUMNS:
-            cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-                           "AND table_name = 'v7_outlook_token' AND column_name = %s", (column,))
+            cursor.execute(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                "AND table_name = 'v7_outlook_token' AND column_name = %s",
+                (column,),
+            )
             if not cursor.fetchone()[0]:
                 cursor.execute(alter)
 
 
 def save(connection, account, refresh_token, fingerprint=None):
     with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO v7_outlook_token (account, refresh_token, updated_at, fingerprint) VALUES (%s,%s,%s,%s) "
-                       "ON DUPLICATE KEY UPDATE refresh_token=VALUES(refresh_token), updated_at=VALUES(updated_at), "
-                       "fingerprint=COALESCE(VALUES(fingerprint), fingerprint)",
-                       (account, refresh_token, datetime.now(timezone.utc).replace(tzinfo=None), fingerprint))
+        cursor.execute(
+            "INSERT INTO v7_outlook_token (account, refresh_token, updated_at, fingerprint) VALUES (%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE refresh_token=VALUES(refresh_token), updated_at=VALUES(updated_at), "
+            "fingerprint=COALESCE(VALUES(fingerprint), fingerprint)",
+            (account, refresh_token, datetime.now(timezone.utc).replace(tzinfo=None), fingerprint),
+        )
 
 
 def _first(connection, sql, value):

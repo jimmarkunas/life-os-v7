@@ -3,6 +3,7 @@
 Notion has no unique constraint, so one conditional UPDATE on the UNIQUE `v7_jobs.dedupe_key` is the lock-protected
 test-and-set. claim() -> WON, HELD (adopt the existing page, create nothing) or CREATED (page id recorded: adopt it).
 A create that timed out is never released: the claim stays for LEASE and the next winner reads by key first."""
+
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from contextlib import contextmanager
@@ -49,9 +50,14 @@ def claim(key, claimant, connect=None, now=None):
         _memory[key] = (claimant, moment)
         return WON, None
     with (connect or db.connect)() as connection, connection.cursor() as cursor:
-        cursor.execute("INSERT IGNORE INTO v7_jobs (dedupe_key, status, first_seen, last_seen, updated_at) VALUES (%s,'LEDGER',%s,%s,%s)", (key, moment, moment, moment))
-        cursor.execute("UPDATE v7_jobs SET ledger_claim_by=%s, ledger_claim_at=%s WHERE dedupe_key=%s AND notion_page_id IS NULL AND (ledger_claim_at IS NULL OR ledger_claim_at < %s)",
-                       (claimant, moment, key, moment - LEASE))
+        cursor.execute(
+            "INSERT IGNORE INTO v7_jobs (dedupe_key, status, first_seen, last_seen, updated_at) VALUES (%s,'LEDGER',%s,%s,%s)",
+            (key, moment, moment, moment),
+        )
+        cursor.execute(
+            "UPDATE v7_jobs SET ledger_claim_by=%s, ledger_claim_at=%s WHERE dedupe_key=%s AND notion_page_id IS NULL AND (ledger_claim_at IS NULL OR ledger_claim_at < %s)",
+            (claimant, moment, key, moment - LEASE),
+        )
         if cursor.rowcount == 1:
             return WON, None
         cursor.execute("SELECT notion_page_id FROM v7_jobs WHERE dedupe_key=%s", (key,))
@@ -66,4 +72,7 @@ def release(key, claimant, connect=None):
             del _memory[key]
         return
     with (connect or db.connect)() as connection, connection.cursor() as cursor:
-        cursor.execute("UPDATE v7_jobs SET ledger_claim_by=NULL, ledger_claim_at=NULL WHERE dedupe_key=%s AND ledger_claim_by=%s", (key, claimant))
+        cursor.execute(
+            "UPDATE v7_jobs SET ledger_claim_by=NULL, ledger_claim_at=NULL WHERE dedupe_key=%s AND ledger_claim_by=%s",
+            (key, claimant),
+        )

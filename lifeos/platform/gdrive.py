@@ -2,6 +2,7 @@
 
 The credential is the full `drive` scope (docs/DRIVE_RESUMES.md) as one JSON object, stored as `gdrive`. .docx files
 are uploaded unconverted so bytes and checksum stay fixed. Every error is a fixed code."""
+
 import hashlib
 import json
 import secrets
@@ -64,8 +65,20 @@ class Drive:
     def _access_token(self):
         if self._token is None:
             client_id, client_secret, refresh = self._creds
-            reply = self._send("POST", TOKEN_URL, urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret,
-                               "refresh_token": refresh, "grant_type": "refresh_token"}).encode(), "application/x-www-form-urlencoded", auth=False)
+            reply = self._send(
+                "POST",
+                TOKEN_URL,
+                urllib.parse.urlencode(
+                    {
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "refresh_token": refresh,
+                        "grant_type": "refresh_token",
+                    }
+                ).encode(),
+                "application/x-www-form-urlencoded",
+                auth=False,
+            )
             token = reply.get("access_token")
             if not isinstance(token, str) or not token:
                 raise DriveError("GDRIVE_TOKEN_REFUSED")
@@ -75,8 +88,20 @@ class Drive:
         return self._token
 
     def find(self, query, order="createdTime"):
-        reply = self._send("GET", API + "?" + urllib.parse.urlencode({"q": query + " and trashed=false", "spaces": "drive", "orderBy": order,
-                                                                       "pageSize": 100, "fields": f"files({FIELDS})"}))
+        reply = self._send(
+            "GET",
+            API
+            + "?"
+            + urllib.parse.urlencode(
+                {
+                    "q": query + " and trashed=false",
+                    "spaces": "drive",
+                    "orderBy": order,
+                    "pageSize": 100,
+                    "fields": f"files({FIELDS})",
+                }
+            ),
+        )
         files = reply.get("files")
         if not isinstance(files, list):
             raise DriveError("GDRIVE_OFF_CONTRACT")
@@ -88,11 +113,17 @@ class Drive:
         if len(homes) != 1:
             raise DriveError("GDRIVE_LIFE_OS_FOLDER_" + ("MISSING" if not homes else "AMBIGUOUS"))
         home = homes[0]["id"]
-        names = " or ".join(f"name='{n}'" for n in dict.fromkeys(unicodedata.normalize(f, FOLDER_NAME) for f in ("NFC", "NFD")))
+        names = " or ".join(
+            f"name='{n}'" for n in dict.fromkeys(unicodedata.normalize(f, FOLDER_NAME) for f in ("NFC", "NFD"))
+        )
         found = self.find(f"mimeType='{FOLDER_MIME}' and ({names}) and '{_quote(home)}' in parents")
         if found:
             return found[0]["id"]
-        made = self._json("POST", API + "?fields=id", {"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "parents": [home], "appProperties": {"lifeos": FOLDER_TAG}})
+        made = self._json(
+            "POST",
+            API + "?fields=id",
+            {"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "parents": [home], "appProperties": {"lifeos": FOLDER_TAG}},
+        )
         if not isinstance(made.get("id"), str):
             raise DriveError("GDRIVE_OFF_CONTRACT")
         return made["id"]
@@ -103,12 +134,25 @@ class Drive:
         if not data or len(data) > MAX_FILE:
             raise DriveError("GDRIVE_SIZE")
         boundary = "lifeos-" + secrets.token_hex(12)
-        meta = json.dumps({"name": name, "parents": [folder_id], "mimeType": mime, "appProperties": dict(tags)}).encode()
-        body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n").encode() + meta + \
-            f"\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n".encode() + data + f"\r\n--{boundary}--\r\n".encode()
-        made = self._send("POST", UPLOAD + "?" + urllib.parse.urlencode({"uploadType": "multipart", "fields": FIELDS}), body,
-                          f"multipart/related; boundary={boundary}")
-        if made.get("md5Checksum") != hashlib.md5(data).hexdigest() or not str(made.get("webViewLink", "")).startswith("https://"):
+        meta = json.dumps(
+            {"name": name, "parents": [folder_id], "mimeType": mime, "appProperties": dict(tags)}
+        ).encode()
+        body = (
+            (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n").encode()
+            + meta
+            + f"\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n".encode()
+            + data
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
+        made = self._send(
+            "POST",
+            UPLOAD + "?" + urllib.parse.urlencode({"uploadType": "multipart", "fields": FIELDS}),
+            body,
+            f"multipart/related; boundary={boundary}",
+        )
+        if made.get("md5Checksum") != hashlib.md5(data).hexdigest() or not str(made.get("webViewLink", "")).startswith(
+            "https://"
+        ):
             raise DriveError("GDRIVE_UPLOAD_UNVERIFIED")
         return made
 
@@ -116,8 +160,11 @@ class Drive:
         return self._send("GET", f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}")
 
     def lock(self, file_id, reason):
-        return self._json("PATCH", f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}",
-                          {"contentRestrictions": [{"readOnly": True, "reason": reason[:100]}]})
+        return self._json(
+            "PATCH",
+            f"{API}/{urllib.parse.quote(file_id, safe='')}?fields={FIELDS}",
+            {"contentRestrictions": [{"readOnly": True, "reason": reason[:100]}]},
+        )
 
 
 def locked(meta):

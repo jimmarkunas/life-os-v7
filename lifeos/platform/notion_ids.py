@@ -2,6 +2,7 @@
 
 A run that needs a real page gets one JSON variable, LIFEOS_NOTION_IDS ({"NAME": "id"}); a single LIFEOS_NOTION_<NAME>
 variable also works and wins. Without either the id is a synthetic hash of the name that matches nothing."""
+
 from collections.abc import Mapping
 import hashlib
 import json

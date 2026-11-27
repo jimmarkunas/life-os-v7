@@ -3,6 +3,7 @@
 Reuses `google_consent`'s PKCE link builder and loopback catcher. Only the read-only scopes of ONE service, for an account
 on the allowlist; a refusal returns a machine-readable code and writes nothing to stdout or the pipe.
   python3 -m lifeos.platform.google_consent_readonly --account ACCT --service gmail --allowlist FILE | ssh ... credential NAME"""
+
 import getpass
 import http.server
 import json
@@ -13,9 +14,11 @@ import urllib.request
 
 from lifeos.platform import google_consent as base
 
-READONLY_SCOPES = {"gmail": ("https://www.googleapis.com/auth/gmail.readonly",),
-                   "drive": ("https://www.googleapis.com/auth/drive.readonly",),
-                   "calendar": ("https://www.googleapis.com/auth/calendar.readonly",)}
+READONLY_SCOPES = {
+    "gmail": ("https://www.googleapis.com/auth/gmail.readonly",),
+    "drive": ("https://www.googleapis.com/auth/drive.readonly",),
+    "calendar": ("https://www.googleapis.com/auth/calendar.readonly",),
+}
 ENTRY_FIELDS = ("account", "tenant", "service", "label", "size_cap")
 
 
@@ -24,13 +27,21 @@ def refuse(code):
 
 
 def entry_ok(entry):
-    return (isinstance(entry, dict) and all(isinstance(entry.get(k), str) and entry[k].strip() for k in ("account", "tenant", "label"))
-            and entry.get("service") in READONLY_SCOPES and isinstance(entry.get("size_cap"), int) and not isinstance(entry["size_cap"], bool) and entry["size_cap"] > 0)
+    return (
+        isinstance(entry, dict)
+        and all(isinstance(entry.get(k), str) and entry[k].strip() for k in ("account", "tenant", "label"))
+        and entry.get("service") in READONLY_SCOPES
+        and isinstance(entry.get("size_cap"), int)
+        and not isinstance(entry["size_cap"], bool)
+        and entry["size_cap"] > 0
+    )
 
 
 def plan(allowlist, account, service, scopes=None):
     """-> {"outcome": "ok", "scopes": [...], "entry": {...}} or a refusal. No link is built."""
-    if not (isinstance(account, str) and account.strip() and service in READONLY_SCOPES and isinstance(allowlist, list)):
+    if not (
+        isinstance(account, str) and account.strip() and service in READONLY_SCOPES and isinstance(allowlist, list)
+    ):
         return refuse("DENY_INPUT")
     entries = [e for e in allowlist if entry_ok(e) and e["account"] == account and e["service"] == service]
     if len(entries) != 1:
@@ -51,8 +62,16 @@ def link(client_id, redirect, state, verifier, scopes):
 
 def exchange(client_id, client_secret, code, redirect, verifier, wanted, opener=urllib.request.urlopen):
     """-> (credential JSON string, granted scopes) or a refusal dict."""
-    body = urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect,
-                                   "grant_type": "authorization_code", "code_verifier": verifier}).encode()
+    body = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect,
+            "grant_type": "authorization_code",
+            "code_verifier": verifier,
+        }
+    ).encode()
     with opener(urllib.request.Request(base.TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
     granted = sorted(str(reply.get("scope", "")).split())
@@ -60,18 +79,41 @@ def exchange(client_id, client_secret, code, redirect, verifier, wanted, opener=
         return refuse("DENY_UNSUPPORTED_ACTION")
     if not reply.get("refresh_token"):
         return refuse("DENY_INPUT")
-    return json.dumps({"client_id": client_id, "client_secret": client_secret, "refresh_token": reply["refresh_token"]}), granted
+    return json.dumps(
+        {"client_id": client_id, "client_secret": client_secret, "refresh_token": reply["refresh_token"]}
+    ), granted
 
 
 def receipt(entry, scopes, outcome, code=None):
     """What may be shown or kept: who, which service, which scopes, and that the credential went to the pipe. Never a
     secret."""
-    return {"outcome": outcome, "code": code, "account": entry["account"] if entry else None, "tenant": entry["tenant"] if entry else None,
-            "service": entry["service"] if entry else None, "label": entry["label"] if entry else None, "size_cap": entry["size_cap"] if entry else None,
-            "scopes_granted": list(scopes), "stored": "pipe" if outcome == "stored" else "nothing"}
+    return {
+        "outcome": outcome,
+        "code": code,
+        "account": entry["account"] if entry else None,
+        "tenant": entry["tenant"] if entry else None,
+        "service": entry["service"] if entry else None,
+        "label": entry["label"] if entry else None,
+        "size_cap": entry["size_cap"] if entry else None,
+        "scopes_granted": list(scopes),
+        "stored": "pipe" if outcome == "stored" else "nothing",
+    }
 
 
-def run(allowlist, account, service, client_id, client_secret, stdout, tty, opener=urllib.request.urlopen, server=None, catcher=base.catch, scopes=None, port=0):
+def run(
+    allowlist,
+    account,
+    service,
+    client_id,
+    client_secret,
+    stdout,
+    tty,
+    opener=urllib.request.urlopen,
+    server=None,
+    catcher=base.catch,
+    scopes=None,
+    port=0,
+):
     if stdout.isatty():
         tty.write("Refused: pipe this into the Edge credential command; the credential is never printed on screen.\n")
         return receipt(None, (), "refused", "DENY_SECRET_EXPOSURE")
@@ -82,8 +124,18 @@ def run(allowlist, account, service, client_id, client_secret, stdout, tty, open
         return out
     entry, wanted = verdict["entry"], verdict["scopes"]
     server = server or http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
-    redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
-    tty.write("Open this address yourself in the browser on this Mac and click Allow (read-only access to " + service + "):\n" + link(client_id, redirect, state, verifier, wanted) + "\n")
+    redirect, state, verifier = (
+        f"http://127.0.0.1:{server.server_port}",
+        secrets.token_urlsafe(24),
+        secrets.token_urlsafe(48),
+    )
+    tty.write(
+        "Open this address yourself in the browser on this Mac and click Allow (read-only access to "
+        + service
+        + "):\n"
+        + link(client_id, redirect, state, verifier, wanted)
+        + "\n"
+    )
     tty.flush()
     code = catcher(server, state)
     if not code:
@@ -117,10 +169,16 @@ def main(argv=(), stdout=sys.stdout, tty=None):
     if verdict["outcome"] != "ok":
         tty.write(json.dumps(receipt(None, (), "refused", verdict["code"])) + "\n")
         return 1
-    client_id = base.input_tty("Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty).strip()
+    client_id = base.input_tty(
+        "Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty
+    ).strip()
     client_secret = getpass.getpass("Its client secret (Bitwarden openclaw/gmail/clientSecret; not shown): ").strip()
     port = int(arg("--port") or 0)
-    return 0 if run(allowlist, account, service, client_id, client_secret, stdout, tty, port=port)["outcome"] == "stored" else 1
+    return (
+        0
+        if run(allowlist, account, service, client_id, client_secret, stdout, tty, port=port)["outcome"] == "stored"
+        else 1
+    )
 
 
 if __name__ == "__main__":

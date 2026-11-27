@@ -3,11 +3,18 @@
     python -m lifeos.platform.net_size [base]        (default base: origin/main; compares base...HEAD)
 
 Prints lines added, removed and net for lifeos/, tests/, docs/, workflows and other. Counts only; stdlib only."""
+
 import subprocess
 import sys
 from pathlib import Path
 
-AREAS = (("lifeos/", ("lifeos/",)), ("tests/", ("tests/",)), ("docs/", ("docs/",)), ("workflows", (".github/workflows/", ".github/actions/")), ("other", ()))
+AREAS = (
+    ("lifeos/", ("lifeos/",)),
+    ("tests/", ("tests/",)),
+    ("docs/", ("docs/",)),
+    ("workflows", (".github/workflows/", ".github/actions/")),
+    ("other", ()),
+)
 REMINDER = "lifeos/ net is above zero: say what this change removes, or why nothing can be removed."
 CEILINGS = {"sources": 9400, "jobs": 8250, "platform": 7050, "interview": 4900, "edge": 3200, "jira": 1550}
 
@@ -43,7 +50,10 @@ def totals(rows):
 
 def render(rows):
     found = totals(rows)
-    lines = [f"- {name}: added {added}, removed {removed}, net {added - removed:+d}" for name, (added, removed) in found.items()]
+    lines = [
+        f"- {name}: added {added}, removed {removed}, net {added - removed:+d}"
+        for name, (added, removed) in found.items()
+    ]
     all_added = sum(added for added, _ in found.values())
     all_removed = sum(removed for _, removed in found.values())
     lines.append(f"- all: added {all_added}, removed {all_removed}, net {all_added - all_removed:+d}")
@@ -64,13 +74,22 @@ def ceiling_warnings(rows, root=".", ceilings=CEILINGS):
         parts = path.split("/")
         if len(parts) > 2 and parts[0] == "lifeos" and parts[1] in ceilings and path.endswith(".py"):
             grown[parts[1]] = grown.get(parts[1], 0) + added - removed
-    return [f"warning (advisory): lifeos/{name} is {package_lines(root, name):,} lines against its ceiling of {ceilings[name]:,} and this change adds {net:+d}"
-            for name, net in sorted(grown.items()) if net > 0 and package_lines(root, name) > ceilings[name]]
+    return [
+        f"warning (advisory): lifeos/{name} is {package_lines(root, name):,} lines against its ceiling of {ceilings[name]:,} and this change adds {net:+d}"
+        for name, net in sorted(grown.items())
+        if net > 0 and package_lines(root, name) > ceilings[name]
+    ]
 
 
 def diff(base, cwd=None, run=subprocess.run):
     """The branch's numstat against its merge base with `base` (renames count as a delete plus an add)."""
-    done = run(["git", "diff", "--numstat", "--no-renames", f"{base}...HEAD"], capture_output=True, text=True, check=True, cwd=cwd)
+    done = run(
+        ["git", "diff", "--numstat", "--no-renames", f"{base}...HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=cwd,
+    )
     return done.stdout
 
 

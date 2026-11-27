@@ -1,18 +1,33 @@
 """Fetch a page the way a real Chrome does (TLS fingerprint, headers) for sites that refuse plain scripts.
 
 Used only for registry sources that set `impersonate`. Returns the same Fetched facts as lifeos.platform.http."""
+
 import time
 
 from lifeos.platform.http import Fetched
 
-HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-           "Accept-Language": "en-GB,en;q=0.9", "Cache-Control": "no-cache", "Pragma": "no-cache"}
+HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-GB,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
 
 
 BROWSERS = ("chrome", "safari", "edge", "firefox")
 
 
-def fetch(url, warm_url=None, alt_urls=(), must_contain="", timeout=25, rounds=4, max_bytes=3_000_000, session_factory=None, sleep=time.sleep):
+def fetch(
+    url,
+    warm_url=None,
+    alt_urls=(),
+    must_contain="",
+    timeout=25,
+    rounds=4,
+    max_bytes=3_000_000,
+    session_factory=None,
+    sleep=time.sleep,
+):
     """Up to `rounds` tries over url + alt_urls, each with a different browser fingerprint after warming a session
     on warm_url. Returns on the first 200 whose body contains `must_contain`, else the last status (0 = network
     or library missing)."""
@@ -31,7 +46,13 @@ def fetch(url, warm_url=None, alt_urls=(), must_contain="", timeout=25, rounds=4
                     session.get(warm_url, timeout=timeout, allow_redirects=True)
                 response = session.get(candidate, timeout=timeout, allow_redirects=True)
                 body = (response.text or "")[:max_bytes]
-                last = Fetched(candidate, response.status_code, body if response.status_code == 200 else "", 0, "" if response.status_code == 200 else "http")
+                last = Fetched(
+                    candidate,
+                    response.status_code,
+                    body if response.status_code == 200 else "",
+                    0,
+                    "" if response.status_code == 200 else "http",
+                )
                 if response.status_code == 200 and must_contain in body:
                     return last
             except Exception as error:  # noqa:

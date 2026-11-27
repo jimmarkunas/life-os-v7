@@ -2,16 +2,69 @@
 
 Deterministic, no fuzzy scoring beyond the fixed token rules below. A change here changes every consumer: update
 tests/platform/test_names.py in the same commit."""
+
 import re
 
-_BRITISH = re.compile(r"\b(?:(organis|optimis|prioritis|specialis|standardis|utilis)(?=[a-z]*\b)|(programme|centre|analyse|licence|catalogue|modelling|labour)(?=(?:s|d)?\b))")
-_AMERICAN = {"programme": "program", "organis": "organiz", "optimis": "optimiz", "prioritis": "prioritiz", "specialis": "specializ",
-             "standardis": "standardiz", "utilis": "utiliz", "centre": "center", "analyse": "analyze", "licence": "license",
-             "catalogue": "catalog", "modelling": "modeling", "labour": "labor"}
+_BRITISH = re.compile(
+    r"\b(?:(organis|optimis|prioritis|specialis|standardis|utilis)(?=[a-z]*\b)|(programme|centre|analyse|licence|catalogue|modelling|labour)(?=(?:s|d)?\b))"
+)
+_AMERICAN = {
+    "programme": "program",
+    "organis": "organiz",
+    "optimis": "optimiz",
+    "prioritis": "prioritiz",
+    "specialis": "specializ",
+    "standardis": "standardiz",
+    "utilis": "utiliz",
+    "centre": "center",
+    "analyse": "analyze",
+    "licence": "license",
+    "catalogue": "catalog",
+    "modelling": "modeling",
+    "labour": "labor",
+}
 
-LEGAL = {"inc", "llc", "ltd", "limited", "corp", "corporation", "co", "plc", "gmbh", "company", "the", "incorporated", "lp", "llp", "uk", "u.k"}
-GENERIC = {"group", "holdings", "holding", "international", "global", "europe", "services", "technologies", "technology", "tech", "solutions",
-           "systems", "software", "labs", "digital", "bank", "worldwide", "partners", "consulting", "emea", "services"}
+LEGAL = {
+    "inc",
+    "llc",
+    "ltd",
+    "limited",
+    "corp",
+    "corporation",
+    "co",
+    "plc",
+    "gmbh",
+    "company",
+    "the",
+    "incorporated",
+    "lp",
+    "llp",
+    "uk",
+    "u.k",
+}
+GENERIC = {
+    "group",
+    "holdings",
+    "holding",
+    "international",
+    "global",
+    "europe",
+    "services",
+    "technologies",
+    "technology",
+    "tech",
+    "solutions",
+    "systems",
+    "software",
+    "labs",
+    "digital",
+    "bank",
+    "worldwide",
+    "partners",
+    "consulting",
+    "emea",
+    "services",
+}
 TITLE_SPLIT = re.compile(r"\s+[—–-]\s+|\s*[—–]\s*|:\s+")
 
 
@@ -51,7 +104,7 @@ def same_company(a: str | None, b: str | None) -> bool:
     if x == y:
         return True
     short, long = (x, y) if len(x) < len(y) else (y, x)
-    return long[:len(short)] == short and long[len(short)] not in ("&", "and", "+")
+    return long[: len(short)] == short and long[len(short)] not in ("&", "and", "+")
 
 
 def same_role(a: str | None, b: str | None) -> bool:

@@ -2,7 +2,11 @@
 
 
 def plain(items):
-    return "".join((part.get("plain_text") or (part.get("text") or {}).get("content") or "") for part in items or [] if isinstance(part, dict))
+    return "".join(
+        (part.get("plain_text") or (part.get("text") or {}).get("content") or "")
+        for part in items or []
+        if isinstance(part, dict)
+    )
 
 
 def block_text(block):

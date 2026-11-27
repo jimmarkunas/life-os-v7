@@ -3,6 +3,7 @@
 One row per message, keyed by the SHA-256 of `provider:id`; no id, address or content is stored. A moved message is
 not new. Only a live, complete run writes (`commit`). Any read problem raises LedgerError and the stage falls back to
 the full scan."""
+
 import hashlib
 from datetime import datetime, timedelta, timezone
 
@@ -35,7 +36,6 @@ def _aware(value):
 
 
 class Ledger:
-
     def __init__(self, connect):
         self._connect = connect
 
@@ -44,7 +44,9 @@ class Ledger:
         scan)."""
         try:
             with self._connect() as connection, connection.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('v7_mail_seen','v7_mail_scan')")
+                cursor.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('v7_mail_seen','v7_mail_scan')"
+                )
                 if cursor.fetchone()[0] < 2:
                     return set(), None, None, None
                 cursor.execute("SELECT key_hash FROM v7_mail_seen")
@@ -62,10 +64,18 @@ class Ledger:
                 for statement in SCHEMA:
                     cursor.execute(statement)
                 stamp = _naive(now)
-                cursor.executemany("INSERT IGNORE INTO v7_mail_seen (key_hash, first_seen) VALUES (%s, %s)", [(k, stamp) for k in sorted(keys)])
+                cursor.executemany(
+                    "INSERT IGNORE INTO v7_mail_seen (key_hash, first_seen) VALUES (%s, %s)",
+                    [(k, stamp) for k in sorted(keys)],
+                )
                 for name in {"incremental", "full"} if kind == FULL_SCAN else {"incremental"}:
-                    cursor.execute("INSERT INTO v7_mail_scan (name, at) VALUES (%s, %s) ON DUPLICATE KEY UPDATE at = VALUES(at)", (name, stamp))
-                cursor.execute("DELETE FROM v7_mail_seen WHERE first_seen < %s", (_naive(now - timedelta(days=KEEP_DAYS)),))
+                    cursor.execute(
+                        "INSERT INTO v7_mail_scan (name, at) VALUES (%s, %s) ON DUPLICATE KEY UPDATE at = VALUES(at)",
+                        (name, stamp),
+                    )
+                cursor.execute(
+                    "DELETE FROM v7_mail_seen WHERE first_seen < %s", (_naive(now - timedelta(days=KEEP_DAYS)),)
+                )
         except Exception as error:  # noqa: BLE001
             raise LedgerError("MAIL_LEDGER_NOT_SAVED") from error
 
@@ -76,6 +86,7 @@ def production(environ):
     if not (environ.get("LIFEOS_ACQ_DB_NAME") or "").strip():
         return None
     from lifeos.platform import db  # noqa:
+
     return Ledger(db.connect)
 
 
