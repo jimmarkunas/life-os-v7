@@ -1,4 +1,4 @@
-"""LIFE-1021: the optional scope budget in the Honcho meter. A fake Anthropic and a fake Ollama on loopback; no network, no real key, no spend, nothing deployed."""
+"""the optional scope budget in the Honcho meter."""
 import http.client
 import json
 import os
@@ -11,12 +11,12 @@ from tests.edge.honcho.test_meter_proxy import Case, Upstream
 
 MODEL = mp.MODEL
 LIMIT = 8192  # max_tokens the scope allows
-R = mp.reservation_nano(LIMIT)  # 1,020,480,000 nano-dollars: the documented maximum of one request at max_tokens 8192
+R = mp.reservation_nano(LIMIT)
 CAP = R / 1e9  # a scope that holds exactly one such request
 
 
 def body(size=2000, max_tokens=LIMIT, **extra):
-    """-> a /v1/messages body of exactly `size` bytes asking for `max_tokens` of output."""
+    """> a /v1/messages body of exactly `size` bytes asking for `max_tokens` of output."""
     doc = {"model": MODEL, "max_tokens": max_tokens, "messages": [{"role": "user", "content": ""}], **extra}
     pad = size - len(json.dumps(doc))
     doc["messages"][0]["content"] = "x" * pad
@@ -26,16 +26,16 @@ def body(size=2000, max_tokens=LIMIT, **extra):
 
 
 class ScopeCase(Case):
-    default_cap = CAP                                                      # the scope every test starts with (None: none)
+    default_cap = CAP  # the scope every test starts with (None: none)
 
     def setUp(self):
         super().setUp()
-        self.now = 1_800_000_000                                           # a fixed instant inside one monthly window
+        self.now = 1_800_000_000  # a fixed instant inside one monthly window
         if self.default_cap is not None:
             self.scope(self.default_cap)
 
     def scope(self, cap, wipe=True, **over):
-        if wipe:  # a fresh state directory, so each test opens exactly one scope
+        if wipe:
             for name in ("ledger.json", "audit.jsonl", "scopes.jsonl", "windows.jsonl", mp.SCOPE_CLOSE, "EXHAUSTED", "STOP"):
                 path = os.path.join(self.tmp, name)
                 if os.path.lexists(path):
@@ -46,7 +46,7 @@ class ScopeCase(Case):
         self.start(25)
         self.ledger.clock = lambda: self.now
         self.ledger.start, self.ledger.end = mp.window(self.now)
-        self.ledger.why_blocked()                                          # opens the scope
+        self.ledger.why_blocked()  # opens the scope
         return doc
 
     def raw_post(self, raw, headers=None):
@@ -79,7 +79,7 @@ class Bound(ScopeCase):
         first, second = (self.ledger.admit(body())[0] for _ in range(2))
         self.assertTrue(first and second)
         self.assertEqual(sum(h["nano"] for h in self.ledger.inflight.values()), 2 * R)
-        self.assertFalse(self.ledger.admit(body(max_tokens=1))[0])  # even the smallest request does not fit the third slot
+        self.assertFalse(self.ledger.admit(body(max_tokens=1))[0])
         self.assertEqual(Upstream.seen, [])
 
     def test_concurrent_requests_reserve_atomically_against_both_budgets(self):
@@ -163,7 +163,7 @@ class Bound(ScopeCase):
                 "messages": [{"role": "user", "content": [{"type": "image", "source": {}}, {"type": "text", "text": "q"}]}],
             }
         ).encode()
-        self.assertEqual(mp.admission(ok), (mp.reservation_nano(50), ""))  # images, cache control and thinking cost no more than the reserved ceiling
+        self.assertEqual(mp.admission(ok), (mp.reservation_nano(50), ""))
 
     def test_a_request_with_no_proof_is_refused_while_a_scope_stands(self):
         self.assertFalse(self.ledger.reserve(0.001))
@@ -174,7 +174,7 @@ class Bound(ScopeCase):
 
 
 class Counts(ScopeCase):
-    """A provider token count may refuse; it never lowers a reservation (it is only an estimate)."""
+    """A provider token count may refuse"""
 
     default_cap = None
 
@@ -299,7 +299,7 @@ class Crashes(ScopeCase):
 
     def test_a_settled_reply_costs_its_actual_usage_in_whole_nano_dollars(self):
         self.assertEqual(self.raw_post(body(2000, 100))[0], 200)
-        want = 2000 * 100 + 100 * 500  # the fake replies with 2000 input and 100 output tokens
+        want = 2000 * 100 + 100 * 500
         self.assertEqual(self.ledger.scope["spent_nano"], want)
         self.assertEqual(self.restart().scope["spent_nano"], want)
 
@@ -329,7 +329,7 @@ class Lifecycle(ScopeCase):
         self.assertIn(b"scope expired and not closed", text)
         self.assertEqual(self.ledger.scope["spent_nano"], spent)
         self.assertEqual(self.post("/v1/messages/count_tokens", {"messages": []})[0], 400)
-        self.assertEqual(self.post("/v1/embeddings", {"input": "x"})[0], 200)                          # embeddings stay free
+        self.assertEqual(self.post("/v1/embeddings", {"input": "x"})[0], 200)  # embeddings stay free
 
     def test_removing_or_editing_the_scope_file_while_it_is_open_refuses_everything(self):
         path = os.path.join(self.tmp, mp.SCOPE_FILE)
@@ -350,13 +350,13 @@ class Lifecycle(ScopeCase):
     def test_the_scope_spend_survives_a_restart_and_a_monthly_rollover(self):
         self.assertEqual(self.raw_post(body(2000, 100))[0], 200)
         spent = self.ledger.scope["spent_nano"]
-        self.now = mp.window(self.now)[1] + 60                                                         # the next monthly window
-        self.ledger.scope["config"]["expires"] = self.now + 3600                                       # keep it open across the boundary (the file below matches)
+        self.now = mp.window(self.now)[1] + 60  # the next monthly window
+        self.ledger.scope["config"]["expires"] = self.now + 3600
         doc = json.load(open(os.path.join(self.tmp, mp.SCOPE_FILE)))
         doc["expires"] = self.now + 3600
         json.dump(doc, open(os.path.join(self.tmp, mp.SCOPE_FILE), "w"))
         self.assertEqual(self.ledger.why_blocked(), "")
-        self.assertEqual((self.ledger.spent, self.ledger.scope["spent_nano"]), (0.0, spent))           # the month restarted, the scope did not
+        self.assertEqual((self.ledger.spent, self.ledger.scope["spent_nano"]), (0.0, spent))  # the month restarted, the scope did not
         again = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.now)
         self.assertEqual(again.scope["spent_nano"], spent)
 
@@ -384,13 +384,13 @@ class Lifecycle(ScopeCase):
         json.dump({"scope": "t2-test"}, open(os.path.join(self.tmp, mp.SCOPE_CLOSE), "w"))
         self.assertEqual(self.ledger.why_blocked(), "")
         self.assertIsNone(self.ledger.scope)
-        self.assertEqual(self.raw_post(body(2000, 100))[0], 200)                                       # no scope now: the monthly cap alone
+        self.assertEqual(self.raw_post(body(2000, 100))[0], 200)  # no scope now: the monthly cap alone
         path = os.path.join(self.tmp, mp.SCOPE_FILE)
         saved = open(path).read()
-        open(path, "w").write(saved)                                                                   # the same id written again is ignored
+        open(path, "w").write(saved)  # the same id written again is ignored
         self.assertEqual(self.ledger.why_blocked(), "")
         self.assertIsNone(self.ledger.scope)
-        self.scope(CAP, wipe=False, id="t2-next")                                                      # a new id opens a new scope at zero
+        self.scope(CAP, wipe=False, id="t2-next")  # a new id opens a new scope at zero
         self.assertEqual((self.ledger.scope["spent_nano"], self.ledger.closed), (0, ["t2-test"]))
 
     def test_health_shows_the_scope_in_dollars_and_words_only(self):
@@ -407,7 +407,7 @@ class NoScope(ScopeCase):
     def test_with_no_scope_file_everything_is_as_before(self):
         self.assertEqual(self.ledger.why_blocked(), "")
         self.assertIsNone(self.ledger.scope)
-        self.assertEqual(self.raw_post(body(2000, 100))[0], 200)                                       # the monthly cap alone, the same strict admission
+        self.assertEqual(self.raw_post(body(2000, 100))[0], 200)  # the monthly cap alone, the same strict admission
         self.assertEqual(self.ledger.inflight, {})
 
 

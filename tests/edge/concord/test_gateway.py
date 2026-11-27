@@ -1,4 +1,4 @@
-"""LIFE-987 (synthetic): the Concord gateway program with a fake `concord-mcp` over stdio. No Concord, no Oracle, no network."""
+"""(synthetic): the Concord gateway program with a fake `concord-mcp` over stdio."""
 import io
 import json
 import unittest
@@ -117,7 +117,7 @@ class Status(unittest.TestCase):
         self.assertEqual((rows["oc"]["online"], rows["oc"]["id"], rows["oc"]["claim"]), (True, "oc-oracle", "LIFE-900 build"))
         self.assertEqual((rows["mc01"]["online"], rows["mc02"]["online"], rows["codex"]["online"], rows["codex"]["id"]), (False, True, False, ""))
         others = [r["id"] for r in reply["data"]["agents"] if not r["agent"]]
-        self.assertEqual(others, ["claude-code:cfd3385c"])                                         # the orchestrator's own ids are not listed
+        self.assertEqual(others, ["claude-code:cfd3385c"])  # the orchestrator's own ids are not listed
 
 
 class Dispatch(unittest.TestCase):
@@ -146,7 +146,7 @@ class Dispatch(unittest.TestCase):
     def test_queued_for_pull_is_not_delivered_and_an_unknown_state_is_never_called_delivered(self):
         reply, _ = self.sent("queued_pull")
         data = reply["data"]
-        self.assertEqual((data["delivered"], data["reason"], data["state"], data["agent"]), (False, "queued_for_pull", "queued_pull", "oc"))      # LIFE-992: a present but idle agent is queued, not offline
+        self.assertEqual((data["delivered"], data["reason"], data["state"], data["agent"]), (False, "queued_for_pull", "queued_pull", "oc"))  # a present but idle agent is queued, not offline
         reply, _ = self.sent("something_new")
         self.assertEqual((reply["data"]["delivered"], reply["data"]["reason"], reply["data"]["state"]), (False, "delivery_unknown", "unknown"))
 

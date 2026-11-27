@@ -1,5 +1,6 @@
-"""LIFE-870: deploy/buzz-mcp/selfhost-probe against an in-process fake relay that follows the verified Buzz semantics (NIP-43 membership kinds 9030, NIP-29 kinds 9007 and 9000, POST /query and POST /events under NIP-98),
-with a fake bws. The probe's keys are synthetic; the test proves the steps, the refusals and that no key reaches any output."""
+"""deploy/buzz-mcp/selfhost-probe against an in-process fake relay that follows the verified Buzz semantics (NIP-43
+membership kinds 9030, NIP-29 kinds.
+"""
 import base64
 import json
 import os
@@ -47,7 +48,7 @@ class FakeRelay(ThreadingHTTPServer):
             if not header.startswith("Nostr "):
                 return self.reply(401)
             author = json.loads(base64.b64decode(header[6:]))["pubkey"]
-            if author not in relay.members:                                          # relay-level membership gates every authenticated call (NIP-43)
+            if author not in relay.members:
                 return self.reply(403)
             if self.path == "/query":
                 out = []
@@ -108,7 +109,7 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual(done.returncode, 0)
         self.assertIn(AGENT_PUB, relay.members)
         posted = [e for e in relay.events if e["kind"] == 9]
-        self.assertEqual((len(posted), posted[0]["pubkey"], posted[0]["content"].startswith("SYNTHETIC")), (1, AGENT_PUB, True))        # one post, by the agent, synthetic; the repeat made no second event
+        self.assertEqual((len(posted), posted[0]["pubkey"], posted[0]["content"].startswith("SYNTHETIC")), (1, AGENT_PUB, True))  # one post, by the agent, synthetic
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
             self.assertNotIn(secret, "".join(p.read_text(errors="replace") for p in tmp.rglob("*") if p.is_file() and p.name != "secrets.json"))
@@ -120,12 +121,12 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual([line.split(" ")[:2] for line in lines[:4]], [["keys", "ok"], ["member_add", "ok"], ["member_query_ok", "ok"], ["channel_create", "ok"]], done.stdout + done.stderr)
         self.assertRegex(lines[-1], r"^pilot_channel [0-9a-f-]{36}$")
         channel = lines[-1].split(" ")[1]
-        self.assertEqual((done.returncode, AGENT_PUB in relay.members, relay.channels[channel] == {OWNER_PUB, AGENT_PUB}, [e for e in relay.events if e["kind"] == 9]), (0, True, True, []))   # one channel, the agent in it, no post, no health or refusal steps
+        self.assertEqual((done.returncode, AGENT_PUB in relay.members, relay.channels[channel] == {OWNER_PUB, AGENT_PUB}, [e for e in relay.events if e["kind"] == 9]), (0, True, True, []))
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
 
     def test_channels_mode_creates_each_named_channel_with_the_source_channels_members_and_prints_only_public_ids(self):
-        """LIFE-927: the pinned relay gets channels matching the hosted names; members come from the source channel's roster (public keys), the owner is not re-added, nothing else changes."""
+        """the pinned relay gets channels matching the hosted names"""
         relay = FakeRelay()
         other = nip98.pubkey(bytes.fromhex("44" * 32))
         relay.members |= {AGENT_PUB, other}
@@ -144,7 +145,7 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual((refused.stdout.splitlines()[-1], refused.returncode), ("channels fail (a source channel and at least one name are required)", 1))
 
     def test_members_mode_adds_exactly_the_given_public_keys_to_the_relay_and_the_channel_and_nothing_else(self):
-        """LIFE-927: the owner adds public keys only; no member private key is involved and nobody else is added."""
+        """the owner adds public keys only"""
         relay = FakeRelay()
         channel = "11111111-2222-4333-8444-555555555555"
         relay.channels[channel] = {OWNER_PUB}
@@ -159,7 +160,7 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("members fail (a channel id and at least one public key are required)", 1))
 
     def test_role_mode_signs_one_member_event_per_public_key_with_the_role_and_refuses_anything_else(self):
-        """LIFE-927: the owner key signs the role change; the role is admin or member only (never owner) and nothing but the given public keys is touched."""
+        """the owner key signs the role change"""
         relay = FakeRelay()
         done, _ = self.run_probe(relay, mode=("role", "admin"), stdin=f"{AGENT_PUB}\nnot-a-key\n")
         self.assertEqual([line.split(" ")[:2] for line in done.stdout.splitlines()], [["keys", "ok"], ["role_" + AGENT_PUB[:8], "ok"]], done.stdout + done.stderr)
@@ -169,10 +170,10 @@ class SelfhostProbe(unittest.TestCase):
         empty, _ = self.run_probe(FakeRelay(), mode=("role", "member"), stdin="")
         self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("role fail (at least one public key is required)", 1))
         owner, _ = self.run_probe(FakeRelay(), mode=("role", "owner"), stdin=f"{AGENT_PUB}\n")
-        self.assertNotIn("role_", owner.stdout)                                                          # "owner" is not a role this mode accepts
+        self.assertNotIn("role_", owner.stdout)  # "owner" is not a role this mode accepts
 
     def test_readd_mode_removes_then_adds_each_given_key_with_the_role_and_the_synthetic_mode_prints_only_a_public_key(self):
-        """LIFE-927: remove (9031) then add with the role tag; never any key but the given public ones, never owner."""
+        """remove (9031) then add with the role tag"""
         relay = FakeRelay()
         done, _ = self.run_probe(relay, mode=("readd", "admin"), stdin=f"{AGENT_PUB}\n")
         self.assertEqual([line.split(" ")[:2] for line in done.stdout.splitlines()][:1], [["keys", "ok"]], done.stdout + done.stderr)
@@ -181,7 +182,7 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("readd fail (at least one public key is required)", 1))
 
     def test_remove_mode_removes_only_the_given_public_keys_and_refuses_the_owners_own(self):
-        """LIFE-956: kind 9031 for each given key; the owner key is refused; no key but a public one is involved."""
+        """kind 9031 for each given key"""
         relay = FakeRelay()
         relay.members.add(AGENT_PUB)
         done, _ = self.run_probe(relay, mode=("remove",), stdin=f"{AGENT_PUB}\n{OWNER_PUB}\n")
@@ -190,7 +191,7 @@ class SelfhostProbe(unittest.TestCase):
         self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
 
     def test_hosted_mode_signs_with_the_old_owner_key_from_the_vault_and_prints_no_key(self):
-        """LIFE-956: the retired owner key (vault, memory only) adds and removes the given public keys on a hosted community; no key is printed; a missing vault key stops before any request."""
+        """the retired owner key (vault, memory only) adds and removes the given public keys on a hosted community"""
         relay = FakeRelay()
         secrets = [{"key": "lifeos/edge/BUZZ_OLD_OWNER_NSEC_TEMP", "value": OWNER_HEX}]
         done, _ = self.run_probe(relay, secrets=secrets, mode=("hosted", "admin"), stdin=f"{AGENT_PUB}\n")
@@ -201,14 +202,14 @@ class SelfhostProbe(unittest.TestCase):
         self.assertEqual((gone.stdout.splitlines()[-1], gone.returncode), ("old_owner_key fail (not in the vault)", 1))
 
     def test_names_mode_signs_one_name_only_profile_per_vault_key_and_prints_no_key(self):
-        """LIFE-927: the owner and connector keys each set their own display name."""
+        """the owner and connector keys each set their own display name."""
         done, _ = self.run_probe(FakeRelay(), mode=("names",))
-        self.assertEqual(len(done.stdout.splitlines()), 3, done.stdout + done.stderr)                   # keys, then one step per key
+        self.assertEqual(len(done.stdout.splitlines()), 3, done.stdout + done.stderr)  # keys, then one step per key
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
 
     def test_duet_profile_signs_with_the_vault_key_inside_the_buzz_cli_only_and_reads_the_profile_back_without_printing_a_key(self):
-        """LIFE-922: Duet's own key (from the vault, in memory) reaches only the Buzz CLI subprocess's environment; a missing key, a non-PNG or a refused upload fails the step."""
+        """Duet's own key (from the vault, in memory) reaches only the Buzz CLI subprocess's environment"""
         DUET_HEX = "33" * 32
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
@@ -257,7 +258,7 @@ elif a[:2] == ["users", "get"]:
 
     def test_the_source_prints_no_key_and_asks_only_for_the_pilot_names_and_duets_three(self):
         text = SCRIPT.read_text()
-        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_KEY_DUET_BYTALOS", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_OLD_OWNER_NSEC_TEMP", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_OWNER_KEY"])   # LIFE-922: Duet's own three member keys, to sign its own profile
+        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_KEY_DUET_BYTALOS", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_OLD_OWNER_NSEC_TEMP", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_OWNER_KEY"])
         self.assertEqual(os.stat(SCRIPT).st_mode & 0o111, 0o111)
 
 

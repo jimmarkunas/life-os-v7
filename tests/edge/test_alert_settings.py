@@ -1,4 +1,4 @@
-"""LIFE-75: the Alert settings Jim saves (ALERTS_ENABLED, ALERT_SETTINGS) decide whether and where each alert goes."""
+"""the Alert settings Jim saves (ALERTS_ENABLED, ALERT_SETTINGS) decide whether and where each alert goes."""
 import json
 import unittest
 from unittest import mock
@@ -28,8 +28,8 @@ class Channels(unittest.TestCase):
     def test_a_saved_choice_replaces_the_default_for_that_alert_only(self):
         env = {"ALERT_SETTINGS": doc(quiet_24h=["ntfy", "telegram"], **{"source_stopped_*": ["ntfy"]})}
         self.assertEqual(settings.channels("quiet_24h", env), ("ntfy", "telegram"))
-        self.assertEqual(settings.channels("source_stopped_dice", env), ("ntfy",))        # a family entry covers every member
-        self.assertEqual(settings.channels("stuck_jobs", env), ("ntfy",))                  # untouched
+        self.assertEqual(settings.channels("source_stopped_dice", env), ("ntfy",))  # a family entry covers every member
+        self.assertEqual(settings.channels("stuck_jobs", env), ("ntfy",))  # untouched
         self.assertEqual(settings.channels("run_failed", env), registry.CHANNELS)
 
     def test_a_page_alert_always_keeps_the_phone(self):
@@ -57,7 +57,7 @@ class Channels(unittest.TestCase):
         self.assertEqual(json.loads(text), {"v": 1, "channels": {"quiet_24h": ["ntfy", "telegram"], "safety_failed": ["ntfy", "telegram"]}})
         self.assertEqual(settings.load({"ALERT_SETTINGS": text}), {"quiet_24h": ("ntfy", "telegram"), "safety_failed": ("ntfy", "telegram")})
         self.assertEqual(settings.document({}), "")
-        self.assertEqual(settings.document({"quiet_24h": ["ntfy"]}), "")                   # equal to the default: nothing to save
+        self.assertEqual(settings.document({"quiet_24h": ["ntfy"]}), "")  # equal to the default: nothing to save
 
 
 class Post:
@@ -89,7 +89,7 @@ class TheGatewayFollowsTheSettings(unittest.TestCase):
 
     def test_a_telegram_only_info_alert_goes_out_silent_for_the_relay(self):
         self.assertTrue(self.push("quiet_24h", ALERT_SETTINGS=doc(quiet_24h=["telegram"])))
-        self.assertEqual(self.post.sent, [{"priority": "min", "tags": "information_source,ch-telegram"}])           # lowest priority: no sound or banner on the phone
+        self.assertEqual(self.post.sent, [{"priority": "min", "tags": "information_source,ch-telegram"}])  # lowest priority: no sound or banner on the phone
 
     def test_an_alert_with_every_channel_off_sends_nothing_at_all(self):
         self.assertFalse(self.push("quiet_24h", ALERT_SETTINGS=doc(quiet_24h=[])))
@@ -117,7 +117,7 @@ class WorkflowsPassTheSwitchAndTheSettings(unittest.TestCase):
             text = wftext.text(path)
             for name in ("ALERTS_MUTED_UNTIL", "ALERTS_ENABLED", "ALERT_SETTINGS"):
                 with self.subTest(workflow=path.name, variable=name):
-                    self.assertRegex(text, rf"uses: \./\.github/actions/bws-plain\n\s+with:\n\s+access_token: .*\n\s+names: [A-Z_,]*\b{name}\b")      # LIFE-704: read from Bitwarden by the plain-switch loader (alerts fail open there), no longer from a GitHub variable
+                    self.assertRegex(text, rf"uses: \./\.github/actions/bws-plain\n\s+with:\n\s+access_token: .*\n\s+names: [A-Z_,]*\b{name}\b")
                     self.assertNotIn(f"vars.{name}", text)
 
 

@@ -1,6 +1,4 @@
-"""LIFE-643 row 5: the slim npm tree. Proven from the committed lockfile (no network, no npm): the omit rules leave 64 packages, the only install-script packages are baileys and protobufjs, no image library
-survives, and the build step PRUNES a copy of the installed tree (it never runs npm: the only npm on the host is in the ubuntu account's private home). A fixture tree is pruned and verified; a build step or tree that skips the prune
-fails the same check. The pack builds and passes the runner's own check."""
+"""the slim npm tree."""
 import json
 import subprocess
 import sys
@@ -70,7 +68,9 @@ class SlimHelperTests(unittest.TestCase):
     SLIM = str(PACK / "pack" / "files" / "slim.py")
 
     def fixture(self, tmp, drop=()):
-        """A copy of what the host has: the lockfile's packages minus the platform-specific optional ones npm skips there (70 of 95), each folder with a package.json, the hidden lockfile, a dangling .bin link."""
+        """A copy of what the host has: the lockfile's packages minus the platform-specific optional ones npm skips there
+        (70 of 95), each folder with a.
+        """
         packages = lock_packages()
         installed = {n for n, m in packages.items() if not (m.get("optional") and ("darwin" in n or "win32" in n or "musl" in n or "arm" in n or "ppc" in n or "s390x" in n or "riscv" in n or "wasm" in n or "freebsd" in n or "ia32" in n))} - set(drop)
         modules = Path(tmp) / "node_modules"
@@ -89,8 +89,8 @@ class SlimHelperTests(unittest.TestCase):
     def test_pruning_a_copy_of_the_installed_tree_leaves_exactly_the_64_and_verify_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
             installed = self.fixture(tmp)
-            self.assertIn("sharp", " ".join(installed))                                    # the fixture really has the image libraries
-            self.assertEqual(self.slim("verify", tmp).stdout.strip(), "image_library_present")      # before the prune it fails
+            self.assertIn("sharp", " ".join(installed))  # the fixture really has the image libraries
+            self.assertEqual(self.slim("verify", tmp).stdout.strip(), "image_library_present")  # before the prune it fails
             done = self.slim("prune", tmp)
             self.assertEqual(done.returncode, 0, done.stdout)
             self.assertIn("dangling_links_removed=1", done.stdout)
@@ -107,7 +107,7 @@ class SlimHelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.fixture(tmp)
             self.slim("prune", tmp)
-            leftover = Path(tmp) / "node_modules" / "detect-libc"                          # an omitted peer-only package that survived the prune
+            leftover = Path(tmp) / "node_modules" / "detect-libc"
             leftover.mkdir()
             (leftover / "package.json").write_text("{}")
             self.assertEqual(self.slim("verify", tmp).stdout.strip(), "omitted_package_present")

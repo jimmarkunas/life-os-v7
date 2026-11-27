@@ -1,4 +1,4 @@
-"""LIFE-875: deploy/buzz-mcp/place-credentials with fake sudo, bws and systemd-creds. Synthetic values only; the script must print names and ok/missing and never a value."""
+"""deploy/buzz-mcp/place-credentials with fake sudo, bws and systemd-creds."""
 import json
 import os
 import shutil
@@ -31,7 +31,7 @@ class PlaceCredentials(unittest.TestCase):
             (bin_dir / name).write_text(text)
             (bin_dir / name).chmod(0o755)
         (tmp / "bws.json").write_text(json.dumps(secrets))
-        (tmp / "env").write_text("")                                                  # the vault owner's env file (empty here; the fake bws needs no token)
+        (tmp / "env").write_text("")  # the vault owner's env file (empty here)
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_BWS_JSON": str(tmp / "bws.json"), "PLACE_CREDENTIALS_DIR": str(cred_dir), "PLACE_CREDENTIALS_ENV": str(tmp / "env"),
                "PLACE_CREDENTIALS_DROPIN": str(tmp / "dropin.conf")}
         done = subprocess.run(["sh", str(SCRIPT), *names], capture_output=True, text=True, env=env, cwd=tmp)
@@ -46,8 +46,8 @@ class PlaceCredentials(unittest.TestCase):
         self.assertEqual(done.returncode, 0)
         self.assertEqual(done.stdout.splitlines(), ["openclaw/gmail/clientId ok", "openclaw/drive/refreshToken ok", "GMAIL_OAUTH_REFRESH_TOKEN missing", "not/allowed/name missing"])
         self.assertNotIn(SENTINEL, done.stdout + done.stderr)
-        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_client_id.cred", "google_read_personal_drive_refresh.cred"])      # missing and unknown names place nothing
-        self.assertNotIn(SENTINEL, self.everything_written(tmp))                                                                                 # not in a credential file, the drop-in or anywhere else
+        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_client_id.cred", "google_read_personal_drive_refresh.cred"])  # missing and unknown names place nothing
+        self.assertNotIn(SENTINEL, self.everything_written(tmp))
         for p in creds.iterdir():
             self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o600)
             self.assertTrue(p.read_text().startswith("ENC:"))
@@ -70,10 +70,12 @@ class PlaceCredentials(unittest.TestCase):
         secrets = [{"key": "lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN", "value": SENTINEL}, {"key": "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "value": SENTINEL}, {"key": "lifeos/edge/NOTION_READONLY_TOKEN", "value": SENTINEL}]
         done, tmp, creds = self.run_script(secrets, "lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN", "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "lifeos/edge/NOTION_READONLY_TOKEN", "lifeos/edge/NOTION_API_TOKEN")
         self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/GMAIL_OAUTH_REFRESH_TOKEN ok", "lifeos/edge/FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH ok", "lifeos/edge/NOTION_READONLY_TOKEN ok", "lifeos/edge/NOTION_API_TOKEN missing"])
-        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_bytalos_gmail_refresh.cred", "google_read_personal_gmail_refresh.cred", "notion_readonly_token.cred"])      # the hourly write token is still not on the list
+        self.assertEqual(sorted(p.name for p in creds.iterdir()), ["google_read_bytalos_gmail_refresh.cred", "google_read_personal_gmail_refresh.cred", "notion_readonly_token.cred"])  # the hourly write token is still not on the list
 
     def test_every_identity_the_pilot_wires_has_its_key_in_the_service_credential_list(self):
-        """LIFE-877: a place-credentials run rewrites the drop-in from its own list, so a pilot key missing from that list is silently dropped from the service (ChatGPT lost its pilot write that way)."""
+        """a place-credentials run rewrites the drop-in from its own list, so a pilot key missing from that list is
+        silently dropped from the service.
+        """
         import re
         wiring = (SCRIPT.parents[2] / "lifeos/platform/pilot_community.py").read_text()
         script = SCRIPT.read_text()
@@ -88,13 +90,13 @@ class PlaceCredentials(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in creds.iterdir()), ["buzz_selfhost_relay_key.cred", "notion_readonly_token.cred"])
         dropin = (tmp / "dropin.conf").read_text()
         self.assertIn("notion_readonly_token", dropin)
-        self.assertNotIn("buzz_selfhost_relay_key", dropin)                                                        # the MCP service never loads the relay's key
+        self.assertNotIn("buzz_selfhost_relay_key", dropin)  # the MCP service never loads the relay's key
 
     def test_the_claude_handoff_token_is_placed_for_hermes_but_never_loaded_by_the_mcp_service(self):
-        done, tmp, creds = self.run_script([{"key": "lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN", "NOTION_READONLY_TOKEN")      # LIFE-964
+        done, tmp, creds = self.run_script([{"key": "lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN", "value": SENTINEL}, {"key": "NOTION_READONLY_TOKEN", "value": SENTINEL}], "lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN", "NOTION_READONLY_TOKEN")
         self.assertEqual(done.stdout.splitlines(), ["lifeos/edge/CLAUDE_CODE_OAUTH_TOKEN ok", "NOTION_READONLY_TOKEN ok"])
         self.assertEqual(sorted(p.name for p in creds.iterdir()), ["claude_code_oauth_token.cred", "notion_readonly_token.cred"])
-        self.assertNotIn("claude_code_oauth_token", (tmp / "dropin.conf").read_text())                            # the MCP service never loads Hermes's Claude token
+        self.assertNotIn("claude_code_oauth_token", (tmp / "dropin.conf").read_text())  # the MCP service never loads Hermes's Claude token
         self.assertNotIn(SENTINEL, done.stdout + done.stderr + self.everything_written(tmp))
 
     def test_list_names_prints_only_matching_names_never_a_value_and_places_nothing(self):
@@ -110,7 +112,7 @@ class PlaceCredentials(unittest.TestCase):
         code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
         self.assertNotIn("set -x", code)
         self.assertIn('sudo -u "$RUNAS" -H sh -c', code)
-        self.assertIn("2>/dev/null", code)                                           # bws errors are not shown
+        self.assertIn("2>/dev/null", code)  # bws errors are not shown
         self.assertEqual(stat.S_IMODE(SCRIPT.stat().st_mode) & 0o111, 0o111)
 
 

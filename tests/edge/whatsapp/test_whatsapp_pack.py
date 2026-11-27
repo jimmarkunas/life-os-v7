@@ -1,4 +1,6 @@
-"""LIFE-643 rows 3 and 4: the WhatsApp session-modes and unit-hardening pack, built from the repo and run through the REAL runner on a temp tree with a fake `systemctl --user`, fake `ss` and a real Unix socket (no sudo, no host, no session file)."""
+"""and 4: the WhatsApp session-modes and unit-hardening pack, built from the repo and run through the REAL runner on a
+temp tree with a fake `systemctl.
+"""
 import hashlib
 import json
 import os
@@ -81,7 +83,9 @@ echo 'ESTAB 0 0 10.0.0.2:40000 10.0.0.9:443 users:(("node",pid=4242,fd=21))'
 
 
 class Server(threading.Thread):
-    """Stands in for the attention process: answers one line (counts only) per connection unless the `silent` flag exists."""
+    """Stands in for the attention process: answers one line (counts only) per connection unless the `silent` flag
+    exists.
+    """
     def __init__(self, path, silent):
         super().__init__(daemon=True)
         self.sock, self.silent = socket.socket(socket.AF_UNIX), silent
@@ -113,7 +117,7 @@ def modes(tree):
 
 class PackTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(dir="/tmp"))               # short path: Unix socket names are limited to ~100 characters
+        self.tmp = Path(tempfile.mkdtemp(dir="/tmp"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.prefix = self.tmp / "r"
         home = self.prefix / "home" / "ubuntu"
@@ -183,7 +187,7 @@ class PackTests(unittest.TestCase):
         for want in ("NoNewPrivileges=yes", "MemoryMax=400M", "UMask=0077", "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX", "RestrictNamespaces=yes",
                      "LockPersonality=yes", "SystemCallFilter=@system-service", "SystemCallErrorNumber=EPERM", "RestrictSUIDSGID=yes"):
             self.assertIn(want, lines)
-        for name in ("ProtectSystem", "PrivateTmp", "ProtectKernelTunables", "ProtectControlGroups"):       # need a mount namespace: impossible for this user manager on Oracle
+        for name in ("ProtectSystem", "PrivateTmp", "ProtectKernelTunables", "ProtectControlGroups"):
             self.assertFalse([line for line in lines if line.startswith(name)], name)
 
     def test_a_good_run_tightens_both_trees_hardens_the_unit_and_reads_back(self):
@@ -200,7 +204,7 @@ class PackTests(unittest.TestCase):
             self.assertIn(want, readback)
         listing = self.prefix / "var" / "lib" / "lifeos-runner" / "whatsapp-modes-LIFE-643.list"
         self.assertEqual(stat.S_IMODE(listing.stat().st_mode), 0o600)
-        self.assertEqual(len(listing.read_text().splitlines()), 9)           # names and modes only
+        self.assertEqual(len(listing.read_text().splitlines()), 9)  # names and modes only
         for place in (listing.read_text(), json.dumps(result)):
             self.assertNotIn("NOT-A-REAL-SESSION-SECRET", place)
 
@@ -215,7 +219,7 @@ class PackTests(unittest.TestCase):
     def assert_everything_back(self, result, code="E_STEP_2"):
         self.assertEqual((result["outcome"], result["code"]), ("fail", code), result)
         self.assertEqual(self.unit_path.read_text(), OLD_UNIT)
-        self.assertEqual(self.running_unit(), OLD_UNIT)                       # the service was restarted on the old unit
+        self.assertEqual(self.running_unit(), OLD_UNIT)  # the service was restarted on the old unit
         self.assertEqual(self.both(), ({("d", 0o775): 2, ("f", 0o664): 3, ("f", 0o600): 1}, {("d", 0o775): 1, ("f", 0o664): 2}))
         self.assertEqual(stat.S_IMODE((self.state_dir / "attention.sock").stat().st_mode), 0o600)
 
@@ -267,7 +271,7 @@ class PackTests(unittest.TestCase):
         self.assertEqual(modes(self.cred_dir).get(("f", 0o664)), 2)
 
     def test_an_interrupted_run_restores_the_unit_file_and_leaves_the_safe_tight_modes(self):
-        """The runner kills a step's process group with SIGKILL, so a step cannot undo its own chmod on Ctrl-C; owner-only is the safe end state and the list stays for a manual put-back."""
+        """The runner kills a step's process group with SIGKILL, so a step cannot undo its own chmod on Ctrl-C"""
         self.flag("interrupt")
         driver = ("import sys; from lifeos.edge.runner import runner; "
                   "h = runner.Host(state=sys.argv[1], inbox=sys.argv[2], require_root=False, systemctl=lambda *a: (0, 'active')); "

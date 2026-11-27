@@ -1,4 +1,4 @@
-"""LIFE-870: the pinned private Buzz relay pilot pack (lifeos/edge/buzz/selfhost). Static checks on the compose file and the unit, and the control script run with fake docker, df, ss, openssl, systemd-creds and curl. No Docker, no network."""
+"""the pinned private Buzz relay pilot pack (lifeos/edge/buzz/selfhost)."""
 import os
 import re
 import shutil
@@ -47,7 +47,7 @@ class SelfhostPack(unittest.TestCase):
     def everything_written(self):
         return "\n".join(p.read_text(errors="replace") for p in self.tmp.rglob("*") if p.is_file() and p.parent.name != "bin")
 
-    # --- the compose file
+    # the compose file
     def test_every_image_is_pinned_by_digest_and_every_published_port_is_loopback_only(self):
         doc = yaml.safe_load((PACK / "compose.yml").read_text())
         for name, svc in doc["services"].items():
@@ -61,9 +61,9 @@ class SelfhostPack(unittest.TestCase):
         for name in ("relay", "postgres", "redis", "minio"):
             self.assertTrue(doc["services"][name]["mem_limit"] and doc["services"][name]["cpus"], name)
         text = (PACK / "compose.yml").read_text()
-        self.assertFalse(re.search(r"(?i)(password|secret|key)[A-Z_]*:\s+[A-Za-z0-9]{12,}\s*$", text, re.M))      # only ${NAME:?...} references, never a value
+        self.assertFalse(re.search(r"(?i)(password|secret|key)[A-Z_]*:\s+[A-Za-z0-9]{12,}\s*$", text, re.M))  # only ${NAME:?...} references, never a value
         self.assertIn("/run/lifeos-buzz-selfhost/env", text)
-        self.assertNotIn("BUZZ_ADMIN", text)                                                                     # no admin dashboard
+        self.assertNotIn("BUZZ_ADMIN", text)  # no admin dashboard
         self.assertEqual(doc["services"]["relay"]["image"].split("@")[0], "ghcr.io/block/buzz:0.3.0")
 
     def test_the_unit_runs_the_script_and_the_health_timer_is_every_five_minutes(self):
@@ -71,7 +71,7 @@ class SelfhostPack(unittest.TestCase):
         self.assertIn("OnUnitActiveSec=5min", (PACK / "lifeos-buzz-selfhost-health.timer").read_text())
         self.assertEqual(stat.S_IMODE(SCRIPT.stat().st_mode) & 0o111, 0o111)
 
-    # --- the control script
+    # the control script
     def test_init_stores_five_random_secrets_encrypted_and_prints_only_names(self):
         done = self.sh("init", OWNER)
         self.assertEqual(done.stdout.splitlines()[:5], [f"{n} ok" for n in ("postgres_password", "redis_password", "s3_access_key", "s3_secret_key", "git_hook_hmac")])
@@ -79,13 +79,13 @@ class SelfhostPack(unittest.TestCase):
         self.assertNotIn(SENTINEL, done.stdout + done.stderr)
         self.assertEqual(sorted(p.name for p in self.creds.iterdir()), ["git_hook_hmac.cred", "owner.pubkey", "postgres_password.cred", "redis_password.cred", "s3_access_key.cred", "s3_secret_key.cred"])
         self.assertTrue(all(p.read_text().startswith("ENC:") for p in self.creds.glob("*.cred")))
-        self.assertEqual(self.sh("init", OWNER).stdout.splitlines()[0], "postgres_password exists")             # a second run keeps what it made
+        self.assertEqual(self.sh("init", OWNER).stdout.splitlines()[0], "postgres_password exists")  # a second run keeps what it made
         self.assertEqual(self.sh("init", "not-hex").returncode, 64)
         self.assertEqual(self.sh("init", "ab" * 31).returncode, 64)
 
     def test_render_env_writes_the_tmpfs_file_with_every_setting_and_nothing_when_a_credential_is_missing(self):
         self.sh("init", OWNER)
-        self.assertEqual(self.sh("render-env").returncode, 1)                                                      # the relay key is not placed yet
+        self.assertEqual(self.sh("render-env").returncode, 1)  # the relay key is not placed yet
         self.assertFalse((self.run_dir / "env").exists())
         self.place_relay_key()
         done = self.sh("render-env")
@@ -111,7 +111,7 @@ class SelfhostPack(unittest.TestCase):
         self.place_relay_key()
         refused = self.sh("up", free=3)
         self.assertEqual((refused.returncode, "up refused" in refused.stdout), (3, True))
-        self.assertFalse((self.tmp / "docker.log").exists() and "compose --env-file" in (self.tmp / "docker.log").read_text())     # nothing was started
+        self.assertFalse((self.tmp / "docker.log").exists() and "compose --env-file" in (self.tmp / "docker.log").read_text())  # nothing was started
         self.assertEqual(self.sh("up").returncode, 0)
         log = (self.tmp / "docker.log").read_text()
         self.assertIn(f"docker compose --env-file {self.run_dir}/env -f {PACK}/compose.yml up -d --wait", log)
@@ -129,7 +129,7 @@ class SelfhostPack(unittest.TestCase):
         self.sh("render-env")
         for p in self.tmp.rglob("*"):
             if p.is_file() and p.parent.name != "bin" and p.name != "env":
-                self.assertNotIn(SENTINEL, p.read_text(errors="replace"), p.name)                                 # the encrypted credentials hold it only encoded
+                self.assertNotIn(SENTINEL, p.read_text(errors="replace"), p.name)  # the encrypted credentials hold it only encoded
                 self.assertNotIn(RELAY_SECRET, p.read_text(errors="replace"), p.name)
 
 

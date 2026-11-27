@@ -1,5 +1,6 @@
-"""LIFE-254 / LIFE-249: the permanent three-tool Buzz MCP contract (buzz_capabilities, buzz_read, buzz_publish) plus the five legacy tools, proved against a MOCKED relay and a LOCAL test identity provider.
-These are fixture results. They say nothing about real ChatGPT or Claude Chat discovering the tools; that needs live connector acceptance."""
+"""the permanent three-tool Buzz MCP contract (buzz_capabilities, buzz_read, buzz_publish) plus the five legacy tools,
+proved against a MOCKED relay and.
+"""
 import ast, base64, functools, hashlib, json, pathlib, random, unittest
 from unittest import mock
 
@@ -13,9 +14,9 @@ from tests.buzz import test_remote_mcp as remote
 from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, ROOT, URLS, FakeRelay, verify
 from tests.buzz.test_mentions import KEY_CODE, KEY_CODEX, PK_CODE, PK_CODEX
 
-FINGERPRINT = "04ddba1c8250ebd33a9fea89fc3d94d0f7bdecd34a76b7a859092e564c81a31f"       # THE permanent contract, re-worded once in LIFE-965 (Jim, Nov 24 2026; the old value was 95105da6...); a change here means ChatGPT would need a connector refresh
-SCHEMA_FINGERPRINT = "4a853612ef4e3962faddcbfa93beefab47371565e4f73d84fa7bafeb5d6398e5"      # the three tools' names, input schemas and read-only hints, without their text: never changes again
-LEGACY_FINGERPRINT = "be9f49cda63a327c73657fa84084c50edc28bd323effba29757cb0e46f0c0dfd"   # the five original tools exactly as deployed in 5ca9046; they stay indefinitely so no connector re-approval is ever forced
+FINGERPRINT = "04ddba1c8250ebd33a9fea89fc3d94d0f7bdecd34a76b7a859092e564c81a31f"  # THE permanent contract, re-worded once in
+SCHEMA_FINGERPRINT = "4a853612ef4e3962faddcbfa93beefab47371565e4f73d84fa7bafeb5d6398e5"
+LEGACY_FINGERPRINT = "be9f49cda63a327c73657fa84084c50edc28bd323effba29757cb0e46f0c0dfd"
 PK_COUNCIL, PK_CODE_B = nip98.pubkey(bytes([34]) * 32), nip98.pubkey(bytes([33]) * 32)
 ALIASES = {("life-os", "claude-code"): PK_CODE, ("life-os", "codex"): PK_CODEX, ("life-os", "council-architect"): PK_COUNCIL, ("bytalos", "claude-code"): PK_CODE_B}
 ROSTERS = {CHAN: [PK_CODE, PK_CODEX, PK_COUNCIL], OTHER: [PK_CODE_B]}
@@ -25,14 +26,14 @@ WHO = {"client": "claude", "communities": ("life-os", "bytalos"), "scopes": {"bu
 
 
 def unsigned_auth(secret, method, url, body=None):
-    """The request header with its structure but no BIP-340 signature (about 19 ms each). These tests are about contract behavior; signed requests and signed events are proved in test_bridge and by the events these tests still sign."""
+    """The request header with its structure but no BIP-340 signature (about 19 ms each)."""
     tags = [["u", url], ["method", method]] + ([["payload", hashlib.sha256(body).hexdigest()]] if body else [])
     return "Nostr " + base64.b64encode(json.dumps({"kind": 27235, "tags": tags, "pubkey": "", "id": "", "sig": "", "content": "", "created_at": 0}).encode()).decode()
 
 
 def setUpModule():
     global _patches
-    _patches = [mock.patch.object(nip98, "auth_header", unsigned_auth), mock.patch.object(nip98, "pubkey", functools.lru_cache(maxsize=None)(nip98.pubkey))]   # pubkey is a pure function of the key: cache the 19 ms derivation
+    _patches = [mock.patch.object(nip98, "auth_header", unsigned_auth), mock.patch.object(nip98, "pubkey", functools.lru_cache(maxsize=None)(nip98.pubkey))]
     for patch in _patches:
         patch.start()
 
@@ -44,7 +45,7 @@ def tearDownModule():
 
 def setup(keys=None, writes=WRITES, recipients=ALIASES, may_address=True, rosters=ROSTERS, **kw):
     fake = FakeRelay()
-    fake.check_auth = False   # these tests are about contract behavior, not request authentication (the bridge and remote suites cover that)
+    fake.check_auth = False
     fake.events += [fake_event(f"roster{i}", 1, [["d", chan]] + [["p", pk] for pk in members], 39002) for i, (chan, members) in enumerate(rosters.items())]
     fake.events.append(fake_event("meta", 1, [["d", CHAN], ["name", "life-os-test"], ["about", "Testing"], ["public"]], 39000))
     return fake, Relay(URLS, keys or {"life-os": KEY_A, "bytalos": KEY_B}, writes, fake, recipients=recipients, may_address=may_address, **kw)
@@ -63,7 +64,7 @@ def publish(relay, op, community="life-os", who=WHO, **a):
     return tool(relay, "buzz_publish", who, operation=op, community=community, arguments=a)
 
 
-def fake_event(i, ts, tags=(), kind=9):   # unsigned: the mock relay never verifies stored events, and signing hundreds would only slow the suite
+def fake_event(i, ts, tags=(), kind=9):
     head = [["h", CHAN], ["actor", ACTOR]] if kind == 9 else []
     return {"id": hashlib.sha256(f"e{i}".encode()).hexdigest(), "pubkey": nip98.pubkey(KEY_A), "created_at": ts, "kind": kind, "tags": head + [list(t) for t in tags], "content": f"m{i}" if kind == 9 else "", "sig": ""}
 
@@ -81,15 +82,17 @@ def walk(relay, op="get_messages", community="life-os", limit=50, **a):
 
 
 class PermanentWording(unittest.TestCase):
-    """LIFE-965: the three permanent tools never name an operation, so adding, renaming or changing an operation never touches them (and never forces a ChatGPT connector refresh)."""
+    """the three permanent tools never name an operation, so adding, renaming or changing an operation never touches
+    them.
+    """
     ALLOWED = {"buzz_capabilities", "buzz_read", "buzz_publish", "unknown_operation", "idempotency_key"}
 
     def test_no_description_names_an_operation_and_the_schemas_are_frozen(self):
         import re
         operations = {*buzz_mcp.READ, *buzz_mcp.PUBLISH, *buzz_mcp.MEMORY_OPS, *buzz_mcp.ROUTES, *buzz_mcp.DISABLED}
         for name, (description, *_rest) in buzz_mcp.FROZEN.items():
-            self.assertFalse({w for w in operations if re.search(r"(?<![A-Za-z_])" + re.escape(w) + r"(?![A-Za-z_])", description) and "_" in w}, name)       # every operation with an underscore, by name
-            self.assertLessEqual(set(re.findall(r"[A-Za-z]+(?:_[A-Za-z]+)+", description)), self.ALLOWED, name)                                           # and any other identifier: a new operation name fails here too
+            self.assertFalse({w for w in operations if re.search(r"(?<![A-Za-z_])" + re.escape(w) + r"(?![A-Za-z_])", description) and "_" in w}, name)  # every operation with an underscore, by name
+            self.assertLessEqual(set(re.findall(r"[A-Za-z]+(?:_[A-Za-z]+)+", description)), self.ALLOWED, name)
         schemas = [[n, {"type": "object", "properties": p, "required": r, "additionalProperties": False}, ro] for n, (_d, p, r, ro) in buzz_mcp.FROZEN.items()]
         self.assertEqual(hashlib.sha256(json.dumps(schemas, sort_keys=True).encode()).hexdigest(), SCHEMA_FINGERPRINT)
         self.assertEqual(list(buzz_mcp.FROZEN), ["buzz_capabilities", "buzz_read", "buzz_publish"])
@@ -114,8 +117,8 @@ class Discovery(unittest.TestCase):
             self.assertEqual(set(by[name]["inputSchema"]["properties"]), {"operation", "community", "arguments"})
             self.assertEqual(by[name]["inputSchema"]["required"], ["operation"])
         self.assertTrue(all(t["inputSchema"]["additionalProperties"] is False for t in tools))
-        self.assertEqual([by[n]["annotations"]["readOnlyHint"] for n in ("buzz_capabilities", "buzz_read", "buzz_publish")], [True, True, False])   # write classification is permanent
-        self.assertNotIn("enum", json.dumps(by["buzz_read"]["inputSchema"]) + json.dumps(by["buzz_publish"]["inputSchema"]))   # operations and aliases resolve at runtime, never in the public schema
+        self.assertEqual([by[n]["annotations"]["readOnlyHint"] for n in ("buzz_capabilities", "buzz_read", "buzz_publish")], [True, True, False])  # write classification is permanent
+        self.assertNotIn("enum", json.dumps(by["buzz_read"]["inputSchema"]) + json.dumps(by["buzz_publish"]["inputSchema"]))
 
     def test_legacy_schemas_are_unchanged(self):
         spec = [[n, d, p, r, ro] for n, (d, p, r, ro, _) in buzz_mcp.TOOLS.items()]
@@ -132,7 +135,7 @@ class Discovery(unittest.TestCase):
         self.assertEqual(caps["identity"]["communities"]["life-os"], ACTOR)
         self.assertTrue(caps["publish"]["message"]["available"] and caps["addressing"]["enabled"])
         need = lambda op: sorted(k for k, v in caps["publish"][op]["parameters"].items() if v["required"])
-        self.assertEqual((need("message"), need("reply"), need("handoff_request")), (["channel", "idempotency_key", "text"], ["channel", "idempotency_key", "reply_to", "text"], ["case", "channel", "idempotency_key", "text"]))   # a model can see what each operation needs
+        self.assertEqual((need("message"), need("reply"), need("handoff_request")), (["channel", "idempotency_key", "text"], ["channel", "idempotency_key", "reply_to", "text"], ["case", "channel", "idempotency_key", "text"]))  # a model can see what each operation needs
         self.assertEqual((caps["publish"]["council_contribution"]["available"], caps["publish"]["council_contribution"]["reason"]), (False, "separate_authorization_required"))
         self.assertIn("1000", caps["pagination"]["unsupported_boundary"])
         self.assertEqual(set(caps["errors"]), {"unsupported", "unauthorized", "disabled", "degraded", "caller"})
@@ -154,7 +157,7 @@ class Discovery(unittest.TestCase):
 class Registry(unittest.TestCase):
     def test_unknown_operations_and_cross_class_calls_are_refused_before_anything_runs(self):
         fake, relay = setup()
-        for op in ("nope", "message", "post_message", "_query", "__class__", "get_messages ", "A b", "../x", ""):   # a publish name on the read tool, a relay method name, junk
+        for op in ("nope", "message", "post_message", "_query", "__class__", "get_messages ", "A b", "../x", ""):
             self.assertEqual(read(relay, op)[1]["error"], "unknown_operation", op)
         for op in ("get_messages", "list_communities", "post_message", "__init__"):
             self.assertEqual(publish(relay, op, channel=CHAN, text="x", idempotency_key="k")[1]["error"], "unknown_operation", op)
@@ -168,7 +171,7 @@ class Registry(unittest.TestCase):
         post = dict(channel=CHAN, text="x", idempotency_key="k1")
         for extra in ({"actor": "key:forged"}, {"pubkey": PK_CODE}, {"signing_key": KEY_CODE.hex()}, {"url": "https://evil.example"}, {"kwargs": {"recipient": "Codex"}}, {"recipient": PK_CODE}, {"recipient": ["Codex"]}, {"recipient": 5}):
             self.assertEqual(publish(relay, "message", **post, **extra)[1]["error"], "invalid_argument", extra)
-        self.assertEqual(tool(relay, "buzz_publish", operation="message", community="life-os", arguments=post, signer="x")[1]["error"], "invalid_argument")   # no stray top-level key either
+        self.assertEqual(tool(relay, "buzz_publish", operation="message", community="life-os", arguments=post, signer="x")[1]["error"], "invalid_argument")  # no stray top-level key either
         self.assertEqual(tool(relay, "buzz_read", operation="list_communities", arguments="x")[1]["error"], "invalid_argument")
         self.assertEqual([e for e in fake.events if e["kind"] == 9], [])
 
@@ -183,8 +186,8 @@ class Registry(unittest.TestCase):
         self.assertEqual(len(fake.calls), before)
         for a in ({}, {"channel": CHAN, "text": "x"}, {"channel": CHAN, "text": "x" * 4001, "idempotency_key": "k"}, {"channel": CHAN, "text": "x", "idempotency_key": "bad key!"}):
             self.assertEqual(publish(relay, "message", **a)[1]["error"], "invalid_argument", a)
-        self.assertEqual(publish(relay, "handoff_request", channel=CHAN, text="x", idempotency_key="k")[1]["error"], "invalid_argument")   # a handoff needs its case
-        self.assertEqual(publish(relay, "reply", channel=CHAN, text="x", idempotency_key="k")[1]["error"], "invalid_argument")   # a reply needs its target
+        self.assertEqual(publish(relay, "handoff_request", channel=CHAN, text="x", idempotency_key="k")[1]["error"], "invalid_argument")  # a handoff needs its case
+        self.assertEqual(publish(relay, "reply", channel=CHAN, text="x", idempotency_key="k")[1]["error"], "invalid_argument")  # a reply needs its target
 
     def test_a_response_over_the_size_bound_is_refused_not_truncated(self):
         fake, relay = setup()
@@ -219,7 +222,7 @@ class ReadOperations(unittest.TestCase):
         _, relay = setup()
         info = read(relay, "channel_info", channel=CHAN)[1]["data"]
         self.assertEqual((info["name"], info["public"], info["member_count"], info["you_are_listed"]), ("life-os-test", True, 3, False))
-        self.assertEqual(sorted(info["members"]), ["claude-code", "codex", "council-architect"])   # approved agents show by name, anyone else by key prefix only
+        self.assertEqual(sorted(info["members"]), ["claude-code", "codex", "council-architect"])
         self.assertEqual(read(relay, "channel_info", channel=OTHER)[1]["error"], "not_found")
         self.assertEqual(read(relay, "list_agents")[1]["data"], [{"alias": "claude-code", "identity": "key:" + PK_CODE[:16]}, {"alias": "codex", "identity": "key:" + PK_CODEX[:16]}, {"alias": "council-architect", "identity": "key:" + PK_COUNCIL[:16]}])
         self.assertEqual(read(relay, "list_agents", "bytalos")[1]["data"][0]["alias"], "claude-code")
@@ -241,12 +244,12 @@ class ReadOperations(unittest.TestCase):
         fake, relay = setup()
         root = publish(relay, "message", channel=CHAN, text="root", idempotency_key="r")[1]["data"]["event_id"]
         flat = publish(relay, "reply", channel=CHAN, text="flat", idempotency_key="f", reply_to=root)[1]["data"]["event_id"]
-        self.assertEqual([t for t in {e["id"]: e["tags"] for e in fake.events if e["kind"] == 9}[flat] if t[0] == "e"], [])   # LIFE-397: a plain reply to a top-level message is posted top-level, no thread tag
-        direct = publish(relay, "handoff_ack", channel=CHAN, text="direct", idempotency_key="d", case="CASE0", reply_to=root)[1]["data"]["event_id"]   # a structured reply stays a thread reply
-        nested = publish(relay, "reply", channel=CHAN, text="nested", idempotency_key="n", reply_to=direct)[1]["data"]["event_id"]   # a plain reply to a message already in a thread keeps the thread
+        self.assertEqual([t for t in {e["id"]: e["tags"] for e in fake.events if e["kind"] == 9}[flat] if t[0] == "e"], [])
+        direct = publish(relay, "handoff_ack", channel=CHAN, text="direct", idempotency_key="d", case="CASE0", reply_to=root)[1]["data"]["event_id"]  # a structured reply stays a thread reply
+        nested = publish(relay, "reply", channel=CHAN, text="nested", idempotency_key="n", reply_to=direct)[1]["data"]["event_id"]
         tags = {e["id"]: e["tags"] for e in fake.events if e["kind"] == 9}
         self.assertIn(["e", root, "", "reply"], tags[direct])
-        self.assertEqual([t for t in tags[nested] if t[0] == "e"], [["e", root, "", "root"], ["e", direct, "", "reply"]])   # NIP-10 as Buzz writes it
+        self.assertEqual([t for t in tags[nested] if t[0] == "e"], [["e", root, "", "root"], ["e", direct, "", "reply"]])  # NIP-10 as Buzz writes it
         got = read(relay, "get_thread", root=root)[1]["data"]
         self.assertEqual({m["event_id"] for m in got}, {direct, nested})
         self.assertEqual({m["reply_to"] for m in got}, {root, direct})
@@ -261,8 +264,8 @@ class ReadOperations(unittest.TestCase):
         case = read(relay, "get_evidence", case="CASE1")[1]["data"]
         self.assertEqual(sorted(m["type"] for m in case), ["handoff_ack", "handoff_request", "progress"])
         self.assertEqual({m["case"] for m in case}, {"CASE1"})
-        self.assertEqual({m["event_id"] for m in read(relay, "get_evidence", type="handoff_ack")[1]["data"]}, {direct, ack["event_id"]})   # LIFE-397: `direct` is now a structured ack so it stays a thread reply
-        self.assertEqual([m["untrusted_text"] for m in read(relay, "get_evidence", type="council_decision")[1]["data"]], ["decision brief"])   # council evidence is readable
+        self.assertEqual({m["event_id"] for m in read(relay, "get_evidence", type="handoff_ack")[1]["data"]}, {direct, ack["event_id"]})
+        self.assertEqual([m["untrusted_text"] for m in read(relay, "get_evidence", type="council_decision")[1]["data"]], ["decision brief"])  # council evidence is readable
         self.assertEqual(read(relay, "get_evidence", type="blocker", channel=OTHER)[1]["data"], [])
 
     def test_search_uses_the_existing_single_page_read(self):
@@ -283,7 +286,7 @@ class PublishOperations(unittest.TestCase):
             self.assertEqual((ev["pubkey"], ev["kind"], [t for t in ev["tags"] if t[0] == "actor"]), (nip98.pubkey(KEY_A), 9, [["actor", ACTOR]]))
             self.assertTrue(verify(ev["pubkey"], bytes.fromhex(ev["id"]), ev["sig"]))
         self.assertEqual(publish(relay, "council_contribution", channel=CHAN, text="x", idempotency_key="c")[1]["error"], "operation_disabled")
-        self.assertEqual(len([e for e in fake.events if e["kind"] == 9]), 5)   # nothing else was published, and the council class never reached the relay
+        self.assertEqual(len([e for e in fake.events if e["kind"] == 9]), 5)
 
     def test_authority_checks_run_before_any_relay_request(self):
         fake, relay = setup(writes=())
@@ -300,10 +303,10 @@ class PublishOperations(unittest.TestCase):
 
     def test_runtime_alias_resolution_membership_and_never_auto_invite(self):
         fake, relay = setup()
-        self.assertFalse(publish(relay, "message", channel=CHAN, text="hi", idempotency_key="a", recipient="Council-Architect")[0])   # approved alias beyond the legacy enum: resolved at runtime
+        self.assertFalse(publish(relay, "message", channel=CHAN, text="hi", idempotency_key="a", recipient="Council-Architect")[0])
         _, no_member = setup(rosters={CHAN: []})
         self.assertEqual(publish(no_member, "message", channel=CHAN, text="x", idempotency_key="c", recipient="Codex")[1]["error"], "recipient_not_channel_member")
-        self.assertFalse([e for e in fake.events if e["kind"] in (9000, 9021)])   # nothing ever adds or invites anyone
+        self.assertFalse([e for e in fake.events if e["kind"] in (9000, 9021)])  # nothing ever adds or invites anyone
 
     def test_retries_cannot_change_what_a_key_already_published(self):
         fake, relay = setup()
@@ -342,7 +345,7 @@ class Resilience(unittest.TestCase):
             err, out = publish(self.relay(transport, recipients=ALIASES, may_address=True), "message", channel=CHAN, text="x", idempotency_key="k")
             self.assertEqual((out["error"], out["retryable"]), ("precheck_unavailable", True))
         err, out = read(self.relay(lambda *a, **k: (200, b"[]")), "get_messages", channel=CHAN)
-        self.assertEqual((err, out["data"], out["next_cursor"]), (False, [], None))   # empty is a valid answer, not an error
+        self.assertEqual((err, out["data"], out["next_cursor"]), (False, [], None))  # empty is a valid answer, not an error
         fake, relay = setup()
         fake.fail_query = True
         self.assertEqual(read(relay, "channel_info", channel=CHAN)[1]["retryable"], True)
@@ -356,7 +359,7 @@ class Paging(unittest.TestCase):
 
     def check(self, got, events):
         truth = [e["id"] for e in sorted(events, key=lambda e: (e["created_at"], e["id"]), reverse=True)]
-        self.assertEqual(got, truth)   # every event, once, newest first, whatever the relay's order inside a second
+        self.assertEqual(got, truth)
 
     def test_more_than_120_messages_come_back_exactly_once_in_pages_of_50(self):
         events = [fake_event(i, 1000 + i) for i in range(130)]
@@ -374,7 +377,7 @@ class Paging(unittest.TestCase):
         fake.tie = scramble
         seen, cursor = [], None
         for page in range(60):
-            calls[0] += 1   # a different tie order on every call
+            calls[0] += 1  # a different tie order on every call
             err, out = read(relay, "get_messages", channel=CHAN, limit=50, **({"cursor": cursor} if cursor else {}))
             self.assertFalse(err, out)
             seen += [m["event_id"] for m in out["data"]]
@@ -389,7 +392,7 @@ class Paging(unittest.TestCase):
         fake.tie = lambda e: hashlib.sha256(("restart" + e["id"]).encode()).hexdigest()
         seen, cursor = [], None
         for _ in range(40):
-            fresh = Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, WRITES, fake)   # a new process holds nothing from the last page
+            fresh = Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, WRITES, fake)  # a new process holds nothing from the last page
             err, out = read(fresh, "get_messages", channel=CHAN, limit=40, **({"cursor": cursor} if cursor else {}))
             self.assertFalse(err, out)
             seen += [m["event_id"] for m in out["data"]]
@@ -399,7 +402,7 @@ class Paging(unittest.TestCase):
         self.check(seen, events)
 
     def test_600_events_in_one_second_and_600_in_the_previous_second_are_all_retrieved(self):
-        for gap in (1, 3):   # adjacent seconds, and a quiet gap between them
+        for gap in (1, 3):  # adjacent seconds, and a quiet gap between them
             events = [fake_event(i, 200) for i in range(600)] + [fake_event(1000 + i, 200 - gap) for i in range(600)]
             for tie in (lambda e: 0, lambda e: hashlib.sha256(("scramble" + e["id"]).encode()).hexdigest()):
                 fake, relay = self.tape(events)
@@ -414,16 +417,16 @@ class Paging(unittest.TestCase):
                     cursor = out["next_cursor"]
                     if cursor is None:
                         break
-                self.assertEqual(errors, [], gap)   # the older second is reachable: no unsupported-boundary error
+                self.assertEqual(errors, [], gap)
                 self.check(seen, events)
-                self.assertEqual((len(seen), len(set(seen)), cursor), (1200, 1200, None))   # all of them, once each, and a real end of the history
+                self.assertEqual((len(seen), len(set(seen)), cursor), (1200, 1200, None))
 
     def test_a_second_that_fills_the_whole_window_still_fails_closed_at_the_real_relay_limit(self):
         events = [fake_event(i, 300) for i in range(1001)]
         _, relay = self.tape(events)
         err, out = read(relay, "get_messages", channel=CHAN, limit=49)
-        self.assertEqual((err, out["error"], out["max_same_second"]), (True, "page_boundary_unsupported", 1000))   # 1,001 matching events in one second, at the real relay limit
-        events = [fake_event(i, 300) for i in range(1001)] + [fake_event(5000 + i, 299) for i in range(50)]   # older events must not hide the unreachable tail
+        self.assertEqual((err, out["error"], out["max_same_second"]), (True, "page_boundary_unsupported", 1000))
+        events = [fake_event(i, 300) for i in range(1001)] + [fake_event(5000 + i, 299) for i in range(50)]  # older events must not hide the unreachable tail
         _, relay = self.tape(events)
         seen, cursor, failed = [], None, None
         for _ in range(60):
@@ -435,7 +438,7 @@ class Paging(unittest.TestCase):
             cursor = out["next_cursor"]
             if cursor is None:
                 break
-        self.assertEqual(failed, "page_boundary_unsupported")   # never silently skips the unverified tail of the 1,001-event second to reach older events
+        self.assertEqual(failed, "page_boundary_unsupported")
 
     def test_the_exact_unsupported_boundary_is_reported_not_skipped(self):
         events = [fake_event(i, 7000) for i in range(60)]
@@ -445,7 +448,7 @@ class Paging(unittest.TestCase):
             self.assertEqual((err, out["error"], out["max_same_second"]), (True, "page_boundary_unsupported", 40))
             _, relay = self.tape(events[:35])
             seen, _ = walk(relay, channel=CHAN, limit=10)
-            self.check(seen, events[:35])   # one second that still fits the relay window is fully recoverable
+            self.check(seen, events[:35])
 
     def test_duplicates_out_of_order_input_and_empty_pages(self):
         events = [fake_event(i, 100 + (i * 7919) % 13) for i in range(80)]
@@ -466,10 +469,10 @@ class Paging(unittest.TestCase):
         flip = cursor[:-1] + ("0" if cursor[-1] != "0" else "1")
         for bad in (flip, cursor[:10], "x", "", "a.b", cursor + "0", cursor.split(".")[0], "." + cursor.split(".")[1]):
             self.assertEqual(read(relay, "get_messages", channel=CHAN, limit=5, cursor=bad)[1]["error"], "invalid_cursor", bad)
-        self.assertEqual(read(relay, "get_messages", channel=OTHER, limit=5, cursor=cursor)[1]["error"], "invalid_cursor")   # bound to its own query
+        self.assertEqual(read(relay, "get_messages", channel=OTHER, limit=5, cursor=cursor)[1]["error"], "invalid_cursor")  # bound to its own query
         self.assertEqual(read(relay, "get_addressed", limit=5, cursor=cursor)[1]["error"], "invalid_cursor")
         other = Relay(URLS, {"life-os": bytes([5]) * 32, "bytalos": KEY_B}, WRITES, fake, clock=lambda: clock[0])
-        self.assertEqual(read(other, "get_messages", channel=CHAN, limit=5, cursor=cursor)[1]["error"], "invalid_cursor")   # and to the identity that asked
+        self.assertEqual(read(other, "get_messages", channel=CHAN, limit=5, cursor=cursor)[1]["error"], "invalid_cursor")  # and to the identity that asked
         self.assertEqual(read(relay, "get_messages", channel=CHAN, limit=5, cursor=cursor)[0], False)
         clock[0] += buzz_relay.CURSOR_TTL + 1
         self.assertEqual(read(relay, "get_messages", channel=CHAN, limit=5, cursor=cursor)[1]["error"], "expired_cursor")
@@ -480,7 +483,7 @@ class Paging(unittest.TestCase):
         written = len(fake.events)
         mine, cursor, invocations = [], None, 0
         while True:
-            receiver = Relay(URLS, {"life-os": KEY_CODE}, (), fake, recipients=ALIASES)   # a brand-new process each time: the cursor survives a restart
+            receiver = Relay(URLS, {"life-os": KEY_CODE}, (), fake, recipients=ALIASES)
             err, out = read(receiver, "get_addressed", limit=25, **({"cursor": cursor} if cursor else {}))
             self.assertFalse(err, out)
             mine += [(m["event_id"], m["actor"], m["recipients"]) for m in out["data"]]
@@ -489,10 +492,10 @@ class Paging(unittest.TestCase):
             if cursor is None:
                 break
         self.assertEqual((len(mine), len({m[0] for m in mine}), invocations), (120, 120, 5))
-        self.assertEqual({(m[1], tuple(m[2])) for m in mine}, {(ACTOR, (PK_CODE,))})   # original author and recipient kept
-        self.assertEqual(len(fake.events), written)   # reading wrote nothing: no inbox, no acknowledgment
+        self.assertEqual({(m[1], tuple(m[2])) for m in mine}, {(ACTOR, (PK_CODE,))})  # original author and recipient kept
+        self.assertEqual(len(fake.events), written)  # reading wrote nothing: no inbox, no acknowledgment
         legacy = tool(Relay(URLS, {"life-os": KEY_CODE}, (), fake), "buzz_get_addressed", community="life-os", limit=5)[1]
-        self.assertEqual((len(legacy["messages"]), isinstance(legacy["next_before"], int)), (5, True))   # the established five-tool behavior is untouched
+        self.assertEqual((len(legacy["messages"]), isinstance(legacy["next_before"], int)), (5, True))  # the established five-tool behavior is untouched
 
     def test_a_missing_credential_or_a_foreign_community_cannot_page_history(self):
         fake, relay = setup(keys={"life-os": KEY_A})
@@ -506,7 +509,7 @@ class Paging(unittest.TestCase):
             events = [fake_event(i, 3000 + rng.choice([0, 0, 0, 1, 2, rng.randrange(40)])) for i in range(n)]
             fake, relay = self.tape(events)
             fake.tie = lambda e, r=rng: r.random()
-            seen, _ = walk(relay, channel=CHAN, limit=rng.choice([13, 30, 50]))   # small pages are covered above; a limit of 1 would only multiply requests
+            seen, _ = walk(relay, channel=CHAN, limit=rng.choice([13, 30, 50]))  # small pages are covered above
             self.check(seen, events)
 
 
@@ -525,15 +528,15 @@ class Http(remote.Server):
         self.assertEqual((status, out["data"]["identity"]["client"]), (200, "claude"))
         claude_id = out["data"]["identity"]["communities"]["life-os"]
         self.assertEqual(self.call(remote.token(sub="user-chatgpt"), "buzz_capabilities")[1]["data"]["identity"]["client"], "chatgpt")
-        self.assertNotEqual(claude_id, self.call(remote.token(sub="user-chatgpt"), "buzz_capabilities")[1]["data"]["identity"]["communities"]["life-os"])   # client identity isolation
-        status, out = self.call(tok, "buzz_publish", operation="message", community="life-os", arguments=dict(remote.POST, channel=remote.CHAN))   # read-only token
+        self.assertNotEqual(claude_id, self.call(remote.token(sub="user-chatgpt"), "buzz_capabilities")[1]["data"]["identity"]["communities"]["life-os"])  # client identity isolation
+        status, out = self.call(tok, "buzz_publish", operation="message", community="life-os", arguments=dict(remote.POST, channel=remote.CHAN))  # read-only token
         self.assertEqual(status, 403)
         wtok = remote.token(**remote.WR)
         status, out = self.call(wtok, "buzz_publish", operation="message", community="life-os", arguments={"channel": remote.CHAN, "text": "via the permanent tool", "idempotency_key": "h1"})
         self.assertEqual((status, out["ok"]), (200, True))
         legacy = self.call(tok, "buzz_get_messages", community="life-os", channel=remote.CHAN)[1]
         new = self.call(tok, "buzz_read", operation="get_messages", community="life-os", arguments={"channel": remote.CHAN})[1]
-        self.assertEqual(([m["event_id"] for m in legacy], [m["event_id"] for m in new["data"]]), ([out["data"]["event_id"]] * 1, [out["data"]["event_id"]]))   # one identity, both interfaces
+        self.assertEqual(([m["event_id"] for m in legacy], [m["event_id"] for m in new["data"]]), ([out["data"]["event_id"]] * 1, [out["data"]["event_id"]]))  # one identity, both interfaces
         self.assertEqual({m["actor"] for m in new["data"]}, {claude_id})
         tools = {a["tool"] for a in self.audit}
         self.assertTrue({"buzz_capabilities", "buzz_publish:message", "buzz_read:get_messages", "buzz_get_messages"} <= tools)
@@ -551,9 +554,9 @@ class Http(remote.Server):
         before = len(self.fake.calls)
         status, out = self.call(remote.token(sub="user-lifeos-only"), "buzz_read", operation="get_messages", community="bytalos", arguments={"channel": remote.OTHER})
         self.assertEqual((status, out["error"]), (200, "community_not_authorized"))
-        self.assertEqual(len(self.fake.calls), before)   # refused before any relay request
+        self.assertEqual(len(self.fake.calls), before)  # refused before any relay request
         self.assertEqual(self.call(remote.token(sub="user-lifeos-only"), "buzz_capabilities")[1]["data"]["identity"]["communities"].keys(), {"life-os"})
-        self.assertEqual(self.req("POST", "/mcp", b"x" * 70000, remote.token())[0], 400)   # oversized request
+        self.assertEqual(self.req("POST", "/mcp", b"x" * 70000, remote.token())[0], 400)  # oversized request
         self.assertEqual(self.req("GET", "/mcp", None, remote.token())[0], 405)
 
     def test_revocation_fails_closed_on_the_next_call(self):

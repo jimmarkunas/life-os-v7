@@ -1,4 +1,4 @@
-"""LIFE-47 S2 Edge gate: synthetic identities, fake tailscaled and a recording fake application only. No network, no Notion, no real ids."""
+"""S2 Edge gate: synthetic identities, fake tailscaled and a recording fake application only."""
 import io
 import json
 import os
@@ -57,12 +57,12 @@ class Gate(unittest.TestCase):
             self.assertEqual((code, status), (0, 200))
             req, who, secrets = self.calls[0]
             self.assertEqual((req["method"], req["path"], req["query"], who), ("GET", "/close", {"l": "abc"}, {"login": LOGIN, "node": node}))
-            self.assertEqual(set(secrets), {"link", "reader", "config"})     # GET never receives the Notion token, only the read-only client
+            self.assertEqual(set(secrets), {"link", "reader", "config"})
             for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff", "Referrer-Policy: same-origin"):
-                self.assertIn(header, text)                              # no-referrer would make the browser post `Origin: null`, which the origin check refuses
+                self.assertIn(header, text)
 
     def test_only_the_manage_hub_page_may_load_googles_drive_picker(self):
-        """LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): GET /manage's HTML gets the picker CSP; every other screen, a POST, a refusal or a script keeps default-src 'self'."""
+        """GET /manage's HTML gets the picker CSP"""
         def csp(text):
             return next(line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Content-Security-Policy: "))
         _, status, text = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
@@ -84,8 +84,9 @@ class Gate(unittest.TestCase):
         self.assertEqual(csp(text), gate.CSP)
 
     def test_only_the_manage_hub_page_tells_google_its_origin(self):
-        """LIFE-173 (Jim, Nov 6 2026): the picker's API key is restricted to this origin, so GET /manage's HTML sends Google its origin (never the path);
-        every other screen, a POST, a refusal or a script stays same-origin, and no page is ever no-referrer (that would post `Origin: null`)."""
+        """the picker's API key is restricted to this origin, so GET /manage's HTML sends Google its origin (never the
+        path)
+        """
         def policy(text):
             return [line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Referrer-Policy: ")]
         _, status, text = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
@@ -98,10 +99,10 @@ class Gate(unittest.TestCase):
         self.assertEqual(policy(text), ["same-origin"])
 
     def test_the_picker_credential_reaches_only_get_manage(self):
-        """LIFE-217: the optional `picker` credential (the Drive picker's browser identifiers) is read for GET /manage only; absent or broken means no picker."""
+        """the optional `picker` credential (the Drive picker's browser identifiers) is read for GET /manage only"""
         ids = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
         self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
-        self.assertNotIn("picker", self.calls[-1][2])                                              # absent: no picker
+        self.assertNotIn("picker", self.calls[-1][2])  # absent: no picker
         with open(os.path.join(self.creds, "picker"), "w") as f:
             json.dump({**ids, "other": "dropped"}, f)
         self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
@@ -116,7 +117,7 @@ class Gate(unittest.TestCase):
         self.assertNotIn("picker", self.calls[-1][2])
 
     def test_get_reads_the_current_opportunity_through_a_read_only_client_and_writes_nothing(self):
-        class Notion:                                                   # a fake Notion client: one opportunity, every call recorded
+        class Notion:
             source = "ds-ledger"
 
             def __init__(self, stage):
@@ -132,7 +133,7 @@ class Gate(unittest.TestCase):
             def query_data_source(self, source_id=None, body=None):
                 return self.call("POST", f"/data_sources/{source_id or self.source}/query", body)
 
-        def screen(req, who, secrets):                                  # what close_app's GET must do: read live state, refuse a stale link
+        def screen(req, who, secrets):
             reader = secrets["reader"]
             live = reader.get_page("page-1")["stage"]
             reader.query_data_source(body={"filter": {}})
@@ -147,7 +148,7 @@ class Gate(unittest.TestCase):
             gate.main(screen, io.BytesIO(v2(RUNNER) + http(path="/close?stage=Interview")), out, whois_as(), lambda: 0, self.policy, self.creds,
                       client=lambda token, policy, notion=notion: (self.assertEqual(token, b"synthetic-notion-token"), notion)[1])
             self.assertEqual(int(out.getvalue().split(b" ")[1]), want)
-            self.assertEqual(notion.log, [("GET", "/pages/page-1"), ("POST", "/data_sources/ds-ledger/query")])      # reads only: zero writes reached Notion
+            self.assertEqual(notion.log, [("GET", "/pages/page-1"), ("POST", "/data_sources/ds-ledger/query")])  # reads only: zero writes reached Notion
 
     def test_a_same_origin_form_post_gets_the_notion_credential_and_the_parsed_form(self):
         body = b"reason=Rejected&confirm=yes&csrf=t"
@@ -172,9 +173,9 @@ class Gate(unittest.TestCase):
 
     def test_bad_requests_are_refused_without_reaching_the_app(self):
         cases = [(http(headers={"Host": "evil.example:47443"}), 400), (b"GET /close HTTP/1.0\r\nHost: " + HOST.encode() + b"\r\n\r\n", 400),
-                 (http(headers={"host": HOST}), 400),                                                   # a duplicate Host header
+                 (http(headers={"host": HOST}), 400),  # a duplicate Host header
                  (http("POST", headers={**POST_OK, "Transfer-Encoding": "chunked"}), 400),
-                 (http(body=b"x=1"), 400),                                                              # a GET with a body
+                 (http(body=b"x=1"), 400),  # a GET with a body
                  (http("PUT", headers=POST_OK, body=b"a=1"), 405),
                  (http("POST", headers={**POST_OK, "Origin": "https://evil.example"}, body=b"a=1"), 403),
                  (http("POST", headers={**POST_OK, "Sec-Fetch-Site": "cross-site"}, body=b"a=1"), 403),
@@ -198,7 +199,6 @@ if __name__ == "__main__":
 
 
 class RealClientGet(unittest.TestCase):
-    """The installer's own policy builder and the real Notion Client, with only urllib's transport replaced: GET reads, never writes."""
 
     LEDGER, PIPELINE = "1" * 32, "2" * 32
 
@@ -242,7 +242,7 @@ class RealClientGet(unittest.TestCase):
         self.assertEqual(self.run_get(screen), 200)
         self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE}, "token": False, "source": self.LEDGER})
         self.assertEqual([(m, p) for m, p, _ in self.sent], [("GET", "/pages/" + "3" * 32), ("POST", f"/data_sources/{self.LEDGER}/query")])
-        self.assertTrue(all(a == "Bearer synthetic-notion" for _, _, a in self.sent))      # the scoped token is used by the client, never handed to GET code
+        self.assertTrue(all(a == "Bearer synthetic-notion" for _, _, a in self.sent))
 
     def test_a_policy_without_the_ledger_id_fails_closed_and_sends_nothing(self):
         p = json.load(open(self.policy))
@@ -263,8 +263,9 @@ class RealClientGet(unittest.TestCase):
 
 
 class Refresh(Gate):
-    """Jim, Oct 24: closed rows leave the Daily Report without waiting for the hour. After a POST's 200, the app's refresh request becomes one workflow_dispatch
-    made with the optional `github` credential, which the app never sees."""
+    """After a POST's 200, the app's refresh request becomes one workflow_dispatch made with the optional `github`
+    credential, which the app never sees.
+    """
 
     def with_token(self):
         with open(os.path.join(self.creds, "github"), "wb") as f:
@@ -294,10 +295,10 @@ class Refresh(Gate):
 
     def test_no_credential_a_get_or_a_refused_post_asks_nothing(self):
         with mock.patch.object(gate, "refresh") as asked:
-            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking())       # no github credential
+            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking())  # no github credential
             self.with_token()
-            self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), app=self.asking())                          # GET: no `after` list at all
-            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))      # not a success
+            self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), app=self.asking())  # GET: no `after` list at all
+            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))  # not a success
         asked.assert_not_called()
         self.assertNotIn("after", self.calls[1][2])
 
@@ -310,7 +311,7 @@ class Refresh(Gate):
         self.assertNotIn("gdrive", self.calls[1][2])
         os.remove(os.path.join(self.creds, "gdrive"))
         self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))
-        self.assertNotIn("gdrive", self.calls[2][2])                                           # absent: Build resume keeps the Notion upload
+        self.assertNotIn("gdrive", self.calls[2][2])  # absent: Build resume keeps the Notion upload
 
     def test_the_settings_credential_reaches_only_the_alerts_screen_on_get_and_post(self):
         with open(os.path.join(self.creds, "bwsalerts"), "wb") as f:
@@ -321,11 +322,11 @@ class Refresh(Gate):
         self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))
         self.assertEqual(self.calls[0][2]["bwsalerts"], b"bws-token-synthetic")
         self.assertEqual(self.calls[1][2]["bwsalerts"], b"bws-token-synthetic")
-        self.assertNotIn("bwsalerts", self.calls[2][2])                                          # no other screen ever sees it
+        self.assertNotIn("bwsalerts", self.calls[2][2])  # no other screen ever sees it
         self.assertNotIn("bwsalerts", self.calls[3][2])
         os.remove(os.path.join(self.creds, "bwsalerts"))
         self.run_gate(v2(RUNNER) + http(path="/alerts"), app=self.asking())
-        self.assertNotIn("bwsalerts", self.calls[4][2])                                          # absent: the screen is read-only
+        self.assertNotIn("bwsalerts", self.calls[4][2])  # absent: the screen is read-only
 
     def opener(self, runs, fail=False):
         sent = []
@@ -358,15 +359,15 @@ class Refresh(Gate):
         sent, open_ = self.opener([])
         self.assertEqual(gate.refresh(b"tok", ["recruiters"], open_), ["dispatched"])
         self.assertEqual(sent[1][3], {"ref": "main", "inputs": {"refresh": "recruiters", "live": "true"}})
-        self.assertEqual(sent[0][1], gate.API + "/runs?per_page=20")                       # every workflow's runs: Recruiters and Amazon share the domains group
+        self.assertEqual(sent[0][1], gate.API + "/runs?per_page=20")
 
     def test_every_refresh_name_is_a_domains_refresh_option_and_always_writes(self):
         import yaml
         from pathlib import Path
         inputs = yaml.safe_load(Path(".github/workflows/domains.yml").read_text())[True]["workflow_dispatch"]["inputs"]
-        self.assertEqual(["none", *gate.REFRESH], inputs["refresh"]["options"])         # an app's name the workflow lacks would dispatch a 422
+        self.assertEqual(["none", *gate.REFRESH], inputs["refresh"]["options"])
         for name, body in gate.REFRESH.items():
-            self.assertEqual(body, {"refresh": name, "live": "true"})                    # a dispatch without live is a dry run that redraws nothing
+            self.assertEqual(body, {"refresh": name, "live": "true"})
 
     def test_a_waiting_domains_run_is_never_replaced_and_a_failure_is_silent(self):
         for status in gate.WAITING:

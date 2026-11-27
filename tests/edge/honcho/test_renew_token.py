@@ -1,4 +1,4 @@
-"""LIFE-950: the Honcho memory token is renewed when 30 days or fewer are left; every failure keeps the working token and sends one alert; the token is never printed."""
+"""the Honcho memory token is renewed when 30 days or fewer are left"""
 import base64
 import json
 import os
@@ -77,12 +77,12 @@ class Renewal(unittest.TestCase):
         self.assertEqual((w.restarts, w.alerts, [c[0] for c in w.calls]), (0, [], []))
 
     def test_a_token_with_30_days_or_fewer_left_is_replaced_proved_swapped_and_the_mcp_restarted(self):
-        w = World(NOW + 12 * DAY)                                              # the live token ends in about 12 days
+        w = World(NOW + 12 * DAY)  # the live token ends in about 12 days
         code, token = w.go()
         self.assertEqual((code, token, w.restarts, w.alerts), (0, w.new, 1, []))
         self.assertEqual(rt.claims(token)["w"], "personal")
         text = open(w.path).read()
-        self.assertIn("BUZZ_URL_LIFE_OS=https://example.invalid\n", text)       # other lines untouched
+        self.assertIn("BUZZ_URL_LIFE_OS=https://example.invalid\n", text)  # other lines untouched
         self.assertTrue(text.endswith("BUZZ_RELAY=on\n"))
         self.assertEqual(stat.S_IMODE(os.stat(w.path).st_mode), 0o600)
         self.assertNotIn(w.new, "\n".join(w.printed))

@@ -1,5 +1,4 @@
-"""LIFE-652 pack, run on a fixture (a fake root, a fake systemctl, a fake dry proof). It proves: a good run installs the new program with the same mode, a host file that is not the expected old one is refused, a running backup
-stops it, a failed proof puts the old file back, a second run changes nothing, --dry-run changes nothing, and a copy without the pin overwrites a different host file (fail-then-pass). The built pack passes the runner's own check."""
+"""pack, run on a fixture (a fake root, a fake systemctl, a fake dry proof)."""
 import hashlib
 import os
 import stat
@@ -95,14 +94,14 @@ class PackTests(unittest.TestCase):
         self.assertEqual(self.fx.host.read_bytes(), OLD)
         self.assertEqual(stat.S_IMODE(self.fx.host.stat().st_mode), 0o644)
 
-    def test_a_copy_without_the_pin_overwrites_a_different_host_file(self):                       # fail-then-pass
+    def test_a_copy_without_the_pin_overwrites_a_different_host_file(self):  # fail-then-pass
         text = SCRIPT.read_text()
         self.assertIn('|| fail host_differs_from_main', text)
         mutated = self.fx.files / "mutated.sh"
         mutated.write_text(text.replace('[ "$have" = "$OLD_SHA" ] || fail host_differs_from_main', "true"))
         self.fx.host.write_bytes(b"# someone edited this\n")
         self.fx.run(script=mutated)
-        self.assertEqual(self.fx.host.read_bytes(), NEW)                                           # without the pin the edit is lost; the real script above refused
+        self.assertEqual(self.fx.host.read_bytes(), NEW)  # without the pin the edit is lost
 
     def test_the_pack_builds_passes_the_runners_check_and_declares_the_installed_file_for_restore(self):
         out = Path(self.t.name) / "pack"

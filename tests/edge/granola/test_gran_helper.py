@@ -114,12 +114,12 @@ class Helper(unittest.TestCase):
 
     def test_list_returns_id_start_title_attendees_for_live_meetings_only(self):
         reply, fake = self.call({"op": "list", "nonce": "n"})
-        self.assertEqual(fake.calls, [])                                    # read from the database; the CLI is not run
+        self.assertEqual(fake.calls, [])  # read from the database
         ids = [m["id"] for m in reply["meetings"]]
-        self.assertEqual(ids, [DOC, OTHER])                                 # oldest first; the deleted meeting is absent
-        self.assertEqual(reply["meetings"][0]["start"], "2026-10-13T12:30:00-05:00")        # the calendar start wins over created_at
+        self.assertEqual(ids, [DOC, OTHER])  # oldest first
+        self.assertEqual(reply["meetings"][0]["start"], "2026-10-13T12:30:00-05:00")  # the calendar start wins over created_at
         self.assertEqual(reply["meetings"][0]["attendees"], ["attendee@example.com", "Named Only"])
-        self.assertEqual(reply["meetings"][1]["start"], "2026-10-20T15:00:00Z")             # no calendar event: created_at
+        self.assertEqual(reply["meetings"][1]["start"], "2026-10-20T15:00:00Z")  # no calendar event: created_at
 
     def test_show_returns_the_cli_json_verbatim(self):
         reply, fake = self.call({"op": "show", "id": DOC, "nonce": "n"})
@@ -132,7 +132,7 @@ class Helper(unittest.TestCase):
         self.assertTrue(reply["notes"].startswith("NOTES-md"))
         self.assertEqual(reply["summary"], "SUMMARY-text")
         other, _ = self.call({"op": "show", "id": OTHER, "nonce": "n"})
-        self.assertEqual((other["notes"], other["summary"]), ("", "PANEL-text"))         # no summary column: the meeting's panels; no notes: empty
+        self.assertEqual((other["notes"], other["summary"]), ("", "PANEL-text"))  # no summary column: the meeting's panels
 
     def test_list_announces_what_this_helper_can_do(self):
         self.assertEqual(self.call({"op": "list", "nonce": "n"})[0]["caps"], ["notes", "purge_all"])
@@ -145,12 +145,12 @@ class Helper(unittest.TestCase):
         for table, column in (("documents", "id"), ("transcript_utterances", "document_id"), ("chunks", "document_id"), ("document_people", "document_id"),
                               ("transcript_sync_log", "document_id"), ("panel_sync_log", "document_id")):
             self.assertEqual(self.count(table, column, DOC), 0, table)
-            if table != "document_people":                                              # (the other meeting has no attendees)
-                self.assertGreater(self.count(table, column, OTHER), 0, table)          # the other meeting is untouched
+            if table != "document_people":  # (the other meeting has no attendees)
+                self.assertGreater(self.count(table, column, OTHER), 0, table)  # the other meeting is untouched
         self.assertEqual(self.count("events", "id", "evt-1"), 0)
         self.assertEqual(self.count("events", "id", "evt-2"), 1)
         db = sqlite3.connect(self.db)
-        self.assertEqual(db.execute("select count(*) from embeddings").fetchone()[0], 1)    # only the other meeting's vector remains
+        self.assertEqual(db.execute("select count(*) from embeddings").fetchone()[0], 1)  # only the other meeting's vector remains
         db.close()
         again, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "scope": "all", "nonce": "n"})
         self.assertEqual((again["ok"], again["purged"], again["scope"]), (True, 0, "all"))
@@ -167,7 +167,7 @@ class Helper(unittest.TestCase):
         self.assertEqual(fake.calls, [])
         old, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "nonce": "n"})
         self.assertNotIn("scope", old)
-        self.assertEqual((self.count("documents", "id", DOC), self.utterances(DOC)), (1, 0))      # utterances only
+        self.assertEqual((self.count("documents", "id", DOC), self.utterances(DOC)), (1, 0))  # utterances only
 
     def test_show_of_an_unknown_or_deleted_meeting_is_not_found(self):
         for doc in ("99999999-9999-4999-8999-999999999999", "deleted-doc-0001"):
@@ -183,7 +183,7 @@ class Helper(unittest.TestCase):
         self.assertEqual(reply, {"ok": True, "code": "OK", "nonce": "n", "purged": 1})
         self.assertEqual((self.utterances(DOC), self.utterances(OTHER)), (0, 3))
         again, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "nonce": "n"})
-        self.assertEqual(again["purged"], 0)                                # nothing left, never an error
+        self.assertEqual(again["purged"], 0)  # nothing left, never an error
 
     def test_purge_with_the_wrong_hash_deletes_nothing(self):
         reply, _ = self.call({"op": "purge", "id": DOC, "content_sha256": "0" * 64, "nonce": "n"})
@@ -196,19 +196,19 @@ class Helper(unittest.TestCase):
         self.assertEqual(self.utterances(DOC), 3)
 
     def test_bad_frames_and_ops_are_fixed_codes(self):
-        cases = [({"op": "show", "nonce": "n"}, "GRAN_BAD_FRAME"),                         # no id
+        cases = [({"op": "show", "nonce": "n"}, "GRAN_BAD_FRAME"),  # no id
                  ({"op": "show", "id": "../../etc/passwd", "nonce": "n"}, "GRAN_BAD_FRAME"),
                  ({"op": "show", "id": DOC + "; id", "nonce": "n"}, "GRAN_BAD_FRAME"),
                  ({"op": "purge", "id": DOC, "content_sha256": "ABC", "nonce": "n"}, "GRAN_BAD_FRAME"),
                  ({"op": "purge", "id": DOC, "nonce": "n"}, "GRAN_BAD_FRAME"),
                  ({"op": "delete", "nonce": "n"}, "GRAN_BAD_OP"),
                  ({"nonce": "n"}, "GRAN_BAD_OP"),
-                 ({"op": "list"}, "GRAN_BAD_FRAME"),                                        # no nonce
+                 ({"op": "list"}, "GRAN_BAD_FRAME"),  # no nonce
                  ({"op": "list", "nonce": "x" * 65}, "GRAN_BAD_FRAME")]
         for body, code in cases:
             reply, fake = self.call(body)
             self.assertEqual((reply["ok"], reply["code"]), (False, code), body)
-            self.assertEqual(fake.calls, [], body)                                          # nothing was run
+            self.assertEqual(fake.calls, [], body)  # nothing was run
         for raw in (b"", b"gran1 5\nabc", b"gran1 0\n", b"gran1 4097\n", b"gran2 2\n{}", b"gran1 2\n[]", b"gran1 7\nnot json", b"gran1 a\n{}", b"gran1 01\n{}"):
             reply, fake = self.call(None, raw=raw)
             self.assertEqual(reply["code"], "GRAN_BAD_FRAME", raw)

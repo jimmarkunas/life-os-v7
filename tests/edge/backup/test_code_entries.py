@@ -1,4 +1,6 @@
-"""LIFE-529: the Cloud Fit and resume-builder code folders are in the nightly off-site backup (they run on the Oracle VM only, by design)."""
+"""the Cloud Fit and resume-builder code folders are in the nightly off-site backup (they run on the Oracle VM only, by
+design).
+"""
 import unittest
 from pathlib import Path
 
@@ -30,7 +32,7 @@ class Collect(unittest.TestCase):
                 (root / name).write_text("x")
             entries, extra = ob.collect(str(work), local_run, sqlite=(), files=(), trees=(("code/x", str(root)),), secret_trees=(), chown=lambda *a, **k: None)
             self.assertEqual(sorted(entries), ["code/x/front.py", "code/x/gw.mjs", "code/x/package-lock.json", "code/x/sub/inner.py"])
-            self.assertEqual(extra["skipped"], 1)                                             # the old .bak copy
+            self.assertEqual(extra["skipped"], 1)  # the old.bak copy
 
     def test_other_trees_are_still_walked_in_full(self):
         with safe_tmp.TemporaryDirectory() as tmp:

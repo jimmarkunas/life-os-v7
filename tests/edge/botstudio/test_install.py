@@ -1,4 +1,4 @@
-"""LIFE-327: the private hosting script for the Bot Studio. Real systemctl, tailscale, curl and ss are replaced by small fakes that log what they were asked to do."""
+"""the private hosting script for the Bot Studio."""
 import hashlib
 import os
 import shutil

@@ -1,4 +1,4 @@
-"""LIFE-876 / LIFE-867: deploy/buzz-mcp/honcho-alert with a fake systemd-creds and an in-process fake MCP service. Synthetic credentials only; nothing touches a network or a real unit."""
+"""deploy/buzz-mcp/honcho-alert with a fake systemd-creds and an in-process fake MCP service."""
 import base64
 import hashlib
 import json
@@ -24,7 +24,7 @@ class FakeMcp(ThreadingHTTPServer):
         threading.Thread(target=lambda: self.serve_forever(poll_interval=0.01), daemon=True).start()
 
     def stop(self):
-        self.shutdown()                                                              # stop serve_forever before the socket closes, or the thread keeps polling a dead descriptor
+        self.shutdown()
         self.server_close()
 
     class Handler(BaseHTTPRequestHandler):

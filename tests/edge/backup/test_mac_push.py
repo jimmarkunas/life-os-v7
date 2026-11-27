@@ -1,4 +1,4 @@
-"""LIFE-538: the Mac-only Hermes and OpenClaw data is archived, encrypted to the PUBLIC key and pushed to one Oracle inbox."""
+"""the Mac-only Hermes and OpenClaw data is archived, encrypted to the PUBLIC key and pushed to one Oracle inbox."""
 import atexit
 import io
 import os
@@ -24,10 +24,9 @@ def _cleanup_keys():
 
 
 def make_keys(base):
-    """A throwaway keypair: -> (public key file, private homedir). The real private key is never needed or present.
-    LIFE-527: generated ONCE per test run and shared (key generation was the slowest part of these tests); `base` is accepted for the old call sites and ignored."""
+    """A throwaway keypair: -> (public key file, private homedir)."""
     if "k" not in _KEYS:
-        root = tempfile.mkdtemp(prefix="mpk-", dir="/tmp")                    # short path: gpg's agent socket path has a length limit
+        root = tempfile.mkdtemp(prefix="mpk-", dir="/tmp")
         home = Path(root) / "priv"
         home.mkdir(mode=0o700)
         subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--passphrase", "", "--quick-generate-key", "mac-push-test-key", "default", "default", "never"], check=True, capture_output=True)
@@ -91,13 +90,13 @@ class Collect(unittest.TestCase):
             entries, extra = mp.collect(str(work), str(home))
             names = sorted(entries)
             self.assertIn("hermes/state.db", names)
-            self.assertIn("openclaw/credentials/cred.json", names)                           # secret material is collected on purpose (it only ever leaves encrypted)
+            self.assertIn("openclaw/credentials/cred.json", names)
             self.assertIn("hermes/memories/m.md", names)
-            self.assertNotIn("hermes/memories/link.md", names)                               # a symlink is not a regular file
+            self.assertNotIn("hermes/memories/link.md", names)  # a symlink is not a regular file
             self.assertFalse([n for n in names if "hermes-agent" in n or "cache" in n or "node_modules" in n or n.endswith(("-wal", ".lock"))])
-            self.assertNotEqual(entries["hermes/state.db"], str(home / ".hermes/state.db"))   # a copy, never the live file
+            self.assertNotEqual(entries["hermes/state.db"], str(home / ".hermes/state.db"))  # a copy, never the live file
             self.assertEqual(sqlite3.connect(entries["hermes/state.db"]).execute("select count(*) from t").fetchone(), (3,))
-            self.assertGreater(extra["missing"], 0)                                          # the databases and files this fake home lacks are counted
+            self.assertGreater(extra["missing"], 0)
 
     def test_nothing_to_save_is_a_fixed_code(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,7 +106,7 @@ class Collect(unittest.TestCase):
 
 
 class Snapshot(unittest.TestCase):
-    """LIFE-542: an idle WAL-mode database (closed cleanly, so no -wal or -shm file) cannot be opened read-only."""
+    """an idle WAL-mode database (closed cleanly, so no -wal or -shm file) cannot be opened read-only."""
 
     def make_idle_wal(self, path):
         db = sqlite3.connect(path)
@@ -128,7 +127,7 @@ class Snapshot(unittest.TestCase):
             self.assertEqual(sqlite3.connect(dest).execute("select count(*) from t").fetchone(), (3,))
 
     def test_when_the_read_only_open_fails_on_an_idle_database_it_retries_once_with_immutable(self):
-        # whether SQLite refuses the read-only open depends on its version, so the refusal is simulated; the test above proves the copy itself
+        # whether SQLite refuses the read-only open depends on its version, so the refusal is simulated
         with tempfile.TemporaryDirectory() as tmp:
             source, dest = os.path.join(tmp, "idle.db"), os.path.join(tmp, "copy.sqlite")
             self.make_idle_wal(source)
@@ -136,13 +135,13 @@ class Snapshot(unittest.TestCase):
             def copy(uri, target):
                 seen.append(uri.split("?")[1])
                 if uri.endswith("mode=ro"):
-                    Path(target).write_bytes(b"partial")                                      # a half-written copy must not survive into the retry
+                    Path(target).write_bytes(b"partial")
                     raise sqlite3.OperationalError("unable to open database file")
                 return real(uri, target)
             with mock.patch.object(mp, "_copy_database", side_effect=copy):
                 mp.snapshot(source, dest)
             self.assertEqual(seen, ["mode=ro", "immutable=1"])
-            self.assertFalse(os.path.exists(source + "-wal") or os.path.exists(source + "-shm"))   # the immutable open leaves the source untouched
+            self.assertFalse(os.path.exists(source + "-wal") or os.path.exists(source + "-shm"))  # the immutable open leaves the source untouched
             self.assertEqual(sqlite3.connect(dest).execute("select count(*) from t").fetchone(), (3,))
 
     def test_a_live_database_with_a_wal_file_does_not_get_the_immutable_retry(self):
@@ -170,7 +169,7 @@ class EndToEnd(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = make_home(tmp)
             pub, priv = make_keys(tmp)
-            scratch = Path(tempfile.mkdtemp(prefix="mps-", dir="/tmp"))       # short path: gpg's agent socket path has a length limit
+            scratch = Path(tempfile.mkdtemp(prefix="mps-", dir="/tmp"))
             self.addCleanup(lambda: __import__("shutil").rmtree(scratch, ignore_errors=True))
             out = io.StringIO()
             if True:
@@ -188,8 +187,8 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(code, 0, text)
             self.assertTrue(text.startswith("mac_backup ok dry "), text)
             for word in ("auth", "cred", "token", "fake-not-a-secret", "service-env", ".key", str(home)):
-                self.assertNotIn(word, text)                                                 # counts only
-            self.assertEqual(list(scratch.iterdir()), [])                                    # plain archive, snapshots and key ring are all gone
+                self.assertNotIn(word, text)  # counts only
+            self.assertEqual(list(scratch.iterdir()), [])  # plain archive, snapshots and key ring are all gone
             # restore into a scratch folder with the throwaway PRIVATE key, then compare names and open the databases
             plain = Path(tmp) / "restored.tar.gz"
             subprocess.run(["gpg", "--homedir", priv, "--batch", "--quiet", "--output", str(plain), "--decrypt", str(kept["sealed"])], check=True, capture_output=True)

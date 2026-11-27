@@ -1,4 +1,6 @@
-"""LIFE-700: the Close service unit sends stderr to the journal, so a refused form's fixed reason code (lifeos/sources/apps/signed.refused) can be read; it stays fixed codes, never record text."""
+"""the Close service unit sends stderr to the journal, so a refused form's fixed reason code
+(lifeos/sources/apps/signed.refused) can be read
+"""
 import pathlib
 import unittest
 
@@ -13,7 +15,7 @@ class CloseUnitTemplate(unittest.TestCase):
         self.assertNotIn("StandardError=null", unit)
 
     def test_the_retired_card_redraw_worker_has_no_unit_and_is_removed_on_install(self):
-        """LIFE-973: the Recruiter Outreach card is a live Notion view; the redraw worker's units are no longer written and an install removes the old ones."""
+        """the Recruiter Outreach card is a live Notion view"""
         text = SCRIPT.read_text()
         self.assertNotIn('cat > "$1/lifeos-close-redraw', text)
         self.assertIn("enable --now lifeos-close.socket >/dev/null; systemctl disable --now lifeos-close-redraw.socket lifeos-close-redraw.service", text)

@@ -1,5 +1,6 @@
-"""LIFE-643 row 8: the WhatsApp kill switch, run on a fixture (a fake systemctl for both managers and a fake session folder under a temp dir, through the script's environment hooks). It stops and disables the
-fake units, moves the session folders into a mode-700 quarantine without reading them, is idempotent, and `--dry-run` changes nothing. A copy of the script that skips the move fails the same check."""
+"""the WhatsApp kill switch, run on a fixture (a fake systemctl for both managers and a fake session folder under a temp
+dir, through the script's.
+"""
 import os
 import stat
 import subprocess
@@ -34,7 +35,9 @@ def run_script(script, env, *args):
 
 
 def kill_works(script, fx):
-    """True only if the script ends with the units off and the session folders moved into a mode-700 quarantine, with their bytes unchanged."""
+    """True only if the script ends with the units off and the session folders moved into a mode-700 quarantine, with
+    their bytes unchanged.
+    """
     fx.reset()
     done = run_script(script, fx.env)
     quarantine = list((fx.root / "var/lib/lifeos-runner/quarantine").glob("whatsapp-*"))

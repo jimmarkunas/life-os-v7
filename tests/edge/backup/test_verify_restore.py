@@ -18,7 +18,9 @@ def make_db(path, rows):
 
 
 def make_wal_db(path, rows):
-    """A database whose header says WAL mode, as Hermes's are: a plain read-only open of it fails when no -shm file can be made."""
+    """A database whose header says WAL mode, as Hermes's are: a plain read-only open of it fails when no -shm file can
+    be made.
+    """
     db = sqlite3.connect(path)
     db.execute("pragma journal_mode=wal")
     db.execute("create table sessions (id integer)")
@@ -63,7 +65,7 @@ class Verify(unittest.TestCase):
         self.assertEqual(report["files"], 3)
         self.assertEqual(report["databases"]["hermes/state.db"], {"sessions": 5})
         self.assertEqual(report["databases"]["hermes/profiles/role.db"], {"sessions": 2})
-        self.assertNotIn("other.sqlite", " ".join(report["databases"]))                 # outside the prefix: not examined
+        self.assertNotIn("other.sqlite", " ".join(report["databases"]))  # outside the prefix: not examined
 
     def test_the_check_folder_is_removed_and_main_prints_counts_and_no_content(self):
         out = io.StringIO()
@@ -86,7 +88,7 @@ class Verify(unittest.TestCase):
         with self.assertRaises(vr.RestoreError) as raised:
             vr.verify(path)
         self.assertIn("hermes/state.db: RESTORE_DB_CORRUPT", raised.exception.detail)
-        self.assertNotIn("role.db", raised.exception.detail)                          # the good one is not blamed
+        self.assertNotIn("role.db", raised.exception.detail)  # the good one is not blamed
         out = io.StringIO()
         self.assertEqual(vr.main([path], out), 1)
         self.assertIn("RESTORE FAILED: RESTORE_DB_CORRUPT", out.getvalue())
@@ -108,7 +110,7 @@ class Verify(unittest.TestCase):
             vr.verify(archive)
         self.assertIn("hermes/state.db: RESTORE_DB_UNCHECKED (no such module: vec0)", raised.exception.detail)
         self.assertIn("hermes/profiles/role.db: RESTORE_DB_CORRUPT (database disk image is malformed)", raised.exception.detail)
-        self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")                  # mixed causes: the worse code leads
+        self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")  # mixed causes: the worse code leads
         vr.tables = lambda path: (_ for _ in ()).throw(vr.RestoreError("RESTORE_DB_UNCHECKED", "no such module: vec0"))
         with self.assertRaises(vr.RestoreError) as only:
             vr.verify(archive)
@@ -124,7 +126,6 @@ class Verify(unittest.TestCase):
         self.assertTrue(raised.exception.detail)
 
     def test_a_wal_mode_database_is_checked_not_called_corrupt(self):
-        """Jim's Nov 6 2026 run: every Hermes database came back 'unable to open database file' because they are WAL-mode."""
         src = os.path.join(self.tmp, "walsrc", "hermes")
         os.makedirs(src)
         make_wal_db(os.path.join(src, "state.db"), 7)

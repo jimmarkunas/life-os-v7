@@ -1,4 +1,4 @@
-"""LIFE-47 S2 release verification and fail-closed Serve reading. A fake GitHub (URL -> bytes) only; no network."""
+"""S2 release verification and fail-closed Serve reading."""
 import json
 import os
 import tempfile
@@ -33,8 +33,8 @@ class Stage(unittest.TestCase):
         cases = [("NOT_A_COMMIT", "abc", github()), ("NOT_ON_MAIN", C, github(status="diverged")),
                  ("ENTRY_POINT_MISSING", C, github({k: v for k, v in FILES.items() if k != rel.APP})),
                  ("NO_CLOSURE", C, github({**FILES, rel.APP: b"x = 1\n"})), ("UNSAFE_CLOSURE", C, github(bad_closure)),
-                 ("NOT_A_REGULAR_FILE", C, github(mode="120000")),                                  # a symlink in the commit
-                 ("NOT_A_REGULAR_FILE", C, github({k: v for k, v in FILES.items() if k != "lifeos/hiring/close.py"}))]          # incomplete
+                 ("NOT_A_REGULAR_FILE", C, github(mode="120000")),  # a symlink in the commit
+                 ("NOT_A_REGULAR_FILE", C, github({k: v for k, v in FILES.items() if k != "lifeos/hiring/close.py"}))]  # incomplete
         for code, commit, fetch in cases:
             d = self.dest()
             with self.assertRaises(rel.Refused) as caught:
@@ -42,24 +42,24 @@ class Stage(unittest.TestCase):
             self.assertTrue(str(caught.exception).startswith(code), (code, str(caught.exception)))
             self.assertFalse(os.path.exists(d))
         swapped = github()
-        tampered = lambda url: b"# evil\n" if url.endswith("/lifeos/hiring/close.py") else swapped(url)        # content differs from the commit's tree
+        tampered = lambda url: b"# evil\n" if url.endswith("/lifeos/hiring/close.py") else swapped(url)  # content differs from the commit's tree
         with self.assertRaises(rel.Refused) as caught:
             rel.stage(C, self.dest(), tampered, importer=lambda p: None)
         self.assertTrue(str(caught.exception).startswith("CONTENT_MISMATCH"))
 
     def test_an_incomplete_import_closure_is_refused(self):
-        rel.stage(C, self.dest(), github(real_edge()))                   # the real import check passes when the declared closure is complete
+        rel.stage(C, self.dest(), github(real_edge()))
         leaky = real_edge(b'import lifeos.hiring.not_declared\nCLOSURE = ()\n')
         with self.assertRaises(rel.Refused) as caught:
-            rel.stage(C, self.dest(), github(leaky))                     # close_app imports a module its CLOSURE does not ship
+            rel.stage(C, self.dest(), github(leaky))
         self.assertEqual(str(caught.exception), "CLOSURE_INCOMPLETE")
 
     def test_the_real_import_check_leaves_the_staged_tree_exactly_as_the_manifest_says(self):
         app = open(os.path.join(ROOT, rel.APP), "rb").read()
-        files = {p: open(os.path.join(ROOT, p), "rb").read() for p in rel.closure(app)}               # the real Career application and its whole closure
+        files = {p: open(os.path.join(ROOT, p), "rb").read() for p in rel.closure(app)}  # the real Career application and its whole closure
         d = self.dest()
-        rel.stage(C, d, github(files))                                   # the real isolated import runs inside the staged tree ...
-        rel.check(d)                                                     # ... and the install's very next step must still find exactly the manifest
+        rel.stage(C, d, github(files))
+        rel.check(d)  # ...
         self.assertEqual([n for _, _, names in os.walk(d) for n in names if n.endswith((".pyc", ".pyo"))], [])
         self.assertEqual([n for _, dirs, _ in os.walk(d) for n in dirs if n == "__pycache__"], [])
 
@@ -80,8 +80,8 @@ class ServeState(unittest.TestCase):
         gateway = {"TCP": {"443": {"HTTPS": True}, "47341": {"TCPForward": "127.0.0.1:47342", "ProxyProtocol": 2}}}
         cases = [("", "unknown"), ("not json", "unknown"), ("[]", "unknown"), ('{"TCP": []}', "unknown"),
                  (json.dumps(gateway), "free"), (json.dumps({"TCP": {**gateway["TCP"], "47443": self.OURS}}), "ours"),
-                 (json.dumps({"TCP": {"47443": {**self.OURS, "TCPForward": "127.0.0.1:9999"}}}), "other"),              # foreign owner
-                 (json.dumps({"TCP": {"47443": {"TCPForward": "127.0.0.1:47344", "ProxyProtocol": 2}}}), "other"),      # no TLS termination
+                 (json.dumps({"TCP": {"47443": {**self.OURS, "TCPForward": "127.0.0.1:9999"}}}), "other"),  # foreign owner
+                 (json.dumps({"TCP": {"47443": {"TCPForward": "127.0.0.1:47344", "ProxyProtocol": 2}}}), "other"),  # no TLS termination
                  (json.dumps({"TCP": {"47443": self.OURS}, "AllowFunnel": {"edge.example.ts.net:47443": True}}), "other"),
                  (json.dumps({"Web": {"edge.example.ts.net:47443": {}}}), "other")]
         for text, want in cases:
@@ -93,13 +93,15 @@ if __name__ == "__main__":
 
 
 class IsolatedTree(unittest.TestCase):
-    """The REAL Edge files, staged alone with a minimal entry point: they import and build the real GET client with nothing outside the tree."""
+    """The REAL Edge files, staged alone with a minimal entry point: they import and build the real GET client with
+    nothing outside the tree.
+    """
 
     def real(self):
         return real_edge()
 
     def test_the_edge_closure_alone_imports_and_builds_the_get_client(self):
-        rel.stage(C, os.path.join(tempfile.mkdtemp(), "tree"), github(self.real()))            # the real isolated import + dry client construction
+        rel.stage(C, os.path.join(tempfile.mkdtemp(), "tree"), github(self.real()))  # the real isolated import + dry client construction
 
     def test_a_tree_without_the_notion_transport_or_limits_is_incomplete(self):
         for missing in ("lifeos/platform/limits.py", "lifeos/platform/notion_client.py"):
@@ -113,8 +115,7 @@ class IsolatedTree(unittest.TestCase):
 
 
 class AutoRelease(unittest.TestCase):
-    """Jim, Oct 24: the Edge releases main's head by itself, only when the Close closure changed. LIFE-562 (Nov 11): the gate is the required CI check on that exact commit (pr-tests
-    on main); the hourly data run is reported and never blocks."""
+    """the hourly data run is reported and never blocks."""
     RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/pr-tests.yml", "event": "push", "status": "completed", "conclusion": "success", "id": 1, "run_attempt": 1}
     HOURLY = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "event": "workflow_dispatch", "status": "completed", "conclusion": "failure", "id": 9, "run_attempt": 1}
 
@@ -142,9 +143,9 @@ class AutoRelease(unittest.TestCase):
     PAUSED = {"number": 7, "state": "open", "title": "Release paused", "labels": [{"name": "release-paused"}]}
 
     def test_an_open_release_paused_issue_holds_a_green_head_and_none_lets_it_go(self):
-        """LIFE-693: a failed proof run opens the flag; while it is open the timer deploys nothing. A closed issue is not returned by the API, so an empty answer deploys."""
+        """a failed proof run opens the flag"""
         self.assertEqual(rel.latest(self.fetch(flag=())), C)
-        for flag in ((self.PAUSED,), (self.PAUSED, {**self.PAUSED, "number": 8})):          # one issue, or two: still paused
+        for flag in ((self.PAUSED,), (self.PAUSED, {**self.PAUSED, "number": 8})):  # one issue, or two: still paused
             with self.assertRaises(rel.Refused) as held:
                 rel.latest(self.fetch(flag=flag))
             self.assertEqual(str(held.exception), "PROOF_PAUSED")
@@ -153,7 +154,9 @@ class AutoRelease(unittest.TestCase):
         self.assertEqual(rel.latest(self.fetch(flag=({**self.PAUSED, "pull_request": {"url": "x"}},))), C)
 
     def test_a_flag_that_cannot_be_read_never_deploys(self):
-        """An unknown state is not a clear state: a failed read, or an answer that is not a list of issues, refuses with PROOF_STATE_UNREADABLE."""
+        """An unknown state is not a clear state: a failed read, or an answer that is not a list of issues, refuses with
+        PROOF_STATE_UNREADABLE.
+        """
         good = self.fetch()
         full_page = json.dumps([{**self.PAUSED, "number": n, "pull_request": {"url": "x"}} for n in range(30)]).encode()
         for answer in (OSError("down"), TimeoutError("slow"), b"not json", b"{}", b'{"message": "API rate limit exceeded"}', b"[1, 2]", b"null", full_page):
@@ -170,10 +173,10 @@ class AutoRelease(unittest.TestCase):
     def test_a_head_that_is_not_green_is_still_just_not_green_whatever_the_flag_says(self):
         with self.assertRaises(rel.Refused) as held:
             rel.latest(self.fetch(runs=({**self.RUN, "conclusion": "failure"},), flag=(self.PAUSED,)))
-        self.assertEqual(str(held.exception), "NOT_GREEN")           # the CI wait and its two-hour stall marker keep their meaning
+        self.assertEqual(str(held.exception), "NOT_GREEN")
 
     def test_latest_tells_the_shell_which_refusal_it_was_by_exit_status(self):
-        """install-close.sh auto reads status 3 (paused) and 4 (flag unreadable); every other refusal keeps the usual path."""
+        """install-close.sh auto reads status 3 (paused) and 4 (flag unreadable)"""
         import io
         from contextlib import redirect_stderr
         from unittest import mock
@@ -196,7 +199,7 @@ class AutoRelease(unittest.TestCase):
         red, running = self.HOURLY, {**self.HOURLY, "status": "in_progress", "conclusion": None}
         for hourly, said in (((red,), "red"), ((running,), "running"), ((), "none"), (({**red, "conclusion": "success"},), "green")):
             fetch = self.fetch(hourly=hourly)
-            self.assertEqual(rel.latest(fetch), C, said)                                 # LIFE-562: the hourly result never decides the deploy
+            self.assertEqual(rel.latest(fetch), C, said)  # the hourly result never decides the deploy
             self.assertEqual(rel.hourly_report(C, fetch), said)
 
     def test_a_green_hourly_run_does_not_release_a_red_ci_head(self):
@@ -208,12 +211,12 @@ class AutoRelease(unittest.TestCase):
         self.assertEqual(rel.hourly_report(C, lambda url: (_ for _ in ()).throw(OSError("down"))), "unknown")
 
     def test_the_two_hour_stall_decision_is_made_by_close_release_not_by_shell_arithmetic(self):
-        """LIFE-604 item 5: the decision lives in a function a unit test can run."""
-        self.assertEqual(rel.waiting(1000, ""), (1000, False))                          # no marker yet: the wait starts now
-        self.assertEqual(rel.waiting(1000, "abc"), (1000, False))                       # anything but digits reads as no marker
+        """item 5: the decision lives in a function a unit test can run."""
+        self.assertEqual(rel.waiting(1000, ""), (1000, False))  # no marker yet: the wait starts now
+        self.assertEqual(rel.waiting(1000, "abc"), (1000, False))  # anything but digits reads as no marker
         self.assertEqual(rel.waiting(1000 + 7199, "1000"), (1000, False))
-        self.assertEqual(rel.waiting(1000 + 7200, "1000"), (1000, True))                # exactly two hours: stalled
-        self.assertEqual(rel.waiting(5000, "9000"), (5000, False))                      # a marker from the future (clock change) restarts the wait
+        self.assertEqual(rel.waiting(1000 + 7200, "1000"), (1000, True))  # exactly two hours: stalled
+        self.assertEqual(rel.waiting(5000, "9000"), (5000, False))
         self.assertEqual(rel.waiting(1000 + 7200, 1000), (1000, True))
 
     def test_the_stall_command_prints_the_marker_and_the_verdict_for_the_shell(self):
@@ -226,7 +229,7 @@ class AutoRelease(unittest.TestCase):
 
     def test_the_updater_still_clears_both_markers_as_soon_as_a_green_head_is_read(self):
         text = open(os.path.join(os.path.dirname(rel.__file__), "install-close.sh")).read()
-        self.assertLess(text.index('rm -f "$ETC/auto.waiting"'), text.index('if read -r held _ 2>/dev/null < "$ETC/auto.hold"'))       # cleared as soon as a green head is read
+        self.assertLess(text.index('rm -f "$ETC/auto.waiting"'), text.index('if read -r held _ 2>/dev/null < "$ETC/auto.hold"'))  # cleared as soon as a green head is read
 
     def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
         a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")
@@ -236,7 +239,7 @@ class AutoRelease(unittest.TestCase):
             body = f.read().splitlines()[1:]
         with open(os.path.join(b, "MANIFEST"), "w") as f:
             f.write("commit " + "b" * 40 + "\n" + "".join(line + "\n" for line in body))
-        self.assertTrue(rel.same(a, b))                                        # another commit, the same files
+        self.assertTrue(rel.same(a, b))  # another commit, the same files
         changed = {**FILES, "lifeos/hiring/close.py": b"# changed\n"}
         c = os.path.join(tempfile.mkdtemp(), "c")
         rel.stage(C, c, github(changed), importer=lambda p: None)
@@ -251,25 +254,25 @@ class AutoRelease(unittest.TestCase):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
         auto = script.split("  auto)", 1)[1].split("  auto-units)", 1)[0]
         self.assertIn('LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"', auto)
-        self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
-        self.assertIn('ln -sfn "$prev"', auto)                                  # and its own previous tree is kept
-        self.assertNotIn('"$0" rollback', auto)                               # restores exactly, never through rollback's older target
-        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # a stage or an install counts (before the switch); at most three per commit
-        self.assertIn("case \"$n\" in ''|*[!0-9]*|???*) n=0", auto)               # a malformed or huge count is never fatal
-        self.assertLess(auto.index("auto.pending\"; then"), auto.index("latest"))  # a cut-off release is settled first, whatever main's head is now
+        self.assertIn('ln -sfn "$cur"', auto)
+        self.assertIn('ln -sfn "$prev"', auto)  # and its own previous tree is kept
+        self.assertNotIn('"$0" rollback', auto)
+        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)  # a stage or an install counts (before the switch)
+        self.assertIn("case \"$n\" in ''|*[!0-9]*|???*) n=0", auto)  # a malformed or huge count is never fatal
+        self.assertLess(auto.index("auto.pending\"; then"), auto.index("latest"))
         self.assertIn("RESTORE VERIFY FAILED", auto)
         self.assertIn("the first install is Jim's by hand", auto)
-        self.assertIn('[ "$(serve_state)" = ours ]', auto)                      # never re-adds a service Jim uninstalled
+        self.assertIn('[ "$(serve_state)" = ours ]', auto)  # never re-adds a service Jim uninstalled
         self.assertIn("flock -n 9", auto)
         self.assertIn("trap", auto)
         install = script.split("  install)", 1)[1].split("  auto)", 1)[0]
-        self.assertNotIn("export", install)                                     # Jim's own install is never mistaken for an automatic one
+        self.assertNotIn("export", install)
         self.assertIn('"${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ]', install)
-        self.assertIn('remember "$OPT/current"', script.split("  rollback)", 1)[1])   # rolled-back code was live: never brought back
-        self.assertIn('"$0" verify && remember "$dest"', install)               # every install (auto or Jim's) remembers what went live
+        self.assertIn('remember "$OPT/current"', script.split("  rollback)", 1)[1])  # rolled-back code was live: never brought back
+        self.assertIn('"$0" verify && remember "$dest"', install)  # every install remembers what went live
         self.assertIn('if seen "$probe"; then', auto)
         uninstall = script.split("  uninstall)", 1)[1]
         self.assertIn("disable --now lifeos-close-release.timer", uninstall)
-        self.assertIn("flock -w 120 9", uninstall.split(";;", 1)[0])           # waits out a running release
+        self.assertIn("flock -w 120 9", uninstall.split(";;", 1)[0])  # waits out a running release
         units = script.split("  auto-units)", 1)[1].split(";;", 1)[0]
-        self.assertIn('ExecStart=$OPT/bin/install-close.sh auto', units)        # the timer runs Jim's installed copy, not a file main can change
+        self.assertIn('ExecStart=$OPT/bin/install-close.sh auto', units)
