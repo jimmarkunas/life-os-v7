@@ -23,7 +23,9 @@ SCOPE = "https://www.googleapis.com/auth/calendar.events"
 SCOPE_READONLY = "https://www.googleapis.com/auth/calendar.readonly"
 MAX_PAGES = 40
 # Addresses, not secrets: the workload identity provider the job's OIDC token is exchanged at, and the account it may impersonate.
-WIF_AUDIENCE = "//iam.googleapis.com/projects/632113041729/locations/global/workloadIdentityPools/github/providers/life-os-v7"
+WIF_AUDIENCE = (
+    "//iam.googleapis.com/projects/632113041729/locations/global/workloadIdentityPools/github/providers/life-os-v7"
+)
 STS_URL = "https://sts.googleapis.com/v1/token"
 SERVICE_ACCOUNT = "life-os-v7-calendar@life-os-gmail-508407.iam.gserviceaccount.com"
 IAM_URL = f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{SERVICE_ACCOUNT}:generateAccessToken"
@@ -130,9 +132,10 @@ class GoogleCalendar:
 
     def _keyless_token(self):
         """GitHub OIDC token -> Google STS federated token -> impersonated calendar access token (no key anywhere)."""
-        url, bearer = (self._environ.get("ACTIONS_ID_TOKEN_REQUEST_URL") or "").strip(), (
-            self._environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN") or ""
-        ).strip()
+        url, bearer = (
+            (self._environ.get("ACTIONS_ID_TOKEN_REQUEST_URL") or "").strip(),
+            (self._environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN") or "").strip(),
+        )
         if not url or not bearer:
             raise GcalError("GCAL_OIDC_UNAVAILABLE")
         request = urllib.request.Request(
@@ -160,12 +163,17 @@ class GoogleCalendar:
             {},
             "GCAL_STS_REFUSED",
         )
-        federated = str(federated["access_token"]) if isinstance(federated, dict) and federated.get("access_token") else ""
+        federated = (
+            str(federated["access_token"]) if isinstance(federated, dict) and federated.get("access_token") else ""
+        )
         if not federated:
             raise GcalError("GCAL_STS_REFUSED")
         _mask(federated, self._out)
         issued = self._post_json(
-            IAM_URL, {"scope": [self._scope], "lifetime": "3600s"}, {"Authorization": "Bearer " + federated}, "GCAL_IAM_REFUSED"
+            IAM_URL,
+            {"scope": [self._scope], "lifetime": "3600s"},
+            {"Authorization": "Bearer " + federated},
+            "GCAL_IAM_REFUSED",
         )
         token = str(issued["accessToken"]) if isinstance(issued, dict) and issued.get("accessToken") else ""
         if not token:

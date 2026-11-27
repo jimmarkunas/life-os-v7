@@ -686,7 +686,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         finally:
             if metered:
                 # an error reply has no usage and no charge; a broken-off reply keeps its full reservation
-                ambiguous = sent and not answered  # failed after it opened and before any reply: it may have been billed
+                ambiguous = (
+                    sent and not answered
+                )  # failed after it opened and before any reply: it may have been billed
                 self.ledger.settle(
                     worst,
                     usage_cost(usage) if status < 400 else 0.0,

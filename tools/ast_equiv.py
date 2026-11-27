@@ -5,6 +5,7 @@ Docstrings (the first statement of a module, class or function when it is a stri
 so comment, docstring and whitespace edits compare equal while any code change does not. Exit 1 on the first difference.
 With no paths, every .py file that differs from the base under lifeos/ and tools/ is compared.
 """
+
 import ast
 import subprocess
 import sys
@@ -14,7 +15,11 @@ def strip_docstrings(tree):
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
             first = node.body[0]
-            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
                 node.body = node.body[1:] or [ast.Pass()]
     return tree
 
@@ -29,7 +34,9 @@ def git(*args):
 
 def main(argv):
     base = argv[1] if len(argv) > 1 else "origin/main"
-    paths = argv[2:] or [p for p in git("diff", "--name-only", base, "--", "lifeos", "tools").split() if p.endswith(".py")]
+    paths = argv[2:] or [
+        p for p in git("diff", "--name-only", base, "--", "lifeos", "tools").split() if p.endswith(".py")
+    ]
     bad = []
     for path in paths:
         try:
