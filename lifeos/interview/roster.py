@@ -3,6 +3,7 @@
 Every cell is read from the round page's own snapshot, so a fact the page does not hold reads `Not verified`. The list
 never writes a round page or lists a hand-made one; a row whose round is gone is marked Retired, never deleted.
 """
+
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,9 +14,22 @@ from . import held, notion
 
 TITLE = "Interviews"
 NV = "Not verified"
-PROPERTIES = {"Interview": "title", "Company": "rich_text", "Role": "rich_text", "Round": "number", "Date (CT)": "date", "When": "rich_text", "Interviewer": "rich_text",
-              "Status": "select", "Transcript": "checkbox", "Round page": "url", "Updated (CT)": "rich_text"}
-SCREEN = re.compile(r"^Round type: (?P<kind>Recruiter screen(?: \(.*\))?)$")      # marker line in a round's snapshot when the call was a screen, not a numbered round
+PROPERTIES = {
+    "Interview": "title",
+    "Company": "rich_text",
+    "Role": "rich_text",
+    "Round": "number",
+    "Date (CT)": "date",
+    "When": "rich_text",
+    "Interviewer": "rich_text",
+    "Status": "select",
+    "Transcript": "checkbox",
+    "Round page": "url",
+    "Updated (CT)": "rich_text",
+}
+SCREEN = re.compile(
+    r"^Round type: (?P<kind>Recruiter screen(?: \(.*\))?)$"
+)  # marker line in a round's snapshot when the call was a screen, not a numbered round
 SNAPSHOT_WHO = re.compile(r"^Interviewer: (?P<who>.*?) · Status: (?P<status>.*)$")
 LIMIT = 100
 
@@ -28,8 +42,11 @@ def find_source(client, root, context=None):
     """-> (code, data source id): roster_found, roster_absent (nothing is written), roster_ambiguous, or
     roster_unreadable (its schema is not the expected one)."""
     try:
-        blocks = [b for b in notion.children(client, root, [notion.MAX_CALLS], context) if b.get("type") == "child_database"
-                  and ((b.get("child_database") or {}).get("title") or "") == TITLE]
+        blocks = [
+            b
+            for b in notion.children(client, root, [notion.MAX_CALLS], context)
+            if b.get("type") == "child_database" and ((b.get("child_database") or {}).get("title") or "") == TITLE
+        ]
         if not blocks:
             return "roster_absent", None
         if len(blocks) > 1:
@@ -77,26 +94,54 @@ def facts(client, parent, child, context=None, today=None):
             who, status = found.group("who").strip() or NV, found.group("status").strip()
     if status is None:
         return None
-    when = next((line[len("When: "):] for line in lines if line.startswith("When: ")), NV)
+    when = next((line[len("When: ") :] for line in lines if line.startswith("When: ")), NV)
     screen = next((m.group("kind") for m in (SCREEN.match(line) for line in lines) if m), None)
     transcript = False
     for block in tops:
         if block.get("type") == "child_page" and (block.get("child_page") or {}).get("title") == "Full Transcript":
-            transcript = any(notion.text(b).strip() for b in notion.children(client, block["id"], [notion.MAX_CALLS], context))
+            transcript = any(
+                notion.text(b).strip() for b in notion.children(client, block["id"], [notion.MAX_CALLS], context)
+            )
     company, role = split_title(parent.title)
     date = child.interview_date
     natural = status_of(status, date, today or _today())
     state = "Retired" if parent.active is False else natural
-    return {"company": company, "role": role, "round": None if screen else child.ordinal, "kind": screen, "date": date, "when": when, "who": who,
-            "status": state, "held": natural == "Held" and state != "Retired", "transcript": transcript, "url": page_url(child.page_id)}
+    return {
+        "company": company,
+        "role": role,
+        "round": None if screen else child.ordinal,
+        "kind": screen,
+        "date": date,
+        "when": when,
+        "who": who,
+        "status": state,
+        "held": natural == "Held" and state != "Retired",
+        "transcript": transcript,
+        "url": page_url(child.page_id),
+    }
 
 
 def properties(row, stamp):
-    title = f"{row['company']} · {row['kind']}" if row.get("kind") else f"{row['company']} · Interview {row['round']}" if row["round"] else f"{row['company']} · Interview"
-    props = {"Interview": {"title": rich_text(title)}, "Company": {"rich_text": rich_text(row["company"])}, "Role": {"rich_text": rich_text(row["role"])},
-             "Round": {"number": row["round"]}, "Date (CT)": {"date": {"start": row["date"]} if row["date"] else None}, "When": {"rich_text": rich_text(row["when"])},
-             "Interviewer": {"rich_text": rich_text(row["who"])}, "Status": {"select": {"name": row["status"]}}, "Transcript": {"checkbox": bool(row["transcript"])},
-             "Round page": {"url": row["url"]}, "Updated (CT)": {"rich_text": rich_text(stamp)}}
+    title = (
+        f"{row['company']} · {row['kind']}"
+        if row.get("kind")
+        else f"{row['company']} · Interview {row['round']}"
+        if row["round"]
+        else f"{row['company']} · Interview"
+    )
+    props = {
+        "Interview": {"title": rich_text(title)},
+        "Company": {"rich_text": rich_text(row["company"])},
+        "Role": {"rich_text": rich_text(row["role"])},
+        "Round": {"number": row["round"]},
+        "Date (CT)": {"date": {"start": row["date"]} if row["date"] else None},
+        "When": {"rich_text": rich_text(row["when"])},
+        "Interviewer": {"rich_text": rich_text(row["who"])},
+        "Status": {"select": {"name": row["status"]}},
+        "Transcript": {"checkbox": bool(row["transcript"])},
+        "Round page": {"url": row["url"]},
+        "Updated (CT)": {"rich_text": rich_text(stamp)},
+    }
     return props
 
 
@@ -112,12 +157,27 @@ def _plain(prop):
     return value
 
 
-CELLS = ("Interview", "Company", "Role", "Round", "Date (CT)", "When", "Interviewer", "Status", "Transcript", "Round page")
+CELLS = (
+    "Interview",
+    "Company",
+    "Role",
+    "Round",
+    "Date (CT)",
+    "When",
+    "Interviewer",
+    "Status",
+    "Transcript",
+    "Round page",
+)
 
 
 def same(existing, wanted):
     have = existing.get("properties") or {}
-    return all(_plain(have.get(name) or {}) == _plain({"type": PROPERTIES[name], PROPERTIES[name]: wanted[name][PROPERTIES[name]]}) for name in CELLS)
+    return all(
+        _plain(have.get(name) or {})
+        == _plain({"type": PROPERTIES[name], PROPERTIES[name]: wanted[name][PROPERTIES[name]]})
+        for name in CELLS
+    )
 
 
 def existing_rows(client, source, context=None):
@@ -169,17 +229,34 @@ def sync(client, environ, rounds, live, context, counts, stamp=None, today=None)
             if not live:
                 continue
             if old is None:
-                client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source}, "properties": props})
+                client.call_once(
+                    "POST",
+                    "/pages",
+                    {"parent": {"type": "data_source_id", "data_source_id": source}, "properties": props},
+                )
                 counts["roster_created"] = counts.get("roster_created", 0) + 1
             else:
                 client.call("PATCH", f"/pages/{old['id']}", {"properties": props})
                 counts["roster_updated"] = counts.get("roster_updated", 0) + 1
         for url, old in have.items():
-            if url in seen or _plain((old.get("properties") or {}).get("Status") or {"type": "select", "select": None}) == "Retired":
+            if (
+                url in seen
+                or _plain((old.get("properties") or {}).get("Status") or {"type": "select", "select": None})
+                == "Retired"
+            ):
                 continue
             counts["roster_planned"] = counts.get("roster_planned", 0) + 1
             if live:
-                client.call("PATCH", f"/pages/{old['id']}", {"properties": {"Status": {"select": {"name": "Retired"}}, "Updated (CT)": {"rich_text": rich_text(stamp)}}})
+                client.call(
+                    "PATCH",
+                    f"/pages/{old['id']}",
+                    {
+                        "properties": {
+                            "Status": {"select": {"name": "Retired"}},
+                            "Updated (CT)": {"rich_text": rich_text(stamp)},
+                        }
+                    },
+                )
                 counts["roster_retired"] = counts.get("roster_retired", 0) + 1
         return "roster_synced"
     except (NotionError, KeyError, TypeError, ValueError, AttributeError):
