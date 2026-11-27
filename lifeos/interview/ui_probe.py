@@ -3,6 +3,7 @@
 Manual only (typed confirmation QA); never on a tick. Prints fixed codes, block-type outlines and counts only,
 never content or ids.
 """
+
 import difflib
 import os
 from lifeos.platform import full_width
@@ -26,8 +27,12 @@ def _code(error):
 
 
 def _one(client, parent, title, kind="child_page"):
-    found = [b["id"] for b in notion.children(client, parent, [notion.MAX_CALLS]) if b.get("type") == kind
-             and ((b.get("child_page") or {}).get("title") if kind == "child_page" else notion.text(b)) == title]
+    found = [
+        b["id"]
+        for b in notion.children(client, parent, [notion.MAX_CALLS])
+        if b.get("type") == kind
+        and ((b.get("child_page") or {}).get("title") if kind == "child_page" else notion.text(b)) == title
+    ]
     if len(found) > 1:
         raise NotionError("UI_PROBE_DUPLICATE_PAGE")
     return found[0] if found else None
@@ -40,8 +45,15 @@ def _seed(client, parent, title):
 
 
 def _round_parts(client, page):
-    left = notion.children(client, notion.children(client, [b for b in notion.children(client, page, [notion.MAX_CALLS])
-                           if b.get("type") == "column_list"][0]["id"], [notion.MAX_CALLS])[0]["id"], [notion.MAX_CALLS])
+    left = notion.children(
+        client,
+        notion.children(
+            client,
+            [b for b in notion.children(client, page, [notion.MAX_CALLS]) if b.get("type") == "column_list"][0]["id"],
+            [notion.MAX_CALLS],
+        )[0]["id"],
+        [notion.MAX_CALLS],
+    )
     return [b["id"] for b in left if b.get("type") == "tab"][0], left
 
 
@@ -56,24 +68,49 @@ def _render(client):
     out["evidence"] = {"ledger_row": "read", "round_identity": "valid" if found and found.identity_valid else "invalid"}
     if not found or not found.identity_valid:
         raise NotionError("UI_PROBE_EVIDENCE_INVALID")
-    query = RoundQuery(True, found.interview_date, found.interviewer, found.ordinal, stable_job_key=view._plain(props.get("Stable Job Key")),
-                       ledger_page_id=LEDGER_ROW)
+    query = RoundQuery(
+        True,
+        found.interview_date,
+        found.interviewer,
+        found.ordinal,
+        stable_job_key=view._plain(props.get("Stable Job Key")),
+        ledger_page_id=LEDGER_ROW,
+    )
     before_rounds = view.opportunity(client, parent_query, query, QA_PARENT, None, today)
     out["ledger"] = before_rounds.ledger
     page = _one(client, QA_PARENT, RENDER_TITLE)
     counts = {"writes": 0, "readback_ok": 0, "readback_failed": 0, "writes_planned": 0}
     if page is None:
         blocks = create.rendered(before_rounds, tail=None)[0]
-        page = notion.write_tree(client, QA_PARENT, blocks, title=RENDER_TITLE, icon=template.PAGE_ICONS["opportunity"], template=notion.FULL_WIDTH)
+        page = notion.write_tree(
+            client,
+            QA_PARENT,
+            blocks,
+            title=RENDER_TITLE,
+            icon=template.PAGE_ICONS["opportunity"],
+            template=notion.FULL_WIDTH,
+        )
         out["create"] = create.finalize(client, page, before_rounds, blocks)
     else:
         out["source_a"] = create.refresh(client, page, before_rounds, True, counts)
     out["replay"] = create.refresh(client, page, before_rounds, True, counts)
     round_page = _one(client, page, "Interview 1")
     if round_page is None:
-        round_page = notion.write_tree(client, page, template.round_page(before_rounds, query, page, create.identity_text(query)), title="Interview 1",
-                                       icon=template.PAGE_ICONS["round"], template=notion.FULL_WIDTH)
-        full_width.create_page(client, round_page, "Full Transcript", [template.para(create.TRANSCRIPT_MARKER + "qa-placeholder")], post=client.call)
+        round_page = notion.write_tree(
+            client,
+            page,
+            template.round_page(before_rounds, query, page, create.identity_text(query)),
+            title="Interview 1",
+            icon=template.PAGE_ICONS["round"],
+            template=notion.FULL_WIDTH,
+        )
+        full_width.create_page(
+            client,
+            round_page,
+            "Full Transcript",
+            [template.para(create.TRANSCRIPT_MARKER + "qa-placeholder")],
+            post=client.call,
+        )
         tab, left = _round_parts(client, round_page)
         _seed(client, tab, notion.LIVE_PANE)
         raw = [b["id"] for i, b in enumerate(left) if i and notion.text(left[i - 1]) == notion.RAW_HEADING]
@@ -83,25 +120,49 @@ def _render(client):
     out["transcript_state"] = create.transcript_state(client, round_page)[0]
     out["transcript_link"] = create.link_transcript(client, round_page, True, {})
     out["transcript_replay"] = create.link_transcript(client, round_page, True, {})
-    kept = (notion.human_tail(client, page), notion.protected_snapshot(client, round_page),
-            [b["id"] for b in notion.children(client, round_page, [notion.MAX_CALLS]) if b.get("type") == "child_page"])
+    kept = (
+        notion.human_tail(client, page),
+        notion.protected_snapshot(client, round_page),
+        [b["id"] for b in notion.children(client, round_page, [notion.MAX_CALLS]) if b.get("type") == "child_page"],
+    )
     out["jim_notes_heading"] = len(heads)
     children = notion.child_scan(client, page)
     after_rounds = view.opportunity(client, parent_query, query, QA_PARENT, children, today)
     out["rounds_seen"] = len(after_rounds.rounds)
     out["source_b"] = create.refresh(client, page, after_rounds, True, counts)
-    out["protected_after_b"] = "unchanged" if kept == (notion.human_tail(client, page), notion.protected_snapshot(client, round_page),
-        [b["id"] for b in notion.children(client, round_page, [notion.MAX_CALLS]) if b.get("type") == "child_page"]) else "CHANGED"
+    out["protected_after_b"] = (
+        "unchanged"
+        if kept
+        == (
+            notion.human_tail(client, page),
+            notion.protected_snapshot(client, round_page),
+            [b["id"] for b in notion.children(client, round_page, [notion.MAX_CALLS]) if b.get("type") == "child_page"],
+        )
+        else "CHANGED"
+    )
     out["pages_under_qa_render"] = len(notion.child_scan(client, page).items)
     control = _one(client, QA_PARENT, CONTROL_TITLE)
     if control is None:
-        other = view.Opportunity("QA Control", "Wrong-job control", "qa-control-not-this-job", None, None, "not_linked", None, QA_PARENT)
+        other = view.Opportunity(
+            "QA Control", "Wrong-job control", "qa-control-not-this-job", None, None, "not_linked", None, QA_PARENT
+        )
         blocks = create.rendered(other, tail=None)[0]
-        control = notion.write_tree(client, QA_PARENT, blocks, title=CONTROL_TITLE, icon=template.PAGE_ICONS["opportunity"], template=notion.FULL_WIDTH)
+        control = notion.write_tree(
+            client,
+            QA_PARENT,
+            blocks,
+            title=CONTROL_TITLE,
+            icon=template.PAGE_ICONS["opportunity"],
+            template=notion.FULL_WIDTH,
+        )
         create.finalize(client, control, other, blocks)
     snap = notion.tree_digest(notion.read_tree(client, control, [notion.TREE_MAX_CALLS]))
     out["wrong_job"] = create.refresh(client, control, after_rounds, True, counts)
-    out["wrong_job_page"] = "unchanged" if snap == notion.tree_digest(notion.read_tree(client, control, [notion.TREE_MAX_CALLS])) else "CHANGED"
+    out["wrong_job_page"] = (
+        "unchanged"
+        if snap == notion.tree_digest(notion.read_tree(client, control, [notion.TREE_MAX_CALLS]))
+        else "CHANGED"
+    )
     for name, approved, rendered_page in (("ui3c", UI3C, page), ("ui4", UI4, round_page)):
         try:
             want = notion.outline(notion.read_tree(client, approved, [notion.TREE_MAX_CALLS]))
@@ -127,7 +188,10 @@ def _check(counts, name, action):
 def run(limit, live, environ=os.environ, client=None):
     if not live or (environ.get("PROBE_CONFIRM") or "").strip() != "QA":
         raise NotionError("UI_PROBE_CONFIRM_REQUIRED")
-    client = client or Client({"NOTION_API_TOKEN": environ.get("NOTION_INTERVIEW_TOKEN") or "", "UNUSED": "interview-unused"}, source_name="UNUSED")
+    client = client or Client(
+        {"NOTION_API_TOKEN": environ.get("NOTION_INTERVIEW_TOKEN") or "", "UNUSED": "interview-unused"},
+        source_name="UNUSED",
+    )
     counts = {"interview_ui_probe": "live", "checks": {}, "failed": 0}
     counts["qa_render"] = _check(counts, "qa_render", lambda: _render(client)) or {}
     return counts
