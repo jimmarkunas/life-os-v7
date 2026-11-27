@@ -1,4 +1,4 @@
-"""LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+"""test helpers that more than one test module (often in another domain) uses."""
 from lifeos.edge.oracle import close_release as rel
 import json
 

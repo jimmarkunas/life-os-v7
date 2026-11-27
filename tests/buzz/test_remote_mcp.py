@@ -1,5 +1,6 @@
-"""LIFE-216 / BUZZ-16: the shared remote MCP (OAuth 2.1 resource server + Streamable HTTP) for Claude Chat and ChatGPT Chat, proved over real loopback HTTP against a MOCKED relay and a LOCAL test identity provider.
-These are fixture results: they say nothing about the real claude.ai / chatgpt.com connectors or live Buzz."""
+"""/ BUZZ-16: the shared remote MCP (OAuth 2.1 resource server + Streamable HTTP) for Claude Chat and ChatGPT Chat,
+proved over real loopback HTTP.
+"""
 import base64, hashlib, json, os, pathlib, random, shlex, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 
@@ -17,7 +18,7 @@ CLIENTS = {"cid-one"}
 USERS = {"user-claude": ("claude", ("life-os", "bytalos")), "user-chatgpt": ("chatgpt", ("life-os", "bytalos")), "user-lifeos-only": ("claude", ("life-os",))}
 NOW = 1_800_000_000
 POST = dict(community="life-os", channel=CHAN, text="synthetic hello", idempotency_key="k1")
-KEYS = {("claude", "life-os"): bytes([21]) * 32, ("claude", "bytalos"): bytes([22]) * 32, ("chatgpt", "life-os"): bytes([23]) * 32, ("chatgpt", "bytalos"): bytes([24]) * 32}   # synthetic, one per pairing
+KEYS = {("claude", "life-os"): bytes([21]) * 32, ("claude", "bytalos"): bytes([22]) * 32, ("chatgpt", "life-os"): bytes([23]) * 32, ("chatgpt", "bytalos"): bytes([24]) * 32}  # synthetic, one per pairing
 CHANS = {"life-os": CHAN, "bytalos": OTHER}
 BOTH = (("life-os", CHAN), ("bytalos", OTHER))
 WR = dict(scope="buzz:read buzz:write")
@@ -31,7 +32,7 @@ def _prime(rng, bits=1024):
 
 
 def _rsa():
-    rng = random.Random(1616)  # deterministic synthetic key; never a real credential
+    rng = random.Random(1616)  # deterministic synthetic key
     while True:
         p, q = _prime(rng), _prime(rng)
         if p != q and (p - 1) % 65537 and (q - 1) % 65537 and (p * q).bit_length() == 2048:
@@ -54,13 +55,13 @@ def token(alg="RS256", kid="k1", sign=True, **over):
 
 class Server(unittest.TestCase):
     def start(self, fake=None, writes=((("life-os", CHAN)),), fetch=None, origins=(), keys=None, access=None):
-        call_limit.reset()                                                                    # LIFE-874: each test starts with a fresh call count
+        call_limit.reset()  # each test starts with a fresh call count
         self.fake, keys = fake or FakeRelay(), KEYS if keys is None else keys
         self.relays = {i: Relay(URLS, {c: k for (ii, c), k in keys.items() if ii == i}, writes, self.fake) for i in ("claude", "chatgpt") if any(ii == i for ii, _ in keys)}
         self.audit = []
         verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=fetch or (lambda url: JWKS), clock=lambda: NOW)
         self.receipts = []
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, origins, self.audit.append, open_access() if access is None else (None if access is False else access), self.receipts.append))     # access=False: the handler loads the repo data itself
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, origins, self.audit.append, open_access() if access is None else (None if access is False else access), self.receipts.append))
         threading.Thread(target=srv.serve_forever, args=(0.01,), daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
@@ -107,7 +108,7 @@ class TokenChecks(Server):
             status, _, hdr = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"}, tok)
             self.assertEqual(status, 401, name)
             self.assertIn('error="invalid_token"', hdr["WWW-Authenticate"], name)
-        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, token(client_id="cid-unknown"))[0], 403)   # valid token, client not allowlisted
+        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, token(client_id="cid-unknown"))[0], 403)  # valid token, client not allowlisted
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, token(client_id=["x"], azp=None))[0], 403)
         self.assertEqual(self.fake.calls, [])
 
@@ -136,7 +137,7 @@ class Telemetry(Server):
         expired = token(exp=NOW - 5)
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, expired)[0], 401)
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, "a.b.c")[0], 401)
-        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"})[0], 401)           # no token at all is not logged
+        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"})[0], 401)  # no token at all is not logged
         self.assertEqual([(a["outcome"], a["reason"], a["sub"]) for a in self.audit], [("invalid_token", "expired", "user-claude"), ("invalid_token", None, None)])
         blob = json.dumps(self.audit)
         for secret in (expired, expired.split(".")[2], expired.split(".")[1]):
@@ -148,16 +149,16 @@ class Telemetry(Server):
         for label, bad in (("wrong audience", dict(aud="https://other.example/mcp")), ("wrong issuer", dict(iss="https://evil.example")), ("unauthorized client", dict(client_id="cid-unknown")),
                            ("unauthorized subject", dict(sub="user-2")), ("unlisted subject with a real-looking name", dict(sub="user-claude-2")), ("no audience", dict(aud=None))):
             status, raw, _ = self.req("POST", "/mcp", ping, token(exp=NOW - 5, **bad))
-            self.assertEqual((status, label), (401, label))                                  # still the same fail-closed 401, never 403 or 200
+            self.assertEqual((status, label), (401, label))  # still the same fail-closed 401, never 403 or 200
             self.assertEqual(json.loads(raw), {"error": "invalid_token"}, label)
-        self.assertEqual([(a["outcome"], a["reason"], a["sub"]) for a in self.audit], [("invalid_token", None, None)] * 6)   # no subject for any of them
-        self.assertEqual(self.req("POST", "/mcp", ping, token(exp=NOW - 5))[0], 401)         # the valid expired token for an allowed user IS attributed
+        self.assertEqual([(a["outcome"], a["reason"], a["sub"]) for a in self.audit], [("invalid_token", None, None)] * 6)  # no subject for any of them
+        self.assertEqual(self.req("POST", "/mcp", ping, token(exp=NOW - 5))[0], 401)
         self.assertEqual(self.audit[-1]["reason"], "expired")
         self.assertEqual(self.audit[-1]["sub"], "user-claude")
         for tok in (token(exp=NOW - 5, sub="user-2"), token(exp=NOW - 5, aud="https://other.example/mcp")):
             self.assertNotIn(tok.split(".")[2], json.dumps(self.audit))
             self.assertNotIn(tok.split(".")[1], json.dumps(self.audit))
-        self.assertEqual(self.req("POST", "/mcp", ping, token(sub="user-2"))[0], 403)         # NOT expired: unauthorized user keeps its 403 and is logged for allowlisting
+        self.assertEqual(self.req("POST", "/mcp", ping, token(sub="user-2"))[0], 403)
         self.assertEqual((self.audit[-1]["outcome"], self.audit[-1]["sub"]), ("user_not_authorized", "user-2"))
         self.assertEqual(self.req("POST", "/mcp", ping, token(client_id="cid-unknown"))[0], 403)
 
@@ -168,7 +169,7 @@ class Telemetry(Server):
             self.assertEqual(self.tool(tok, "buzz_list_channels", community="life-os")[0], 200)
         rows = self.audit
         self.assertEqual([(r["iat"], r["exp"]) for r in rows], [(NOW - 60, NOW + 600), (NOW - 60, NOW + 600), (NOW - 30, NOW + 3600)])
-        self.assertEqual((rows[0]["tid"] == rows[1]["tid"], rows[0]["tid"] != rows[2]["tid"], len(rows[0]["tid"])), (True, True, 8))   # a renewal shows up as a new tid
+        self.assertEqual((rows[0]["tid"] == rows[1]["tid"], rows[0]["tid"] != rows[2]["tid"], len(rows[0]["tid"])), (True, True, 8))  # a renewal shows up as a new tid
         self.assertNotIn(t1.split(".")[2], json.dumps(rows))
 
 
@@ -204,7 +205,7 @@ class DualClient(Server):
         self.assertIn(f'scope="{BASE}/mcpbuzz:write"', hdr["WWW-Authenticate"])
         self.assertEqual((self.fake.calls, self.fake.events), ([], []))
         self.assertEqual(self.tool(read, "buzz_list_channels", community="life-os")[0], 200)
-        self.assertEqual(self.tool(token(scope="buzz:write"), "buzz_list_channels", community="life-os")[0], 403)   # write scope does not imply read
+        self.assertEqual(self.tool(token(scope="buzz:write"), "buzz_list_channels", community="life-os")[0], 403)  # write scope does not imply read
 
     def test_writes_stay_disabled_without_an_allowlisted_channel_even_with_the_scope(self):
         self.start(writes=())
@@ -223,11 +224,11 @@ class DualClient(Server):
         self.start()
         tc, tg = token(sub="user-claude", **WR), token(sub="user-chatgpt", **WR)
         first, other = self.tool(tc, "buzz_post_message", **POST)[1], self.tool(tg, "buzz_post_message", **POST)[1]
-        self.assertEqual((first["status"], other["status"], len(self.fake.events)), ("sent_not_read_back", "sent_not_read_back", 2))   # same key from the other product is a different actor
+        self.assertEqual((first["status"], other["status"], len(self.fake.events)), ("sent_not_read_back", "sent_not_read_back", 2))
         self.assertNotEqual((first["actor"], first["event_id"]), (other["actor"], other["event_id"]))
         self.assertEqual(self.tool(tc, "buzz_post_message", **POST)[1]["status"], "already_delivered")
         self.assertEqual(self.tool(tg, "buzz_post_message", **dict(POST, text="different"))[1], {"error": "idempotency_conflict"})
-        self.start(fake=self.fake)                                                  # restart: new process, empty in-memory caches, same relay
+        self.start(fake=self.fake)
         self.assertEqual(self.tool(tc, "buzz_post_message", **dict(POST, text="different"))[1], {"error": "idempotency_conflict"})
         self.assertEqual((self.tool(tg, "buzz_post_message", **POST)[1]["status"], self.tool(tc, "buzz_post_message", **POST)[1]["status"]), ("already_delivered",) * 2)
         self.assertEqual(len(self.fake.events), 2)
@@ -261,7 +262,7 @@ class GrantLimitedCapabilities(Server):
 
 
 class Governed(Server):
-    """LIFE-865: every Buzz tool call goes through authorization_gate.execute, through the real HTTP handler; a refusal is before any relay request and carries the gate's fixed reason."""
+    """every Buzz tool call goes through authorization_gate.execute, through the real HTTP handler"""
     def calls(self):
         return [c for c in self.fake.calls] if hasattr(self.fake, "calls") else None
 
@@ -275,7 +276,7 @@ class Governed(Server):
         self.assertEqual((allow["outcome"], allow["tenant"], allow["tool"], allow["purpose"], allow["action"]), ("allow", "personal", "buzz_read", "buzz-read", "read"))
         self.assertEqual(done["outcome"], "ok")
         self.assertEqual(len(allow["principal_fp"]), 8)
-        self.assertNotIn("claude-chat", json.dumps(self.receipts))                     # fingerprints only
+        self.assertNotIn("claude-chat", json.dumps(self.receipts))  # fingerprints only
 
     def refused(self, tok, name, reason, **args):
         before = len(self.fake.posted) if hasattr(self.fake, "posted") else 0
@@ -286,11 +287,11 @@ class Governed(Server):
 
     def test_an_ungranted_tool_is_refused_before_the_relay(self):
         from tests.platform.mcp_access_fixture import build
-        self.start(access=build(grants=lambda seeded: [g for g in seeded if g["tool"] != "buzz_publish"]))      # the publish grants removed: the catalog row is there, the grant is not
+        self.start(access=build(grants=lambda seeded: [g for g in seeded if g["tool"] != "buzz_publish"]))
         self.refused(token(sub="user-claude", **WR), "buzz_publish", "no_grant", operation="message", community="life-os", arguments={"channel": CHAN, "text": "hi", "idempotency_key": "k9"})
 
     def test_the_shipped_publish_grant_passes_the_gate_with_a_write_receipt_and_the_relay_allowlist_still_applies(self):
-        """LIFE-865 (Jim, option A, Nov 22 2026): the shipped seed grants buzz_publish to the two chat clients in the communities they can write to; the gate allows it and writes the receipt, the relay's channel allowlist is unchanged."""
+        """the shipped seed grants buzz_publish to the two chat clients in the communities they can write to"""
         from tests.platform.mcp_access_fixture import build
         self.start(access=build())
         status, out = self.tool(token(sub="user-claude", **WR), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "hi", "idempotency_key": "k9"})
@@ -310,7 +311,7 @@ class Governed(Server):
         self.start(access=edit(purpose="something-else"))
         self.refused(tok, "buzz_read", "purpose_mismatch", operation="list_channels", community="life-os")
         self.start(access=build(grants=lambda seeded: [g for g in seeded if g["tenant"] != "bytalos"]))
-        self.refused(tok, "buzz_read", "no_grant", operation="list_channels", community="bytalos")                 # a Bytalos call with only Personal grants
+        self.refused(tok, "buzz_read", "no_grant", operation="list_channels", community="bytalos")  # a Bytalos call with only Personal grants
 
     def test_a_spoofed_identity_is_ignored_and_an_unregistered_client_is_refused(self):
         from tests.platform.mcp_access_fixture import build
@@ -319,7 +320,7 @@ class Governed(Server):
         body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": "list_channels", "community": "life-os", "principal": "claude-chat", "client": "claude"}, "principal": "claude-chat"}}
         status, raw, _ = self.req("POST", "/mcp", body, tok, X_Client="claude", X_Principal="claude-chat", X_Lifeos_Client_Id="claude-chat")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(json.loads(raw)["result"]["content"][0]["text"])["error"], "invalid_argument")       # an unknown argument never reaches identity at all
+        self.assertEqual(json.loads(json.loads(raw)["result"]["content"][0]["text"])["error"], "invalid_argument")  # an unknown argument never reaches identity at all
         self.tool(tok, "buzz_read", operation="list_channels", community="life-os")
         self.assertEqual(self.receipts[-2]["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint("chatgpt-chat"))
         self.start(access=build(clients=[c for c in __import__("tests.platform.mcp_access_fixture", fromlist=["x"]).DOC["clients"] if c["id"] != "chatgpt-chat"]))
@@ -329,13 +330,13 @@ class Governed(Server):
     def test_without_readable_access_data_every_tool_call_is_refused(self):
         self.start(access=False)
         from unittest import mock
-        with mock.patch("lifeos.platform.mcp_access.load", side_effect=OSError("data file missing")):                 # a release without the platform files, or unreadable data
+        with mock.patch("lifeos.platform.mcp_access.load", side_effect=OSError("data file missing")):
             status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="list_channels", community="life-os")
         self.assertEqual((status, out["error"]), (200, "governance_unavailable"))
 
 
 class Credentials(Server):
-    """LIFE-873: scoped `lm1.` credentials for the local clients, through the real HTTP handler. Synthetic secrets only; the shipped data holds hashes, never a secret."""
+    """scoped `lm1.` credentials for the local clients, through the real HTTP handler."""
     SECRETS = {"mac-claude-code": "A" * 43, "oracle-claude-code": "B" * 43, "openclaw": "D" * 43, "hermes-librarian": "E" * 43, "honcho-alerts": "F" * 43, "muse": "G" * 43, "jira-capture": "H" * 43}
 
     def access(self, edit=None, no_identity=False):
@@ -343,7 +344,7 @@ class Credentials(Server):
         from lifeos.platform import mcp_access
         from tests.platform.mcp_access_fixture import CATALOG, DOC
         doc = copy.deepcopy(DOC)
-        if not any(r["id"] == "muse" for r in doc["credentials"]):                                      # LIFE-923: the shipped muse row carries a real hash; tests always use their own synthetic one
+        if not any(r["id"] == "muse" for r in doc["credentials"]):  # the shipped muse row carries a real hash
             doc["credentials"].append({"id": "muse", "sha256": "0" * 64, "expires": "2027-02-22", "revoked": False, "buzz_identity": "muse", "communities": ["life-os"], "write": True})
         for row in doc["credentials"]:
             row["sha256"] = hashlib.sha256(self.SECRETS[row["id"]].encode()).hexdigest()
@@ -358,7 +359,7 @@ class Credentials(Server):
 
     def test_each_credential_lists_only_its_granted_tools_and_completes_one_read_with_its_own_receipt(self):
         self.start(access=self.access())
-        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts", "muse", "jira-capture")):                                                # openclaw and hermes-librarian are capabilities only: their own tests below
+        for cid in (c for c in self.SECRETS if c not in ("openclaw", "hermes-librarian", "honcho-alerts", "muse", "jira-capture")):
             status, out = self.rpc(self.tok(cid), "tools/list")
             names = {t["name"] for t in out["result"]["tools"]}
             self.assertEqual((status, {"buzz_capabilities", "buzz_read"} <= names, "buzz_publish" in names or "buzz_post_message" in names), (200, True, False), cid)
@@ -367,7 +368,7 @@ class Credentials(Server):
             allow, done = self.receipts[-2:]
             self.assertEqual((allow["outcome"], allow["tenant"], allow["tool"], allow["purpose"], done["outcome"]), ("allow", "personal", "buzz_capabilities", "buzz-read", "ok"))
             self.assertEqual(allow["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint(cid))
-        self.assertNotIn("mac-claude-code", json.dumps(self.receipts))                    # fingerprints only
+        self.assertNotIn("mac-claude-code", json.dumps(self.receipts))  # fingerprints only
 
     def test_a_call_outside_the_clients_grants_is_refused_no_grant_before_the_relay(self):
         self.start(access=self.access(edit=lambda d: d.update(grants=[g for g in d["grants"] if not (g["principal"] == "mac-claude-code" and g["tool"] == "buzz_read")])))
@@ -379,12 +380,12 @@ class Credentials(Server):
     def test_a_credential_cannot_publish_or_leave_its_community(self):
         self.start(access=self.access())
         status, out = self.tool(self.tok(), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "x", "idempotency_key": "k1"})
-        self.assertEqual(status, 403)                                                       # read scope only
+        self.assertEqual(status, 403)  # read scope only
         status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="bytalos")
         self.assertEqual((status, out["error"]), (200, "community_not_authorized"))
 
     def test_muse_bearer_reads_sends_to_jim_and_publishes_to_the_allowlisted_channel_only_and_everything_else_is_refused(self):
-        """LIFE-923 (Jim, comments 13906 and 13908): the muse credential row alone may hold the write scope; its grants, the channel allowlist and its own Buzz identity still decide every call."""
+        """the muse credential row alone may hold the write scope"""
         from datetime import datetime, timezone
         from unittest import mock
         self.start(access=self.access())
@@ -397,11 +398,11 @@ class Credentials(Server):
         status, out = self.tool(tok, "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "synthetic muse post", "idempotency_key": "muse-k1"})
         self.assertEqual((status, out.get("ok"), self.receipts[-2]["action"], self.receipts[-2]["tool"]), (200, True, "write", "buzz_publish"))
         status, out = self.tool(tok, "buzz_publish", operation="message", community="life-os", arguments={"channel": OTHER, "text": "x", "idempotency_key": "muse-k2"})
-        self.assertFalse(out.get("ok"), out)                                                                       # a channel outside the allowlist is refused
+        self.assertFalse(out.get("ok"), out)  # a channel outside the allowlist is refused
         sent = []
         with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True, "created": True, "id": "x"}):
             status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI", "from": "claude-chat"})
-            self.assertEqual((out.get("ok"), sent), (False, []))                                                    # a caller-named sender is refused
+            self.assertEqual((out.get("ok"), sent), (False, []))  # a caller-named sender is refused
             status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Muse synthetic test", "urgency": "FYI"})
         self.assertEqual((status, [i["from"] for i in sent]), (200, ["muse"]))
         for op, args in (("gmail_search", {"account": "personal", "query": "x"}), ("drive_search", {"account": "personal", "query": "x"})):
@@ -411,7 +412,7 @@ class Credentials(Server):
         self.assertEqual(out["error"], "community_not_authorized")
 
     def test_duet_is_the_oauth_label_of_its_own_user_with_claudes_grants_and_never_claude_or_a_spoofed_sender(self):
-        """LIFE-922 (Jim, B1, comment 13883): the Duet connector signs in as its own IdP user, labelled `duet`; identity comes only from that verified `sub`, the grants are claude's, and an ungranted tool is refused."""
+        """the Duet connector signs in as its own IdP user, labelled `duet`"""
         from datetime import datetime, timezone
         from unittest import mock
         USERS["user-duet"] = ("duet", ("life-os", "bytalos"))
@@ -419,24 +420,24 @@ class Credentials(Server):
         self.start(access=self.access())
         self.relays["duet"] = Relay(URLS, {"life-os": bytes([26]) * 32, "bytalos": bytes([27]) * 32}, (("life-os", CHAN),), self.fake)
         tok, web = token(sub="user-duet"), token(sub="user-claude")
-        self.assertEqual(self.tool(tok, "buzz_capabilities")[1]["data"]["identity"]["client"], "duet")            # Duet's own identity
-        self.assertEqual(self.tool(web, "buzz_capabilities")[1]["data"]["identity"]["client"], "claude")          # Claude web is unchanged
+        self.assertEqual(self.tool(tok, "buzz_capabilities")[1]["data"]["identity"]["client"], "duet")  # Duet's own identity
+        self.assertEqual(self.tool(web, "buzz_capabilities")[1]["data"]["identity"]["client"], "claude")  # Claude web is unchanged
         status, out = self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")
         self.assertEqual((status, out["ok"], self.receipts[-2]["tenant"], self.receipts[-2]["purpose"]), (200, True, "bytalos", "buzz-read"))
         sent = []
         with mock.patch.dict(buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}), mock.patch("lifeos.platform.inbox_send.deliver", lambda item, client, now=None: sent.append(item) or {"ok": True}):
             status, out = self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Duet spoof", "urgency": "FYI", "from": "claude-chat"})
-            self.assertEqual((out.get("ok"), sent), (False, []))                                                    # a caller-named sender is refused before anything is written
+            self.assertEqual((out.get("ok"), sent), (False, []))
             self.tool(tok, "buzz_read", operation="send_to_jim", community="life-os", arguments={"subject": "Duet synthetic test", "urgency": "FYI"})
-        self.assertEqual([i["from"] for i in sent], ["duet"])                                                      # the sender is the verified label
+        self.assertEqual([i["from"] for i in sent], ["duet"])  # the sender is the verified label
         before = len(self.fake.calls)
         for op, args in (("gmail_search", {"account": "personal", "query": "x"}), ("drive_search", {"account": "personal", "query": "x"})):
             status, out = self.tool(tok, "buzz_read", operation=op, community="life-os", arguments=args)
-            self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), op)                    # refused by the gate
-        self.assertEqual(len(self.fake.calls), before)                                                            # and before any request left the service
+            self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), op)  # refused by the gate
+        self.assertEqual(len(self.fake.calls), before)  # and before any request left the service
 
     def test_a_second_public_host_names_its_own_resource_and_challenge_and_accepts_its_own_audience_and_nothing_else_changes(self):
-        """LIFE-922 (Jim, host A): the same service answers on a second public origin; the host a request came in on names its resource, metadata and challenge; a token for either audience works; any other audience is refused."""
+        """the same service answers on a second public origin"""
         from lifeos.buzz.auth import Verifier as V
         second = "https://second.example.test"
         self.start()
@@ -448,20 +449,20 @@ class Credentials(Server):
         self.url = f"http://127.0.0.1:{srv.server_address[1]}"
         for host, origin in (("edge.example.test", BASE), ("second.example.test", second), ("unknown.example.test", BASE)):
             status, raw, _ = self.req("GET", "/.well-known/oauth-protected-resource", Host=host)
-            self.assertEqual((status, json.loads(raw)["resource"], json.loads(raw)["scopes_supported"][0]), (200, origin + "/mcp", BASE + "/mcpbuzz:read"), host)       # scope names keep the primary prefix
+            self.assertEqual((status, json.loads(raw)["resource"], json.loads(raw)["scopes_supported"][0]), (200, origin + "/mcp", BASE + "/mcpbuzz:read"), host)  # scope names keep the primary prefix
             status, _, headers = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, Host=host)
             self.assertEqual(status, 401)
             self.assertIn(f'resource_metadata="{origin}/.well-known/oauth-protected-resource"', headers["WWW-Authenticate"], host)
-            both = f'scope="{BASE}/mcpbuzz:read {BASE}/mcpbuzz:write"'                                            # LIFE-922: a first sign-in on an extra host asks for read and write at once (Duet checks capabilities and never tries a write, so it would never be asked for the step-up)
-            self.assertEqual(both in headers["WWW-Authenticate"], origin != BASE, host)                            # the primary host's challenge is unchanged (read only)
-        self.assertEqual(self.rpc(token(), "tools/list", Host="edge.example.test")[0], 200)                         # the primary audience still works on every host
-        self.assertEqual(self.rpc(token(aud=second + "/mcp"), "tools/list", Host="second.example.test")[0], 200)     # the second audience works
-        self.assertEqual(self.rpc(token(aud=[second + "/mcp"], scope=BASE + "/mcpbuzz:read"), "tools/list", Host="second.example.test")[0], 200)   # IAM's primary-prefixed scope names are understood for either audience
-        self.assertEqual(self.rpc(token(aud="https://other.example.test/mcp"), "tools/list")[0], 401)                 # any other audience is refused
-        self.assertEqual(self.rpc(token(aud=second + "/mcp", sub="user-nobody"), "tools/list")[0], 403)               # the allowlists are the same on both hosts
+            both = f'scope="{BASE}/mcpbuzz:read {BASE}/mcpbuzz:write"'
+            self.assertEqual(both in headers["WWW-Authenticate"], origin != BASE, host)
+        self.assertEqual(self.rpc(token(), "tools/list", Host="edge.example.test")[0], 200)  # the primary audience still works on every host
+        self.assertEqual(self.rpc(token(aud=second + "/mcp"), "tools/list", Host="second.example.test")[0], 200)  # the second audience works
+        self.assertEqual(self.rpc(token(aud=[second + "/mcp"], scope=BASE + "/mcpbuzz:read"), "tools/list", Host="second.example.test")[0], 200)
+        self.assertEqual(self.rpc(token(aud="https://other.example.test/mcp"), "tools/list")[0], 401)  # any other audience is refused
+        self.assertEqual(self.rpc(token(aud=second + "/mcp", sub="user-nobody"), "tools/list")[0], 403)  # the allowlists are the same on both hosts
 
     def test_duet_may_address_agents_when_it_is_a_mention_sender_and_claude_and_chatgpt_are_unchanged(self):
-        """LIFE-922: addressing is a per-identity flag (BUZZ_MENTION_SENDERS); Duet gets exactly the flag Claude has, nobody else changes."""
+        """addressing is a per-identity flag (BUZZ_MENTION_SENDERS)"""
         base = {"BUZZ_URL_LIFE_OS": "https://life-os.communities.buzz.xyz", "BUZZ_KEY_CLAUDE_LIFE_OS": "01" * 32, "BUZZ_KEY_CHATGPT_LIFE_OS": "02" * 32, "BUZZ_KEY_DUET_LIFE_OS": "03" * 32,
                 "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-one", "BUZZ_MCP_PUBLIC_URL": BASE,
                 "BUZZ_OAUTH_USERS": "user-claude:claude:life-os,user-chatgpt:chatgpt:life-os,user-duet:duet:life-os", "BUZZ_RECIPIENTS": "hermes:life-os:" + "ab" * 32}
@@ -488,18 +489,18 @@ class Credentials(Server):
         self.start(access=self.access())
         for cid in ("mac-claude-code", "oracle-claude-code", "hermes-librarian", "honcho-alerts"):
             status, out = self.tool(self.tok(cid), "buzz_publish", operation="message", community="life-os", arguments={"channel": CHAN, "text": "x", "idempotency_key": "k1"})
-            self.assertEqual(status, 403, cid)                                                                       # read scope only, whatever the grants say
+            self.assertEqual(status, 403, cid)  # read scope only, whatever the grants say
             doc = json.loads(json.dumps(DOC))
             next(r for r in doc["credentials"] if r["id"] == cid)["write"] = True
-            with self.assertRaises(mcp_access.AccessError, msg=cid):                                                 # the opt-in on any row but muse refuses the whole file
+            with self.assertRaises(mcp_access.AccessError, msg=cid):
                 mcp_access.load(json.dumps(doc), json.dumps(CATALOG))
-        self.assertEqual(sorted(r["id"] for r in DOC["credentials"] if r.get("write")), ["muse", "openclaw"] if any(r["id"] == "muse" for r in DOC["credentials"]) else ["openclaw"])    # LIFE-877: muse and openclaw only
+        self.assertEqual(sorted(r["id"] for r in DOC["credentials"] if r.get("write")), ["muse", "openclaw"] if any(r["id"] == "muse" for r in DOC["credentials"]) else ["openclaw"])  # muse and openclaw only
 
     def test_bad_credentials_are_one_401_and_no_tool_runs(self):
         self.start(access=self.access(edit=lambda d: d["credentials"][1].update(revoked=True)))
         expired = self.access(edit=lambda d: d["credentials"][0].update(expires="2026-11-01"))
-        bad = [self.tok(secret="C" * 43), self.tok("no-such-client", "A" * 43), self.tok("mac-claude-code", self.SECRETS["oracle-claude-code"]),    # wrong secret, unknown id, the other client's secret
-               self.tok("oracle-claude-code"), "lm1.mac-claude-code", "lm1.mac-claude-code.short", "lm1..x.y.z"]                                      # revoked, malformed
+        bad = [self.tok(secret="C" * 43), self.tok("no-such-client", "A" * 43), self.tok("mac-claude-code", self.SECRETS["oracle-claude-code"]),
+               self.tok("oracle-claude-code"), "lm1.mac-claude-code", "lm1.mac-claude-code.short", "lm1..x.y.z"]  # revoked, malformed
         for tok in bad:
             status, out = self.rpc(tok, "tools/call", {"name": "buzz_capabilities", "arguments": {}})
             self.assertEqual((status, out), (401, {"error": "invalid_token"}), tok[:20])
@@ -515,7 +516,7 @@ class Credentials(Server):
         fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
         self.assertEqual(self.receipts[-2]["principal_fp"], fp("oracle-claude-code"))
         self.tool(self.tok("mac-claude-code"), "buzz_capabilities")
-        self.assertNotEqual(self.receipts[-2]["principal_fp"], fp("oracle-claude-code"))                                                             # same host, two clients, two identities
+        self.assertNotEqual(self.receipts[-2]["principal_fp"], fp("oracle-claude-code"))  # same host, two clients, two identities
 
     def test_a_credential_with_no_buzz_identity_sees_capabilities_but_makes_no_relay_call(self):
         self.start(access=self.access(no_identity=True))
@@ -525,7 +526,9 @@ class Credentials(Server):
         self.assertEqual((status, out["error"]), (200, "client_identity_not_configured"))
 
     def test_an_unknown_operation_is_named_with_the_callers_own_valid_operations_not_an_identity_error(self):
-        """LIFE-965: a guessed operation (even the tool name buzz_capabilities) is unknown_operation with the caller's granted list, before any identity check; a real operation without an identity is unchanged."""
+        """a guessed operation (even the tool name buzz_capabilities) is unknown_operation with the caller's granted
+        list, before any identity check
+        """
         self.start(access=self.access(no_identity=True))
         tok = self.tok("oracle-claude-code")
         for wrong in ("nonsense", "buzz_capabilities", "memory_recll"):
@@ -534,11 +537,11 @@ class Credentials(Server):
             self.assertIn("list_channels", out["valid"])
             self.assertNotIn("buzz_capabilities", out["valid"])
         status, out = self.tool(tok, "buzz_publish", operation="buzz_capabilities")
-        self.assertEqual(out["error"], "insufficient_scope")                                                       # no write scope: refused before the operation is looked at, as before
+        self.assertEqual(out["error"], "insufficient_scope")
         out = self.tool(self.tok("honcho-alerts"), "buzz_read", operation="nonsense")[1]
-        self.assertEqual((out["error"], "valid" in out), ("access_denied", False))                                   # a client with no buzz_read grant is refused as before, and told nothing
-        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")   # a real operation that needs an identity: unchanged
-        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")[1]["error"], "community_not_authorized")        # refusals unchanged
+        self.assertEqual((out["error"], "valid" in out), ("access_denied", False))
+        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")  # a real operation that needs an identity: unchanged
+        self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="bytalos")[1]["error"], "community_not_authorized")  # refusals unchanged
 
     def test_a_memory_client_is_told_its_memory_operations_when_it_guesses_wrong(self):
         self.start(access=self.access())
@@ -548,7 +551,7 @@ class Credentials(Server):
         self.assertNotIn("buzz_capabilities", out["valid"])
 
     def test_honcho_alerts_may_send_to_jim_only_and_is_named_as_the_sender(self):
-        """LIFE-876 / LIFE-867 (Jim, comment 13853): the alert client holds one grant, send_to_jim; every other gate tool refuses it before any service runs."""
+        """the alert client holds one grant, send_to_jim"""
         from datetime import datetime, timezone
         from unittest import mock
         sent = []
@@ -561,7 +564,7 @@ class Credentials(Server):
             self.assertEqual(len(sent), 1)
 
     def test_source_read_and_agent_lookup_are_their_own_gate_tools_for_every_proved_client_and_not_for_the_chat_clients(self):
-        """LIFE-888 (Jim, Nov 22 2026, comment 13735): the two lookups are granted to the four proved clients only; no Buzz identity or relay is needed; the chat clients are refused at the gate."""
+        """the two lookups are granted to the four proved clients only"""
         from datetime import datetime, timedelta
         from unittest import mock
         from lifeos.platform import agent_directory
@@ -572,7 +575,7 @@ class Credentials(Server):
         self.start(access=self.access(no_identity=True))
         with mock.patch.dict(buzz_mcp.LOOKUP, {"fetchers": {"github": github}, "rows": lambda: F.rows(), "now": lambda: now}):
             for cid in (c for c in self.SECRETS if c not in ("honcho-alerts", "muse", "jira-capture")):
-                comm = "pilot" if cid == "openclaw" else "life-os"                                                              # LIFE-877: openclaw's only community
+                comm = "pilot" if cid == "openclaw" else "life-os"  # openclaw's only community
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="source_read", community=comm, arguments={"source": "github", "path": "AGENTS.md"})
                 self.assertEqual((status, out["ok"], out["data"]["revision"]["commit_sha"], out["data"]["freshness"]), (200, True, "a" * 40, "fresh"), cid)
                 allow = self.receipts[-2]
@@ -581,12 +584,12 @@ class Credentials(Server):
                 self.assertEqual((status, out["ok"], out["data"]["status"], out["data"]["authorizes"]), (200, True, "configured-untested", []), cid)
                 self.assertEqual((self.receipts[-2]["tool"], self.receipts[-2]["purpose"]), ("agent_lookup", "agent-lookup"))
             status, out = self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md", "max_age_seconds": 60})
-            self.assertEqual((status, out["error"]), (200, "stale_source"))                                                                       # the live refusal's shape: fixed reason, after the gate allowed it
+            self.assertEqual((status, out["error"]), (200, "stale_source"))
             status, out = self.tool(self.tok(), "buzz_read", operation="source_read", community="life-os", arguments={"source": "jira"})
             self.assertEqual(out["error"], "unknown_source")
             before = len(self.receipts)
             status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="source_read", community="life-os", arguments={"source": "github", "path": "AGENTS.md"})
-            self.assertEqual((out["error"], out["reason"], self.receipts[-1]["outcome"]), ("access_denied", "catalog_unknown_capability", "deny"))      # chat clients hold no lookup grant
+            self.assertEqual((out["error"], out["reason"], self.receipts[-1]["outcome"]), ("access_denied", "catalog_unknown_capability", "deny"))  # chat clients hold no lookup grant
             self.assertEqual(len(self.receipts), before + 1)
 
     def test_an_unwired_lookup_says_so_with_a_fixed_reason(self):
@@ -597,7 +600,7 @@ class Credentials(Server):
             self.assertEqual(self.tool(self.tok(), "buzz_read", operation="agent_lookup", community="life-os", arguments={"agent_id": "bot_hermes_claude-hermes"})[1]["error"], "directory_unavailable")
 
     def test_google_reads_are_granted_to_hermes_librarian_only_per_account_and_the_named_account_is_the_boundary(self):
-        """LIFE-875 (Jim, comment 13747): read-only Gmail and Drive grants for the Hermes librarian credential, personal and bytalos; every other client is refused at the gate; an omitted account never reaches Google."""
+        """read-only Gmail and Drive grants for the Hermes librarian credential, personal and bytalos"""
         from unittest import mock
         from tests.platform.test_google_read import FakeGoogle
         fake = FakeGoogle()
@@ -615,17 +618,17 @@ class Credentials(Server):
                     allow = self.receipts[-2]
                     self.assertEqual((allow["tool"], allow["purpose"], allow["tenant"], allow["outcome"], allow["principal_fp"]), (op, "governed-google-read", account, "allow", fp("hermes-librarian" if account == "personal" else "hermes-librarian-bytalos")))
             reached = len(fake.requests)
-            for cid in ("mac-claude-code", "oracle-claude-code", "openclaw"):                                                    # granted to no other client
+            for cid in ("mac-claude-code", "oracle-claude-code", "openclaw"):  # granted to no other client
                 status, out = self.tool(self.tok(cid), "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})
                 self.assertEqual((out["error"], out["reason"]), ("access_denied", "no_grant"), cid)
             status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="drive_read", arguments={"account": "personal", "file_id": "file111111"})
-            self.assertEqual(out["error"], "access_denied")                                                                        # nor to the chat clients
+            self.assertEqual(out["error"], "access_denied")  # nor to the chat clients
             for args, reason in (({"query": "q"}, "account_required"), ({"account": "work", "query": "q"}, "unknown_account")):
                 status, out = self.tool(lib, "buzz_read", operation="gmail_search", arguments=args)
                 self.assertEqual((out["error"], out["reason"]), ("access_denied", reason))
-            self.assertEqual(len(fake.requests), reached)                                                                          # none of the refusals reached Google
+            self.assertEqual(len(fake.requests), reached)  # none of the refusals reached Google
             names = {t["name"] for t in self.rpc(lib, "tools/list")[1]["result"]["tools"]}
-            self.assertFalse({n for n in names if "send" in n or "delete" in n or "modify" in n})                                  # no write tool exists
+            self.assertFalse({n for n in names if "send" in n or "delete" in n or "modify" in n})  # no write tool exists
 
     def test_a_revoked_google_consent_and_an_unwired_service_have_fixed_reasons(self):
         from unittest import mock
@@ -640,7 +643,7 @@ class Credentials(Server):
             self.assertEqual(self.tool(lib, "buzz_read", operation="gmail_search", arguments={"account": "personal", "query": "q"})[1]["error"], "not_configured")
 
     def test_send_to_jim_is_governed_for_the_four_local_clients_and_the_oauth_chat_client_with_the_sender_always_the_verified_client(self):
-        """LIFE-876 (Jim, comments 13748 and 13823): the same governed operation for every granted client; From is the credential id or the OAuth client, never a field; a repeat updates the same row."""
+        """the same governed operation for every granted client"""
         from unittest import mock
         from tests.inbox.test_agent_inbox import FakeClient
         fp = __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint
@@ -653,13 +656,13 @@ class Credentials(Server):
                 allow = self.receipts[-2]
                 self.assertEqual((allow["tool"], allow["purpose"], allow["tenant"], allow["action"], allow["outcome"], allow["principal_fp"]), ("send_to_jim", "agent-inbox", "personal", "write", "allow", fp(cid)))
             status, out = self.tool(token(sub="user-claude"), "buzz_read", operation="send_to_jim", arguments={"subject": "Synthetic LIFE-876 item from the Claude chat client"})
-            self.assertEqual((out["ok"], out["data"]["sender"]), (True, "claude"))                                                  # the verified OAuth client is the sender
+            self.assertEqual((out["ok"], out["data"]["sender"]), (True, "claude"))  # the verified OAuth client is the sender
             self.assertEqual(len(inbox.rows), 5)
             status, again = self.tool(self.tok("mac-claude-code"), "buzz_read", operation="send_to_jim", arguments={"subject": "Synthetic LIFE-876 item from mac-claude-code"})
-            self.assertEqual((again["ok"], "updated" in again["data"], len(inbox.rows)), (True, True, 5))                           # a repeat updates the same row
+            self.assertEqual((again["ok"], "updated" in again["data"], len(inbox.rows)), (True, True, 5))  # a repeat updates the same row
             status, other = self.tool(self.tok("oracle-claude-code"), "buzz_read", operation="send_to_jim", arguments={"subject": "x", "key": "k-own"})
             status, taken = self.tool(self.tok("openclaw"), "buzz_read", operation="send_to_jim", arguments={"subject": "y", "key": "k-own"})
-            self.assertEqual(taken["error"], "key_other_sender")                                                                    # nobody takes another client's row
+            self.assertEqual(taken["error"], "key_other_sender")  # nobody takes another client's row
             for args, error, reason in (({"subject": "x", "from": "claude-chat"}, "invalid_argument", None), ({"subject": "x", "workspace": "Bytalos"}, "access_denied", "catalog_unknown_principal"),
                                         ({"subject": "x", "workspace": "TGP"}, "access_denied", "unknown_tenant")):
                 status, out = self.tool(self.tok("mac-claude-code"), "buzz_read", operation="send_to_jim", arguments=args)
@@ -667,7 +670,7 @@ class Credentials(Server):
             rows = len(inbox.rows)
             for cid in ("mac-claude-code",):
                 self.assertEqual(self.tool(self.tok(cid), "buzz_read", operation="send_to_jim", arguments={"subject": "x", "from": "someone"})[1]["error"], "invalid_argument")
-            self.assertEqual(len(inbox.rows), rows)                                                                                 # no refusal wrote a row
+            self.assertEqual(len(inbox.rows), rows)  # no refusal wrote a row
 
     def test_send_to_jim_without_a_notion_client_says_inbox_not_configured(self):
         from unittest import mock
@@ -684,17 +687,19 @@ class Credentials(Server):
         self.assertEqual((status, caps["ok"], caps["data"]["identity"]["communities"]), (200, True, {}))
         self.assertEqual(self.receipts[-2]["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint("hermes-librarian"))
         self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community="life-os")[1]["error"], "client_identity_not_configured")
-        self.assertEqual(self.rpc(self.tok("hermes-librarian", self.SECRETS["openclaw"]), "tools/list")[0], 401)                                   # another client's secret is a 401
+        self.assertEqual(self.rpc(self.tok("hermes-librarian", self.SECRETS["openclaw"]), "tools/list")[0], 401)  # another client's secret is a 401
 
     PILOT_BASE = {"BUZZ_URL_LIFE_OS": "https://life-os.communities.buzz.xyz", "BUZZ_KEY_CLAUDE_LIFE_OS": "01" * 32, "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-one", "BUZZ_MCP_PUBLIC_URL": BASE,
                   "BUZZ_OAUTH_USERS": "user-claude:claude:life-os"}
 
     def test_openclaw_has_its_own_pilot_only_relay_identity_reads_and_posts_on_the_pilot_and_nothing_hosted(self):
-        """LIFE-877 (Jim, comment 14311): OpenClaw's own relay identity on community `pilot` only: read plus write to the pilot channels, no hosted life-os, no bytalos, and nobody else's key is touched."""
+        """OpenClaw's own relay identity on community `pilot` only: read plus write to the pilot channels, no hosted
+        life-os, no bytalos, and nobody else's key.
+        """
         from lifeos.platform import pilot_community
         self.start(access=self.access())
         relay = buzz_mcp.from_env({**self.PILOT_BASE, "BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": CHAN, "BUZZ_KEY_OPENCLAW_PILOT": "07" * 32})[0]["openclaw"]
-        self.assertEqual((dict(relay.urls), dict(relay.keys), set(relay.writes)), ({}, {}, set()))                           # before wiring: no community at all
+        self.assertEqual((dict(relay.urls), dict(relay.keys), set(relay.writes)), ({}, {}, set()))  # before wiring: no community at all
         self.assertEqual(pilot_community.wire({**self.PILOT_BASE, "BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": CHAN, "BUZZ_KEY_OPENCLAW_PILOT": "07" * 32}, {"openclaw": relay}, nip98.secret_from), ("openclaw",))
         relay.send = self.fake
         self.relays["openclaw"] = relay
@@ -706,23 +711,23 @@ class Credentials(Server):
         for comm in ("life-os", "bytalos"):
             self.assertEqual(self.tool(tok, "buzz_read", operation="list_channels", community=comm)[1]["error"], "community_not_authorized", comm)
             out = self.tool(tok, "buzz_publish", operation="message", community=comm, arguments={"channel": CHAN, "text": "x", "idempotency_key": "oc-" + comm})[1]
-            self.assertFalse(out.get("ok"), comm)                                                                            # no hosted write, whatever the channel
+            self.assertFalse(out.get("ok"), comm)  # no hosted write, whatever the channel
         out = self.tool(tok, "buzz_publish", operation="message", community="pilot", arguments={"channel": CHAN, "text": "synthetic openclaw pilot post", "idempotency_key": "oc-pilot"})[1]
         self.assertTrue(out.get("ok"), out)
         out = self.tool(tok, "buzz_publish", operation="message", community="pilot", arguments={"channel": OTHER, "text": "x", "idempotency_key": "oc-other"})[1]
-        self.assertFalse(out.get("ok"), out)                                                                                 # a channel outside the pilot list
-        self.assertEqual(self.rpc(self.tok("openclaw", self.SECRETS["mac-claude-code"]), "tools/list")[0], 401)             # another client's secret is a 401
+        self.assertFalse(out.get("ok"), out)  # a channel outside the pilot list
+        self.assertEqual(self.rpc(self.tok("openclaw", self.SECRETS["mac-claude-code"]), "tools/list")[0], 401)  # another client's secret is a 401
 
     def memory(self, cid, op, **arguments):
         return self.tool(self.tok(cid), "buzz_read", operation=op, arguments=arguments)
 
     def with_memory(self):
-        """LIFE-868: the shipped grants and a fake Honcho behind the real handler."""
+        """the shipped grants and a fake Honcho behind the real handler."""
         from unittest import mock
         from tests.platform.test_memory_honcho import FakeHoncho
         self.honcho = FakeHoncho()
         self.refusals = []
-        patch = mock.patch.dict(buzz_mcp.MEMORY, {"client": self.honcho, "look": lambda text: None, "receipt": self.refusals.append, "asks": {}})      # LIFE-949: no model second look in tests; refusal receipts are collected
+        patch = mock.patch.dict(buzz_mcp.MEMORY, {"client": self.honcho, "look": lambda text: None, "receipt": self.refusals.append, "asks": {}})  # no model second look in tests
         patch.start()
         self.addCleanup(patch.stop)
         self.start(access=self.access())
@@ -730,7 +735,7 @@ class Credentials(Server):
     def test_memory_store_recall_correct_revoke_ask_go_through_the_gate_and_the_text_goes_when_it_is_revoked(self):
         self.with_memory()
         status, stored = self.memory("hermes-librarian", "memory_store", workspace="Personal", text="Synthetic fact: the demo bird is a kestrel.", source="uat")
-        self.assertEqual((status, stored["ok"], stored["data"]["client"]), (200, True, "hermes-librarian"))          # the verified credential is the provenance
+        self.assertEqual((status, stored["ok"], stored["data"]["client"]), (200, True, "hermes-librarian"))  # the verified credential is the provenance
         fid = stored["data"]["id"]
         _, recalled = self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")
         self.assertEqual([(i["id"], i["client"]) for i in recalled["data"]["items"]], [(fid, "hermes-librarian")])
@@ -743,7 +748,7 @@ class Credentials(Server):
         self.memory("hermes-librarian", "memory_revoke", workspace="Personal", id=corrected["data"]["id"])
         self.assertEqual(self.memory("openclaw", "memory_recall", workspace="Personal", query="demo bird")[1]["data"]["items"], [])
         after = self.memory("oracle-claude-code", "memory_ask", workspace="Personal", question="What is the demo bird?")[1]["data"]
-        self.assertEqual(("kestrel" in after["answer"], "heron" in after["answer"], after["considered"]), (False, False, []))      # the text is gone, so the ask cannot repeat it
+        self.assertEqual(("kestrel" in after["answer"], "heron" in after["answer"], after["considered"]), (False, False, []))  # the text is gone, so the ask cannot repeat it
         self.assertNotIn("kestrel", json.dumps(self.honcho.rows))
         receipts = [r for r in self.receipts if r.get("tool", "").startswith("memory_")]
         self.assertEqual({r["tool"] for r in receipts}, {"memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask"})
@@ -753,7 +758,7 @@ class Credentials(Server):
         status, out = self.memory("openclaw", "memory_store", workspace="Personal", text="Her SSN is 123-45-6789.", source="uat")
         self.assertEqual((out["ok"], out["error"], out["category"], out["stored"]), (False, "sensitive_refused", "identity", False))
         self.assertIn("Nothing was stored", out["hint"])
-        self.assertNotIn("123-45-6789", json.dumps(out))                                                              # never echoed
+        self.assertNotIn("123-45-6789", json.dumps(out))  # never echoed
         self.assertEqual((self.honcho.rows, self.honcho.peers), ([], 0))
         self.assertEqual([sorted(r) for r in self.refusals], [["category", "client", "ct", "event"]])
         self.assertEqual(self.refusals[0]["client"], "openclaw")
@@ -762,25 +767,25 @@ class Credentials(Server):
     def test_memory_is_refused_for_a_client_without_a_grant_and_for_bytalos_and_tgp(self):
         self.with_memory()
         for op, args in (("memory_store", {"text": "t", "source": "s"}), ("memory_ask", {"question": "q"})):
-            self.assertEqual(self.memory("honcho-alerts", op, workspace="Personal", **args)[1]["error"], "access_denied", op)                  # a credential with no memory grant
+            self.assertEqual(self.memory("honcho-alerts", op, workspace="Personal", **args)[1]["error"], "access_denied", op)  # a credential with no memory grant
         for workspace in ("Bytalos", "TGP", "personal"):
             for op, args in (("memory_store", {"text": "t", "source": "s"}), ("memory_ask", {"question": "q"})):
                 out = self.memory("openclaw", op, workspace=workspace, **args)[1]
-                self.assertEqual(out["error"], "access_denied", (workspace, op))                                      # Bytalos has no grant; TGP and a typo are unknown workspaces
-        self.assertEqual((self.honcho.rows, self.honcho.chats), ([], []))                                             # nothing reached Honcho
+                self.assertEqual(out["error"], "access_denied", (workspace, op))  # Bytalos has no grant
+        self.assertEqual((self.honcho.rows, self.honcho.chats), ([], []))  # nothing reached Honcho
 
     def test_a_credential_cannot_name_the_client_and_an_expired_grant_refuses(self):
         self.with_memory()
         status, out = self.tool(self.tok("openclaw"), "buzz_read", operation="memory_store", arguments={"workspace": "Personal", "text": "t", "source": "s", "_client": "someone-else"})
-        self.assertEqual(out["error"], "invalid_argument")                                                          # the schema has no client argument
+        self.assertEqual(out["error"], "invalid_argument")  # the schema has no client argument
         from datetime import datetime, timezone
         from lifeos.platform import mcp_access
         self.start(access=self.access())
-        late = datetime(2100, 1, 1, 6, 0, tzinfo=timezone.utc)                                                    # LIFE-950: the memory grants no longer end Dec 5 2026 (expiry 2099-12-31)
+        late = datetime(2100, 1, 1, 6, 0, tzinfo=timezone.utc)
         import unittest.mock as um
         with um.patch.object(mcp_access, "datetime", wraps=datetime) as clock:
             clock.now.return_value = late
-            self.assertIn(self.memory("openclaw", "memory_store", workspace="Personal", text="t", source="s")[1]["error"], ("access_denied", "governance_unavailable", "invalid_token"))   # past every end date the credential (2027-02-22) ends first
+            self.assertIn(self.memory("openclaw", "memory_store", workspace="Personal", text="t", source="s")[1]["error"], ("access_denied", "governance_unavailable", "invalid_token"))
 
     def test_memory_not_configured_and_honcho_down_are_fixed_codes(self):
         from unittest import mock
@@ -799,7 +804,7 @@ class Credentials(Server):
     def test_an_oauth_token_never_matches_a_credential_row_and_unreadable_data_fails_closed(self):
         from unittest import mock
         self.start(access=self.access())
-        self.assertEqual(self.tool(token(sub="user-claude"), "buzz_capabilities")[1]["ok"], True)                                  # unchanged path
+        self.assertEqual(self.tool(token(sub="user-claude"), "buzz_capabilities")[1]["ok"], True)  # unchanged path
         self.assertEqual(self.receipts[-2]["principal_fp"], __import__("lifeos.platform.authorization_gate", fromlist=["x"]).fingerprint("claude-chat"))
         self.start(access=False)
         with mock.patch("lifeos.platform.mcp_access.load", side_effect=OSError("data file missing")):
@@ -808,7 +813,7 @@ class Credentials(Server):
 
 
 class RateLimit(Server):
-    """LIFE-874: a verified caller is limited per minute before any tool or gate runs; the log line names the caller and the outcome, never a value."""
+    """a verified caller is limited per minute before any tool or gate runs"""
     def test_a_caller_over_the_limit_gets_429_and_a_sanitized_log_line_and_others_are_unaffected(self):
         from unittest import mock
         self.start()
@@ -821,16 +826,16 @@ class RateLimit(Server):
             line = self.audit[-1]
             self.assertEqual((line["outcome"], line["sub"], line["tool"], set(line) - {"client", "identity", "sub", "tool", "community", "outcome", "reason"}), ("rate_limited", "user-claude", None, set()))
             self.assertNotIn(tok, json.dumps(self.audit))
-            self.assertEqual(self.rpc(token(sub="user-chatgpt"), "tools/list")[0], 200)                  # another verified user has their own count
-            self.assertEqual(self.rpc("not-a-token", "tools/list")[0], 401)                              # an unauthenticated call is refused before it is ever counted
+            self.assertEqual(self.rpc(token(sub="user-chatgpt"), "tools/list")[0], 200)  # another verified user has their own count
+            self.assertEqual(self.rpc("not-a-token", "tools/list")[0], 401)
 
     def test_the_window_slides_and_each_credential_has_its_own_count(self):
         self.assertEqual([call_limit.allow("k", now=t) for t in (0.0, 1.0, 2.0)], [True] * 3)
         with __import__("unittest.mock", fromlist=["x"]).patch.object(call_limit, "LIMIT", 3):
             call_limit.reset()
             self.assertEqual([call_limit.allow("a", now=t) for t in (0.0, 1.0, 2.0, 3.0)], [True, True, True, False])
-            self.assertTrue(call_limit.allow("a", now=60.5))                                              # the first call left the window
-            self.assertTrue(call_limit.allow("b", now=3.0))                                               # another key is untouched
+            self.assertTrue(call_limit.allow("a", now=60.5))  # the first call left the window
+            self.assertTrue(call_limit.allow("b", now=3.0))  # another key is untouched
 
 
 class FourIdentities(Server):
@@ -848,7 +853,7 @@ class FourIdentities(Server):
         for pair in pairs:
             ev = by_id[receipts[pair]["event_id"]]
             self.assertEqual((ev["pubkey"], dict(ev["tags"])["h"], dict(ev["tags"])["actor"]), (pubs[pair], CHANS[pair[1]], "key:" + pubs[pair][:16]))
-            other = ({"claude": "chatgpt", "chatgpt": "claude"}[pair[0]], pair[1])              # the OTHER product's identity reads it back
+            other = ({"claude": "chatgpt", "chatgpt": "claude"}[pair[0]], pair[1])  # the OTHER product's identity reads it back
             got = self.tool(token(sub="user-" + other[0]), "buzz_get_messages", community=pair[1], channel=CHANS[pair[1]])[1]
             self.assertIn((receipts[pair]["event_id"], f"synthetic from {pair[0]} to {pair[1]}", "key:" + pubs[pair][:16]), [(m["event_id"], m["untrusted_text"], m["actor"]) for m in got])
         self.assertEqual({a["identity"] for a in self.audit if a["tool"] == "buzz_post_message"}, {p[:16] for p in pubs.values()})
@@ -860,7 +865,7 @@ class FourIdentities(Server):
         tg = token(sub="user-chatgpt", **WR)
         for call in (("buzz_list_channels", dict(community="bytalos")), ("buzz_post_message", dict(POST, community="bytalos", channel=OTHER))):
             self.assertEqual(self.tool(tg, *call[:1], **call[1]), (200, {"error": "key_not_configured"}))
-        self.assertEqual((self.fake.calls, self.fake.events), ([], []))                  # claude's bytalos key was never borrowed
+        self.assertEqual((self.fake.calls, self.fake.events), ([], []))  # claude's bytalos key was never borrowed
         self.assertEqual(self.tool(token(sub="user-claude", **WR), "buzz_list_channels", community="bytalos")[0], 200)
         self.assertEqual(self.tool(tg, "buzz_list_channels", community="life-os")[0], 200)
         self.assertEqual(self.tool(tg, "buzz_post_message", **POST)[1]["actor"], "key:" + nip98.pubkey(KEYS["chatgpt", "life-os"])[:16])
@@ -891,23 +896,25 @@ class UserAuthorization(Server):
                 self.assertEqual((status, json.loads(raw)), (403, {"error": "user_not_authorized"}), name)
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, token(sub="user-2"))[0], 403)
         self.assertEqual((self.fake.calls, self.fake.events), ([], []))
-        self.assertTrue(self.audit and all(a["outcome"] == "user_not_authorized" and a["tool"] is None and a["sub"] in ("user-2", None, "1") for a in self.audit))   # the denied subject is logged so the owner can allowlist it
+        self.assertTrue(self.audit and all(a["outcome"] == "user_not_authorized" and a["tool"] is None and a["sub"] in ("user-2", None, "1") for a in self.audit))
 
     def test_community_boundary_is_per_user_and_checked_before_any_relay_request(self):
         self.start()
         tok = token(sub="user-lifeos-only", scope="buzz:read buzz:write")
         self.assertEqual(self.tool(tok, "buzz_list_channels", community="bytalos"), (200, {"error": "community_not_authorized"}))
         self.assertEqual(self.tool(tok, "buzz_post_message", **dict(POST, community="bytalos"))[1], {"error": "community_not_authorized"})
-        self.assertEqual(self.tool(tok, "buzz_search_messages", query="x")[1], {"error": "community_not_authorized"})   # no community: denied, not defaulted
+        self.assertEqual(self.tool(tok, "buzz_search_messages", query="x")[1], {"error": "community_not_authorized"})  # no community: denied, not defaulted
         self.assertEqual((self.fake.calls, self.fake.events), ([], []))
         self.assertEqual(self.tool(tok, "buzz_list_channels", community="life-os")[0], 200)
         self.assertEqual(len(self.fake.calls), 1)
-        self.assertEqual(self.tool(token(scope="buzz:read"), "buzz_list_channels", community="bytalos")[0], 200)       # a user granted both communities still reaches both
+        self.assertEqual(self.tool(token(scope="buzz:read"), "buzz_list_channels", community="bytalos")[0], 200)  # a user granted both communities still reaches both
         self.assertEqual(self.audit[0]["outcome"], "community_not_authorized")
 
 
 class Startup(unittest.TestCase):
-    """Runs the unit's real ExecStart, parsed from the unit file, from the staged /opt layout (only lifeos/__init__.py, lifeos/buzz/*.py and the old-name shims lifeos/buzz_*.py) with synthetic config."""
+    """Runs the unit's real ExecStart, parsed from the unit file, from the staged /opt layout (only lifeos/__init__.py,
+    lifeos/buzz/*.py and the old-name.
+    """
     UNIT = ROOT / "lifeos" / "edge" / "buzz" / "oracle" / "lifeos-buzz-mcp.service"
 
     def stage(self):
@@ -933,20 +940,20 @@ class Startup(unittest.TestCase):
     def test_unit_does_not_use_isolated_mode_and_keeps_sandboxing(self):
         unit = self.UNIT.read_text()
         self.assertNotIn(" -I ", unit.split("ExecStart=")[1].splitlines()[0])
-        self.assertEqual(unit.count("LoadCredentialEncrypted="), 4)                    # exactly the four identity slots
+        self.assertEqual(unit.count("LoadCredentialEncrypted="), 4)  # exactly the four identity slots
         for line in ("NoNewPrivileges=yes", "ProtectSystem=strict", "User=buzz-mcp", "LoadCredentialEncrypted=buzz_key_claude_life_os", "LoadCredentialEncrypted=buzz_key_chatgpt_bytalos", "Environment=PYTHONPATH=/opt/lifeos-buzz-mcp/current"):
             self.assertIn(line, unit)
 
     def test_execstart_imports_from_the_staged_layout_without_secrets(self):
         stage = self.stage()
-        other = tempfile.mkdtemp()                                   # cwd that is NOT the stage: only PYTHONPATH can supply the package
+        other = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, other, True)
         done = subprocess.run(self.exec_argv(), cwd=other, env=self.env(stage), capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 1)
-        self.assertIn("config error", done.stderr)                   # reached main() and failed on missing config, not on import
+        self.assertIn("config error", done.stderr)
         self.assertNotIn("ModuleNotFoundError", done.stderr)
         isolated = subprocess.run([sys.executable, "-I", *self.exec_argv()[3:]], cwd=other, env=self.env(stage), capture_output=True, text=True, timeout=30)
-        self.assertIn("ModuleNotFoundError", isolated.stderr)        # negative control: the old -I command really cannot start
+        self.assertIn("ModuleNotFoundError", isolated.stderr)
 
     def test_staged_service_serves_loopback_discovery(self):
         stage = self.stage()
@@ -988,12 +995,12 @@ class OracleShapes(Server):
         self.assertEqual(self.tool(token(scope=f"{q}buzz:write"), "buzz_post_message", **POST)[0], 200)
         for bad in ("https://evil.example/mcpbuzz:write", f"{q}x", "buzz:writer"):
             self.assertEqual(self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_post_message", "arguments": POST}}, token(scope=bad))[0], 403)
-        self.assertEqual(len(self.fake.events), 1)                                   # only the properly scoped write went through
+        self.assertEqual(len(self.fake.events), 1)  # only the properly scoped write went through
 
 
     def test_issuer_trailing_slash_is_equivalent_but_nothing_else(self):
         v = Verifier("https://identity.example.test", BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda u: JWKS, clock=lambda: NOW)
-        self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test/"))["client"], "claude")     # Oracle IAM issues iss with a trailing slash
+        self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test/"))["client"], "claude")  # Oracle IAM issues iss with a trailing slash
         self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test"))["client"], "claude")
         for bad in ("https://identity.example.test.evil", "https://identity.example.test//x", None, ["https://identity.example.test"], 5):
             with self.assertRaises(AuthError):
@@ -1013,7 +1020,7 @@ class Transport(Server):
         self.start(origins=("https://claude.ai",))
         tok = token()
         self.assertEqual(self.req("POST", "/mcp", {"method": "notifications/initialized"}, tok)[0], 202)
-        self.assertEqual(self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 5, "result": {}}, tok)[0], 202)           # a client's reply to a server request
+        self.assertEqual(self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 5, "result": {}}, tok)[0], 202)  # a client's reply to a server request
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, tok, MCP_Protocol_Version="1999-01-01")[0], 400)
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, tok, Accept="text/html")[0], 400)
         self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, tok, Origin="https://evil.example")[0], 403)
@@ -1044,18 +1051,18 @@ class Config(unittest.TestCase):
     def test_from_env_builds_four_identities_defaults_to_no_writes_and_rejects_unsafe_config(self):
         relays, auth, base, origins = buzz_mcp.from_env(self.ENV)
         self.assertEqual(({i: {c: nip98.pubkey(k) for c, k in r.keys.items()} for i, r in relays.items()}, {r.writes.__len__() for r in relays.values()}),
-                         ({**{i: {c: nip98.pubkey(KEYS[i, c]) for c in ("life-os", "bytalos")} for i in ("claude", "chatgpt")}, "openclaw": {}}, {0}))      # LIFE-877: openclaw exists with no hosted key, address or write channel
+                         ({**{i: {c: nip98.pubkey(KEYS[i, c]) for c in ("life-os", "bytalos")} for i in ("claude", "chatgpt")}, "openclaw": {}}, {0}))
         self.assertEqual((base, origins, auth.audience, auth.clients), (BASE, (), BASE + "/mcp", frozenset({"cid-one"})))
-        self.assertEqual(auth.users["svc+x@example.com"], ("chatgpt", frozenset({"life-os"})))   # a plus-address subject parses, the label is the middle field
+        self.assertEqual(auth.users["svc+x@example.com"], ("chatgpt", frozenset({"life-os"})))
         url_ids = buzz_mcp.from_env({**self.ENV, "BUZZ_OAUTH_CLIENTS": "https://chatgpt.com/oauth/client.json, dcr-abc123"})[1]
-        self.assertEqual(url_ids.clients, frozenset({"https://chatgpt.com/oauth/client.json", "dcr-abc123"}))   # a client id may be a URL
+        self.assertEqual(url_ids.clients, frozenset({"https://chatgpt.com/oauth/client.json", "dcr-abc123"}))  # a client id may be a URL
         no_chatgpt = {k: v for k, v in self.ENV.items() if "CHATGPT_BYTALOS" not in k}
         self.assertEqual({i: set(r.keys) for i, r in buzz_mcp.from_env(no_chatgpt)[0].items()}, {"claude": {"life-os", "bytalos"}, "chatgpt": {"life-os"}, "openclaw": set()})
         bad = [{**self.ENV, "BUZZ_MCP_PUBLIC_URL": "http://edge.example.test"}, {**self.ENV, "BUZZ_MCP_PUBLIC_URL": BASE + "/mcp"}, {**self.ENV, "BUZZ_OAUTH_ISSUER": ""}, {**self.ENV, "BUZZ_OAUTH_JWKS_URL": "http://x"},
                {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:admin:life-os"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:shared:life-os"}, {**self.ENV, "BUZZ_OAUTH_USERS": ""}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:claude:other"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-claude:claude"},
                {**self.ENV, "BUZZ_OAUTH_CLIENTS": ""}, {**self.ENV, "BUZZ_KEY_CLAUDE_LIFE_OS": "nothex"}, {**self.ENV, "BUZZ_AUTH_TAG": "x"},
-               {**self.ENV, "BUZZ_KEY_LIFE_OS": KEY_A.hex()},                                                             # the old per-community shared key is refused, not used as a fallback
-               {**self.ENV, "BUZZ_KEY_CHATGPT_BYTALOS": self.FOUR["BUZZ_KEY_CLAUDE_BYTALOS"]},                          # one key may not fill two identity slots
+               {**self.ENV, "BUZZ_KEY_LIFE_OS": KEY_A.hex()},
+               {**self.ENV, "BUZZ_KEY_CHATGPT_BYTALOS": self.FOUR["BUZZ_KEY_CLAUDE_BYTALOS"]},  # one key may not fill two identity slots
                {k: v for k, v in self.ENV.items() if not k.startswith("BUZZ_KEY_")}]
         for env in bad:
             with self.assertRaises(ValueError) as c:

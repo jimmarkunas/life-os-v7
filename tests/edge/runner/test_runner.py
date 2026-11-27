@@ -1,4 +1,4 @@
-"""LIFE-310: the script-pack runner (lifeos/edge/runner/runner.py) and its installer, on temp folders and a fake systemctl. Nothing real is touched; no sudo."""
+"""the script-pack runner (lifeos/edge/runner/runner.py) and its installer, on temp folders and a fake systemctl."""
 import hashlib
 import io
 import json
@@ -18,12 +18,12 @@ ROOT = Path(__file__).resolve().parents[3]
 INSTALLER = ROOT / "lifeos" / "edge" / "runner" / "install-runner.sh"
 RUNNER_PY = ROOT / "lifeos" / "edge" / "runner" / "runner.py"
 TOKEN = "github_pat_NOTAREALTOKEN_0123456789abcdef"
-BEARER = "Bear" + "er abcdefghijklmnopqrstuvwxyz0123"        # built here: the privacy guard rejects the literal form
-PEM_BEGIN, PEM_END = "-----BEGIN OPENSSH " + "PRIVATE KEY-----", "-----END OPENSSH " + "PRIVATE KEY-----"      # built here so no key header is committed (the privacy guard)
+BEARER = "Bear" + "er abcdefghijklmnopqrstuvwxyz0123"
+PEM_BEGIN, PEM_END = "-----BEGIN OPENSSH " + "PRIVATE KEY-----", "-----END OPENSSH " + "PRIVATE KEY-----"
 
 
 class FakeSystemd:
-    """Service state lives in flag files so a pack STEP (plain bash) can 'stop' a service; start/stop/enable/disable calls are recorded."""
+    """Service state lives in flag files so a pack STEP (plain bash) can 'stop' a service"""
     def __init__(self, folder):
         self.folder, self.calls = folder, []
 
@@ -54,7 +54,7 @@ class Base(unittest.TestCase):
         self.host = runner.Host(state=self.state, inbox=self.inbox, require_root=False, systemctl=self.sysd)
 
     def pack(self, key="LIFE-310", steps=None, restore=None, ticket=None, extra=None, timeout=None):
-        """Write a pack under the inbox for `key`. steps: {name: bash text}."""
+        """Write a pack under the inbox for `key`."""
         root = self.inbox.format(key=key)
         shutil.rmtree(root, ignore_errors=True)
         steps = steps or {"10-ok.sh": "echo done\n"}
@@ -89,7 +89,7 @@ class Base(unittest.TestCase):
         return text
 
 
-class PackIdentity(Base):          # GWT-RUN-01
+class PackIdentity(Base):  # GWT-RUN-01
     def test_hash_is_the_full_sha256_of_names_and_bytes_not_times_or_modes(self):
         root = self.pack()
         first = runner.pack_hash(root)
@@ -106,7 +106,7 @@ class PackIdentity(Base):          # GWT-RUN-01
         self.assertEqual((status, out.strip()), (0, runner.pack_hash(root)))
         status, out = self.run_cli("help")
         self.assertIn("LIFE-310  sha256 " + runner.pack_hash(root), out)
-        self.assertIn("RESULT ok", out)                                      # the help explains the one-line result
+        self.assertIn("RESULT ok", out)  # the help explains the one-line result
         status, out = self.run_cli("check", root)
         self.assertIn("PACK ok LIFE-310 steps=1", out)
 
@@ -125,7 +125,7 @@ class PackIdentity(Base):          # GWT-RUN-01
             self.assertEqual(self.run_cli("check", root)[1].strip(), "PACK fail E_PACK", bad)
 
 
-class Approval(Base):              # GWT-RUN-02 and the negative tests
+class Approval(Base):  # GWT-RUN-02 and the negative tests
     def test_a_matching_sha8_and_ticket_runs_and_the_terminal_shows_exactly_one_line(self):
         marker = os.path.join(self.tmp, "ran")
         root = self.pack(steps={"10-a.sh": "echo step one noise\ntouch %s\n" % marker, "20-b.sh": "echo READBACK count=3\n"})
@@ -134,11 +134,11 @@ class Approval(Base):              # GWT-RUN-02 and the negative tests
         self.assertTrue(os.path.exists(marker))
         data = self.result()
         self.assertEqual((data["outcome"], data["code"], data["steps_run"], data["steps_total"], data["readback"]), ("ok", None, 2, 2, ["count=3"]))
-        self.assertNotIn("noise", self.everything_written())                 # step output is never kept, only counts
+        self.assertNotIn("noise", self.everything_written())  # step output is never kept, only counts
         self.assertEqual(data["step_results"][0]["output_lines"], 1)
         self.assertTrue(Path(self.state, "results", "LIFE-310-%s.json" % self.sha8(root)).exists())
         self.assertIn("LIFE-310 %s ok -" % self.sha8(root), Path(self.state, "runner.log").read_text())
-        self.assertEqual(os.listdir(os.path.join(self.state, "work")), [])    # the work copy is gone
+        self.assertEqual(os.listdir(os.path.join(self.state, "work")), [])  # the work copy is gone
         self.assertEqual(os.listdir(os.path.join(self.state, "snapshots")), [])
 
     def test_wrong_hash_is_refused_and_nothing_runs(self):
@@ -147,7 +147,7 @@ class Approval(Base):              # GWT-RUN-02 and the negative tests
         wrong = "0" * 8 if self.sha8(root) != "0" * 8 else "f" * 8
         self.assertEqual(self.run_cli("LIFE-310", wrong), (1, "RESULT fail E_HASH\n"))
         self.assertFalse(os.path.exists(marker))
-        self.assertEqual(self.result()["code"], "E_HASH")                    # logged and readable by the agent
+        self.assertEqual(self.result()["code"], "E_HASH")  # logged and readable by the agent
         self.assertIn("fail E_HASH", Path(self.state, "runner.log").read_text())
 
     def test_a_pack_edited_after_approval_is_refused(self):
@@ -184,7 +184,7 @@ class Approval(Base):              # GWT-RUN-02 and the negative tests
             self.assertEqual(self.run_cli("LIFE-310", self.sha8(root)), (1, "RESULT fail E_BUSY\n"))
 
 
-class RestoreOnFailure(Base):      # GWT-RUN-03
+class RestoreOnFailure(Base):  # GWT-RUN-03
     def setup_world(self):
         self.edited = os.path.join(self.tmp, "etc-conf")
         self.created = os.path.join(self.tmp, "new-file")
@@ -200,8 +200,8 @@ class RestoreOnFailure(Base):      # GWT-RUN-03
         self.assertEqual(self.run_cli("LIFE-310", self.sha8(root)), (1, "RESULT fail E_STEP_2\n"))
         self.assertEqual(Path(self.edited).read_text(), "original\n")
         self.assertEqual(oct(os.stat(self.edited).st_mode & 0o777), oct(0o640))
-        self.assertFalse(os.path.exists(self.created))                       # it did not exist before: removed
-        self.assertFalse(os.path.exists(self.sysd.flag("demo.service")))     # the service is running again
+        self.assertFalse(os.path.exists(self.created))  # it did not exist before: removed
+        self.assertFalse(os.path.exists(self.sysd.flag("demo.service")))  # the service is running again
         data = self.result()
         self.assertEqual(sorted(data["restored"]), sorted([self.edited, self.created, "demo.service"]))
         self.assertEqual((data["restore_failed"], data["steps_run"]), ([], 2))
@@ -243,10 +243,10 @@ class RestoreOnFailure(Base):      # GWT-RUN-03
         status, out = self.run_cli("LIFE-310", self.sha8(root))
         self.assertEqual((status, out), (1, "RESULT fail E_RESTORE\n"))
         self.assertEqual(self.result()["restore_failed"], [self.edited])
-        self.assertTrue(os.listdir(os.path.join(self.state, "snapshots")))   # the originals stay on disk for a manual put-back
+        self.assertTrue(os.listdir(os.path.join(self.state, "snapshots")))  # the originals stay on disk for a manual put-back
 
 
-class NoSecretsPrinted(Base):      # GWT-RUN-04
+class NoSecretsPrinted(Base):  # GWT-RUN-04
     def test_secret_looking_output_is_redacted_everywhere_and_only_names_and_counts_are_kept(self):
         steps = {"10-noisy.sh": ("echo token=abcdefghij1234567890\necho %s\necho 'Authorization: %s'\n"
                                  "echo 'password: hunter2hunter2'\necho github_pat_SHORT123456789\necho ghp_abcdefghij0123456789\necho %s\necho AAAAB3NzaC1yc2EAAAADAQABAAABAQC7\necho %s\n"
@@ -277,7 +277,7 @@ class NoSecretsPrinted(Base):      # GWT-RUN-04
         self.assertEqual(self.run_cli("LIFE-310", self.sha8(root))[1], "RESULT ok\n")
         readback = self.result()["readback"]
         self.assertEqual(readback[1], "leaked=0")
-        self.assertNotEqual(readback[0], "stdin_eof=142")                    # not a timeout waiting for input
+        self.assertNotEqual(readback[0], "stdin_eof=142")  # not a timeout waiting for input
 
 
 class Installer(unittest.TestCase):
@@ -312,11 +312,11 @@ class Installer(unittest.TestCase):
                                         "var/lib/lifeos-runner", "var/lib/lifeos-runner/results"])
         self.assertEqual(os.stat(os.path.join(self.prefix, "usr/local/sbin/lifeos-run")).st_mode & 0o777, 0o755)
         self.assertEqual(Path(self.prefix, "usr/local/sbin/lifeos-run").read_text(), '#!/bin/sh\nexec /usr/bin/python3 -I /opt/lifeos-runner/runner.py "$@"\n')
-        self.assertEqual(self.run_script("install")[0], 0)                   # idempotent
+        self.assertEqual(self.run_script("install")[0], 0)  # idempotent
         self.assertEqual(self.run_script("verify")[0], 0)
         installed = Path(self.prefix, "opt/lifeos-runner/runner.py")
         os.chmod(installed, 0o777)
-        self.assertEqual(self.run_script("verify")[0], 1)                    # group/world writable
+        self.assertEqual(self.run_script("verify")[0], 1)  # group/world writable
         os.chmod(installed, 0o755)
         installed.write_text(installed.read_text() + "# tampered\n")
         status, out = self.run_script("verify")
@@ -325,7 +325,7 @@ class Installer(unittest.TestCase):
         status, out = self.run_script("uninstall")
         self.assertEqual(status, 0, out)
         self.assertEqual([f for f in self.files() if f.startswith("opt/") or f.endswith("lifeos-run")], [])
-        self.assertIn("var/lib/lifeos-runner/results", self.files())          # results stay
+        self.assertIn("var/lib/lifeos-runner/results", self.files())  # results stay
         self.run_script("uninstall", "--purge")
         self.assertNotIn("var/lib/lifeos-runner", self.files())
 

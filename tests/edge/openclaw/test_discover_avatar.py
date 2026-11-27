@@ -1,4 +1,4 @@
-"""LIFE-331: the OpenClaw avatar discovery is READ-ONLY and never prints secret-shaped lines."""
+"""the OpenClaw avatar discovery is READ-ONLY and never prints secret-shaped lines."""
 import hashlib
 import os
 import re

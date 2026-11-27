@@ -1,4 +1,6 @@
-"""LIFE-867: the Honcho backup-failed unit and the meter's budget stop reach the Agent Inbox through the one honcho-alert command, and an alert problem can never block a backup or the meter."""
+"""the Honcho backup-failed unit and the meter's budget stop reach the Agent Inbox through the one honcho-alert command,
+and an alert problem can never.
+"""
 import pathlib
 import re
 import unittest

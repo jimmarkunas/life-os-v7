@@ -27,7 +27,7 @@ class Manifest(unittest.TestCase):
         m = json.loads((DIR / "manifest.json").read_text())
         self.assertEqual((m["id"], m["apiVersion"]), ("lifeos.probe", 1))
         self.assertEqual(set(m["host"]["agentHooks"]), HARNESS)
-        self.assertEqual(set(m["host"]), {"agentHooks"})                      # no network origins, commands, processes or files
+        self.assertEqual(set(m["host"]), {"agentHooks"})  # no network origins, commands, processes or files
 
     def test_the_plugin_has_no_network_shell_file_or_secret_access(self):
         text = (DIR / "plugin.js").read_text()
@@ -44,9 +44,9 @@ class Behaviour(unittest.TestCase):
         out = json.loads(run.stdout)
         self.assertEqual([h[:2] for h in out["hooks"]], [["buzz.claude-code/claude-code", "PreToolUse"], ["buzz.codex/codex", "PreToolUse"], ["buzz.pi/pi", "beforeTool"]])
         self.assertEqual(out["tools"], ["lifeos_probe_report"])
-        self.assertEqual(out["returns"], [None, None, None])                # JSON turns undefined into null: every hook returned undefined, so nothing is decided
+        self.assertEqual(out["returns"], [None, None, None])
         self.assertIsNone(out["pi"])
-        self.assertIsNone(out["bad"])                                       # a null input or context never throws
+        self.assertIsNone(out["bad"])  # a null input or context never throws
         report = out["report"]
         self.assertEqual(report["you"], {"pubkey": "p" * 64, "key": "k"})
         self.assertEqual(report["errors"], [])

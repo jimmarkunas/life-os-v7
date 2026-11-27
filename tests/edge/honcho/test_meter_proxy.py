@@ -1,4 +1,4 @@
-"""LIFE-889: the spend guard in front of every Anthropic call. A fake Anthropic and a fake Ollama run on loopback; nothing here touches the network or a real key."""
+"""the spend guard in front of every Anthropic call."""
 import http.client
 import http.server
 import json
@@ -57,7 +57,7 @@ class Upstream(http.server.BaseHTTPRequestHandler):
             self.wfile.flush()
             self.close_connection = True
             return
-        if Upstream.mode == "reset":                                  # the connection drops after the request was sent and before any reply
+        if Upstream.mode == "reset":
             self.close_connection = True
             return
         if Upstream.mode in ("nousage", "huge"):
@@ -133,16 +133,16 @@ class Pricing(unittest.TestCase):
 
     def test_the_reservation_is_the_documented_maximum_at_the_dearest_class_and_tier(self):
         self.assertEqual(mp.CONTEXT_TOKENS, 1_000_000)
-        self.assertEqual(mp.INPUT_NANO_PER_TOKEN, 1000)                                                    # the 1-hour cache write over 100,000 prompt tokens: $1.00 per million
-        self.assertEqual(mp.reservation_nano(1000), 1_000_000 * 1000 + 1000 * 2500)                        # a million input tokens plus the output at $2.50 per million
-        self.assertEqual(mp.reservation_nano(mp.MAX_OUTPUT_TOKENS), 1_320_000_000)                         # $1.32: the most one admitted request can ever bill
+        self.assertEqual(mp.INPUT_NANO_PER_TOKEN, 1000)
+        self.assertEqual(mp.reservation_nano(1000), 1_000_000 * 1000 + 1000 * 2500)
+        self.assertEqual(mp.reservation_nano(mp.MAX_OUTPUT_TOKENS), 1_320_000_000)  # $1.32: the most one admitted request can ever bill
         self.assertEqual(mp.admission(json.dumps({"model": mp.MODEL, "max_tokens": 1000, "messages": []}).encode()), (1_002_500_000, ""))
-        for kind in ("input", "cache_write", "cache_read", "output"):                                      # no class of any tier prices a token above the reserved rate
+        for kind in ("input", "cache_write", "cache_read", "output"):
             self.assertLessEqual(mp.nano_rate(kind, mp.PRICES), mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES))
             self.assertLessEqual(mp.nano_rate(kind, mp.LONG_PRICES), mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES))
 
     def test_the_measured_live_run_costs_about_six_percent_of_the_old_dearest_rate_figure(self):
-        new, written, read, out = 157_338, 72_421, 396_850, 27_797                                                          # the live meter's 248 calls on Nov 24 2026 (token counts only; every call is under 100,000 tokens)
+        new, written, read, out = 157_338, 72_421, 396_850, 27_797  # every call is under 100,000 tokens)
         real = mp.usd(new, "input") + mp.usd(written, "cache_write") + mp.usd(read, "cache_read") + mp.usd(out, "output")
         self.assertAlmostEqual(real, 0.0427, delta=0.0427 * 0.2)
         dearest = (157_338 + 72_421 + 396_850) * 1.00 / 1e6 + 27_797 * 2.50 / 1e6
@@ -186,7 +186,7 @@ class Metering(Case):
 
     def test_spend_stops_the_next_request_when_the_cap_is_reached_and_survives_a_restart(self):
         self.start(0.0010)
-        big = {"max_tokens": 100, "messages": [{"role": "user", "content": "x" * 6100}]}          # the fake replies with 2000 input tokens: the estimate covers them
+        big = {"max_tokens": 100, "messages": [{"role": "user", "content": "x" * 6100}]}
         for _ in range(10):
             self.post("/v1/messages", big)
         self.assertLessEqual(self.ledger.spent, 0.0010)
@@ -233,7 +233,7 @@ class Metering(Case):
 
 
 class FailClosed(Case):
-    """LIFE-867: a budget that cannot be verified, or credits that have ended, stop every Anthropic request; embeddings stay free; memory is never touched."""
+    """a budget that cannot be verified, or credits that have ended, stop every Anthropic request"""
     MSG = {"max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}
 
     def test_an_unreadable_ledger_refuses_every_request_and_nothing_is_forwarded(self):
@@ -245,7 +245,7 @@ class FailClosed(Case):
         self.assertIn(b"budget cannot be verified", body)
         self.assertEqual(self.post("/v1/messages/count_tokens", {"messages": []})[0], 400)
         self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
-        self.assertEqual(self.post("/v1/embeddings", {"input": "x"})[0], 200)                    # the local model is free and still answers
+        self.assertEqual(self.post("/v1/embeddings", {"input": "x"})[0], 200)  # the local model is free and still answers
 
     def test_a_missing_ledger_beside_an_audit_file_with_spend_is_unverified_but_a_fresh_start_is_fine(self):
         self.post("/v1/messages", self.MSG)
@@ -256,7 +256,7 @@ class FailClosed(Case):
 
     def test_a_ledger_that_cannot_be_written_refuses_the_request_before_it_is_forwarded(self):
         with mock.patch.object(mp.Ledger, "save", side_effect=OSError("disk full")):
-            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)                         # LIFE-1021: the reservation is saved first
+            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)  # the reservation is saved first
         self.assertEqual((self.ledger.unverified, Upstream.seen, self.ledger.reserved), ("ledger unwritable", [], 0.0))
         self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)
 
@@ -270,7 +270,7 @@ class FailClosed(Case):
                 raise OSError("disk full")
             real(ledger)
         with mock.patch.object(mp.Ledger, "save", flaky):
-            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                         # reserved and saved, forwarded, then the settle save fails
+            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)
         self.assertEqual(self.ledger.unverified, "ledger unwritable")
         self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)
 
@@ -338,7 +338,7 @@ if __name__ == "__main__":
 
 
 class MonthlyWindow(Case):
-    """LIFE-950: the cap is per window (5th, 6:00 PM CT to the next 5th, 6:00 PM CT); the next window starts by itself; a window never rescues a budget that cannot be verified."""
+    """the cap is per window (5th, 6:00 PM CT to the next 5th, 6:00 PM CT)"""
     MSG = {"max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}
 
     def at(self, year, month, day, hour, minute=0):
@@ -351,9 +351,9 @@ class MonthlyWindow(Case):
                                    (self.at(2026, 12, 5, 18), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
                                    (self.at(2027, 1, 2, 9), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
                                    (self.at(2027, 3, 5, 17, 59), self.at(2027, 2, 5, 18), self.at(2027, 3, 5, 18)),
-                                   (self.at(2027, 3, 5, 18), self.at(2027, 3, 5, 18), self.at(2027, 4, 5, 18))):          # across the March 2027 daylight-time change
+                                   (self.at(2027, 3, 5, 18), self.at(2027, 3, 5, 18), self.at(2027, 4, 5, 18))):  # across the March 2027 daylight-time change
             self.assertEqual(mp.window(moment), (start, end))
-        self.assertEqual(self.at(2026, 12, 5, 18), 1796515200)                                          # Dec 6 2026 00:00 UTC: the boundary the old stop date named
+        self.assertEqual(self.at(2026, 12, 5, 18), 1796515200)
 
     def test_the_new_window_starts_at_zero_by_itself_and_the_old_one_is_archived(self):
         self.start(25)
@@ -361,7 +361,7 @@ class MonthlyWindow(Case):
         self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
         self.ledger.spent, self.ledger.calls = 23.0, 40
         self.ledger.save()
-        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                                     # inside the old window: spend is tiny but the cap is not
+        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)
         self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 1)
         self.assertEqual(self.ledger.why_blocked(), "")
         self.assertEqual((self.ledger.spent, self.ledger.calls, self.ledger.start), (0.0, 0, self.at(2026, 12, 5, 18)))
@@ -392,7 +392,7 @@ class MonthlyWindow(Case):
         self.post("/v1/messages", self.MSG)
         self.assertEqual(open(path).read(), first)
         self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 5)
-        self.post("/v1/messages", self.MSG)                                                                # STOP still stands: a refusal in the NEW window writes a new alert
+        self.post("/v1/messages", self.MSG)
         self.assertEqual(json.loads(open(path).read())["window"], self.at(2026, 12, 5, 18))
 
     def test_the_stop_file_survives_a_new_window(self):

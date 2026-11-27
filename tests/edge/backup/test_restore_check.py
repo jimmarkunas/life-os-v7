@@ -1,4 +1,4 @@
-"""LIFE-538 / LIFE-529: the one-command real-key restore check (restore_check.py). Throwaway keys only; the real key and archive are never used here."""
+"""the one-command real-key restore check (restore_check.py)."""
 import atexit
 import contextlib
 import io
@@ -30,11 +30,12 @@ def _cleanup_pairs():
 
 
 def make_pair(base, passphrase="", slot=0):
-    """A throwaway keypair: -> (public key file, armoured secret key bytes). LIFE-527: each (passphrase, slot) pair is generated ONCE per test run and shared (key generation was
-    the slowest part of this file); `base` is accepted for the old call sites and ignored. A different `slot` is a different key (for the wrong-key test)."""
+    """A throwaway keypair: -> (public key file, armoured secret key bytes).: each (passphrase, slot) pair is generated
+    ONCE per test run and shared (key.
+    """
     key = (passphrase, slot)
     if key not in _PAIRS:
-        root = _PAIRS[next(iter(_PAIRS))][2] if _PAIRS else tempfile.mkdtemp(prefix="rck-", dir="/tmp")      # short path: gpg's agent socket path has a length limit
+        root = _PAIRS[next(iter(_PAIRS))][2] if _PAIRS else tempfile.mkdtemp(prefix="rck-", dir="/tmp")
         if not _PAIRS:
             atexit.register(_cleanup_pairs)
         tag = "%s%d" % ("pp" if passphrase else "np", slot)
@@ -71,8 +72,7 @@ _BUILT = {}
 
 
 def build(base, pub):
-    """-> (nightly archive path, code dir). A nightly tar.gz with a Mac archive inside, then both sealed.
-    LIFE-527: built ONCE per key and shared (sealing runs gpg twice and was most of each test); the archives are only ever read. `_BUILT[pub]` also holds the plain outer archive."""
+    """> (nightly archive path, code dir)."""
     if pub not in _BUILT:
         root = tempfile.mkdtemp(prefix="rcb-", dir="/tmp")
         atexit.register(shutil.rmtree, root, True)
@@ -131,7 +131,7 @@ class Run(unittest.TestCase):
             self.assertIn("mac_databases=3", text)
             self.assertIn("nightly_databases=1", text)
             for word in ("front.py", "gw.mjs", "auth", "cred", "token", "fake-not-a-secret", UID, "state.db", "BEGIN PGP"):
-                self.assertNotIn(word, text)                                                 # counts only
+                self.assertNotIn(word, text)  # counts only
             self.assertIn("nightly_manifest_code_lifeos-fit=2 files", text)
             n, h = rc.manifest_hash(_BUILT[pub][2], "code/lifeos-fit/")
             self.assertIn(h[:16], text)

@@ -1,5 +1,6 @@
-"""LIFE-216 / BUZZ-14: the Buzz MCP bridge, tested through its real JSON-RPC and HTTP interface against a MOCKED relay transport with synthetic data.
-Nothing here touches a network beyond loopback and nothing proves live Buzz connectivity."""
+"""/ BUZZ-14: the Buzz MCP bridge, tested through its real JSON-RPC and HTTP interface against a MOCKED relay transport
+with synthetic data.
+"""
 import base64, hashlib, json, threading, unittest
 from pathlib import Path
 
@@ -28,7 +29,7 @@ class FakeRelay:
     """Mock Buzz relay: validates NIP-98 on every call, stores kind-9 events, answers the filters the bridge uses."""
     def __init__(self):
         self.events, self.calls, self.fail_events, self.drop_ack, self.fail_query, self.agents = [], [], None, False, False, []
-        self.tie, self.dupes, self.check_auth = (lambda e: 0), False, True   # check_auth=False skips the BIP-340 verification of the request header (about 19 ms each) for tests that are not about authentication
+        self.tie, self.dupes, self.check_auth = (lambda e: 0), False, True
 
     def __call__(self, method, url, headers, body, timeout=15):
         self.calls.append((url, json.loads(body)))
@@ -45,8 +46,8 @@ class FakeRelay:
             f = json.loads(body)[0]
             match = lambda e: (e["kind"] in f.get("kinds", [e["kind"]]) and (f.get("ids") is None or e["id"] in f["ids"]) and (f.get("authors") is None or e["pubkey"] in f["authors"])
                                and (f.get("until") is None or e["created_at"] <= f["until"]) and (f.get("since") is None or e["created_at"] >= f["since"]) and (f.get("search") is None or f["search"] in e["content"])
-                               and all(any(t[0] == k[1:] and len(t) > 1 and t[1] in v for t in e["tags"]) for k, v in f.items() if k.startswith("#")))   # NIP-01 tag filters, whatever the letter
-            out = sorted((e for e in self.events if match(e)), key=lambda e: (-e["created_at"], self.tie(e)))   # newest first; the order inside one second is the relay's business, so tests may scramble it
+                               and all(any(t[0] == k[1:] and len(t) > 1 and t[1] in v for t in e["tags"]) for k, v in f.items() if k.startswith("#")))  # NIP-01 tag filters, whatever the letter
+            out = sorted((e for e in self.events if match(e)), key=lambda e: (-e["created_at"], self.tie(e)))  # newest first
             out = out[:f["limit"]]
             return 200, json.dumps(out + (out[:3] if self.dupes else [])).encode()
         sent = json.loads(body)
@@ -135,7 +136,7 @@ class Reads(unittest.TestCase):
         fake, relay = setup()
         call(relay, "buzz_list_channels", community="life-os")
         call(relay, "buzz_post_message", **POST)
-        self.assertTrue(len(fake.agents) >= 3 and all(a == "life-os-buzz-bridge/0.2" for a in fake.agents))   # the default Python-urllib signature is blocked with 403 by Cloudflare
+        self.assertTrue(len(fake.agents) >= 3 and all(a == "life-os-buzz-bridge/0.2" for a in fake.agents))
 
     def test_list_get_search_through_signed_requests(self):
         fake, relay = setup()
@@ -179,7 +180,7 @@ class Writes(unittest.TestCase):
         self.assertEqual(ev["pubkey"], nip98.pubkey(KEY_A))
         self.assertIn(["actor", ACTOR], ev["tags"])
         self.assertEqual(receipt["actor"], ACTOR)
-        receiver = Relay(URLS, {"life-os": KEY_B}, (), fake)                    # a separately authenticated identity reads it back
+        receiver = Relay(URLS, {"life-os": KEY_B}, (), fake)  # a separately authenticated identity reads it back
         got = call(receiver, "buzz_get_messages", community="life-os", channel=CHAN)[1]
         self.assertEqual((got[0]["event_id"], got[0]["untrusted_text"], got[0]["actor"]), (recomputed, "synthetic hello", ACTOR))
 
@@ -189,7 +190,7 @@ class Writes(unittest.TestCase):
             self.assertEqual(call(relay, "buzz_post_message", **dict(POST, actor=forged)), (True, {"error": "invalid_argument"}))
         self.assertNotIn("actor", buzz_mcp.TOOLS["buzz_post_message"][1])
         self.assertEqual((fake.calls, fake.events), ([], []))
-        call(relay, "buzz_post_message", **POST)                                  # the only attribution is the server key's
+        call(relay, "buzz_post_message", **POST)  # the only attribution is the server key's
         bridge_b = Relay(URLS, {"life-os": KEY_B}, [("life-os", CHAN)], fake)
         call(bridge_b, "buzz_post_message", **dict(POST, idempotency_key="k2"))
         self.assertEqual([dict(e["tags"])["actor"] for e in fake.events], [ACTOR, "key:" + nip98.pubkey(KEY_B)[:16]])
@@ -198,7 +199,7 @@ class Writes(unittest.TestCase):
     def test_concurrent_identical_requests_post_exactly_one_event(self):
         fake, relay = setup()
         real, gate = fake.__call__, threading.Barrier(8)
-        def slow(method, url, headers, body, timeout=15):                        # widen the race window: every thread would pass an unlocked precheck
+        def slow(method, url, headers, body, timeout=15):
             if url.endswith("/query"):
                 import time; time.sleep(0.05)
             return real(method, url, headers, body, timeout)
@@ -245,26 +246,26 @@ class Writes(unittest.TestCase):
         again = call(relay, "buzz_post_message", **POST)[1]
         self.assertEqual((again["status"], again["event_id"], len(fake.events)), ("already_delivered", first["event_id"], 1))
         self.assertEqual(call(relay, "buzz_post_message", **dict(POST, text="different"))[1]["error"], "idempotency_conflict")
-        fresh = Relay(URLS, {"life-os": KEY_A}, [("life-os", CHAN)], fake)       # a restart loses the cache; the relay-side tag still blocks a duplicate
+        fresh = Relay(URLS, {"life-os": KEY_A}, [("life-os", CHAN)], fake)  # a restart loses the cache
         self.assertEqual(call(fresh, "buzz_post_message", **POST)[1]["status"], "already_delivered")
         self.assertEqual(len(fake.events), 1)
 
     def test_ambiguous_write_never_duplicates_and_never_claims_success(self):
         fake, relay = setup()
-        fake.fail_events = "after"                                              # delivered, acknowledgement lost
+        fake.fail_events = "after"  # delivered, acknowledgement lost
         err, out = call(relay, "buzz_post_message", **POST)
         self.assertEqual((err, out["error"], out["retryable"]), (True, "delivery_unknown", False))
         fake.fail_events = None
         self.assertEqual(call(relay, "buzz_post_message", **POST)[1]["status"], "already_delivered")
         self.assertEqual(len(fake.events), 1)
         fake, relay = setup()
-        fake.fail_events = "before"                                             # never delivered: the retry resends the same signed event
+        fake.fail_events = "before"
         lost = call(relay, "buzz_post_message", **POST)[1]
         fake.fail_events = None
         sent = call(relay, "buzz_post_message", **POST)[1]
         self.assertEqual((sent["status"], sent["event_id"], len(fake.events)), ("sent_not_read_back", lost["event_id"], 1))
         fake, relay = setup()
-        fake.drop_ack = True                                                    # relay answers accepted=false
+        fake.drop_ack = True  # relay answers accepted=false
         self.assertEqual(call(relay, "buzz_post_message", **POST)[1]["error"], "delivery_unknown")
 
     def test_post_fails_closed_when_the_duplicate_check_is_unavailable(self):
@@ -287,11 +288,11 @@ class Config(unittest.TestCase):
         self.assertNotIn("0.0.0.0", src)
 
 
-BASELINE_LINES, ADDED_LINE_CAP, FILE_CAP = 468, 300, 4   # main at the start of the permanent-interface package (LIFE-254/LIFE-249) counted 468 lines in 4 files (PR #732: 283, BUZZ-16 and LIFE-249 since); this package may add at most 300 production lines and no file
+BASELINE_LINES, ADDED_LINE_CAP, FILE_CAP = 468, 300, 4
 
 
 def within_budget(files, lines):
-    return files <= FILE_CAP and lines - BASELINE_LINES <= ADDED_LINE_CAP   # two independent limits, never a tuple comparison
+    return files <= FILE_CAP and lines - BASELINE_LINES <= ADDED_LINE_CAP  # two independent limits, never a tuple comparison
 
 
 class Budget(unittest.TestCase):
@@ -300,7 +301,7 @@ class Budget(unittest.TestCase):
             self.assertEqual(within_budget(files, lines), ok, (files, lines))
 
     def test_policy_code_size_cap_for_this_package(self):
-        files = sorted(f for f in (ROOT / "lifeos" / "buzz").glob("*.py") if f.name != "__init__.py")          # LIFE-590: the package; its empty __init__ and the old-name shims are not part of the budget
+        files = sorted(f for f in (ROOT / "lifeos" / "buzz").glob("*.py") if f.name != "__init__.py")  # the package
         lines = sum(1 for f in files for ln in f.read_text().splitlines() if ln.strip() and not ln.strip().startswith("#"))
         self.assertLessEqual(len(files), FILE_CAP)
         self.assertLessEqual(lines - BASELINE_LINES, ADDED_LINE_CAP)

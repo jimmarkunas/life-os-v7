@@ -1,4 +1,6 @@
-"""LIFE-330: the Oracle ticker (lifeos/edge/ticker) - the tick request, fixed codes, the fail-closed watch, the timers' minutes and the installer's reach."""
+"""the Oracle ticker (lifeos/edge/ticker) - the tick request, fixed codes, the fail-closed watch, the timers' minutes and
+the installer's reach.
+"""
 import configparser
 import datetime as dt
 import io
@@ -41,7 +43,7 @@ class Reply:
 
 
 class FakeGitHub:
-    """Records requests; `answers` maps a path suffix to an HTTP status (with a JSON body for 200) or an exception."""
+    """Records requests"""
     def __init__(self, answers):
         self.answers, self.requests = answers, []
 
@@ -59,14 +61,14 @@ class FakeGitHub:
 
 
 SWITCH_VALUES = {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "", "ALERT_SETTINGS": '{"v":1}'}
-STORE = lambda: dict(SWITCH_VALUES)      # noqa: E731 - what lifeos.platform.alert_store.read returns (LIFE-733)
+STORE = lambda: dict(SWITCH_VALUES)      # noqa: E731 - what lifeos.platform.alert_store.read returns
 
 
 class Tick(unittest.TestCase):
     def test_the_dispatch_is_exactly_what_cron_job_org_sent(self):
         api = FakeGitHub({"hourly.yml/dispatches": 204})
         self.assertEqual(ticker.tick(TOKEN, api), ("TICK_DISPATCHED", 204))
-        (req,) = [r for r in api.requests if r.get_method() == "POST"]          # LIFE-568: the run list is read first (a failed read still dispatches)
+        (req,) = [r for r in api.requests if r.get_method() == "POST"]
         self.assertEqual((req.full_url, req.get_method()), ("https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches", "POST"))
         self.assertEqual(json.loads(req.data), {"ref": "main", "inputs": {"tick": "true"}})
         self.assertEqual(req.get_header("Authorization"), f"Bearer {TOKEN}")
@@ -88,16 +90,16 @@ class Tick(unittest.TestCase):
     def test_the_repository_gap_variable_is_honoured(self):
         import datetime as dt
         now = dt.datetime(2026, 11, 11, 6, 17, tzinfo=dt.timezone.utc)
-        body = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}      # 17 minutes ago
+        body = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "run_started_at": "2026-11-11T06:00:10Z"}]}  # 17 minutes ago
         drain = FakeGitHub({"per_page=15": (200, body), "GATE_MIN_GAP_MINUTES": (200, {"name": "GATE_MIN_GAP_MINUTES", "value": "10"})})
-        self.assertFalse(ticker.too_soon(TOKEN, drain, now))                       # drain mode: a 10 minute gap lets a 17 minute old tick through
+        self.assertFalse(ticker.too_soon(TOKEN, drain, now))
 
     def test_skipping_dispatches_nothing_and_any_doubt_still_dispatches(self):
         import datetime as dt
         recent = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success",
                                      "run_started_at": (clock.now() - dt.timedelta(minutes=17)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
         api = FakeGitHub({"per_page=15": (200, recent), "GATE_MIN_GAP_MINUTES": 404, "hourly.yml/dispatches": 204})
-        with mock.patch.object(dt, "datetime", clock.FrozenDateTime):                     # too_soon asks datetime.now(): the same test clock the run was dated from
+        with mock.patch.object(dt, "datetime", clock.FrozenDateTime):
             self.assertEqual(ticker.tick(TOKEN, api), ("TICK_SKIPPED", 200))
         self.assertFalse([r for r in api.requests if r.get_method() == "POST"])
         for unreadable in (500, urllib.error.URLError("down")):
@@ -111,7 +113,7 @@ class Tick(unittest.TestCase):
 
 
 class Disk(unittest.TestCase):
-    """LIFE-301: the Hermes disk alarm (80%), run inside the watch; quiet (INFO) and a closing signal when it drops."""
+    """the Hermes disk alarm (80%), run inside the watch"""
     def usage(self, used, free):
         return lambda path: type("U", (), {"used": used, "free": free, "total": used + free})()
 
@@ -150,7 +152,7 @@ class Disk(unittest.TestCase):
         self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: None, environ={}, disk=boom)[0], "WATCH_DONE")
         order.clear()
         ticker.watch(TOKEN, TOPIC, FakeGitHub({}), store=STORE, run=lambda **k: order.append("gate"), environ={})
-        self.assertEqual(order, ["gate"])                                         # an injected run alone never touches the real disk check
+        self.assertEqual(order, ["gate"])
 
     def test_a_failed_incident_check_is_named_in_the_journal_by_class_only_and_never_fails_the_watch(self):
         import contextlib
@@ -165,7 +167,7 @@ class Disk(unittest.TestCase):
 
 
 class Stall(unittest.TestCase):
-    """LIFE-562: the Close release timer writes a marker after 2 hours without a green main head; the watch opens one quiet issue and closes it when the marker is gone."""
+    """the Close release timer writes a marker after 2 hours without a green main head"""
     def test_the_marker_opens_the_incident_and_its_absence_closes_it(self):
         seen = []
         self.assertTrue(ticker.stall_incident("/x/auto.stalled", lambda p: True, lambda *a: seen.append(a)))
@@ -182,7 +184,7 @@ class Stall(unittest.TestCase):
 
 
 class ProofUnreadable(unittest.TestCase):
-    """LIFE-693: the release timer deploys nothing when it cannot read the release-paused flag and writes a marker; the watch raises ONE PAGE from it, never reminds, and closes it with one INFO when the marker is gone."""
+    """the release timer deploys nothing when it cannot read the release-paused flag and writes a marker"""
     def test_the_marker_opens_one_page_and_its_absence_closes_it_with_one_recovered_push(self):
         seen = []
         record = lambda *a, **k: seen.append((a, k))
@@ -191,7 +193,7 @@ class ProofUnreadable(unittest.TestCase):
         (first, kw), (second, _) = seen
         self.assertEqual((first[0], first[3], second[3]), ("release-pause-unreadable", True, False))
         self.assertEqual((first[4][2:], first[5][2:]), (("page", "release_pause_unreadable"), ("info", "release_pause_unreadable_recovered")))
-        self.assertIs(kw.get("remind"), False)                                                    # Jim: state-change pushes only, no 3-hour reminders
+        self.assertIs(kw.get("remind"), False)  # Jim: state-change pushes only, no 3-hour reminders
         self.assertIn("lifts by itself", first[2])
         from lifeos.platform import alert_registry
         for key in ("release_pause_unreadable", "release_pause_unreadable_recovered"):
@@ -213,14 +215,14 @@ class ProofUnreadable(unittest.TestCase):
                 pushes.append(("comment", path))
             return {}
 
-        later = dt.datetime(2026, 11, 20, 8, 0, tzinfo=dt.timezone.utc)                           # five days open: a reminder would be due long ago
+        later = dt.datetime(2026, 11, 20, 8, 0, tzinfo=dt.timezone.utc)  # five days open: a reminder would be due long ago
         sync = lambda *a, **k: gate.sync_incident(*a, push=lambda title, body, severity, key: pushes.append((severity, key)) or True, now=later, **k)
         with mock.patch.object(gate, "_api", api):
             for _ in range(10):
                 ticker.proof_unreadable_incident("/x/m", lambda p: True, sync)
             self.assertEqual(pushes, [("page", "release_pause_unreadable")])
             ticker.proof_unreadable_incident("/x/m", lambda p: False, sync)
-            ticker.proof_unreadable_incident("/x/m", lambda p: False, sync)                       # nothing open: nothing more is sent
+            ticker.proof_unreadable_incident("/x/m", lambda p: False, sync)  # nothing open: nothing more is sent
             self.assertEqual(pushes[1:], [("info", "release_pause_unreadable_recovered")])
             ticker.proof_unreadable_incident("/x/m", lambda p: True, sync)
             self.assertEqual([p for p in pushes if p == ("page", "release_pause_unreadable")], [("page", "release_pause_unreadable")] * 2)
@@ -239,7 +241,7 @@ class ProofUnreadable(unittest.TestCase):
 
 
 class ReleaseProof(unittest.TestCase):
-    """LIFE-693: the watch proves each Close release with one dry quick run and pages once when it fails."""
+    """the watch proves each Close release with one dry quick run and pages once when it fails."""
     DEPLOYED, PREVIOUS = "b" * 40, "a" * 40
 
     def drive(self, runs=(), record="", paused=False, manifest=True, sync=None, logs=None):
@@ -309,7 +311,7 @@ class Watch(unittest.TestCase):
         calls, env = [], {}
         github = FakeGitHub({})
         code, _ = ticker.watch(TOKEN, TOPIC, github, run=lambda calls=calls, **k: calls.append(k), environ=env, store=STORE)
-        self.assertEqual((code, calls, github.requests), ("WATCH_DONE", [{"checkin": False}], []))        # GitHub is never asked for a switch
+        self.assertEqual((code, calls, github.requests), ("WATCH_DONE", [{"checkin": False}], []))  # GitHub is never asked for a switch
         self.assertEqual((env["ALERTS_ENABLED"], env["ALERT_SETTINGS"], env["GITHUB_REPOSITORY"], env["NTFY_TOPIC"]), ("on", '{"v":1}', "jimmarkunas/life-os-v7", TOPIC))
 
     def test_with_a_bitwarden_store_the_switches_come_from_it_and_github_is_not_asked_for_them(self):
@@ -367,7 +369,7 @@ class Watch(unittest.TestCase):
             gate.watch(now, push=lambda *a: sent.append(a) or True, checkin=False)
             self.assertEqual(sent, [])
             gate.watch(now, push=lambda *a: sent.append(a) or True)
-            self.assertEqual(len(sent), 1)                                                 # the GitHub watchdog keeps it
+            self.assertEqual(len(sent), 1)  # the GitHub watchdog keeps it
         finally:
             gate._api = old
 
@@ -419,7 +421,7 @@ class Units(unittest.TestCase):
         self.assertEqual(minutes, {5, 20, 35, 50})
         watchdog = yaml.safe_load((ROOT / ".github/workflows/watchdog.yml").read_text())
         github_minutes = {int(c["cron"].split()[0]) for c in watchdog[True]["schedule"]}
-        self.assertEqual(minutes & github_minutes, set())                                 # never both racing to open one incident
+        self.assertEqual(minutes & github_minutes, set())  # never both racing to open one incident
 
     def test_services_take_secrets_only_as_encrypted_credentials(self):
         for name, creds in (("lifeos-ticker-tick.service", {"github"}), ("lifeos-ticker-watch.service", {"github", "ntfy"})):
@@ -455,7 +457,8 @@ class Installer(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in ORACLE.glob("lifeos-ticker-*")), sorted(units))
 
     def test_verify_requires_a_real_timer_run_not_just_a_success_result(self):
-        """A never-run service reports Result=success and status 0, so `verify` must also require ExecMainStartTimestamp (LIFE-330, Nov 6 2026)."""
+        """A never-run service reports Result=success and status 0, so `verify` must also require ExecMainStartTimestamp.
+        """
         text = self.SCRIPT.read_text()
         self.assertIn("ExecMainStartTimestamp", text)
         self.assertIn("ran_ok lifeos-ticker-tick.service", text)
@@ -472,10 +475,12 @@ class Installer(unittest.TestCase):
             self.assertNotRegex((ROOT / "lifeos/platform" / m).read_text(), r"from lifeos\.(?!platform)", m)
 
     def test_the_tick_timer_and_its_installer_run_the_installed_tree_in_isolation(self):
-        """Copy exactly what `install` copies into a temporary /opt layout and run `dry` there with python -I: the imports resolve from the copy."""
+        """Copy exactly what `install` copies into a temporary /opt layout and run `dry` there with python -I: the
+        imports resolve from the copy.
+        """
         text = self.SCRIPT.read_text()
         modules = re.search(r'MODULES="([^"]+)"', text).group(1).split()
-        opt = Path(tempfile.mkdtemp()).resolve()                  # macOS temp is a symlink (/var -> /private/var); the probe prints the resolved path
+        opt = Path(tempfile.mkdtemp()).resolve()  # macOS temp is a symlink (/var -> /private/var)
         self.addCleanup(shutil.rmtree, opt)
         (opt / "lifeos/platform").mkdir(parents=True)
         shutil.copy(ROOT / "lifeos/edge/ticker/ticker.py", opt / "ticker.py")
@@ -485,7 +490,7 @@ class Installer(unittest.TestCase):
             shutil.copy(ROOT / "lifeos/platform" / m, opt / "lifeos/platform" / m)
         probe = "import runpy, sys; sys.argv = ['ticker.py']; g = runpy.run_path(sys.argv[0] if False else %r, run_name='probe'); " \
                 "import lifeos.platform.gate as gate, lifeos.platform.alerts as alerts; print(gate.__file__)" % str(opt / "ticker.py")
-        done = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, text=True, cwd=str(opt))             # LIFE-605: the interpreter running the tests, not whatever `python3` the host has first
+        done = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, text=True, cwd=str(opt))
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertTrue(done.stdout.strip().startswith(str(opt)), done.stdout)
 
