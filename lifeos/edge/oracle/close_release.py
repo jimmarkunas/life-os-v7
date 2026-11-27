@@ -5,6 +5,7 @@ git hashes match the commit tree; any surprise refuses before DEST is written. `
 trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved
 nodes.
 """
+
 import ast
 import hashlib
 import json
@@ -16,8 +17,18 @@ import urllib.request
 
 REPO = "jimmarkunas/life-os-v7"
 APP = "lifeos/sources/apps/close_app.py"
-EDGE = ("lifeos/__init__.py", "lifeos/edge/close_gate.py", "lifeos/imessage/__init__.py", "lifeos/imessage/alerts_endpoint.py", "lifeos/platform/__init__.py",
-        "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/hiring/__init__.py", "lifeos/sources/__init__.py", APP)
+EDGE = (
+    "lifeos/__init__.py",
+    "lifeos/edge/close_gate.py",
+    "lifeos/imessage/__init__.py",
+    "lifeos/imessage/alerts_endpoint.py",
+    "lifeos/platform/__init__.py",
+    "lifeos/platform/notion_client.py",
+    "lifeos/platform/limits.py",
+    "lifeos/hiring/__init__.py",
+    "lifeos/sources/__init__.py",
+    APP,
+)
 NOTION_ID = re.compile(r"[0-9a-f]{32}\Z")
 PATH = re.compile(r"lifeos(/[a-z0-9_]+)+\.py\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -49,9 +60,16 @@ def closure(app_source):
 def stage(commit, dest, fetch=get, importer=None):
     if not SHA.match(commit):
         raise Refused("NOT_A_COMMIT")
-    if json.loads(fetch(f"https://api.github.com/repos/{REPO}/compare/{commit}...main")).get("status") not in ("ahead", "identical"):
+    if json.loads(fetch(f"https://api.github.com/repos/{REPO}/compare/{commit}...main")).get("status") not in (
+        "ahead",
+        "identical",
+    ):
         raise Refused("NOT_ON_MAIN")
-    tree = {e.get("path"): e for e in json.loads(fetch(f"https://api.github.com/repos/{REPO}/git/trees/{commit}?recursive=1")).get("tree") or []}
+    tree = {
+        e.get("path"): e
+        for e in json.loads(fetch(f"https://api.github.com/repos/{REPO}/git/trees/{commit}?recursive=1")).get("tree")
+        or []
+    }
     raw = lambda p: fetch(f"https://raw.githubusercontent.com/{REPO}/{commit}/{p}")
     if APP not in tree:
         raise Refused("ENTRY_POINT_MISSING")
@@ -75,12 +93,35 @@ def stage(commit, dest, fetch=get, importer=None):
 
 
 def imports(dest):
-    code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.apps.close_app; "
-            "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")
+    code = (
+        f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.apps.close_app; "
+        "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))"
+    )
     probe = [sys.executable, "-I", "-B", "-c", code]
     if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):
-        probe = ["systemd-run", "--quiet", "--pipe", "--wait", "--collect", "-p", "DynamicUser=yes", "-p", "ProtectSystem=strict", "-p", "ProtectHome=yes",
-                 "-p", "PrivateNetwork=yes", "-p", "PrivateTmp=yes", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=", "-p", "RuntimeMaxSec=30"] + probe
+        probe = [
+            "systemd-run",
+            "--quiet",
+            "--pipe",
+            "--wait",
+            "--collect",
+            "-p",
+            "DynamicUser=yes",
+            "-p",
+            "ProtectSystem=strict",
+            "-p",
+            "ProtectHome=yes",
+            "-p",
+            "PrivateNetwork=yes",
+            "-p",
+            "PrivateTmp=yes",
+            "-p",
+            "NoNewPrivileges=yes",
+            "-p",
+            "CapabilityBoundingSet=",
+            "-p",
+            "RuntimeMaxSec=30",
+        ] + probe
     if subprocess.run(probe, capture_output=True, timeout=45).returncode != 0:
         raise Refused("CLOSURE_INCOMPLETE")
 
@@ -116,9 +157,25 @@ PROOF_EXIT = {"PROOF_PAUSED": 3, "PROOF_STATE_UNREADABLE": 4}
 
 
 def _runs(workflow, commit, fetch):
-    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?branch=main&head_sha={commit}&per_page=20")).get("workflow_runs") or []
-    return sorted((r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("path") == f".github/workflows/{workflow}"),
-                  key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0), reverse=True)
+    runs = (
+        json.loads(
+            fetch(
+                f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?branch=main&head_sha={commit}&per_page=20"
+            )
+        ).get("workflow_runs")
+        or []
+    )
+    return sorted(
+        (
+            r
+            for r in runs
+            if r.get("head_sha") == commit
+            and r.get("head_branch") == "main"
+            and r.get("path") == f".github/workflows/{workflow}"
+        ),
+        key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0),
+        reverse=True,
+    )
 
 
 def proof_pause(fetch=get):
@@ -127,8 +184,10 @@ def proof_pause(fetch=get):
     it cannot read: never deploy on an unknown state. A pull request carrying the label is not the flag.
     """
     try:
-        issues = json.loads(fetch(f"https://api.github.com/repos/{REPO}/issues?state=open&labels={FLAG_LABEL}&per_page=30"))
-    except Exception:                                                   # noqa: BLE001
+        issues = json.loads(
+            fetch(f"https://api.github.com/repos/{REPO}/issues?state=open&labels={FLAG_LABEL}&per_page=30")
+        )
+    except Exception:  # noqa: BLE001
         raise Refused("PROOF_STATE_UNREADABLE") from None
     if not isinstance(issues, list) or not all(isinstance(i, dict) for i in issues):
         raise Refused("PROOF_STATE_UNREADABLE")
@@ -162,7 +221,7 @@ def hourly_report(commit, fetch=get):
                 return "running"
             return "green" if run.get("conclusion") == "success" else "red"
         return "none"
-    except Exception:                                                   # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return "unknown"
 
 
@@ -194,11 +253,18 @@ def serve_state(text, tailnet="47443", local="47344"):
     if not isinstance(cfg, dict) or not all(isinstance(cfg.get(k, {}), dict) for k in ("TCP", "AllowFunnel", "Web")):
         return "unknown"
     h = (cfg.get("TCP") or {}).get(tailnet)
-    if any(v and str(k).endswith(":" + tailnet) for k, v in (cfg.get("AllowFunnel") or {}).items()) or any(str(k).endswith(":" + tailnet) for k in cfg.get("Web") or {}):
+    if any(v and str(k).endswith(":" + tailnet) for k, v in (cfg.get("AllowFunnel") or {}).items()) or any(
+        str(k).endswith(":" + tailnet) for k in cfg.get("Web") or {}
+    ):
         return "other"
     if h is None:
         return "free"
-    ours = isinstance(h, dict) and h.get("TCPForward") == "127.0.0.1:" + local and h.get("ProxyProtocol") == 2 and bool(h.get("TerminateTLS"))
+    ours = (
+        isinstance(h, dict)
+        and h.get("TCPForward") == "127.0.0.1:" + local
+        and h.get("ProxyProtocol") == 2
+        and bool(h.get("TerminateTLS"))
+    )
     return "ours" if ours else "other"
 
 

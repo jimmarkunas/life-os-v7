@@ -7,6 +7,7 @@ only ({"ok": true, "new", "changed", "unfiled", "duplicates", "missing_metadata"
 check) and never reads a file's content, name, id or link. Codes: DRIVE_BAD_FRAME, DRIVE_NOT_CONFIGURED,
 DRIVE_WRONG_ACCOUNT, DRIVE_CONSENT_REVOKED, DRIVE_UNAVAILABLE. Stdlib only.
 """
+
 import json
 import os
 import re
@@ -14,14 +15,19 @@ import sys
 
 try:
     from lifeos.platform import drive_week, google_read
-except ImportError:                                             # on Oracle both are installed beside this file (lifeos/platform/drive_week.py and google_read.py)
+except ImportError:  # on Oracle both are installed beside this file (lifeos/platform/drive_week.py and google_read.py)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import drive_week
     import google_read
 
 ACCOUNT = "personal"
 REQUEST = re.compile(rb"^drive1 ([1-9]|1[0-4])\n$")
-CODES = {"wrong_account": "DRIVE_WRONG_ACCOUNT", "consent_revoked": "DRIVE_CONSENT_REVOKED", "not_configured": "DRIVE_NOT_CONFIGURED", "scope_missing": "DRIVE_CONSENT_REVOKED"}
+CODES = {
+    "wrong_account": "DRIVE_WRONG_ACCOUNT",
+    "consent_revoked": "DRIVE_CONSENT_REVOKED",
+    "not_configured": "DRIVE_NOT_CONFIGURED",
+    "scope_missing": "DRIVE_CONSENT_REVOKED",
+}
 
 
 def creds_from(directory):
@@ -31,10 +37,19 @@ def creds_from(directory):
                 return handle.read().strip()
         except OSError:
             return ""
-    client_id, client_secret, refresh = read("google_read_client_id"), read("google_read_client_secret"), read("google_read_personal_drive_refresh")
+
+    client_id, client_secret, refresh = (
+        read("google_read_client_id"),
+        read("google_read_client_secret"),
+        read("google_read_personal_drive_refresh"),
+    )
     if not (client_id and client_secret and refresh):
         return None
-    return lambda account, service: {"client_id": client_id, "client_secret": client_secret, "refresh_token": refresh} if (account, service) == (ACCOUNT, "drive") else None
+    return lambda account, service: (
+        {"client_id": client_id, "client_secret": client_secret, "refresh_token": refresh}
+        if (account, service) == (ACCOUNT, "drive")
+        else None
+    )
 
 
 def answer(raw, creds, opener=None):
@@ -48,7 +63,7 @@ def answer(raw, creds, opener=None):
         return {"ok": True, **drive_week.summary(google, ACCOUNT, int(match.group(1)))}
     except google_read.GoogleError as error:
         return {"ok": False, "code": CODES.get(getattr(error, "reason", ""), "DRIVE_UNAVAILABLE")}
-    except Exception:                                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {"ok": False, "code": "DRIVE_UNAVAILABLE"}
 
 

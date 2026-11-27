@@ -11,6 +11,7 @@ through
 Codes: restore_key_source, restore_key_fetch, restore_key_import, restore_no_ram, restore_decrypt, plus the
 verify_restore codes. Stdlib plus `gpg` and `bws` or `bw`.
 """
+
 import contextlib
 import getpass
 import hashlib
@@ -51,7 +52,9 @@ def ram_folder(run=subprocess.run, platform=sys.platform, mb=RAM_MB):
             shutil.rmtree(path, ignore_errors=True)
         return
     if platform == "darwin":
-        attach = run(["hdiutil", "attach", "-nomount", "ram://%d" % (mb * 2048)], capture_output=True, text=True, timeout=60)
+        attach = run(
+            ["hdiutil", "attach", "-nomount", "ram://%d" % (mb * 2048)], capture_output=True, text=True, timeout=60
+        )
         device = (attach.stdout.split() or [""])[0]
         if attach.returncode != 0 or not device.startswith("/dev/"):
             raise CheckError("restore_no_ram")
@@ -122,7 +125,7 @@ def manifest_hash(archive, prefix):
         for member in tar.getmembers():
             if member.isreg() and member.name.startswith(prefix):
                 digest = hashlib.sha256(tar.extractfile(member).read()).hexdigest()
-                lines.append("%s %d %s" % (member.name[len(prefix):], member.size, digest))
+                lines.append("%s %d %s" % (member.name[len(prefix) :], member.size, digest))
     return len(lines), hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()
 
 
@@ -131,11 +134,20 @@ def check_archive(plain, work):
     return {"files": report["files"], "databases": len(report["databases"])}
 
 
-def run_check(archive, source, run=subprocess.run, ram=ram_folder, platform=sys.platform, out=sys.stdout, manifests=(), passphrase=None):
+def run_check(
+    archive,
+    source,
+    run=subprocess.run,
+    ram=ram_folder,
+    platform=sys.platform,
+    out=sys.stdout,
+    manifests=(),
+    passphrase=None,
+):
     try:
         if not os.path.isfile(archive):
             raise CheckError("restore_no_archive")
-        with (ram(run=run, platform=platform) if ram is ram_folder else ram()) as folder:
+        with ram(run=run, platform=platform) if ram is ram_folder else ram() as folder:
             key = fetch_key(source, run)
             import_key(folder, key, run)
             del key
@@ -169,7 +181,10 @@ def run_check(archive, source, run=subprocess.run, ram=ram_folder, platform=sys.
                 for prefix in manifests:
                     n, h = manifest_hash(plain, prefix)
                     if n:
-                        result["%s_manifest_%s" % (label, prefix.strip("/").replace("/", "_"))] = "%d files, %s" % (n, h[:16])
+                        result["%s_manifest_%s" % (label, prefix.strip("/").replace("/", "_"))] = "%d files, %s" % (
+                            n,
+                            h[:16],
+                        )
         out.write("PASS " + " ".join("%s=%s" % kv for kv in sorted(result.items())) + "\n")
         return 0
     except (CheckError, vr.RestoreError) as error:
@@ -205,7 +220,9 @@ def main(argv=None, out=sys.stdout):
     if archive and not source and os.path.isfile(ID_FILE):
         source = ("bws", open(ID_FILE).read().strip())
     if not archive or not source:
-        out.write("usage: restore_check ARCHIVE.gpg (--bws-secret SECRET_ID | --bw-item NAME) [--passphrase-prompt | --passphrase-bws ID | --passphrase-bw NAME] [--manifest code/lifeos-fit/ ...]\n")
+        out.write(
+            "usage: restore_check ARCHIVE.gpg (--bws-secret SECRET_ID | --bw-item NAME) [--passphrase-prompt | --passphrase-bws ID | --passphrase-bw NAME] [--manifest code/lifeos-fit/ ...]\n"
+        )
         return 2
     return run_check(archive, source, out=out, manifests=tuple(manifests), passphrase=passphrase)
 

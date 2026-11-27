@@ -5,6 +5,7 @@
 Everything that is copied to the host comes out of `git show <commit>:<path>` (default HEAD): the two new unit files, attention.mjs, state.mjs, package.json and package-lock.json (the pinned Baileys
 tree itself is NOT in the pack: the steps copy the installed, lock-verified tree on the host), the repointed endpoint and the Oracle card script. The steps and helpers are the ones in pack/.
 `--root-prefix` is for tests only: every host path in the pack moves under DIR."""
+
 import json
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
-FROM_GIT = {                                   # name in the pack's files/  ->  path in the repo
+FROM_GIT = {  # name in the pack's files/  ->  path in the repo
     "lifeos-wa-attention.service": "lifeos/whatsapp/oracle/lifeos-wa-attention.service",
     "lifeos-wa-attention.socket": "lifeos/whatsapp/oracle/lifeos-wa-attention.socket",
     "attention.mjs": "lifeos/whatsapp/oracle/attention.mjs",
@@ -42,11 +43,16 @@ def build(out, commit="HEAD", prefix=""):
         (out / "files" / name).write_bytes(git("show", f"{commit}:{path}"))
     if prefix:
         (out / "files" / "ROOT").write_text(prefix + "\n")
-    manifest = {"schema": 1, "ticket": "LIFE-643",
-                "steps": ["steps/10-preflight.sh", "steps/20-prepare.sh", "steps/30-switch.sh", "steps/40-readback.sh"],
-                "restore": {"files": [prefix + ENDPOINT_HOST_PATH, prefix + STATS_HOST_PATH],
-                            "services": ["lifeos-wa-attention.socket", "lifeos-wa-attention.service"]},
-                "step_timeout_seconds": 600}
+    manifest = {
+        "schema": 1,
+        "ticket": "LIFE-643",
+        "steps": ["steps/10-preflight.sh", "steps/20-prepare.sh", "steps/30-switch.sh", "steps/40-readback.sh"],
+        "restore": {
+            "files": [prefix + ENDPOINT_HOST_PATH, prefix + STATS_HOST_PATH],
+            "services": ["lifeos-wa-attention.socket", "lifeos-wa-attention.service"],
+        },
+        "step_timeout_seconds": 600,
+    }
     (out / "pack.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return sha
 
