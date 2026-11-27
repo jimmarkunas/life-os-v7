@@ -3,6 +3,7 @@
 Notion applies the template after the create returns, so the caller writes its blocks once `WAIT` seconds have passed
 and the template's empty filler paragraph is gone.
 """
+
 import time
 from urllib.parse import quote
 
@@ -27,8 +28,11 @@ def create(client, parent_id, title, emoji=None, wait=None, post=None):
     """
     if not configured_id(NAME):
         raise FullWidthError("FULL_WIDTH_TEMPLATE_MISSING")
-    body = {"parent": {"type": "page_id", "page_id": parent_id}, "properties": {"title": {"type": "title", "title": rich_text(title)}},
-            "template": {"type": "template_id", "template_id": template_id()}}
+    body = {
+        "parent": {"type": "page_id", "page_id": parent_id},
+        "properties": {"title": {"type": "title", "title": rich_text(title)}},
+        "template": {"type": "template_id", "template_id": template_id()},
+    }
     if emoji:
         body["icon"] = {"type": "emoji", "emoji": emoji}
     page = (post or client.call_once)("POST", "/pages", body)["id"]
@@ -46,12 +50,12 @@ def create_page(client, parent_id, title, blocks, emoji=None, wait=None, post=No
     page = create(client, parent_id, title, emoji, wait, post)
     try:
         for start in range(0, len(blocks), BATCH):
-            post("PATCH", f"/blocks/{quote(page, safe='')}/children", {"children": blocks[start:start + BATCH]})
+            post("PATCH", f"/blocks/{quote(page, safe='')}/children", {"children": blocks[start : start + BATCH]})
         clear_filler(client, page)
     except Exception:
         try:
             post("PATCH", f"/pages/{quote(page, safe='')}", {"archived": True})
-        except Exception:                                        # noqa: BLE001 - best effort; the original failure is the one to report
+        except Exception:  # noqa: BLE001 - best effort; the original failure is the one to report
             pass
         raise
     return {"id": page}
@@ -66,7 +70,11 @@ def clear_filler(client, page_id):
     while gone < FILLER_MAX and len(top) - gone > 1:
         block = top[gone]
         runs = (block.get("paragraph") or {}).get("rich_text") or []
-        if block.get("type") != "paragraph" or block.get("has_children") or any((r.get("plain_text") or (r.get("text") or {}).get("content") or "").strip() for r in runs):
+        if (
+            block.get("type") != "paragraph"
+            or block.get("has_children")
+            or any((r.get("plain_text") or (r.get("text") or {}).get("content") or "").strip() for r in runs)
+        ):
             break
         client.call("DELETE", f"/blocks/{quote(block['id'], safe='')}")
         gone += 1

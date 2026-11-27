@@ -7,6 +7,7 @@ default channels; an invalid document, unknown key or unknown channel is ignored
 phone. The page that edits it is served by the Close service (lifeos/sources/apps/alerts_app.py); this module is the
 one reader.
 """
+
 import json
 import os
 

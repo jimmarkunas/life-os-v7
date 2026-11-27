@@ -8,6 +8,7 @@ one `doppler-compare: {...}` line (counts, NAMES, a fixed code, Doppler read tim
 `matched`, `total`, `doppler_ms`. Codes: match, mismatch, missing_in_doppler, missing_in_bitwarden,
 doppler_unauthorized, doppler_unreachable, doppler_bad_reply, bad_input. A problem is a code and exit 0.
 """
+
 import hashlib
 import hmac
 import json
@@ -27,9 +28,11 @@ def fetch(token, project, config, timeout=TIMEOUT_SECONDS):
     returned in a code.
     """
     query = urllib.parse.urlencode({"format": "json", "project": project, "config": config})
-    request = urllib.request.Request(f"{URL}?{query}", headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    request = urllib.request.Request(
+        f"{URL}?{query}", headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as reply:                    # noqa: S310 - a fixed https URL
+        with urllib.request.urlopen(request, timeout=timeout) as reply:  # noqa: S310 - a fixed https URL
             data = json.loads(reply.read().decode())
     except urllib.error.HTTPError as error:
         return ("doppler_unauthorized" if error.code in (401, 403) else "doppler_unreachable"), None
@@ -67,14 +70,26 @@ def compare(names, bitwarden, doppler):
 
 def main(environ=os.environ, fetcher=fetch, clock=time.monotonic, out=print):
     names = [n.strip() for n in str(environ.get("COMPARE_NAMES", "")).split(",") if n.strip()]
-    token, project, config = environ.get("DOPPLER_TOKEN", ""), environ.get("DOPPLER_PROJECT", ""), environ.get("DOPPLER_CONFIG", "")
+    token, project, config = (
+        environ.get("DOPPLER_TOKEN", ""),
+        environ.get("DOPPLER_PROJECT", ""),
+        environ.get("DOPPLER_CONFIG", ""),
+    )
     try:
         bitwarden = json.loads(environ.get("BITWARDEN") or "{}")
         if not isinstance(bitwarden, dict):
             raise ValueError("not an object")
     except ValueError:
         bitwarden = None
-    result = {"code": "bad_input", "total": len(names), "matched": 0, "mismatched": [], "missing_in_doppler": [], "missing_in_bitwarden": [], "doppler_ms": None}
+    result = {
+        "code": "bad_input",
+        "total": len(names),
+        "matched": 0,
+        "mismatched": [],
+        "missing_in_doppler": [],
+        "missing_in_bitwarden": [],
+        "doppler_ms": None,
+    }
     if names and token and project and config and bitwarden is not None:
         started = clock()
         status, doppler = fetcher(token, project, config)
@@ -86,8 +101,21 @@ def main(environ=os.environ, fetcher=fetch, clock=time.monotonic, out=print):
                 if value:
                     out(f"::add-mask::{value}")
             found = compare(names, bitwarden, doppler)
-            result.update(matched=len(found["matched"]), mismatched=found["mismatched"], missing_in_doppler=found["missing_in_doppler"], missing_in_bitwarden=found["missing_in_bitwarden"])
-            result["code"] = "match" if result["matched"] == len(names) else "missing_in_bitwarden" if found["missing_in_bitwarden"] else "missing_in_doppler" if found["missing_in_doppler"] else "mismatch"
+            result.update(
+                matched=len(found["matched"]),
+                mismatched=found["mismatched"],
+                missing_in_doppler=found["missing_in_doppler"],
+                missing_in_bitwarden=found["missing_in_bitwarden"],
+            )
+            result["code"] = (
+                "match"
+                if result["matched"] == len(names)
+                else "missing_in_bitwarden"
+                if found["missing_in_bitwarden"]
+                else "missing_in_doppler"
+                if found["missing_in_doppler"]
+                else "mismatch"
+            )
     out("doppler-compare: " + json.dumps(result, sort_keys=True))
     lines = f"code={result['code']}\nmatched={result['matched']}\ntotal={result['total']}\ndoppler_ms={result['doppler_ms'] if result['doppler_ms'] is not None else ''}\n"
     summary = f"### Doppler trial (LIFE-863)\n\n- Code: {result['code']}\n- Matched: {result['matched']} of {result['total']}\n- Doppler read: {result['doppler_ms']} ms\n"

@@ -5,6 +5,7 @@ one stage; its exception is a BaseException, so a stage's own `except Exception`
 blocks still run. Where a run already has an alarm (the Jobs tick gives each stage its own), the guard stays out of
 the way. Counts carry the fixed code and the two numbers only.
 """
+
 import json
 import os
 import signal
@@ -43,8 +44,13 @@ def guard(seconds, environ=None):
     another alarm is armed.
     """
     environ = os.environ if environ is None else environ
-    if (environ.get("STAGE_BUDGETS") == "off" or not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread()
-            or signal.getsignal(signal.SIGALRM) not in (signal.SIG_DFL, signal.SIG_IGN, None) or signal.getitimer(signal.ITIMER_REAL)[0] > 0):
+    if (
+        environ.get("STAGE_BUDGETS") == "off"
+        or not hasattr(signal, "setitimer")
+        or threading.current_thread() is not threading.main_thread()
+        or signal.getsignal(signal.SIGALRM) not in (signal.SIG_DFL, signal.SIG_IGN, None)
+        or signal.getitimer(signal.ITIMER_REAL)[0] > 0
+    ):
         yield
         return
     previous = signal.signal(signal.SIGALRM, _alarm)
@@ -60,5 +66,11 @@ def over_budget(seconds, elapsed, required):
     """-> (counts, exit code) for a stage the alarm stopped: required stages fail the run with the fixed code, optional
     ones record it and pass.
     """
-    counts = {"stage_budget_exceeded": 1, "code": CODE, "budget_seconds": int(seconds), "elapsed_seconds": int(elapsed), "required": bool(required)}
+    counts = {
+        "stage_budget_exceeded": 1,
+        "code": CODE,
+        "budget_seconds": int(seconds),
+        "elapsed_seconds": int(elapsed),
+        "required": bool(required),
+    }
     return counts, (1 if required else 0)

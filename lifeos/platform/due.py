@@ -8,6 +8,7 @@ On a tick a job is due when its row says so; otherwise every job is due. The las
 every_hours: due when now minus that time >= hours minus SLACK. slots_ct: due when a CT slot (HH:MM) has passed since
 it. No success in the history: due; several missed slots: due once. Unreadable history: every job is due (fail open).
 """
+
 import datetime as dt
 import io
 import json
@@ -60,7 +61,9 @@ def slot_passed(slots, last, now):
         date = (local - dt.timedelta(days=day)).date()
         for slot in slots:
             hour, minute = (int(x) for x in slot.split(":"))
-            moment = dt.datetime(date.year, date.month, date.day, hour, minute, tzinfo=CENTRAL).astimezone(dt.timezone.utc)
+            moment = dt.datetime(date.year, date.month, date.day, hour, minute, tzinfo=CENTRAL).astimezone(
+                dt.timezone.utc
+            )
             if last < moment <= now:
                 return True
     return False
@@ -90,9 +93,13 @@ def needs_history(table):
 
 
 def fetch_last_success(wanted, api=gate._api):
-    runs = api(f"actions/workflows/domains.yml/runs?status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])  # the title tells after-tick runs from a manual run
+    runs = api(f"actions/workflows/domains.yml/runs?status=completed&per_page={HISTORY_RUNS}").get(
+        "workflow_runs", []
+    )  # the title tells after-tick runs from a manual run
     runs = [run for run in runs if run.get("display_title") == gate.DOMAINS_TITLE]
-    return last_success(runs, lambda run: api(f"actions/runs/{run['id']}/jobs?per_page=100").get("jobs", []), set(wanted))
+    return last_success(
+        runs, lambda run: api(f"actions/runs/{run['id']}/jobs?per_page=100").get("jobs", []), set(wanted)
+    )
 
 
 STAGE_OK = re.compile(r"\bstage (\S+): ok ")
@@ -103,13 +110,17 @@ class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
         if new is not None:
-            new.headers.pop("Authorization", None)  # the log archive lives on another host: the token is never sent there
+            new.headers.pop(
+                "Authorization", None
+            )  # the log archive lives on another host: the token is never sent there
         return new
 
 
 def _log_text(run_id, environ=os.environ):
-    request = urllib.request.Request(f"https://api.github.com/repos/{environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/logs",
-                                     headers={"Authorization": f"Bearer {environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json"})
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/logs",
+        headers={"Authorization": f"Bearer {environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json"},
+    )
     with urllib.request.build_opener(_NoAuthRedirect).open(request, timeout=60) as response:
         archive = zipfile.ZipFile(io.BytesIO(response.read()))
     return "\n".join(archive.read(name).decode("utf-8", "replace") for name in archive.namelist())
@@ -141,7 +152,7 @@ def stage_decisions(table, environ=os.environ, now=None, api=gate._api, log_text
     if needs_history(table):
         try:
             last = fetch_stage_success(table, api, log_text)
-        except Exception as error:                                          # noqa: BLE001 - any failure to read history means "run everything" and says so
+        except Exception as error:  # noqa: BLE001 - any failure to read history means "run everything" and says so
             print(f"due: stage history unreadable ({type(error).__name__}); every stage is due")
             ok = False
     result = {name: (True, "history unreadable") for name in table} if not ok else decide(table, last, now)
@@ -153,7 +164,9 @@ def split_plan(plan, environ=None, decisions=None):
     Stages with no row always run.
     """
     table = load_stages()
-    result = decisions if decisions is not None else stage_decisions(table, os.environ if environ is None else environ)[0]
+    result = (
+        decisions if decisions is not None else stage_decisions(table, os.environ if environ is None else environ)[0]
+    )
     left = [(step, result[step.name][1]) for step in plan if step.name in table and not result[step.name][0]]
     skipped = {step.name for step, _ in left}
     return tuple(step for step in plan if step.name not in skipped), left
@@ -171,7 +184,10 @@ def summary(result, last, failed_open):
     if failed_open:
         lines += ["**History unreadable: every job is due (fail open).**", ""]
     lines += ["| Job | Rule | Last success (start of that run) | This run |", "|---|---|---|---|"]
-    lines += [f"| {job} | {why} | {local_text(last.get(job))} | {'due' if due else 'skipped'} |" for job, (due, why) in sorted(result.items())]
+    lines += [
+        f"| {job} | {why} | {local_text(last.get(job))} | {'due' if due else 'skipped'} |"
+        for job, (due, why) in sorted(result.items())
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -183,7 +199,7 @@ def main(environ=os.environ, api=gate._api, now=None, table=None):
     if tick and needs_history(table):
         try:
             last = fetch_last_success(table, api)
-        except Exception as error:                                          # noqa: BLE001 - any failure to read history means "run everything" and says so
+        except Exception as error:  # noqa: BLE001 - any failure to read history means "run everything" and says so
             print(f"due: history unreadable ({type(error).__name__}); every job is due")
             failed_open = True
     result = {job: (True, "history unreadable") for job in table} if failed_open else decide(table, last, now, tick)

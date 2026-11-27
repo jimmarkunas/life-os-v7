@@ -21,18 +21,34 @@ CENTRAL = ZoneInfo("America/Chicago")
 MAX_AGE = timedelta(days=7)
 PROOF_TTL = timedelta(hours=1)
 STATUSES = ("manual-only", "configured-untested", "not-reachable", "routable-verified")
-KINDS = {"Client Surface": "client_surface", "Community Identity": "agent_identity", "Bot Profile": "agent_identity", "Agent Session": "agent_session", "Persona": "persona"}
+KINDS = {
+    "Client Surface": "client_surface",
+    "Community Identity": "agent_identity",
+    "Bot Profile": "agent_identity",
+    "Agent Session": "agent_session",
+    "Persona": "persona",
+}
 PLATFORMS = ("Claude", "ChatGPT", "Buzz", "Orca", "Hermes", "Meta")
 SPACES = ("Personal", "Bytalos", "TGP", "Unknown")
 GRANTABLE_SPACES = ("Personal", "Bytalos")  # TGP is never inferred from a label: it needs its own isolated grant
 AGENT_ID = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 FULL_NPUB = re.compile(r"npub1[02-9ac-hj-np-z]{58}")
-SECRET = re.compile(r"nsec1[02-9ac-hj-np-z]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|bws?_[A-Za-z0-9]{20,})\b|(?i:(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,})")
-TEXT_FIELDS = ("Agent", "Identity Alias", "Invocation Route", "Permission Boundary", "Capabilities", "Related Identity", "Notes", "Source Reference")
+SECRET = re.compile(
+    r"nsec1[02-9ac-hj-np-z]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|bws?_[A-Za-z0-9]{20,})\b|(?i:(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,})"
+)
+TEXT_FIELDS = (
+    "Agent",
+    "Identity Alias",
+    "Invocation Route",
+    "Permission Boundary",
+    "Capabilities",
+    "Related Identity",
+    "Notes",
+    "Source Reference",
+)
 
 
 class DirectoryError(ValueError):
-
     def __init__(self, reason):
         super().__init__(reason)
         self.reason = reason
@@ -95,7 +111,9 @@ def _text(row, field):
 def _when(text):
     try:
         if len(text) == 10:
-            return datetime.combine(date.fromisoformat(text), datetime.min.time(), tzinfo=CENTRAL)  # a date-only "last checked" counts from the start of that Central day
+            return datetime.combine(
+                date.fromisoformat(text), datetime.min.time(), tzinfo=CENTRAL
+            )  # a date-only "last checked" counts from the start of that Central day
         when = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         raise DirectoryError("bad_last_checked") from None
@@ -133,8 +151,23 @@ def _entry(row):
     if not last:
         raise DirectoryError("bad_last_checked")
     alias = _text(row, "Identity Alias")
-    return Entry(agent_id, _text(row, "Agent"), KINDS[record_type], record_type, platform, _text(row, "Host") or "Unknown", _text(row, "Interface"), _spaces(row.get("Space")), _text(row, "Evidence") or "Unverified",
-                 _text(row, "Discovery State") or "Candidate", _text(row, "Reachability") or "Unknown", FULL_NPUB.sub(lambda m: "npub…" + m.group(0)[-3:], alias), _text(row, "Invocation Route"), _text(row, "Permission Boundary"), _when(last))
+    return Entry(
+        agent_id,
+        _text(row, "Agent"),
+        KINDS[record_type],
+        record_type,
+        platform,
+        _text(row, "Host") or "Unknown",
+        _text(row, "Interface"),
+        _spaces(row.get("Space")),
+        _text(row, "Evidence") or "Unverified",
+        _text(row, "Discovery State") or "Candidate",
+        _text(row, "Reachability") or "Unknown",
+        FULL_NPUB.sub(lambda m: "npub…" + m.group(0)[-3:], alias),
+        _text(row, "Invocation Route"),
+        _text(row, "Permission Boundary"),
+        _when(last),
+    )
 
 
 def build(rows, source, now, principal=""):
@@ -167,7 +200,7 @@ def load(fetch, policy, principal, now, source="notion:life-os-agent-directory")
         raise DirectoryError("grant_denied")
     try:
         rows = fetch()
-    except Exception:                                                                      # noqa: BLE001 - the type and text of a connector failure are never kept
+    except Exception:  # noqa: BLE001 - the type and text of a connector failure are never kept
         raise DirectoryError("directory_unavailable") from None
     return build(rows, source, now, principal)
 
@@ -257,11 +290,37 @@ def snapshot(directory, now, proofs=(), max_age=MAX_AGE):
     for entry in directory.entries:
         proof = next((p for p in proofs if isinstance(p, Proof) and p.agent_id == entry.agent_id), None)
         status, reason = status_of(entry, now, proof, max_age)
-        out.append({"agent_id": entry.agent_id, "kind": entry.kind, "record_type": entry.record_type, "platform": entry.platform, "host": entry.host, "interface": entry.interface,
-                    "spaces": list(entry.spaces), "alias": entry.alias, "evidence": entry.evidence, "discovery_state": entry.discovery_state, "reachability_claimed": entry.reachability,
-                    "status": status, "reason": reason, "last_checked": entry.last_checked.isoformat(), "stale": is_stale(entry, now, max_age)})
-    return {"version": 1, "source": directory.source, "read_at": directory.read_at.isoformat(), "snapshot_at": now.isoformat(), "max_age_days": max_age.days,
-            "principal": directory.principal[:8], "count": len(out), "authorizes": [], "note": "catalog only: a listed agent is not online, reachable or permitted; verify the session and grants before any routing", "entries": out}
+        out.append(
+            {
+                "agent_id": entry.agent_id,
+                "kind": entry.kind,
+                "record_type": entry.record_type,
+                "platform": entry.platform,
+                "host": entry.host,
+                "interface": entry.interface,
+                "spaces": list(entry.spaces),
+                "alias": entry.alias,
+                "evidence": entry.evidence,
+                "discovery_state": entry.discovery_state,
+                "reachability_claimed": entry.reachability,
+                "status": status,
+                "reason": reason,
+                "last_checked": entry.last_checked.isoformat(),
+                "stale": is_stale(entry, now, max_age),
+            }
+        )
+    return {
+        "version": 1,
+        "source": directory.source,
+        "read_at": directory.read_at.isoformat(),
+        "snapshot_at": now.isoformat(),
+        "max_age_days": max_age.days,
+        "principal": directory.principal[:8],
+        "count": len(out),
+        "authorizes": [],
+        "note": "catalog only: a listed agent is not online, reachable or permitted; verify the session and grants before any routing",
+        "entries": out,
+    }
 
 
 def hermes_profiles(allowlist_text):

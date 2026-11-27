@@ -3,6 +3,7 @@
 Counts and flags only; URLs are never logged. Used by probes first; a registry source opts in only after a probe
 proves the route.
 """
+
 import json
 from urllib.parse import quote
 
@@ -16,9 +17,10 @@ def honest(url, **kwargs):
 
 
 def reader_proxy(url, timeout=40):
-    """Jina Reader (r.jina.ai): a free public service that fetches the page from its own network. Rate limited; no key.
-    """
-    return fetch("https://r.jina.ai/" + url, timeout=timeout, headers={"Accept": "text/plain", "X-Return-Format": "html"})
+    """Jina Reader (r.jina.ai): a free public service that fetches the page from its own network. Rate limited; no key."""
+    return fetch(
+        "https://r.jina.ai/" + url, timeout=timeout, headers={"Accept": "text/plain", "X-Return-Format": "html"}
+    )
 
 
 def wayback(url, timeout=30):

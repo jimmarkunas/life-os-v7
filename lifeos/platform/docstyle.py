@@ -11,6 +11,7 @@ THE STANDARD (this docstring is the one place it is written):
 THE CHECK: `problems(source, is_init)` returns fixed codes; `python -m lifeos.platform.docstyle [--strict] [path ...]`
 prints a count per package. tests/platform/test_docstyle.py fails for any ENFORCED package file not listed in EXEMPT.
 """
+
 # TOTAL_MAX comes from the longest module in the pilot package (lifeos/buzz, about 1,000 characters; median about
 # 330).
 import ast
@@ -20,21 +21,46 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FIRST_LINE_MAX = 170
 TOTAL_MAX = 1200
-ENFORCED = ("lifeos/accountability", "lifeos/agenda", "lifeos/amazon", "lifeos/bills", "lifeos/buzz", "lifeos/calendar_bridge", "lifeos/dcc", "lifeos/delivery", "lifeos/hiring", "lifeos/imessage", "lifeos/inbox", "lifeos/interview", "lifeos/jira",
-            "lifeos/jobs", "lifeos/megibow", "lifeos/network", "lifeos/oraclecloud", "lifeos/outlook", "lifeos/physmail", "lifeos/platform", "lifeos/recruiters", "lifeos/sources", "lifeos/telegram")
+ENFORCED = (
+    "lifeos/accountability",
+    "lifeos/agenda",
+    "lifeos/amazon",
+    "lifeos/bills",
+    "lifeos/buzz",
+    "lifeos/calendar_bridge",
+    "lifeos/dcc",
+    "lifeos/delivery",
+    "lifeos/hiring",
+    "lifeos/imessage",
+    "lifeos/inbox",
+    "lifeos/interview",
+    "lifeos/jira",
+    "lifeos/jobs",
+    "lifeos/megibow",
+    "lifeos/network",
+    "lifeos/oraclecloud",
+    "lifeos/outlook",
+    "lifeos/physmail",
+    "lifeos/platform",
+    "lifeos/recruiters",
+    "lifeos/sources",
+    "lifeos/telegram",
+)
 # Files installed on the Oracle VM (or protected): a docstring edit changes the file's hash, so the deploy-drift check
 # shows DRIFT until a script pack is run. They stay exempt until a pack touches them anyway; then conform them and
 # delete the entry (the test fails if an entry becomes unnecessary). A path ending in "/" exempts the whole folder.
-EXEMPT = {"lifeos/edge/": "installed on the Oracle VM and the Mac helper (runner, secrets, buzzguard, close gate, backup, ticker, whatsapp packs)",
-          "lifeos/whatsapp/oracle/": "installed on the Oracle VM (LIFE-643)",
-          "lifeos/telegram/attention.py": "installed on the Oracle VM",
-          "lifeos/imessage/alerts_endpoint.py": "installed on the Oracle VM",
-          "lifeos/imessage/openclaw_imessage.py": "installed on the Oracle VM",
-          "lifeos/imessage/attention_mcp.py": "hash-pinned for the Mac helper that holds Full Disk Access",
-          "lifeos/platform/gate.py": "installed on the Oracle VM for the ticker (drift check)",
-          "lifeos/platform/alert_registry.py": "installed on the Oracle VM for the ticker (drift check)",
-          "lifeos/platform/alert_settings.py": "installed on the Oracle VM for the ticker (drift check)",
-          "lifeos/platform/alert_store.py": "installed on the Oracle VM for the ticker (reads the alert switches from Bitwarden)"}
+EXEMPT = {
+    "lifeos/edge/": "installed on the Oracle VM and the Mac helper (runner, secrets, buzzguard, close gate, backup, ticker, whatsapp packs)",
+    "lifeos/whatsapp/oracle/": "installed on the Oracle VM (LIFE-643)",
+    "lifeos/telegram/attention.py": "installed on the Oracle VM",
+    "lifeos/imessage/alerts_endpoint.py": "installed on the Oracle VM",
+    "lifeos/imessage/openclaw_imessage.py": "installed on the Oracle VM",
+    "lifeos/imessage/attention_mcp.py": "hash-pinned for the Mac helper that holds Full Disk Access",
+    "lifeos/platform/gate.py": "installed on the Oracle VM for the ticker (drift check)",
+    "lifeos/platform/alert_registry.py": "installed on the Oracle VM for the ticker (drift check)",
+    "lifeos/platform/alert_settings.py": "installed on the Oracle VM for the ticker (drift check)",
+    "lifeos/platform/alert_store.py": "installed on the Oracle VM for the ticker (reads the alert switches from Bitwarden)",
+}
 
 
 def problems(source, is_init=False):
@@ -53,7 +79,11 @@ def problems(source, is_init=False):
     if is_init:
         if "\n" in doc.strip():
             out.append("INIT_NOT_ONE_LINE")
-        exported = [n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in n.targets)]
+        exported = [
+            n
+            for n in tree.body
+            if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in n.targets)
+        ]
         if not exported:
             out.append("INIT_NO_ALL")
     return sorted(out)
@@ -91,7 +121,9 @@ def enforced_problems():
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
     strict = "--strict" in args
-    paths = [a for a in args if a != "--strict"] or sorted(str(p) for p in Path("lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists())
+    paths = [a for a in args if a != "--strict"] or sorted(
+        str(p) for p in Path("lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists()
+    )
     total = 0
     for path in paths:
         found = {f: c for f, c in check(path).items() if not exempt(f)}

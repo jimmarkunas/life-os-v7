@@ -6,13 +6,19 @@ fixed expiry": nothing expires, for a reason in `source_label`). lifeos/jobs/ale
 into the `expiry_*` alert (PAGE, 7 days ahead). The Alert settings screen reads this list on Oracle and never Notion,
 so a Notion problem cannot silence a warning.
 """
+
 import copy
 import datetime as dt
 from pathlib import Path
 
 from lifeos.platform.credential_list import CREDENTIALS, NOT_ENVIRONMENT, PATTERNS, PROVIDED
 
-SOURCES = {"provider_reported": "Provider reported", "manual": "Manual", "none": "No expiry exposed", "no_expiry": "No fixed expiry"}
+SOURCES = {
+    "provider_reported": "Provider reported",
+    "manual": "Manual",
+    "none": "No expiry exposed",
+    "no_expiry": "No fixed expiry",
+}
 WARN_AHEAD_DAYS = 7
 REQUIRED = ("key", "label", "provider", "used_for", "read_in", "expiry_source", "expires", "how_read", "renew")
 OPTIONAL = ("source_label",)
@@ -34,7 +40,14 @@ def config(root=Path(__file__).resolve().parents[1]):
             name, kind, purpose = line.split(" ", 2)
             kind, _, owner = kind.partition(":")
             rows.append({"name": name, "kind": kind, "owner": owner or path.parent.name, "purpose": purpose})
-    return copy.deepcopy({"provided": PROVIDED, "names": sorted(rows, key=lambda row: row["name"]), "patterns": PATTERNS, "not_environment": NOT_ENVIRONMENT})
+    return copy.deepcopy(
+        {
+            "provided": PROVIDED,
+            "names": sorted(rows, key=lambda row: row["name"]),
+            "patterns": PATTERNS,
+            "not_environment": NOT_ENVIRONMENT,
+        }
+    )
 
 
 def days_left(entry, today):
@@ -52,14 +65,28 @@ def status(entry, today):
 
 def rows(today, credentials=None):
     out = []
-    for entry in (load() if credentials is None else credentials):
-        out.append({"key": entry["key"], "credential": entry["label"], "provider": entry["provider"], "used_for": entry["used_for"], "read_in": entry["read_in"],
-                    "source": entry.get("source_label") or SOURCES[entry["expiry_source"]], "expires": entry["expires"], "days_left": days_left(entry, today), "status": status(entry, today),
-                    "warn_ahead_days": WARN_AHEAD_DAYS})
+    for entry in load() if credentials is None else credentials:
+        out.append(
+            {
+                "key": entry["key"],
+                "credential": entry["label"],
+                "provider": entry["provider"],
+                "used_for": entry["used_for"],
+                "read_in": entry["read_in"],
+                "source": entry.get("source_label") or SOURCES[entry["expiry_source"]],
+                "expires": entry["expires"],
+                "days_left": days_left(entry, today),
+                "status": status(entry, today),
+                "warn_ahead_days": WARN_AHEAD_DAYS,
+            }
+        )
     return out
 
 
 def expiries(credentials=None):
-    """The entries that have a date, in the shape lifeos/jobs/alerts.py `detect` reads: {key: {label, expires, renew}}.
-    """
-    return {e["key"]: {"label": e["label"], "expires": e["expires"], "renew": e["renew"]} for e in (load() if credentials is None else credentials) if e.get("expires")}
+    """The entries that have a date, in the shape lifeos/jobs/alerts.py `detect` reads: {key: {label, expires, renew}}."""
+    return {
+        e["key"]: {"label": e["label"], "expires": e["expires"], "renew": e["renew"]}
+        for e in (load() if credentials is None else credentials)
+        if e.get("expires")
+    }

@@ -5,6 +5,7 @@ apply, and is it working, synthetic or missing? A catalog row grants nothing and
 Fails closed: an unreadable catalog, an unknown principal or capability, the wrong workspace, a missing or duplicate
 alias or a stale source refuses with a fixed code and never invents a route.
 """
+
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -12,12 +13,25 @@ from datetime import datetime, timedelta, timezone
 STATUSES = ("working", "synthetic", "missing")
 KINDS = ("human", "agent", "session", "service")
 FORBIDDEN_KEYS = re.compile(r"(token|secret|password|passwd|credential|api_?key|private_?key|endpoint|url)", re.I)
-SECRET_VALUE = re.compile(r"(ghp_|gho_|github_pat_|xox[abp]-|sk-[A-Za-z0-9]|AKIA[0-9A-Z]{12}|-----BEGIN|[A-Fa-f0-9]{40,})")
+SECRET_VALUE = re.compile(
+    r"(ghp_|gho_|github_pat_|xox[abp]-|sk-[A-Za-z0-9]|AKIA[0-9A-Z]{12}|-----BEGIN|[A-Fa-f0-9]{40,})"
+)
 NAME = re.compile(r"[a-z][a-z0-9_.:-]{1,63}")
 TOP = {"version", "principals", "accounts", "capabilities"}
 PRINCIPAL = {"id", "kind", "workspace"}
 ACCOUNT = {"alias", "provider", "tenant"}
-CAPABILITY = {"principal", "tool", "action", "provider", "account_alias", "host", "source", "as_of", "max_age_days", "status"}
+CAPABILITY = {
+    "principal",
+    "tool",
+    "action",
+    "provider",
+    "account_alias",
+    "host",
+    "source",
+    "as_of",
+    "max_age_days",
+    "status",
+}
 
 
 class CatalogError(ValueError):
@@ -57,9 +71,15 @@ def load(text):
     if set(doc) != TOP:
         raise CatalogError("bad_shape")
     _scan(doc)
-    principals, accounts, caps = _rows(doc, "principals", PRINCIPAL), _rows(doc, "accounts", ACCOUNT), _rows(doc, "capabilities", CAPABILITY)
+    principals, accounts, caps = (
+        _rows(doc, "principals", PRINCIPAL),
+        _rows(doc, "accounts", ACCOUNT),
+        _rows(doc, "capabilities", CAPABILITY),
+    )
     for row in principals:
-        if row["kind"] not in KINDS or not all(isinstance(row[k], str) and NAME.fullmatch(row[k]) for k in ("id", "workspace")):
+        if row["kind"] not in KINDS or not all(
+            isinstance(row[k], str) and NAME.fullmatch(row[k]) for k in ("id", "workspace")
+        ):
             raise CatalogError("bad_row")
     for row in accounts:
         if not all(isinstance(row[k], str) and NAME.fullmatch(row[k]) for k in ACCOUNT):
@@ -67,9 +87,18 @@ def load(text):
     for row in caps:
         if row["status"] not in STATUSES:
             raise CatalogError("bad_status")
-        if not all(isinstance(row[k], str) and row[k] for k in ("principal", "tool", "action", "provider", "host", "source", "as_of")) \
-                or type(row["max_age_days"]) is not int or not 1 <= row["max_age_days"] <= 365 \
-                or not (row["account_alias"] is None or (isinstance(row["account_alias"], str) and NAME.fullmatch(row["account_alias"]))):
+        if (
+            not all(
+                isinstance(row[k], str) and row[k]
+                for k in ("principal", "tool", "action", "provider", "host", "source", "as_of")
+            )
+            or type(row["max_age_days"]) is not int
+            or not 1 <= row["max_age_days"] <= 365
+            or not (
+                row["account_alias"] is None
+                or (isinstance(row["account_alias"], str) and NAME.fullmatch(row["account_alias"]))
+            )
+        ):
             raise CatalogError("bad_row")
         try:
             datetime.fromisoformat(row["as_of"])
@@ -94,14 +123,19 @@ def resolve(catalog, principal, tool, action, workspace, now=None):
         return _refuse("unknown_principal")
     if who["workspace"] != workspace:
         return _refuse("wrong_workspace")
-    row = next((c for c in catalog["capabilities"] if (c["principal"], c["tool"], c["action"]) == (principal, tool, action)), None)
+    row = next(
+        (c for c in catalog["capabilities"] if (c["principal"], c["tool"], c["action"]) == (principal, tool, action)),
+        None,
+    )
     if row is None:
         return _refuse("unknown_capability")
     if row["status"] == "missing":
         return _refuse("unavailable", provider=row["provider"])
     tenant = None
     if row["account_alias"] is not None:
-        found = [a for a in catalog["accounts"] if a["alias"] == row["account_alias"] and a["provider"] == row["provider"]]
+        found = [
+            a for a in catalog["accounts"] if a["alias"] == row["account_alias"] and a["provider"] == row["provider"]
+        ]
         if not found:
             return _refuse("alias_missing")
         if len(found) > 1:
@@ -112,5 +146,18 @@ def resolve(catalog, principal, tool, action, workspace, now=None):
     seen = seen if seen.tzinfo else seen.replace(tzinfo=timezone.utc)
     if now - seen > timedelta(days=row["max_age_days"]):
         return _refuse("source_stale", as_of=row["as_of"])
-    return {"ok": True, "principal": principal, "workspace": workspace, "tool": tool, "action": action, "provider": row["provider"], "account_alias": row["account_alias"], "tenant": tenant,
-            "host": row["host"], "allowed_source": row["source"], "provenance": {"source": row["source"], "as_of": row["as_of"]}, "status": row["status"], "synthetic": row["status"] == "synthetic"}
+    return {
+        "ok": True,
+        "principal": principal,
+        "workspace": workspace,
+        "tool": tool,
+        "action": action,
+        "provider": row["provider"],
+        "account_alias": row["account_alias"],
+        "tenant": tenant,
+        "host": row["host"],
+        "allowed_source": row["source"],
+        "provenance": {"source": row["source"], "as_of": row["as_of"]},
+        "status": row["status"],
+        "synthetic": row["status"] == "synthetic",
+    }
