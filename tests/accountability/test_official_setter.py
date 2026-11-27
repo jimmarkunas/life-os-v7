@@ -2,8 +2,8 @@
 
 import io
 import unittest
-from contextlib import redirect_stdout
-from datetime import datetime
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.accountability import official_setter as o, promotion
@@ -101,11 +101,115 @@ class OfficialSetter(unittest.TestCase):
             self.assertEqual((ctx.exception.code, c.writes), (code, []))
 
 
+class SameValueProof(unittest.TestCase):
+    """Option A: one same-value update of V2_OFFICIAL (off over off), refused or unverified on any drift."""
+
+    def fake(self, **kw):
+        return Fake([page("V2_OFFICIAL", "off", 7), page("V2_PROMOTION", "on", 2)], **kw)
+
+    def test_a_dry_run_reads_and_sends_nothing(self):
+        c = self.fake()
+        self.assertEqual(o.prove_same_value(c, SOURCE, expected_revision=7)["status"], "dry_run")
+        self.assertEqual(c.writes, [])
+
+    def test_a_live_proof_sends_exactly_one_same_value_request_and_changes_nothing(self):
+        c = self.fake()
+        before = [p["properties"] for p in c.pages]
+        out = o.prove_same_value(c, SOURCE, live=True, expected_revision=7)
+        self.assertEqual((out["status"], out["value"], out["revision"]), ("proved", "off", 7))
+        self.assertEqual(len(c.writes), 1)
+        self.assertEqual(c.writes[0][0], "id-V2_OFFICIAL")
+        self.assertEqual(
+            c.writes[0][1],
+            {"Value": {"rich_text": [{"type": "text", "text": {"content": "off"}}]}, "Revision": {"number": 7}},
+        )
+        self.assertEqual([p["properties"] for p in c.pages], before)
+
+    def test_a_row_that_is_not_off_or_at_another_revision_is_refused_before_any_request(self):
+        for pages, revision in (([page("V2_OFFICIAL", "on", 7)], 7), ([page("V2_OFFICIAL", "off", 8)], 7)):
+            c = Fake(pages)
+            with self.assertRaises(o.WriteError) as ctx:
+                o.prove_same_value(c, SOURCE, live=True, expected_revision=revision)
+            self.assertEqual((ctx.exception.code, c.writes), (o.PROOF_EXPECTATION, []))
+
+    def test_missing_and_repeated_rows_are_refused(self):
+        for pages, code in (
+            ([], o.ROW_MISSING),
+            ([page("V2_OFFICIAL", "off", pid="a"), page("V2_OFFICIAL", "off", pid="b")], o.ROW_REPEATED),
+        ):
+            with self.assertRaises(o.WriteError) as ctx:
+                o.prove_same_value(Fake(pages), SOURCE, live=True)
+            self.assertEqual(ctx.exception.code, code)
+
+    def test_a_drifted_read_back_is_unverified_and_the_request_is_never_repeated(self):
+        class Changes(Fake):
+            def update_page_properties(self, page_id, properties):
+                super().update_page_properties(page_id, properties)
+                self.pages[0]["properties"]["Revision"]["number"] = 8
+
+        c = Changes([page("V2_OFFICIAL", "off", 7)])
+        with self.assertRaises(o.WriteError) as ctx:
+            o.prove_same_value(c, SOURCE, live=True, expected_revision=7)
+        self.assertEqual((ctx.exception.code, len(c.writes)), (o.PROOF_UNVERIFIED, 1))
+
+    def test_a_refused_request_is_unverified_with_no_second_attempt(self):
+        class Refuses(Fake):
+            def update_page_properties(self, page_id, properties):
+                self.writes.append((page_id, properties))
+                raise RuntimeError("403 secret_token_body")
+
+        c = Refuses([page("V2_OFFICIAL", "off", 7)])
+        with self.assertRaises(o.WriteError) as ctx:
+            o.prove_same_value(c, SOURCE, live=True, expected_revision=7)
+        self.assertEqual((ctx.exception.code, len(c.writes)), (o.PROOF_UNVERIFIED, 1))
+        self.assertNotIn("secret", str(ctx.exception))
+
+    def test_the_synthetic_off_on_off_path_and_a_refusal_use_the_ordinary_setter_on_a_test_row(self):
+        c = Fake([page("THROWAWAY_TEST_ROW", "off", 1)])
+        for value, revision in (("on", 2), ("off", 3)):
+            o.set_value(c, SOURCE, "THROWAWAY_TEST_ROW", value, live=True, allowed=("THROWAWAY_TEST_ROW",))
+            self.assertEqual((c.pages[0]["properties"]["Revision"]["number"], len(c.writes)), (revision, revision - 1))
+        with self.assertRaises(o.WriteError):
+            o.set_value(c, SOURCE, "V2_PROMOTION", "on", live=True)
+
+    def test_the_command_is_manual_only_and_needs_the_expected_revision(self):
+        from lifeos.accountability import setter_proof
+
+        c = self.fake()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = setter_proof.main(["--revision", "7"], {"V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE}, c)
+        self.assertEqual((code, c.writes), (0, []))
+        self.assertIn("dry_run", buffer.getvalue())
+        with redirect_stdout(buffer):
+            self.assertEqual(
+                setter_proof.main(["--live", "--revision", "9"], {"V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE}, c), 1
+            )
+        self.assertEqual(c.writes, [])
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            setter_proof.main([], {}, c)
+
+
 class WithPromotion(unittest.TestCase):
     """The setter as the promotion check's `setters`: gates stay in run_if_due."""
 
-    BEFORE = datetime(2026, 12, 31, 23, 59, tzinfo=ZoneInfo("America/Chicago"))
-    AFTER = datetime(2027, 1, 1, 8, 0, tzinfo=ZoneInfo("America/Chicago"))
+    BEFORE = datetime(2027, 1, 5, 23, 59, tzinfo=ZoneInfo("America/Chicago"))
+    AFTER = datetime(2027, 1, 6, 8, 0, tzinfo=ZoneInfo("America/Chicago"))
+
+    class Stable:
+        """A window whose first pass was recorded on the previous date, so this pass is the second."""
+
+        def __init__(self, now):
+            self.record = {"first": now - timedelta(days=1, minutes=5), "last": now - timedelta(days=1, minutes=5)}
+
+        def load(self, key):
+            return self.record
+
+        def save(self, key, first, last):
+            raise AssertionError("a promoting pass records nothing")
+
+        def reset(self):
+            pass
 
     def run_check(self, now, promotion_on=True, official=False, live=True, verdict_pass=True):
         c = Fake([page("V2_OFFICIAL", "on" if official else "off")])
@@ -121,7 +225,7 @@ class WithPromotion(unittest.TestCase):
                 promotion.evaluate = lambda inputs: {
                     "verdict": "PASS",
                     "reasons": [],
-                    "quarter": "2027Q1",
+                    "quarter": "2027-q1",
                     "boards": {},
                 }
                 try:
@@ -131,6 +235,7 @@ class WithPromotion(unittest.TestCase):
                         lambda: {},
                         o.official_setter(c, SOURCE, live=live),
                         alerts.append,
+                        self.Stable(now),
                     )
                 finally:
                     promotion.evaluate = orig
@@ -141,6 +246,7 @@ class WithPromotion(unittest.TestCase):
                     readers,
                     o.official_setter(c, SOURCE, live=live),
                     alerts.append,
+                    self.Stable(now),
                 )
         return result, c, alerts, out.getvalue()
 
@@ -164,8 +270,8 @@ class WithPromotion(unittest.TestCase):
             self.assertEqual(c.writes, [], kwargs)
 
     def test_boundary_is_chicago_not_utc(self):
-        just_before_utc = datetime(2027, 1, 1, 7, 59, tzinfo=ZoneInfo("America/Chicago"))
+        just_before_utc = datetime(2027, 1, 6, 7, 59, tzinfo=ZoneInfo("America/Chicago"))
         self.assertEqual(self.run_check(just_before_utc)[0]["status"], "not_due")
         self.assertEqual(
-            self.run_check(datetime(2027, 1, 1, 14, 0, tzinfo=ZoneInfo("UTC")))[0]["status"], "promoted"
+            self.run_check(datetime(2027, 1, 6, 14, 0, tzinfo=ZoneInfo("UTC")))[0]["status"], "promoted"
         )  # 8:00 AM CT

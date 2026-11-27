@@ -9,7 +9,8 @@ from zoneinfo import ZoneInfo
 from lifeos.accountability import promotion as p
 
 CT = ZoneInfo("America/Chicago")
-AFTER = datetime(2027, 1, 1, 8, 0, tzinfo=CT)
+AFTER = datetime(2027, 1, 6, 8, 0, tzinfo=CT)
+NEXT = AFTER + timedelta(days=1, minutes=5)
 EXPLAINED = {"by": "MC", "what": "moved before the freeze", "source": "LIFE-918 comment"}
 
 
@@ -28,12 +29,29 @@ def board(**over):
 
 
 def good(**mej):
-    return {"quarter": "2027Q1", "boards": {"JFM": board(), "MEJ": board(**mej)}}
+    return {"quarter": "2027-q1", "boards": {"JFM": board(), "MEJ": board(**mej)}}
+
+
+class Window:
+    """The stability record: what the database row holds, in memory."""
+
+    def __init__(self):
+        self.rows, self.resets = {}, 0
+
+    def load(self, key):
+        return self.rows.get(key)
+
+    def save(self, key, first, last):
+        self.rows[key] = {"first": first, "last": last}
+
+    def reset(self):
+        self.rows, self.resets = {}, self.resets + 1
 
 
 class Calls:
-    def __init__(self, inputs=None, set_error=None, alert_error=None):
+    def __init__(self, inputs=None, set_error=None, alert_error=None, window=None):
         self.inputs, self.set_error, self.alert_error = inputs, set_error, alert_error
+        self.window = window if window is not None else Window()
         self.reads, self.sets, self.alerts = 0, 0, []
 
     def read(self):
@@ -53,7 +71,14 @@ class Calls:
             raise self.alert_error
 
     def run(self, now=AFTER, promotion=True, official=False):
-        return p.run_if_due(now, {"V2_PROMOTION": promotion, "V2_OFFICIAL": official}, self.read, self.set, self.alert)
+        return p.run_if_due(
+            now, {"V2_PROMOTION": promotion, "V2_OFFICIAL": official}, self.read, self.set, self.alert, self.window
+        )
+
+    def two_passes(self):
+        """Day one records the pass, the next date promotes: -> the second result."""
+        self.run()
+        return self.run(now=NEXT)
 
 
 class Evaluate(unittest.TestCase):
@@ -72,7 +97,7 @@ class Evaluate(unittest.TestCase):
         )
         self.assertNotIn("2027-q1", manifest["quarters"])
         self.assertIn(
-            p.MEMBERSHIP_MISSING, p.evaluate(good(frozen=(manifest["quarters"].get("2027Q1") or None)))["reasons"]
+            p.MEMBERSHIP_MISSING, p.evaluate(good(frozen=(manifest["quarters"].get("2027-q1") or None)))["reasons"]
         )
 
     def test_membership_must_be_one_hundred_percent(self):
@@ -105,7 +130,7 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(p.evaluate(good(recurring=overlap))["reasons"], [p.RECURRING_NOT_DISTINCT])
 
     def test_a_missing_board_or_quarter_is_invalid_input(self):
-        self.assertEqual(p.evaluate({"quarter": "2027Q1", "boards": {"JFM": board()}})["reasons"], [p.INPUT_INVALID])
+        self.assertEqual(p.evaluate({"quarter": "2027-q1", "boards": {"JFM": board()}})["reasons"], [p.INPUT_INVALID])
         self.assertEqual(p.evaluate(None)["reasons"], [p.INPUT_INVALID])
         self.assertEqual(p.evaluate({"boards": {}})["reasons"], [p.INPUT_INVALID])
 
@@ -160,30 +185,36 @@ class Tolerance(unittest.TestCase):
 
 
 class Boundary(unittest.TestCase):
-    def test_not_due_a_second_before_eight_and_due_at_eight_central(self):
+    def test_q1_2027_starts_on_its_first_wednesday_and_nothing_is_due_before_it(self):
+        self.assertEqual(p.boundary(), AFTER)
+        self.assertEqual(AFTER.weekday(), 2)
         self.assertFalse(p.due(AFTER - timedelta(seconds=1)))
         self.assertTrue(p.due(AFTER))
+        for day in range(1, 6):  # Jan 1 to 5 2027 are still Q4 2026
+            self.assertFalse(p.due(datetime(2027, 1, day, 23, 59, tzinfo=CT)), day)
         self.assertFalse(p.due(datetime(2026, 12, 31, 23, 59, tzinfo=CT)))
 
     def test_the_instant_is_the_same_in_any_zone(self):
-        self.assertEqual(AFTER.astimezone(timezone.utc), datetime(2027, 1, 1, 14, 0, tzinfo=timezone.utc))
-        self.assertTrue(p.due(datetime(2027, 1, 1, 14, 0, tzinfo=timezone.utc)))
-        self.assertFalse(p.due(datetime(2027, 1, 1, 13, 59, tzinfo=timezone.utc)))
-        self.assertTrue(p.due(datetime(2027, 1, 1, 9, 0, tzinfo=ZoneInfo("America/New_York"))))
+        self.assertEqual(AFTER.astimezone(timezone.utc), datetime(2027, 1, 6, 14, 0, tzinfo=timezone.utc))
+        self.assertTrue(p.due(datetime(2027, 1, 6, 14, 0, tzinfo=timezone.utc)))
+        self.assertFalse(p.due(datetime(2027, 1, 6, 13, 59, tzinfo=timezone.utc)))
+        self.assertTrue(p.due(datetime(2027, 1, 6, 9, 0, tzinfo=ZoneInfo("America/New_York"))))
 
     def test_eight_central_follows_daylight_time_not_a_fixed_offset(self):
-        self.assertEqual(p.boundary(2027, 1, 1).astimezone(timezone.utc).hour, 14)
-        self.assertEqual(p.boundary(2027, 7, 1).astimezone(timezone.utc).hour, 13)
-        self.assertEqual(
-            p.boundary(2027, 3, 13).astimezone(timezone.utc).hour, 14
-        )  # Saturday before daylight time starts: CST
-        self.assertEqual(p.boundary(2027, 3, 14).astimezone(timezone.utc).hour, 13)
-        self.assertEqual(p.boundary(2027, 3, 14).utcoffset(), timedelta(hours=-5))
+        self.assertEqual(p.boundary(2027, 1).astimezone(timezone.utc).hour, 14)
+        self.assertEqual(p.boundary(2027, 3).astimezone(timezone.utc).hour, 13)  # Wed Jul 7 2027, CDT
+        self.assertEqual(p.boundary(2027, 3).utcoffset(), timedelta(hours=-5))
 
     def test_a_time_without_a_zone_is_refused(self):
         with self.assertRaises(p.PromotionError) as caught:
-            p.due(datetime(2027, 1, 1, 8, 0))
+            p.due(datetime(2027, 1, 6, 8, 0))
         self.assertEqual(caught.exception.code, p.INPUT_INVALID)
+
+    def test_the_quarter_has_one_canonical_lowercase_key(self):
+        self.assertEqual(p.quarter_key(), "2027-q1")
+        for bad in ("2027-Q1", "2027Q1", "2027-q5", ""):
+            verdict = p.evaluate({"quarter": bad, "boards": {"JFM": board(), "MEJ": board()}})
+            self.assertEqual((verdict["verdict"], verdict["reasons"]), ("FAIL", [p.INPUT_INVALID]), bad)
 
 
 class RunIfDue(unittest.TestCase):
@@ -199,9 +230,9 @@ class RunIfDue(unittest.TestCase):
 
     def test_at_the_boundary_a_pass_sets_the_official_row_once(self):
         calls = Calls(good())
-        out = calls.run()
+        out = calls.two_passes()
         self.assertEqual((out["status"], out["verdict"]["verdict"]), ("promoted", "PASS"))
-        self.assertEqual((calls.reads, calls.sets, calls.alerts), (1, 1, []))
+        self.assertEqual((calls.reads, calls.sets, calls.alerts), (2, 1, []))
 
     def test_already_official_is_a_no_op_so_a_second_run_changes_nothing(self):
         calls = Calls(good())
@@ -220,7 +251,7 @@ class RunIfDue(unittest.TestCase):
         self.assertEqual(
             calls.alerts[0]["key"], later.alerts[0]["key"]
         )  # the same row every day: the inbox send updates it
-        self.assertEqual(calls.alerts[0]["key"], "v2-promotion-2027Q1")
+        self.assertEqual(calls.alerts[0]["key"], "v2-promotion-2027-q1")
         self.assertNotIn("MEJ-", json.dumps(calls.alerts[0]))  # codes and counts only, never a Task key or summary
 
     def test_missing_membership_with_the_shipped_empty_manifest_never_promotes(self):
@@ -236,8 +267,9 @@ class RunIfDue(unittest.TestCase):
 
     def test_a_pass_with_no_safe_setter_keeps_legacy_and_alerts(self):
         calls = Calls(good())
+        calls.run()
         out = p.run_if_due(
-            AFTER, {"V2_PROMOTION": True, "V2_OFFICIAL": False}, calls.read, p.refusing_setter, calls.alert
+            NEXT, {"V2_PROMOTION": True, "V2_OFFICIAL": False}, calls.read, p.refusing_setter, calls.alert, calls.window
         )
         self.assertEqual((out["status"], out["verdict"]["reasons"]), ("kept_legacy", [p.SETTER_UNAVAILABLE]))
         self.assertEqual(len(calls.alerts), 1)
@@ -252,30 +284,86 @@ class RunIfDue(unittest.TestCase):
             Calls(good()).run(now=datetime(2027, 1, 1, 9, 0))
 
 
+class Stability(unittest.TestCase):
+    """Two consecutive daily passes at least 24 hours apart; anything else starts again"""
+
+    def test_the_first_pass_only_records_it_so_nothing_is_set_and_nothing_is_alerted(self):
+        calls = Calls(good())
+        out = calls.run()
+        self.assertEqual((out["status"], calls.sets, calls.alerts), ("stabilizing", 0, []))
+
+    def test_a_retry_on_the_same_date_changes_nothing(self):
+        calls = Calls(good())
+        calls.run()
+        again = calls.run(now=AFTER + timedelta(hours=3))
+        self.assertEqual((again["status"], calls.sets, calls.alerts), ("stabilizing", 0, []))
+        self.assertEqual(calls.run(now=NEXT)["status"], "promoted")
+        self.assertEqual(calls.sets, 1)
+
+    def test_a_second_pass_under_24_hours_after_the_first_waits(self):
+        calls = Calls(good())
+        calls.run(now=AFTER + timedelta(minutes=30))
+        out = calls.run(now=AFTER + timedelta(days=1))  # 23 h 30 m later, next Chicago date
+        self.assertEqual((out["status"], calls.sets), ("stabilizing", 0))
+
+    def test_a_skipped_date_starts_the_window_again(self):
+        calls = Calls(good())
+        calls.run()
+        out = calls.run(now=AFTER + timedelta(days=2, minutes=5))
+        self.assertEqual((out["status"], calls.sets), ("stabilizing", 0))
+        self.assertEqual(calls.run(now=AFTER + timedelta(days=3, minutes=5))["status"], "promoted")
+
+    def test_a_failed_evaluation_resets_the_window_and_alerts_once(self):
+        calls = Calls(good())
+        calls.run()
+        calls.inputs = good(frozen=None)
+        out = calls.run(now=NEXT)
+        self.assertEqual((out["status"], calls.sets, len(calls.alerts)), ("kept_legacy", 0, 1))
+        calls.inputs = good()
+        self.assertEqual(calls.run(now=NEXT + timedelta(days=1))["status"], "stabilizing")
+
+    def test_a_material_input_change_resets_the_window(self):
+        calls = Calls(good())
+        calls.run()
+        calls.inputs = good(frozen=["MEJ-1", "MEJ-2", "MEJ-3"])
+        self.assertEqual((calls.run(now=NEXT)["status"], calls.sets), ("stabilizing", 0))
+        self.assertEqual(calls.run(now=NEXT + timedelta(days=1))["status"], "promoted")
+
+    def test_without_a_stability_record_nothing_is_promoted(self):
+        out = p.run_if_due(AFTER, {"V2_PROMOTION": True, "V2_OFFICIAL": False}, good, lambda: 1 / 0, lambda i: None)
+        self.assertEqual((out["status"], out["verdict"]["reasons"]), ("kept_legacy", [p.STABILITY_UNAVAILABLE]))
+
+    def test_a_retry_after_promotion_sets_nothing_again(self):
+        calls = Calls(good())
+        calls.two_passes()
+        self.assertEqual(calls.run(now=NEXT + timedelta(days=1), official=True), {"status": "already_official"})
+        self.assertEqual(calls.sets, 1)
+
+
 class InboxAlerter(unittest.TestCase):
     def test_it_uses_the_existing_inbox_delivery_with_the_item_and_a_sender(self):
         seen = []
         send = p.inbox_alerter(lambda item: seen.append(item) or {"ok": True, "updated": 1})
-        send(p.alert_item({"quarter": "2027Q1", "reasons": [p.HISTORY_DRIFT]}))
+        send(p.alert_item({"quarter": "2027-q1", "reasons": [p.HISTORY_DRIFT]}))
         self.assertEqual(
-            (seen[0]["key"], seen[0]["from"], seen[0]["urgency"]), ("v2-promotion-2027Q1", "v7-promotion", "Today")
+            (seen[0]["key"], seen[0]["from"], seen[0]["urgency"]), ("v2-promotion-2027-q1", "v7-promotion", "Today")
         )
 
     def test_a_delivery_that_is_not_ok_raises(self):
         send = p.inbox_alerter(lambda item: {"ok": False, "reason": "inbox_failed"})
         with self.assertRaises(p.PromotionError):
-            send(p.alert_item({"quarter": "2027Q1", "reasons": []}))
+            send(p.alert_item({"quarter": "2027-q1", "reasons": []}))
 
 
 class OneUnit(unittest.TestCase):
     """Jim, '918 uniform new' (comment 14228): JFM and MEJ promote together or not at all"""
 
     def both(self, jfm=None, mej=None):
-        return {"quarter": "2027Q1", "boards": {"JFM": board(**(jfm or {})), "MEJ": board(**(mej or {}))}}
+        return {"quarter": "2027-q1", "boards": {"JFM": board(**(jfm or {})), "MEJ": board(**(mej or {}))}}
 
     def test_both_boards_passing_promote_once_with_no_alert(self):
         calls = Calls(self.both())
-        out = calls.run()
+        out = calls.two_passes()
         self.assertEqual((out["status"], calls.sets, calls.alerts), ("promoted", 1, []))
 
     def test_jfm_failing_keeps_both_on_legacy_with_one_alert_naming_jfm_only(self):
@@ -315,7 +403,7 @@ class NotWired(unittest.TestCase):
         callers = [
             str(path.relative_to(root))
             for path in (root / "lifeos").rglob("*.py")
-            if path.name not in ("promotion.py", "promotion_call.py")
+            if path.name not in ("promotion.py", "promotion_call.py", "promotion_inputs.py")
             and "promotion" in path.read_text()
             and "run_if_due" in path.read_text()
         ]
