@@ -190,7 +190,9 @@ class Honcho:
     def conclusions(self, tenant, query, top_k):
         peer = TENANT_PEER[tenant]
         out = self.http.call(
-            "POST", self._p("/conclusions/query"), {"query": query, "top_k": top_k, "filters": {"observed_id": peer}}
+            "POST",
+            self._p("/conclusions/query"),
+            {"query": query, "top_k": top_k, "filters": {"observer": peer, "observed": peer}},
         )
         return out if isinstance(out, list) else out.get("items", [])
 

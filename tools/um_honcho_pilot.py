@@ -200,7 +200,12 @@ def run_pilot(honcho, meter, db, doc, graph, clock, reps=5, seed="messages", sco
             "removed": len(detail.get("removed") or []),
             "peer_card_updated": detail.get("peer_card_updated"),
         }
-    ev["comparison"] = um.run(doc, ("direct", "graph", "honcho", "combined"), reps, {"honcho": honcho, "graph": graph})
+    try:
+        ev["comparison"] = um.run(
+            doc, ("direct", "graph", "honcho", "combined"), reps, {"honcho": honcho, "graph": graph}
+        )
+    except Exception as error:  # noqa: BLE001  the earlier evidence is kept; one fixed word names the failure
+        ev["stopped"] = "comparison_" + type(error).__name__
     return ev
 
 
