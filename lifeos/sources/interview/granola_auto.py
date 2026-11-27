@@ -6,6 +6,7 @@ from Oracle, and only if Oracle's `list` reports `caps` with `purge_all`. A meet
 is never touched. Dry run unless live. Counts and fixed codes only; the meeting id is stored as a 16-character
 hash.
 """
+
 import hashlib
 import os
 from datetime import datetime, timedelta
@@ -30,7 +31,9 @@ PER_MEETING = ("GRAN_NOT_FOUND", "GRAN_OVERSIZE", "GRAN_TIMEOUT")
 STREAK = 3  # read failures in a row with no read between: the helper is the problem, so the run stops
 READ_TRIES = 5
 RETRY_DAYS = 3
-READ_FAILED = tuple(f"read_failed_{n}" for n in range(1, READ_TRIES + 1))  # catalog outcomes that record a failure; not in DONE, so the meeting is still to do
+READ_FAILED = tuple(
+    f"read_failed_{n}" for n in range(1, READ_TRIES + 1)
+)  # catalog outcomes that record a failure; not in DONE, so the meeting is still to do
 
 
 def key_of(meeting_id):
@@ -40,21 +43,29 @@ def key_of(meeting_id):
 def catalog_done(cursor, keys):
     if not keys:
         return set()
-    cursor.execute("SELECT meeting_key FROM v7_meeting_catalog WHERE outcome IN %s AND meeting_key IN %s", (DONE, tuple(keys)))
+    cursor.execute(
+        "SELECT meeting_key FROM v7_meeting_catalog WHERE outcome IN %s AND meeting_key IN %s", (DONE, tuple(keys))
+    )
     return {row[0] for row in cursor.fetchall()}
 
 
 def catalog_failed(cursor, keys, since):
     if not keys:
         return {}
-    cursor.execute("SELECT meeting_key, outcome FROM v7_meeting_catalog WHERE outcome IN %s AND carried_at > %s AND meeting_key IN %s", (READ_FAILED, since, tuple(keys)))
+    cursor.execute(
+        "SELECT meeting_key, outcome FROM v7_meeting_catalog WHERE outcome IN %s AND carried_at > %s AND meeting_key IN %s",
+        (READ_FAILED, since, tuple(keys)),
+    )
     return {row[0]: READ_FAILED.index(row[1]) + 1 for row in cursor.fetchall()}
 
 
 def catalog_save(cursor, key, day, round_key, job_key, outcome, segments, header, purged, now):
-    cursor.execute("INSERT INTO v7_meeting_catalog (meeting_key, day, round_key, job_key, outcome, segments, header_written, purged, carried_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                   "ON DUPLICATE KEY UPDATE round_key=VALUES(round_key), job_key=VALUES(job_key), outcome=VALUES(outcome), segments=VALUES(segments), header_written=VALUES(header_written), "
-                   "purged=VALUES(purged), carried_at=VALUES(carried_at)", (key, day, round_key, job_key, outcome, int(segments), int(bool(header)), int(bool(purged)), now))
+    cursor.execute(
+        "INSERT INTO v7_meeting_catalog (meeting_key, day, round_key, job_key, outcome, segments, header_written, purged, carried_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+        "ON DUPLICATE KEY UPDATE round_key=VALUES(round_key), job_key=VALUES(job_key), outcome=VALUES(outcome), segments=VALUES(segments), header_written=VALUES(header_written), "
+        "purged=VALUES(purged), carried_at=VALUES(carried_at)",
+        (key, day, round_key, job_key, outcome, int(segments), int(bool(header)), int(bool(purged)), now),
+    )
 
 
 def catalog_has(cursor, key, outcome):
@@ -91,8 +102,40 @@ def header_of(shown):
     return tuple(out)
 
 
-def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=None, context=None, connect=store.connect, now=None):
-    counts = {"meetings": 0, "already": 0, "unmatched": 0, "client_routed": 0, "client_by_instruction": 0, "unfiled_created": 0, "unfiled_exists": 0, "unfiled_planned": 0, "unfiled_waiting": 0, "triage_filed": 0, "triage_deleted": 0, "triage_delete_planned": 0, "triage_gone": 0, "triage_interview_later": 0, "carried": 0, "purged": 0, "left_on_oracle": 0, "header": 0, "segments": 0, "failed": 0, "purge_capable": 0, "why": {}}
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    send=granola_oracle.exchange,
+    client=None,
+    context=None,
+    connect=store.connect,
+    now=None,
+):
+    counts = {
+        "meetings": 0,
+        "already": 0,
+        "unmatched": 0,
+        "client_routed": 0,
+        "client_by_instruction": 0,
+        "unfiled_created": 0,
+        "unfiled_exists": 0,
+        "unfiled_planned": 0,
+        "unfiled_waiting": 0,
+        "triage_filed": 0,
+        "triage_deleted": 0,
+        "triage_delete_planned": 0,
+        "triage_gone": 0,
+        "triage_interview_later": 0,
+        "carried": 0,
+        "purged": 0,
+        "left_on_oracle": 0,
+        "header": 0,
+        "segments": 0,
+        "failed": 0,
+        "purge_capable": 0,
+        "why": {},
+    }
     context = context or RunContext.start(840)
     now = (now or datetime.now(TZ)).astimezone(TZ).replace(tzinfo=None)
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
@@ -106,8 +149,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         why(code)
 
     def purge(meeting, envelope):
-        """The whole-meeting purge, only from an Oracle that announced `purge_all`. -> True when Oracle confirmed it.
-        """
+        """The whole-meeting purge, only from an Oracle that announced `purge_all`. -> True when Oracle confirmed it."""
         if "purge_all" not in caps:
             left("GRAN_PURGE_ALL_UNSUPPORTED")
             return False
@@ -135,7 +177,10 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         counts["purge_capable"] = int("purge_all" in caps)
         listed = meetings(listed_reply)
         counts["meetings"] = len(listed)
-        counts["sync_documents"], counts["sync_transcripts"] = int(synced.get("documents") or 0), int(synced.get("transcripts") or 0)
+        counts["sync_documents"], counts["sync_transcripts"] = (
+            int(synced.get("documents") or 0),
+            int(synced.get("transcripts") or 0),
+        )
         keys = {m.id: key_of(m.id) for m in listed}
         with connect() as connection, connection.cursor() as cursor:
             if live:
@@ -159,7 +204,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         carried_now = 0
         read_streak = 0
         meetings_state = []
-        filed_as = {"client": granola_clients.CLIENT, "internal": granola_clients.INTERNAL}.get((environ.get("GRAN_UNMATCHED_TO") or "").strip().lower())
+        filed_as = {"client": granola_clients.CLIENT, "internal": granola_clients.INTERNAL}.get(
+            (environ.get("GRAN_UNMATCHED_TO") or "").strip().lower()
+        )
         by_key = {keys[m.id]: m for m in listed}
 
         def meetings_ok():
@@ -171,7 +218,18 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             nonlocal carried_now
             day = granola_match.central_day(meeting.start)
             with connect() as connection, connection.cursor() as cursor:
-                catalog_save(cursor, keys[meeting.id], day, round_key, job_key, "carried", len(envelope.segments), header if result == "TRANSCRIPT_WRITTEN" else (), False, now)
+                catalog_save(
+                    cursor,
+                    keys[meeting.id],
+                    day,
+                    round_key,
+                    job_key,
+                    "carried",
+                    len(envelope.segments),
+                    header if result == "TRANSCRIPT_WRITTEN" else (),
+                    False,
+                    now,
+                )
                 saved = catalog_has(cursor, keys[meeting.id], "carried")
             if not saved:
                 left("GRAN_CATALOG_FAILED", 1)
@@ -184,7 +242,18 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 after()
             if purge(meeting, envelope):
                 with connect() as connection, connection.cursor() as cursor:
-                    catalog_save(cursor, keys[meeting.id], day, round_key, job_key, "carried_purged", len(envelope.segments), header if result == "TRANSCRIPT_WRITTEN" else (), True, now)
+                    catalog_save(
+                        cursor,
+                        keys[meeting.id],
+                        day,
+                        round_key,
+                        job_key,
+                        "carried_purged",
+                        len(envelope.segments),
+                        header if result == "TRANSCRIPT_WRITTEN" else (),
+                        True,
+                        now,
+                    )
                 counts["purged"] += 1
             return True
 
@@ -203,7 +272,18 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 read_streak += 1
                 if live:
                     with connect() as connection, connection.cursor() as cursor:
-                        catalog_save(cursor, key, granola_match.central_day(meeting.start), key_of("read_failed"), None, READ_FAILED[min(read_tries.get(key, 0) + 1, READ_TRIES) - 1], 0, (), False, now)
+                        catalog_save(
+                            cursor,
+                            key,
+                            granola_match.central_day(meeting.start),
+                            key_of("read_failed"),
+                            None,
+                            READ_FAILED[min(read_tries.get(key, 0) + 1, READ_TRIES) - 1],
+                            0,
+                            (),
+                            False,
+                            now,
+                        )
                 if read_streak >= STREAK:
                     raise
                 return None
@@ -315,7 +395,15 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 job_key = (interview_evidence.facts(client, parent_of[round_id], context) or (None,))[0]
             except (NotionError, KeyError):
                 job_key = None
-            finish(meeting, envelope, header, result, key_of(round_id), job_key, after=lambda round_id=round_id: create.link_transcript(client, round_id, True, {}))
+            finish(
+                meeting,
+                envelope,
+                header,
+                result,
+                key_of(round_id),
+                job_key,
+                after=lambda round_id=round_id: create.link_transcript(client, round_id, True, {}),
+            )
         if listed_unfiled and meetings_ok():
             for meeting in listed_unfiled:
                 outcome = granola_clients.unfiled_row(client, meeting, keys[meeting.id], live)

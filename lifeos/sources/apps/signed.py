@@ -2,6 +2,7 @@
 
 A leaf module: it imports no app. Fixed codes only.
 """
+
 import hashlib
 import hmac
 import sys
@@ -28,8 +29,20 @@ def same(a, b):
 
 def stopper(sub, path, tab):
     def stop(status, eyebrow, title, text, detail, css="alert"):
-        return status, HTML, S.page(title, sub, f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
-                                                f'<div class="notice {css}">{e(detail)}</div></section>', path, tab), ()
+        return (
+            status,
+            HTML,
+            S.page(
+                title,
+                sub,
+                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
+                f'<div class="notice {css}">{e(detail)}</div></section>',
+                path,
+                tab,
+            ),
+            (),
+        )
+
     return stop
 
 
@@ -44,11 +57,20 @@ def invalid(stop, reload, title="This form is no longer valid", code="FORM_ALTER
 
 def expired_form(stop, reload):
     refused("FORM_EXPIRED")
-    return stop(403, "Not accepted", "This form expired", f"Forms are good for 15 minutes. {reload}", "Nothing was changed.", "danger")
+    return stop(
+        403,
+        "Not accepted",
+        "This form expired",
+        f"Forms are good for 15 minutes. {reload}",
+        "Nothing was changed.",
+        "danger",
+    )
 
 
 def unverified(stop, title, done="it was recorded", code="not verified"):
-    return stop(500, "Unavailable", title, f"Do not assume {done} or left unchanged.", f"Status: DEGRADED · {code}", "danger")
+    return stop(
+        500, "Unavailable", title, f"Do not assume {done} or left unchanged.", f"Status: DEGRADED · {code}", "danger"
+    )
 
 
 def written(stop, call, verify, refused=(), refusal=("", ""), what="it was recorded"):
@@ -59,7 +81,11 @@ def written(stop, call, verify, refused=(), refusal=("", ""), what="it was recor
         done = call()
     except NotionError as error:
         code = str(error)[:60]
-        return None, (stop(409, "Not changed", refusal[0], refusal[1], f"Refused: {code}. Nothing was changed.") if code in refused else unverified(stop, verify, what, code))
+        return None, (
+            stop(409, "Not changed", refusal[0], refusal[1], f"Refused: {code}. Nothing was changed.")
+            if code in refused
+            else unverified(stop, verify, what, code)
+        )
     return (done, None) if done.get("verified") is True else (None, unverified(stop, verify, what))
 
 
@@ -68,7 +94,14 @@ def handler(get, post, stop, title):
         try:
             return (get if req["method"] == "GET" else post)(req, who, secrets)
         except NotionError as error:
-            return stop(409, "Not changed", title, "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+            return stop(
+                409,
+                "Not changed",
+                title,
+                "The request was refused before anything was written.",
+                f"Refused: {str(error)[:60]}",
+            )
+
     return handle
 
 
@@ -77,7 +110,13 @@ def signed(form, secret, tag, login, pid, st, steps=STEPS, mid=(), tail=()):
     whatever the time.
     """
     exp = form.get("exp", "")
-    return bool(pid) and (steps is None or form.get("step") in steps) and exp.isascii() and exp.isdigit() and same(form.get("t"), mac(secret, tag, login, pid, *mid, st, exp, *tail))
+    return (
+        bool(pid)
+        and (steps is None or form.get("step") in steps)
+        and exp.isascii()
+        and exp.isdigit()
+        and same(form.get("t"), mac(secret, tag, login, pid, *mid, st, exp, *tail))
+    )
 
 
 def live(form, secret, tag, login, pid, st, now, steps=STEPS, mid=(), tail=()):
@@ -90,4 +129,10 @@ def gate(form, secret, login, now, tag, key, stop, reload, cancel=("No changes m
         if signed(form, secret, tag, login, pid, st):
             return pid, step, exp, st, expired_form(stop, reload)
         return pid, step, exp, st, invalid(stop, reload)
-    return pid, step, exp, st, stop(200, "Cancelled", cancel[0], cancel[1], "Nothing was written.", "") if step == "cancel" else None
+    return (
+        pid,
+        step,
+        exp,
+        st,
+        stop(200, "Cancelled", cancel[0], cancel[1], "Nothing was written.", "") if step == "cancel" else None,
+    )

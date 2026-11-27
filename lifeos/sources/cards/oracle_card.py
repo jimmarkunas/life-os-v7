@@ -5,6 +5,7 @@ behind the Connections row. It lives in sources because only sources may import 
 reading that cannot be had is never zero: its row keeps the last values and says `STALE since ...`. Counts and
 fixed codes only.
 """
+
 import json
 import os
 from datetime import datetime, timezone
@@ -58,7 +59,10 @@ def connection_summary(client, environ, now, live, seen=None, concord=None):
         except NotionError:
             print("oracle-card: connections not written", json.dumps({"code": "CONNECTIONS_WRITE_FAILED"}))
             updates = []
-    return connections.summary(connections.merged(rows, updates), now), {"changed": len(updates), "retired": len(retire)}
+    return connections.summary(connections.merged(rows, updates), now), {
+        "changed": len(updates),
+        "retired": len(retire),
+    }
 
 
 def reminders(reading, environ, now, send=None, client=None):
@@ -68,16 +72,30 @@ def reminders(reading, environ, now, send=None, client=None):
     try:
         items = signin_reminder.plan((reading or {}).get("signins"), now)
         if send is None and client is not None:
-            send = lambda item: inbox_send.deliver(item, client, now)                       # noqa: E731
+            send = lambda item: inbox_send.deliver(item, client, now)  # noqa: E731
         out = signin_reminder.send_all(items, environ, send) if items else {"sent": 0, "failed": 0}
         if items:
             print("oracle-card: signin reminders", json.dumps(out))
         return out["sent"]
-    except Exception:                                                                       # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return 0
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=None, limits=limits_of, seen=None, watch=None, workers_watch=None, boot_watch=None, concord_fetch=None, reminder_send=None):
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    now=None,
+    fetcher=card.fetch,
+    client=None,
+    limits=limits_of,
+    seen=None,
+    watch=None,
+    workers_watch=None,
+    boot_watch=None,
+    concord_fetch=None,
+    reminder_send=None,
+):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
     if not host or not anchor:
@@ -90,12 +108,23 @@ def run(limit, live, environ=os.environ, now=None, fetcher=card.fetch, client=No
     reading, read_at = limits(host)
     concord = concord_of(host, concord_fetch)
     summary, written = connection_summary(client, environ, now, live, seen, concord)
-    built = system_table.readings(stats, now if stats else None, reading, read_at or (now if reading else None), summary, now)
+    built = system_table.readings(
+        stats, now if stats else None, reading, read_at or (now if reading else None), summary, now
+    )
     stamp = connections.last_ok_time(card.heading_text_of(heading), now)
     table = system_table.finish(built, system_table.previous_of(card.table_of(rows)), stamp, now)
     heading_text = f"{card.TITLE} ({ct_stamp.when(now)})"
-    counts = {"rows": len(table) - 1, "stale": system_table.stale_count(table), "oracle": int(stats is not None), "limits": int(reading is not None),
-              "connections": f"{summary['connected']}/{summary['total']}" if summary else "unread", "concord": "ok" if concord["ok"] else concord["code"], "connections_written": written["changed"], "todoist_row_retired": written["retired"], "written": 0}
+    counts = {
+        "rows": len(table) - 1,
+        "stale": system_table.stale_count(table),
+        "oracle": int(stats is not None),
+        "limits": int(reading is not None),
+        "connections": f"{summary['connected']}/{summary['total']}" if summary else "unread",
+        "concord": "ok" if concord["ok"] else concord["code"],
+        "connections_written": written["changed"],
+        "todoist_row_retired": written["retired"],
+        "written": 0,
+    }
     if not live:
         return {**counts, **card.write(client, heading, rows, table, heading_text, False)}
     if stats is not None:

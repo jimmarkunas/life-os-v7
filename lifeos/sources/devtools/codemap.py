@@ -4,6 +4,7 @@
 committed); `find <text>` builds the map in memory. It is derived from the code itself, so it cannot drift. Names
 only; no data or secrets.
 """
+
 import ast
 import json
 import re
@@ -25,13 +26,18 @@ def first_line(path):
 def packages():
     out = {}
     for pkg in sorted(p for p in (ROOT / "lifeos").iterdir() if p.is_dir() and (p / "__init__.py").exists()):
-        out[pkg.name] = {str(f.relative_to(ROOT)): first_line(f) for f in sorted(pkg.rglob("*.py")) if f.name != "__init__.py" and "__pycache__" not in f.parts}
+        out[pkg.name] = {
+            str(f.relative_to(ROOT)): first_line(f)
+            for f in sorted(pkg.rglob("*.py"))
+            if f.name != "__init__.py" and "__pycache__" not in f.parts
+        }
     return out
 
 
 def stages():
     sys.path.insert(0, str(ROOT))
-    from lifeos import run                                              # noqa: PLC0415 - lazy stages import nothing until called
+    from lifeos import run  # noqa: PLC0415 - lazy stages import nothing until called
+
     out = {}
     for name, fn in sorted(run.STAGES.items()):
         target = getattr(fn, "target", None)
@@ -44,7 +50,11 @@ def workflows():
     for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
         text = path.read_text()
         jobs = re.findall(r"^  ([a-z][\w-]*):\s*$", text.split("\njobs:\n", 1)[-1], re.M)
-        out[path.name] = {"secrets": sorted(set(re.findall(r"secrets\.([A-Z0-9_]+)", text))), "jobs": jobs, "manual": "workflow_dispatch" in text}
+        out[path.name] = {
+            "secrets": sorted(set(re.findall(r"secrets\.([A-Z0-9_]+)", text))),
+            "jobs": jobs,
+            "manual": "workflow_dispatch" in text,
+        }
     return out
 
 
@@ -62,7 +72,13 @@ def decisions():
 
 
 def build():
-    return {"stages": stages(), "packages": packages(), "workflows": workflows(), "tables": tables(), "decisions": decisions()}
+    return {
+        "stages": stages(),
+        "packages": packages(),
+        "workflows": workflows(),
+        "tables": tables(),
+        "decisions": decisions(),
+    }
 
 
 ROUTING_LIMIT = 15 * 1024  # the routing page stays under this many bytes (a test enforces it)
@@ -76,19 +92,28 @@ def package_line(name, files):
 
 
 def markdown(m):
-    lines = ["# V7 code map (generated: do not edit; run `python -m lifeos.sources.devtools.codemap`)", "",
-             "A routing page. Find a stage here, then its module. For anything else ask one question instead of reading the whole map: "
-             "`python -m lifeos.sources.devtools.codemap find <text>` (a package, module, stage, workflow, table or decision number/word; prints only the matching entries). "
-             "Full machine-readable map: `docs/codemap.json`. Decisions: `docs/DECISIONS_INDEX.md` (find), then `grep -n \"^## D<n>\" docs/DECISIONS.md`.", "",
-             "## Stages (`python -m lifeos.run <stage>`)"]
+    lines = [
+        "# V7 code map (generated: do not edit; run `python -m lifeos.sources.devtools.codemap`)",
+        "",
+        "A routing page. Find a stage here, then its module. For anything else ask one question instead of reading the whole map: "
+        "`python -m lifeos.sources.devtools.codemap find <text>` (a package, module, stage, workflow, table or decision number/word; prints only the matching entries). "
+        "Full machine-readable map: `docs/codemap.json`. Decisions: `docs/DECISIONS_INDEX.md` (find), then `grep -n \"^## D<n>\" docs/DECISIONS.md`.",
+        "",
+        "## Stages (`python -m lifeos.run <stage>`)",
+    ]
     lines += [f"- `{k}` -> `{v}`" for k, v in m["stages"].items()]
     lines += ["", "## Packages (`find <package>` lists its modules)"]
     lines += [package_line(pkg, files) for pkg, files in m["packages"].items()]
     lines += ["", "## Workflows (`find <name>` lists jobs and secret names)"]
-    lines += [f"- `{k}`: {len(v['jobs'])} jobs; manual {'yes' if v['manual'] else 'no'}" for k, v in m["workflows"].items()]
+    lines += [
+        f"- `{k}`: {len(v['jobs'])} jobs; manual {'yes' if v['manual'] else 'no'}" for k, v in m["workflows"].items()
+    ]
     lines += ["", "## Database tables (Hostinger) and the file that owns each"]
     lines += [f"- `{k}`: `{v}`" for k, v in m["tables"].items()]
-    lines += ["", f"## Decisions: {len(m['decisions'])} in `docs/DECISIONS_INDEX.md` (`find D<n>` or `find <word>` prints matching titles)"]
+    lines += [
+        "",
+        f"## Decisions: {len(m['decisions'])} in `docs/DECISIONS_INDEX.md` (`find D<n>` or `find <word>` prints matching titles)",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -113,13 +138,17 @@ def find(m, text, limit=40):
                 out.append(f"module `{f}`: {d}")
     for name, w in m["workflows"].items():
         if needle in name.lower() or needle in " ".join(w["jobs"]).lower() or needle in " ".join(w["secrets"]).lower():
-            out.append(f"workflow `{name}`: jobs {', '.join(w['jobs']) or '-'}; manual {'yes' if w['manual'] else 'no'}; secrets {', '.join(w['secrets']) or '-'}")
+            out.append(
+                f"workflow `{name}`: jobs {', '.join(w['jobs']) or '-'}; manual {'yes' if w['manual'] else 'no'}; secrets {', '.join(w['secrets']) or '-'}"
+            )
     for name, owner in m["tables"].items():
         if needle in name.lower() or needle in owner.lower():
             out.append(f"table `{name}` -> `{owner}`")
     exact = re.fullmatch(r"d(\d+)", needle)
     for number, title in m["decisions"].items():
-        if (exact and number.lower() == needle) or (not exact and (needle in number.lower() or needle in title.lower())):
+        if (exact and number.lower() == needle) or (
+            not exact and (needle in number.lower() or needle in title.lower())
+        ):
             out.append(f"decision {number}: {title}")
     return out[:limit] + ([f"... {len(out) - limit} more; narrow the text"] if len(out) > limit else [])
 
