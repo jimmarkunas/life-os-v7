@@ -5,7 +5,6 @@ import urllib.request
 from datetime import datetime, timezone
 
 from lifeos.jira import capture as C
-from lifeos.platform.jira import JiraError
 
 NOW = datetime(2026, 11, 26, 15, 0, tzinfo=timezone.utc)
 
@@ -134,6 +133,28 @@ class CaptureTests(unittest.TestCase):
         out = C.run(5, True, environ={}, jira=jira)
         self.assertEqual((out["why"], out["stored"], jira.calls), ({"capture_not_configured": 1}, 0, []))
 
+    def test_a_repeated_state_write_loss_is_a_fixed_warning_and_stops_this_run(self):
+        from unittest.mock import patch
+
+        class FailedState(FakeState):
+            def put_comment(self, cid, payload, now):
+                return False
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        jira = FakeJira({"LIFE-1": [comment(11, "[approvals] first"), comment(12, "[approvals] second")]})
+        memory = FakeMemory()
+        with patch.object(C, "State", lambda connection: FailedState()):
+            out = C.run(5, True, environ={"LIFEOS_MCP_JIRA_CAPTURE": "configured"}, jira=jira,
+                        memory=memory, connect=Connection)
+        self.assertEqual((out["warnings"], out["failed"], out["why"]), (1, 0, {"capture_state_unavailable": 1}))
+        self.assertEqual((out["stored"], len(memory.log)), (1, 1))
+
     def test_only_the_life_project_and_the_last_two_hours_are_read(self):
         jira = FakeJira()
         C.run(5, False, environ={}, jira=jira, memory=FakeMemory(), connect=None)
@@ -239,10 +260,9 @@ class MemoryClient(unittest.TestCase):
         state = C.State.__new__(C.State)
         state.connection = Conn()
         store = Store(1)
-        state._write(store, 7, {"state": "stored"}, datetime(2026, 11, 26, tzinfo=timezone.utc))
+        self.assertTrue(state._write(store, 7, {"state": "stored"}, datetime(2026, 11, 26, tzinfo=timezone.utc)))
         self.assertEqual((store.saved, state.connection.reconnects), ([7], 1))
-        with self.assertRaises(OperationalError):  # a second loss is not hidden
-            state._write(Store(2), 7, {}, datetime(2026, 11, 26, tzinfo=timezone.utc))
+        self.assertFalse(state._write(Store(2), 7, {}, datetime(2026, 11, 26, tzinfo=timezone.utc)))
 
 
 if __name__ == "__main__":
