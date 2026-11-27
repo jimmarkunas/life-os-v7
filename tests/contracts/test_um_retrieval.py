@@ -79,7 +79,9 @@ class Replay(Offline):
     def test_the_new_combined_mode_keeps_every_graph_result_under_any_fake(self):
         graph = self.score([um.run_mode(self.world, "graph")])
         for fake in (rt.NoisyHoncho(self.world), rt.CleanHoncho(self.world), None):
-            new = self.score([rt.run_mode_v2(self.world, rt.Retriever(self.world, fake))])
+            new = self.score(
+                [rt.run_mode_v2(self.world, rt.Retriever(self.world, fake, grants=rt.grants_for(self.world)))]
+            )
             self.assertTrue(new["pass"])
             self.assertEqual(sum(new["dependency_ok"].values()), 3)
             self.assertEqual(new["metrics"]["abstention_accuracy"], 1.0)
@@ -88,7 +90,12 @@ class Replay(Offline):
             self.assertEqual((new["metrics"]["wrong_tenant_leaks"], new["metrics"]["fabricated_answers"]), (0, 0))
 
     def test_five_repetitions_agree(self):
-        passes = [rt.run_mode_v2(self.world, rt.Retriever(self.world, rt.NoisyHoncho(self.world))) for _ in range(5)]
+        passes = [
+            rt.run_mode_v2(
+                self.world, rt.Retriever(self.world, rt.NoisyHoncho(self.world), grants=rt.grants_for(self.world))
+            )
+            for _ in range(5)
+        ]
         self.assertTrue(self.score(passes)["identical_across_reps"])
 
 
@@ -145,14 +152,14 @@ class Dependencies(Offline):
 
     def test_memory_never_joins_a_dependency_set(self):
         for fake in (rt.NoisyHoncho(self.world), rt.CleanHoncho(self.world)):
-            r = rt.Retriever(self.world, fake)
+            r = rt.Retriever(self.world, fake, grants=rt.grants_for(self.world))
             for case in CORPUS["dependency_cases"]:
                 got = sorted(a["ref"] for a in r.answer_case(case)["answers"])
                 self.assertEqual(got, sorted(case["expect_ids"]), case["id"])
         self.assertEqual(fake.__class__, rt.CleanHoncho)
 
     def test_a_dependency_cannot_be_guessed_when_the_graph_is_down(self):
-        r = rt.Retriever(self.world, rt.NoisyHoncho(self.world), rt.DownGraph())
+        r = rt.Retriever(self.world, rt.NoisyHoncho(self.world), rt.DownGraph(), rt.grants_for(self.world))
         out = r.answer_case(CORPUS["dependency_cases"][0])
         self.assertEqual((out["abstain"], out["degraded"]), (True, "graph_unavailable"))
 

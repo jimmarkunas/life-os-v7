@@ -8,6 +8,7 @@ The original runner (um_baseline.py) stays as it is, so old and new results comp
 Usage: python3 tools/um_retrieval.py [--reps 5] [--json OUT]. Fakes only: it makes no network call."""
 
 import argparse
+import datetime
 import importlib.util
 import json
 import math
@@ -40,18 +41,23 @@ BEHAVIOR = frozenset(
 DEPENDENCY = frozenset(
     um.tokens("risk blocked blocks depends dependency downstream upstream impact slips uncovered lacks missing")
 )
+NODE_NOUNS = frozenset(um.tokens("requirement task issue decision pull request uat acceptance"))
 MEMORY, CANONICAL = "memory", "canonical"
 MAX_HOPS = 5
 FLOOR = (
     0.75  # share of a query's topical words a memory record must cover (the canonical lookup keeps the original half)
 )
+GUARDED = (KeyError, TypeError, ValueError, AttributeError, IndexError)  # a malformed record is dropped and counted
 
 
 def route(query):
-    """-> "unknown" | "behavioral" | "dependency" | "canonical", from the query's own words."""
+    """-> "unknown" | "dependency" | "behavioral" | "canonical", from the query's own words. A dependency term next to a record noun
+    (requirement, task, issue...) is a dependency question even when a preference word is also present."""
     words = um.tokens(query or "")
     if len(words) < 2:
         return "unknown"
+    if words & DEPENDENCY and words & NODE_NOUNS:
+        return "dependency"
     if words & BEHAVIOR:
         return "behavioral"
     if words & DEPENDENCY:
@@ -63,22 +69,85 @@ def _norm(text):
     return " ".join(sorted(um.tokens(text)))
 
 
+def build_world(doc):
+    """um_baseline.World over a registry that may hold malformed records: a record whose title or text is not text is flagged and emptied, so building the index never raises and the retriever refuses the record."""
+    clean = json.loads(json.dumps(doc))
+    for rec in clean.get("sources", []):
+        if not isinstance(rec.get("title"), str) or not isinstance(rec.get("text"), str):
+            rec["title"], rec["text"], rec["malformed"] = "", "", True
+    return um.World(clean)
+
+
+def _at(rec):
+    value = rec.get("at")
+    return value if isinstance(value, str) else ""
+
+
+def _subject(rec):
+    value = rec.get("subject")
+    return value if isinstance(value, str) and value else None
+
+
+def _epoch(value):
+    """-> seconds since the epoch from a number or an ISO time (naive means UTC); ValueError when it is neither."""
+    if isinstance(value, bool):
+        raise ValueError("bad_time")
+    if isinstance(value, (int, float)):
+        return float(value)
+    stamp = datetime.datetime.fromisoformat(value)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=datetime.timezone.utc)
+    return stamp.timestamp()
+
+
 class Retriever:
     """world: um_baseline.World over the registry (records may carry authority, subject, at, provenance); client: .recall(query, tenant, top_k) or None;
-    graph: .answer(tenant, text) and .deps(case) or None (the lexical graph then answers); grants: {tenant: [permissions]} or None (every tenant of the registry);
-    messages: [{id, tenant}] the provenance ids that exist."""
+    graph: .answer(tenant, text) and .deps(case) or None (the lexical graph then answers); grants: {tenant: [permissions]} or {tenant: {perms, expires, revoked}};
+    no grants at all means nothing is granted; messages: [{id, tenant}] the provenance ids that exist; clock: seconds, for grant expiry; floor: share of topical words a memory record must cover."""
 
-    def __init__(self, world, client=None, graph=None, grants=None, messages=None):
+    def __init__(self, world, client=None, graph=None, grants=None, messages=None, clock=time.time, floor=FLOOR):
         self.world, self.client, self.graph, self.grants = world, client, graph, grants
         self.messages = {m["id"]: m["tenant"] for m in messages or []}
         self.tenants = {s["tenant"] for s in world.src.values()}
         self.client_calls = 0
+        self.clock, self.floor = clock, floor
+        self._trace = []
+        self._clean = None
 
     # -- boundaries -------------------------------------------------------------------------------------------------
-    def granted(self, tenant):
+    def _grant(self, tenant):
+        """-> "" when the tenant may be read now, else a fixed reason word. Missing, malformed, expired or revoked all deny."""
         if self.grants is None:
-            return tenant in self.tenants
-        return "read" in self.grants.get(tenant, [])
+            return "grants_unavailable"
+        try:
+            grant = self.grants.get(tenant)
+        except AttributeError:
+            return "grants_unavailable"
+        if grant is None:
+            return "tenant_not_granted"
+        perms, expires, revoked = (
+            (grant, None, False)
+            if isinstance(grant, (list, tuple))
+            else (grant.get("perms"), grant.get("expires"), bool(grant.get("revoked")))
+            if isinstance(grant, dict)
+            else (None, None, False)
+        )
+        if not isinstance(perms, (list, tuple)):
+            return "grant_malformed"
+        if "read" not in perms:
+            return "tenant_not_granted"
+        if revoked:
+            return "grant_revoked"
+        if expires is not None:
+            try:
+                if self.clock() >= _epoch(expires):
+                    return "grant_expired"
+            except (TypeError, ValueError):
+                return "grant_malformed"
+        return ""
+
+    def granted(self, tenant):
+        return self._grant(tenant) == ""
 
     def _authority(self, rec):
         return rec.get("authority", CANONICAL)
@@ -89,9 +158,20 @@ class Retriever:
         return ref in self.world.src and self.world.src[ref]["tenant"] == tenant
 
     def _sources(self, rec, claimed, stats):
-        """The validated refs of one record: its registered provenance (all must resolve) plus any claimed ref that resolves. None when its own provenance does not."""
-        own = list(rec.get("provenance") or [rec["id"]])
-        if not own or not all(self._resolves(r, rec["tenant"]) for r in own):
+        """The validated refs of one record: its registered provenance (all must resolve, none may be the record itself) plus any claimed ref that resolves.
+        None when its own provenance does not. A canonical record with no provenance is its own system of record; a memory record never is."""
+        provenance = rec.get("provenance")
+        if self._authority(rec) == CANONICAL and not provenance:
+            own = [rec["id"]]
+        elif isinstance(provenance, list) and provenance:
+            own = list(provenance)
+        else:
+            return None
+        if not all(isinstance(r, str) for r in own):
+            return None
+        if self._authority(rec) == MEMORY and rec["id"] in own:
+            return None  # a record is not proof of itself
+        if not all(self._resolves(r, rec["tenant"]) for r in own):
             return None
         out = list(own)
         for ref in claimed:
@@ -100,6 +180,9 @@ class Retriever:
             elif ref not in out:
                 out.append(ref)
         return out
+
+    def _note(self, ref, decision):
+        self._trace.append({"ref": ref if isinstance(ref, str) else None, "decision": decision})
 
     # -- canonical --------------------------------------------------------------------------------------------------
     def _canonical_ids(self, tenant, query, stats):
@@ -125,49 +208,64 @@ class Retriever:
         return ok[:TOP_K]
 
     def _canonical_answer(self, rec_id, tenant, stats):
-        rec = self.world.src[rec_id]
-        sources = self._sources(rec, [], stats)
-        if sources is None:
+        try:
+            rec = self.world.src[rec_id]
+            sources = self._sources(rec, [], stats)
+            if sources is None or rec.get("malformed") or not isinstance(rec["text"], str):
+                return None
+            return {"ref": rec_id, "text": rec["text"], "sources": sources, "authority": CANONICAL, "merged": []}
+        except GUARDED:
+            stats["malformed_record"] += 1
             return None
-        return {"ref": rec_id, "text": rec["text"], "sources": sources, "authority": CANONICAL, "merged": []}
 
     # -- memory -----------------------------------------------------------------------------------------------------
     def _relevant(self, query, rec_id):
         rest = um.tokens(query) - BEHAVIOR
-        need = max(2, math.ceil(FLOOR * len(rest)))
+        need = max(2, math.ceil(self.floor * len(rest)))
         hit = len(rest & self.world.tok[rec_id])
         return hit if hit >= need else 0
 
+    def _reject(self, stats, ref, reason):
+        stats[reason] += 1
+        self._note(ref, reason)
+        return None
+
     def _admit(self, item, tenant, query, stats):
-        """-> (record, relevance, claimed_refs) for one client item, or None with the reason counted."""
+        """-> (record, relevance, claimed_refs) for one client item, or None with the reason counted and traced."""
         if not isinstance(item, dict):
-            stats["malformed"] += 1
-            return None
+            return self._reject(stats, None, "malformed")
         ref = item.get("source_ref")
         if not isinstance(ref, str) or not ref:
-            stats["malformed"] += 1
-            return None
+            return self._reject(stats, None, "malformed")
         if ref not in self.world.src:
-            stats["fabricated"] += 1
-            return None
+            return self._reject(stats, ref, "fabricated")
         rec = self.world.src[ref]
         claimed_revision = item.get("revision")
         if claimed_revision is not None and claimed_revision != rec.get("revision"):
-            stats["stale_revision"] += 1
-            return None
+            return self._reject(stats, ref, "stale_revision")
+        if item.get("live_state"):
+            return self._reject(stats, ref, "tombstoned")  # the live source says this item was revoked or superseded
         hops = 0
         while rec["status"] == "stale" and rec.get("superseded_by") in self.world.src and hops < MAX_HOPS:
-            rec, hops = self.world.src[rec["superseded_by"]], hops + 1
+            nxt = self.world.src[rec["superseded_by"]]
+            if nxt["tenant"] != rec["tenant"]:
+                return self._reject(stats, ref, "cross_tenant_supersession")
+            rec, hops = nxt, hops + 1
         if rec["tenant"] != tenant or self._authority(rec) != MEMORY:
-            stats["foreign"] += 1
-            return None
+            return self._reject(stats, ref, "foreign")
         if rec["status"] != "current":
-            stats["revoked_or_stale"] += 1
-            return None
+            return self._reject(stats, ref, "revoked_or_stale")
+        if rec.get("superseded_by"):
+            return self._reject(
+                stats, ref, "unverified_revision"
+            )  # marked current yet superseded: the registry disagrees with itself
+        if item.get("live_id") and item.get("text") != rec.get("text"):
+            return self._reject(stats, ref, "text_mismatch")  # the live text is not what the registry holds
+        if rec.get("malformed") or not isinstance(rec.get("text"), str):
+            return self._reject(stats, ref, "malformed_record")
         relevance = self._relevant(query, rec["id"])
         if not relevance:
-            stats["irrelevant"] += 1
-            return None
+            return self._reject(stats, ref, "irrelevant")
         claimed = item.get("refs")
         return rec, relevance, claimed if isinstance(claimed, list) else []
 
@@ -185,18 +283,21 @@ class Retriever:
             return []
         admitted = []
         for item in items:
-            row = self._admit(item, tenant, query, stats)
-            if row is None:
-                continue
-            rec, relevance, claimed = row
-            sources = self._sources(rec, claimed, stats)
-            if sources is None:
-                stats["unsupported"] += 1
-                continue
-            admitted.append((rec, relevance, sources))
+            try:
+                row = self._admit(item, tenant, query, stats)
+                if row is None:
+                    continue
+                rec, relevance, claimed = row
+                sources = self._sources(rec, claimed, stats)
+                if sources is None:
+                    self._reject(stats, rec["id"], "unsupported")
+                    continue
+                admitted.append((rec, relevance, sources, _at(rec), _subject(rec)))
+            except GUARDED:
+                self._reject(stats, item.get("source_ref") if isinstance(item, dict) else None, "malformed_record")
         groups = {}
-        for rec, relevance, sources in sorted(admitted, key=lambda row: row[0]["id"]):
-            key = (rec.get("subject") or rec["id"], _norm(rec["text"]))
+        for rec, relevance, sources, at, subject in sorted(admitted, key=lambda row: row[0]["id"]):
+            key = (subject or rec["id"], _norm(rec["text"]))
             if (
                 key in groups
             ):  # the same fact from another record: one answer under the lowest id, every validated source
@@ -204,7 +305,7 @@ class Retriever:
                 if rec["id"] != g["ref"]:
                     g["merged"].append(rec["id"])
                 g["sources"] += [s for s in sources if s not in g["sources"]]
-                g["at"] = max(g["at"], rec.get("at", ""))
+                g["at"] = max(g["at"], at)
                 continue
             groups[key] = {
                 "ref": rec["id"],
@@ -212,8 +313,8 @@ class Retriever:
                 "sources": list(sources),
                 "authority": MEMORY,
                 "merged": [],
-                "at": rec.get("at", ""),
-                "subject": rec.get("subject"),
+                "at": at,
+                "subject": subject,
                 "relevance": relevance,
             }
         # records with the same text merge under the lowest id so the answer is stable
@@ -226,28 +327,54 @@ class Retriever:
                 stats["conflicts"] += len(rows) - 1  # the newest valid record of a subject wins
             out.append(rows[0])
         out.sort(key=lambda g: (-g["relevance"], _neg(g["at"]), g["ref"]))
+        for g in out:
+            self._note(g["ref"], "admitted")
         return out
 
     # -- entry points -----------------------------------------------------------------------------------------------
+    def _still_valid(self, answers, tenant):
+        """The last check before output: the grant still stands and every ref is still a current record of this tenant."""
+        if self._grant(tenant):
+            return False
+        return all(
+            a["ref"] in self.world.src
+            and self.world.src[a["ref"]]["tenant"] == tenant
+            and self.world.src[a["ref"]]["status"] == "current"
+            for a in answers
+        )
+
     def answer(self, tenant, query):
-        """-> {"intent", "answers": [...], "abstain", "degraded", "stats"}; abstains when nothing validated supports an answer."""
+        """-> {"intent", "answers": [...], "abstain", "degraded", "stats", "trace"}; abstains when nothing validated supports an answer."""
         stats = Counter()
+        self._trace = []
         intent = route(query)
-        result = {"intent": intent, "answers": [], "abstain": True, "degraded": None, "stats": stats}
-        if not self.granted(tenant):
-            stats["degraded"] = "tenant_not_granted"
+        result = {
+            "intent": intent,
+            "answers": [],
+            "abstain": True,
+            "degraded": None,
+            "stats": stats,
+            "trace": self._trace,
+        }
+        denied = self._grant(tenant)
+        if denied:
+            stats["degraded"] = denied
         elif intent != "unknown":
             canonical = [
                 a for i in self._canonical_ids(tenant, query, stats) if (a := self._canonical_answer(i, tenant, stats))
             ]
             answers = list(canonical)
             if intent == "behavioral":
-                taken = {self.world.src[a["ref"]].get("subject") for a in canonical} - {None}
+                taken = {_subject(self.world.src[a["ref"]]) for a in canonical} - {None}
                 for m in self._memory_answers(tenant, query, stats):
                     if m["subject"] in taken:
                         stats["canonical_wins"] += 1  # memory never contradicts or displaces a canonical fact
+                        self._note(m["ref"], "canonical_wins")
                     else:
                         answers.append(m)
+            if not self._still_valid(answers, tenant):
+                stats["degraded"] = self._grant(tenant) or "state_changed_before_output"
+                answers = []
             result["answers"] = [
                 {k: v for k, v in a.items() if k in ("ref", "text", "sources", "authority", "merged")} for a in answers
             ]
@@ -255,31 +382,71 @@ class Retriever:
         result["degraded"] = stats.pop("degraded", None) if isinstance(stats.get("degraded"), str) else None
         return result
 
+    def _clean_world(self):
+        """The registry with only valid lineage: nodes that are current and edges whose two ends are both kept and in one tenant. A path through anything else does not exist here."""
+        if self._clean is None:
+            doc = self.world.doc
+            keep = {i for i, s in self.world.src.items() if s["status"] == "current"}
+            edges = [
+                e
+                for e in doc["edges"]
+                if e["from"] in keep
+                and e["to"] in keep
+                and self.world.src[e["from"]]["tenant"] == self.world.src[e["to"]]["tenant"]
+            ]
+            self._clean = um.World({**doc, "sources": [s for s in doc["sources"] if s["id"] in keep], "edges": edges})
+        return self._clean
+
     def answer_case(self, case):
-        """A typed dependency case: the graph's set is authoritative and exact; memory never joins it. -> same shape as `answer`."""
+        """A typed dependency case. The graph's set must equal the set the registry's own valid edges give; any member that fails validation, any stale or foreign edge on a path, or any difference makes the whole answer an explicit abstention. Memory never joins it."""
         stats = Counter()
         tenant = case["tenant"]
-        result = {"intent": "dependency", "answers": [], "abstain": True, "degraded": None, "stats": stats}
-        if not self.granted(tenant):
-            result["degraded"] = "tenant_not_granted"
+        result = {"intent": "dependency", "answers": [], "abstain": True, "degraded": None, "stats": stats, "trace": []}
+        denied = self._grant(tenant)
+        if denied:
+            result["degraded"] = denied
             return result
         try:
             ids, _ = self.graph.deps(case) if self.graph is not None else um.deps_graph(self.world, case)
         except Exception:  # noqa: BLE001  a dependency cannot be guessed from text: abstain
             result["degraded"] = "graph_unavailable"
             return result
-        for i in ids:
-            if i in self.world.src and self.world.src[i]["tenant"] == tenant:
-                answer = self._canonical_answer(i, tenant, stats)
-                if answer:
-                    result["answers"].append(answer)
-        result["abstain"] = not result["answers"]
+        if not isinstance(ids, (list, tuple)) or not all(isinstance(i, str) for i in ids):
+            result["degraded"] = "malformed_dependency_set"
+            return result
+        try:
+            reference, _ = um.deps_graph(self._clean_world(), case)
+        except GUARDED:
+            result["degraded"] = "lineage_unverifiable"
+            return result
+        answers = [a for i in ids if i in self.world.src and (a := self._canonical_answer(i, tenant, stats))]
+        valid = [
+            a
+            for a in answers
+            if self.world.src[a["ref"]]["tenant"] == tenant and self.world.src[a["ref"]]["status"] == "current"
+        ]
+        if len(valid) != len(set(ids)):
+            result["degraded"] = "incomplete_dependencies"  # a member failed validation: never shown as a complete set
+            stats["dropped"] = len(set(ids)) - len(valid)
+            return result
+        if sorted(set(ids)) != sorted(reference):
+            result["degraded"] = "lineage_mismatch"
+            return result
+        if self._grant(tenant):
+            result["degraded"] = self._grant(tenant)
+            return result
+        result["answers"], result["abstain"] = valid, not valid
         return result
 
 
 def _neg(text):
     """Sort key that puts the later date first inside an ascending tuple."""
     return tuple(-ord(c) for c in text)
+
+
+def grants_for(world):
+    """The synthetic harness states its grants explicitly: read for every tenant of this registry. A missing grants table denies; it is never the default."""
+    return {t: ["read"] for t in sorted({s["tenant"] for s in world.src.values()})}
 
 
 def run_mode_v2(world, retriever):
@@ -470,8 +637,12 @@ def report(reps=5):
             "honcho_noisy": lambda: um.run_mode(world, "honcho", NoisyHoncho(world)),
             "combined_old_noisy": lambda: um.run_mode(world, "combined", NoisyHoncho(world)),
             "combined_old_clean": lambda: um.run_mode(world, "combined", CleanHoncho(world)),
-            "combined_v2_noisy": lambda: run_mode_v2(world, Retriever(world, NoisyHoncho(world))),
-            "combined_v2_clean": lambda: run_mode_v2(world, Retriever(world, CleanHoncho(world))),
+            "combined_v2_noisy": lambda: run_mode_v2(
+                world, Retriever(world, NoisyHoncho(world), grants=grants_for(world))
+            ),
+            "combined_v2_clean": lambda: run_mode_v2(
+                world, Retriever(world, CleanHoncho(world), grants=grants_for(world))
+            ),
         }
         for name, fn in arms.items():
             passes = [fn() for _ in range(reps)]
