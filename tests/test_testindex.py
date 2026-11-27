@@ -5,6 +5,7 @@ import datetime
 import io
 import json
 import pathlib
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -150,11 +151,13 @@ class Select(unittest.TestCase):
         self.assertEqual(self.pick("lifeos/newpkg/z.py"), ti.FULL)  # no mirror folder either: everything
         self.assertEqual(self.pick("lifeos/unknown_top.py"), ti.FULL)
 
-    def test_a_change_to_any_production_file_also_runs_the_repo_wide_docstyle_test(self):
+    def test_a_change_to_any_file_also_runs_the_repo_wide_scanners(self):
         root = tree(FILES + ["tests/platform/test_docstyle.py"])
         self.assertIn("tests.platform.test_docstyle", ti.select(["lifeos/jobs/brand_new.py"], self.idx, root))
         self.assertIn("tests.platform.test_docstyle", ti.select(["lifeos/jobs/a.py"], self.idx, root))
-        self.assertNotIn("tests.platform.test_docstyle", ti.select(["docs/x.md"], self.idx, root))
+        self.assertIn(
+            "tests.platform.test_docstyle", ti.select(["docs/x.md"], self.idx, root)
+        )  # the scanners always run
 
     def test_a_top_level_module_uses_its_top_level_test_and_unknown_files_run_everything(self):
         self.assertIn("tests.test_run", self.pick("lifeos/run.py"))
@@ -176,6 +179,140 @@ class Select(unittest.TestCase):
             ti.select(["lifeos/jobs/a.py"], idx, self.root),
             sorted(CONTRACTS + ["tests.jobs.test_a", "tests.jobs.test_b"]),
         )
+
+
+TEN_FILES = FILES + [
+    "tests/platform/test_docstyle.py",
+    "tests/platform/test_tool_one_name_long.py",
+    "tools/tool_one_name_long.py",
+    "docs/guide.md",
+    "docs/data.json",
+    "lifeos/jobs/data.json",
+    "tests/fixtures/sample.txt",
+    "lifeos/platform/db.py",
+    "tests/platform/test_db.py",
+]
+ROW_TOOL = "tests.platform.test_tool_one_name_long"
+
+
+def reach(modules):
+    """The local gate's import-graph lookup, faked: a change to lifeos.jobs.a reaches the sources test."""
+    return {"tests.sources.test_c"} if "lifeos.jobs.a" in modules else set()
+
+
+class TenChanges(unittest.TestCase):
+    """The same ten representative changes through both modes of the one selector (PR CI with an index, the local gate
+    with the import graph). Each must pick the expected tests or everything; an extra test is fine, a missed one is not.
+    """
+
+    def setUp(self):
+        self.root = tree(TEN_FILES)
+        (self.root / "tests/platform/test_tool_one_name_long.py").write_text("import tool_one_name_long\n")
+        self.idx = index({"jobs/a.py": [0], "jobs/b.py": [1], "sources/c.py": [2], "run.py": [2]})
+        ti.test_texts.cache_clear()
+
+    def both(self, *changed):
+        return ti.select(list(changed), self.idx, self.root), ti.select(list(changed), None, self.root, reach)
+
+    def need(self, wanted, *changed):
+        for picked in self.both(*changed):
+            self.assertNotEqual(picked, ti.FULL, changed)
+            self.assertLessEqual(set(wanted), set(picked), changed)
+
+    def test_1_a_lifeos_file_runs_the_tests_of_its_module(self):
+        self.need(CONTRACTS + ["tests.jobs.test_a"], "lifeos/jobs/a.py")
+
+    def test_2_a_test_only_change_runs_that_test(self):
+        self.need(CONTRACTS + ["tests.sources.test_c"], "tests/sources/test_c.py")
+
+    def test_3_a_workflow_file_runs_everything(self):
+        self.assertEqual(self.both(".github/workflows/pr-tests.yml"), (ti.FULL, ti.FULL))
+
+    def test_4_a_doc_runs_the_contracts_and_the_scanners_only(self):
+        for picked in self.both("docs/guide.md"):
+            self.assertEqual(picked, sorted(CONTRACTS + ["tests.platform.test_docstyle"]))
+
+    def test_5_a_new_file_runs_its_mirror_folder_or_everything(self):
+        self.need(CONTRACTS + ["tests.jobs.test_a", "tests.jobs.test_b"], "lifeos/jobs/brand_new.py")
+        self.assertEqual(self.both("lifeos/newpkg/fresh.py"), (ti.FULL, ti.FULL))  # no tests mirror it: unsure
+
+    def test_6_a_rename_counts_the_old_path_and_the_new_path(self):
+        self.need(
+            CONTRACTS + ["tests.jobs.test_a", "tests.jobs.test_b"], "lifeos/jobs/a.py", "lifeos/jobs/renamed_a.py"
+        )
+
+    def test_7_a_deleted_file_still_runs_the_tests_that_covered_it(self):
+        (self.root / "lifeos/jobs/b.py").unlink()
+        self.need(CONTRACTS + ["tests.jobs.test_b"], "lifeos/jobs/b.py")
+
+    def test_8_a_config_file_runs_everything(self):
+        for path in ("pyproject.toml", "requirements-test.lock", "some_new_tool.sh", "lifeos/platform/db.py"):
+            self.assertEqual(ti.select([path], self.idx, self.root), ti.FULL, path)
+        self.assertEqual(ti.select(["pyproject.toml"], None, self.root, reach), ti.FULL)
+
+    def test_9_an_unknown_file_type_runs_everything(self):
+        for path in ("docs/blob.xyz", "tools/blob.bin", "scripts/run.sh", "tests/fixtures/orphan.dat"):
+            self.assertEqual(self.both(path), (ti.FULL, ti.FULL), path)
+
+    def test_10_an_empty_diff_runs_the_contracts_and_the_scanners(self):
+        for picked in self.both():
+            self.assertEqual(picked, sorted(CONTRACTS + ["tests.platform.test_docstyle"]))
+
+    def test_a_tool_runs_the_test_that_names_it_and_a_fixture_the_test_that_reads_it(self):
+        self.need(CONTRACTS + [ROW_TOOL], "tools/tool_one_name_long.py")
+        (self.root / "tests/jobs/test_a.py").write_text("PATH = 'tests/fixtures/sample.txt'\n")
+        ti.test_texts.cache_clear()
+        self.need(["tests.jobs.test_a"], "tests/fixtures/sample.txt")
+
+    def test_the_local_gate_follows_the_import_graph_where_the_index_follows_coverage(self):
+        self.assertIn("tests.sources.test_c", ti.select(["lifeos/jobs/a.py"], None, self.root, reach))
+        self.assertNotIn("tests.sources.test_c", ti.select(["lifeos/jobs/b.py"], None, self.root, reach))
+
+    def test_the_local_gate_does_not_treat_the_platform_layer_as_everything(self):
+        self.assertIn("tests.platform.test_db", ti.select(["lifeos/platform/db.py"], None, self.root, reach))
+
+    def test_with_neither_an_index_nor_an_import_graph_the_answer_is_everything(self):
+        self.assertEqual(ti.select(["docs/guide.md"], None, self.root), ti.FULL)
+        self.assertEqual(ti.select([], None, self.root), ti.FULL)
+
+
+class ChangedFiles(unittest.TestCase):
+    """The local mode sees staged, unstaged and untracked files as well as commits; a rename is two paths."""
+
+    def make(self):
+        root = pathlib.Path(tempfile.mkdtemp())
+
+        def run(*args):
+            subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+        run("init", "-q", "-b", "main")
+        run("config", "user.email", "t@example.com")
+        run("config", "user.name", "t")
+        for name in ("committed.py", "staged.py", "unstaged.py", "gone.py", "old_name.py"):
+            (root / name).write_text("x = 1\n")
+        run("add", ".")
+        run("commit", "-q", "-m", "base")
+        run("checkout", "-q", "-b", "work")
+        (root / "committed.py").write_text("x = 2\n")
+        run("commit", "-qam", "change")
+        (root / "staged.py").write_text("x = 3\n")
+        run("add", "staged.py")
+        (root / "unstaged.py").write_text("x = 4\n")
+        (root / "untracked.py").write_text("x = 5\n")
+        run("rm", "-q", "gone.py")
+        run("mv", "old_name.py", "new_name.py")
+        return root, run
+
+    def test_local_mode_adds_staged_unstaged_untracked_deleted_and_both_sides_of_a_rename(self):
+        root, _ = self.make()
+        got = set(ti.changed_files("main", root, local=True))
+        self.assertEqual(
+            got, {"committed.py", "staged.py", "unstaged.py", "untracked.py", "gone.py", "old_name.py", "new_name.py"}
+        )
+
+    def test_ci_mode_sees_only_commits(self):
+        root, _ = self.make()
+        self.assertEqual(ti.changed_files("main", root), ["committed.py"])
 
 
 class Check(unittest.TestCase):
