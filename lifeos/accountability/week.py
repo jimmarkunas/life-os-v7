@@ -6,6 +6,7 @@ With V3_WEEK_VIEW exactly "on" (fail closed), BOTH boards get the sprint view as
 import os
 
 from lifeos.accountability import common, read, region, render, switches, weekview
+from lifeos.jira import reconcile
 
 
 def _build(client, block_id, person, project, jira, now, live, site, notion):
@@ -22,7 +23,7 @@ def _build(client, block_id, person, project, jira, now, live, site, notion):
 
 def _build_v3(client, block_id, person, project, jira, now, live, site, notion):
     today = now.date()
-    week = read.week(jira, project, today, v3_week_view=True)
+    week = read.week(jira, project, today, v3_week_view=True, since=reconcile.since())
     _, lines = render.week_view(week, today, site)
     stamp = render.stamp(now)
     out = region.write_tree(client, block_id, stamp, weekview.spec(week, today, site, project, now), live)

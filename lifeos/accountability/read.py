@@ -343,17 +343,36 @@ def _row(issue, **extra):
     }
 
 
-V3_WEEK_FIELDS = WEEK_FIELDS + ",parent,labels"
+V3_WEEK_FIELDS = WEEK_FIELDS + ",parent,labels,resolution,statuscategorychangedate,resolutiondate"
 
 
 def _is_subtask(issue):
     return bool(((issue.get("fields") or {}).get("issuetype") or {}).get("subtask"))
 
 
-def _v3_week(jira, project, today, monday):
+def _sprint_name(jira, key):
+    """The name of the sprint an issue sits in (agile API); a sprint that cannot be read is a failed read."""
+    issue = jira.get(f"/rest/agile/1.0/issue/{quote(key, safe='')}", {"fields": "sprint"})
+    name = ((((issue or {}).get("fields") or {}).get("sprint")) or {}).get("name")
+    if not name:
+        raise JiraError("ACCOUNTABILITY_WEEK_SPRINT_UNREAD")
+    return name
+
+
+def _closed_at(fields):
+    stamp = fields.get("statuscategorychangedate") or fields.get("resolutiondate")
+    try:
+        moment = datetime.fromisoformat(stamp) if stamp else None
+    except (TypeError, ValueError):
+        moment = None
+    return moment if moment is not None and moment.tzinfo is not None else None
+
+
+def _v3_week(jira, project, today, monday, since=None):
     """Group the V3 week view: each key lands in one section: `open`, `subtasks` ({parent key: open Sub-tasks}),
-    `blocked` and `overdue` (outside the sprint), `done`. A Jira failure propagates so the V3 writer keeps its last
-    accepted content."""
+    `blocked`, `overdue` (outside any sprint) and `overdue_scheduled` (overdue but in a future sprint), and the closed
+    work split by `closure.classify` into `done` (delivered: by hand, automatic or before tracking began) and
+    `cancelled` (never delivered). A Jira failure propagates so the V3 writer keeps its last accepted content."""
     tail = " ORDER BY duedate ASC, key ASC"
     standard = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
     sprint = "(sprint in openSprints())"
@@ -378,11 +397,23 @@ def _v3_week(jira, project, today, monday):
     rows = [_row(i) for i in outside]
     blocked = [r for r in rows if r["status"].lower() == "blocked"]
     overdue = [r for r in rows if r["status"].lower() != "blocked" and r["due"] and r["due"] < today.isoformat()]
+    scheduled = set()
+    if overdue:
+        future = search(jira, standard + f'sprint in futureSprints() AND duedate < "{today}"' + tail, "summary")
+        scheduled = {i["key"] for i in future}
+    overdue_scheduled = [{**r, "sprint": _sprint_name(jira, r["key"])} for r in overdue if r["key"] in scheduled]
+    overdue = [r for r in overdue if r["key"] not in scheduled]
     done = search(
         jira,
         f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC',
         V3_WEEK_FIELDS,
     )
+    delivered, cancelled = [], []
+    for issue in done:
+        fields = issue.get("fields") or {}
+        kind = closure.classify(fields, _closed_at(fields), since)
+        row = _row(issue, labels=list(fields.get("labels") or []), kind=kind)
+        (cancelled if kind == "cancelled" else delivered).append(row)
     return {
         "v3": True,
         "open": [_row(i) for i in commitments],
@@ -390,19 +421,21 @@ def _v3_week(jira, project, today, monday):
         "subtasks_elsewhere": elsewhere,
         "blocked": blocked,
         "overdue": overdue,
-        "done": [_row(i, labels=list((i.get("fields") or {}).get("labels") or [])) for i in done],
+        "overdue_scheduled": overdue_scheduled,
+        "done": delivered,
+        "cancelled": cancelled,
         "jql": standard + sprint,
         "outside_jql": standard + outside_clause,
     }
 
 
-def week(jira, project, today, mej_task_focus=False, v3_week_view=False):
+def week(jira, project, today, mej_task_focus=False, v3_week_view=False, since=None):
     """This week's commitments and completions: the plain query by default; `mej_task_focus=True` separates MEJ sprint
     commitments from work due outside it; `v3_week_view=True` gives both boards the V3 view."""
     sunday = today + timedelta(days=6 - today.weekday())
     monday = today - timedelta(days=today.weekday())
     if v3_week_view:
-        return _v3_week(jira, project, today, monday)
+        return _v3_week(jira, project, today, monday, since)
     tail = " ORDER BY duedate ASC, key ASC"
     if project == "MEJ" and mej_task_focus:
         base = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
