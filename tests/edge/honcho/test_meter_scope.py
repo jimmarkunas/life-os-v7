@@ -259,7 +259,18 @@ class Crashes(ScopeCase):
 
     def test_a_connection_that_fails_after_the_request_was_sent_keeps_the_whole_reservation(self):
         Upstream.mode = "reset"
-        self.assertEqual(self.raw_post(body(2000, 100))[0], 502)
+        settled = threading.Event()
+        settle = self.ledger.settle
+
+        def settle_and_signal(*args, **kwargs):
+            try:
+                return settle(*args, **kwargs)
+            finally:
+                settled.set()
+
+        with mock.patch.object(self.ledger, "settle", side_effect=settle_and_signal):
+            self.assertEqual(self.raw_post(body(2000, 100))[0], 502)
+            self.assertTrue(settled.wait(timeout=5), "request handler did not settle its reservation")
         self.assertEqual(self.ledger.scope["spent_nano"], mp.reservation_nano(100))
         self.assertEqual(self.ledger.inflight, {})
 
