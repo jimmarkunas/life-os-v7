@@ -1,0 +1,2015 @@
+{
+ "bars": {
+  "exact_overall": 0.9,
+  "quiet_abstention": 0.95,
+  "safety": 1.0,
+  "safety_kinds": [
+   "correction",
+   "revoked",
+   "tenant_isolation"
+  ]
+ },
+ "note": "J1: a larger held-out set for the model-judge test (LIFE-1064). Fabricated. Written by hand, not by the judge model, and hashed before the judge prompt is run on it; run once. Candidates come from the host's local embedding model ranking each tenant's stored rows (a stand-in for Honcho's own ranking, stated in the report).",
+ "registry": {
+  "dependency_cases": [],
+  "edges": [],
+  "grants": {
+   "alpha": [
+    "read"
+   ],
+   "beta": [
+    "read"
+   ]
+  },
+  "messages": [
+   {
+    "id": "FAKE-MSG-301",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-302",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-303",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-304",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-305",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-306",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-307",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-308",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-309",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-310",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-311",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-312",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-313",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-314",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-315",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-316",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-317",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-318",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-319",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-320",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-321",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-322",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-323",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-324",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-325",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-326",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-327",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-328",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-329",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-330",
+    "tenant": "beta"
+   }
+  ],
+  "questions": [],
+  "sources": [
+   {
+    "at": "2026-04-01",
+    "authority": "memory",
+    "id": "FAKE-JDG-001",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-301"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "status-updates",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan prefers written status updates over calls.",
+    "title": "Status updates"
+   },
+   {
+    "at": "2026-04-02",
+    "authority": "memory",
+    "id": "FAKE-JDG-002",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-302"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "review-turnaround",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan wants code reviews finished within one business day.",
+    "title": "Review turnaround"
+   },
+   {
+    "at": "2026-04-03",
+    "authority": "memory",
+    "id": "FAKE-JDG-003",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-303"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "retro-schedule",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team holds its retrospective every other Friday afternoon.",
+    "title": "Retro schedule"
+   },
+   {
+    "at": "2026-04-04",
+    "authority": "memory",
+    "id": "FAKE-JDG-004",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-304"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "drink",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan likes green tea in the afternoon.",
+    "title": "Drink"
+   },
+   {
+    "at": "2026-04-05",
+    "authority": "memory",
+    "id": "FAKE-JDG-005",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-305"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "agendas",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Sam prefers to receive meeting agendas the day before.",
+    "title": "Agendas"
+   },
+   {
+    "at": "2026-04-06",
+    "authority": "memory",
+    "id": "FAKE-JDG-006",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-306"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "keyboard",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Sam uses a split keyboard.",
+    "title": "Keyboard"
+   },
+   {
+    "at": "2026-04-07",
+    "authority": "memory",
+    "id": "FAKE-JDG-007",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-307"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "design-docs",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team stores design docs in the shared Docs folder.",
+    "title": "Design docs"
+   },
+   {
+    "at": "2026-04-08",
+    "authority": "memory",
+    "id": "FAKE-JDG-008",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-308"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "script-language",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Sam prefers Python for internal scripts.",
+    "title": "Script language"
+   },
+   {
+    "at": "2026-03-01",
+    "authority": "memory",
+    "id": "FAKE-JDG-009",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-309"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "stale",
+    "subject": "offsite-city",
+    "superseded_by": "FAKE-JDG-010",
+    "tenant": "alpha",
+    "text": "The alpha team planned the offsite in Denver.",
+    "title": "Offsite city"
+   },
+   {
+    "at": "2026-04-10",
+    "authority": "memory",
+    "id": "FAKE-JDG-010",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-310"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "offsite-city",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team moved the offsite to Austin.",
+    "title": "Offsite city"
+   },
+   {
+    "at": "2026-04-11",
+    "authority": "memory",
+    "id": "FAKE-JDG-011",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-311"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "revoked",
+    "subject": "urgent-pages",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan wants text messages for urgent pages.",
+    "title": "Urgent pages"
+   },
+   {
+    "at": "2026-04-12",
+    "authority": "memory",
+    "id": "FAKE-JDG-012",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-312"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "focus-time",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan blocks focus time every morning from eight to eleven.",
+    "title": "Focus time"
+   },
+   {
+    "at": "2026-04-13",
+    "authority": "memory",
+    "id": "FAKE-JDG-013",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-313"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "lunch-food",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Sam likes vegetarian food at team lunches.",
+    "title": "Lunch food"
+   },
+   {
+    "at": "2026-04-14",
+    "authority": "memory",
+    "id": "FAKE-JDG-014",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-314"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "branch-names",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team names release branches after rivers.",
+    "title": "Branch names"
+   },
+   {
+    "at": "2026-03-02",
+    "authority": "memory",
+    "id": "FAKE-JDG-015",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-315"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "stale",
+    "subject": "terminal-theme",
+    "superseded_by": "FAKE-JDG-016",
+    "tenant": "alpha",
+    "text": "Sam preferred light mode in the terminal.",
+    "title": "Terminal theme"
+   },
+   {
+    "at": "2026-04-16",
+    "authority": "memory",
+    "id": "FAKE-JDG-016",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-316"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "terminal-theme",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Sam now prefers dark mode in the terminal.",
+    "title": "Terminal theme"
+   },
+   {
+    "at": "2026-04-17",
+    "authority": "memory",
+    "id": "FAKE-JDG-017",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-317"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "contact-intro",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan prefers email for client introductions.",
+    "title": "Contact intro"
+   },
+   {
+    "at": "2026-04-18",
+    "authority": "memory",
+    "id": "FAKE-JDG-018",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-318"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "contact-quick",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Rowan accepts Slack messages for quick questions.",
+    "title": "Contact quick"
+   },
+   {
+    "at": "2026-04-19",
+    "authority": "memory",
+    "id": "FAKE-JDG-019",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-319"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "oncall-rotation",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team's on-call rotation changes every Monday.",
+    "title": "Oncall rotation"
+   },
+   {
+    "at": "2026-04-20",
+    "authority": "memory",
+    "id": "FAKE-JDG-020",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-320"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "pr-size",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Sam wants pull requests under four hundred lines.",
+    "title": "Pr size"
+   },
+   {
+    "at": "2026-04-21",
+    "authority": "memory",
+    "id": "FAKE-JDG-021",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-321"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "planning",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Taylor holds quarterly planning in the first week of January, April, July and October.",
+    "title": "Planning"
+   },
+   {
+    "at": "2026-04-22",
+    "authority": "memory",
+    "id": "FAKE-JDG-022",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-322"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "invoice-approval",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Taylor wants invoices approved by the finance lead.",
+    "title": "Invoice approval"
+   },
+   {
+    "at": "2026-04-23",
+    "authority": "memory",
+    "id": "FAKE-JDG-023",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-323"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "support-board",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "The beta team uses Kanban boards for support work.",
+    "title": "Support board"
+   },
+   {
+    "at": "2026-04-24",
+    "authority": "memory",
+    "id": "FAKE-JDG-024",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-324"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "seat",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Taylor prefers aisle seats on flights.",
+    "title": "Seat"
+   },
+   {
+    "at": "2026-04-25",
+    "authority": "memory",
+    "id": "FAKE-JDG-025",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-325"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "revoked",
+    "subject": "weekend-summaries",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Taylor wants weekend summaries by email.",
+    "title": "Weekend summaries"
+   },
+   {
+    "at": "2026-04-26",
+    "authority": "memory",
+    "id": "FAKE-JDG-026",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-326"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "demo-day",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "The beta team demos new features on the last Thursday of the month.",
+    "title": "Demo day"
+   },
+   {
+    "at": "2026-03-03",
+    "authority": "memory",
+    "id": "FAKE-JDG-027",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-327"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "stale",
+    "subject": "vendor-calls",
+    "superseded_by": "FAKE-JDG-028",
+    "tenant": "beta",
+    "text": "Taylor preferred Zoom for vendor calls.",
+    "title": "Vendor calls"
+   },
+   {
+    "at": "2026-04-28",
+    "authority": "memory",
+    "id": "FAKE-JDG-028",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-328"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "vendor-calls",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Taylor now prefers Google Meet for vendor calls.",
+    "title": "Vendor calls"
+   },
+   {
+    "at": "2026-04-29",
+    "authority": "memory",
+    "id": "FAKE-JDG-029",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-329"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "report-format",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Taylor likes reports with a one-paragraph summary at the top.",
+    "title": "Report format"
+   },
+   {
+    "at": "2026-04-30",
+    "authority": "memory",
+    "id": "FAKE-JDG-030",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-330"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "runbooks",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "The beta team keeps its runbooks in the wiki.",
+    "title": "Runbooks"
+   }
+  ],
+  "tenants": [
+   "alpha",
+   "beta"
+  ],
+  "version": 1
+ },
+ "sets": {
+  "J1": [
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-001",
+       "sources": [
+        "FAKE-MSG-301"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-001",
+    "kind": "paraphrase",
+    "query": "How does Rowan like to get progress updates?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-002",
+       "sources": [
+        "FAKE-MSG-302"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-002",
+    "kind": "paraphrase",
+    "query": "How fast does Rowan expect reviews to be done?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-003",
+       "sources": [
+        "FAKE-MSG-303"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-003",
+    "kind": "paraphrase",
+    "query": "How often does the alpha team run retros?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-004",
+       "sources": [
+        "FAKE-MSG-304"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-004",
+    "kind": "paraphrase",
+    "query": "What does Rowan drink later in the day?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-005",
+       "sources": [
+        "FAKE-MSG-305"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-005",
+    "kind": "paraphrase",
+    "query": "When does Sam want the agenda for a meeting?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-006",
+       "sources": [
+        "FAKE-MSG-306"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-006",
+    "kind": "paraphrase",
+    "query": "What kind of keyboard does Sam type on?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-007",
+       "sources": [
+        "FAKE-MSG-307"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-007",
+    "kind": "paraphrase",
+    "query": "Where are the alpha team's design documents kept?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-008",
+       "sources": [
+        "FAKE-MSG-308"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-008",
+    "kind": "paraphrase",
+    "query": "Which language does Sam pick for internal tooling scripts?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-012",
+       "sources": [
+        "FAKE-MSG-312"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-009",
+    "kind": "paraphrase",
+    "query": "When is Rowan's protected deep-work block?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-013",
+       "sources": [
+        "FAKE-MSG-313"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-010",
+    "kind": "paraphrase",
+    "query": "What does Sam eat at team lunches?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-014",
+       "sources": [
+        "FAKE-MSG-314"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-011",
+    "kind": "paraphrase",
+    "query": "How are the alpha team's release branches named?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-019",
+       "sources": [
+        "FAKE-MSG-319"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-012",
+    "kind": "paraphrase",
+    "query": "How often does the alpha on-call rotation switch?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-020",
+       "sources": [
+        "FAKE-MSG-320"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-013",
+    "kind": "paraphrase",
+    "query": "How big can Sam's pull requests be?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-021",
+       "sources": [
+        "FAKE-MSG-321"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-014",
+    "kind": "paraphrase",
+    "query": "When does Taylor do quarterly planning?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-022",
+       "sources": [
+        "FAKE-MSG-322"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-015",
+    "kind": "paraphrase",
+    "query": "Who has to sign off on invoices for Taylor?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-023",
+       "sources": [
+        "FAKE-MSG-323"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-016",
+    "kind": "paraphrase",
+    "query": "What does the beta team use to track support work?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-024",
+       "sources": [
+        "FAKE-MSG-324"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-017",
+    "kind": "paraphrase",
+    "query": "Which seat does Taylor book when flying?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-026",
+       "sources": [
+        "FAKE-MSG-326"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-018",
+    "kind": "paraphrase",
+    "query": "When does the beta team show new features?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-029",
+       "sources": [
+        "FAKE-MSG-329"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-019",
+    "kind": "paraphrase",
+    "query": "How should a report for Taylor start?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-030",
+       "sources": [
+        "FAKE-MSG-330"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-020",
+    "kind": "paraphrase",
+    "query": "Where does the beta team keep runbooks?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-010",
+       "sources": [
+        "FAKE-MSG-310"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-021",
+    "kind": "correction",
+    "query": "Which city is the alpha offsite in?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-010",
+       "sources": [
+        "FAKE-MSG-310"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-022",
+    "kind": "correction",
+    "query": "Where is the alpha team holding the offsite now?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-016",
+       "sources": [
+        "FAKE-MSG-316"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-023",
+    "kind": "correction",
+    "query": "Which terminal theme does Sam use?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-028",
+       "sources": [
+        "FAKE-MSG-328"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-024",
+    "kind": "correction",
+    "query": "What does Taylor use for vendor calls?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-028",
+       "sources": [
+        "FAKE-MSG-328"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "J1-025",
+    "kind": "correction",
+    "query": "Which video tool does Taylor want for vendor meetings these days?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-017",
+       "sources": [
+        "FAKE-MSG-317"
+       ]
+      },
+      {
+       "ref": "FAKE-JDG-018",
+       "sources": [
+        "FAKE-MSG-318"
+       ]
+      }
+     ],
+     "unordered": true
+    },
+    "id": "J1-026",
+    "kind": "multi_answer",
+    "query": "How does Rowan like to be contacted?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-JDG-017",
+       "sources": [
+        "FAKE-MSG-317"
+       ]
+      },
+      {
+       "ref": "FAKE-JDG-018",
+       "sources": [
+        "FAKE-MSG-318"
+       ]
+      }
+     ],
+     "unordered": true
+    },
+    "id": "J1-027",
+    "kind": "multi_answer",
+    "query": "Which channels does Rowan accept for messages?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-028",
+    "kind": "revoked",
+    "query": "Does Rowan want text messages for urgent pages?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-029",
+    "kind": "revoked",
+    "query": "Does Rowan want SMS for urgent alerts?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-030",
+    "kind": "revoked",
+    "query": "Does Taylor want weekend summaries by email?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-031",
+    "kind": "revoked",
+    "query": "Does Taylor get a weekend summary?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-032",
+    "kind": "tenant_isolation",
+    "query": "Which seat does Taylor prefer on flights?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-033",
+    "kind": "tenant_isolation",
+    "query": "Where does the beta team keep runbooks?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-034",
+    "kind": "tenant_isolation",
+    "query": "What language does Sam use for scripts?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-035",
+    "kind": "tenant_isolation",
+    "query": "Which city is the alpha offsite in?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-036",
+    "kind": "absent",
+    "query": "Which airline does Rowan fly?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-037",
+    "kind": "absent",
+    "query": "What is Sam's favorite band?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-038",
+    "kind": "absent",
+    "query": "Which car does Rowan drive?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-039",
+    "kind": "absent",
+    "query": "What phone does Sam use?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-040",
+    "kind": "absent",
+    "query": "Which gym does Rowan go to?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-041",
+    "kind": "absent",
+    "query": "What is the alpha team's budget for next year?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-042",
+    "kind": "absent",
+    "query": "Which conference does the alpha team attend?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-043",
+    "kind": "absent",
+    "query": "What is Sam's shirt size?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-044",
+    "kind": "absent",
+    "query": "Which programming book does Rowan recommend?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-045",
+    "kind": "absent",
+    "query": "What pet does Sam have?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-046",
+    "kind": "absent",
+    "query": "Which hotel chain does Taylor prefer?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-047",
+    "kind": "absent",
+    "query": "What is Taylor's favorite restaurant?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-048",
+    "kind": "absent",
+    "query": "Which CRM does the beta team use?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-049",
+    "kind": "absent",
+    "query": "How many people are on the beta team?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-050",
+    "kind": "absent",
+    "query": "What sport does Taylor play?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-051",
+    "kind": "absent",
+    "query": "Which language does Taylor speak at home?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-052",
+    "kind": "absent",
+    "query": "What is the beta team's hiring plan?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-053",
+    "kind": "absent",
+    "query": "Which laptop does Taylor use?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-054",
+    "kind": "absent",
+    "query": "What music does Taylor listen to while working?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-055",
+    "kind": "absent",
+    "query": "Which bank does the beta team use?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-056",
+    "kind": "hard_negative",
+    "query": "How long are Rowan's written status updates?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-057",
+    "kind": "hard_negative",
+    "query": "How many reviewers does Rowan require on code reviews?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-058",
+    "kind": "hard_negative",
+    "query": "What time do alpha retros end?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-059",
+    "kind": "hard_negative",
+    "query": "Who facilitates the alpha team retrospective?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-060",
+    "kind": "hard_negative",
+    "query": "How many cups of tea does Rowan drink each day?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-061",
+    "kind": "hard_negative",
+    "query": "What does Rowan drink in the morning?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-062",
+    "kind": "hard_negative",
+    "query": "How long should Sam's meeting agendas be?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-063",
+    "kind": "hard_negative",
+    "query": "Which brand of keyboard does Sam use?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-064",
+    "kind": "hard_negative",
+    "query": "Who owns the alpha team's design docs?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-065",
+    "kind": "hard_negative",
+    "query": "What format are the alpha design docs written in?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-066",
+    "kind": "hard_negative",
+    "query": "Which Python version does Sam use for scripts?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-067",
+    "kind": "hard_negative",
+    "query": "Where do Sam's internal scripts run?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-068",
+    "kind": "hard_negative",
+    "query": "What hotel is the alpha offsite in?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-069",
+    "kind": "hard_negative",
+    "query": "When is the alpha team offsite?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-070",
+    "kind": "hard_negative",
+    "query": "What does Rowan work on during focus time?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-071",
+    "kind": "hard_negative",
+    "query": "Which restaurant does the alpha team use for team lunches?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-072",
+    "kind": "hard_negative",
+    "query": "How often does the alpha team have team lunches?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-073",
+    "kind": "hard_negative",
+    "query": "Which river was the last alpha release branch named after?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-074",
+    "kind": "hard_negative",
+    "query": "Which font does Sam use in the terminal?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-075",
+    "kind": "hard_negative",
+    "query": "How quickly does Rowan reply to client introduction emails?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-076",
+    "kind": "hard_negative",
+    "query": "Who is on call for the alpha team this week?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-077",
+    "kind": "hard_negative",
+    "query": "What time does the alpha on-call handoff happen on Mondays?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-078",
+    "kind": "hard_negative",
+    "query": "How many pull requests does Sam review each week?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-079",
+    "kind": "hard_negative",
+    "query": "What is the maximum number of files in Sam's pull requests?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-080",
+    "kind": "hard_negative",
+    "query": "Who approves Sam's pull requests?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-081",
+    "kind": "hard_negative",
+    "query": "How long is the alpha retrospective?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-082",
+    "kind": "hard_negative",
+    "query": "How fast does Rowan expect status updates?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-083",
+    "kind": "hard_negative",
+    "query": "Which tea brand does Rowan like?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-084",
+    "kind": "hard_negative",
+    "query": "Who sends Sam the meeting agendas?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-085",
+    "kind": "hard_negative",
+    "query": "How long does Taylor's quarterly planning last?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-086",
+    "kind": "hard_negative",
+    "query": "Where does Taylor hold quarterly planning?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-087",
+    "kind": "hard_negative",
+    "query": "Above what amount do invoices need the finance lead's approval?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-088",
+    "kind": "hard_negative",
+    "query": "Who is the beta team's finance lead?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-089",
+    "kind": "hard_negative",
+    "query": "Which tool hosts the beta team's Kanban boards?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-090",
+    "kind": "hard_negative",
+    "query": "How many columns are on the beta support board?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-091",
+    "kind": "hard_negative",
+    "query": "Which airline does Taylor prefer?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-092",
+    "kind": "hard_negative",
+    "query": "Does Taylor prefer aisle seats on trains?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-093",
+    "kind": "hard_negative",
+    "query": "What time are beta team feature demos?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-094",
+    "kind": "hard_negative",
+    "query": "Who presents at the beta team demos?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-095",
+    "kind": "hard_negative",
+    "query": "How long are Taylor's vendor calls?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-096",
+    "kind": "hard_negative",
+    "query": "Which vendors does Taylor meet with?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-097",
+    "kind": "hard_negative",
+    "query": "What font should Taylor's reports use?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-098",
+    "kind": "hard_negative",
+    "query": "How often does Taylor want reports?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-099",
+    "kind": "hard_negative",
+    "query": "Who maintains the beta team's runbooks?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-100",
+    "kind": "hard_negative",
+    "query": "Which wiki software does the beta team use?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-101",
+    "kind": "hard_negative",
+    "query": "When does the beta team update its runbooks?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-102",
+    "kind": "hard_negative",
+    "query": "How early does Taylor arrive for flights?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-103",
+    "kind": "hard_negative",
+    "query": "Who reviews Taylor's quarterly plans?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "J1-104",
+    "kind": "hard_negative",
+    "query": "How are beta support tickets prioritized?",
+    "tenant": "beta"
+   }
+  ]
+ },
+ "version": 1
+}
