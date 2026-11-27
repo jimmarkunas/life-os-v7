@@ -1,10 +1,9 @@
 """The Agent Inbox: one place where agents and people write items for Jim, too big to ignore and too small for a ticket.
 
-One Notion database ("Agent Inbox list"); `send(...)` adds a row with Status New, and Jim marks it Done, Dismissed,
-Snoozed or Promoted. A write targets only the one data source with that title (found by search, never a committed id).
-Subject, details and link are checked for secrets, personal data and synthetic hosts first; one sender may add at most
-RATE_PER_HOUR rows an hour and the same key never adds a second row. Output is counts and fixed reason words only.
-"""
+One Notion database ("Agent Inbox list"); `send(...)` adds a row with Status New and Jim marks it Done, Dismissed,
+Snoozed or Promoted. A write targets only the data source with that title (found by search). Subject, details and link
+are checked for secrets, personal data and synthetic hosts; one sender may add at most RATE_PER_HOUR rows an hour and
+the same key never adds a second row. Output is counts and fixed reason words only."""
 import hashlib
 import re
 from datetime import datetime, time, timedelta, timezone
@@ -23,13 +22,13 @@ MERGED_LABELS = ("This week", "FYI", "Snoozed")
 URGENCY = ("Now", "Today", "This week", "FYI")
 WORKSPACES = ("Personal", "Bytalos")
 STATUSES = ("New", "Done", "Dismissed", "Snoozed", "Promoted")
-TILES = (("Now", "New", "Now"), ("Today", "New", "Today"), ("This week", "New", "This week"), ("FYI", "New", "FYI"), ("Snoozed", "Snoozed", None))  # label, status, urgency (None: any)
+TILES = (("Now", "New", "Now"), ("Today", "New", "Today"), ("This week", "New", "This week"), ("FYI", "New", "FYI"), ("Snoozed", "Snoozed", None))
 SUBJECT_MAX, DETAILS_MAX, FROM_MAX, LINK_MAX, KEY_MAX = 160, 1500, 60, 500, 64
 RATE_PER_HOUR = 20
 CT = ZoneInfo("America/Chicago")
 DETAILS_LINE_MAX, BODY_BLOCKS_MAX, CELL_MAX = 120, 90, 300
 
-_FROM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:/-]{0,59}$")  # a name or an agent id: never an address
+_FROM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:/-]{0,59}$")
 _KEY = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _SECRET = re.compile("|".join((
     r"nsec1[0-9a-z]{20,}", r"ghp_[A-Za-z0-9]{20,}", r"gh[ousr]_[A-Za-z0-9]{20,}", r"github_pat_[A-Za-z0-9_]{20,}", r"sk-[A-Za-z0-9_-]{20,}", r"AKIA[0-9A-Z]{16}", r"xox[abprs]-[A-Za-z0-9-]{10,}",
@@ -66,9 +65,7 @@ def _due(value):
 
 
 def due_for(urgency, moment):
-    """The Due an urgency means for an item created at `moment`: Now is that moment, Today and This week are 11:59 PM CT
-    that day and the coming Sunday, FYI has none.
-    """
+    """The Due an urgency means at `moment`: Now is that moment, Today and This week 11:59 PM CT that day and the coming Sunday."""
     local = moment.astimezone(CT)
     if urgency == "Now":
         return local.replace(microsecond=0).isoformat()
@@ -91,9 +88,7 @@ def _link(value):
 
 
 def normalize(item, now=None):
-    """A validated item; `due` is the sender's own, else the one its urgency means at `now`. Raises InboxError with a
-    fixed word.
-    """
+    """A validated item; `due` is the sender's own, else the one its urgency means at `now`. Raises InboxError."""
     if not isinstance(item, dict):
         raise InboxError("item_invalid")
     sender = _text(item.get("from"), FROM_MAX, "from", required=True)
@@ -112,7 +107,7 @@ def normalize(item, now=None):
     key = str(item.get("key") or "").strip()
     if key and not _KEY.match(key):
         raise InboxError("key_invalid")
-    out["key"] = key or hashlib.sha256("\x1f".join((sender, subject, given, out["link"])).encode()).hexdigest()[:32]  # the key never depends on a computed Due
+    out["key"] = key or hashlib.sha256("\x1f".join((sender, subject, given, out["link"])).encode()).hexdigest()[:32]
     return out
 
 
@@ -150,9 +145,7 @@ def _row(cells, width):
 
 
 def body_blocks(details):
-    """The item's text as styled Notion blocks (first line a callout, `a | b | c` rows a table, lists, headings), at most
-    BODY_BLOCKS_MAX.
-    """
+    """The item's text as styled Notion blocks (first line a callout, `a | b | c` rows a table), at most BODY_BLOCKS_MAX."""
     lines, blocks, i = [ln.rstrip() for ln in str(details or "").splitlines()], [], 0
     while i < len(lines) and len(blocks) < BODY_BLOCKS_MAX:
         line = lines[i].strip()
@@ -214,7 +207,6 @@ def _plain_title(rich):
 
 
 def locate(client):
-    """The data source id of the one database called DB_TITLE; None or several is a fixed refusal."""
     found = notion_pages.search_all(client, DB_TITLE, "data_source", InboxError, incomplete="inbox_not_found", capped="inbox_not_found")
     hits = [r for r in found if r.get("object") == "data_source" and not r.get("in_trash") and not r.get("archived") and _plain_title(r.get("title")) == DB_TITLE]
     if len(hits) != 1:
@@ -241,15 +233,12 @@ def _select(name, value):
 
 
 def send(client, item, now=None, source=None):
-    """Add one row -> {"created": 1} or {"duplicate": 1}. Raises InboxError (fixed word) when the item is refused or over
-    the rate, NotionError when Notion refuses.
-    """
+    """Add one row -> {"created": 1} or {"duplicate": 1}. Raises InboxError when refused or over the rate, NotionError from Notion."""
     now = now or datetime.now(timezone.utc)
     item = normalize(item, now)
     source = source or locate(client)
     matched = client.query_data_source(source, {"page_size": 2, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}).get("results") or []
     if matched:
-        # Fail closed if the same key names several rows.
         if len(matched) != 1 or not matched[0].get("id"):
             raise InboxError("duplicate_key_ambiguous")
         rich = matched[0].get("properties", {}).get("From", {}).get("rich_text", [])
@@ -259,7 +248,7 @@ def send(client, item, now=None, source=None):
         props = properties(item)
         props.pop("Status")
         if not item["due_given"] and ((matched[0].get("properties", {}).get("Due") or {}).get("date") or {}).get("start"):
-            props.pop("Due", None)  # a resend never moves a Due that is already set unless the sender names one
+            props.pop("Due", None)  # a resend keeps an existing Due
         client.call_once("PATCH", f"/pages/{matched[0]['id']}", {"properties": props})
         replace_body(client, matched[0]["id"], item["details"])
         return {"updated": 1}
@@ -272,9 +261,7 @@ def send(client, item, now=None, source=None):
 
 
 def fill_missing_due(client, source, now=None, statuses=("New",), cap=40):
-    """Give every open row with an urgency but no Due the one its urgency means at its Received time. -> {"filled": n,
-    "left": n}.
-    """
+    """Give every open row with an urgency but no Due the one its urgency means at its Received time -> {"filled", "left"}."""
     out, cursor = {"filled": 0, "left": 0}, None
     flt = {"and": [{"or": [_select("Status", st) for st in statuses]} if len(statuses) > 1 else _select("Status", statuses[0]), {"property": "Due", "date": {"is_empty": True}}]}
     for _ in range(5):
@@ -330,10 +317,8 @@ def _tiles(client, page_id):
 
 
 def _merged_row(client, page_id):
-    """The merged page's blocks as (box callout, box heading, box gray line or None, [(callout id, number block, label
-    block)] for This week, FYI and Snoozed), or None. Found by what they say; two of a kind or a missing one gives
-    None (the caller falls back to the old page).
-    """
+    """The merged page's blocks as (box callout, box heading, box gray line or None, [(callout id, number block, label block)]
+    for This week, FYI and Snoozed), or None when one is missing or duplicated."""
     boxes, tiles = [], {}
 
     def scan(blocks, depth):
@@ -366,9 +351,7 @@ def _live_titled(page, titles):
 
 
 def _parent_page(client, source):
-    """The page holding the inbox database the run already found, accepted only when titled PAGE_TITLE, live, and
-    starting with the tile row; else None.
-    """
+    """The page holding the found inbox database, only when titled PAGE_TITLE, live and starting with the tile row; else None."""
     try:
         parent = (client.call("GET", f"/data_sources/{source}") or {}).get("parent") or {}
         if parent.get("type") == "database_id":
@@ -385,9 +368,7 @@ def _parent_page(client, source):
 
 
 def locate_page(client, source=None):
-    """The page that holds the tiles: the one live page titled MERGED_TITLE with the merged tile row, else the one titled
-    PAGE_TITLE with the old tile row. None or several of the winning kind is a fixed refusal.
-    """
+    """The live page titled MERGED_TITLE with the merged tile row, else the one titled PAGE_TITLE with the old tile row; none or several is a fixed refusal."""
     merged = []
     for page in notion_pages.search_all(client, MERGED_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"):
         if _live_titled(page, (MERGED_TITLE,)) and _merged_row(client, page["id"]):
@@ -467,12 +448,11 @@ def recount_page(client, page_id=None, source=None):
     return {"tiles": len(TILES), "tiles_changed": changed}
 
 
-TEST_KEY_PREFIXES = ("proof-", "direct-")  # only rows with these key prefixes may ever be trashed
+TEST_KEY_PREFIXES = ("proof-", "direct-")
 
 
 def archive_keys(client, keys, source=None):
-    """Trash the rows whose Key starts with a TEST_KEY_PREFIXES word; any other key is a refusal. -> number archived.
-    """
+    """Trash rows whose Key starts with a TEST_KEY_PREFIXES word; any other key is a refusal -> number archived."""
     if any(not str(key).startswith(TEST_KEY_PREFIXES) for key in keys):
         raise InboxError("archive_not_a_test_row")
     source = source or locate(client)
