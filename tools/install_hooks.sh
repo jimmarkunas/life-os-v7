@@ -14,7 +14,8 @@ install_one() {
   printf '#!/bin/sh\n# public-repo-guard (tools/install_hooks.sh)\n%s\n' "$body" > "$hooks/$name"
   chmod 755 "$hooks/$name"
 }
-guard='"$(git rev-parse --show-toplevel)/lifeos/platform/public_repo_guard.py"'
-install_one pre-commit "exec python3 $guard --staged"
-install_one commit-msg "exec python3 $guard --message \"\$1\""
+# a worktree whose checkout predates the guard has no guard file: the hook then does nothing
+guard='g="$(git rev-parse --show-toplevel)/lifeos/platform/public_repo_guard.py"; [ -f "$g" ] || exit 0;'
+install_one pre-commit "$guard exec python3 \"\$g\" --staged"
+install_one commit-msg "$guard exec python3 \"\$g\" --message \"\$1\""
 echo "install_hooks: pre-commit and commit-msg installed in $hooks"

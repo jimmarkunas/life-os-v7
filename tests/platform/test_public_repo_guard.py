@@ -180,6 +180,21 @@ class Hooks(unittest.TestCase):
             self.assertNotEqual(message.returncode, 0)
             self.assertIn("commit message:", message.stderr)
 
+    def test_a_checkout_without_the_guard_file_commits_freely(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            run = lambda *a: subprocess.run(a, cwd=repo, capture_output=True, text=True)  # noqa: E731
+            run("git", "init", "-q")
+            (repo / "tools").mkdir()
+            shutil.copy(ROOT / "tools/install_hooks.sh", repo / "tools/install_hooks.sh")
+            self.assertEqual(run("sh", "tools/install_hooks.sh").returncode, 0)
+            (repo / "a.txt").write_text(f"mail {BAD_MAIL}\n")
+            run("git", "add", "a.txt")
+            done = run(
+                "git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "old checkout"
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+
     def test_an_existing_foreign_hook_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as folder:
             repo = Path(folder)
