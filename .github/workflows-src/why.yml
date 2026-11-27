@@ -27,6 +27,7 @@ domains/020c-jira.yml:
 domains/020d-jira.yml:
   - {"jwcheck": "Jira writer contract check (LIFE-918; manual only; GET requests only, nothing is written; booleans and counts only)"}
   - {"jwverify": "Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; a fourth word keep keeps the test clone because the Jira Free plan cannot delete; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)"}
+  - {"jsetterproof": "V2_OFFICIAL setter proof (LIFE-1026 Option A; manual only, never scheduled; the verify input is REVISION then yes; one same-value off-over-off update checked against the expected row, value and revision, then a whole-page read-back; never retried; codes only)"}
   - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
 domains/030-followup.yml:
   - {"bws_followup": "Load the credentials from Bitwarden (LIFE-757, the store and its jump route, the existing Jira token, email, Outlook client id and Notion, Calendar and Gmail items, plus the two new FOLLOWUP_ items (Bytalos Gmail refresh token, Todoist token; Jim, Nov 16 2026); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
