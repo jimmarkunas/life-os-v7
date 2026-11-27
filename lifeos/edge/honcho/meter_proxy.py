@@ -16,7 +16,7 @@ Sources (Anthropic docs, read Nov 26 2026): models overview and context windows 
 tokens; a request's prompt length counts cache reads and writes), token counting ("The token count is an estimate...
 might differ by a small amount": it can refuse, never lower a reservation). When the reply ends the reservation
 becomes the actual usage (a broken-off reply keeps the full reservation). The cap is per window (the 5th at 6:00 PM CT to the next 5th): the first request after the boundary
-archives the old window to windows.jsonl and starts at zero. A STOP file next to the ledger refuses everything;
+archives the old window to windows.jsonl and starts at zero. A STOP file next to the ledger refuses everything; only budget refusals (never an invalid request, an experiment-scope refusal or a momentary reservation hold) write the EXHAUSTED marker;
 METER_STOP_AFTER (optional, UTC) is a hard stop; the first refusal in a window leaves an EXHAUSTED file (one alert
 per window). Fail closed: an unreadable or unwritable ledger, or a missing one while the audit file shows spend,
 refuses every Anthropic request. The real key arrives as a systemd credential; keys and bodies are never logged.
@@ -155,6 +155,39 @@ def reservation_nano(max_tokens):
 
 
 MIN_RESERVATION_NANO = reservation_nano(1)  # the least any admitted request can reserve (max_tokens of 1)
+
+
+# Refusal kinds. Only a BUDGET refusal (the month's cap really spent, the STOP file, an unverifiable ledger, credits ended, or any reason not
+# listed here: fail toward the alert) writes the once-per-window EXHAUSTED marker that triggers the Agent Inbox alert. An invalid request, an
+# experiment-scope refusal, or a refusal because other requests are momentarily in flight never does; all of them still write an audit row.
+KIND_BUDGET, KIND_SCOPE, KIND_INVALID, KIND_BUSY = "budget", "scope", "invalid", "busy"
+INVALID_REASONS = frozenset(
+    {
+        "bad body size",
+        "body is not JSON",
+        "unsupported request field",
+        "model is not priced",
+        "max_tokens missing or over the documented output limit",
+        "server tools are not priced",
+        "beta features are not priced",
+        "token count unavailable",
+        "token count invalid",
+        "prompt is over the context window",
+    }
+)
+SCOPE_REASONS = frozenset({"scope cap reached", "max_tokens is over the scope limit", "no scope proof"})
+BUSY_REASONS = frozenset({"monthly reservations in flight", "scope reservations in flight"})
+
+
+def refusal_kind(why):
+    """-> the kind of a refusal reason; an unknown reason is a budget refusal (never suppress a real accounting failure)."""
+    if why in INVALID_REASONS:
+        return KIND_INVALID
+    if why in BUSY_REASONS:
+        return KIND_BUSY
+    if why in SCOPE_REASONS or why.startswith("scope "):
+        return KIND_SCOPE
+    return KIND_BUDGET
 
 
 def admission(body, beta=False, counter=None):
@@ -448,17 +481,29 @@ class Ledger:
         """-> a reservation number (truthy) holding `worst` USD, or False when the cap, STOP file or a scope forbids
         it. Saved before returning.
         """
+        return self._reserve(worst, nano)[0]
+
+    def _reserve(self, worst, nano=0):
+        """-> (reservation, "") or (False, why). The reason tells a really spent cap from one that other requests in flight
+        hold for a moment: only actual spend counts as exhaustion.
+        """
         with self.lock:
-            if self.why_blocked():
-                return False
+            blocked = self.why_blocked()
+            if blocked:
+                return False, blocked
             if self.scope is not None and not nano:
-                return False
+                return False, "no scope proof"
+            if self.spent + worst > self.cap:
+                return False, "cap reached or stopped"
             if self.spent + self.reserved + worst > self.cap:
-                return False
+                return False, "monthly reservations in flight"
             if self.scope is not None:
-                reserved_nano = sum(h["nano"] for h in self.inflight.values())
-                if self.scope["spent_nano"] + reserved_nano + nano > self.scope["config"]["cap_nano"]:
-                    return False
+                held = sum(h["nano"] for h in self.inflight.values())
+                cap_nano = self.scope["config"]["cap_nano"]
+                if self.scope["spent_nano"] + nano > cap_nano:
+                    return False, "scope cap reached"
+                if self.scope["spent_nano"] + held + nano > cap_nano:
+                    return False, "scope reservations in flight"
             self.rid += 1
             self.inflight[self.rid] = {"worst": worst, "nano": nano}
             self.reserved += worst
@@ -468,8 +513,8 @@ class Ledger:
                 del self.inflight[self.rid]
                 self.reserved = max(0.0, self.reserved - worst)
                 self.unverified = "ledger unwritable"
-                return False
-            return self.rid
+                return False, "budget cannot be verified: ledger unwritable"
+            return self.rid, ""
 
     def admit(self, body, beta=False, counter=None):
         """-> (reservation, worst USD, "") for a /v1/messages request, or (False, 0.0, why): one strict admission for the
@@ -484,8 +529,8 @@ class Ledger:
                 return False, 0.0, why
             if self.scope is not None and nano > reservation_nano(self.scope["config"]["max_tokens"]):
                 return False, 0.0, "max_tokens is over the scope limit"
-            rid = self.reserve(nano / NANO, nano)
-            return rid, nano / NANO, "cap reached or stopped"
+            rid, why = self._reserve(nano / NANO, nano)
+            return rid, nano / NANO, why
 
     def settle(self, worst, actual, route, status, usage=None, broke=False, rid=None):
         """Replace the reservation with the actual cost (all of it when the reply broke off) and append one audit
@@ -533,10 +578,19 @@ class Ledger:
             except OSError:
                 self.unverified = self.unverified or "audit unwritable"
 
+    def month_exhausted(self):
+        """True when actual spend leaves no room for even the smallest request (open reservations are transient and do not count)."""
+        return self.spent + MIN_RESERVATION_NANO / NANO > self.cap
+
     def refuse(self, route, why):
         with self.lock:
-            if why != "bad body size":
+            kind = refusal_kind(why)
+            if kind == KIND_BUDGET:
                 self.mark_exhausted(why)
+            elif why != "bad body size" and self.month_exhausted():
+                self.mark_exhausted(
+                    "cap reached or stopped"
+                )  # overlap: the month really is spent too, so its alert still goes out
             try:
                 with open(self.audit_path, "a") as handle:
                     handle.write(
@@ -546,6 +600,7 @@ class Ledger:
                                 "route": route,
                                 "status": 400,
                                 "refused": why,
+                                "kind": kind,
                                 "spent_usd": round(self.spent, 6),
                             },
                             sort_keys=True,
