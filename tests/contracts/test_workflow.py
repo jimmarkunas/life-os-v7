@@ -1750,7 +1750,7 @@ HRL_LANE = HRL - {
     "OPEN_JOBS_CONTACT",
 }
 LOADED = {
-    "branches": {"report": {"NOTION_JIRA_TOKEN"}, "archive": {"V7_ARCHIVE_TOKEN"}},
+    "branches": {"report": {"NOTION_JIRA_TOKEN"}},
     "agenda": {"agenda": DB | {"NOTION_JIRA_TOKEN"}},
     "bills": {"bills": DB | {"NOTION_BILLS_TOKEN"}},
     "calendar": {"calendar": DB | {"OUTLOOK_CLIENT_ID"}},

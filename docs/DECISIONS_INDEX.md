@@ -242,7 +242,7 @@ This index is checked by a test: add a line here with every new decision.
 - D240 — A Cloud Fit batch may ask up to 600 jobs (was 100), and looks at up to 3,000 candidates (2026-10-20, Jim; LIFE-41)
 - D241 — A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)
 - D242 — Decision numbers are claimed on GitHub before use, and a reused number fails the PR (2026-10-20, Jim; LIFE-89)
-- D244 — Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)
+- D244 — Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81) (amended by D261)
 - D245 — Usage integrity accepts the cache-outside-input convention, exactly (2026-10-20, Jim; LIFE-41)
 - D246 — The precision audit trashes at most 40 Ledger pages a run, and reports how many rejected pages are still waiting (2026-10-20, Jim; LIFE-41)
 - D247 — Jim's confirmed evidence reaches the Fit engine through a Notion page, a store table and the Oracle brief; four Revolut roles are kept (2026-10-21, Jim; LIFE-93)
@@ -259,3 +259,4 @@ This index is checked by a test: add a line here with every new decision.
 - D258 — Followup runs as a `followup` stage on V7's hourly tick, with a `v7_followup_*` table family in the V7 MySQL store and six first sources (2026-11-16, Jim; LIFE-737, LIFE-746)
 - D259 — The public repo guard: a personal email address or a real Notion id fails the unit-tests check and the commit hooks (2026-11-27, Jim; LIFE-1074)
 - D260 — The Development Policy stays under 15 KB: task-specific parts live in docs/policy/ and the policy points to them (2026-11-27, Jim; LIFE-1075)
+- D261 — Closed-unmerged and idle branches are archived then deleted; archive tags live in V7 as `archive/<branch>-pr<N>` or `-nopr`; deletes are off until Jim turns them on (2026-11-27, Jim; LIFE-1071)
