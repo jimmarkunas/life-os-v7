@@ -162,7 +162,9 @@ class Dispatch(unittest.TestCase):
                 return workspace
             if args.get("task_id") == "LIFE-987":
                 return {"task": {"taskId": "LIFE-987", "agentId": "oc-oracle", "version": 7}}
-            return {"task": {"taskId": child, "agentId": "orchestrator-claude", "version": 3, "pending_handoff": None}} if child_started else {}
+            if not child_started:
+                raise G.Refuse("concord_refused")
+            return {"task": {"taskId": child, "agentId": "orchestrator-claude", "version": 3, "pending_handoff": None}}
 
         def start(args):
             nonlocal child_started
@@ -188,7 +190,9 @@ class Dispatch(unittest.TestCase):
     def test_an_unowned_ticket_sends_a_message_without_creating_a_handoff(self):
         calls = []
         def inspect(args):
-            return WORKSPACE if not args else {"task": {"taskId": "LIFE-987", "version": 1}}
+            if not args:
+                return WORKSPACE
+            raise G.Refuse("concord_refused")
         reply = go(request("agent_dispatch", **self.ARGS), inspect_work=inspect,
                    update_work=lambda args: calls.append(args) or {"messageId": "m-2", "deliveryStatus": "delivered"},
                    start_work=lambda args: self.fail("unowned tasks must not create child tasks"),

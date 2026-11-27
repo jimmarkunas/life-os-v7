@@ -183,6 +183,16 @@ def _task(result):
     return task if isinstance(task, dict) else result if isinstance(result, dict) and any(k in result for k in ("taskId", "task_id", "agentId", "agent_id", "version")) else {}
 
 
+def _inspect_task(mcp, task_id):
+    """An absent task is reported by Concord as a tool error; the gateway treats it as unowned/not-created and lets the next guarded operation decide."""
+    try:
+        return _task(mcp.call("inspect_work", {"task_id": task_id}))
+    except Refuse as error:
+        if error.reason == "concord_refused":
+            return {}
+        raise
+
+
 def _task_owner(task):
     for key in ("agentId", "agent_id", "ownerAgentId", "owner_agent_id", "owner"):
         value = task.get(key)
@@ -245,14 +255,14 @@ def dispatch(mcp, client, args):
         raise Refuse("agent_ambiguous")
     target = (live or mine)[0]
     target_id = _ident(target)
-    owner = _task_owner(_task(mcp.call("inspect_work", {"task_id": args["ticket"]})))
+    owner = _task_owner(_inspect_task(mcp, args["ticket"]))
     if owner and owner != mcp.agent_id:
         child = f"{args['ticket']}/{name}"
-        child_task = _task(mcp.call("inspect_work", {"task_id": child}))
+        child_task = _inspect_task(mcp, child)
         if not child_task:
             mcp.call("start_work", {"task_id": child, "parent_task_id": args["ticket"], "agent_id": mcp.agent_id,
                                      "kind": "orchestrator", "title": f"Dispatch {args['ticket']} to {name}", "expected_files": []})
-            child_task = _task(mcp.call("inspect_work", {"task_id": child}))
+            child_task = _inspect_task(mcp, child)
         version = _version(child_task)
         if not version or _task_owner(child_task) != mcp.agent_id:
             raise Refuse("handoff_unavailable")
