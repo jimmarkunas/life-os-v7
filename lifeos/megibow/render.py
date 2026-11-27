@@ -1,4 +1,5 @@
-"""MegIBOW block text (D134). Pure: projection -> the table rows and the note lines. No names, only counts and fixed words."""
+"""MegIBOW block text. Pure: projection -> the table rows and the note lines. No names, only counts and fixed words.
+"""
 from lifeos.megibow import classify as C
 from lifeos.megibow import project as P
 from lifeos.megibow import warnings as W
@@ -9,7 +10,6 @@ DASH = "–"
 
 
 def header(weeks):
-    """Each weekly column is headed by the Monday it begins on; the open week says so."""
     labels = [f"{w.strftime('%b')} {w.day}" for w in weeks]
     labels[-1] += " (current)"
     return ["Activity", "Cumulative"] + labels
@@ -20,7 +20,6 @@ def _cell(value):
 
 
 def table(proj):
-    """7 rows x 10 columns of strings: header, the five activities, then Jim — Total last (the card writes that last row in bold)."""
     rows = [header(proj["weeks"])]
     counts = [proj["counts"][w] for w in proj["weeks"]]
     for activity in C.ACTIVITIES:
@@ -30,7 +29,6 @@ def table(proj):
 
 
 def status(now, degraded=False, review=0, reason=None):
-    """LIFE-609: the callout's first line is `MegIBOW (11/13 · 3:31 PM CT)`, the form every card heading takes (this callout has no heading block of its own)."""
     if degraded:
         return f"MegIBOW (DEGRADED at {ct_stamp.when(chicago(now))}) — counts may be incomplete" + (f" ({reason})" if reason else "")
     line = f"MegIBOW ({ct_stamp.when(chicago(now))})"

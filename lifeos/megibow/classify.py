@@ -1,7 +1,8 @@
-"""MegIBOW classification (D134): deterministic rules, no model. Pure.
+"""MegIBOW classification: deterministic rules, no model. Pure.
 
-A candidate (a sent message, or a calendar event occurrence) becomes one outcome: COUNTED, EXCLUDED, REVIEW or DEGRADED. Uncertain evidence is never counted: it goes to REVIEW.
-Identity: a message by its id; Scheduled by the meeting's iCalendar UID (survives a reschedule); a completed call by its occurrence. Keys are hashed before they are stored or shown."""
+A candidate (a sent message or calendar event occurrence) becomes one outcome: COUNTED, EXCLUDED, REVIEW or DEGRADED;
+uncertain evidence goes to REVIEW. Keys are hashed before they are stored or shown.
+"""
 from datetime import timedelta
 import hashlib
 import re
@@ -32,7 +33,6 @@ def domain(address):
 
 
 def label(host):
-    """Second-level name of a host: mail.acme.co.uk -> acme."""
     parts = [p for p in host.lower().split(".") if p]
     if len(parts) < 2:
         return host.lower()
@@ -46,7 +46,6 @@ def normal(text):
 
 
 def external(addresses, ctx):
-    """Human, external addresses: not Jim's own, not a resource or automated address."""
     out = []
     for address in addresses:
         a = address.lower().strip()
@@ -57,7 +56,7 @@ def external(addresses, ctx):
 
 
 def known(addresses, ctx):
-    """True when an address belongs to a company already in Jim's job search (its name matches the address's domain name)."""
+    """True when an address belongs to a company already in the job search (name matches the domain)."""
     labels = {label(domain(a)) for a in addresses if domain(a) and domain(a) not in PERSONAL}
     return any(normal(l) and normal(l) in ctx["known"] for l in labels)
 
@@ -71,7 +70,6 @@ def _out(status, activity, week, reason, key, candidate=None):
 
 
 def message(msg, ctx):
-    """One sent message -> outcome. msg: id, sent_at (aware), to, cc, subject, snippet, bulk."""
     week = week_of(msg["sent_at"])
     key = key_hash("msg", msg["id"])
     decided = ctx["overrides"].get(key)
@@ -92,7 +90,6 @@ def message(msg, ctx):
 
 
 def _decided(decision, default_activity, week, key):
-    """Jim's dropdown choice for a candidate: 'Count as X' counts X, 'Exclude' excludes, 'Defer' keeps it in review."""
     if decision.startswith("Count as "):
         wanted = decision[len("Count as "):]
         if wanted in ACTIVITIES or wanted + "s" in ACTIVITIES:
@@ -103,7 +100,6 @@ def _decided(decision, default_activity, week, key):
 
 
 def contact_type(people, text, ctx):
-    """Recruiter first, then company, then networking, else unknown. -> ACTIVITY or None."""
     kinds = {ctx["contacts"].get(key_hash("contact", p)) for p in people}
     if RECRUITER in kinds or RECRUITER_WORDS.search(text):
         return RECRUITER
@@ -116,7 +112,7 @@ def contact_type(people, text, ctx):
 
 def event(ev, ctx, now):
     """One calendar event occurrence -> a list of outcomes (Scheduled, and the completed call once it has happened).
-    ev: uid, occ, created (aware or None), start, end, title, preview, cancelled, all_day, my_response, attendees [{email, response}], bridged."""
+    ev: uid, occ, created, start, end, title, cancelled, all_day, my_response, attendees, bridged."""
     if ev.get("bridged"):
         return [_out(EXCLUDED, None, week_of(ev["start"]), "bridged_copy", key_hash("ev", ev["uid"]))]
     start_week = week_of(ev["start"])

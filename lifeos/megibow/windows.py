@@ -1,4 +1,4 @@
-"""MegIBOW weeks: Monday to Sunday in America/Chicago, the current week plus the prior seven (D134). Pure."""
+"""MegIBOW weeks: Monday to Sunday in America/Chicago, the current week plus the prior seven. Pure."""
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -7,7 +7,6 @@ VISIBLE = 8
 
 
 def chicago(moment):
-    """A datetime (aware, or naive UTC) in Chicago time."""
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone(CHI)
@@ -18,18 +17,16 @@ def monday(day):
 
 
 def week_of(moment):
-    """The Monday (a date) of the Chicago week that contains this moment."""
     return monday(chicago(moment).date())
 
 
 def visible_weeks(today, count=VISIBLE):
-    """Mondays, oldest first: the prior count-1 weeks and the current one."""
     start = monday(today)
     return [start - timedelta(days=7 * i) for i in range(count - 1, -1, -1)]
 
 
 def window_utc(today, count=VISIBLE):
-    """(start, end) as UTC datetimes: the Monday of the oldest visible week, 00:00 Chicago, to the start of next Monday."""
+    """(start, end) as UTC: 00:00 Chicago on the oldest visible Monday to the start of next Monday."""
     first = visible_weeks(today, count)[0]
     start = datetime(first.year, first.month, first.day, tzinfo=CHI)
     end_day = monday(today) + timedelta(days=7)
@@ -42,7 +39,6 @@ def forward_window_utc(now, days=14):
 
 
 def elapsed_business_days(now):
-    """Business days elapsed this Chicago week, counting today once it has started: Monday 1 ... Friday 5, then 5 on the weekend."""
     return min(chicago(now).weekday() + 1, 5)
 
 

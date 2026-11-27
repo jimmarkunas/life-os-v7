@@ -1,7 +1,8 @@
-"""LIFE-313: turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.sources.devtools.readiness issue` reads.
+"""Turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.sources.devtools.readiness issue` reads.
 
-Pure and offline except `fetch`, which does one read-only GET with the existing Jira credentials (names only, never values).
-A field that cannot be read from the issue is left out of the record, so the validator reports it; nothing here ever invents a pass."""
+Pure and offline except `fetch` (one read-only GET). A field that cannot be read is left out so the validator reports
+it; nothing here invents a pass.
+"""
 import re
 
 from lifeos.jira.release import gate, jim_first
@@ -10,7 +11,7 @@ from lifeos.platform.jira import Jira, JiraError
 FIELDS = "summary,status,labels,parent,components,issuelinks,description"
 ROW = re.compile(r"^\[( |x|X)\]\s*(.+)$")
 PROOF = re.compile(r"\(proof:\s*(.*?)(?:;\s*status:[^)]*)?\)\s*\.?\s*(?:Done\.?)?\s*$")
-GWT = re.compile(r"(?:\*{0,2}GWT-[A-Z0-9-]+\*{0,2}\s*)?Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)       # delivery flow v3: any id, or none
+GWT = re.compile(r"(?:\*{0,2}GWT-[A-Z0-9-]+\*{0,2}\s*)?Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)
 DONE_WHEN = re.compile(r"^[#*\s]*done when\b[:*\s]*(.*)$", re.I)
 HEADING = re.compile(r"^(?:#|\*{2}[A-Z][^*]*:\*{2})|^(?:Outcome|Needs|Decisions|Not in scope|Protected|Build|Never|Steps|Context)\b")
 REQ_PAGE = re.compile(r"\bREQ-\d+\b.*?(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+)|(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+).*?\bREQ-\d+\b")
@@ -18,7 +19,6 @@ APPROVAL = re.compile(r"^\*{0,2}Origin\s*/\s*approval:\*{0,2}\s*(.+)$", re.I)
 
 
 def lines(node, out=None):
-    """Flatten an ADF document (or a plain string) to one text line per paragraph, heading or list item."""
     out = [] if out is None else out
     if isinstance(node, str):                                  # markdown/wiki text: drop list markers and escapes so checklists parse the same as ADF
         out.extend(re.sub(r"^\s*[*-]\s+", "", x.replace("\\", "")).strip() for x in node.splitlines())
@@ -43,7 +43,6 @@ def text(node):
 
 
 def section(rows, start):
-    """Lines after the first line that starts with `start`, up to the next bold heading line."""
     for i, line in enumerate(rows):
         if line.replace("*", "").startswith(start):
             rest = []
@@ -67,7 +66,6 @@ def checklist(block):
 
 
 def done_when(rows):
-    """Delivery flow v3: the Done-when lines (the text after the heading, then each line up to the next heading), checkbox marks removed."""
     for i, line in enumerate(rows):
         m = DONE_WHEN.match(line.replace("\\", ""))
         if not m:
@@ -82,7 +80,7 @@ def done_when(rows):
 
 
 def normalize(raw):
-    """The validator record for one REST v3 issue. Raises ValueError("INCOMPLETE:<field>") when the issue lacks what the record is built from."""
+    """The validator record for one REST v3 issue; raises ValueError("INCOMPLETE:<field>") when a field is missing."""
     if not isinstance(raw, dict) or not isinstance(raw.get("fields"), dict) or not raw.get("key"):
         raise ValueError("INCOMPLETE:issue")
     f, key = raw["fields"], raw["key"]
@@ -94,13 +92,13 @@ def normalize(raw):
         m = GWT.search(line.replace("\\", ""))
         if m:
             record["acceptance"].append({"given": m.group(1), "when": m.group(2), "then": m.group(3)})
-    record["acceptance"] += [{"done_when": x} for x in done_when(rows) if not GWT.search(x)]          # a bullet under "Done when" counts as a Done-when line
+    record["acceptance"] += [{"done_when": x} for x in done_when(rows) if not GWT.search(x)]
     record["description_chars"] = len(f["description"]) if isinstance(f.get("description"), str) else len("\n".join(rows))
-    for line in rows:                                                          # origin and authorization come from the written approval line, never from a comment
+    for line in rows:
         m = APPROVAL.match(line)
         if m:
             parent = (f.get("parent") or {}).get("key")
-            lead = m.group(1).split(",")[0].strip(" *")                                 # "<Name>, <date>, ..." or "... named by <Name> ..."
+            lead = m.group(1).split(",")[0].strip(" *")
             found = re.fullmatch(r"[A-Z][\w.'-]*(?: [A-Z][\w.'-]*)*", lead) or re.search(r"\b(?:by|from)\s+([A-Z][\w'-]*)", m.group(1))
             who = (found.group(1) if found and found.re.groups else found.group(0)) if found else ""
             named = bool(who)
@@ -110,7 +108,7 @@ def normalize(raw):
     record.setdefault("origin", {"approved": False})
     record.setdefault("authorization", {"approved_by": "", "provenance": ""})
     pages = sorted({(m.group(1) or m.group(2)).rstrip(".,;)*") for m in map(REQ_PAGE.search, (r.replace("\\", "") for r in rows)) if m})
-    record["requirement"] = {"pages": pages}                  # LIFE-849: LOS is retired, so no LOS key is read; the REQ pages a description links stay listed
+    record["requirement"] = {"pages": pages}
     build = " ".join(section(rows, "Build"))
     for needle, perm in (("PR", "repo:write"), ("Notion", "notion:write"), ("Jira", "jira:write")):
         if needle in build:
@@ -120,9 +118,9 @@ def normalize(raw):
             inward = link["inwardIssue"]
             record["blockers"].append({"key": inward.get("key"), "status": ((inward.get("fields") or {}).get("status") or {}).get("name")})
     record["needs"] = checklist(section(rows, "Needs before development"))
-    present, open_items = jim_first(f.get("description"))                       # Jim, Nov 21 2026: the release rule
+    present, open_items = jim_first(f.get("description"))
     record["jim_first"] = {"present": present, "open": len(open_items)}
-    record["gate"] = gate(f) or ""                                             # LIFE-850: the release gate's reason (labels, Epic state, blockers) from the same fetched fields
+    record["gate"] = gate(f) or ""
     record["decisions"] = checklist(section(rows, "Decisions"))
     if f.get("components") is not None:
         record["components"] = [c.get("name") for c in f["components"] if isinstance(c, dict) and c.get("name")]
@@ -136,7 +134,7 @@ def fetch(key, client=None):
 
 
 def epic_bundle(key, client=None):
-    """LIFE-851: one Epic's status, comments and children's update times for `readiness epic-review`; read-only GETs, any gap raises INCOMPLETE:<field>."""
+    """One Epic's status, comments and children's update times; any gap raises INCOMPLETE:<field>."""
     from lifeos.jira.search import search
     client = client or Jira.from_env()
     status = (((client.get(f"/rest/api/3/issue/{key}", {"fields": "status"}) or {}).get("fields") or {}).get("status") or {}).get("name")
@@ -149,8 +147,8 @@ def epic_bundle(key, client=None):
 
 
 def from_mcp(envelope, key):
-    """LIFE-363 (REQ-6): unwrap the unmodified result of the Atlassian MCP getJiraIssue (issues.nodes, exactly one node) into the `{key, fields}` shape `normalize` reads.
-    ValueError codes: INCOMPLETE:<field> (shape or a FIELDS entry missing), KEY_MISMATCH (the node is not `key`). `normalize` is unchanged."""
+    """Unwrap the Atlassian MCP getJiraIssue result (one node) into the `{key, fields}` shape `normalize` reads;
+    raises ValueError INCOMPLETE:<field> or KEY_MISMATCH."""
     nodes = ((envelope or {}).get("issues") or {}).get("nodes") if isinstance(envelope, dict) else None
     if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
         raise ValueError("INCOMPLETE:issues")
@@ -167,7 +165,6 @@ def from_mcp(envelope, key):
 
 
 def used(raw):
-    """The fields a human compares with Jira: key, status, updated time, blocker keys with statuses."""
     f = raw["fields"]
     blockers = [f"{(l.get('inwardIssue') or {}).get('key')}={(((l.get('inwardIssue') or {}).get('fields') or {}).get('status') or {}).get('name')}"
                 for l in f.get("issuelinks") or [] if (l.get("type") or {}).get("name") == "Blocks" and l.get("inwardIssue")]

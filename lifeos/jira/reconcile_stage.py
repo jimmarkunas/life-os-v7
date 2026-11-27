@@ -1,9 +1,11 @@
-"""LIFE-918: the `jira-reconcile-daily` stage of the hourly tick, off unless MEJ_SPRINT_AUTOMATION is on; JFM and MEJ as one unit.
+"""The `jira-reconcile-daily` stage of the hourly tick; off unless MEJ_SPRINT_AUTOMATION is on.
 
-On: once per Chicago date at or after 8:00 AM CT, the sprint inventory, recurring clones and closure counts; a dry run reads only. A live run writes only through lifeos.jira.writers (JIRA_WRITERS_VERIFIED yes).
-State is one private row of v7_jira_rollover, alerts are one phone push per code per day, the Daily Report line is one summary row; `after` is the promotion hook. Counts and fixed codes only."""
-# The Agent Inbox needs the inbox Notion token, which the Jira job deliberately does not hold (tests/jira/test_jira.py keeps NOTION_API_TOKEN out of it), so an alert is the existing phone push (INFO, deduped).
-# The Daily Report summary row is saved beside the Jira snapshots under key `_recon`; the card reads it and never calls Jira. Alert rows `rc...` are keyed by a hash of the failure code.
+Once per Chicago date after 8:00 AM CT: sprint inventory, recurring clones and closure counts for JFM and MEJ as one
+unit. Live writes go through lifeos.jira.writers. State: one private row.
+"""
+# Alerts use the existing phone push (INFO, deduped): the Jira job deliberately lacks the inbox Notion token.
+# The Daily Report summary row sits beside the snapshots under key `_recon`; the card reads it and never calls Jira.
+# Alert rows `rc...` are keyed by a hash of the failure code.
 
 import hashlib
 import os
@@ -46,7 +48,8 @@ class DbState:
                            (KEY, datetime(day.year, day.month, day.day)))
 
     def notified(self, name, day, once=False):
-        """True when `name` was already pushed today (or ever, with `once`); the row is keyed by a hash of the name, never the name."""
+        """True when `name` was already pushed today (or ever, with `once`); the row is keyed by a hash of the name.
+        """
         row_key = "rc" + hashlib.sha1(name.encode()).hexdigest()[:12]
         with self.connection.cursor() as cursor:
             cursor.execute("SELECT last_notified FROM v7_jira_rollover WHERE k=%s", (row_key,))
@@ -60,7 +63,8 @@ class DbState:
 
 
 def make_alert(state, environ, now, push=alerts.push):
-    """-> alert(subject, details, key=None, once=False): one phone push per failure per Chicago day (once ever for a promotion failure), recorded only after the push was accepted."""
+    """-> alert(subject, details, key=None, once=False): one phone push per failure per Chicago day, recorded after
+    the push is accepted."""
     day = now.astimezone(ZoneInfo(reconcile.TZ)).date()
 
     def alert(subject, details, key=ALERT_KEY, once=False):
@@ -72,7 +76,7 @@ def make_alert(state, environ, now, push=alerts.push):
             if push(key, subject, details, environ.get("NTFY_TOPIC", "")):
                 state.mark(row, now)
                 return True
-        except Exception:                                                      # noqa: BLE001 - alerting never changes the stage's own result
+        except Exception:  # noqa: BLE001
             return False
         return False
     return alert
@@ -109,6 +113,6 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None, wr
         total["summary"] = line
         if live:
             save_summary(connection, now, line, True)
-        if after is not None:                                                  # lifeos.run passes the AC6 promotion call site (jira may not import accountability)
+        if after is not None:
             total["promotion"] = after(environ, now, live, alert)
         return total

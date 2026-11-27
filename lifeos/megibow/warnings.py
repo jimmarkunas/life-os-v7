@@ -1,7 +1,8 @@
-"""MegIBOW warnings (D134): the Notion contract's v1 rules, exactly. Pure, no model.
+"""MegIBOW warnings: the Notion contract's v1 rules. Pure, no model.
 
-At most 3, ordered: evidence quality, no meetings scheduled / forward pipeline, pipeline imbalance, outreach drop, conversation drop. One suggestion each.
-Trend rules need four trustworthy completed weeks. A failed source yields only the source-unavailable warning; two or more unresolved review items yield the Review-queue warning (never a healthy line)."""
+At most 3, in order: evidence quality, no meetings scheduled, pipeline imbalance, outreach drop, conversation drop.
+Trend rules need four trustworthy completed weeks; a failed source yields only the source-unavailable warning.
+"""
 from statistics import median
 
 from lifeos.megibow import classify as C
@@ -25,10 +26,11 @@ def calls(counts):
 
 
 def evaluate(current, baseline, now, forward_14, degraded=False, unresolved=0):
-    """current: this week's counts; baseline: counts of the trustworthy completed weeks among the prior 7; forward_14: int or None when unknown. -> list of warning strings (maybe empty)."""
-    if degraded:                                            # a failed source says so; it never claims that something waits in the Review queue
+    """current: this week's counts; baseline: counts of the trustworthy completed weeks among the prior 7; forward_14:
+    int or None when unknown."""
+    if degraded:
         return [SOURCE_UNAVAILABLE]
-    weekday = chicago(now).weekday()  # Monday 0
+    weekday = chicago(now).weekday()
     elapsed = elapsed_business_days(now)
     trend = len(baseline) >= 4
     out = []

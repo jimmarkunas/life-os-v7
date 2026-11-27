@@ -1,9 +1,8 @@
-"""LIFE-918 wiring: the live Jira writers behind JIRA_WRITERS_VERIFIED, the read-only contract check and the throwaway-sprint verification (decision E).
+"""Live Jira writers behind JIRA_WRITERS_VERIFIED, the read-only contract check and the throwaway-sprint verification.
 
-Without the row exactly `yes` every live write fails closed. Entry points: `python -m lifeos.jira.writers contract-check`, and `verify --board JFM --issue JFM-123 [--live]` (a dry run unless --live).
-The live verification creates a ZZ-LIFE918-TEST sprint, renames it, clones the one named issue into it, syncs, backlogs, closes it Done with the label, reads each back and deletes only what it made."""
-# UNVERIFIED against the tenant until `verify --live` passes; MC then sets JIRA_WRITERS_VERIFIED. It refuses a board that is not configured, a sprint without the test prefix and any issue it did not create.
-# Counts and fixed codes only; the Jira REST settings come from the environment like every Jira stage.
+Without the row exactly `yes` every live write fails closed. Entry points: `python -m lifeos.jira.writers
+contract-check` and `verify --board JFM --issue JFM-123 [--live]` (dry run unless --live).
+"""
 
 import argparse
 import json
@@ -27,14 +26,13 @@ EDITABLE = ("summary", "description", "assignee", "priority", "labels", "parent"
 
 
 def adf(text):
-    """A plain string as the minimal Atlassian document body the v3 API takes; a dict (already a document) passes through."""
     if isinstance(text, dict):
         return text
     return {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": str(text)}]}]}
 
 
 def payload(fields, project, kind, parent=None):
-    """The create-issue fields of one clone (`reconcile.clone_fields` output). Absent values are left out; status and resolution are not fields (a new issue starts in To Do, unresolved)."""
+    """Create-issue fields of one clone (`reconcile.clone_fields` output); absent values are left out."""
     out = {"project": {"key": project}, "issuetype": {"name": kind}, "summary": fields["summary"]}
     if fields.get("description"):
         out["description"] = adf(fields["description"])
@@ -62,7 +60,6 @@ def edit_fields(drift):
 
 
 def raw_writers(client):
-    """The six writes over a Jira client, ungated: only `live_writers` (behind JIRA_WRITERS_VERIFIED) and the throwaway verification (behind --live and the test prefix) call it."""
     def create_clone(root, fields, sprint_id=None, origin=None):
         origin = origin or root
         meta = (client.issue(origin, "issuetype,project").get("fields") or {})
@@ -71,10 +68,9 @@ def raw_writers(client):
             raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
         key = client.create_issue(payload(fields, project, kind))["key"]
         try:
-            client.link_issues(CLONE_LINK, key, origin)                     # "<clone> clones <origin>": the clone is the INWARD argument (the issue that reads the outward text "clones"), so its own link entry carries outwardIssue=<origin>
-                                                                            # (live check Nov 25 2026: the opposite order wrote "origin clones clone", which series() and Jira's own Clone read as reversed)
+            client.link_issues(CLONE_LINK, key, origin)  # the clone is the INWARD argument, so its entry carries outwardIssue=<origin>
         except JiraError:
-            client.delete_issue(key)                                        # never leave an unlinked clone behind: the next run would create a second occurrence
+            client.delete_issue(key)
             raise
         if sprint_id is not None:
             client.move_issues(sprint_id, [key])
@@ -99,17 +95,16 @@ def raw_writers(client):
 
 
 def live_writers(client, environ=None):
-    """The writers a live run may use: all six when JIRA_WRITERS_VERIFIED is "yes", else none (every use fails closed with JIRA_RECONCILE_WRITER_UNVERIFIED)."""
+    """The writers a live run may use: all six when JIRA_WRITERS_VERIFIED is "yes", else none."""
     return raw_writers(client) if rc.writers_verified(environ) else rc.Writers()
 
 
 PERMISSIONS = ("CREATE_ISSUES", "EDIT_ISSUES", "DELETE_ISSUES", "TRANSITION_ISSUES", "MANAGE_SPRINTS_PERMISSION", "SCHEDULE_ISSUES")
 ATTEMPTS, WAIT = 4, 5
-MEMBER_ATTEMPTS, MEMBER_WAIT = 6, 10                                        # LIFE-918 diagnostics: the three sprint and backlog membership read-backs are more patient (still bounded: 50 s)
+MEMBER_ATTEMPTS, MEMBER_WAIT = 6, 10
 
 
 def _eventually(call, sleep, attempts=ATTEMPTS, wait=WAIT):
-    """Jira is eventually consistent: a read that is not yet true is retried (`attempts` tries, `wait` seconds apart) before it counts as a failure. -> the last value."""
     value = call()
     for _ in range(attempts - 1):
         if value:
@@ -120,7 +115,6 @@ def _eventually(call, sleep, attempts=ATTEMPTS, wait=WAIT):
 
 
 def _with_meta(read, *args, meta):
-    """Call a paged read with a `meta` dict that receives its page counts; a client whose read does not take one is called without it."""
     try:
         return read(*args, meta=meta)
     except TypeError:
@@ -128,7 +122,6 @@ def _with_meta(read, *args, meta):
 
 
 def _sprint_field_id(client):
-    """The id of the Sprint field (by name), or None when it cannot be found."""
     try:
         for field in client.field_list():
             if field.get("name") == "Sprint" and field.get("id"):
@@ -139,7 +132,6 @@ def _sprint_field_id(client):
 
 
 def _sprint_ids(client, key, field_id):
-    """The ids of the sprints the issue itself lists in its own Sprint field (a second, independent view), or None when it cannot be read."""
     if not field_id:
         return None
     try:
@@ -152,7 +144,7 @@ def _sprint_ids(client, key, field_id):
 
 
 def _write_state(client):
-    """What the last Agile write reported ({"write_ok", "body_empty"}: a non-2xx raises, so a recorded write was 2xx), then forgotten; None when the client records nothing."""
+    """The last Agile write's {"write_ok", "body_empty"}, then forgotten."""
     last = getattr(client, "last_write", None)
     try:
         client.last_write = None
@@ -162,23 +154,24 @@ def _write_state(client):
 
 
 def permissions(client, project):
-    """-> {permission: bool} from GET mypermissions for one project; a read that fails gives all False (never an exception text)."""
+    """-> {permission: bool} from GET mypermissions; a failed read gives all False."""
     try:
         have = client.my_permissions(project, PERMISSIONS)
         return {name: bool((have.get(name) or {}).get("havePermission")) for name in PERMISSIONS}
-    except Exception:                                                       # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {name: False for name in PERMISSIONS}
 
 
 def contract_check(client, configured):
-    """Read-only (GET only). -> {"ok": bool, "boards": n, "checks": {name: bool}}: each board is scrum and answers sprint and backlog reads, the Cloners link type reads "clones" outward, and the Sprint, labels, issuelinks and
-    duedate fields exist. Counts and booleans only; a failing read is a False check, never an exception text."""
+    """Read-only. -> {"ok", "boards", "checks": {name: bool}}: each board is scrum and answers sprint and backlog
+    reads, the Cloners link type reads "clones" outward, and the needed fields exist. A failing read is a False check.
+    """
     checks = {}
 
     def attempt(name, call):
         try:
             checks[name] = bool(call())
-        except Exception:                                                   # noqa: BLE001 - a failed read is a failed check
+        except Exception:  # noqa: BLE001
             checks[name] = False
     for position, (_, board_id, _, readonly) in enumerate(configured, 1):
         attempt(f"board{position}_scrum", lambda b=board_id: str(client.board(b).get("type", "")).lower() == "scrum")
@@ -190,20 +183,18 @@ def contract_check(client, configured):
     held = {project: permissions(client, project) for project, _, _, readonly in configured if not readonly}
     listed = sprint_list_check(client, configured)
     return {"ok": all(checks.values()) and bool(checks), "boards": len(configured), "checks": checks, "permissions": held,
-            "sprint_list": listed, "sprint_list_ok": bool(listed) and all(row["equal"] for row in listed)}       # LIFE-918: reported, never fatal (it does not change "ok")
+            "sprint_list": listed, "sprint_list_ok": bool(listed) and all(row["equal"] for row in listed)}
 
 
 def sprint_list_check(client, configured):
-    """LIFE-918 (Jim, comment 14271): the Agile sprint issue list read returned 0 for a future sprint that held the test clone. Read-only cross-check, GET only: for each configured board, its active sprint and every future sprint,
-    the counts of the Agile list read with the rollover's own filter ("statusCategory != Done"), the list read with no filter, and the JQL search `sprint = <id>` with and without the same filter. -> [{"board", "sprint", "state",
-    "list_open", "list_all", "jql_open", "jql_all", "equal"}]; `equal` means each list count equals its JQL count. Counts only; a sprint whose read fails is listed with None counts and equal False, never an exception text."""
+    """Read-only cross-check of the Agile sprint list against JQL counts. -> rows with an `equal` flag."""
     from .search import search
     rows = []
     for position, (_, board_id, _, _) in enumerate(configured, 1):
         for state in ("active", "future"):
             try:
                 sprints = client.sprints(board_id, state)
-            except Exception:                                               # noqa: BLE001 - a failed read is a failed row
+            except Exception:  # noqa: BLE001
                 rows.append({"board": position, "sprint": None, "state": state, "list_open": None, "list_all": None, "jql_open": None, "jql_all": None, "equal": False})
                 continue
             for sprint in sprints:
@@ -214,7 +205,7 @@ def sprint_list_check(client, configured):
                     row["jql_open"] = len(search(client, f"sprint = {row['sprint']} AND statusCategory != Done", "summary"))
                     row["jql_all"] = len(search(client, f"sprint = {row['sprint']}", "summary"))
                     row["equal"] = row["list_open"] == row["jql_open"] and row["list_all"] == row["jql_all"]
-                except Exception:                                           # noqa: BLE001
+                except Exception:  # noqa: BLE001
                     row.update({"list_open": None, "list_all": None, "jql_open": None, "jql_all": None, "equal": False})
                 rows.append(row)
     return rows
@@ -229,16 +220,17 @@ def _held(client, sprint_id, key):
 
 
 def _code(error):
-    """A fixed code for a failed step: the JiraError's own code when it has one, else a generic one. Never message text."""
     text = str(error)
     return text if re.match(r"^JIRA_[A-Z0-9_]{2,60}(:[0-9]{3})?$", text) else "JIRA_ERROR"
 
 
 def verify(client, configured, board, issue_key, live, now=None, sleep=None, keep=False):
-    """The throwaway-sprint verification. Dry run (live False): the contract check and the plan, no write. Live: see the module docstring. -> {"ok": bool, "steps": {name: bool}, "why": {step: fixed code},
-    "cleaned": bool, "cleaned_parts": {"clone": bool, "sprint": bool}, "mode": ...}. A board that is not configured, an issue key that is not a plain key, a failed contract check or a missing DELETE_ISSUES permission
-    stops before any write (we never create an issue we cannot remove). `keep` (Jira Free plan: nobody can delete issues; Jim, LIFE-918 comment 14242) skips that permission check and keeps the test clone: the throwaway sprint is still deleted, the result lists
-    the kept key under "kept", and pass or fail excludes the clone deletion. `keep` without `live` is refused. A step that fails is recorded with a fixed code and the run goes on to the cleanup; reads after writes are retried (Jira is eventually consistent)."""
+    """The throwaway-sprint verification; dry run (live False) is the contract check and plan only. -> {"ok", "steps",
+    "why", "cleaned", "mode"}.
+
+    A bad board, issue key or contract check, or a missing DELETE_ISSUES permission, stops before any write. `keep`
+    (for plans that cannot delete issues) keeps the test clone under "kept"; `keep` without `live` is refused.
+    """
     if keep and not live:
         raise JiraError("JIRA_VERIFY_ARGUMENTS_INVALID")
     chosen = [b for b in configured if b[0] == board and not b[3]]
@@ -255,14 +247,13 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
         raise JiraError("JIRA_VERIFY_NO_DELETE_PERMISSION")
     tz = ZoneInfo("America/Chicago")
     now = now or datetime.now(tz)
-    start = datetime.combine(now.astimezone(tz).date() + timedelta(days=60), datetime.min.time(), tzinfo=tz)       # far enough ahead to touch no real week
+    start = datetime.combine(now.astimezone(tz).date() + timedelta(days=60), datetime.min.time(), tzinfo=tz)
     name = _test_sprint_name(now)
     writers = raw_writers(client)
     steps, why, diag, sprint_id, clone = {}, {}, {}, None, None
     field_id = _sprint_field_id(client)
 
     def member(label, kind, write):
-        """One sprint or backlog membership read-back with two independent views: the list read and the clone's own Sprint field. Counts, booleans and fixed words only go into diag[label]."""
         began, tries = time.monotonic(), {"n": 0}
 
         def probe():
@@ -304,7 +295,7 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
         def identity():
             def read():
                 fresh = client.issue(clone, "summary,labels,issuelinks,sprint,status")
-                found = rc.series([origin, fresh], configured=(issue_key,))   # the origin need not carry the `recurring` label (the verification issue is any Done Task); the chain is what is checked
+                found = rc.series([origin, fresh], configured=(issue_key,))  # the origin need not carry `recurring`; the chain is what is checked
                 return list(found) == [issue_key] and clone in found[issue_key]["keys"]
             return _eventually(read, sleep)
         step("clone_link_identity", identity)
@@ -322,15 +313,15 @@ def verify(client, configured, board, issue_key, live, now=None, sleep=None, kee
             return ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done" and rc.AUTO_LABEL in (fields.get("labels") or [])
         step("close_done_with_label", lambda: _eventually(closed, sleep))
     except JiraError as error:
-        why["run"] = _code(error)                                           # a write that raised: the steps after it did not run; the cleanup below always does
+        why["run"] = _code(error)
     finally:
         parts = {"clone": True, "sprint": True}
         for part in ("clone", "sprint"):
             try:
                 if part == "clone" and clone and not keep:
-                    client.delete_issue(clone)                              # only the issue this run created
+                    client.delete_issue(clone)
                 if part == "sprint" and sprint_id is not None:
-                    client.delete_sprint(sprint_id)                         # only the throwaway sprint this run created, named with the test prefix
+                    client.delete_sprint(sprint_id)
             except JiraError as error:
                 parts[part] = False
                 why["cleanup_" + part] = _code(error)

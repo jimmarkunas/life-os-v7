@@ -1,7 +1,8 @@
-"""The MegIBOW Review list (D134): a small Notion database Jim answers with a dropdown. Private to Jim's workspace; fixed codes in logs, counts only.
+"""The MegIBOW Review list: a small Notion database answered with a dropdown.
 
-V7 adds one row per uncertain item (Resolution empty), reads Jim's Resolution on the next run, hands the decisions back, marks the row Applied, and sets it to Archived 14 days after (never deletes a row).
-An item that stops being uncertain with no decision is marked Superseded. An item left alone stays Open and never counts."""
+V7 adds a row per uncertain item, reads the Resolution on the next run and hands the decisions back; rows go Applied,
+then Archived 14 days later (never deleted).
+"""
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -22,7 +23,6 @@ def _text(prop):
 
 
 def check_schema(notion, source_id):
-    """-> the data source (its parent names the database the V3 review line links to, LIFE-672)."""
     try:
         source = notion.call("GET", f"/data_sources/{quote(source_id, safe='')}")
     except NotionError as error:
@@ -84,5 +84,5 @@ def write(notion, source_id, plan_):
         notion.update_page_properties(page_id, {"Status": {"select": {"name": "Applied"}}})
     for page_id in plan_["superseded"]:
         notion.update_page_properties(page_id, {"Status": {"select": {"name": "Superseded"}}})
-    for page_id in plan_["archive"]:                                    # never deleted: the row only leaves Jim's Open view
+    for page_id in plan_["archive"]:
         notion.update_page_properties(page_id, {"Status": {"select": {"name": "Archived"}}})

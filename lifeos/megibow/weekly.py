@@ -1,9 +1,9 @@
-"""Jim's weekly Megibow database (LIFE-687): one row per week, never deleted, the source of Jim's lifetime Cumulative. A weekly summary, not an activity ledger.
+"""The weekly Megibow database: one row per week, never deleted, the source of the lifetime Cumulative.
 
-Per week and category the shown number is: the typed override column if filled; else, for a finished week that has a row, the row's stored number (frozen, whether loaded from the sheet or
-written by the engine); else the engine's reading (the open week, or a finished week with no row yet). The engine writes a finished week to its row once (Source = Engine) and never again;
-only a typed override changes it afterwards. The one exception: the sheet week that was still open when the sheet was loaded (OPEN_AT_LOAD) is finalized by the engine once it ends, unless Jim
-typed an override on it. Cumulative is the sum of every row's shown values, so it does not change when a week leaves the 8-week table. Counts only; fixed codes."""
+Shown number: the typed override if filled; else the stored number of a finished week; else the engine's reading. The
+engine writes a finished week once (Source = Engine); the sheet week open at load (OPEN_AT_LOAD) is finalized once it
+ends unless overridden.
+"""
 from datetime import date
 from urllib.parse import quote
 
@@ -16,7 +16,7 @@ JIM_SOURCE_TITLE = "Jim — MegIBOW weekly"
 OVERRIDE = {"Outreach": "Outreach override", "Scheduled": "Scheduled override", "Networking Calls": "Networking override", "Recruiter Calls": "Recruiter override",
             "Company Calls": "Company override"}
 FIELDS = {"Week Start": "date", "Source": "select", **{a: "number" for a in C.ACTIVITIES}, **{o: "number" for o in OVERRIDE.values()}}
-OPEN_AT_LOAD = date(2026, 11, 9)                       # the sheet's last week was still open when it was loaded; the engine finalizes it once it ends
+OPEN_AT_LOAD = date(2026, 11, 9)
 
 
 class WeeklyError(NotionError):
@@ -33,8 +33,7 @@ def _number(prop):
 
 
 def read(client, source_id):
-    """-> ({monday: {stored: counts or None, over: {activity: n or None}, source, id}}, rows ignored). A row with no valid date or a bad number is ignored; two rows for one
-    week: the most recently edited wins. An unreadable or changed database raises MEGIBOW_WEEKLY_SCHEMA or MEGIBOW_WEEKLY_READ_INCOMPLETE."""
+    """-> ({monday: {stored, over: {activity: n or None}, source, id}}, rows ignored)."""
     meta = client.call("GET", f"/data_sources/{quote(source_id, safe='')}")
     props = (meta or {}).get("properties") or {}
     if any((props.get(n) or {}).get("type") != t for n, t in FIELDS.items()):
@@ -65,7 +64,6 @@ def read(client, source_id):
 
 
 def shown(week, current, row, engine):
-    """-> (counts or None, the activities typed over). `engine` is the engine's counts for the week, or None."""
     over = (row or {}).get("over") or {}
     base = engine if week == current or row is None or row["stored"] is None else row["stored"]
     if base is None and all(n is None for n in over.values()):
@@ -74,7 +72,8 @@ def shown(week, current, row, engine):
 
 
 def project(proj, rows):
-    """The engine's projection with the weekly rows laid over it: shown counts for the visible weeks, `typed` {monday: activities}, and a lifetime Cumulative over every row."""
+    """The engine projection with weekly rows laid over it: shown counts, `typed` {monday: activities}, lifetime
+    Cumulative."""
     counts, typed = {}, {}
     for w in proj["weeks"]:
         counts[w], typed[w] = shown(w, proj["current"], rows.get(w), proj["counts"][w])
@@ -94,8 +93,8 @@ def _props(week, counts, source):
 
 
 def close(client, source_id, rows, proj, live):
-    """Write each finished visible week that has no row, once (Source = Engine), and finalize the open-at-load sheet week once it ends. `proj` is the ENGINE's projection.
-    -> {created, finalized}; written only when live, each read back (a mismatch raises MEGIBOW_WEEKLY_VERIFY_FAILED)."""
+    """Write each finished visible week that has no row once (Source = Engine) and finalize the open-at-load week once
+    it ends. -> {created, finalized}."""
     out = {"created": 0, "finalized": 0}
     if not live:
         return out
