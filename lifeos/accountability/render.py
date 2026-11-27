@@ -35,12 +35,12 @@ def goal_cell(done, total):
     return f"{done} / {total}"
 
 
-BAR = 10
+BAR = 6
 GREEN, ORANGE, RED, GRAY = "green", "orange", "red", "gray"
 
 
 def bar(done, total):
-    """Ten-block Progress cell: filled blocks = Done / all; green at 70% or more, orange 30-69%, red under 30%."""
+    """Six-block Progress cell: filled blocks = Done / all; green at 70% or more, orange 30-69%, red under 30%."""
     share = done / total if total else 0.0
     filled = min(BAR, int(share * BAR + 0.5))
     color = GREEN if share >= 0.7 else ORANGE if share >= 0.3 else RED
