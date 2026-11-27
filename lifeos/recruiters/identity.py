@@ -1,11 +1,45 @@
 """Deterministic identity for a recruiter contact: name cleaning, normalized natural key, Monday-to-Sunday week. No fuzzy matching, no guessing."""
+
 import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 CHICAGO = ZoneInfo("America/Chicago")
-NOT_A_PERSON = {"team", "hr", "recruiting", "recruitment", "careers", "career", "jobs", "job", "talent", "staffing", "hiring", "inc", "llc", "ltd", "group", "solutions", "services",
-                "support", "admin", "notifications", "alerts", "noreply", "no-reply", "info", "hello", "mail", "mailer", "the", "of", "and", "at", "apply", "applications"}
+NOT_A_PERSON = {
+    "team",
+    "hr",
+    "recruiting",
+    "recruitment",
+    "careers",
+    "career",
+    "jobs",
+    "job",
+    "talent",
+    "staffing",
+    "hiring",
+    "inc",
+    "llc",
+    "ltd",
+    "group",
+    "solutions",
+    "services",
+    "support",
+    "admin",
+    "notifications",
+    "alerts",
+    "noreply",
+    "no-reply",
+    "info",
+    "hello",
+    "mail",
+    "mailer",
+    "the",
+    "of",
+    "and",
+    "at",
+    "apply",
+    "applications",
+}
 TOKEN = re.compile(r"^[A-Za-z][A-Za-z'’.\-]*$")
 VIA = re.compile(r"\s+(?:via|\(via|from|at|\||-|–|—|,)\s+.*$|\s*\(.*?\)\s*", re.I)
 

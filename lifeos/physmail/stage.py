@@ -4,6 +4,7 @@ Source access is READ-ONLY. The Gmail listing is complete or fails closed, every
 is saved, and the state row is replaced and read back. The first run needs the starting pile
 (`PHYSICAL_MAIL_ANCHOR`, from the workflow input); later runs continue from the stored row and re-read the last
 OVERLAP days."""
+
 import os
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
@@ -40,7 +41,18 @@ def window_query(since):
 
 
 def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
-    counts = {"listed": 0, "arrivals_new": 0, "actions_new": 0, "review_new": 0, "review_resolved": 0, "ignored": 0, "before_anchor": 0, "saved": 0, "status": "ok", "rebuild": 0}
+    counts = {
+        "listed": 0,
+        "arrivals_new": 0,
+        "actions_new": 0,
+        "review_new": 0,
+        "review_resolved": 0,
+        "ignored": 0,
+        "before_anchor": 0,
+        "saved": 0,
+        "status": "ok",
+        "rebuild": 0,
+    }
     now = now or datetime.now(timezone.utc)
     with _session(connection) as loading:
         STORE.ensure(loading)
@@ -99,8 +111,12 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
         new_ids = set(merged["arrivals"]) - set((stored or {}).get("arrivals", {}))
         if new_ids and not rebuild:
             items = sum(int(merged["arrivals"][i].get("count") or 0) for i in new_ids)
-            counts["notified"] = alerts.push("physmail_new", "LIFE OS Physical Mail",
-                                             f"{items} new mail item{'s' if items != 1 else ''} received" if items else "New mail received", (environ.get("NTFY_TOPIC") or "").strip())
+            counts["notified"] = alerts.push(
+                "physmail_new",
+                "LIFE OS Physical Mail",
+                f"{items} new mail item{'s' if items != 1 else ''} received" if items else "New mail received",
+                (environ.get("NTFY_TOPIC") or "").strip(),
+            )
     return counts
 
 

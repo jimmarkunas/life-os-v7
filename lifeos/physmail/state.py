@@ -4,6 +4,7 @@ A snapshot, not pure replay: the count is exact only if the window holds every s
 replay cannot prove. Binding is by count: the starting pile and each arrival notice are units, each first-seen
 mail number consumes one; a number with no unit left is tolerated only up to GRACE_DAYS after the anchor, then
 DEGRADED."""
+
 import copy
 import re
 from zoneinfo import ZoneInfo
@@ -28,8 +29,20 @@ class StateError(RuntimeError):
 def new_state(anchor_count, now):
     if not isinstance(anchor_count, int) or not 0 <= anchor_count <= 999:
         raise StateError("PHYSMAIL_ANCHOR_INVALID")
-    return {"schema": SCHEMA, "taken_at": now.isoformat(), "anchor_date": ANCHOR_DATE, "anchor_count": anchor_count, "through": ANCHOR_AT.isoformat(),
-            "accepted_at": None, "arrivals": {}, "chains": {}, "review": [], "portal": None, "ignored": 0, "replay": REPLAY}
+    return {
+        "schema": SCHEMA,
+        "taken_at": now.isoformat(),
+        "anchor_date": ANCHOR_DATE,
+        "anchor_count": anchor_count,
+        "through": ANCHOR_AT.isoformat(),
+        "accepted_at": None,
+        "arrivals": {},
+        "chains": {},
+        "review": [],
+        "portal": None,
+        "ignored": 0,
+        "replay": REPLAY,
+    }
 
 
 def _at(value):
@@ -38,7 +51,10 @@ def _at(value):
 
 def apply(state, extracted, now):
     """-> (new state, counts). Pure: merges events keyed by message id; events before the anchor are ignored."""
-    st, counts = copy.deepcopy(state), {"arrivals_new": 0, "actions_new": 0, "review_new": 0, "review_resolved": 0, "ignored": 0, "before_anchor": 0}
+    st, counts = (
+        copy.deepcopy(state),
+        {"arrivals_new": 0, "actions_new": 0, "review_new": 0, "review_resolved": 0, "ignored": 0, "before_anchor": 0},
+    )
     seen_review = {item["id"] for item in st["review"]}
     for event in extracted:
         kind = event.get("kind")
@@ -52,7 +68,11 @@ def apply(state, extracted, now):
             st["review"] = [item for item in st["review"] if item["id"] != event["id"]]
             seen_review.discard(event["id"])
             counts["review_resolved"] += 1
-        if kind in ("ARRIVAL", "ACTIONS") and event.get("portal") and (st["portal"] is None or _at(event["at"]) >= _at(st.get("portal_at") or ANCHOR_AT.isoformat())):
+        if (
+            kind in ("ARRIVAL", "ACTIONS")
+            and event.get("portal")
+            and (st["portal"] is None or _at(event["at"]) >= _at(st.get("portal_at") or ANCHOR_AT.isoformat()))
+        ):
             st["portal"], st["portal_at"] = event["portal"], event["at"]
         if kind == "ARRIVAL":
             if event["id"] not in st["arrivals"]:
@@ -70,9 +90,15 @@ def apply(state, extracted, now):
             known = ships.get(event["number"]) or {}
             # delivered is final: a stale earlier update never reopens a piece
             if not known.get("delivered") and (event["delivered"] or not known or _at(event["at"]) >= _at(known["at"])):
-                ships[event["number"]] = {"at": event["at"], "state": event["state"], "delivered": bool(event["delivered"])}
+                ships[event["number"]] = {
+                    "at": event["at"],
+                    "state": event["state"],
+                    "delivered": bool(event["delivered"]),
+                }
         elif kind == "REVIEW" and event.get("id") and event["id"] not in seen_review:
-            st["review"] = (st["review"] + [{"id": event["id"], "at": event.get("at"), "reason": event["reason"]}])[-MAX_REVIEW:]
+            st["review"] = (st["review"] + [{"id": event["id"], "at": event.get("at"), "reason": event["reason"]}])[
+                -MAX_REVIEW:
+            ]
             seen_review.add(event["id"])
             counts["review_new"] += 1
     st["ignored"] += counts["ignored"]
@@ -103,9 +129,19 @@ def pieces(state):
         if status == chains.DONE:
             continue
         at, verb = max(chain["events"].values())
-        out.append({"number": number, "status": status, "verb": verb, "at": at, "tracking": _shipment_view(state, chain.get("tracking"))})
+        out.append(
+            {
+                "number": number,
+                "status": status,
+                "verb": verb,
+                "at": at,
+                "tracking": _shipment_view(state, chain.get("tracking")),
+            }
+        )
     rank = {chains.REVIEW: 0, chains.WAITING: 1, chains.OPEN: 2}
-    return sorted(out, key=lambda p: (rank[p["status"]], -int(p["number"]) if p["number"].isdigit() else 0, p["number"]))
+    return sorted(
+        out, key=lambda p: (rank[p["status"]], -int(p["number"]) if p["number"].isdigit() else 0, p["number"])
+    )
 
 
 TRACKING_FIELDS = ("bundle", "carrier", "service", "number", "url", "state", "delivered")
@@ -119,7 +155,11 @@ def record_tracking(state, number, entry, source, now):
     if chain is None or _status_of(chain) != chains.WAITING:
         return st, False
     clean = {k: entry[k].strip()[:120] for k in TRACKING_FIELDS if isinstance(entry.get(k), str) and entry[k].strip()}
-    if not clean.get("number") or not re.fullmatch(r"[A-Za-z0-9 -]{6,40}", clean["number"]) or (clean.get("url") and not clean["url"].startswith("https://")):
+    if (
+        not clean.get("number")
+        or not re.fullmatch(r"[A-Za-z0-9 -]{6,40}", clean["number"])
+        or (clean.get("url") and not clean["url"].startswith("https://"))
+    ):
         return st, False
     if {k: v for k, v in (chain.get("tracking") or {}).items() if k in TRACKING_FIELDS} == clean:
         return st, False
@@ -148,7 +188,18 @@ def summary(state, now):
     limit = ANCHOR_AT + timedelta(days=GRACE_DAYS)
     degraded = "UNBOUND_ITEM" if any(_at(t) > limit for t, _ in excess) else None
     waiting = {n: s for n, s in chain_status.items() if s == chains.WAITING}
-    aged = sum(1 for n in waiting if _at(max(v[0] for v in state["chains"][n]["events"].values())) < now - timedelta(days=AGED_DAYS))
-    return {"unidentified": units - bound, "opened": sum(1 for s in chain_status.values() if s == chains.OPEN), "waiting_tracking": len(waiting),
-            "aged": aged, "done": sum(1 for s in chain_status.values() if s == chains.DONE), "identified": len(chain_status),
-            "review": sum(1 for s in chain_status.values() if s == chains.REVIEW) + len(state["review"]), "degraded_reason": degraded}
+    aged = sum(
+        1
+        for n in waiting
+        if _at(max(v[0] for v in state["chains"][n]["events"].values())) < now - timedelta(days=AGED_DAYS)
+    )
+    return {
+        "unidentified": units - bound,
+        "opened": sum(1 for s in chain_status.values() if s == chains.OPEN),
+        "waiting_tracking": len(waiting),
+        "aged": aged,
+        "done": sum(1 for s in chain_status.values() if s == chains.DONE),
+        "identified": len(chain_status),
+        "review": sum(1 for s in chain_status.values() if s == chains.REVIEW) + len(state["review"]),
+        "degraded_reason": degraded,
+    }

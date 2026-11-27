@@ -1,6 +1,7 @@
 """Find and fetch the connections file attached to a private Notion page (read-only, in memory only).
 
 The file is never saved, logged or uploaded. Only Notion-hosted files are accepted."""
+
 # Notion serves attachments from a short-lived signed address: read from the page's blocks each run, used once,
 # never stored or printed.
 import re
@@ -27,7 +28,9 @@ def clean_page_id(value):
 def csv_file_blocks(client, page_id):
     """Every CSV file block on the page, with name, time and address. Incomplete listings raise."""
     out = []
-    for reply in notion_pages.children(client, clean_page_id(page_id), NetworkError, incomplete="NETWORK_PAGE_INCOMPLETE", limit=MAX_CHILD_PAGES):
+    for reply in notion_pages.children(
+        client, clean_page_id(page_id), NetworkError, incomplete="NETWORK_PAGE_INCOMPLETE", limit=MAX_CHILD_PAGES
+    ):
         for block in reply["results"]:
             if not isinstance(block, dict) or block.get("type") != "file":
                 continue
