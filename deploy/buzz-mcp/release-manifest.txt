@@ -10,6 +10,7 @@ lifeos/platform/__init__.py
 lifeos/platform/access_policy.py
 lifeos/platform/agent_directory.py
 lifeos/platform/agent_inbox.py
+lifeos/platform/alert_store.py
 lifeos/platform/api_counts.py
 lifeos/platform/authorization_gate.py
 lifeos/platform/call_limit.py
@@ -32,6 +33,8 @@ lifeos/platform/orchestrator.py
 lifeos/platform/pilot_community.py
 lifeos/platform/relay_choice.py
 lifeos/platform/source_lookup.py
+lifeos/platform/todoist_governed.py
+lifeos/platform/todoist_refresh.py
 bin/honcho-alert
 bin/place-credentials
 bin/selfhost-probe
