@@ -187,6 +187,28 @@ class Dispatch(unittest.TestCase):
                          ("offer", child, "mac-mc02", 3))
         self.assertIn("Please look at the gateway test.", offered["what_changed"])
 
+    def test_child_creation_and_handoff_refusals_return_distinct_fixed_reasons(self):
+        def inspect_missing_child(args):
+            if not args:
+                return WORKSPACE
+            if args.get("task_id") == "LIFE-987":
+                return {"task": {"taskId": "LIFE-987", "agentId": "oc-oracle", "version": 7}}
+            raise G.Refuse("concord_refused")
+        started = go(request("agent_dispatch", **{**self.ARGS, "agent": "mc02"}), inspect_work=inspect_missing_child,
+                     start_work=lambda args: "ERROR")
+        self.assertEqual(started["reason"], "child_start_failed")
+
+        child = "LIFE-987/mc02"
+        def inspect_child(args):
+            if not args:
+                return WORKSPACE
+            if args.get("task_id") == "LIFE-987":
+                return {"task": {"taskId": "LIFE-987", "agentId": "oc-oracle", "version": 7}}
+            return {"task": {"taskId": child, "agentId": "orchestrator-claude", "version": 3}}
+        offered = go(request("agent_dispatch", **{**self.ARGS, "agent": "mc02"}), inspect_work=inspect_child,
+                     transfer_work=lambda args: "ERROR")
+        self.assertEqual(offered["reason"], "handoff_offer_failed")
+
     def test_an_unowned_ticket_sends_a_message_without_creating_a_handoff(self):
         calls = []
         def inspect(args):
