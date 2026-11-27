@@ -66,11 +66,11 @@ class Evaluate(unittest.TestCase):
             verdict = p.evaluate(good(frozen=frozen))
             self.assertEqual((verdict["verdict"], verdict["reasons"]), ("FAIL", [p.MEMBERSHIP_MISSING]))
 
-    def test_the_shipped_manifest_is_empty_so_it_fails_closed(self):
+    def test_the_shipped_manifest_has_no_q1_list_so_it_fails_closed(self):
         manifest = json.loads(
             (Path(__file__).resolve().parents[2] / "lifeos/accountability/mej_quarter_membership.json").read_text()
         )
-        self.assertEqual(manifest["quarters"], {})
+        self.assertNotIn("2027-q1", manifest["quarters"])
         self.assertIn(
             p.MEMBERSHIP_MISSING, p.evaluate(good(frozen=(manifest["quarters"].get("2027Q1") or None)))["reasons"]
         )

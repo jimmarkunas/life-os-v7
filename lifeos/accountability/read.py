@@ -249,21 +249,21 @@ def _frozen_mej_membership(first, manifest=None, project="MEJ"):
 def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ", today=None):
     """v2 counts for one board from the approved key list alone. A member's current Jira parent never changes its
     goal, so reparenting or a new project Epic cannot move a count; a key that is not on the list is unassigned.
-    A closed quarter with a published snapshot returns that snapshot, never a recount."""
+    A closed quarter with a published snapshot returns that snapshot, never a recount. A goal listed under the row's
+    `gaps` has incomplete baseline evidence: its figure is None (reported, never reconstructed)."""
     if not quarter_keys:
         return {}
     row = _frozen_row(first, manifest, project)
     frozen = row["tasks"]
-    gaps = row.get("gaps")
-    if isinstance(gaps, dict) and any(goal in gaps for goal in quarter_keys):
-        raise JiraError("ACCOUNTABILITY_MEJ_BASELINE_GAP")
+    gaps = row.get("gaps") if isinstance(row.get("gaps"), dict) else {}
+    gap_goals = {goal for goal in quarter_keys if goal in gaps}
     snapshot = row.get("snapshot")
     if isinstance(snapshot, dict) and last < (today or datetime.now(ZoneInfo("America/Chicago")).date()):
         figures = snapshot.get("figures")
         if not snapshot.get("version") or not isinstance(figures, dict) or any(g not in figures for g in quarter_keys):
             raise JiraError("ACCOUNTABILITY_MEJ_SNAPSHOT_INCOMPLETE")
         return {goal: [int(figures[goal][0]), int(figures[goal][1])] for goal in quarter_keys}
-    tally = {goal: [0, 0] for goal in quarter_keys}
+    tally = {goal: [0, 0] for goal in quarter_keys - gap_goals}
     seen = set()
     keys = sorted(frozen)
     issues = []
@@ -292,7 +292,7 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ",
         tally[goal][1] += 1
     if seen != set(frozen):
         raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
-    return tally
+    return {**tally, **{goal: None for goal in gap_goals}}
 
 
 def tally(jira, found, first, last, *, mej_metric_version=None, frozen_membership=None):

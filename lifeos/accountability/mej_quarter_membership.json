@@ -1,5 +1,221 @@
 {
-  "schema_version": 1,
-  "description": "v2 quarter-frozen Task/Story membership baseline for JFM and MEJ (one row per board under quarters.<id>.boards, or the original single MEJ row). Requires Jim approval per quarter; do not infer assignments from project Epic links. No approved per-task baseline is recorded yet.",
-  "quarters": {}
+  "schema_version": 2,
+  "description": "v2 quarter-frozen Task/Story membership baseline for JFM and MEJ (one row per board under quarters.<id>.boards, or the original single MEJ row). Requires Jim approval per quarter; do not infer assignments from project Epic links. Schema 2 adds reason, approval and effective date per key. Q4 2026 MEJ holds only the approved Career baseline; the other Matt goals are reported gaps and JFM has no approved list.",
+  "quarters": {
+    "2026-q4": {
+      "approved": true,
+      "baseline_id": "Q4-2026-MEJ-CAREER-12-OF-29",
+      "approval_ref": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+      "tasks": {
+        "MEJ-52": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-176": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-215": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-216": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-217": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-228": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-229": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-230": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-231": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-232": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-233": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-234": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-235": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-236": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-237": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-244": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-247": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-248": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-257": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-263": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-269": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-273": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-279": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-282": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-288": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-292": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-300": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-309": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        },
+        "MEJ-317": {
+          "parent": "MEJ-1",
+          "goal": "MEJ-1",
+          "reason": "Q4 2026 Career baseline: 15 direct children of MEJ-1 plus the 14 keys reparented in the Nov 26 migration (LIFE-917 comment 14469); matches the published 12 / 29 of Nov 25 (LIFE-918 comment 14282)",
+          "approval": "Jim, Nov 27 2026, chat: Approved, go (LIFE-1061 / LIFE-1025)",
+          "effective": "2026-10-07"
+        }
+      },
+      "gaps": {
+        "MEJ-2": "no pre-migration published figure in Jira evidence",
+        "MEJ-3": "no pre-migration published figure in Jira evidence",
+        "MEJ-4": "no pre-migration published figure in Jira evidence"
+      }
+    }
+  }
 }

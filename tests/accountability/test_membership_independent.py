@@ -4,7 +4,7 @@ import copy
 import unittest
 from datetime import date
 
-from lifeos.accountability import read
+from lifeos.accountability import preview, read
 from lifeos.platform.jira import JiraError
 from tests.accountability.test_mej_goal_links import FIRST, LAST, Jira, child, status_change
 
@@ -112,9 +112,17 @@ class History(unittest.TestCase):
         self.assertEqual(v2(world(), mf, today=date(2026, 12, 1)), {GOAL: [12, 29]})  # open quarter: recounted
 
     def test_a_goal_with_incomplete_baseline_evidence_is_a_reported_gap_not_a_reconstruction(self):
-        mf = manifest(gaps={GOAL: "no pre-migration published figure"})
-        with self.assertRaisesRegex(JiraError, "ACCOUNTABILITY_MEJ_BASELINE_GAP"):
-            v2(world(), mf)  # R2.8
+        mf = manifest(gaps={"MEJ-2": "no pre-migration published figure"})
+        got = read._mej_v2_tally(world(), {GOAL, "MEJ-2"}, FIRST, LAST, mf, "MEJ")  # R2.8
+        self.assertEqual(got, {GOAL: [12, 29], "MEJ-2": None})
+
+
+class Preview(unittest.TestCase):
+    def test_a_gap_goal_reads_baseline_gap_in_red_while_an_approved_goal_shows_its_count(self):
+        found = [("Career", 12, 15, "MEJ-1"), ("Creative", 3, 14, "MEJ-2")]
+        view = {"applies": True, "counts": {"MEJ-1": (12, 29), "MEJ-2": None}, "code": None}
+        rows = preview.plain(preview.cells(found, view))
+        self.assertEqual([r.split(" · ")[2:] for r in rows], [["12 / 29", "OK"], ["—", "BASELINE GAP"]])
 
 
 if __name__ == "__main__":

@@ -217,7 +217,9 @@ class Table(unittest.TestCase):
         self.assertEqual(table(notion, "matt")[1][3:], ["1 / 1", "OK"])
 
     def test_matt_needs_the_q1_member_list_while_none_is_approved_and_legacy_stays_official(self):
-        _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")])
+        _, notion, _ = run_goals(
+            [kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")], membership={"schema_version": 1, "quarters": {}}
+        )
         self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
         status = notion.blocks[
             notion.kids[next(k for k in notion.kids["b-matt-goals"] if notion.blocks[k]["type"] == "table")][1]
