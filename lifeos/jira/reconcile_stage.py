@@ -96,7 +96,7 @@ class Stability:
         if not self.live:
             return
         with self.connection.cursor() as cursor:
-            cursor.execute("DELETE FROM v7_jira_rollover WHERE k LIKE 'pr%'")
+            cursor.execute("DELETE FROM v7_jira_rollover WHERE k LIKE %s", ("pr%",))
 
 
 def make_alert(state, environ, now, push=alerts.push):
