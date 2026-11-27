@@ -10,6 +10,10 @@ One or two sentences: the outcome and who asked (Jim's words and CT time if he g
 
 Files, pages, fields, numbers. What changes, in the repo's own words.
 
+## Paths
+
+One line: the repo paths this ticket will touch, comma separated (policy section 3; `docs/policy/agent-coordination.md`). An agent about to start a ticket whose paths overlap one that is In Progress waits, or is sequenced by Claude.
+
 ## Dry run
 
 The checklist of everything the build will touch. The executing agent runs it read-only on the machine and identity that will do the build, then posts one `Dry run` comment (check, result, human step) and adds the label `dry-run-green`.

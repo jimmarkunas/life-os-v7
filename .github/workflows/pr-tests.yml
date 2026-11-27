@@ -5,6 +5,8 @@ name: pr-tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]   # LIFE-1096: the merge queue builds each group on its own branch and waits for this workflow's required `unit-tests`; without this trigger the queue would hang
   push:
     branches: [main]
 permissions:
@@ -23,20 +25,34 @@ jobs:
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=2 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
+      - name: Fetch the merge group's base (LIFE-1096; a group holds up to five pull requests, so the changed files are everything since the base, not just the last commit)
+        if: ${{ github.event_name == 'merge_group' }}
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$BASE_SHA"
       - uses: ./.github/actions/python
+      - name: Agent trailer (LIFE-1096, policy section 3; pull requests only; every commit and the description carry an Agent line, no secret read)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/agent_trailer_check.py
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
         run: pip install --require-hashes -r requirements-test.lock
       - name: Restore the newest test index main built (LIFE-644; a pull request only reads it, never writes it; no cache, a missing file, an unreadable one or one older than 7 days all mean FULL)
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
         with:
           path: docs/test-index.json
           key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
           restore-keys: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-
-      - name: Pick the tests (LIFE-548; a pull request runs the tests its change can affect plus tests/contracts, a merge to main always runs everything)
+      - name: Pick the tests (LIFE-548; a pull request or a merge group runs the tests its change can affect plus tests/contracts, a merge to main always runs everything)
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            python -m tests.testindex select --base HEAD^1 > selected.txt || { echo FULL > selected.txt; echo "selector failed: fail-open to everything (LIFE-770 counts these)" | tee -a "$GITHUB_STEP_SUMMARY"; }     # any trouble picking means everything
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+            python -m tests.testindex select --base "${BASE_SHA:-HEAD^1}" > selected.txt || { echo FULL > selected.txt; echo "selector failed: fail-open to everything (LIFE-770 counts these)" | tee -a "$GITHUB_STEP_SUMMARY"; }     # any trouble picking means everything
           else
             echo FULL > selected.txt
           fi

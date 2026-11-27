@@ -1,5 +1,6 @@
 ACTIONS_ID_TOKEN_REQUEST_TOKEN workflow_only:workflow GitHub Actions' own bearer for the job's OIDC token request; present only when the job has id-token: write, never set by us, never logged
 ACTIONS_ID_TOKEN_REQUEST_URL workflow_only:workflow Where GitHub Actions issues the job's OIDC token; its presence selects the keyless Google calendar sign-in
+BASE_SHA workflow_only:workflow The merge queue group's base commit, set by pr-tests.yml from the merge_group event so the test selector diffs the whole group
 ALERTS_ENABLED flag Alert switch read from a repository variable (alerts enabled)
 ALERTS_MUTED_UNTIL input Alert switch read from a repository variable (alerts muted until)
 ALERT_SETTINGS input Alert switch read from a repository variable (alert settings)
