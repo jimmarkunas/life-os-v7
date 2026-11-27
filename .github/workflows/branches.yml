@@ -1,9 +1,11 @@
 name: branches
 # D244 (LIFE-81, Jim Oct 20 2026): repository hygiene. Two jobs, never both in one run.
-#   archive: a merged pull request from this repository. Tags its head commit in life-os-automation as v7-archive/<branch>-pr<N> (read back),
-#            then deletes the branch only when safe (unchanged since the merge, no other open PR, not on the keep-list). Runs main's code, not the PR's.
-#   report:  after the weekly safety check (Mondays, D142; no schedule of its own: the guardrail allows no new scheduler), or on demand. Read-only on GitHub: stale branches on the run summary, and (live) V7's one owned callout
-#            on the Weekly LIFE OS Review page, rewritten in place and read back. Nothing is closed or deleted.
+#   archive: a closed pull request from this repository (D244, amended by the LIFE-1071 decision). Tags its head commit in this repository as archive/<branch>-pr<N> (read back),
+#            then deletes the branch only when safe (unchanged since the close, no other open PR, not on the keep-list). Merged: always. Closed unmerged: only while .github/branch-deletes says on.
+#            Runs main's code, not the PR's.
+#   report:  after the weekly safety check (Mondays, D142; no schedule of its own: the guardrail allows no new scheduler), or on demand. Stale branches on the run summary, and (live) V7's one owned callout
+#            on the Weekly LIFE OS Review page, rewritten in place and read back. Branches with no open PR idle 14+ days are tagged archive/<branch>-nopr, read back and deleted only while .github/branch-deletes says on;
+#            while it says off the run summary lists what it WOULD delete and nothing is written.
 on:
   pull_request:
     types: [closed]
@@ -23,51 +25,29 @@ concurrency:
   cancel-in-progress: false
 jobs:
   archive:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: write                       # deleting the merged branch in this repository only; the archive push uses its own narrow token
+      contents: write                       # the archive tag and the branch delete, this repository only, with the job's own token
     steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
+      - name: Checkout main (own fetch, token never stored; main's code decides, never the pull request's)
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'
-          git checkout -q -B main origin/main   # main's code decides, never the pull request's
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin main && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q -B main FETCH_HEAD
       - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "60"
-      - id: bws_archive
-        name: Load the branch archive token from Bitwarden (LIFE-704; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback; nothing is archived or deleted then)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            c7b3ff1a-e0d9-456a-b8c6-b5030158f900 > V7_ARCHIVE_TOKEN
-      - id: doppler_bws_archive
-        if: ${{ steps.bws_archive.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_ARCHIVE_TOKEN
-          bitwarden: '{}'
-      - name: Archive the merged branch (tag in life-os-automation, read back) and delete it only when safe
+      - name: Archive the closed branch (tag archive/<branch>-pr<N> in this repository, read back) and delete it only when safe (a merged PR always; a PR closed unmerged only while .github/branch-deletes says on)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          V7_ARCHIVE_TOKEN: ${{ steps.bws_archive.outputs.V7_ARCHIVE_TOKEN }}
         run: python -m lifeos.platform.branches archive
   report:
     if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write                       # LIFE-1071: the idle-branch sweep tags and deletes in this repository only, and only while .github/branch-deletes says on
       pull-requests: read
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
@@ -123,7 +103,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN }}
           WEEKLY_REVIEW_PAGE_ID: ""
         run: python -m lifeos.platform.settings
-      - name: Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)
+      - name: Repository hygiene report (stale branches and the idle-branch sweep: a dry run listing what it would delete while .github/branch-deletes is off; run summary, and the Weekly Review callout when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GITHUB_TOKEN: ${{ github.token }}
