@@ -1,8 +1,8 @@
 """The one machine-owned "Network Leads" block on a Job Ledger page (platform only).
 
-Ownership is the marker, never position: a callout (or older toggle) carrying a marker and a hash of the lead
-set. Nothing else on the page is read for change or written. Reasons come from fixed templates; no outreach text
-is drafted."""
+Ownership is the marker, never position: a callout (or older toggle) carrying a marker and a hash of the lead set.
+Nothing else on the page is read for change or written. Reasons come from fixed templates; no outreach text is
+drafted."""
 import hashlib
 import re
 import time
@@ -26,7 +26,7 @@ TITLE = "LinkedIn connections"
 REACH = "Reach Out ↗"
 DISMISS_TEXT, SAME_TEXT = "Not relevant · dismiss", "Same company"
 STATUS = ("Contacted", "Referral", "Closed")
-# hash carried until every card is written, so a block cut short never reads as the wanted one
+# carried until every card is written, so a cut-short block never reads as the wanted one
 PENDING = "building"
 PROFILE = "LinkedIn profile ↗"
 ICON = {"type": "external", "external": {"url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"}}
@@ -74,8 +74,7 @@ def _bold(text):
 
 def build_block(leads):
     """leads: display dicts {person_id, tier, freshness, age_days, name, company, title, verified, url_key,
-    evidence_hash}. -> ONE callout: a paragraph per lead, a dismiss tick, and a "Same company" tick on a
-    possible match."""
+    evidence_hash} -> ONE callout: a paragraph per lead, a dismiss tick, a "Same company" tick on a possible match."""
     kids = []
     for lead in leads:
         runs = _bold(lead["name"]) + rich_text(f" · {reason(lead)}")
@@ -102,8 +101,8 @@ def _employee(lead):
 
 
 def card_columns(lead, carried=None):
-    """One contact card's column_list. Its "Referral status" ticks go in by a second request (Notion's two-level
-    limit); carried: {kind: checked} keeps existing ticks across a rewrite."""
+    """One contact card's column_list. Its "Referral status" ticks go in by a second request (two-level limit);
+    `carried` ({kind: checked}) keeps existing ticks across a rewrite."""
     carried = carried or {}
     profile = ([{"type": "text", "text": {"content": PROFILE, "link": {"url": BASE_URL + lead["url_key"]}}}] if lead.get("url_key") else rich_text("Profile unavailable"))
     left = [_para(_bold(lead["name"])), _para(rich_text(_employee(lead))), _para(profile + rich_text(" · " + ("Contacted" if carried.get("Contacted") else "Not contacted")))]
@@ -121,8 +120,8 @@ def status_ticks(lead, carried=None):
 
 
 def write_cards(client, parent_id, leads, want, carried=None):
-    """Writes the block into parent_id; the outer title carries the PENDING hash until the last card is in. ->
-    outer block id."""
+    """Write the block into parent_id; the outer title carries the PENDING hash until the last card is in -> outer
+    block id."""
     carried = carried or {}
     shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "icon": ICON, "children": [
         {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": ICON}} for _ in leads]}}
@@ -152,7 +151,6 @@ def _write(client, path, body, sleep=time.sleep):
 
 
 def _append_last(client, parent_id, block):
-    """Appends ONE block and returns its id: from Notion's reply, else proven by reading the parent back."""
     made = _write(client, f"/blocks/{quote(parent_id, safe='')}/children", {"children": [block]})
     results = (made or {}).get("results") if isinstance(made, dict) else None
     if isinstance(results, list) and results:
@@ -242,7 +240,7 @@ def row_key(client, page_id, top):
 
 
 def read_page(client, page_id, deep=True, key=None):
-    """-> (top-level blocks, owned blocks oldest first). An interrupted replacement can leave two owned blocks."""
+    """-> (top-level blocks, owned blocks oldest first); an interrupted replacement can leave two owned blocks."""
     top = Top(children(client, page_id))
     top.right = _right(client, top, key or row_key(client, page_id, top))
     owned = []
@@ -256,7 +254,7 @@ def read_page(client, page_id, deep=True, key=None):
 
 
 def leads_on_page(client, page_id, limit=10):
-    """The people the owned block lists that nobody has dismissed, in page order. A lead without its Dismiss tick
+    """The people the owned block lists that nobody has dismissed, in page order; a lead without its Dismiss tick
     raises."""
     inner, top = None, children(client, page_id)
     right = _right(client, top, row_key(client, page_id, top))
@@ -324,9 +322,8 @@ def _description_parts(client, list_id):
 
 
 def remove_duplicate_descriptions(client, page_id, top, key, live):
-    """Remove V7's own repeated job description from a Ledger row: the top-most one is kept; an extra goes ONLY
-    when provably V7's identical write, otherwise it is left and counted. Live only. -> "removed" |
-    "would_remove" | "left" | "none"."""
+    """Remove V7's repeated job description from a Ledger row: the top-most is kept; an extra goes only when provably
+    V7's identical write, else it is left and counted. Live only. -> "removed" | "would_remove" | "left" | "none"."""
     pairs = [(b, top[i + 1]) for i, b in enumerate(top[:-1]) if body.is_marker(b, key) and top[i + 1].get("type") == "column_list"]
     if len(pairs) < 2:
         return "none"
@@ -368,8 +365,6 @@ def _others(top, owned):
 
 
 def _verify(client, page_id, others, want, count):
-    """Proves the page holds exactly `count` owned blocks with the wanted hash and no other top-level block
-    changed."""
     top, owned = read_page(client, page_id, deep=False)
     if _others(top, owned) != others or len(owned) != count or any(o["hash"] != want for o in owned):
         raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
@@ -377,8 +372,8 @@ def _verify(client, page_id, others, want, count):
 
 
 def apply(client, page_id, top, owned, desired_leads, live):
-    """-> "unchanged" | "created" | "replaced" | "converged" | "removed" | "none" (prefixed "would_" when not
-    live). A replacement appends and PROVES the new block first, then retires the old one."""
+    """-> "unchanged" | "created" | "replaced" | "converged" | "removed" | "none" ("would_" prefix when not live). A
+    replacement appends and proves the new block first, then retires the old one."""
     want = set_hash(desired_leads)
     others = _others(top, owned)
     home = getattr(top, "right", None) or page_id

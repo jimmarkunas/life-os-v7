@@ -66,8 +66,8 @@ def _page_of(notion, block_id):
 
 
 def register_row(notion, key):
-    """The block id the V3 block ID register names for `key`, or None. Exactly one register page must exist (else
-    ACCOUNTABILITY_TARGET_NOT_FOUND)."""
+    """The block id the V3 register names for `key`, or None. Exactly one register page must exist, else
+    ACCOUNTABILITY_TARGET_NOT_FOUND."""
     found = notion_pages.search_all(notion, REGISTER_TITLE, "page", fail, incomplete="ACCOUNTABILITY_TARGET_NOT_FOUND", capped="ACCOUNTABILITY_TARGET_NOT_FOUND")
     hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == REGISTER_TITLE and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
@@ -81,9 +81,8 @@ def register_row(notion, key):
 
 
 def address(notion, key):
-    """The callout id from register row `key` (jim.thisweek, matt.goals, ...), accepted only when that callout sits on
-    the Jim & Matt V3 page, so an edited register row cannot redirect a write (else
-    ACCOUNTABILITY_TARGET_NOT_FOUND)."""
+    """The callout id from register row `key`, accepted only when it sits on the Jim & Matt V3 page, else
+    ACCOUNTABILITY_TARGET_NOT_FOUND."""
     block_id = register_row(notion, key)
     if block_id is None or _page_of(notion, block_id) != V3_PAGE_TITLE:
         raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
@@ -119,8 +118,6 @@ def _set(client, block, content, live, color=None):
 
 
 def _normalise(items):
-    """[(text, link)] with adjacent same-link pieces merged. Links compare decoded: Notion stores some escaped
-    characters (parentheses, "!") unescaped."""
     out = []
     for content, url in ((c, unquote(u) if u else u) for c, u in items):
         if out and out[-1][1] == url:
@@ -150,7 +147,7 @@ def _nodes(parts):
 
 def write_parts(client, block_id, stamp, parts, live):
     found = locate(client, block_id)
-    # the body paragraph may have been turned into a bullet; write the kind it is
+    # the body paragraph may have become a bullet; write the kind it is
     if [b.get("type") for b in found["middle"]] not in (["paragraph"], ["bulleted_list_item"]):
         raise fail("ACCOUNTABILITY_SHAPE")
     kind = found["middle"][0]["type"]
@@ -229,9 +226,9 @@ def _complete(client, block_id, item, left):
 
 
 def write_tree(client, block_id, stamp, specs, live):
-    """Write the body of a V3 week callout as exactly `specs` (see weekview). Any block other than the one paragraph
-    or an earlier copy of this tree raises ACCOUNTABILITY_SHAPE and nothing is written. The new body is created
-    under the stamp, the old one removed, then everything read back."""
+    """Write a V3 week callout body as exactly `specs` (see weekview): created under the stamp, the old body removed,
+    all read back. Any block other than the one paragraph or an earlier copy of this tree raises
+    ACCOUNTABILITY_SHAPE."""
     found = locate(client, block_id)
     if not found["middle"] or any(b.get("type") not in TREE_KINDS for b in found["middle"]):
         raise fail("ACCOUNTABILITY_SHAPE")
@@ -261,10 +258,9 @@ def write_tree(client, block_id, stamp, specs, live):
 
 
 def write_directory(client, block_id, stamp, lines, bulleted, live):
-    """Write the body of an Artifacts callout. V7 owns only the trailing run of bulleted_list_item blocks (one per
-    artifact) or, with none, the last paragraph (a message such as "no verified artifacts"). Surplus or wrong-kind
-    blocks are removed only after the new ones exist; a `Summary for Claude:` line is removed. Any other ending
-    raises ACCOUNTABILITY_SHAPE."""
+    """Write the body of an Artifacts callout. V7 owns only the trailing run of bulleted_list_item blocks or, with
+    none, the last paragraph; surplus or wrong-kind blocks are removed after the new ones exist, as is a `Summary
+    for Claude:` line. Any other ending raises ACCOUNTABILITY_SHAPE."""
     found = locate_combined(client, block_id)
     middle = found["middle"]
     tail = []
@@ -329,8 +325,8 @@ def locate_combined(client, block_id):
 def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts, live, wide=None):
     """Write a person's Quarterly Goals & Review callout: title, Epic table (`lanes` {lane: (done / all, issue url or
     None)}), note paragraph and "Quarterly Reviews" toggle. `wide` ({lane: [progress, done / all, new count, status
-    cells]}) makes it five columns; Notion cannot widen a table, so a new one is created under the stamp, the old
-    removed and the rows read back."""
+    cells]}) makes it five columns, so a new table is created under the stamp and the old removed (Notion cannot
+    widen one)."""
     found = locate_combined(client, block_id)
     kinds = [b.get("type") for b in found["middle"]]
     width = (found["middle"][0].get("table") or {}).get("table_width") if kinds and kinds[0] == "table" else None

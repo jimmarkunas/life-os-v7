@@ -1,16 +1,11 @@
-"""Surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job.
+"""Surface network leads as one marker-owned "Network Leads (n)" block on each target job's Job Ledger page.
 
 Dry unless live; counts only. Targets: published ADMIT jobs plus applied opportunities and upcoming interviews that
-resolve to exactly one published Ledger page. Per page: prove it is the canonical Ledger page, persist the Dismiss and
-Same company ticks read from the owned block before anything is replaced, recompute the leads (five at most), then
-create, replace, leave or remove the block and read it back, proving nothing outside it changed. Any failed read,
-guard,
-write or read-back is counted and the run ends DEGRADED, never zero leads or a silent success. `limit` bounds the
-pages
-per run; a page is read only when dirty (no state, a different page, or a different wanted hash).
-"""
-# Pages that hold a block are re-read on a rotation (ticks live in the block); settled no-block pages get a small
-# sweep.
+resolve to one published Ledger page. Per dirty page: prove it is the canonical page, persist the Dismiss and Same
+company ticks from the owned block, recompute the leads (five at most), create, replace, leave or remove the block,
+read it back and prove nothing outside it changed. Any failed step is counted and the run ends DEGRADED. `limit`
+bounds pages per run."""
+# Block pages are re-read on a rotation (ticks live in the block); settled no-block pages get a small sweep.
 import json
 import os
 import time
@@ -121,11 +116,8 @@ SWEEP_SHARE = 4
 
 
 def _queue_state(surfaced, others, wanted, state, budget, now):
-    """-> (pages to read this run, number of candidate pages, dirty pages).
-
-    Dirty pages first, then a rotation of the pages that hold a block (ticks live there) and a small sweep of settled
-    no-block pages; part of the budget is kept for the block pages.
-    """
+    """-> (pages to read this run, candidate pages, dirty pages): dirty first, then a rotation of block pages and a
+    small sweep of settled no-block pages."""
     pages = {k: (v[0], v[1], v[2], True) for k, v in surfaced.items()}
     pages.update({o[0]: (o[1], o[2], o[3], False) for o in others})
     total = len(pages)
@@ -168,7 +160,7 @@ MAX_SHARDS = 8
 
 
 def parse_shard(raw, error, code):
-    """A shard setting "i/n" -> (i, n); unset = (0, 1), everything. Anything else raises `error(code)`."""
+    """A shard setting "i/n" -> (i, n); unset = (0, 1). Anything else raises `error(code)`."""
     with fixed(ValueError, error, code):
         index, count = (int(part) for part in (raw or "0/1").strip().split("/"))
     if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
@@ -249,7 +241,7 @@ def _run(limit, live, environ, connection, client, now, today):
 
 
 class Timing:
-    """Where the step's time goes: seconds and Notion calls per page and per outcome; no page id, title or content."""
+    """Seconds and Notion calls per page and per outcome; no page id, title or content."""
     def __init__(self, notion, clock=time.monotonic):
         self.notion, self.clock, self.began = notion, clock, clock()
         self.by_label, self.slowest = {}, 0.0
@@ -296,16 +288,11 @@ def _flush(connection, recorded, counts, seen_edits=None):
 
 
 class Skip:
-    """A page proven to show what it should, and not edited since, is not read again (one Notion call, not about
-    sixteen).
+    """A page proven to show what it should, and not edited since, is not read again.
 
-    Untouched means the time recorded right after the proof equals the page's time now, or none was recorded and the
-    page's
-    time is older than the saved proof time by LEGACY_MARGIN_SECONDS. A page edited in the last SETTLE_SECONDS is
-    never
-    skipped; any doubt (no proof, a different or unreadable time, a proof older than MAX_AGE_HOURS) reads the page in
-    full.
-    """
+    Untouched: the time recorded after the proof equals the page's time now, or none was recorded and the page's
+    time is older than the proof by LEGACY_MARGIN_SECONDS. A page edited within SETTLE_SECONDS, or with any doubt
+    (no proof, a different or unreadable time, a proof older than MAX_AGE_HOURS), is read in full."""
     SETTLE_SECONDS = 180
     LEGACY_MARGIN_SECONDS = 1800
     MAX_AGE_HOURS = 168
