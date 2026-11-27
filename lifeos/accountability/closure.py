@@ -16,26 +16,24 @@ FIELDS = "resolution,labels,statuscategorychangedate"
 
 
 def _evidence(fields):
-    if "resolution" not in fields or "labels" not in fields:
+    """-> (resolution name or None, label set). The fields must have been read; a Done issue closed without a resolution
+    (older work) has none and is never cancelled on that basis."""
+    if "resolution" not in fields or "labels" not in fields or not isinstance(fields["labels"], list):
         raise JiraError("ACCOUNTABILITY_CLOSURE_EVIDENCE_MISSING")
-    resolution = (fields["resolution"] or {}).get("name")
-    labels = fields["labels"]
-    if not resolution or not isinstance(labels, list):
-        raise JiraError("ACCOUNTABILITY_CLOSURE_EVIDENCE_MISSING")
-    return resolution, set(labels)
+    return (fields["resolution"] or {}).get("name"), set(fields["labels"])
 
 
 def classify(fields, closed_at=None, since=None):
     """-> one of CLASSES for a closed issue's `fields`. `since` is when manual/automatic tracking began (aware datetime)."""
     resolution, labels = _evidence(fields)
-    cancelled = resolution != DELIVERED_RESOLUTION
+    cancelled = resolution is not None and resolution != DELIVERED_RESOLUTION
     if (SUPERSEDED_LABEL in labels and not cancelled) or (AUTO_LABEL in labels and cancelled):
         raise JiraError("ACCOUNTABILITY_CLOSURE_EVIDENCE_CONTRADICTORY")
     if cancelled or SUPERSEDED_LABEL in labels:
         return "cancelled"
     if AUTO_LABEL in labels:
         return "delivered_auto"
-    if since is not None and closed_at is not None and closed_at >= since:
+    if resolution is not None and since is not None and closed_at is not None and closed_at >= since:
         return "delivered_manual"
     return "unknown"
 
