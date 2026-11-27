@@ -20,7 +20,7 @@ TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
 WRITE = ("memory_store", "memory_correct", "memory_revoke")
 PEER = "lifeos-memory"
 TEXT_MAX = 2000
-QUESTION_MAX, ASK_LEVELS, ASK_LIMIT, ASK_WINDOW, ANSWER_MAX, CONSIDERED = 500, ('minimal', 'low'), 30, 3600, 4000, 5
+QUESTION_MAX, ASK_LEVELS, ASK_LIMIT, ASK_WINDOW, ANSWER_MAX, CONSIDERED = 500, ('minimal', 'low'), 5, 3600, 4000, 5
 HINT = "Rephrase without the personal detail, or ask Jim. Nothing was stored."
 NOTICE = (
     "This is memory, not a canonical fact. If Notion, Jira or GitHub holds the same fact, the canonical source wins."
@@ -285,6 +285,21 @@ def _asks_left(state, client, now):
 
 
 def run(op, args, state):
+    """One memory operation; its outcome feeds the service's event-driven health monitor when one is wired. Ask is left
+    out: its paid path stops at the meter's cap, which has its own alert and is not a Honcho outage."""
+    monitor = state.get("monitor") if op != "memory_ask" else None
+    try:
+        out = _run(op, args, state)
+    except MemoryError_ as error:
+        if monitor is not None:
+            monitor.memory_outcome(error.reason)
+        raise
+    if monitor is not None:
+        monitor.memory_outcome(None)
+    return out
+
+
+def _run(op, args, state):
     honcho = state.get("client")
     if honcho is None:
         raise MemoryError_("memory_not_configured")

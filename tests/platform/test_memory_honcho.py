@@ -74,12 +74,13 @@ def ok_look(text):
     return None
 
 
-def state(h=None, look=ok_look, now=None, receipts=None):
+def state(h=None, look=ok_look, now=None, receipts=None, monitor=None):
     return {
         "client": h,
         "now": now,
         "look": look,
         "receipt": (receipts.append if receipts is not None else (lambda record: None)),
+        "monitor": monitor,
     }
 
 
@@ -516,10 +517,11 @@ class Ask(unittest.TestCase):
         self.assertEqual(len(self.h.chats), 1)
         self.assertEqual(self.ask(question="x" * 500)["label"], "memory-derived")  # exactly the limit is fine
 
-    def test_thirty_asks_an_hour_per_client_then_a_fixed_refusal_that_never_reaches_the_service_and_an_hour_later_it_works_again(
+    def test_five_asks_an_hour_per_client_then_a_fixed_refusal_that_never_reaches_the_service_and_an_hour_later_it_works_again(
         self,
     ):
-        for i in range(30):
+        self.assertEqual(mh.ASK_LIMIT, 5)  # Jim, Nov 27 2026: recall first, ask only when asked for
+        for i in range(5):
             self.ask("duet-chat", at=self.t + timedelta(minutes=i))
         calls = len(self.h.chats)
         with self.assertRaises(mh.MemoryError_) as raised:
@@ -553,6 +555,28 @@ class AnswerRule(unittest.TestCase):
     def test_ask_is_described_as_metered_and_second_to_recall(self):
         self.assertTrue(mh.OPS["memory_ask"][0].startswith("Metered: use memory_recall first"))
         self.assertIn("it is free", mh.OPS["memory_recall"][0])
+
+
+class MonitorHook(unittest.TestCase):
+    """Each memory call reports its outcome to the wired monitor; ask never does."""
+
+    class Probe:
+        def __init__(self):
+            self.seen = []
+
+        def memory_outcome(self, reason):
+            self.seen.append(reason)
+
+    def test_success_reports_none_an_outage_reports_its_code_and_ask_is_left_out(self):
+        probe, h = self.Probe(), FakeHoncho()
+        run("memory_recall", {"workspace": "Personal", "query": "anything"}, h, monitor=probe)
+        with self.assertRaises(mh.MemoryError_):
+            run("memory_recall", {"workspace": "Nowhere", "query": "x"}, h, monitor=probe)
+        self.assertEqual(probe.seen, [None, "unknown_workspace"])
+        before = len(probe.seen)
+        with self.assertRaises(mh.MemoryError_):
+            run("memory_ask", {"workspace": "Nowhere", "question": "x"}, h, monitor=probe)
+        self.assertEqual(len(probe.seen), before)
 
 
 class Wiring(unittest.TestCase):
