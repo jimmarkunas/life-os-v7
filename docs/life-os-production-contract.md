@@ -1,4 +1,4 @@
-> **Canonical home: V7 (Nov 27 2026, 2:45 AM CT; LIFE-1060).** This file, `docs/life-os-production-contract.md` in `jimmarkunas/life-os-v7`, is now the single canonical copy of the Production Contract. The copy in `life-os-automation` (V1) is historical reference only and is no longer edited. The text below is v2.15.19 as it stood at `life-os-automation` commit `3fbf6c6`, unchanged: no rule, wording or version was altered by the move.
+> **Canonical home: V7 (Nov 27 2026, 2:45 AM CT; LIFE-1060).** This file, `docs/life-os-production-contract.md` in `jimmarkunas/life-os-v7`, is now the single canonical copy of the Production Contract. The copy in `life-os-automation` (V1) is historical reference only and is no longer edited. The text below is v2.15.19 as it stood at `life-os-automation` commit `3fbf6c6`: no rule, wording or version was altered by the move. The one difference: this repository is public, so each Notion page link's 32-character page ID is replaced by a placeholder `NOTION-PAGE-nn` (the page titles in the surrounding text still name each page).
 
 # LIFE OS Production Contract
 
@@ -146,31 +146,31 @@ Canonical persistent natural keys:
 
 These are the durable Notion/Drive identities. Listing a surface here does not mean any executor under this contract refreshes it; see `DAILY RUNS RETIREMENT OVERRIDE` for what is delivered.
 
-- Daily Report: `https://app.notion.com/p/3c73c5a0592680e3898cc56025ab8678`
-- Dashboard: `https://app.notion.com/p/37febaa8a9364069a5d13f22366dcbd1`
-- Daily Report Template / UI canon: `https://app.notion.com/p/3cf3c5a05926806bb5b0c8fa02eb62c9`
-- J Search front door: `https://app.notion.com/p/3c73c5a059268146ac60e315ee44fb7a`
+- Daily Report: `https://app.notion.com/p/NOTION-PAGE-01`
+- Dashboard: `https://app.notion.com/p/NOTION-PAGE-02`
+- Daily Report Template / UI canon: `https://app.notion.com/p/NOTION-PAGE-03`
+- J Search front door: `https://app.notion.com/p/NOTION-PAGE-04`
 - Recruiters & Human Outreach: `collection://d42e2ab0-34bc-43ca-83be-e92fd5b54071`
 - Attention: `collection://5cab416c-b1df-43c2-abcc-b98df6656d41`
-- Hiring Pipeline context hub: `https://app.notion.com/p/3d13c5a0592681f0abb0f8e277cb58b9`
-- US Remote Jobs: `https://app.notion.com/p/3cf3c5a0592681c0b03ce531deb63e72`
-- Job Boards / US Web (RETIRED — superseded by US Remote Jobs): `https://app.notion.com/p/3cf3c5a059268144acf4e55bd520f4ed`
-- Scale Up Jobs (ACTIVE): `https://app.notion.com/p/3cf3c5a05926817f892dd21d011cf902`
-- Skilled Worker Jobs: `https://app.notion.com/p/3cf3c5a0592681e9a030f966e21f04c4`
+- Hiring Pipeline context hub: `https://app.notion.com/p/NOTION-PAGE-05`
+- US Remote Jobs: `https://app.notion.com/p/NOTION-PAGE-06`
+- Job Boards / US Web (RETIRED — superseded by US Remote Jobs): `https://app.notion.com/p/NOTION-PAGE-07`
+- Scale Up Jobs (ACTIVE): `https://app.notion.com/p/NOTION-PAGE-08`
+- Skilled Worker Jobs: `https://app.notion.com/p/NOTION-PAGE-09`
 - Canonical Job Ledger: `collection://10e5e35e-6619-4a46-bdd9-5239ccae601a`
 - Job Lane Configuration: `collection://fb7f2e7d-dd4b-490d-a1c4-fba9d4949191`
 - Target Companies: `collection://c6c7ceea-3451-497b-972e-1b7e39e822d5`
-- Weekly Review Hub: `https://app.notion.com/p/3cd3c5a05926816dacfbd9c28bd4e5f0`
+- Weekly Review Hub: `https://app.notion.com/p/NOTION-PAGE-10`
 - Weekly Reviews: `collection://57148710-c6ff-45a5-b13d-44d6eb1ccc7d`
-- Weekly Reports Archive hub: `https://app.notion.com/p/3d43c5a0592681359530f20e9b216baa`
+- Weekly Reports Archive hub: `https://app.notion.com/p/NOTION-PAGE-11`
 - Drive Index: `collection://befe4536-a7be-4a26-a6bd-f2c817e8aba6`
-- Bill Tracker: `https://app.notion.com/p/bbbf4d24d1244756a1713ef5947f330a`
+- Bill Tracker: `https://app.notion.com/p/NOTION-PAGE-12`
 - Bill Tracker data source: `collection://ef9b01a6-7ac7-4ef4-a80d-9eb57c888018`
-- Interview Archive: `https://app.notion.com/p/50d2f64eb5304fae9e4346fdb2a8323b`
-- Amazon Orders database: `https://app.notion.com/p/a191612cd04e416f921f54ec9adf2e66`
+- Interview Archive: `https://app.notion.com/p/NOTION-PAGE-13`
+- Amazon Orders database: `https://app.notion.com/p/NOTION-PAGE-14`
 - Amazon Orders data source: `5a720a09-dfec-400e-b1dd-8e45a2a4fd4b`
-- Accountability Dashboard: `https://app.notion.com/p/3cf3c5a059268008acfac0b4765caa92`
-- Saturn Protocol: `https://app.notion.com/p/3cd3c5a05926819e907ee03ade6aa474`
+- Accountability Dashboard: `https://app.notion.com/p/NOTION-PAGE-15`
+- Saturn Protocol: `https://app.notion.com/p/NOTION-PAGE-16`
 
 Production job child pages are persistent canonical views plus one retired surface: US Remote Jobs (active), Scale Up Jobs (active), Skilled Worker Jobs (quarantined reference). Job Boards / US Web is RETIRED and superseded by US Remote Jobs — it must not be deleted or archived, but no acquisition module writes to it. Do not recreate, move, rename, or delete active pages from any executor. While Skilled Worker is quarantined, its page remains a persistent reference surface rather than a current production acquisition output.
 
@@ -570,7 +570,7 @@ Durable rules for any actor: never mutate Jira planning data unattended (the one
 
 ### V7 JIRA SPRINT ROLLOVER AND DAILY RECONCILIATION — approved v2.15.18 (LIFE-915); activated under LIFE-918 (recorded v2.15.19)
 
-Approved by Jim on November 24, 2026 (ChatGPT scoping session; LIFE-915 owner decisions 1–17 and the field matrix at `https://app.notion.com/p/4203c5a05926818c9b35f9fdd26cacaa`). v2.15.18 recorded the approval only. v2.15.19 records the activation below; it changes no schedule.
+Approved by Jim on November 24, 2026 (ChatGPT scoping session; LIFE-915 owner decisions 1–17 and the field matrix at `https://app.notion.com/p/NOTION-PAGE-17`). v2.15.18 recorded the approval only. v2.15.19 records the activation below; it changes no schedule.
 
 - **Activation (recorded v2.15.19).** Activated by Jim's approval "918 activate" on November 25, 2026, 2:30 PM CT, for both boards as one unit, through V7 Runtime Configuration switch rows: `JIRA_WRITERS_VERIFIED` = yes, `MEJ_AUTOMATION_SINCE` = 2026-11-25T14:30:00-06:00, `MEJ_SPRINT_AUTOMATION` = on (V7 LIFE-918). The two parts have separate status:
   - **Daily reconciliation: ACTIVE and delivered.** First live run 45700362347 (November 25, 2026, 3:01 PM CT; both boards ok, 11 sprints renamed, none created); first natural daily run 45844720396 (November 26, 2026, 9:01 AM CT; both boards ok); 24-hour acceptance V7 LIFE-982.
@@ -589,7 +589,7 @@ Approved by Jim on November 24, 2026 (ChatGPT scoping session; LIFE-915 owner de
 
 ### V7 QUARTERLY METRIC PROMOTION (JFM and MEJ) — approved v2.15.19 (LIFE-1026); DISABLED — NOT DELIVERED
 
-Approved by Jim on November 26, 2026 (ChatGPT; REQ-63 remediation decisions R01–R05 at `https://app.notion.com/p/4213c5a05926810ca86bf463a9404c3b`, and the preparation decisions recorded on V7 LIFE-1026 and LIFE-983). This amendment records authority and timing only. It changes no schedule and enables nothing new.
+Approved by Jim on November 26, 2026 (ChatGPT; REQ-63 remediation decisions R01–R05 at `https://app.notion.com/p/NOTION-PAGE-18`, and the preparation decisions recorded on V7 LIFE-1026 and LIFE-983). This amendment records authority and timing only. It changes no schedule and enables nothing new.
 
 - **What it decides.** Whether the corrected (v2) quarterly goal metric becomes official for JFM and MEJ together, replacing the legacy (v1) metric for the new quarter. Legacy stays official until a promotion succeeds, and legacy figures stay available for history.
 - **Quarter calendar.** Quarters start on the first Wednesday of January, April, July and October, America/Chicago. Q4 2026 runs Wednesday, October 7, 2026 through Tuesday, January 5, 2027; Q1 2027 starts Wednesday, January 6, 2027. January 1–5, 2027 are Q4 2026: no promotion evaluation runs then.
@@ -788,7 +788,7 @@ Surface plausible review/excluded candidates with exact reasons when useful, inc
 
 ## Weekly Reports Archive and Notes lifecycle
 
-**Status: DISABLED — NOT DELIVERED** under this contract. The 6 PM Daily Report archive, Sunday 6 PM final Notes freeze, and Monday 6 AM Notes reset were Daily Runs boundaries and are void; they leave no obligation. The archive hub (`https://app.notion.com/p/3d43c5a0592681359530f20e9b216baa`) and existing archived pages are historical evidence only and are never a second source of truth; nothing governed here creates, edits, or deletes them. Live Notes are Jim's and no executor under this contract may reset them. `docs/weekly-reports-archive-contract.md` is a subordinate specification of the retired boundaries and carries no current authority. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: DISABLED — NOT DELIVERED** under this contract. The 6 PM Daily Report archive, Sunday 6 PM final Notes freeze, and Monday 6 AM Notes reset were Daily Runs boundaries and are void; they leave no obligation. The archive hub (`https://app.notion.com/p/NOTION-PAGE-11`) and existing archived pages are historical evidence only and are never a second source of truth; nothing governed here creates, edits, or deletes them. Live Notes are Jim's and no executor under this contract may reset them. `docs/weekly-reports-archive-contract.md` is a subordinate specification of the retired boundaries and carries no current authority. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
 
 ## Weekly Review
 
