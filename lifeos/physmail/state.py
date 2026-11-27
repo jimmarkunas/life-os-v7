@@ -1,11 +1,9 @@
-"""The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
+"""The Physical Mail derivative state: one private snapshot row, rebuilt by replay from the anchor.
 
-Why a snapshot and not pure replay: the aggregate count is exact only if the window holds every still-pending arrival, and replay cannot prove that (items age out of
-the window, notices get filed as spam, vendors dispose of mail without an email). So the row keeps the arrival notices, the per-mail-number events and the bound count;
-the overlap re-read changes nothing because every event is keyed by message id.
-
-Binding is by count, not identity (order-independent): the starting pile (Jim's October 4 anchor) and each arrival notice are units; each first-seen mail number
-consumes one unit. Pending-unidentified = units - bound. A first-seen mail number with no unit left is tolerated only up to GRACE_DAYS after the anchor and is otherwise DEGRADED."""
+A snapshot, not pure replay: the count is exact only if the window holds every still-pending arrival, which
+replay cannot prove. Binding is by count: the starting pile and each arrival notice are units, each first-seen
+mail number consumes one; a number with no unit left is tolerated only up to GRACE_DAYS after the anchor, then
+DEGRADED."""
 import copy
 import re
 from zoneinfo import ZoneInfo
@@ -14,17 +12,17 @@ from datetime import datetime, timedelta, timezone
 from . import chains
 
 SCHEMA = 1
-REPLAY = 2                                                               # the notice parser that built the row: a row from an older parser is rebuilt once from the anchor (LIFE-95)
+REPLAY = 2  # parser version that built the row: an older row is rebuilt once from the anchor
 ANCHOR_DATE = "2026-10-04"
-ANCHOR_AT = datetime(2026, 10, 4, 5, 0, tzinfo=timezone.utc)            # midnight Oct 4, 2026 in Chicago (CDT)
+ANCHOR_AT = datetime(2026, 10, 4, 5, 0, tzinfo=timezone.utc)
 GRACE_DAYS = 14
 AGED_DAYS = 7
-KEEP_DAYS = 7                                       # a disposed or delivered piece is counted on the card this long, then it is not mentioned (the stored history stays)
+KEEP_DAYS = 7
 MAX_REVIEW = 100
 
 
 class StateError(RuntimeError):
-    """Fixed codes only."""
+    """Raised with a fixed code."""
 
 
 def new_state(anchor_count, now):
@@ -39,7 +37,7 @@ def _at(value):
 
 
 def apply(state, extracted, now):
-    """-> (new state, counts). Pure: merges the extracted events keyed by message id; events dated before the anchor are ignored."""
+    """-> (new state, counts). Pure: merges events keyed by message id; events before the anchor are ignored."""
     st, counts = copy.deepcopy(state), {"arrivals_new": 0, "actions_new": 0, "review_new": 0, "review_resolved": 0, "ignored": 0, "before_anchor": 0}
     seen_review = {item["id"] for item in st["review"]}
     for event in extracted:
@@ -50,12 +48,12 @@ def apply(state, extracted, now):
         if event.get("at") and _at(event["at"]) < ANCHOR_AT:
             counts["before_anchor"] += 1
             continue
-        if kind in ("ARRIVAL", "ACTIONS") and event.get("id") in seen_review:        # the same message now parses cleanly: its earlier REVIEW (an older, flatter parse) is resolved, nothing else is touched
+        if kind in ("ARRIVAL", "ACTIONS") and event.get("id") in seen_review:
             st["review"] = [item for item in st["review"] if item["id"] != event["id"]]
             seen_review.discard(event["id"])
             counts["review_resolved"] += 1
         if kind in ("ARRIVAL", "ACTIONS") and event.get("portal") and (st["portal"] is None or _at(event["at"]) >= _at(st.get("portal_at") or ANCHOR_AT.isoformat())):
-            st["portal"], st["portal_at"] = event["portal"], event["at"]               # both vendor notices carry the mailbox login link; the newest one wins
+            st["portal"], st["portal_at"] = event["portal"], event["at"]
         if kind == "ARRIVAL":
             if event["id"] not in st["arrivals"]:
                 st["arrivals"][event["id"]] = {"at": event["at"], "count": event["count"]}
@@ -70,7 +68,8 @@ def apply(state, extracted, now):
         elif kind == "SHIPMENT":
             ships = st.setdefault("shipments", {})
             known = ships.get(event["number"]) or {}
-            if not known.get("delivered") and (event["delivered"] or not known or _at(event["at"]) >= _at(known["at"])):      # delivered is final: a stale copy of an earlier update never reopens a piece
+            # delivered is final: a stale earlier update never reopens a piece
+            if not known.get("delivered") and (event["delivered"] or not known or _at(event["at"]) >= _at(known["at"])):
                 ships[event["number"]] = {"at": event["at"], "state": event["state"], "delivered": bool(event["delivered"])}
         elif kind == "REVIEW" and event.get("id") and event["id"] not in seen_review:
             st["review"] = (st["review"] + [{"id": event["id"], "at": event.get("at"), "reason": event["reason"]}])[-MAX_REVIEW:]
@@ -85,7 +84,6 @@ def _status_of(chain):
 
 
 def _shipment_view(state, tracking):
-    """The piece's tracking with what FedEx last said about that tracking number (matched by number only): its state, and the delivery day (Central Time) once FedEx says Delivered."""
     if not isinstance(tracking, dict) or not isinstance(tracking.get("number"), str):
         return tracking
     ship = (state.get("shipments") or {}).get(re.sub(r"\s+", "", tracking["number"]))
@@ -98,7 +96,7 @@ def _shipment_view(state, tracking):
 
 
 def pieces(state):
-    """The active pieces, one per vendor mail number (DONE pieces are history, not listed): [{number, status, verb, at, tracking}], needs-a-look first, then forwarded, then scanned (newest number first)."""
+    """The active pieces, one per vendor mail number: [{number, status, verb, at, tracking}], needs-a-look first."""
     out = []
     for number, chain in state["chains"].items():
         status = _status_of(chain)
@@ -114,8 +112,8 @@ TRACKING_FIELDS = ("bundle", "carrier", "service", "number", "url", "state", "de
 
 
 def record_tracking(state, number, entry, source, now):
-    """-> (new state, recorded). Attaches shipment tracking to ONE forwarded piece (stored with that piece, so it leaves with it): only fixed text fields, only for a piece that is currently waiting for tracking,
-    never a guess. Re-recording identical facts changes nothing. `source` names where the facts came from (an authoritative reader, or the operator)."""
+    """-> (new state, recorded). Attaches shipment tracking to ONE forwarded piece waiting for tracking;
+    idempotent."""
     st = copy.deepcopy(state)
     chain = st["chains"].get(str(number))
     if chain is None or _status_of(chain) != chains.WAITING:
@@ -130,7 +128,7 @@ def record_tracking(state, number, entry, source, now):
 
 
 def disposed(state, since=None):
-    """{"recycled": n, "shredded": n} for the pieces whose chain is DONE (the verbs of one DONE chain are never both, the fold sends that to REVIEW). With `since`, only pieces whose last notice is that recent."""
+    """{"recycled": n, "shredded": n} for pieces whose chain is DONE; with `since`, only recent ones."""
     out = {"recycled": 0, "shredded": 0}
     for chain in state["chains"].values():
         if _status_of(chain) == chains.DONE:
@@ -142,7 +140,6 @@ def disposed(state, since=None):
 
 
 def summary(state, now):
-    """Counts and the degraded reason, if any: a pure function of the stored state."""
     chain_status = {number: _status_of(chain) for number, chain in state["chains"].items()}
     units = state["anchor_count"] + sum(a["count"] for a in state["arrivals"].values())
     first_seen = sorted((min(v[0] for v in state["chains"][n]["events"].values()), n) for n in state["chains"])

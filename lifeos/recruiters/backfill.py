@@ -1,8 +1,8 @@
-"""LIFE-973: the one message behind an open recruiter row (its Source URL), so Company / Role / Client can be filled from it (lifeos.recruiters.fill).
+"""The one message behind an open recruiter row (its Source URL), so Company / Role / Client can be filled from it.
 
-A message the run just read is taken from that read. Any other row's message is read once more, read-only: a Gmail link names the thread, and the first message in it that Jim did not send is the recruiter's;
-an Outlook link names the item, tried on each signed-in account. A message that cannot be read leaves the row as it was (it is tried again next run). Nothing here writes; no name, subject or body is returned
-beyond the record the caller keeps in memory."""
+A message the run just read is reused. Otherwise it is re-read, read-only: a Gmail link names the thread (the
+first message not sent by the user is the recruiter's); an Outlook link names the item. An unreadable message
+leaves the row as it was."""
 import re
 import urllib.parse
 

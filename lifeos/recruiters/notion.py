@@ -1,15 +1,10 @@
-"""The existing Recruiters data source, and nothing else: create after absence is proven, update only a single non-Done match, read every write back.
+"""The existing Recruiters data source, and nothing else: create after absence is proven, read every write back.
 
-Natural key: Week Ending + Recruiter + Company + Role (normalized, no fuzzy matching). Two matches is an ambiguity and nothing is changed.
-V7 writes Done only when Jim closes a row from the Daily Report (LIFE-971), never reopens a Done row and never replaces a non-blank What they want. Enrichment of a blank company or role: D193. Action state: D220 (RECR-1.4)."""
-# Detail kept from the former docstring:
-# - A row with the same person and week, the SAME non-empty Source URL as the message, and only a BLANK Company or Role as the difference is the same row, enriched under the same
-#   page (D193): only blank fields are filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to exactly that page.
-#   A different or missing source link is a different message: nothing is merged and the original link is never overwritten.
-# - Every write is read back and checked: owned fields, Done / Active / Needs review preserved, no duplicate.
-# - First Contact (LIFE-20, Jim Oct 23 2026): set once, on create, to the date of the message the row is created from; an update never writes or changes it; older rows are never backfilled.
-# - Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two business
-#   days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are never changed.
+Natural key: Week Ending + Recruiter + Company + Role (normalized, no fuzzy matching); two matches are ambiguous
+and nothing changes. A Done row is never reopened and a non-blank What they want is never replaced. A row with
+the same person, week and non-empty Source URL differing only in a blank Company or Role is enriched in place.
+First Contact is set once, on create. A Waiting row gets a Follow-up Date two business days out and returns to
+Needs Action when due; Completed, Dismissed, Done and inactive rows are history."""
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
@@ -26,19 +21,18 @@ MAX_PAGES = 20
 NEEDS_ACTION, WAITING = "Needs Action", "Waiting"
 REOPENABLE = ("", WAITING)
 REPLIED, OFFERED, CONFIRMED, DECLINED = "Replied", "Referral Offered", "Referral Confirmed", "Declined"
-CONVERSATION = (REPLIED, OFFERED, CONFIRMED)                          # Jim-recorded progress of a job-linked outreach row, in order (offered is never confirmed)
-HISTORY = ("Completed", "Dismissed", DECLINED)                        # history: a later message changes nothing on these rows
+CONVERSATION = (REPLIED, OFFERED, CONFIRMED)
+HISTORY = ("Completed", "Dismissed", DECLINED)
 FOLLOW_UP_DAYS = 2
 FILLABLE = (("Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
 
 
 def schema_ok(props):
-    """True when every property in SCHEMA exists with its type under its exact name (LIFE-989: `Recruiter` and `Company`, renamed by Jim's Notion account on Nov 26 2026). Never raises."""
     return isinstance(props, dict) and all(isinstance(props.get(name), dict) and props[name].get("type") == kind for name, kind in SCHEMA.items())
 
 
 class RecruitersError(NotionError):
-    """Fixed failure codes only; never a name, company, address or value."""
+    """Raised with a fixed code."""
 
 
 def check_schema(notion):
@@ -72,19 +66,17 @@ def read(page):
 
 
 def _formula(prop):
-    """The `Contact` formula's text (a profile or mail link the database itself computes), or "" when it is absent or not text. Read-only: V7 never writes it."""
     value = (prop or {}).get("formula") if isinstance(prop, dict) else None
     return (value.get("string") or "").strip() if isinstance(value, dict) and value.get("type") == "string" else ""
 
 
 def week_rows(notion, week):
-    """Every row whose Week Ending is `week`, following every page; an incomplete read raises (no create on an unproven absence)."""
     return rows_where(notion, {"property": "Week Ending", "date": {"equals": week}})
 
 
 def matches(rows, candidate):
     wanted = key(candidate["week_ending"], candidate["person"], candidate["company"], candidate["role"])
-    return [r for r in rows if not r["jobs"] and key(r["week_ending"], r["person"], r["company"], r["role"]) == wanted]     # a job-linked outreach row is never an inbound match (D221)
+    return [r for r in rows if not r["jobs"] and key(r["week_ending"], r["person"], r["company"], r["role"]) == wanted]
 
 
 def _blank(value):
@@ -92,8 +84,8 @@ def _blank(value):
 
 
 def enrichable(rows, candidate):
-    """Rows for the candidate's person and week with no exact key match whose only differences are blank company / role fields the candidate can fill, and that were made from
-    THIS message: the row's Source URL must equal the candidate's, exactly and non-empty. Same recruiter and same week is not the same message (two roles, two threads)."""
+    """Rows for the candidate's person and week with no exact key match, differing only in blank company / role and
+    made from THIS message (equal, non-empty Source URL)."""
     out = []
     source = str(candidate.get("source_url") or "")
     if not source:
@@ -122,7 +114,7 @@ def _newer(candidate, existing):
 
 
 def plan(rows, candidate):
-    """-> ("create", None, None) | ("update", row, props) | ("existing", row, None) | ("done", row, None) | ("ambiguous", None, None)"""
+    """-> (action, row, props) with action in "create" | "update" | "existing" | "done" | "ambiguous"."""
     found = matches(rows, candidate) or enrichable(rows, candidate)
     if not found:
         return "create", None, None
@@ -130,7 +122,7 @@ def plan(rows, candidate):
         return "ambiguous", None, None
     row = found[0]
     if row["done"]:
-        return "done", row, None                                    # a later message never reopens, and never touches, a Done row
+        return "done", row, None
     if row["action"] in HISTORY:
         return "existing", row, None
     props = {}
@@ -138,13 +130,13 @@ def plan(rows, candidate):
         props["Last Contact"] = {"date": {"start": candidate["last_contact"]}}
         if candidate["source_url"]:
             props["Source URL"] = {"url": candidate["source_url"]}
-        if row["action"] in REOPENABLE:                               # a new reply is something to act on again
+        if row["action"] in REOPENABLE:
             props["Action Status"] = {"select": {"name": NEEDS_ACTION}}
-    for name, field in FILLABLE:                                    # fill a blank from source evidence; never replace a human's value
+    for name, field in FILLABLE:
         if _blank(row[field]) and candidate.get(field):
             props[name] = {"rich_text": rich_text(candidate[field])}
             if field == "what" and candidate.get("what_fallback"):
-                props["Needs review"] = {"checkbox": True}            # LIFE-989: a fallback ask is a guess about the ask, so the row waits for a look
+                props["Needs review"] = {"checkbox": True}
     return ("update", row, props) if props else ("existing", row, None)
 
 
@@ -152,8 +144,8 @@ FALLBACK_WHAT = "Reply to their message"
 
 
 def what_or_fallback(candidate):
-    """LIFE-989 (Jim, Nov 25 2026: "What they want should ALWAYS be populated"): -> (text, used_fallback). The extracted one-sentence ask when there is one; otherwise a sentence built from the message's role or
-    subject, never blank: `Reply to their message about <role or subject>.` or `Reply to their message.` A fallback is a guess about the ask, so the caller ticks Needs review."""
+    """-> (text, used_fallback): the extracted ask, else `Reply to their message about <role or subject>.`; a
+    fallback makes the caller tick Needs review."""
     ask = " ".join(str(candidate.get("what") or "").split())
     if ask:
         return ask, False
@@ -164,7 +156,7 @@ def what_or_fallback(candidate):
 def _create_props(c):
     props = {"Recruiter": {"title": rich_text(c["person"])}, "Medium": {"rich_text": rich_text(c["medium"])}, "Last Contact": {"date": {"start": c["last_contact"]}},
              "Week Ending": {"date": {"start": c["week_ending"]}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": bool(c["needs_review"])},
-             "Action Status": {"select": {"name": NEEDS_ACTION}}, "First Contact": {"date": {"start": c["last_contact"]}}}      # LIFE-20: the date of the message this row is created from; set once, never updated
+             "Action Status": {"select": {"name": NEEDS_ACTION}}, "First Contact": {"date": {"start": c["last_contact"]}}}
     for name, field in (("Company", "company"), ("Client", "client"), ("Role", "role"), ("What they want", "what")):
         if c.get(field):
             props[name] = {"rich_text": rich_text(c[field])}
@@ -174,7 +166,7 @@ def _create_props(c):
 
 
 def create(notion, candidate):
-    """Create one row (one non-retried write), then prove it: exactly one row has the key and it holds the owned values with Done false and What they want as written."""
+    """Create one row (one non-retried write), then prove exactly one row has the key."""
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": notion.source}, "properties": _create_props(candidate)})
     found = matches(week_rows(notion, candidate["week_ending"]), candidate)
@@ -187,8 +179,8 @@ def create(notion, candidate):
 
 
 def update(notion, row, props, candidate):
-    """One non-retried bounded update, then prove it: still one row under the candidate's key, the same page, Done / Active / Needs review untouched, every written value present
-    and every value that was not written unchanged (a human's What they want, company or role is never replaced)."""
+    """One non-retried update, then prove: same page, Done / Active / Needs review untouched, written values
+    present."""
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], props)
     found = matches(week_rows(notion, candidate["week_ending"]), candidate)
@@ -200,7 +192,7 @@ def update(notion, row, props, candidate):
     if "Last Contact" in props and not _same_instant(after["last_contact"], candidate["last_contact"]):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     if (after["action"] != (NEEDS_ACTION if "Action Status" in props else row["action"]) or after["follow_up"] != row["follow_up"]
-            or after["first_contact"] != row["first_contact"]):                                  # a later message never moves the first contact
+            or after["first_contact"] != row["first_contact"]):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     for name, field in FILLABLE:
         expected = candidate[field] if name in props else row[field]
@@ -223,17 +215,14 @@ def add_business_days(day, n):
 
 
 def waiting_rows(notion):
-    """Every Waiting row, following every page; an incomplete read raises (nothing is changed on a partial view)."""
     return rows_where(notion, {"property": "Action Status", "select": {"equals": WAITING}})
 
 
 def rows_where(notion, where, source=None):
-    """Every row matching the Notion filter `where`, following every page; an incomplete read raises."""
     return [read(p) for page in query(notion, source, {"page_size": 100, "filter": where}, RecruitersError, incomplete="RECRUITERS_NOTION_QUERY_INCOMPLETE", repeat="RECRUITERS_NOTION_PAGINATION_INVALID", capped="RECRUITERS_NOTION_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="RECRUITERS_NOTION_QUERY_FAILED") for p in page["results"]]
 
 
 def follow_up_plan(row, today):
-    """-> ("schedule", props) | ("due", props) | (None, None) for one Waiting row. A Done or inactive row, or a date that is not a date, is left alone."""
     if row["done"] or not row["active"] or row["action"] != WAITING:
         return None, None
     if not row["follow_up"]:
@@ -246,7 +235,6 @@ def follow_up_plan(row, today):
 
 
 def set_follow_up(notion, row, props):
-    """One non-retried update, then prove it on a fresh read of the row's week: same page, only the written field changed."""
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], props)
     after = [r for r in week_rows(notion, row["week_ending"]) if r["page_id"] == row["page_id"]]
@@ -261,11 +249,11 @@ def set_follow_up(notion, row, props):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
 
 
-CLOSE_TO = ("Completed", "Dismissed")                                 # LIFE-20 (Jim, Oct 23 2026): the two ways Jim closes an open recruiter row from the Daily Report
+CLOSE_TO = ("Completed", "Dismissed")
 
 
 def own_row(notion, page_id, source=None):
-    """ONE row of this data source (`source`, else the client's own) by its exact page id, read fresh; a page anywhere else is refused."""
+    """ONE row of this data source by exact page id, read fresh; a page elsewhere is refused."""
     with fixed(NotionError, RecruitersError, "RECRUITERS_ROW_UNREADABLE"):
         page = notion.get_page(page_id)
     flat = lambda value: str(value or "").replace("-", "").lower()      # noqa: E731
@@ -276,7 +264,7 @@ def own_row(notion, page_id, source=None):
     return read(page)
 
 
-CLOSED_FLAGS = {"Done": {"checkbox": True}, "Active": {"checkbox": False}, "Needs review": {"checkbox": False}}      # LIFE-971 (Jim, Nov 24 2026): a closed row is Done, not Active, and not waiting for review
+CLOSED_FLAGS = {"Done": {"checkbox": True}, "Active": {"checkbox": False}, "Needs review": {"checkbox": False}}
 CHICAGO = ZoneInfo("America/Chicago")
 
 
@@ -285,7 +273,8 @@ def _closed_flags(row):
 
 
 def reply_day(row):
-    """The day a Needs Action row's reply is due: its Follow-up Date, else one business day after its First Contact (Central Time), else None."""
+    """The day a Needs Action row's reply is due: its Follow-up Date, else one business day after First Contact
+    (Central Time)."""
     try:
         return date.fromisoformat(row["follow_up"][:10])
     except ValueError:
@@ -298,18 +287,16 @@ def reply_day(row):
 
 
 def overdue_rows(rows, today):
-    """The open Needs Action rows whose reply day is before `today` (what the card marks `overdue`), in a fixed order."""
     out = [r for r in rows if r["action"] == NEEDS_ACTION and not r["done"] and r["active"] and (reply_day(r) or today) < today]
     return sorted(out, key=lambda r: (r["person"].strip().lower(), r["page_id"]))
 
 
-# ---------- LIFE-973: Action Status is the only source of truth for Done / Active / Needs review, and every open row carries a reply-by date ----------
-CLOSED_STATUSES = ("Completed", "Dismissed", DECLINED)                # history: Done ticked, Active off, Needs review off
+CLOSED_STATUSES = ("Completed", "Dismissed", DECLINED)
 
 
 def sync_plan(row):
-    """-> the properties that make Done / Active / Needs review agree with Action Status, or None. Completed / Dismissed / Declined: Done on, Active off, Needs review off.
-    Needs Action: Done off, Active on (Needs review is Jim's and stays). Any other status (Waiting, blank) is not synced."""
+    """-> the properties that make Done / Active / Needs review agree with Action Status, or None. Closed statuses:
+    Done on, Active and Needs review off; Needs Action: Done off, Active on."""
     if row["action"] in CLOSED_STATUSES:
         return dict(CLOSED_FLAGS) if not _closed_flags(row) else None
     if row["action"] == NEEDS_ACTION and (row["done"] or not row["active"]):
@@ -318,7 +305,6 @@ def sync_plan(row):
 
 
 def disagreeing_rows(notion):
-    """Every row whose Done / Active / Needs review disagree with its Action Status (two filtered reads), complete or raising."""
     closed = {"and": [{"or": [{"property": "Action Status", "select": {"equals": s}} for s in CLOSED_STATUSES]},
                       {"or": [{"property": "Done", "checkbox": {"equals": False}}, {"property": "Active", "checkbox": {"equals": True}}, {"property": "Needs review", "checkbox": {"equals": True}}]}]}
     open_ = {"and": [{"property": "Action Status", "select": {"equals": NEEDS_ACTION}}, {"or": [{"property": "Done", "checkbox": {"equals": True}}, {"property": "Active", "checkbox": {"equals": False}}]}]}
@@ -332,8 +318,8 @@ def disagreeing_rows(notion):
 
 
 def default_follow_up(row):
-    """The reply-by date to write on a Needs Action row that has none: one business day after its First Contact, else after its Last Contact (Central Time), else None.
-    The old card's rule (REPLY_DAYS = 1) with a Last Contact fallback for rows made before First Contact existed. A date Jim or V7 already set is never replaced."""
+    """The reply-by date for a Needs Action row without one: one business day after First Contact, else Last
+    Contact."""
     if row["action"] != NEEDS_ACTION or row["done"] or not row["active"] or row["follow_up"]:
         return None
     for field in ("first_contact", "last_contact"):
@@ -346,7 +332,7 @@ def default_follow_up(row):
 
 
 def set_props(notion, row, props, expect):
-    """One non-retried update of owned properties, then a fresh read of the same page: `expect` ({row key: value}) must hold and nothing else may have changed."""
+    """One non-retried update, then a fresh read of the same page: `expect` must hold and nothing else may change."""
     with fixed(NotionError, RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
         notion.update_page_properties(row["page_id"], props)
     after = own_row(notion, row["page_id"])
@@ -356,12 +342,12 @@ def set_props(notion, row, props, expect):
 
 
 def close_row(notion, page_id, status, row=None):
-    """Jim's confirmed close of ONE row as Completed or Dismissed. An open row (Needs Action or Waiting, not Done, Active) gets Action Status AND Done on, Active off, Needs review off, in one write, then is read back:
-    the new values as written and every other value unchanged. A row already closed that way whose three flags disagree (the Nov 24 case) is repaired the same way; one already closed and consistent is left alone;
-    any other row is not changed. `row`: the row the caller read an instant ago in this same request (it is still read back after the write). -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
+    """Close ONE row as Completed or Dismissed: Action Status plus Done on, Active and Needs review off, in one
+    write, then read back. A closed row whose flags disagree is repaired; anything else is left alone. ->
+    {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
     if status not in CLOSE_TO:
         raise RecruitersError("RECRUITERS_CLOSE_INVALID")
-    if row is None:                                                    # the Close screen passes the row it has just read (LIFE-972: two Notion calls fewer, the schema was read on the same screen's GET)
+    if row is None:
         check_schema(notion)
         row = own_row(notion, page_id)
     if row["action"] == status and _closed_flags(row):

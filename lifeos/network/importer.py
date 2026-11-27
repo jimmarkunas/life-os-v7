@@ -1,7 +1,7 @@
-"""NET-1b: import the connections file attached to the private Notion page into the approved Hostinger tables.  python -m lifeos.run network-import
+"""Import the connections file attached to the private Notion page into the Hostinger tables (network-import).
 
-Dry (the default): counts only, no database connection, no table, no write. Live: create the tables if missing, record the batch, apply it in chunks (each chunk one transaction,
-read back), mark it COMPLETE and read the totals back. Replaying the same file changes nothing. Email is never read into a record. Fixed NETWORK_* codes and counts only."""
+Dry (default): counts only, no database connection, no write. Live: create tables if missing, record the batch,
+apply it in read-back chunks, mark it COMPLETE. Replaying the same file changes nothing."""
 import os
 from datetime import date
 
@@ -51,7 +51,7 @@ def _apply(counts, connection, key, plan, exported, chunk):
 
 
 def audit(limit, live, connection=None):
-    """python -m lifeos.run network-audit: read-only counts of the stored network (including how many text values look like an email address)."""
+    """python -m lifeos.run network-audit: read-only counts of the stored network."""
     if connection is not None:
         return store.audit(connection)
     with db.connect() as opened:

@@ -1,9 +1,8 @@
-"""LIFE-973: the one gray count line above the Recruiter Outreach view on the Daily Report: `N need action · M overdue`.
+"""The one gray count line above the Recruiter Outreach view on the Daily Report: `N need action · M overdue`.
 
-The table, its Done / Dismiss / Close all overdue links and the Close screen are gone: the card is a live Notion view of the Recruiters data source (Action Status = Needs Action), which Jim changes in place.
-V7 writes ONE thing here: the text of the count line, in the callout named by the RECRUITER_COUNT_BLOCK_ID setting (an address row in Runtime Configuration, as the Agent Inbox count is). The callout's title
-and its link (`All recruiter records ↗`) stay exactly as Jim made them; only the gray text before the link is replaced. The view inside the callout is never read as a child and never written.
-Live writes need --live AND RECRUITER_OUTREACH=on. If the Recruiters stage failed or the source is unreadable, the line is left as it was and the step is a warning. Fixed codes and counts only."""
+V7 writes ONE thing: the count line's text, in the callout named by RECRUITER_COUNT_BLOCK_ID. The callout's
+title, link and view are untouched. Live writes need --live AND RECRUITER_OUTREACH=on. If the Recruiters stage
+failed or the source is unreadable the line is left as it was and the step is a warning."""
 import json
 import os
 import re
@@ -20,7 +19,7 @@ SETTING = "RECRUITER_COUNT_BLOCK_ID"
 
 
 class OutreachError(NotionError):
-    """Fixed codes only; never a name, company, link or id."""
+    """Raised with a fixed code."""
 
 
 def fail(code):
@@ -28,7 +27,7 @@ def fail(code):
 
 
 def writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})      # the Daily Report integration
+    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
 def source(environ):
@@ -48,8 +47,8 @@ def _is_link(part):
 
 
 def retext(parts, text):
-    """The callout's rich text with the gray text before the link replaced by `text` (followed by ` · ` when a link follows). The title and the link are returned untouched.
-    -> the new parts, or None when there is neither gray text nor a link to anchor on."""
+    """The callout's rich text with the gray text before the link replaced by `text`; None when there is no gray
+    text or link."""
     parts = [p for p in parts if isinstance(p, dict)]
     link_at = next((i for i, p in enumerate(parts) if _is_link(p)), None)
     head = parts if link_at is None else parts[:link_at]
@@ -69,7 +68,6 @@ def _plain(parts):
 
 
 def _clean(parts):
-    """Notion's read shape -> the write shape (text, link, annotations), dropping the read-only fields."""
     out = []
     for p in parts:
         if p.get("type") != "text":
@@ -86,7 +84,6 @@ def _clean(parts):
 
 
 def region(client, environ):
-    """-> the callout block named by RECRUITER_COUNT_BLOCK_ID, proven to be a callout, or a fixed code."""
     block_id = R.clean_id(environ.get("RECRUITER_COUNT_BLOCK_ID"))
     if not block_id:
         raise fail("NOT_CONFIGURED")
@@ -102,7 +99,8 @@ def region(client, environ):
 
 
 def present(client, environ, text, live):
-    """Dry run: prove the callout and the new text only. Live: one write of the callout's own text, read back. -> {"would_change", "verified"}"""
+    """Dry run: prove the callout and the new text only. Live: one write, read back. -> {"would_change",
+    "verified"}"""
     block = region(client, environ)
     parts = (block.get("callout") or {}).get("rich_text") or []
     new = retext(parts, text)
@@ -129,7 +127,7 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     counts = {"needs_action": 0, "overdue": 0, "live": write, "status": "ok"}
     stage = (environ.get("RECRUITERS_STAGE_OUTCOME") or "success").strip()
     reason, rows = None, []
-    if stage not in ("success", "skipped"):                         # the Recruiters stage failed this run: what the source holds is not this run's truth
+    if stage not in ("success", "skipped"):
         reason = "RECRUITERS_STAGE_FAILED"
     else:
         try:
@@ -141,7 +139,7 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     if reason:
         counts["status"] = "degraded"
         print("recruiter-outreach:", json.dumps(counts, sort_keys=True))
-        raise fail(f"DEGRADED:{reason}")                            # the line keeps its last accepted text; the step is a warning
+        raise fail(f"DEGRADED:{reason}")
     open_rows = [r for r in rows if r["active"] and not r["done"]]
     counts.update(needs_action=len(open_rows), overdue=len(store.overdue_rows(open_rows, now.date())))
     counts.update(present(client or writer(environ), environ, line(counts["needs_action"], counts["overdue"]), write))

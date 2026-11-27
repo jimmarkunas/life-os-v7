@@ -1,9 +1,8 @@
-"""LIFE-21 / LIFE-47 (D221): role-specific outreach on the canonical Recruiters data source, linked to ONE exact Job Ledger job by the additive `Job` relation.
+"""Role-specific outreach on the Recruiters data source, linked to ONE exact Job Ledger job by the `Job` relation.
 
-Only Jim's explicit Mark as Sent confirmation creates an outreach row: Waiting, a Follow-up Date two business days out, the job linked. The natural key is (job page id, person):
-a replay returns the existing row and never creates a second one. Inbound recruiter mail never matches, updates or enriches a row that carries a `Job` (notion.matches /
-notion.enrichable skip them), so the two kinds of row cannot collide; the D220 follow-up pass still reopens a due row. The Job Outreach projection is one row per exact job.
-Fixed codes only; never a name, company or id in a log."""
+Only an explicit Mark as Sent creates an outreach row (Waiting, Follow-up Date two business days out), keyed by
+(job page id, person). Inbound recruiter mail never matches a row that carries a `Job`. Fixed codes only; no
+names in logs."""
 from datetime import datetime
 from urllib.parse import quote
 
@@ -23,7 +22,6 @@ def _id(value):
 
 
 def check_schema(notion, ledger_source):
-    """The Recruiters data source must carry `Job` as a relation to the Job Ledger data source; anything else refuses before a write."""
     with fixed(NotionError, store.RecruitersError, "OUTREACH_SCHEMA_READ_FAILED"):
         props = notion.call("GET", f"/data_sources/{quote(notion.source, safe='')}").get("properties")
     job = (props or {}).get(JOB) if isinstance(props, dict) else None
@@ -35,7 +33,6 @@ def check_schema(notion, ledger_source):
 
 
 def job_rows(notion, job_id):
-    """Every Recruiters row linked to this exact job, following every page; an incomplete read raises (no create on an unproven absence)."""
     body = {"page_size": 100, "filter": {"property": JOB, "relation": {"contains": job_id}}}
     return [r for r in (store.read(p) for page in query(notion, None, body, store.RecruitersError, incomplete="RECRUITERS_NOTION_QUERY_INCOMPLETE", repeat="RECRUITERS_NOTION_PAGINATION_INVALID", capped="RECRUITERS_NOTION_PAGINATION_INCOMPLETE", limit=store.MAX_PAGES, read="RECRUITERS_NOTION_QUERY_FAILED") for p in page["results"]) if _id(job_id) in map(_id, r["jobs"])]
 
@@ -46,8 +43,8 @@ def valid_person(person):
 
 
 def employer_from(reason):
-    """The person's CURRENT employer from a Network Leads line ("Listed at <company> as <title>, as of ..."), else "". A previous employer, an unverified name
-    match or the placeholder "this company" is never recorded as current."""
+    """The person's CURRENT employer from a Network Leads line ("Listed at <company> as <title>, as of ..."), else
+    ""."""
     if not str(reason or "").startswith("Listed at "):
         return ""
     where = str(reason)[len("Listed at "):].rpartition(", as of ")[0].partition(" as ")[0]
@@ -64,9 +61,10 @@ def _props(job, person, now, employer=""):
 
 
 def mark_sent(notion, job, person, now, ledger_source, employer=""):
-    """Jim's confirmed Mark as Sent for one exact job and one person, with the person's employer when known (stored as Company; never guessed). -> {"status": "recorded" | "already_recorded", "verified": True, "state": "open" | "closed",
-    "action", "follow_up"}; an existing row for (job, person) is returned as it is (never rewritten, never relabelled Waiting).
-    One non-retried create after absence is proven for (job, person), then a fresh read must show exactly that one row, Waiting, linked to the job."""
+    """Record a confirmed Mark as Sent for one job and person (employer stored as Company when known). An existing
+    row is returned as it is; otherwise one non-retried create, then a fresh read must show exactly one Waiting
+    row linked to the job. -> {"status": "recorded" | "already_recorded", "verified": True, "state", "action",
+    "follow_up"}"""
     person, employer = valid_person(person), valid_person(employer)
     if not person or not job.get("id") or not job.get("company") or not job.get("role"):
         raise store.RecruitersError("OUTREACH_REQUEST_INVALID")
@@ -74,7 +72,7 @@ def mark_sent(notion, job, person, now, ledger_source, employer=""):
     mine = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
     if len(mine) > 1:
         raise store.RecruitersError("OUTREACH_AMBIGUOUS")
-    if mine:                                                          # a replay never writes; it reports the persisted state truthfully (D221)
+    if mine:
         row = mine[0]
         state = "closed" if row["done"] or not row["active"] or row["action"] in store.HISTORY else "open"
         return {"status": "already_recorded", "verified": True, "state": state, "action": row["action"], "follow_up": row["follow_up"]}
@@ -94,9 +92,9 @@ def _options(notion):
 
 
 def set_conversation(notion, job, person, status, ledger_source):
-    """Jim's confirmed update of ONE recorded conversation (job, person) to Replied, Referral Offered, Referral Confirmed or Declined. Never creates a row (a conversation exists only after
-    Mark as Sent), never moves an open conversation backwards (Confirmed never becomes Offered), never touches a closed one, and refuses before any write when the Action Status option does
-    not exist yet (the schema is never extended by a write). Offered and Confirmed stay distinct. -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action", "follow_up"}"""
+    """Update ONE recorded conversation (job, person) to Replied, Referral Offered, Referral Confirmed or Declined.
+    Never creates a row, moves an open conversation backwards, or touches a closed one; refuses before any write
+    when the Action Status option is missing. -> {"status", "verified", "action", "follow_up"}"""
     person = valid_person(person)
     if status not in (*store.CONVERSATION, store.DECLINED) or not person or not job.get("id"):
         raise store.RecruitersError("OUTREACH_REQUEST_INVALID")
@@ -114,7 +112,8 @@ def set_conversation(notion, job, person, status, ledger_source):
         return {**seen, "status": "not_changed"}
     if row["action"] == status:
         return {**seen, "status": "already_recorded"}
-    rank = lambda a: store.CONVERSATION.index(a) if a in store.CONVERSATION else -1       # noqa: E731 - Waiting / Needs Action / blank rank below Replied
+    # noqa: E731 - Waiting / Needs Action / blank rank below Replied
+    rank = lambda a: store.CONVERSATION.index(a) if a in store.CONVERSATION else -1
     if status != store.DECLINED and rank(status) < rank(row["action"]):
         return {**seen, "status": "not_changed"}
     with fixed(NotionError, store.RecruitersError, "RECRUITERS_NOTION_WRITE_FAILED"):
@@ -126,9 +125,8 @@ def set_conversation(notion, job, person, status, ledger_source):
 
 
 def project(rows, jobs, today):
-    """The native Job Outreach table: one row per exact job (never per person), from Recruiters rows linked to a job. `jobs` maps a Ledger page id to
-    {"company", "role", "url"}; a row whose job is not in `jobs` (closed, unreadable) is not shown. Sorted by the most urgent next follow-up.
-    -> [{"job", "outreach", "next", "link", "sort"}]"""
+    """The native Job Outreach table: one row per exact job. `jobs` maps a Ledger page id to {"company", "role",
+    "url"}. -> [{"job", "outreach", "next", "link", "sort"}], most urgent follow-up first."""
     grouped = {}
     for r in rows:
         if r["done"] or not r["active"] or r["action"] in store.HISTORY:

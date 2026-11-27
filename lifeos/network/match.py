@@ -1,10 +1,9 @@
-"""NET-2.2: match a job's employer to the stored network, from stored state only. Pure: no database, no network, no names; the caller supplies the rows.
+"""Match a job's employer to the stored network, from stored state only. Pure: no database, no network, no names.
 
-Company identity is the normalized company key the importer stores (the distinctive tokens of the employer name). A lead is a person with a stored position at that company:
-tier CURRENT (the latest listed position), tier PREVIOUS (a superseded position there: "previously listed"), tier POSSIBLE (no key is equal but one key is a whole-word prefix of the
-other, such as "meta" and "meta platforms"; shown last and never auto-confirmed). Within a tier: title-word overlap with the job's title, then the freshest observation, then a stable id.
-Nobody with no company match is ever shown, so weak signals cannot fill slots, and at most MAX_LEADS are returned. Nothing about closeness, influence, willingness to refer or
-hiring authority is inferred; freshness is only the age of the observation (FRESH up to 45 days, AGING to 120, STALE beyond)."""
+A lead is a person with a stored position at the employer's normalized company key: tier CURRENT, PREVIOUS
+(superseded position) or POSSIBLE (one key is a whole-word prefix of the other; shown last). Within a tier:
+title-word overlap, freshest observation, stable id. At most MAX_LEADS are returned. Nothing about closeness or
+willingness to refer is inferred; freshness is only the observation's age."""
 
 from lifeos.platform import names
 
@@ -23,8 +22,8 @@ def _words(title):
 
 
 def build_index(rows):
-    """rows of (person_id, company_key, title, position_state, last_verified: date[, position_id]) -> {company_key: [(person_id, tier, title_words, last_verified, position_id)]}.
-    A blank company key is dropped. The optional position id lets a surface look up the stored position it displays; matching never reads it."""
+    """rows of (person_id, company_key, title, position_state, last_verified[, position_id]) -> {company_key: [lead
+    tuples]}. A blank company key is dropped."""
     index = {}
     for person_id, company_key, title, state, verified, *rest in rows:
         if not company_key:
@@ -35,15 +34,14 @@ def build_index(rows):
 
 
 def _prefix(a, b):
-    """True when one key is a whole-word prefix of the other and they are not equal."""
     x, y = a.split(), b.split()
     short, long_ = (x, y) if len(x) <= len(y) else (y, x)
     return a != b and bool(short) and long_[:len(short)] == short
 
 
 def leads_for(company_key, job_title, index, today, aliases=None, limit=MAX_LEADS):
-    """-> up to `limit` leads, best first: {person_id, tier, freshness, age_days, overlap, company_key[, position_id]}. Each person appears once, at their best tier.
-    `aliases` ({company key: company key}) are Jim's confirmed same-company decisions: they make two keys equal for matching only and never rewrite a stored name."""
+    """-> up to `limit` leads, best first, one per person. `aliases` ({company key: company key}) equate keys for
+    matching only."""
     if not company_key:
         return []
     aliases = aliases or {}

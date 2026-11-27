@@ -1,9 +1,9 @@
-"""Gmail Physical Mail evidence -> deterministic parse -> private derivative state (MAIL-1.2). Counts only; fixed error codes.
+"""Gmail Physical Mail evidence -> deterministic parse -> private derivative state. Counts only; fixed error codes.
 
-Source access is READ-ONLY: this package lists and reads messages and never modifies a label, read state or mail. The Gmail listing is complete or it fails closed
-(`list_ids_complete`), every listed message is read before anything is saved, and the state row is replaced and read back. The first run needs Jim's starting pile
-(`PHYSICAL_MAIL_ANCHOR`, the number of items waiting on October 4, 2026, from the workflow input, never from code); every later run continues from the stored row,
-re-reading the last OVERLAP days, which changes nothing because events are keyed by message id."""
+Source access is READ-ONLY. The Gmail listing is complete or fails closed, every message is read before anything
+is saved, and the state row is replaced and read back. The first run needs the starting pile
+(`PHYSICAL_MAIL_ANCHOR`, from the workflow input); later runs continue from the stored row and re-read the last
+OVERLAP days."""
 import os
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
@@ -20,7 +20,7 @@ OVERLAP = timedelta(days=3)
 
 
 class PhysMailError(RuntimeError):
-    """Fixed codes only: never a subject, sender, mail number or link."""
+    """Raised with a fixed code."""
 
 
 def _anchor_count(environ):
@@ -32,7 +32,6 @@ def _anchor_count(environ):
 
 
 def _session(connection):
-    """The caller's connection, or a fresh one that is closed on leaving."""
     return nullcontext(connection) if connection is not None else db.connect()
 
 
@@ -49,14 +48,14 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
     if stored is None:
         anchor = _anchor_count(environ)
         if anchor is None:
-            counts["status"] = "no_state"                                  # starting state unknown: nothing is saved and the card says DEGRADED, never "none"
+            counts["status"] = "no_state"
             raise PhysMailError("PHYSMAIL_NO_STATE")
         stored = state_mod.new_state(anchor, now)
     elif stored.get("schema") != state_mod.SCHEMA:
         raise PhysMailError("PHYSMAIL_STATE_SCHEMA")
     previous, rebuild = stored, False
     if stored.get("accepted_at") and stored.get("replay") != state_mod.REPLAY:
-        rebuild = True                                                      # a row an older, flatter parser built: replay the whole census from the anchor into a candidate, keep the row until the candidate is proven
+        rebuild = True
         stored = state_mod.new_state(previous["anchor_count"], now)
     counts["rebuild"] = int(rebuild)
     gmail = gmail or Gmail.from_env()
@@ -68,7 +67,7 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
         raise PhysMailError("PHYSMAIL_" + error_code(error)) from None
     counts["listed"] = len(ids)
     extracted = []
-    for message_id in ids:                                                 # the whole census is read before any write
+    for message_id in ids:
         try:
             extracted.append(events.extract(gmail.message_record(message_id, keep_lines=True)))
         except GmailError as error:
@@ -77,7 +76,7 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
     for key in ("arrivals_new", "actions_new", "review_new", "review_resolved", "ignored", "before_anchor"):
         counts[key] = delta[key]
     if rebuild:
-        for number, chain in previous["chains"].items():                    # tracking belongs to its piece: a rebuild from the anchor carries it over, never drops it
+        for number, chain in previous["chains"].items():
             if chain.get("tracking") and number in merged["chains"]:
                 merged["chains"][number]["tracking"] = chain["tracking"]
     counts["tracking_recorded"] = 0
@@ -88,14 +87,17 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
     merged["through"], merged["accepted_at"], merged["taken_at"] = now.isoformat(), now.isoformat(), now.isoformat()
     counts.update({f"state_{k}": v for k, v in state_mod.summary(merged, now).items() if k != "degraded_reason"})
     if rebuild:
-        _prove_rebuild(previous, merged, environ, now)                     # fail closed: the known-good row stays; the candidate carries it as `prior` for a rollback
+        # fail closed: the known-good row stays; the candidate carries it as `prior` for a rollback
+        _prove_rebuild(previous, merged, environ, now)
         merged["prior"] = {k: v for k, v in previous.items() if k != "prior"}
     if live:
-        with _session(connection) as saving:                                 # a fresh connection: the one that loaded the row sat idle through the Gmail census and the store tunnel drops it (runs 39659585455 and 39668591536 lost it at this first statement)
+        # a fresh connection: the one that loaded the row sat idle through the Gmail census and the tunnel drops
+        # it
+        with _session(connection) as saving:
             STORE.save_verified(saving, KEY, merged, lambda code: PhysMailError("PHYSMAIL_" + code))
         counts["saved"] = 1
         new_ids = set(merged["arrivals"]) - set((stored or {}).get("arrivals", {}))
-        if new_ids and not rebuild:                                                        # only after the state is saved, so a failed save never pushes twice; counts only, no mail content
+        if new_ids and not rebuild:
             items = sum(int(merged["arrivals"][i].get("count") or 0) for i in new_ids)
             counts["notified"] = alerts.push("physmail_new", "LIFE OS Physical Mail",
                                              f"{items} new mail item{'s' if items != 1 else ''} received" if items else "New mail received", (environ.get("NTFY_TOPIC") or "").strip())
@@ -103,8 +105,8 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
 
 
 def _entered_tracking(environ):
-    """PHYSICAL_MAIL_TRACKING_ENTRY, a one-off workflow input for the ONE piece the vendor's notices never describe: `mail number | carrier | service | tracking number | bundle`. -> (number, entry) or None.
-    The temporary stand-in for an authoritative tracking reader; stored with the piece, never a standing configuration."""
+    """PHYSICAL_MAIL_TRACKING_ENTRY, a one-off workflow input for the ONE piece the vendor's notices never
+    describe: `mail number | carrier | service | tracking number | bundle`. -> (number, entry) or None."""
     parts = [part.strip() for part in (environ.get("PHYSICAL_MAIL_TRACKING_ENTRY") or "").split("|")]
     if len(parts) < 4 or not parts[0].isdigit():
         return None
@@ -115,7 +117,8 @@ def _entered_tracking(environ):
 
 
 def _expected(environ):
-    """PHYSICAL_MAIL_EXPECT: optional counts only, `identified,scanned,disposed,awaiting_tracking,unidentified,review` (for example 21,9,11,1,0,0): Jim's own tally of what the notices say."""
+    """PHYSICAL_MAIL_EXPECT: optional operator tally
+    `identified,scanned,disposed,awaiting_tracking,unidentified,review`."""
     raw = (environ.get("PHYSICAL_MAIL_EXPECT") or "").strip()
     if not raw:
         return None
@@ -127,7 +130,8 @@ def _expected(environ):
 
 
 def _prove_rebuild(previous, candidate, environ, now):
-    """The candidate replaces the known-good row only if it loses no mail number the row knew, is not worse on review, is not degraded, and (when Jim states his tally) matches it exactly."""
+    """The candidate replaces the known-good row only if it loses no known mail number, is not worse on review or
+    degraded, and matches the tally when one is given."""
     old, new = state_mod.summary(previous, now), state_mod.summary(candidate, now)
     lost = set(previous["chains"]) - set(candidate["chains"])
     got = (new["identified"], new["opened"], new["done"], new["waiting_tracking"], new["unidentified"], new["review"])

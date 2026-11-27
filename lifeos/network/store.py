@@ -1,9 +1,8 @@
-"""NET-1 Hostinger state (approved tables v7_network_people, v7_network_positions, v7_network_batches): the sole writer of them.
+"""Hostinger state for the network feature: the sole writer of its three v7_network_* tables.
 
-Derived, machine-maintained state for matching and history; the LinkedIn Connections Sheet stays canonical for who is connected, and nothing here is hand-edited.
-Tables are created only on a live run. A batch is applied in chunks, each chunk one transaction that also moves the batch's cursor, so a failure leaves earlier chunks
-accepted and the next run resumes at the cursor. Every write is idempotent (unique person and position keys), so replaying a batch changes nothing.
-Fixed NETWORK_* codes only; never a driver message."""
+Derived state; the LinkedIn Connections Sheet stays canonical. A batch is applied in chunks, each one
+transaction that also moves the batch's cursor, so a failed run resumes there. Writes are idempotent. Fixed
+NETWORK_* codes only."""
 import hashlib
 from datetime import datetime, timezone
 
@@ -50,7 +49,7 @@ EXPECTED = {"v7_network_people": "id,person_key,url_key,display_name,connected_o
             "v7_network_events": "id,person_id,event_type,old_position_id,new_position_id,batch_id,observed_date,event_hash,created_at"}
 
 
-SURFACE_SCHEMA = (                                                    # NET-2.3 (D160): created only by an explicitly approved live surface run, never by the importer
+SURFACE_SCHEMA = (
     """CREATE TABLE IF NOT EXISTS v7_network_dismissals (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         job_key CHAR(64) NOT NULL, person_id BIGINT NOT NULL, evidence_hash CHAR(64) NOT NULL, dismissed_at DATETIME NOT NULL,
@@ -69,15 +68,15 @@ SURFACE_SCHEMA = (                                                    # NET-2.3 
         job_key CHAR(64) NOT NULL PRIMARY KEY,
         edited VARCHAR(40) NOT NULL, recorded_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-)          # LIFE-116: what each Ledger page was last proven to show (the hash of its Network Leads block, empty for none): hashes and ids only
-           # LIFE-572: and the page's own last-edited time as it was right after that proof, so an untouched page is not read again (a time string only)
+# what each Ledger page was last proven to show (the hash of its Network Leads block, empty for none)
+)
 SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash,dismissed_at", "v7_network_aliases": "id,alias_key,company_key,confirmed_at",
                     "v7_network_page_state": "job_key,page_id,written_hash,checked_at", "v7_network_page_edit": "job_key,edited,recorded_at"}
 
 
 def _ensure(connection, statements, expected):
-    """Create the tables if missing and prove their columns are the ones this code writes; a different table fails closed."""
-    with fixed(Exception, NetworkError, "NETWORK_SCHEMA_MISMATCH"), connection.cursor() as cursor:          # a driver message may carry names; only the fixed code leaves
+    # a driver message may carry names; only the fixed code leaves
+    with fixed(Exception, NetworkError, "NETWORK_SCHEMA_MISMATCH"), connection.cursor() as cursor:
         for statement in statements:
             cursor.execute(statement)
         for table, columns in expected.items():
@@ -85,12 +84,11 @@ def _ensure(connection, statements, expected):
 
 
 def ensure_surface_schema(connection):
-    """Live only: create the surface tables if missing and prove their columns; a different table fails closed."""
     _ensure(connection, SURFACE_SCHEMA, SURFACE_EXPECTED)
 
 
 def load_decisions(connection):
-    """-> (dismissed {(job_key, person_id, evidence_hash)}, aliases {alias_key: company_key}, tables_present). A missing table reads as no decisions (a dry run before the tables exist)."""
+    """-> (dismissed {(job_key, person_id, evidence_hash)}, aliases {alias_key: company_key}, tables_present)."""
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT job_key, person_id, evidence_hash FROM v7_network_dismissals")
@@ -103,11 +101,12 @@ def load_decisions(connection):
 
 
 def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
-    """Persist Jim's ticks (idempotent: a repeat changes nothing) and read them back; raises when a row is missing afterwards."""
+    """Persist ticks (idempotent) and read them back; raises when a row is missing afterwards."""
     now = clock().isoformat(sep=" ", timespec="seconds")
     _, known, _ = load_decisions(connection)
     if any(a in known and known[a] != c for a, c in aliases):
-        raise NetworkError("NETWORK_ALIAS_CONFLICT")                    # a confirmed alias is never silently kept pointing at a different company
+        # a confirmed alias is never silently repointed at a different company
+        raise NetworkError("NETWORK_ALIAS_CONFLICT")
     try:
         connection.begin()
         with connection.cursor() as cursor:
@@ -123,7 +122,7 @@ def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(t
 
 
 def _rollback(connection):
-    """A rollback on a connection the server already dropped raises its own error (pymysql InterfaceError); that must never replace the NetworkError the caller is about to raise."""
+    """A rollback on a dropped connection raises its own error; it must never replace the caller's NetworkError."""
     try:
         connection.rollback()
     except Exception:                                                  # noqa: BLE001
@@ -131,7 +130,7 @@ def _rollback(connection):
 
 
 def revive(connection):
-    """The page-state save comes after a long stretch of Notion reads; the store may have dropped an idle connection meanwhile. Reconnect if the driver can; otherwise carry on and fail normally."""
+    """Reconnect if the idle connection dropped during long Notion reads; otherwise carry on and fail normally."""
     ping = getattr(connection, "ping", None)
     if ping is not None:
         try:
@@ -141,7 +140,6 @@ def revive(connection):
 
 
 def _rows(connection, sql, shape):
-    """-> (shape(rows), present). A missing table reads as nothing recorded ({}, False)."""
     try:
         with connection.cursor() as cursor:
             cursor.execute(sql)
@@ -151,22 +149,19 @@ def _rows(connection, sql, shape):
 
 
 def load_page_state(connection):
-    """-> ({job_key: (page_id, written_hash)}, present). A missing table reads as no state (a dry run before the first live run): the caller then keeps the plain rotation."""
+    """-> ({job_key: (page_id, written_hash)}, present). A missing table reads as no state."""
     return _rows(connection, "SELECT job_key, page_id, written_hash FROM v7_network_page_state", lambda rows: {k: (p, h) for k, p, h in rows})
 
 
 def load_page_edits(connection):
-    """LIFE-572 -> ({job_key: (last_edited_time string, recorded_at)}, present). A missing table reads as nothing recorded: every page is then read exactly as before."""
     return _rows(connection, "SELECT job_key, edited, recorded_at FROM v7_network_page_edit", lambda rows: {k: (e, r) for k, e, r in rows})
 
 
 def load_page_checked(connection):
-    """LIFE-572 -> ({job_key: checked_at}, present): when each page's state was last saved after its proof. Used to trust a page that has no recorded edit time yet (see Skip)."""
     return _rows(connection, "SELECT job_key, checked_at FROM v7_network_page_state", lambda rows: {k: c for k, c in rows})
 
 
 def _replace(connection, sql, params):
-    """One transaction of REPLACE rows. Losing it loses only a shortcut: the page is read again next run."""
     revive(connection)
     try:
         connection.begin()
@@ -179,15 +174,13 @@ def _replace(connection, sql, params):
 
 
 def save_page_edits(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
-    """LIFE-572: record each page's last-edited time as read right after its own proof (job_key -> edited string)."""
     if rows:
         now = clock().isoformat(sep=" ", timespec="seconds")
         _replace(connection, "REPLACE INTO v7_network_page_edit (job_key, edited, recorded_at) VALUES (%s,%s,%s)", [(k, e, now) for k, e in rows.items()])
 
 
 def save_page_state(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
-    """LIFE-116: record what pages were just proven to show (job_key -> (page_id, written_hash)). Called only after a page's own read-back passed; a failure here loses nothing but a
-    shortcut (the page is simply read again next run)."""
+    """Record what pages were just proven to show, only after the page's read-back passed."""
     if rows:
         now = clock().isoformat(sep=" ", timespec="seconds")
         _replace(connection, "REPLACE INTO v7_network_page_state (job_key, page_id, written_hash, checked_at) VALUES (%s,%s,%s,%s)", [(k, p, h, now) for k, (p, h) in rows.items()])
@@ -210,7 +203,7 @@ def totals(connection):
 
 
 def open_batch(connection, key, plan, exported):
-    """-> (batch id, status, cursor). A batch already COMPLETE is a replay; APPLYING or FAILED resumes at its cursor; a new one is recorded as APPLYING."""
+    """-> (batch id, status, cursor). A COMPLETE batch is a replay; APPLYING or FAILED resumes at its cursor."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT id, status, cursor_row, source_rows, people_accepted, positions_accepted, ambiguous_held, rejected FROM v7_network_batches WHERE batch_key=%s", (key,))
         row = cursor.fetchone()
@@ -226,8 +219,7 @@ def open_batch(connection, key, plan, exported):
 
 
 def _apply(cursor, chunk, exported, ref, now, batch_id=0, events=False):
-    """Apply one chunk. With `events` (a baseline batch already exists), also return the change events as (type, person_id, old_position_id, new_material_hash, hash) rows;
-    each is written in this same transaction. The first batch is the baseline and writes none (D158)."""
+    """Apply one chunk; with `events`, also write and return change events in the same transaction."""
     keys = [p["url_key"] for p in chunk]
     cursor.execute(f"SELECT url_key FROM v7_network_people WHERE url_key IN ({_marks(len(keys))})", keys)
     known = {row[0] for row in cursor.fetchall()}
@@ -243,13 +235,13 @@ def _apply(cursor, chunk, exported, ref, now, batch_id=0, events=False):
     new, confirm, supersede, changes = [], [], [], []
     for p in chunk:
         if not p["company_key"]:
-            continue                                                     # no usable employer: the person exists, no position is created or replaced
+            continue
         pid, cur = ids[p["url_key"]], current.get(ids[p["url_key"]])
         title = p["title"]
         if cur:
             pos_id, ckey, ctitle, seen = cur
             if str(seen) > exported:
-                continue                                                 # an older observation never replaces a newer one
+                continue
             if ckey == p["company_key"] and (title is None or title == ctitle):
                 confirm.append((exported, exported, pos_id))
                 continue
@@ -300,12 +292,12 @@ def _readback(cursor, chunk, events=()):
 
 
 def apply_batch(connection, batch_id, start, plan, exported, ref, chunk=CHUNK, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
-    """Apply people[start:] in chunks; each chunk is one transaction (people, positions, change events and the cursor together) and is read back after it commits.
-    Returns the number of change events written, by type."""
+    """Apply people[start:] in chunks, each one transaction read back after commit. Returns change-event counts by
+    type."""
     people = plan["people"]
     with connection.cursor() as cursor:
         cursor.execute("SELECT COUNT(*) FROM v7_network_batches WHERE status='COMPLETE' AND id<>%s", (batch_id,))
-        baseline = cursor.fetchone()[0] > 0                           # no completed batch yet: this is the baseline (the seed), and a baseline writes no events
+        baseline = cursor.fetchone()[0] > 0
     written = {kind: 0 for kind in EVENT_TYPES}
     for at in range(start, len(people), chunk):
         part = people[at:at + chunk]
@@ -337,7 +329,7 @@ def complete(connection, batch_id, plan, clock=lambda: datetime.now(timezone.utc
 
 
 def audit(connection):
-    """Read-only, counts only: row totals, batch states, and how many text values contain an @ (email-shaped). Nothing is written and no value is returned."""
+    """Read-only counts: row totals, batch states, and how many text values contain an @. No value returned."""
     out = dict(totals(connection))
     with connection.cursor() as cursor:
         cursor.execute("SELECT event_type, COUNT(*) FROM v7_network_events GROUP BY event_type")
