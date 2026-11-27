@@ -1,7 +1,7 @@
 """LIFE-987: the orchestrator operations of the Buzz bridge (agent_status, agent_dispatch, agent_messages), for the two chat clients only.
 
 (Grants: mcp_access.json; never part of the frozen contract.) The bridge reaches Concord through ONE fixed Unix socket, /run/lifeos-concord-gateway/orchestrator.sock (lifeos/edge/concord/gateway.py, run as `concord`); the path is a constant. With no socket every operation answers `gateway_unavailable`.
-Trust boundary: before a dispatch the ticket must be Agent Go or In Progress by a read-only `ticket_state(key)` (injectable; the bridge holds no Jira credential, so without one it fails closed `ticket_state_unavailable`), the text
+Trust boundary: before a normal dispatch the ticket must be Agent Go or In Progress; `mode=dry_run` instead requires the `needs-dry-run` label and a status other than Done or Cancelled. A read-only `ticket_state(key)` lookup enforces this (injectable; the bridge holds no Jira credential, so without one it fails closed `ticket_state_unavailable`), the text
 is untrusted data (refused when it holds a secret or plainly asks for a credential, spend, deletion, scope change or permission), and the idempotency key makes a repeat safe. Nothing here starts a session: an offline agent gets
 ONE deduplicated Agent Inbox item "Start <agent>: go", with ORCHESTRATOR_CAN_START on or off. Reasons are fixed words; message text never reaches a log."""
 import base64
@@ -32,12 +32,12 @@ ASKS = tuple(re.compile(p, re.I) for p in (
     r"\b(?:delete|erase|wipe|drop|destroy)\s+(?:all|every|everything|the\s+(?:database|repo|repository|bucket|backup|branch))\b",
     r"\b(?:ignore|bypass|override|skip|disable)\s+(?:the\s+|all\s+)?(?:rules|policy|approval|approvals|gate|safety|permissions)\b",
     r"\b(?:change|expand|widen)\s+(?:the\s+)?(?:scope|permissions)\b"))
-FIELDS = {"agent": "oc, mc01, mc02 or codex", "ticket": "a LIFE ticket key in Agent Go or In Progress, for example LIFE-987", "text": "the task, 4,000 characters at most; data for that ticket, never an approval",
-          "idempotency_key": "a key; the same key never sends a second prompt", "limit": "page size, 1 to 50 (default 20)", "cursor": "the next_cursor of the previous page"}
+FIELDS = {"agent": "oc, mc01, mc02 or codex", "ticket": "a LIFE ticket key; normal dispatch requires Agent Go or In Progress", "text": "the task, 4,000 characters at most; data for that ticket, never an approval",
+          "idempotency_key": "a key; the same key never sends a second prompt", "mode": "optional: dry_run only for needs-dry-run tickets not Done or Cancelled", "limit": "page size, 1 to 50 (default 20)", "cursor": "the next_cursor of the previous page"}
 OPS = {
     "agent_status": ("Every agent's identity, whether it is online as Concord reports it, its current claim and its last status, with the time (Concord/Orca gateway; read-only).", {}),
-    "agent_dispatch": ("Send one task to one named agent (oc, mc01, mc02, codex) for a released ticket through Concord. Returns delivered, acknowledged or not_delivered (agent_offline, which also puts one 'Start <agent>: go' item in Jim's Agent Inbox). Never starts a session, never approves anything.",
-                       {k: ("str", True) for k in ("agent", "ticket", "text", "idempotency_key")}),
+    "agent_dispatch": ("Send one task to one named agent (oc, mc01, mc02, codex) through Concord. Normal mode requires a released ticket; dry_run requires needs-dry-run and a status other than Done or Cancelled. Never starts a session, never approves anything.",
+                       {**{k: ("str", True) for k in ("agent", "ticket", "text", "idempotency_key")}, "mode": ("str", False)}),
     "agent_messages": ("The agents' Concord room messages addressed to the orchestrator (status, blocker, completion), newest first, paged.", {"limit": ("int", False), "cursor": ("str", False)}),
 }
 NEEDS = {"agent_status": "read", "agent_dispatch": "write", "agent_messages": "read"}
@@ -94,17 +94,16 @@ def gateway(op, client, args, connect=socket.socket, path=SOCKET):
 
 
 
-JIRA_NAMES = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")      # LIFE-991 (Jim, comment 14371): the existing OpenClaw Atlassian token, shared with the bridge (Bitwarden LIFEOS-OpenClaw-Jira and openclaw/jira/email in LIFE OS EDGE/OPENCLAW, placed with place-credentials; the base address is in the bridge config); never logged, never returned. It can read and write as Jim's account; this module only reads one status
+JIRA_NAMES = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")      # LIFE-991 (Jim, comment 14371): the existing OpenClaw Atlassian token, shared with the bridge (Bitwarden LIFEOS-OpenClaw-Jira and openclaw/jira/email in LIFE OS EDGE/OPENCLAW, placed with place-credentials; the base address is in the bridge config); never logged, never returned. It can read and write as Jim's account; this module only reads one status and its labels
 JIRA_TIMEOUT = 8
 
 
 def jira_status(base, email, token, opener=urllib.request.urlopen):
-    """-> the status name of one issue, or None when it cannot be read (an unreachable Jira, a refusal, a bad reply). One GET of `/rest/api/3/issue/<key>?fields=status` with Basic auth; the caller checks the key's shape first.
-    A key Jira does not know is `"unknown"`, which is never a released status. Nothing here is ever logged or returned except the status word."""
+    """-> status and labels for one issue, or None when it cannot be read. One read-only GET; the caller checks the key's shape first."""
     def lookup(key):
         if not TICKET.match(key):
             return None
-        url = f"{base.rstrip('/')}/rest/api/3/issue/{urllib.parse.quote(key, safe='')}?fields=status"
+        url = f"{base.rstrip('/')}/rest/api/3/issue/{urllib.parse.quote(key, safe='')}?fields=status,labels"
         request = urllib.request.Request(url, headers={"Authorization": "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode(), "Accept": "application/json"}, method="GET")
         try:
             with opener(request, timeout=JIRA_TIMEOUT) as reply:
@@ -113,8 +112,12 @@ def jira_status(base, email, token, opener=urllib.request.urlopen):
             return "unknown" if error.code == 404 else None
         except (OSError, ValueError):
             return None
-        name = (((data.get("fields") or {}).get("status") or {}).get("name")) if isinstance(data, dict) else None
-        return name if isinstance(name, str) and name else None
+        fields = data.get("fields") if isinstance(data, dict) else None
+        name = ((fields or {}).get("status") or {}).get("name") if isinstance(fields, dict) else None
+        labels = fields.get("labels") if isinstance(fields, dict) else None
+        if not isinstance(name, str) or not name or not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
+            return None
+        return {"status": name, "labels": labels}
     return lookup
 
 
@@ -132,7 +135,8 @@ def _refuse_text(text):
 
 def _check_dispatch(args, state):
     agent, ticket, text, key = (args.get(k) for k in ("agent", "ticket", "text", "idempotency_key"))
-    if agent not in AGENTS or not isinstance(ticket, str) or not TICKET.match(ticket) or not isinstance(text, str) or not 1 <= len(text) <= 4000 or not isinstance(key, str) or not IDEM.match(key):
+    mode = args.get("mode", "normal")
+    if agent not in AGENTS or not isinstance(ticket, str) or not TICKET.match(ticket) or not isinstance(text, str) or not 1 <= len(text) <= 4000 or not isinstance(key, str) or not IDEM.match(key) or mode not in ("normal", "dry_run"):
         raise OrchestratorError("invalid_argument")
     _refuse_text(text)
     lookup = state.get("ticket_state")
@@ -144,9 +148,17 @@ def _check_dispatch(args, state):
         raise OrchestratorError("ticket_state_unavailable") from None
     if seen is None:
         raise OrchestratorError("ticket_state_unavailable")
-    if seen not in RELEASED:
+    if isinstance(seen, dict):
+        status = seen.get("status")
+        labels = seen.get("labels")
+    else:                                                       # compatibility with injected legacy status lookups
+        status, labels = seen, []
+    if mode == "dry_run":
+        if not isinstance(labels, list) or "needs-dry-run" not in labels or not isinstance(status, str) or status.lower() in ("done", "cancelled"):
+            raise OrchestratorError("ticket_not_dry_run")
+    elif status not in RELEASED or isinstance(labels, list) and "needs-dry-run" in labels:
         raise OrchestratorError("ticket_not_released")
-    return agent, ticket, text, key
+    return agent, ticket, text, key, mode
 
 
 def _fallback(agent, ticket, state):
@@ -179,11 +191,14 @@ def run(op, args, state):
         return _data(wire("agent_messages", client, extra))
     if op != "agent_dispatch":
         raise OrchestratorError("unknown_operation")
-    agent, ticket, text, key = _check_dispatch(args, state)
+    agent, ticket, text, key, mode = _check_dispatch(args, state)
     seen = state.setdefault("seen", {})
     if key in seen:
         return {**seen[key], "repeat": True}
-    reply = wire("agent_dispatch", client, {"agent": agent, "ticket": ticket, "text": text, "idempotency_key": key})
+    dispatch_args = {"agent": agent, "ticket": ticket, "text": text, "idempotency_key": key}
+    if mode != "normal":
+        dispatch_args["mode"] = mode
+    reply = wire("agent_dispatch", client, dispatch_args)
     data = _data(reply)
     out = {"agent": agent, "ticket": ticket, "state": data.get("state", "unknown")}
     if data.get("delivered") is True:
