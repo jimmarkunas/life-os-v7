@@ -4,6 +4,9 @@
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_hiring == 'true' && needs.gate.outputs.early == 'true') || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write  # the keyless Google calendar sign-in
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -60,7 +63,6 @@
           HIRING_AUTO_CLOSE: ""  # lifeos/platform/switches.json decides unless this repository variable says "off" or "on"
           JIRA_CARD_BLOCK_ID: ""
           GCAL_CALENDAR_ID: ""
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_USER }}

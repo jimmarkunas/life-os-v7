@@ -188,14 +188,14 @@ CREDENTIALS = [
     },
     {
         'key': 'gcal_service_account',
-        'label': 'Calendar service account key (GCAL_SERVICE_ACCOUNT_JSON)',
+        'label': 'Calendar service account key (GCAL_SERVICE_ACCOUNT_JSON), RETIRED: calendar is keyless since LIFE-1023',
         'provider': 'Google',
         'used_for': 'reads the calendars',
         'read_in': 'workflows agenda.yml, calendar.yml, domains.yml',
         'expiry_source': 'no_expiry',
         'source_label': 'No fixed expiry (key set to never expire)',
         'how_read': "Jim read it from the provider's own page on Nov 10 2026 (dates only). Google Cloud, IAM, Service accounts, Keys: the key shows expiration Dec 31 9999, so it never expires; nothing to warn on.",
-        'renew': 'make a new key in Google Cloud and update Bitwarden',
+        'renew': 'nothing to renew: the key was disabled and calendar signs in keyless (GitHub OIDC to Google workload identity federation, LIFE-1023); delete the Bitwarden and Doppler values',
     },
     {
         'key': 'offsite_drive',

@@ -5,6 +5,9 @@
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write  # the keyless Google calendar sign-in
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |

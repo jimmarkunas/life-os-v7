@@ -1,3 +1,5 @@
+ACTIONS_ID_TOKEN_REQUEST_TOKEN workflow_only:workflow GitHub Actions' own bearer for the job's OIDC token request; present only when the job has id-token: write, never set by us, never logged
+ACTIONS_ID_TOKEN_REQUEST_URL workflow_only:workflow Where GitHub Actions issues the job's OIDC token; its presence selects the keyless Google calendar sign-in
 ALERTS_ENABLED flag Alert switch read from a repository variable (alerts enabled)
 ALERTS_MUTED_UNTIL input Alert switch read from a repository variable (alerts muted until)
 ALERT_SETTINGS input Alert switch read from a repository variable (alert settings)
@@ -43,7 +45,7 @@ FOLLOWUP_TODOIST_PERSONAL_TOKEN secret New read-only Todoist (Personal) credenti
 FOLLOWUP_WIRING flag:workflow Turns on the hourly followup job: the stage reads the approved sources (dry run) and writes access receipts; off by default
 GATE_MIN_GAP_MINUTES workflow_only:workflow Minimum minutes between two pipeline ticks for the gate
 GCAL_CALENDAR_ID input Which Google calendar the calendar bridge reads
-GCAL_SERVICE_ACCOUNT_JSON secret Google service account key for the calendar
+GCAL_SERVICE_ACCOUNT_JSON secret RETIRED: the old calendar service account key; calendar signs in keyless now and nothing loads this
 GH_TOKEN workflow_only:workflow The job's own token, for the one call that starts the early domains run of a tick (LIFE-775)
 GMAIL_OAUTH_CLIENT_ID input Google sign-in value for Gmail reads (client id)
 GMAIL_OAUTH_CLIENT_SECRET secret Google sign-in value for Gmail reads (client secret)

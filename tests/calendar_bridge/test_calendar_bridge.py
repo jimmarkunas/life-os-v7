@@ -15,7 +15,7 @@ from unittest.mock import patch
 from lifeos.calendar_bridge import sync
 from lifeos.calendar_bridge.sync import BridgeError
 from lifeos.platform import gcal
-from lifeos.platform.gcal import GcalError, GoogleCalendar
+from lifeos.platform.gcal import SERVICE_ACCOUNT, GcalError, GoogleCalendar
 from tests.kit.http import Response, http_error  # noqa: F401
 from tests.kit import shared
 
@@ -287,12 +287,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),              # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
-                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
+                         sorted(["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "V7_RUNTIME_CONFIG_SOURCE_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))      # LIFE-704: the port comes from the plain-switch loader, not a secret
 
     def test_no_address_in_tracked_bridge_code(self):
         for path in list((ROOT / "lifeos" / "calendar_bridge").glob("*.py")) + [ROOT / "lifeos/platform/gcal.py"]:
-            self.assertNotRegex(path.read_text(), r"[\w.+-]+@[\w-]+\.[\w.]+")
+            text = path.read_text().replace(SERVICE_ACCOUNT, "")  # LIFE-1023: the one calendar service-account address (an address, not a secret) is a constant
+            self.assertNotRegex(text, r"[\w.+-]+@[\w-]+\.[\w.]+")
 
 
 class HourlyJobTests(unittest.TestCase):
@@ -316,7 +317,7 @@ class HourlyJobTests(unittest.TestCase):
             self.assertNotIn(name, job, name)                                  # no Jobs secret is even named in this workflow
         direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
         self.assertEqual(sorted((direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))) - {"V7_RUNTIME_CONFIG_SOURCE_ID"}),                  # LIFE-859: the Runtime Configuration address is not a secret; EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
-                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
+                         sorted(["OUTLOOK_CLIENT_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")]))   # LIFE-85: the Oracle relay key, and the Tailscale pair for the join only
 
 
