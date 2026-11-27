@@ -5,6 +5,7 @@
 America/Chicago (CST and CDT both read "CT"), 12-hour, no UTC. Receipts take their stamp from this output, never from
 a time typed by hand. Stdlib only; the format is built by hand so it needs no 24-hour format string.
 """
+
 import re
 import sys
 from datetime import datetime
@@ -30,7 +31,9 @@ def when(moment):
 
 
 # What a reader accepts: `11/13 · 3:31 PM CT`, `Updated Nov 13 · 3:31 PM CT`, and the time-only `Updated 3:31 PM CT`.
-STAMP = re.compile(r"(?:Updated (?:(?P<name>[A-Z][a-z]{2}) (?P<day>\d{1,2}) · )?|(?P<month>\d{1,2})/(?P<date>\d{1,2}) · )(?P<hour>\d{1,2}):(?P<minute>\d{2}) (?P<half>[AP]M) CT")
+STAMP = re.compile(
+    r"(?:Updated (?:(?P<name>[A-Z][a-z]{2}) (?P<day>\d{1,2}) · )?|(?P<month>\d{1,2})/(?P<date>\d{1,2}) · )(?P<hour>\d{1,2}):(?P<minute>\d{2}) (?P<half>[AP]M) CT"
+)
 
 
 def read(text):
@@ -42,7 +45,9 @@ def read(text):
         return None
     month = day = None
     if found["month"] or found["name"]:
-        month = int(found["month"]) if found["month"] else MONTHS.index(found["name"]) + 1 if found["name"] in MONTHS else 0
+        month = (
+            int(found["month"]) if found["month"] else MONTHS.index(found["name"]) + 1 if found["name"] in MONTHS else 0
+        )
         day = int(found["date"] or found["day"])
         if not 1 <= month <= 12:
             return None

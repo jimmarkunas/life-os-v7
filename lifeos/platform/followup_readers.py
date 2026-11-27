@@ -1,4 +1,5 @@
 """Read-only delta readers for the Followup stage's six source families. Pure: no network, no store, no cache."""
+
 # One call reads ONE source for ONE tenant and account since the last ACCEPTED checkpoint: validate, check the grant,
 # write the receipt, then read with the grant's credential NAME (the injected `fetch` is the host-broker side; the
 # caller never holds a credential). Evidence is minimal: source, native id, https link, kind, observed time, a title
@@ -11,12 +12,24 @@ from datetime import datetime
 
 SOURCES = ("gmail", "outlook", "calendar", "jira", "todoist", "notion", "interview_os")
 TENANTS = ("personal", "bytalos")
-KINDS = {"gmail": "mail", "outlook": "mail", "calendar": "event", "jira": "issue", "todoist": "task", "notion": "page", "interview_os": "interview"}
+KINDS = {
+    "gmail": "mail",
+    "outlook": "mail",
+    "calendar": "event",
+    "jira": "issue",
+    "todoist": "task",
+    "notion": "page",
+    "interview_os": "interview",
+}
 TITLE_MAX = 120
 MAX_ROWS = 500  # a larger answer is treated as truncated, never silently cut
-SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
+SECRET = re.compile(
+    r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}"
+)
 LINK = re.compile(r"^https://[^\s]{4,500}$")
-DUE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$")  # a date the SOURCE itself holds (a due date): metadata, never read from a body
+DUE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$"
+)  # a date the SOURCE itself holds (a due date): metadata, never read from a body
 
 
 @dataclass(frozen=True)
@@ -38,7 +51,9 @@ class Delta:
     reason: str
     items: tuple = ()
     last_accepted: datetime | None = None
-    next_checkpoint: datetime | None = None  # a candidate only: the store advances it after an accepted write, never here
+    next_checkpoint: datetime | None = (
+        None  # a candidate only: the store advances it after an accepted write, never here
+    )
 
 
 def _when(text):
@@ -51,14 +66,28 @@ def _when(text):
 def _item(source, native_id, link, observed, title, due=None):
     if not isinstance(native_id, str) or not native_id or not isinstance(link, str) or not LINK.match(link):
         raise ValueError("row")
-    item = {"source": source, "native_id": native_id[:80], "link": link, "kind": KINDS[source], "observed_at": _when(observed).isoformat(), "title": str(title or "")[:TITLE_MAX]}
+    item = {
+        "source": source,
+        "native_id": native_id[:80],
+        "link": link,
+        "kind": KINDS[source],
+        "observed_at": _when(observed).isoformat(),
+        "title": str(title or "")[:TITLE_MAX],
+    }
     if isinstance(due, str) and DUE.match(due.strip()):
         item["due"] = due.strip()  # only when the source has one; an item without a due date has no `due` key
     return item
 
 
 def _jira(row, base):
-    return _item("jira", row["key"], f"{base.rstrip('/')}/browse/{row['key']}", row["fields"]["updated"], row["fields"].get("summary"), row["fields"].get("duedate"))
+    return _item(
+        "jira",
+        row["key"],
+        f"{base.rstrip('/')}/browse/{row['key']}",
+        row["fields"]["updated"],
+        row["fields"].get("summary"),
+        row["fields"].get("duedate"),
+    )
 
 
 def _calendar(row):
@@ -81,15 +110,33 @@ def _interview(row):
     return _item("interview_os", row["id"], row.get("url"), row["at"], row.get("title"))
 
 
-NORMALIZE = {"gmail": _mail("gmail"), "outlook": _mail("outlook"), "calendar": _calendar, "todoist": _todoist, "notion": _notion, "interview_os": _interview}
+NORMALIZE = {
+    "gmail": _mail("gmail"),
+    "outlook": _mail("outlook"),
+    "calendar": _calendar,
+    "todoist": _todoist,
+    "notion": _notion,
+    "interview_os": _interview,
+}
 
 
 def revoke(grants, source=None, tenant=None):
-    return tuple(Grant(**{**g.__dict__, "revoked": True}) if (source in (None, g.source) and tenant in (None, g.tenant)) else g for g in grants)
+    return tuple(
+        Grant(**{**g.__dict__, "revoked": True}) if (source in (None, g.source) and tenant in (None, g.tenant)) else g
+        for g in grants
+    )
 
 
 def _receipt(source, tenant, account, request_id, outcome, reason, now):
-    return {"t": now.isoformat(), "source": source, "tenant": tenant, "account": account, "request_id": request_id, "outcome": outcome, "reason": reason}
+    return {
+        "t": now.isoformat(),
+        "source": source,
+        "tenant": tenant,
+        "account": account,
+        "request_id": request_id,
+        "outcome": outcome,
+        "reason": reason,
+    }
 
 
 def read_delta(source, tenant, account, since, grants, fetch, audit, now, request_id, jira_base=None):
@@ -97,6 +144,7 @@ def read_delta(source, tenant, account, since, grants, fetch, audit, now, reques
     returns a list of raw rows; `audit(receipt)` raises when it cannot write. A refused or failed read never raises;
     an audit failure raises before any read.
     """
+
     def refuse(reason):
         audit(_receipt(str(source)[:20], str(tenant)[:20], account, request_id, "deny", reason, now))
         return Delta(str(source)[:20], str(tenant)[:20], account, "refused", reason, last_accepted=since)
@@ -126,7 +174,7 @@ def read_delta(source, tenant, account, since, grants, fetch, audit, now, reques
     items = ()
     try:
         rows = fetch(grant.credential_ref, since)
-    except Exception:                                                                    # noqa: BLE001 - a connector failure is recorded by outcome only, never its message
+    except Exception:  # noqa: BLE001 - a connector failure is recorded by outcome only, never its message
         return degraded("fetch_failed")
     if not isinstance(rows, list):
         return degraded("listing_incomplete")
@@ -161,9 +209,27 @@ def read_all(requests, grants, fetchers, audit, now, since_by_key=None, jira_bas
     for n, (source, tenant, account) in enumerate(requests):
         fetch = fetchers.get(source)
         if fetch is None and source in SOURCES:
-            out[(source, tenant, account)] = Delta(source, tenant, account, "degraded", "no_reader", last_accepted=since_by_key.get((source, tenant, account)))
+            out[(source, tenant, account)] = Delta(
+                source,
+                tenant,
+                account,
+                "degraded",
+                "no_reader",
+                last_accepted=since_by_key.get((source, tenant, account)),
+            )
             continue
-        out[(source, tenant, account)] = read_delta(source, tenant, account, since_by_key.get((source, tenant, account)), grants, fetch, audit, now, f"batch-{n}", jira_base)
+        out[(source, tenant, account)] = read_delta(
+            source,
+            tenant,
+            account,
+            since_by_key.get((source, tenant, account)),
+            grants,
+            fetch,
+            audit,
+            now,
+            f"batch-{n}",
+            jira_base,
+        )
     return out
 
 

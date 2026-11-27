@@ -7,6 +7,7 @@ The block is the text between `<!-- concord:start -->` and `<!-- concord:end -->
 generated file's block is the common text plus that tool's paragraph from PARAGRAPHS, if it has one. A file with its
 own shorter block is listed in VARIANTS and is neither generated nor compared.
 """
+
 import re
 import sys
 from pathlib import Path
@@ -15,7 +16,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BLOCK = re.compile(r"(<!-- concord:start -->\n)(.*?)(<!-- concord:end -->)", re.S)
 # generated file -> the tool whose paragraph it carries after the common text (None: common text only)
 GENERATED = {".github/copilot-instructions.md": None, ".cursor/rules/concord.mdc": "cursor", ".codex/concord.md": None}
-VARIANTS = {".agents/rules/concord.md": "a shorter block written by Concord's own setup for that tool; not built from AGENTS.md"}
+VARIANTS = {
+    ".agents/rules/concord.md": "a shorter block written by Concord's own setup for that tool; not built from AGENTS.md"
+}
 # What the other tools need to stay reachable lives here, not in AGENTS.md.
 PREAMBLE = "Replace <agent-id> with the id the SessionStart hook printed for this session.\nA monitor may not inherit the session's environment, so it cannot work the id out itself."
 PARAGRAPHS = {

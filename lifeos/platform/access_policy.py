@@ -5,6 +5,7 @@ write, delete or bulk (a write touching more than `bulk_limit` items); the answe
 and bulk changes wait for approval). Fails closed: a missing or malformed policy, an unknown service, or an unknown
 agent with no default is a deny. CAP limits each service's level.
 """
+
 import json
 import re
 from datetime import datetime
@@ -12,7 +13,16 @@ from zoneinfo import ZoneInfo
 
 LEVELS = ("off", "read", "write")
 SERVICES = ("jira", "notion", "github", "gmail", "drive", "calendar", "buzz", "honcho")
-CAP = {"jira": "read", "notion": "write", "github": "read", "gmail": "read", "drive": "read", "calendar": "read", "buzz": "write", "honcho": "write"}
+CAP = {
+    "jira": "read",
+    "notion": "write",
+    "github": "read",
+    "gmail": "read",
+    "drive": "read",
+    "calendar": "read",
+    "buzz": "write",
+    "honcho": "write",
+}
 KINDS = ("read", "write", "delete", "bulk")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BULK_DEFAULT = 10
@@ -100,5 +110,12 @@ def audit_line(agent, service, op, decision, reason, approver=None, now=None):
     """
     when = (now or datetime.now(CENTRAL)).astimezone(CENTRAL)
     clean = lambda v, n: re.sub(r"[^A-Za-z0-9_.:-]", "_", str(v))[:n]
-    return {"t": when.isoformat(timespec="seconds"), "agent": clean(agent, 64), "service": clean(service, 16), "op": clean(op, 80), "decision": clean(decision, 8),
-            "reason": clean(reason, 40), "approver": clean(approver, 32) if approver else None}
+    return {
+        "t": when.isoformat(timespec="seconds"),
+        "agent": clean(agent, 64),
+        "service": clean(service, 16),
+        "op": clean(op, 80),
+        "decision": clean(decision, 8),
+        "reason": clean(reason, 40),
+        "approver": clean(approver, 32) if approver else None,
+    }

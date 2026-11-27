@@ -3,6 +3,7 @@
 A Notion body, a URL or a token never rides along. `keep` names errors that already carry a fixed code: they pass
 through unchanged (`with fixed(Exception, fail, code, keep=NotionError):`).
 """
+
 from contextlib import contextmanager
 
 from lifeos.platform.notion_client import NotionError

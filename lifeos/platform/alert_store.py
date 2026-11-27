@@ -6,14 +6,17 @@ item ids (ids are not secrets). Inputs: a machine-account access token (a system
 program. Outputs: {name: value}, an empty value reading as "". A Bitwarden failure raises AlertStoreError with a fixed
 code, never a token, a value or a reply.
 """
+
 import json
 import os
 import subprocess
 import tempfile
 
-IDS = {"ALERTS_ENABLED": "efc8fc25-0228-4aa4-a7ee-b503015f8a8c",
-       "ALERTS_MUTED_UNTIL": "141b6f81-341b-4277-b2b3-b503015f8bd0",
-       "ALERT_SETTINGS": "dc0b1ad9-45a8-4e1f-8868-b503015f8c97"}
+IDS = {
+    "ALERTS_ENABLED": "efc8fc25-0228-4aa4-a7ee-b503015f8a8c",
+    "ALERTS_MUTED_UNTIL": "141b6f81-341b-4277-b2b3-b503015f8bd0",
+    "ALERT_SETTINGS": "dc0b1ad9-45a8-4e1f-8868-b503015f8c97",
+}
 NAMES = tuple(IDS)
 TIMEOUT = 20
 
@@ -30,8 +33,19 @@ def _bws(token, args, run, environ):
     """
     token = token.decode() if isinstance(token, bytes) else token
     with tempfile.TemporaryDirectory(prefix="lifeos-alerts-") as home:
-        env = {"PATH": (environ or os.environ).get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": home, "BWS_ACCESS_TOKEN": token}  # no BWS_CONFIG_FILE: bws stops with "Config file doesn't exist" when that names a missing file
-        done = run([(environ or os.environ).get("LIFEOS_BWS_BIN", "bws"), *args], env=env, capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        env = {
+            "PATH": (environ or os.environ).get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "HOME": home,
+            "BWS_ACCESS_TOKEN": token,
+        }  # no BWS_CONFIG_FILE: bws stops with "Config file doesn't exist" when that names a missing file
+        done = run(
+            [(environ or os.environ).get("LIFEOS_BWS_BIN", "bws"), *args],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
     if done.returncode != 0:
         raise OSError("bws failed")
     return done.stdout

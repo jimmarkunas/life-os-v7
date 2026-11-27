@@ -6,6 +6,7 @@ when it failed. A row with no job stays `⚪ not connected` and counts as down. 
 (lifeos/inbox/concord_reader.py): a good read sets it ok, a failed read keeps the last good time, and it counts as
 connected for FRESH after that, then reads `CONCORD DOWN · STALE since <time>`.
 """
+
 import datetime as dt
 import json
 import os
@@ -19,18 +20,24 @@ MANAGED_BY = "v7-inbox-writer"
 OFF_BY_DESIGN = ("health:tgp:everything", "health:personal:school_outlook", "health:bytalos:asana")
 RETIRED = ("health:personal:todoist",)
 JOBS = {  # record id -> the domains.yml job that exercises the connection
-    "health:personal:jira": "jira", "health:bytalos:jira": "jira",
-    "health:personal:calendar": "agenda", "health:bytalos:calendar": "agenda",
-    "health:personal:outlook:work": "outlook", "health:personal:outlook:personal": "outlook",
+    "health:personal:jira": "jira",
+    "health:bytalos:jira": "jira",
+    "health:personal:calendar": "agenda",
+    "health:bytalos:calendar": "agenda",
+    "health:personal:outlook:work": "outlook",
+    "health:personal:outlook:personal": "outlook",
     "health:personal:notion": "dcc",
     "health:personal:interview_os": "interview",
-    "health:personal:gmail": "recruiters", "health:bytalos:gmail": "recruiters",
+    "health:personal:gmail": "recruiters",
+    "health:bytalos:gmail": "recruiters",
     "health:all:followup": "followup",
 }
 CONCORD = "health:all:concord"
 NAMES = {"health:all:concord": "Concord"}
 OK, FAILING, NOT_CONNECTED = "🟢 ok", "🔴 unavailable", "⚪ not connected"
-FRESH = {CONCORD: dt.timedelta(hours=2, minutes=30)}  # how long a connection counts as connected after its last good read
+FRESH = {
+    CONCORD: dt.timedelta(hours=2, minutes=30)
+}  # how long a connection counts as connected after its last good read
 DEFAULT_FRESH = dt.timedelta(hours=2)
 RUNS = 12
 API = "https://api.github.com"
@@ -58,10 +65,21 @@ def read_rows(client, source):
     rows, cursor = [], None
     body = {"page_size": 100, "filter": {"property": "Managed by", "select": {"equals": MANAGED_BY}}}
     for _ in range(10):
-        reply = client.call("POST", f"/data_sources/{source}/query", {**body, **({"start_cursor": cursor} if cursor else {})})
+        reply = client.call(
+            "POST", f"/data_sources/{source}/query", {**body, **({"start_cursor": cursor} if cursor else {})}
+        )
         for page in reply.get("results", []):
             props = page.get("properties", {})
-            rows.append({"page": page["id"], "id": _text(props.get("Record ID")), "name": _text(props.get("Source")).split(" (")[0], "workspace": _select(props.get("Workspace")), "health": _select(props.get("Health")), "last_ok": _text(props.get("Last OK"))})
+            rows.append(
+                {
+                    "page": page["id"],
+                    "id": _text(props.get("Record ID")),
+                    "name": _text(props.get("Source")).split(" (")[0],
+                    "workspace": _select(props.get("Workspace")),
+                    "health": _select(props.get("Health")),
+                    "last_ok": _text(props.get("Last OK")),
+                }
+            )
         cursor = reply.get("next_cursor")
         if not reply.get("has_more") or not cursor:
             return rows
@@ -91,7 +109,14 @@ TICK_RUN = "domains (after tick)"  # only after-tick runs count as evidence
 
 
 def _api(path, token, opener=urllib.request.urlopen):
-    request = urllib.request.Request(API + path, headers={"Accept": "application/vnd.github+json", "User-Agent": "life-os-v7", **({"Authorization": "Bearer " + token} if token else {})})
+    request = urllib.request.Request(
+        API + path,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "life-os-v7",
+            **({"Authorization": "Bearer " + token} if token else {}),
+        },
+    )
     with opener(request, timeout=30) as reply:
         return json.load(reply)
 
@@ -104,10 +129,14 @@ def evidence(environ=os.environ, api=_api):
     if not repo:
         return {}
     try:
-        runs = api(f"/repos/{repo}/actions/workflows/domains.yml/runs?per_page={RUNS}&status=completed", token)["workflow_runs"]
+        runs = api(f"/repos/{repo}/actions/workflows/domains.yml/runs?per_page={RUNS}&status=completed", token)[
+            "workflow_runs"
+        ]
         out = {}
         for run in runs:
-            if run.get("conclusion") not in ("success", "failure") or not str(run.get("display_title") or "").startswith(TICK_RUN):
+            if run.get("conclusion") not in ("success", "failure") or not str(
+                run.get("display_title") or ""
+            ).startswith(TICK_RUN):
                 continue  # a manual or dry run says nothing about whether a connection works
             for job in api(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", token)["jobs"]:
                 if job.get("conclusion") not in ("success", "failure") or not job.get("completed_at"):
@@ -146,14 +175,28 @@ def plan(rows, seen, now, concord=None):
 
 def apply(client, updates, retired_pages):
     for page, values in updates:
-        client.call("PATCH", f"/pages/{page}", {"properties": {"Health": {"select": {"name": values["Health"]}}, "Last OK": {"rich_text": [{"type": "text", "text": {"content": values["Last OK"]}}]}}})
+        client.call(
+            "PATCH",
+            f"/pages/{page}",
+            {
+                "properties": {
+                    "Health": {"select": {"name": values["Health"]}},
+                    "Last OK": {"rich_text": [{"type": "text", "text": {"content": values["Last OK"]}}]},
+                }
+            },
+        )
     for page in retired_pages:
         client.call("PATCH", f"/pages/{page}", {"in_trash": True})
 
 
 def merged(rows, updates):
     changed = {page: values for page, values in updates}
-    return [{**row, **{"health": changed[row["page"]]["Health"], "last_ok": changed[row["page"]]["Last OK"]}} if row["page"] in changed else row for row in rows]
+    return [
+        {**row, **{"health": changed[row["page"]]["Health"], "last_ok": changed[row["page"]]["Last OK"]}}
+        if row["page"] in changed
+        else row
+        for row in rows
+    ]
 
 
 def summary(rows, now):
@@ -178,7 +221,13 @@ def summary(rows, now):
             down.append(name)
         if row["health"] == OK and at is not None:
             stale = at if stale is None or at < stale else stale  # ok but not refreshed: stale, not failing
-    return {"total": len(should), "connected": connected, "down": down, "off": sum(r["id"] in OFF_BY_DESIGN for r in live), "stale_since": stale}
+    return {
+        "total": len(should),
+        "connected": connected,
+        "down": down,
+        "off": sum(r["id"] in OFF_BY_DESIGN for r in live),
+        "stale_since": stale,
+    }
 
 
 def retired_pages(rows):

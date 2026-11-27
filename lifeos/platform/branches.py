@@ -6,6 +6,7 @@ it is not on KEEP; otherwise it is archived and kept, with the reason. `report` 
 with its open PR and days idle (7+ is stale), written to the run's summary and, with --live, to the one owned callout
 on the Weekly LIFE OS Review page. Read-only on GitHub. Fixed codes only.
 """
+
 import base64
 from datetime import datetime, timezone
 import json
@@ -37,10 +38,17 @@ def _fail(code):
 
 
 def gh(path, token, method="GET", opener=urlopen):
-    """One GitHub REST call -> parsed JSON (None for an empty body or a 404 on a GET); any other failure is a fixed code.
-    """
-    req = Request(API + path, method=method, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-                                                     "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-v7-branches"})
+    """One GitHub REST call -> parsed JSON (None for an empty body or a 404 on a GET); any other failure is a fixed code."""
+    req = Request(
+        API + path,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "lifeos-v7-branches",
+        },
+    )
     try:
         with opener(req, timeout=30) as reply:
             body = reply.read()
@@ -61,7 +69,6 @@ def pages(path, token, opener=urlopen):
         if len(got) < 100:
             return out
         page += 1
-
 
 
 def plan(branch, merged_head, branch_head, other_open_prs, keep=KEEP):
@@ -130,16 +137,30 @@ def archive(event, environ=os.environ, opener=urlopen, push=None):
         return {"pr": pr["number"], "archive": "SKIPPED", "delete": False, "why": "NOT_MERGED_OR_FORK"}
     token, branch, sha, number = environ["GITHUB_TOKEN"], pr["head"]["ref"], pr["head"]["sha"], pr["number"]
     tag = tag_name(branch, number)
-    archived = (push or push_tag)(sha, tag, environ["V7_ARCHIVE_TOKEN"])  # archived and read back before anything is deleted
+    archived = (push or push_tag)(
+        sha, tag, environ["V7_ARCHIVE_TOKEN"]
+    )  # archived and read back before anything is deleted
     ref = gh(f"/repos/{repo}/git/ref/heads/{quote(branch, safe='')}", token, opener=opener)
     head = ((ref or {}).get("object") or {}).get("sha")
     owner = repo.split("/")[0]
-    others = [p for p in pages(f"/repos/{repo}/pulls?state=open&head={quote(owner + ':' + branch, safe='')}", token, opener=opener) if p.get("number") != number]
+    others = [
+        p
+        for p in pages(
+            f"/repos/{repo}/pulls?state=open&head={quote(owner + ':' + branch, safe='')}", token, opener=opener
+        )
+        if p.get("number") != number
+    ]
     decision = plan(branch, sha, head, others)
     if decision["delete"]:
         gh(f"/repos/{repo}/git/refs/heads/{quote(branch, safe='')}", token, method="DELETE", opener=opener)
-    return {"pr": number, "branch": branch, "tag": tag, "archive": archived, "delete": decision["delete"], "why": decision["why"]}
-
+    return {
+        "pr": number,
+        "branch": branch,
+        "tag": tag,
+        "archive": archived,
+        "delete": decision["delete"],
+        "why": decision["why"],
+    }
 
 
 def stale(branches, open_prs, now, days=STALE_DAYS, keep=KEEP):
@@ -154,16 +175,29 @@ def stale(branches, open_prs, now, days=STALE_DAYS, keep=KEEP):
         if b["name"] == DEFAULT:
             continue
         idle = max(0, (now - b["last"]).days)
-        rows.append({"branch": b["name"], "pr": by_branch.get(b["name"]), "idle_days": idle, "stale": idle >= days, "kept": b["name"] in keep})
+        rows.append(
+            {
+                "branch": b["name"],
+                "pr": by_branch.get(b["name"]),
+                "idle_days": idle,
+                "stale": idle >= days,
+                "kept": b["name"] in keep,
+            }
+        )
     return sorted(rows, key=lambda r: -r["idle_days"])
 
 
 def lines(rows, now):
     stale_rows = [r for r in rows if r["stale"]]
-    head = (f"{now.astimezone(TZ):%a}, {ct_stamp.when(now)} · {len(rows)} branches besides main · "
-            f"{sum(1 for r in rows if r['pr'])} with an open PR · {len(stale_rows)} idle {STALE_DAYS}+ days")
-    body = [f"{('PR #' + str(r['pr'])) if r['pr'] else 'no PR'} · {r['branch']} · idle {r['idle_days']} days" + (" · kept on purpose" if r["kept"] else "")
-            for r in stale_rows]
+    head = (
+        f"{now.astimezone(TZ):%a}, {ct_stamp.when(now)} · {len(rows)} branches besides main · "
+        f"{sum(1 for r in rows if r['pr'])} with an open PR · {len(stale_rows)} idle {STALE_DAYS}+ days"
+    )
+    body = [
+        f"{('PR #' + str(r['pr'])) if r['pr'] else 'no PR'} · {r['branch']} · idle {r['idle_days']} days"
+        + (" · kept on purpose" if r["kept"] else "")
+        for r in stale_rows
+    ]
     return [head] + (body or ["Nothing stale. Merged branches are archived and removed automatically."])
 
 
@@ -173,7 +207,10 @@ def read_repo(repo, token, opener=urlopen):
         commit = gh(f"/repos/{repo}/commits/{b['commit']['sha']}", token, opener=opener) or {}
         when = (((commit.get("commit") or {}).get("committer") or {}).get("date")) or ""
         branches.append({"name": b["name"], "last": datetime.fromisoformat(when.replace("Z", "+00:00"))})
-    prs = [{"number": p["number"], "branch": p["head"]["ref"]} for p in pages(f"/repos/{repo}/pulls?state=open", token, opener=opener)]
+    prs = [
+        {"number": p["number"], "branch": p["head"]["ref"]}
+        for p in pages(f"/repos/{repo}/pulls?state=open", token, opener=opener)
+    ]
     return branches, prs
 
 
@@ -183,7 +220,11 @@ def find_region(client, page_id):
         if block.get("type") != "callout":
             continue
         kids = report_region.children(client, block["id"], _fail)
-        if kids and kids[0].get("type") in report_region.HEADINGS and report_region.plain(kids[0]).strip() == router.REPO_REGION:
+        if (
+            kids
+            and kids[0].get("type") in report_region.HEADINGS
+            and report_region.plain(kids[0]).strip() == router.REPO_REGION
+        ):
             found.append(block["id"])
     if len(found) > 1:
         raise _fail("REGION_AMBIGUOUS")
@@ -191,8 +232,22 @@ def find_region(client, page_id):
 
 
 def install_region(client, page_id):
-    callout = {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": {"type": "emoji", "emoji": "🧹"}, "color": "gray_background",
-               "children": [{"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": router.REPO_REGION}}]}}]}}
+    callout = {
+        "object": "block",
+        "type": "callout",
+        "callout": {
+            "rich_text": [],
+            "icon": {"type": "emoji", "emoji": "🧹"},
+            "color": "gray_background",
+            "children": [
+                {
+                    "object": "block",
+                    "type": "heading_3",
+                    "heading_3": {"rich_text": [{"type": "text", "text": {"content": router.REPO_REGION}}]},
+                }
+            ],
+        },
+    }
     result = client.call("PATCH", f"/blocks/{quote(page_id, safe='')}/children", {"children": [callout]})
     made = [b for b in (result or {}).get("results", []) if b.get("type") == "callout"]
     if not made:
@@ -207,18 +262,34 @@ def write_region(client, page_id, text_lines, live):
         if not live:
             return "DRY_RUN"
         block = install_region(client, page_id)
-    blocks = [{"object": "block", "type": "paragraph" if i == 0 else "bulleted_list_item",
-               ("paragraph" if i == 0 else "bulleted_list_item"): {"rich_text": [{"type": "text", "text": {"content": t[:1900]}}]}} for i, t in enumerate(text_lines)]
+    blocks = [
+        {
+            "object": "block",
+            "type": "paragraph" if i == 0 else "bulleted_list_item",
+            ("paragraph" if i == 0 else "bulleted_list_item"): {
+                "rich_text": [{"type": "text", "text": {"content": t[:1900]}}]
+            },
+        }
+        for i, t in enumerate(text_lines)
+    ]
     before = report_region.page_digest(client, page_id, [block], _fail)
-    report_region.replace_text(client, block, router.REPO_REGION, MODULE, blocks, {router.REPO_REGION: block}, _fail, "REPO", live)
+    report_region.replace_text(
+        client, block, router.REPO_REGION, MODULE, blocks, {router.REPO_REGION: block}, _fail, "REPO", live
+    )
     if report_region.page_digest(client, page_id, [block], _fail) != before:
         raise _fail("PAGE_CHANGED")  # anything outside the owned callout moved
     return "WRITTEN" if live else "DRY_RUN"
 
 
 def writer(environ):
-    from lifeos.platform.notion_client import Client                                      # noqa: PLC0415 - only a Notion run needs it
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    from lifeos.platform.notion_client import Client  # noqa: PLC0415 - only a Notion run needs it
+
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def report(live, environ=os.environ, now=None, opener=urlopen, client=None):
@@ -255,7 +326,9 @@ def main(argv=None):
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary and argv == ["archive"]:
         with open(summary, "a") as f:
-            f.write(f"Archived PR #{out.get('pr')} as `{out.get('tag')}` ({out.get('archive')}); branch {'deleted' if out.get('delete') else 'kept'} ({out.get('why')})\n")
+            f.write(
+                f"Archived PR #{out.get('pr')} as `{out.get('tag')}` ({out.get('archive')}); branch {'deleted' if out.get('delete') else 'kept'} ({out.get('why')})\n"
+            )
     return 0
 
 
