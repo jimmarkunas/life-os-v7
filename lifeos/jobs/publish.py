@@ -1,8 +1,6 @@
 """Publish READY jobs to the Notion Job Ledger (official API, <= 2.5 req/s, counts-only logs).
 
-The store is the dedupe brain: each job is created once and its page id stored. The ONE cold-start read of the Ledger
-is remembered in v7_ledger_urls until SEED_MARKER changes. With V7_FIT_GATE=true only jobs the lane policy admits (or
-sends to Review) publish. The description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
+Each job is created once and its page id stored. With V7_FIT_GATE=true only ADMIT / REVIEW jobs publish.
 """
 import os
 
@@ -24,11 +22,8 @@ def _block(kind, content):
 
 
 def same_opening(cursor, job_id, company, title, url=None, location=None):
-    """The id of a PUBLISHED job with the same company and title (three words or more), else None.
-
-    One opening posted under several locations or links is one page, but only when both links name the same ATS
-    vacancy (identity.vacancy_id) or neither names one. Exception: an aggregator link with no id whose place is the
-    place the ATS vacancy names. A title under three words merges only when both links name the same ATS vacancy id.
+    """The id of a PUBLISHED job with the same company and title, else None; links must name the same ATS vacancy or
+    neither.
     """
     if not norm(company):
         return None
@@ -48,14 +43,12 @@ AGGREGATOR = lambda url: classify.apply_kind(url) == "aggregator"  # noqa: E731 
 
 
 def body_blocks(key, description):
-    """Contract v7.jd.1 (flat body). Used by diagnostics and synthetic proofs; real pages are written by
-    lifeos.jobs.body.build.
-    """
+    """Flat page body for diagnostics; real pages use lifeos.jobs.body.build."""
     return body.legacy_blocks(key, description)
 
 
 def properties(row):
-    """row: dict with title, company, url, provider (or source), lane, key, first_seen (date), posted (date|None)."""
+    """Notion properties for a row dict."""
     provider = row.get("provider") or row["source"]
     props = {
         "Job": {"title": rich_text(row["title"] or "Untitled")},
@@ -88,11 +81,7 @@ def properties(row):
 
 
 def existing_page(client, key):
-    """The Ledger page that already holds this Stable Job Key, or None.
-
-    A create Notion accepted but the database never recorded is adopted next run, never repeated. Two matches or an
-    unreadable answer is refused (a fixed NotionError).
-    """
+    """The Ledger page id holding this Stable Job Key, or None; two matches or an unreadable answer raise."""
     found = client.call("POST", f"/data_sources/{client.source}/query", {"filter": {"property": "Stable Job Key", "rich_text": {"equals": key}}, "page_size": 2}).get("results")
     if found is None or not isinstance(found, list) or len(found) > 1 or any(not isinstance(page, dict) or not page.get("id") for page in found):
         raise NotionError("ledger_key_ambiguous" if isinstance(found, list) and len(found) > 1 else "ledger_lookup_unreadable")
@@ -100,18 +89,14 @@ def existing_page(client, key):
 
 
 def adopted(pages):
-    """existing_page()'s answer from a batched lookup: the one page holding the key, None for none, a refusal for two.
-    """
+    """The one page id from a batched lookup, None for none; NotionError for two."""
     if len(pages) > 1:
         raise NotionError("ledger_key_ambiguous")
     return pages[0]["id"] if pages else None
 
 
 def _listed(client, keys, counts):
-    """The Ledger pages for every key this run may publish: one query per readback.KEY_CHUNK keys.
-
-    An unreadable answer is never read as `no page`: publish falls back to the per-key lookup (None).
-    """
+    """The Ledger pages for these keys; None on an unreadable answer (publish then looks up per key)."""
     from lifeos.jobs import readback                                                  # noqa: PLC0415
     keys = list(dict.fromkeys(k for k in keys if k))
     if not keys:
@@ -124,7 +109,7 @@ def _listed(client, keys, counts):
 
 
 def ledger_urls(client):
-    """Every Apply URL already in the Ledger (paged, 100 per request)."""
+    """Every Apply URL already in the Ledger."""
     urls, cursor = set(), None
     while True:
         body = {"page_size": limits.NOTION_PAGE_SIZE}
@@ -140,7 +125,7 @@ def ledger_urls(client):
         cursor = data.get("next_cursor")
 
 
-SEED_MARKER = "0" * 63 + "3"  # the Ledger read is repeated once per marker; change it to force a fresh read
+SEED_MARKER = "0" * 63 + "3"  # change to force a fresh Ledger read
 
 
 def _seeded(connection):
@@ -150,10 +135,7 @@ def _seeded(connection):
 
 
 def _store_seed(connection, urls):
-    """Replace the remembered Ledger URLs with the ones in the Ledger now (plus a marker row so the read is not repeated).
-
-    Then release the jobs the old list held back: a role a purge archived is no longer a duplicate.
-    """
+    """Replace the remembered Ledger URLs (plus a marker row), then release held jobs. -> count released."""
     now = _now()
     rows = [("0" * 64, "seed", now), (SEED_MARKER, "seed", now)] + [(key, "seed", now) for key in urls]
     with connection.cursor() as cursor:
@@ -165,8 +147,7 @@ def _store_seed(connection, urls):
 
 
 def release_in_ledger(connection):
-    """Jobs set aside as `in_ledger` whose URL is no longer in the remembered Ledger URLs go back to READY. -> count.
-    """
+    """Jobs set aside as `in_ledger` whose URL is gone from the remembered URLs go back to READY. -> count."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT id, final_apply_url FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL")
         held = cursor.fetchall()
@@ -178,18 +159,15 @@ def release_in_ledger(connection):
     return len(free)
 
 
-# one place in four goes first to the strongest jobs not from an employer-board scan (mail, alerts)
-MAIL_SHARE = 4
-FAIR_SHARE = 4  # one slot in four goes to the oldest waiting jobs, so no valid job starves
+MAIL_SHARE = 4  # one place in four for the strongest jobs not from an employer-board scan
+FAIR_SHARE = 4  # one place in four for the oldest waiting jobs
 
 
 def order(rows, n, hour=0):
-    """Which READY jobs a run publishes, as ids. rows: (id, admission, fit score, posted date, first surfaced[, source]).
+    """Ids of the READY jobs a run publishes. rows: (id, admission, fit, posted, first surfaced[, source]).
 
-    The first n // MAIL_SHARE places go to the strongest rows not from an employer-board scan (`web:*`). Strongest
-    first: admitted before Review (no score or date sorts last), then higher Fit, then newer posting; ties by first
-    surfaced, then id. The last n // FAIR_SHARE places are the oldest of the rest. A run of fewer than four places
-    reserves its one place for the oldest only when the clock hour is a multiple of four.
+    The first n // MAIL_SHARE places go to the strongest non-`web:*` rows; the last n // FAIR_SHARE are the oldest of
+    the rest. Under four places, the oldest gets one only when the clock hour is a multiple of four.
     """
     ranked = sorted(rows, key=lambda r: ({"ADMIT": 0, "REVIEW": 1}.get(r[1], 2), -(r[2] if r[2] is not None else -1), -(r[3] or r[4].date()).toordinal(), r[4], r[0]))
     fair = n // FAIR_SHARE or int(n > 0 and hour % FAIR_SHARE == 0)
@@ -202,9 +180,7 @@ def order(rows, n, hour=0):
 
 
 def _pick(connection, limit, gated=False, hour=None, stats=None):
-    """The jobs this run publishes. `stats`, when given, receives waiting (publishable now) and ready_unpublished (also
-    those awaiting a score).
-    """
+    """-> (rows, known ids); `stats` receives waiting and ready_unpublished counts."""
     base = (" FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else ""))
     with connection.cursor() as cursor:
@@ -229,17 +205,13 @@ def _pick(connection, limit, gated=False, hour=None, stats=None):
         known = set()
         for row in rows:
             cursor.execute("SELECT 1 FROM v7_ledger_urls WHERE url_hash=%s", (url_key(row[4]),))
-            # a keep-list role the audit once trashed is a user choice now; the Ledger listing below still stops a
-            # real duplicate
             if cursor.fetchone() and not lanes.on_keep_list(row[3], row[2]):
                 known.add(row[0])
     return rows, known
 
 
 def release_kept_in_ledger(connection):
-    """A keep-list role set aside as `in_ledger` only because its remembered URL outlived a page the audit trashed goes back
-    to READY. A page that still exists is found by the Ledger listing at publish time. -> count.
-    """
+    """A keep-list role set aside as `in_ledger` goes back to READY. -> count."""
     released = 0
     with connection.cursor() as cursor:
         cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL")
@@ -251,7 +223,6 @@ def release_kept_in_ledger(connection):
 
 
 def run(limit, live, environ=os.environ):
-    # shadow mode: the lane decision is stored but not shown as Admission Status
     gated = environ.get("V7_FIT_GATE") == "true"
     """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
     counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0, "claim_won": 0, "claim_held": 0, "claim_readbacks": 0}
@@ -275,7 +246,6 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated, stats=stats)
     counts["picked"] = len(rows)
-    # before this run's picks: the backlog size a capped run hides
     counts["waiting"], counts["ready_unpublished"] = stats.get("waiting", 0), stats.get("ready_unpublished", 0)
     counts["picked_not_board"] = sum(1 for r in rows if not str(r[5] or "").startswith("web:"))
     listed = _listed(client, [r[1] for r in rows if r[0] not in known], counts) if live else None
@@ -313,35 +283,29 @@ def run(limit, live, environ=os.environ):
         try:
             page_id, created = (adopted(listed[key]) if listed is not None and key in listed else None), False
             if not page_id:
-                # no create without the cross-process claim on this key
                 state, recorded = ledger_claim.claim(key, claimant, store.connect)
                 if state == ledger_claim.CREATED:
                     page_id = recorded
                 else:
                     counts["claim_won" if state == ledger_claim.WON else "claim_held"] += 1
                     counts["claim_readbacks"] += 1
-                    # the authoritative read-back by Stable Job Key; a held key is adopt-only
                     page_id = existing_page(client, key)
                     if not page_id and state == ledger_claim.HELD:
-                        # another creator holds the key, or an earlier create is unresolved: nothing is created
                         continue
             if not page_id:
                 page_id, created = client.create(properties(row), body.build(key, desc)), True
                 body.fill(client, page_id, desc)
             else:
-                # an adopted page whose fill never ran is completed, never repeated
                 body.fill(client, page_id, desc, strict=False)
-        # the claim stays: an unresolved create is settled by read-back after the lease, never repeated
         except NotionError as error:
             counts["failed"] += 1
             counts["error"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]
             if counts["failed"] >= 3:
                 break
             continue
-        # A page is verified ONLY by the read-back reading Notion, so publish never sets verified_at. A page this run
-        # created carries the Fit it was scored with, so it is recorded as synced.
+        # only the read-back sets verified_at
         synced = created and fit is not None
-        with store.connect() as connection, connection.cursor() as cursor:  # record at once: a crash cannot duplicate
+        with store.connect() as connection, connection.cursor() as cursor:  # record at once so a crash cannot duplicate
             cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s, fit_synced_at=%s, meta_v=%s, ledger_claim_by=NULL, ledger_claim_at=NULL WHERE id=%s",
                            (page_id, _now(), _now() if synced else None, meta.META_VERSION if synced else None, job_id))
             cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
@@ -352,7 +316,6 @@ def run(limit, live, environ=os.environ):
     if live:
         from lifeos.jobs import readback                                              # noqa: PLC0415
         counts["readback"] = readback.run(client, live)
-        # a page that does not read back fails the stage (PUBLISH_RECORDS_FAILED)
         counts["failed"] += counts["readback"].get("failed", 0)
     counts["calls"] = client.calls
     return counts
