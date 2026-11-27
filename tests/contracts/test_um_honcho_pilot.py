@@ -150,6 +150,19 @@ class Free(unittest.TestCase):
         )
         self.assertFalse(ev["personal_unchanged"])
 
+    def test_a_failed_comparison_keeps_the_evidence_of_every_earlier_step(self):
+        w = sim.World("typical")
+        h = Honcho(w)
+
+        def refuse(*args, **kwargs):
+            raise pilot.guard.HonchoError("http_422")
+
+        h.recall = refuse
+        w, ev = go(w, honcho=h)
+        self.assertEqual(ev["stopped"], "comparison_HonchoError")
+        self.assertIn("guard_run", [s["step"] for s in ev["steps"]])
+        self.assertEqual(ev["dream"]["status"], "success")
+
     def test_a_token_that_is_not_scoped_stops_before_anything_is_armed(self):
         w = sim.World("typical")
         h = Honcho(w)
