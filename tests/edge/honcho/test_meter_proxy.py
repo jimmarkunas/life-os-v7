@@ -57,6 +57,18 @@ class Upstream(http.server.BaseHTTPRequestHandler):
             self.wfile.flush()
             self.close_connection = True
             return
+        if Upstream.mode == "reset":                                  # the connection drops after the request was sent and before any reply
+            self.close_connection = True
+            return
+        if Upstream.mode in ("nousage", "huge"):
+            usage = {"input_tokens": 3_000_000, "output_tokens": 1} if Upstream.mode == "huge" else None
+            data = json.dumps({"id": "m", "content": [], **({"usage": usage} if usage else {})}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         data = json.dumps({"id": "m", "content": [{"type": "text", "text": "hi"}], "usage": {"input_tokens": 2000, "output_tokens": 100, "cache_creation_input_tokens": 0}}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -242,9 +254,23 @@ class FailClosed(Case):
         with tempfile.TemporaryDirectory() as fresh:
             self.assertEqual(mp.Ledger(state_dir=fresh, cap=0.90).unverified, "")
 
-    def test_a_ledger_that_cannot_be_written_stops_the_next_request(self):
+    def test_a_ledger_that_cannot_be_written_refuses_the_request_before_it_is_forwarded(self):
         with mock.patch.object(mp.Ledger, "save", side_effect=OSError("disk full")):
-            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                         # this reply was already on its way
+            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)                         # LIFE-1021: the reservation is saved first
+        self.assertEqual((self.ledger.unverified, Upstream.seen, self.ledger.reserved), ("ledger unwritable", [], 0.0))
+        self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)
+
+    def test_a_ledger_that_fails_when_the_reply_is_settled_stops_the_next_request(self):
+        real = mp.Ledger.save
+        saves = []
+
+        def flaky(ledger):
+            saves.append(1)
+            if len(saves) > 1:
+                raise OSError("disk full")
+            real(ledger)
+        with mock.patch.object(mp.Ledger, "save", flaky):
+            self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)                         # reserved and saved, forwarded, then the settle save fails
         self.assertEqual(self.ledger.unverified, "ledger unwritable")
         self.assertEqual(self.post("/v1/messages", self.MSG)[0], 400)
 
