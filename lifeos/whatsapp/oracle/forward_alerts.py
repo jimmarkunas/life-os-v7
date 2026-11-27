@@ -14,6 +14,7 @@ invalid cursor, attempt or rate file holds that channel (one HELD diagnostic) un
 go to a size-capped deliveries.jsonl, never the alert text. A copy goes to a channel only when the push carries its
 tag (`ch-telegram`, `ch-whatsapp`); each channel forwards at most RELAY_CAP copies per clock hour, then one
 "paused" notice."""
+
 import json
 import os
 import re
@@ -55,9 +56,17 @@ def topic(run=subprocess.run):
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.rstrip("\n").split("=", 1)
                 env[k.strip()] = v.strip().strip('"')
-    out = run([NODE, RESOLVER], input=json.dumps({"protocolVersion": 1, "provider": "bws", "ids": [SECRET]}),
-              capture_output=True, text=True, timeout=30, env=env)
-    value = ((json.loads(out.stdout or "{}").get("values") or {}).get(SECRET) or "").strip() if out.returncode == 0 else ""
+    out = run(
+        [NODE, RESOLVER],
+        input=json.dumps({"protocolVersion": 1, "provider": "bws", "ids": [SECRET]}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    value = (
+        ((json.loads(out.stdout or "{}").get("values") or {}).get(SECRET) or "").strip() if out.returncode == 0 else ""
+    )
     return value if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value) else None
 
 
@@ -86,13 +95,18 @@ def events(lines):
             e = json.loads(line)
         except ValueError:
             continue
-        if isinstance(e, dict) and e.get("event") == "message" and isinstance(e.get("id"), str) and ID.fullmatch(e["id"]):
+        if (
+            isinstance(e, dict)
+            and e.get("event") == "message"
+            and isinstance(e.get("id"), str)
+            and ID.fullmatch(e["id"])
+        ):
             yield e
 
 
 def result_json(stdout):
     out = (stdout or "").strip()
-    for candidate in (out, out[out.find("{"):out.rfind("}") + 1] if "{" in out else ""):
+    for candidate in (out, out[out.find("{") : out.rfind("}") + 1] if "{" in out else ""):
         try:
             value = json.loads(candidate)
         except ValueError:
@@ -128,7 +142,12 @@ def classify(returncode, stdout):
 def send(to, body, run=subprocess.run, channel="whatsapp"):
     """-> (outcome, class, exit code). Never raises for a send problem."""
     try:
-        done = run([OPENCLAW, "message", "send", "--json", "--channel", channel, "--target", to, "-m", body], capture_output=True, text=True, timeout=90)
+        done = run(
+            [OPENCLAW, "message", "send", "--json", "--channel", channel, "--target", to, "-m", body],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
     except subprocess.TimeoutExpired:
         return AMBIGUOUS, "timeout", None
     except OSError:
@@ -186,8 +205,15 @@ def attempt_state(channel):
         return "absent", {}
     except (OSError, ValueError):
         return "invalid", {}
-    ok = (isinstance(value, dict) and set(value) == {"id", "count", "pending"} and isinstance(value["id"], str) and ID.fullmatch(value["id"])
-          and type(value["count"]) is int and 1 <= value["count"] <= MAX_ATTEMPTS and type(value["pending"]) is bool)
+    ok = (
+        isinstance(value, dict)
+        and set(value) == {"id", "count", "pending"}
+        and isinstance(value["id"], str)
+        and ID.fullmatch(value["id"])
+        and type(value["count"]) is int
+        and 1 <= value["count"] <= MAX_ATTEMPTS
+        and type(value["pending"]) is bool
+    )
     return ("valid", value) if ok else ("invalid", {})
 
 
@@ -204,10 +230,22 @@ def diagnose(channel, message_id, outcome, cls, code=None, now=time.time):
         path = os.path.join(STATE, DIAGNOSTICS)
         try:
             with open(path) as f:
-                lines = f.read().splitlines()[-(DIAGNOSTICS_KEEP - 1):]
+                lines = f.read().splitlines()[-(DIAGNOSTICS_KEEP - 1) :]
         except OSError:
             lines = []
-        lines.append(json.dumps({"at": int(now()), "channel": channel, "id": message_id, "outcome": outcome, "class": cls, "exit": code}, sort_keys=True))
+        lines.append(
+            json.dumps(
+                {
+                    "at": int(now()),
+                    "channel": channel,
+                    "id": message_id,
+                    "outcome": outcome,
+                    "class": cls,
+                    "exit": code,
+                },
+                sort_keys=True,
+            )
+        )
         _store(path, "\n".join(lines) + "\n")
     except OSError:
         pass
@@ -229,8 +267,14 @@ def rate_state(channel, now=time.time):
         return "ok", {"hour": hour, "count": 0, "paused": False}
     except (OSError, ValueError):
         return "invalid", {}
-    good = (isinstance(value, dict) and set(value) == {"hour", "count", "paused"} and type(value["hour"]) is int and type(value["count"]) is int
-            and value["count"] >= 0 and type(value["paused"]) is bool)
+    good = (
+        isinstance(value, dict)
+        and set(value) == {"hour", "count", "paused"}
+        and type(value["hour"]) is int
+        and type(value["count"]) is int
+        and value["count"] >= 0
+        and type(value["paused"]) is bool
+    )
     if not good:
         return "invalid", {}
     return ("ok", value) if value["hour"] == hour else ("ok", {"hour": hour, "count": 0, "paused": False})
@@ -302,7 +346,11 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
             _write_rate(channel, {**rate, "count": rate["count"] + 1})
             _write_attempts(channel, {"id": e["id"], "count": count, "pending": True})
             got = sender(to, text(e))
-            outcome, cls, code = got if isinstance(got, tuple) else ((DELIVERED, "sender_true", 0) if got else (NOT_DELIVERED, "sender_false", 1))
+            outcome, cls, code = (
+                got
+                if isinstance(got, tuple)
+                else ((DELIVERED, "sender_true", 0) if got else (NOT_DELIVERED, "sender_false", 1))
+            )
             diagnose(channel, e["id"], outcome, cls, code)
             if outcome == NOT_DELIVERED:
                 if count >= MAX_ATTEMPTS:
@@ -329,7 +377,9 @@ def step(state, now=time.time, resolve=topic, lookup=recipient, poll=follow, sen
     for channel in CHANNELS:
         to = lookup(channel=channel)
         if state.get("name") and to:
-            got = poll(state["name"], to, sender=lambda text_, b, c=channel: send_to(text_, b, channel=c), channel=channel)
+            got = poll(
+                state["name"], to, sender=lambda text_, b, c=channel: send_to(text_, b, channel=c), channel=channel
+            )
             seen += got if isinstance(got, int) else 0
     state.setdefault("last_seen", t)
     if seen:

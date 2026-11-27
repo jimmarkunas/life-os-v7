@@ -6,6 +6,7 @@ answers `gateway_unavailable`. A normal dispatch needs the ticket Agent Go or In
 that fails closed `ticket_state_unavailable`. The text is untrusted data (refused when it holds a secret or asks for a
 credential, spend, deletion, scope change or permission) and the idempotency key makes a repeat safe. An offline agent
 gets ONE deduplicated Agent Inbox item; nothing here starts a session. Reasons are fixed words."""
+
 import base64
 import json
 import os
@@ -27,20 +28,41 @@ TICKET = re.compile(r"^LIFE-[0-9]{1,6}$")
 IDEM = re.compile(r"^[A-Za-z0-9_.:@-]{1,128}$")
 CONNECT_WAIT, REPLY_WAIT, MAX_REPLY = 3, 32, 65536
 SEEN_MAX = 500
-SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|passphrase|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|github_pat_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
-ASKS = tuple(re.compile(p, re.I) for p in (
-    r"\b(?:send|paste|share|give|reveal|print|show|read out|email|post)\s+(?:me\s+|us\s+)?(?:the\s+|your\s+|any\s+|all\s+)?(?:\w+\s+)?(?:password|passphrase|api key|token|secret|credential|private key|ssh key)s?\b",
-    r"\b(?:approve|authori[sz]e|grant)\b.{0,40}\b(?:spend|budget|payment|purchase|permission|access|deletion|delete)\b",
-    r"\b(?:delete|erase|wipe|drop|destroy)\s+(?:all|every|everything|the\s+(?:database|repo|repository|bucket|backup|branch))\b",
-    r"\b(?:ignore|bypass|override|skip|disable)\s+(?:the\s+|all\s+)?(?:rules|policy|approval|approvals|gate|safety|permissions)\b",
-    r"\b(?:change|expand|widen)\s+(?:the\s+)?(?:scope|permissions)\b"))
-FIELDS = {"agent": "oc, mc01, mc02 or codex", "ticket": "a LIFE ticket key; normal dispatch requires Agent Go or In Progress", "text": "the task, 4,000 characters at most; data for that ticket, never an approval",
-          "idempotency_key": "a key; the same key never sends a second prompt", "mode": "optional: dry_run only for needs-dry-run tickets not Done or Cancelled", "limit": "page size, 1 to 50 (default 20)", "cursor": "the next_cursor of the previous page"}
+SECRET = re.compile(
+    r"(?i)(?:api[_-]?key|secret|password|passphrase|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|github_pat_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}"
+)
+ASKS = tuple(
+    re.compile(p, re.I)
+    for p in (
+        r"\b(?:send|paste|share|give|reveal|print|show|read out|email|post)\s+(?:me\s+|us\s+)?(?:the\s+|your\s+|any\s+|all\s+)?(?:\w+\s+)?(?:password|passphrase|api key|token|secret|credential|private key|ssh key)s?\b",
+        r"\b(?:approve|authori[sz]e|grant)\b.{0,40}\b(?:spend|budget|payment|purchase|permission|access|deletion|delete)\b",
+        r"\b(?:delete|erase|wipe|drop|destroy)\s+(?:all|every|everything|the\s+(?:database|repo|repository|bucket|backup|branch))\b",
+        r"\b(?:ignore|bypass|override|skip|disable)\s+(?:the\s+|all\s+)?(?:rules|policy|approval|approvals|gate|safety|permissions)\b",
+        r"\b(?:change|expand|widen)\s+(?:the\s+)?(?:scope|permissions)\b",
+    )
+)
+FIELDS = {
+    "agent": "oc, mc01, mc02 or codex",
+    "ticket": "a LIFE ticket key; normal dispatch requires Agent Go or In Progress",
+    "text": "the task, 4,000 characters at most; data for that ticket, never an approval",
+    "idempotency_key": "a key; the same key never sends a second prompt",
+    "mode": "optional: dry_run only for needs-dry-run tickets not Done or Cancelled",
+    "limit": "page size, 1 to 50 (default 20)",
+    "cursor": "the next_cursor of the previous page",
+}
 OPS = {
-    "agent_status": ("Every agent's identity, whether it is online as Concord reports it, its current claim and its last status, with the time (Concord/Orca gateway; read-only).", {}),
-    "agent_dispatch": ("Send one task to one named agent (oc, mc01, mc02, codex) through Concord. Normal mode requires a released ticket; dry_run requires needs-dry-run and a status other than Done or Cancelled. Never starts a session, never approves anything.",
-                       {**{k: ("str", True) for k in ("agent", "ticket", "text", "idempotency_key")}, "mode": ("str", False)}),
-    "agent_messages": ("The agents' Concord room messages addressed to the orchestrator (status, blocker, completion), newest first, paged.", {"limit": ("int", False), "cursor": ("str", False)}),
+    "agent_status": (
+        "Every agent's identity, whether it is online as Concord reports it, its current claim and its last status, with the time (Concord/Orca gateway; read-only).",
+        {},
+    ),
+    "agent_dispatch": (
+        "Send one task to one named agent (oc, mc01, mc02, codex) through Concord. Normal mode requires a released ticket; dry_run requires needs-dry-run and a status other than Done or Cancelled. Never starts a session, never approves anything.",
+        {**{k: ("str", True) for k in ("agent", "ticket", "text", "idempotency_key")}, "mode": ("str", False)},
+    ),
+    "agent_messages": (
+        "The agents' Concord room messages addressed to the orchestrator (status, blocker, completion), newest first, paged.",
+        {"limit": ("int", False), "cursor": ("str", False)},
+    ),
 }
 NEEDS = {"agent_status": "read", "agent_dispatch": "write", "agent_messages": "read"}
 
@@ -67,7 +89,9 @@ def can_start(environ=None):
 
 def gateway(op, client, args, connect=socket.socket, path=SOCKET):
     """One request/reply over the fixed socket -> the gateway's reply dict; `gateway_unavailable` or `gateway_bad_reply`, never its text."""
-    frame = (json.dumps({"op": op, "client": client, "args": args}, separators=(",", ":"), sort_keys=True) + "\n").encode()
+    frame = (
+        json.dumps({"op": op, "client": client, "args": args}, separators=(",", ":"), sort_keys=True) + "\n"
+    ).encode()
     try:
         s = connect(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -95,18 +119,25 @@ def gateway(op, client, args, connect=socket.socket, path=SOCKET):
     return reply
 
 
-
 JIRA_NAMES = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")
 JIRA_TIMEOUT = 8
 
 
 def jira_status(base, email, token, opener=urllib.request.urlopen):
     """-> lookup(key): {"status", "labels"}, "unknown" for a 404, None when unreadable. One read-only GET."""
+
     def lookup(key):
         if not TICKET.match(key):
             return None
         url = f"{base.rstrip('/')}/rest/api/3/issue/{urllib.parse.quote(key, safe='')}?fields=status,labels"
-        request = urllib.request.Request(url, headers={"Authorization": "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode(), "Accept": "application/json"}, method="GET")
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode(),
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
         try:
             with opener(request, timeout=JIRA_TIMEOUT) as reply:
                 data = json.loads(reply.read(65536))
@@ -117,15 +148,25 @@ def jira_status(base, email, token, opener=urllib.request.urlopen):
         fields = data.get("fields") if isinstance(data, dict) else None
         name = ((fields or {}).get("status") or {}).get("name") if isinstance(fields, dict) else None
         labels = fields.get("labels") if isinstance(fields, dict) else None
-        if not isinstance(name, str) or not name or not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(labels, list)
+            or any(not isinstance(label, str) for label in labels)
+        ):
             return None
         return {"status": name, "labels": labels}
+
     return lookup
 
 
 def wire(environ, state):
     """Set state["ticket_state"] from JIRA_BASE_URL (https), JIRA_EMAIL and JIRA_API_TOKEN; any missing leaves it unset."""
-    base, email, token = (str(environ.get("JIRA_BASE_URL") or "").strip(), str(environ.get("JIRA_EMAIL") or "").strip(), str(environ.get("JIRA_API_TOKEN") or "").strip())
+    base, email, token = (
+        str(environ.get("JIRA_BASE_URL") or "").strip(),
+        str(environ.get("JIRA_EMAIL") or "").strip(),
+        str(environ.get("JIRA_API_TOKEN") or "").strip(),
+    )
     if base.startswith("https://") and email and token and "\n" not in base + email + token:
         state["ticket_state"] = jira_status(base, email, token)
 
@@ -138,7 +179,16 @@ def _refuse_text(text):
 def _check_dispatch(args, state):
     agent, ticket, text, key = (args.get(k) for k in ("agent", "ticket", "text", "idempotency_key"))
     mode = args.get("mode", "normal")
-    if agent not in AGENTS or not isinstance(ticket, str) or not TICKET.match(ticket) or not isinstance(text, str) or not 1 <= len(text) <= 4000 or not isinstance(key, str) or not IDEM.match(key) or mode not in ("normal", "dry_run"):
+    if (
+        agent not in AGENTS
+        or not isinstance(ticket, str)
+        or not TICKET.match(ticket)
+        or not isinstance(text, str)
+        or not 1 <= len(text) <= 4000
+        or not isinstance(key, str)
+        or not IDEM.match(key)
+        or mode not in ("normal", "dry_run")
+    ):
         raise OrchestratorError("invalid_argument")
     _refuse_text(text)
     lookup = state.get("ticket_state")
@@ -146,7 +196,7 @@ def _check_dispatch(args, state):
         raise OrchestratorError("ticket_state_unavailable")
     try:
         seen = lookup(ticket)
-    except Exception:                                           # noqa: BLE001 - a fixed word, never the error
+    except Exception:  # noqa: BLE001 - a fixed word, never the error
         raise OrchestratorError("ticket_state_unavailable") from None
     if seen is None:
         raise OrchestratorError("ticket_state_unavailable")
@@ -156,7 +206,12 @@ def _check_dispatch(args, state):
     else:
         status, labels = seen, []
     if mode == "dry_run":
-        if not isinstance(labels, list) or "needs-dry-run" not in labels or not isinstance(status, str) or status.lower() in ("done", "cancelled"):
+        if (
+            not isinstance(labels, list)
+            or "needs-dry-run" not in labels
+            or not isinstance(status, str)
+            or status.lower() in ("done", "cancelled")
+        ):
             raise OrchestratorError("ticket_not_dry_run")
     elif status not in RELEASED or isinstance(labels, list) and "needs-dry-run" in labels:
         raise OrchestratorError("ticket_not_released")
@@ -169,8 +224,14 @@ def _fallback(agent, ticket, state):
     client = inbox.get("client")
     if client is None:
         return "unavailable"
-    item = {"from": "orchestrator", "subject": f"Start {agent}: go", "urgency": "Today", "workspace": "Personal", "key": f"orchestrator-start-{agent}",
-            "details": f"Released ticket {ticket} is waiting for {agent}. Start that agent's session; no session starts on its own."}
+    item = {
+        "from": "orchestrator",
+        "subject": f"Start {agent}: go",
+        "urgency": "Today",
+        "workspace": "Personal",
+        "key": f"orchestrator-start-{agent}",
+        "details": f"Released ticket {ticket} is waiting for {agent}. Start that agent's session; no session starts on its own.",
+    }
     now = inbox["now"]() if callable(inbox.get("now")) else datetime.now(timezone.utc)
     out = inbox_send.deliver(item, client, now)
     if not out.get("ok"):

@@ -6,6 +6,7 @@ Order: the resolvers -> US Remote boards -> publish READY jobs (gated) -> enrich
 title watch, discovery search, the sponsor register). Input: the prep job has already swept and extracted the mail.
 Each stage has a wall-clock budget cut to the run's remaining time (a fast-path stage never below FAST_FLOOR_SECONDS); a stage over it is counted `timeout`, a bulk stage that cannot start in time is counted `skipped`, a failing stage never stops the next.
 Output: the stages' own counts-only `<stage>: {...}` lines, then one `tick:` line; exit 1 when any stage failed or a required (not bulk) stage timed out."""
+
 import argparse
 import ctypes
 from dataclasses import dataclass
@@ -57,7 +58,15 @@ PLAN = (
 # registered sources' steps, each after the step it names
 PLAN = registry.with_tick_steps(PLAN, Step)
 # --quick: a small proof run
-QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "boards-tick": 50, "drain-publish": 10, "drain-enrich": 50}
+QUICK_LIMITS = {
+    "boards": 50,
+    "publish": 10,
+    "publish-fresh": 5,
+    "boards-backfill": 50,
+    "boards-tick": 50,
+    "drain-publish": 10,
+    "drain-enrich": 50,
+}
 
 
 class StageTimeout(BaseException):
@@ -74,8 +83,13 @@ def _run_step(step, live, limit, stages):
         argv = (["--live"] if live else []) + ["--limit", str(limit)]
         code = importlib.import_module(step.module).main(argv)
         return "ok" if code == 0 else "failed"
-    from lifeos import run                                                          # noqa: PLC0415 - the one stage registry
-    code = run.main([step.name, "--limit", str(limit)] + (["--live"] if live else [])) if stages is None else stages[step.name](limit, live)
+    from lifeos import run  # noqa: PLC0415 - the one stage registry
+
+    code = (
+        run.main([step.name, "--limit", str(limit)] + (["--live"] if live else []))
+        if stages is None
+        else stages[step.name](limit, live)
+    )
     if stages is not None:
         stage_timing.note_counts(code)
     return "ok" if code in (0, None) or isinstance(code, dict) else "failed"
@@ -96,17 +110,25 @@ def _small_int(raw, default, low=1, high=16):
 def concurrency_from_env(environ=None):
     """-> {"caps": {provider: n}, "parallel": n}; a cap that is not a whole number from 1 to 16 uses its default."""
     environ = os.environ if environ is None else environ
-    from lifeos.platform import limits                                                 # noqa: PLC0415
-    return {"caps": {"linkedin": _small_int(environ.get("TICK_CAP_LINKEDIN"), CAP_DEFAULTS["linkedin"]), "tinyfish": _small_int(environ.get("TICK_CAP_TINYFISH"), CAP_DEFAULTS["tinyfish"]),
-                     "jobright": _small_int(environ.get("TICK_CAP_JOBRIGHT"), CAP_DEFAULTS["jobright"]), "dice": _small_int(environ.get("TICK_CAP_DICE"), CAP_DEFAULTS["dice"]),
-                     "ats": _small_int(environ.get("TICK_CAP_ATS"), limits.ATS_WORKERS)},
-            "parallel": _small_int(environ.get("TICK_MAX_PARALLEL"), MAX_PARALLEL_DEFAULT)}
+    from lifeos.platform import limits  # noqa: PLC0415
+
+    return {
+        "caps": {
+            "linkedin": _small_int(environ.get("TICK_CAP_LINKEDIN"), CAP_DEFAULTS["linkedin"]),
+            "tinyfish": _small_int(environ.get("TICK_CAP_TINYFISH"), CAP_DEFAULTS["tinyfish"]),
+            "jobright": _small_int(environ.get("TICK_CAP_JOBRIGHT"), CAP_DEFAULTS["jobright"]),
+            "dice": _small_int(environ.get("TICK_CAP_DICE"), CAP_DEFAULTS["dice"]),
+            "ats": _small_int(environ.get("TICK_CAP_ATS"), limits.ATS_WORKERS),
+        },
+        "parallel": _small_int(environ.get("TICK_MAX_PARALLEL"), MAX_PARALLEL_DEFAULT),
+    }
 
 
 def tick_concurrency(environ=None):
     environ = os.environ if environ is None else environ
     try:
-        from lifeos.platform import settings                                           # noqa: PLC0415
+        from lifeos.platform import settings  # noqa: PLC0415
+
         settings.apply(environ)
     except Exception:  # noqa: BLE001 - unreadable settings leave the default caps
         pass
@@ -148,7 +170,9 @@ def _report(step, label, seconds, outcome, timings, lock=None, queued=0.0):
         timings[step.name] = seconds
         print(f"stage {step.name}: {label} {seconds:.1f}s", flush=True)
     waited, counts = stage_timing.take(step.name)
-    stage_timing.emit(stage_timing.record(step.name, label, seconds, queued + waited, counts, stage_timing.items_key_for(step.name)))
+    stage_timing.emit(
+        stage_timing.record(step.name, label, seconds, queued + waited, counts, stage_timing.items_key_for(step.name))
+    )
 
 
 _SLOT_LOCK = threading.Lock()
@@ -157,7 +181,9 @@ _SLOT_LOCK = threading.Lock()
 def _service_slots(concurrency):
     with _SLOT_LOCK:
         if "slots" not in concurrency:
-            concurrency["slots"] = {name: threading.BoundedSemaphore(n) for name, n in concurrency["caps"].items() if name != "ats"}
+            concurrency["slots"] = {
+                name: threading.BoundedSemaphore(n) for name, n in concurrency["caps"].items() if name != "ats"
+            }
         return concurrency["slots"]
 
 
@@ -233,7 +259,16 @@ def _run_group(steps, live, quick, stages, clock, remaining, concurrency, outcom
                     print(f"stage abandoned: {step.name}", flush=True)
 
 
-def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget=RUN_BUDGET_SECONDS, timings=None, concurrency=None):
+def tick(
+    live,
+    quick=False,
+    plan=PLAN,
+    stages=None,
+    clock=time.monotonic,
+    budget=RUN_BUDGET_SECONDS,
+    timings=None,
+    concurrency=None,
+):
     """-> {stage: ok | failed | timeout | skipped}.
 
     `stages` (name -> callable(limit, live)) replaces lifeos.run in tests; `timings` collects {stage: seconds};
@@ -247,7 +282,23 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
         if concurrency:
             for step in plan:
                 if step.early and step.group:
-                    thread = threading.Thread(target=_after_a_moment, args=(_run_group, [step], live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings), name=f"tick-early-{step.name}", daemon=True)
+                    thread = threading.Thread(
+                        target=_after_a_moment,
+                        args=(
+                            _run_group,
+                            [step],
+                            live,
+                            quick,
+                            stages,
+                            clock,
+                            lambda: budget - (clock() - started),
+                            concurrency,
+                            outcome,
+                            timings,
+                        ),
+                        name=f"tick-early-{step.name}",
+                        daemon=True,
+                    )
                     thread.start()
                     early[step.name] = thread
         position = 0
@@ -262,7 +313,17 @@ def tick(live, quick=False, plan=PLAN, stages=None, clock=time.monotonic, budget
                 if len(run_of) > 1 or any(c.name in early for c in run_of):
                     members = [c for c in run_of if c.name not in early]
                     if members:
-                        _run_group(members, live, quick, stages, clock, lambda: budget - (clock() - started), concurrency, outcome, timings)
+                        _run_group(
+                            members,
+                            live,
+                            quick,
+                            stages,
+                            clock,
+                            lambda: budget - (clock() - started),
+                            concurrency,
+                            outcome,
+                            timings,
+                        )
                     for c in run_of:
                         if c.name in early:
                             early[c.name].join()
@@ -296,7 +357,11 @@ def summary_table(outcome, timings, total):
     lines = ["### Jobs tick: seconds per stage", "", "| Stage | Outcome | Seconds | Share |", "|---|---|---:|---:|"]
     for name, result in outcome.items():
         seconds = timings.get(name, 0.0)
-        lines.append(f"| {name} | {result} | {seconds:.1f} | {100 * seconds / total:.0f}% |" if total > 0 else f"| {name} | {result} | {seconds:.1f} | - |")
+        lines.append(
+            f"| {name} | {result} | {seconds:.1f} | {100 * seconds / total:.0f}% |"
+            if total > 0
+            else f"| {name} | {result} | {seconds:.1f} | - |"
+        )
     lines.append(f"| **total** | | **{total:.1f}** | |")
     return "\n".join(lines) + "\n"
 
@@ -311,16 +376,19 @@ def shadow_in_background(environ=None):
 
     def work():
         try:
-            from lifeos.platform import runtime_config                          # noqa: PLC0415
+            from lifeos.platform import runtime_config  # noqa: PLC0415
+
             box["receipt"] = runtime_config.shadow(environ, once=True)
         except Exception as error:  # noqa: BLE001 - a compare-only read never fails the tick
             box["receipt"] = {"status": "unreadable:" + type(error).__name__}
+
     thread = threading.Thread(target=work, name="runtime-config-shadow", daemon=True)
     thread.start()
 
     def collect(wait=SHADOW_WAIT_SECONDS):
         thread.join(wait)
         return box.get("receipt") or {"status": "unreadable:timeout"}
+
     return collect
 
 
@@ -338,11 +406,19 @@ def main(argv=None):
     concurrency = tick_concurrency()
     timings, begun = {}, time.monotonic()
     if concurrency:
-        from lifeos.platform import read_slots                                         # noqa: PLC0415
+        from lifeos.platform import read_slots  # noqa: PLC0415
+
         read_slots.configure("ats", concurrency["caps"]["ats"])
-        print("tick: concurrency on, caps", json.dumps(concurrency["caps"], sort_keys=True), "parallel", concurrency["parallel"], flush=True)
+        print(
+            "tick: concurrency on, caps",
+            json.dumps(concurrency["caps"], sort_keys=True),
+            "parallel",
+            concurrency["parallel"],
+            flush=True,
+        )
     collect_shadow = shadow_in_background()
-    from lifeos.platform import due                                                # noqa: PLC0415
+    from lifeos.platform import due  # noqa: PLC0415
+
     full = planned()
     plan, left_out = due.split_plan(full)
     outcome = tick(args.live, args.quick, plan=plan, timings=timings, concurrency=concurrency)
@@ -356,7 +432,14 @@ def main(argv=None):
     if shadowed.get("status") != "off":
         print("runtime_config:", json.dumps(shadowed, sort_keys=True), flush=True)
     if os.environ.get("GITHUB_RUN_ID"):
-        print("chain:", json.dumps({"tick": os.environ["GITHUB_RUN_ID"], "platform": "pending: printed by the domains run chain job"}, sort_keys=True), flush=True)
+        print(
+            "chain:",
+            json.dumps(
+                {"tick": os.environ["GITHUB_RUN_ID"], "platform": "pending: printed by the domains run chain job"},
+                sort_keys=True,
+            ),
+            flush=True,
+        )
     wall = time.monotonic() - begun
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:
@@ -371,7 +454,9 @@ def main(argv=None):
 def failing_stages(outcome, plan):
     """The stages that fail the tick: any that failed, and a required (not bulk) stage that timed out."""
     optional = {step.name for step in plan if step.bulk}
-    return [name for name, result in outcome.items() if result == "failed" or (result == "timeout" and name not in optional)]
+    return [
+        name for name, result in outcome.items() if result == "failed" or (result == "timeout" and name not in optional)
+    ]
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ TDLib's message, file and chat-info databases are off; the session database is e
 leaves Oracle. API id/hash come per run from Bitwarden. Anything not proven (not signed in, not connected, list not
 loaded, timeout) is a fixed health with null counts, never a zero or a guess. Message text is never read into the
 output."""
+
 import base64
 import ctypes
 import getpass
@@ -24,22 +25,52 @@ from datetime import datetime, timezone
 HOME = os.path.expanduser("~")
 LIB = os.path.join(HOME, ".local/lib/lifeos-telegram/td/lib/libtdjson.so")
 STATE = os.path.join(HOME, ".local/state/lifeos-telegram")  # 0700: TDLib's encrypted session database only
-DB_KEY = os.path.join(HOME, ".config/lifeos-telegram/db-key")            # 0600, generated at login, never copied
+DB_KEY = os.path.join(HOME, ".config/lifeos-telegram/db-key")  # 0600, generated at login, never copied
 RESOLVER = os.path.join(HOME, ".local/bin/openclaw-bws-resolver.mjs")
 BWS_ENV = os.path.join(HOME, ".config/bws/openclaw.env")
 NODE = os.path.join(HOME, ".openclaw/tools/node/bin/node")
 SECRET_IDS = ("openclaw/telegram/apiId", "openclaw/telegram/apiHash")
-ALLOWED = {"getOption", "setTdlibParameters", "setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkAuthenticationPassword", "close",
-           "loadChats", "getChatHistory", "getUser", "getScopeNotificationSettings", "getMe"}
+ALLOWED = {
+    "getOption",
+    "setTdlibParameters",
+    "setAuthenticationPhoneNumber",
+    "checkAuthenticationCode",
+    "checkAuthenticationPassword",
+    "close",
+    "loadChats",
+    "getChatHistory",
+    "getUser",
+    "getScopeNotificationSettings",
+    "getMe",
+}
 LOGIN_ONLY = {"setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkAuthenticationPassword"}
 TELEGRAM_SERVICE = 777000
-SENT_BY_A_PERSON = {"messageText", "messageAnimatedEmoji", "messagePhoto", "messageVideo", "messageVideoNote", "messageVoiceNote", "messageAudio",
-                    "messageDocument", "messageSticker", "messageAnimation", "messageContact", "messageLocation", "messageVenue", "messagePoll",
-                    "messageDice", "messageStory", "messagePaidMedia"}  # content KINDS only; service notices are not
+SENT_BY_A_PERSON = {
+    "messageText",
+    "messageAnimatedEmoji",
+    "messagePhoto",
+    "messageVideo",
+    "messageVideoNote",
+    "messageVoiceNote",
+    "messageAudio",
+    "messageDocument",
+    "messageSticker",
+    "messageAnimation",
+    "messageContact",
+    "messageLocation",
+    "messageVenue",
+    "messagePoll",
+    "messageDice",
+    "messageStory",
+    "messagePaidMedia",
+}  # content KINDS only; service notices are not
 MAX_HISTORY = 12
 MAX_NAME = 80
-SCOPES = {"chatTypePrivate": "notificationSettingsScopePrivateChats", "chatTypeBasicGroup": "notificationSettingsScopeGroupChats",
-          "chatTypeSupergroup": None}                                    # scope depends on is_channel, resolved below
+SCOPES = {
+    "chatTypePrivate": "notificationSettingsScopePrivateChats",
+    "chatTypeBasicGroup": "notificationSettingsScopeGroupChats",
+    "chatTypeSupergroup": None,
+}  # scope depends on is_channel, resolved below
 
 
 class Refused(Exception):
@@ -53,8 +84,14 @@ def secrets(run=subprocess.run):
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.rstrip("\n").split("=", 1)
                 env[k.strip()] = v.strip().strip('"')
-    out = run([NODE, RESOLVER], input=json.dumps({"protocolVersion": 1, "provider": "bws", "ids": list(SECRET_IDS)}),
-              capture_output=True, text=True, timeout=30, env=env)
+    out = run(
+        [NODE, RESOLVER],
+        input=json.dumps({"protocolVersion": 1, "provider": "bws", "ids": list(SECRET_IDS)}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
     values = (json.loads(out.stdout or "{}").get("values") or {}) if out.returncode == 0 else {}
     api_id, api_hash = values.get(SECRET_IDS[0], ""), values.get(SECRET_IDS[1], "")
     if not str(api_id).strip().isdigit() or len(str(api_hash).strip()) != 32:
@@ -105,14 +142,26 @@ class Td:
 
 def params(api_id, api_hash, key):
     os.makedirs(STATE, mode=0o700, exist_ok=True)
-    return {"@type": "setTdlibParameters", "use_test_dc": False, "database_directory": STATE, "files_directory": os.path.join(STATE, "files"),
-            "database_encryption_key": key, "use_file_database": False, "use_chat_info_database": False, "use_message_database": False,
-            "use_secret_chats": False, "api_id": api_id, "api_hash": api_hash, "system_language_code": "en", "device_model": "LIFE OS attention (Oracle)",
-            "system_version": "", "application_version": "1.0"}
+    return {
+        "@type": "setTdlibParameters",
+        "use_test_dc": False,
+        "database_directory": STATE,
+        "files_directory": os.path.join(STATE, "files"),
+        "database_encryption_key": key,
+        "use_file_database": False,
+        "use_chat_info_database": False,
+        "use_message_database": False,
+        "use_secret_chats": False,
+        "api_id": api_id,
+        "api_hash": api_hash,
+        "system_language_code": "en",
+        "device_model": "LIFE OS attention (Oracle)",
+        "system_version": "",
+        "application_version": "1.0",
+    }
 
 
 class Session:
-
     def __init__(self, td):
         self.td, self.chats, self.users, self.scopes, self.replies = td, {}, {}, {}, {}
         self.auth, self.connection, self.me = None, None, None
@@ -142,17 +191,39 @@ class Session:
             self.connection = e["state"]["@type"]
         elif kind == "updateNewChat":
             c = e["chat"]
-            self.chats[c["id"]] = {k: c.get(k) for k in ("id", "type", "positions", "unread_count", "is_marked_as_unread", "notification_settings", "last_message")}
+            self.chats[c["id"]] = {
+                k: c.get(k)
+                for k in (
+                    "id",
+                    "type",
+                    "positions",
+                    "unread_count",
+                    "is_marked_as_unread",
+                    "notification_settings",
+                    "last_message",
+                )
+            }
         elif kind == "updateUser":
             u = e["user"]
             self.users[u["id"]] = u
-        elif kind in ("updateChatLastMessage", "updateChatPosition", "updateChatReadInbox", "updateChatIsMarkedAsUnread", "updateChatNotificationSettings"):
+        elif kind in (
+            "updateChatLastMessage",
+            "updateChatPosition",
+            "updateChatReadInbox",
+            "updateChatIsMarkedAsUnread",
+            "updateChatNotificationSettings",
+        ):
             c = self.chats.setdefault(e["chat_id"], {"id": e["chat_id"], "positions": []})
             if kind == "updateChatLastMessage":
-                c["last_message"], c["positions"] = e.get("last_message"), e.get("positions") or c.get("positions") or []
+                c["last_message"], c["positions"] = (
+                    e.get("last_message"),
+                    e.get("positions") or c.get("positions") or [],
+                )
             elif kind == "updateChatPosition":
                 pos = e["position"]
-                c["positions"] = [p for p in c.get("positions") or [] if p["list"]["@type"] != pos["list"]["@type"]] + ([pos] if pos.get("order") not in (0, "0") else [])
+                c["positions"] = [p for p in c.get("positions") or [] if p["list"]["@type"] != pos["list"]["@type"]] + (
+                    [pos] if pos.get("order") not in (0, "0") else []
+                )
             elif kind == "updateChatReadInbox":
                 c["unread_count"] = e["unread_count"]
             elif kind == "updateChatIsMarkedAsUnread":
@@ -166,7 +237,7 @@ class Session:
             raise Refused("TDLIB_NOT_STARTED")
         reply = self.call(params(api_id, api_hash, key), deadline)
         if reply.get("@type") == "error":
-            raise Refused("DATABASE_UNAVAILABLE")                         # wrong key, or locked by a running login
+            raise Refused("DATABASE_UNAVAILABLE")  # wrong key, or locked by a running login
         self.pump(lambda: self.auth not in (None, "authorizationStateWaitTdlibParameters"), deadline)
 
     def close(self, deadline):
@@ -191,7 +262,11 @@ def muted(chat, scopes):
 def scope_of(chat):
     t = (chat.get("type") or {}).get("@type")
     if t == "chatTypeSupergroup":
-        return "notificationSettingsScopeChannelChats" if chat["type"].get("is_channel") else "notificationSettingsScopeGroupChats"
+        return (
+            "notificationSettingsScopeChannelChats"
+            if chat["type"].get("is_channel")
+            else "notificationSettingsScopeGroupChats"
+        )
     return SCOPES.get(t)
 
 
@@ -199,15 +274,23 @@ def counts(chats, scopes):
     main = [c for c in chats.values() if in_main(c)]
     unread = lambda c: c.get("unread_count") or 0
     loud = [c for c in main if not muted(c, scopes)]
-    return {"chats_main": len(main), "unread_messages": sum(unread(c) for c in main), "unread_messages_unmuted": sum(unread(c) for c in loud),
-            "unread_chats": sum(1 for c in main if unread(c) or c.get("is_marked_as_unread")),
-            "unread_chats_unmuted": sum(1 for c in loud if unread(c) or c.get("is_marked_as_unread"))}
+    return {
+        "chats_main": len(main),
+        "unread_messages": sum(unread(c) for c in main),
+        "unread_messages_unmuted": sum(unread(c) for c in loud),
+        "unread_chats": sum(1 for c in main if unread(c) or c.get("is_marked_as_unread")),
+        "unread_chats_unmuted": sum(1 for c in loud if unread(c) or c.get("is_marked_as_unread")),
+    }
 
 
 def person(message, me, users=None):
     """A message from another person (not me, a bot, a channel post or service account): its user id, else None."""
     sender = message.get("sender_id") or {}
-    if message.get("is_outgoing") or sender.get("@type") != "messageSenderUser" or sender.get("user_id") in (me, TELEGRAM_SERVICE):
+    if (
+        message.get("is_outgoing")
+        or sender.get("@type") != "messageSenderUser"
+        or sender.get("user_id") in (me, TELEGRAM_SERVICE)
+    ):
         return None
     if (message.get("content") or {}).get("@type") not in SENT_BY_A_PERSON:
         return None
@@ -220,8 +303,15 @@ def latest_incoming(s, deadline):
     """(user id, unix date) of the newest message from another person across Main-list non-channel chats. A chat whose
     newest message is outgoing may hold an older incoming one, so its recent history is checked, newest first.
     """
-    candidates = sorted((c for c in s.chats.values() if in_main(c) and c.get("last_message") and not (c.get("type") or {}).get("is_channel")),
-                        key=lambda c: c["last_message"]["date"], reverse=True)
+    candidates = sorted(
+        (
+            c
+            for c in s.chats.values()
+            if in_main(c) and c.get("last_message") and not (c.get("type") or {}).get("is_channel")
+        ),
+        key=lambda c: c["last_message"]["date"],
+        reverse=True,
+    )
     best, scanned = None, 0
     for chat in candidates:
         if best and chat["last_message"]["date"] <= best[1]:
@@ -229,7 +319,17 @@ def latest_incoming(s, deadline):
         found = (who, chat["last_message"]["date"]) if (who := person(chat["last_message"], s.me, s.users)) else None
         if not found and scanned < MAX_HISTORY:
             scanned += 1
-            page = s.call({"@type": "getChatHistory", "chat_id": chat["id"], "from_message_id": 0, "offset": 0, "limit": 20, "only_local": False}, deadline)
+            page = s.call(
+                {
+                    "@type": "getChatHistory",
+                    "chat_id": chat["id"],
+                    "from_message_id": 0,
+                    "offset": 0,
+                    "limit": 20,
+                    "only_local": False,
+                },
+                deadline,
+            )
             for m in page.get("messages") or []:
                 if person(m, s.me, s.users):
                     found = (person(m, s.me, s.users), m["date"])
@@ -247,9 +347,22 @@ def display_name(s, user_id, deadline):
 
 def observe(budget=40.0, lib=LIB, creds=secrets):
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    out = {"channel": "telegram", "scope": "personal account, Main chat list (Archive excluded)", "observed_at": now, "health": "UNAVAILABLE",
-           "auth": None, "error": None, "chats_main": None, "unread_messages": None, "unread_messages_unmuted": None, "unread_chats": None,
-           "unread_chats_unmuted": None, "latest_state": "UNAVAILABLE", "latest_name": None, "latest_at": None}
+    out = {
+        "channel": "telegram",
+        "scope": "personal account, Main chat list (Archive excluded)",
+        "observed_at": now,
+        "health": "UNAVAILABLE",
+        "auth": None,
+        "error": None,
+        "chats_main": None,
+        "unread_messages": None,
+        "unread_messages_unmuted": None,
+        "unread_chats": None,
+        "unread_chats_unmuted": None,
+        "latest_state": "UNAVAILABLE",
+        "latest_name": None,
+        "latest_at": None,
+    }
     deadline = time.monotonic() + budget
     try:
         key = db_key()
@@ -264,11 +377,17 @@ def observe(budget=40.0, lib=LIB, creds=secrets):
         if s.auth != "authorizationStateReady":
             return {**out, "auth": "NOT_SIGNED_IN" if s.auth and "Wait" in s.auth else "CLOSED"}
         out["auth"] = "READY"
-        if not s.pump(lambda: s.connection == "connectionStateReady", deadline):          # connected AND caught up
+        if not s.pump(lambda: s.connection == "connectionStateReady", deadline):  # connected AND caught up
             raise Refused("NOT_CONNECTED")
         s.me = s.call({"@type": "getMe"}, deadline).get("id")
-        for scope in ("notificationSettingsScopePrivateChats", "notificationSettingsScopeGroupChats", "notificationSettingsScopeChannelChats"):
-            s.scopes[scope] = s.call({"@type": "getScopeNotificationSettings", "scope": {"@type": scope}}, deadline).get("mute_for", 0)
+        for scope in (
+            "notificationSettingsScopePrivateChats",
+            "notificationSettingsScopeGroupChats",
+            "notificationSettingsScopeChannelChats",
+        ):
+            s.scopes[scope] = s.call(
+                {"@type": "getScopeNotificationSettings", "scope": {"@type": scope}}, deadline
+            ).get("mute_for", 0)
         while True:  # 404 means the whole Main list is known
             reply = s.call({"@type": "loadChats", "chat_list": {"@type": "chatListMain"}, "limit": 100}, deadline)
             if reply.get("@type") == "error":
@@ -280,9 +399,16 @@ def observe(budget=40.0, lib=LIB, creds=secrets):
         name = display_name(s, best[0], deadline) if best else None
         if s.connection != "connectionStateReady":
             raise Refused("NOT_CONNECTED")
-        return {**out, **found, "health": "CURRENT", "latest_state": "PRESENT" if best else "NONE",
-                "latest_name": (name or "Unknown contact") if best else None,
-                "latest_at": datetime.fromtimestamp(best[1], timezone.utc).isoformat().replace("+00:00", "Z") if best else None}
+        return {
+            **out,
+            **found,
+            "health": "CURRENT",
+            "latest_state": "PRESENT" if best else "NONE",
+            "latest_name": (name or "Unknown contact") if best else None,
+            "latest_at": datetime.fromtimestamp(best[1], timezone.utc).isoformat().replace("+00:00", "Z")
+            if best
+            else None,
+        }
     except Refused as e:
         return {**out, "health": "DEGRADED" if out["auth"] == "READY" else "UNAVAILABLE", "error": str(e)}
     finally:
@@ -297,11 +423,26 @@ def login():
     while s.auth != "authorizationStateReady":
         step = s.auth
         if s.auth == "authorizationStateWaitPhoneNumber":
-            reply = s.call({"@type": "setAuthenticationPhoneNumber", "phone_number": input("Telegram phone number (international format): ").strip()}, deadline)
+            reply = s.call(
+                {
+                    "@type": "setAuthenticationPhoneNumber",
+                    "phone_number": input("Telegram phone number (international format): ").strip(),
+                },
+                deadline,
+            )
         elif s.auth == "authorizationStateWaitCode":
-            reply = s.call({"@type": "checkAuthenticationCode", "code": input("Login code Telegram just sent you: ").strip()}, deadline)
+            reply = s.call(
+                {"@type": "checkAuthenticationCode", "code": input("Login code Telegram just sent you: ").strip()},
+                deadline,
+            )
         elif s.auth == "authorizationStateWaitPassword":
-            reply = s.call({"@type": "checkAuthenticationPassword", "password": getpass.getpass("Two-step verification password: ")}, deadline)
+            reply = s.call(
+                {
+                    "@type": "checkAuthenticationPassword",
+                    "password": getpass.getpass("Two-step verification password: "),
+                },
+                deadline,
+            )
         else:
             print("Stopped: Telegram asked for a step this tool does not perform (%s)." % (s.auth or "unknown"))
             s.close(time.monotonic() + 5)
@@ -310,7 +451,9 @@ def login():
             print("Telegram refused that entry; try again.")
         else:
             s.pump(lambda step=step: s.auth != step, time.monotonic() + 20)
-    print("Signed in. This Oracle session is now listed in Telegram > Settings > Devices as 'LIFE OS attention (Oracle)'.")
+    print(
+        "Signed in. This Oracle session is now listed in Telegram > Settings > Devices as 'LIFE OS attention (Oracle)'."
+    )
     s.close(time.monotonic() + 10)
     return 0
 

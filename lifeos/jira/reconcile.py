@@ -4,6 +4,7 @@ Gated by MEJ_SPRINT_AUTOMATION (exactly "on"). Every Jira write is an injected e
 closed with JIRA_RECONCILE_WRITER_UNVERIFIED. Planning is pure; never closes or starts a sprint (rollover does).
 Counts and fixed codes only.
 """
+
 import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -34,7 +35,9 @@ def iso_name(project, monday):
 
 def week_bounds(monday, tz):
     start = datetime.combine(monday, datetime.min.time(), tzinfo=tz)
-    return start, datetime.combine(monday + timedelta(days=6), datetime.min.time(), tzinfo=tz) + timedelta(hours=23, minutes=30)
+    return start, datetime.combine(monday + timedelta(days=6), datetime.min.time(), tzinfo=tz) + timedelta(
+        hours=23, minutes=30
+    )
 
 
 def monday_of(day):
@@ -48,7 +51,9 @@ def _span(sprint, tz):
     first, last = start.astimezone(tz).date(), end.astimezone(tz).date()
     if (last - first).days == 6 and first.weekday() == 0:
         return first
-    if abs(start - week_bounds(monday_of((start + DST_TOLERANCE).astimezone(tz).date()), tz)[0]) <= DST_TOLERANCE and (end - start) < timedelta(days=8):
+    if abs(start - week_bounds(monday_of((start + DST_TOLERANCE).astimezone(tz).date()), tz)[0]) <= DST_TOLERANCE and (
+        end - start
+    ) < timedelta(days=8):
         return monday_of((start + DST_TOLERANCE).astimezone(tz).date())
     return None
 
@@ -98,9 +103,15 @@ def _field(issue, name):
 
 def _norm(issue):
     f = issue.get("fields") or {}
-    return {"key": issue.get("key"), "type": (f.get("issuetype") or {}).get("name"), "priority": (f.get("priority") or {}).get("name"),
-            "category": ((f.get("status") or {}).get("statusCategory") or {}).get("key"), "status": (f.get("status") or {}).get("name") or "",
-            "labels": list(f.get("labels") or []), "parent": (f.get("parent") or {}).get("key")}
+    return {
+        "key": issue.get("key"),
+        "type": (f.get("issuetype") or {}).get("name"),
+        "priority": (f.get("priority") or {}).get("name"),
+        "category": ((f.get("status") or {}).get("statusCategory") or {}).get("key"),
+        "status": (f.get("status") or {}).get("name") or "",
+        "labels": list(f.get("labels") or []),
+        "parent": (f.get("parent") or {}).get("key"),
+    }
 
 
 AUTO_LABEL = "auto-closed"
@@ -144,7 +155,7 @@ def series(issues, configured=()):
     by_key = {i["key"]: i for i in issues}
     parent_of = {}
     for i in issues:
-        for link in (_field(i, "issuelinks") or []):
+        for link in _field(i, "issuelinks") or []:
             if ((link.get("type") or {}).get("name")) == "Cloners" and link.get("outwardIssue"):
                 origin = link["outwardIssue"]["key"]
                 if parent_of.get(i["key"], origin) != origin:
@@ -155,8 +166,11 @@ def series(issues, configured=()):
         if key in seen:
             raise JiraError("JIRA_RECONCILE_IDENTITY_AMBIGUOUS")
         return root(parent_of[key], seen + (key,)) if key in parent_of else key
+
     out = {}
-    wanted = {i["key"] for i in issues if RECURRING in (_field(i, "labels") or [])} | {k for k in configured if k in by_key}
+    wanted = {i["key"] for i in issues if RECURRING in (_field(i, "labels") or [])} | {
+        k for k in configured if k in by_key
+    }
     for key in sorted(wanted):
         entry = out.setdefault(root(key), {"keys": [], "labelled": False})
         entry["keys"].append(key)
@@ -175,9 +189,18 @@ def clone_fields(issue, advance_days=7):
     if isinstance(description, str):
         description = description.replace("[x]", "[ ]").replace("[X]", "[ ]")
     due = f.get("duedate")
-    return {"summary": f.get("summary"), "description": description, "assignee": (f.get("assignee") or {}).get("accountId"), "priority": (f.get("priority") or {}).get("name"),
-            "labels": list(f.get("labels") or []), "parent": (f.get("parent") or {}).get("key"), "status": "To Do", "resolution": None,
-            "duedate": (date.fromisoformat(due) + timedelta(days=advance_days)).isoformat() if due else None, "subtasks": [clone_fields(s, advance_days) for s in (f.get("subtasks") or [])]}
+    return {
+        "summary": f.get("summary"),
+        "description": description,
+        "assignee": (f.get("assignee") or {}).get("accountId"),
+        "priority": (f.get("priority") or {}).get("name"),
+        "labels": list(f.get("labels") or []),
+        "parent": (f.get("parent") or {}).get("key"),
+        "status": "To Do",
+        "resolution": None,
+        "duedate": (date.fromisoformat(due) + timedelta(days=advance_days)).isoformat() if due else None,
+        "subtasks": [clone_fields(s, advance_days) for s in (f.get("subtasks") or [])],
+    }
 
 
 def plan_recurrence(issues, found, next_sprint_id, configured=()):
@@ -194,15 +217,27 @@ def plan_recurrence(issues, found, next_sprint_id, configured=()):
         if len(in_next) > 1:
             out["exceptions"].append("JIRA_RECONCILE_DUPLICATE_OCCURRENCE")
             continue
-        latest = max((m for m in members if ((_field(m, "sprint") or {}).get("id")) != next_sprint_id), key=lambda m: order(m["key"]), default=None)
+        latest = max(
+            (m for m in members if ((_field(m, "sprint") or {}).get("id")) != next_sprint_id),
+            key=lambda m: order(m["key"]),
+            default=None,
+        )
         if not in_next:
             out["create"].append(root_key)
             continue
         future = in_next[0]
-        if latest is not None and _field(future, "status") and ((_field(future, "status") or {}).get("statusCategory") or {}).get("key") != "done":
+        if (
+            latest is not None
+            and _field(future, "status")
+            and ((_field(future, "status") or {}).get("statusCategory") or {}).get("key") != "done"
+        ):
             want = clone_fields(latest, 0)
             have = clone_fields(future, 0)
-            drift = {k: want[k] for k in ("summary", "description", "assignee", "priority", "labels", "parent") if want[k] != have[k]}
+            drift = {
+                k: want[k]
+                for k in ("summary", "description", "assignee", "priority", "labels", "parent")
+                if want[k] != have[k]
+            }
             if drift:
                 out["sync"].append((future["key"], drift))
     return out
@@ -241,7 +276,10 @@ def since(environ=None):
 
 def writers_verified(environ=None):
     try:
-        return str((os.environ if environ is None else environ).get("JIRA_WRITERS_VERIFIED") or "").strip().lower() == "yes"
+        return (
+            str((os.environ if environ is None else environ).get("JIRA_WRITERS_VERIFIED") or "").strip().lower()
+            == "yes"
+        )
     except (AttributeError, TypeError):
         return False
 
@@ -256,7 +294,9 @@ def due(now, last_done, tz=None):
 
 def enabled(environ=None):
     try:
-        return str((os.environ if environ is None else environ).get("MEJ_SPRINT_AUTOMATION") or "").strip().lower() == "on"
+        return (
+            str((os.environ if environ is None else environ).get("MEJ_SPRINT_AUTOMATION") or "").strip().lower() == "on"
+        )
     except (AttributeError, TypeError):
         return False
 
@@ -286,7 +326,9 @@ class Writers:
 
 
 def _inventory(client, board_id, project, keys):
-    return owned(client.sprints(board_id, "active"), project, keys), owned(client.sprints(board_id, "future"), project, keys)
+    return owned(client.sprints(board_id, "active"), project, keys), owned(
+        client.sprints(board_id, "future"), project, keys
+    )
 
 
 def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=None, minimum=MIN_FUTURE):
@@ -294,7 +336,11 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
         active, future = _inventory(client, board_id, project, keys)
         p = plan_sprints(project, active, future, now, tz, minimum)
         if not live:
-            return {"would_rename": len(p["rename"]), "would_create": len(p["create"]), "future": len(future) + len(p["create"])}
+            return {
+                "would_rename": len(p["rename"]),
+                "would_create": len(p["create"]),
+                "future": len(future) + len(p["create"]),
+            }
         if not p["rename"] and not p["create"]:
             return {"renamed": 0, "created": 0, "future": len(future)}
         done = {"renamed": 0, "created": 0}
@@ -315,7 +361,19 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
     raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None, extra=None, force=False):
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    client=None,
+    now=None,
+    writers=None,
+    state=None,
+    alert=None,
+    sleep=None,
+    extra=None,
+    force=False,
+):
     """The daily reconciliation stage. Off: {"enabled": 0}, nothing read. On: at most once per Chicago date after 8:00 AM CT,
     JFM and MEJ as one unit. Live needs injected `writers` and `state` (get() -> last date, set(date)) or fails closed."""
     if not enabled(environ):
@@ -330,10 +388,21 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
     if (force and local.hour < DAILY_HOUR) or (not force and not due(now, last, tz)):
         return {"enabled": 1, "not_due": 1}
     from lifeos.platform.jira import Jira
+
     configured = [b for b in boards(environ) if not b[3]]
     client = client or Jira.from_env(environ)
     keys = [b[0] for b in boards(environ)]
-    total = {"enabled": 1, "boards": len(configured), "ok": 0, "failed": 0, "renamed": 0, "created": 0, "would_rename": 0, "would_create": 0, "why": {}}
+    total = {
+        "enabled": 1,
+        "boards": len(configured),
+        "ok": 0,
+        "failed": 0,
+        "renamed": 0,
+        "created": 0,
+        "would_rename": 0,
+        "would_create": 0,
+        "why": {},
+    }
     future_by_board = {}
     for position, (project, board_id, _, _) in enumerate(configured, 1):
         try:
@@ -350,16 +419,27 @@ def run(limit, live, environ=os.environ, client=None, now=None, writers=None, st
         for k in ("renamed", "created", "would_rename", "would_create"):
             total[k] += result.get(k, 0)
         for k, v in result.items():
-            if k not in ("renamed", "created", "would_rename", "would_create", "future") and isinstance(v, int) and not isinstance(v, bool):
+            if (
+                k not in ("renamed", "created", "would_rename", "would_create", "future")
+                and isinstance(v, int)
+                and not isinstance(v, bool)
+            ):
                 total[k] = total.get(k, 0) + v
     if total["failed"]:
         if alert:
-            alert("Jira daily reconciliation failed", f"{total['failed']} of {total['boards']} boards: " + ", ".join(sorted(total["why"])))
+            alert(
+                "Jira daily reconciliation failed",
+                f"{total['failed']} of {total['boards']} boards: " + ", ".join(sorted(total["why"])),
+            )
         raise JiraError(f"JIRA_RECONCILE_FAILED:{total['failed']}of{total['boards']}:" + ",".join(sorted(total["why"])))
     if live and state is not None and not force:
         state.set(now.astimezone(tz).date())
     total["future_by_board"] = future_by_board
     total["future_over_target"] = sorted(project for project, count in future_by_board.items() if count > minimum)
     total["future_target"] = minimum
-    total["summary"] = f"Jira sprints: {total['ok']} boards in order, {total['created']} sprints added, {total['renamed']} renamed" if live else "Jira sprints: dry run"
+    total["summary"] = (
+        f"Jira sprints: {total['ok']} boards in order, {total['created']} sprints added, {total['renamed']} renamed"
+        if live
+        else "Jira sprints: dry run"
+    )
     return total

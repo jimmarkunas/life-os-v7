@@ -14,6 +14,7 @@ closes with no output:
   drive1 <1..14>, gran1 <1..4096> + newline + that many bytes, concord1: forwarded unchanged to the read-only helper
      over its root-installed Unix socket under /run/lifeos-*; the one reply is passed back unread.
 It writes nothing, logs nothing and never runs inside a Luna/OpenClaw session."""
+
 import hashlib
 import hmac
 import importlib.machinery
@@ -204,8 +205,14 @@ def comms(wrapper, key, now=None):
             name = " ".join(((newest["sender"] or {}).get("name") or "").split())[:MAX_NAME] or "Unknown contact"
             latest = scramble(key, name)
     health = "CURRENT" if unread is not None and state != "UNAVAILABLE" else "DEGRADED"
-    return {"schema": COMMS_SCHEMA, "observed_at": counts.get("observed_at") or recent.get("observed_at"), "health": health,
-            "unread_7d": unread, "latest_state": state, "latest": latest}
+    return {
+        "schema": COMMS_SCHEMA,
+        "observed_at": counts.get("observed_at") or recent.get("observed_at"),
+        "health": health,
+        "unread_7d": unread,
+        "latest_state": state,
+        "latest": latest,
+    }
 
 
 def load_wrapper(path=WRAPPER):
@@ -227,15 +234,32 @@ def scan(hours, wrapper, secret, now=None):
     events = []
     for m, verdict in wrapper.verdicts(got["messages"]):
         if verdict["level"] in PUSHED:
-            events.append({"key": event_key(secret, m["ref"]), "severity": verdict["level"], "reasons": verdict["reasons"], "review": verdict["review"]})
+            events.append(
+                {
+                    "key": event_key(secret, m["ref"]),
+                    "severity": verdict["level"],
+                    "reasons": verdict["reasons"],
+                    "review": verdict["review"],
+                }
+            )
     overflow = len(events) > MAX_EVENTS
     complete = got["complete"] and not overflow
     health = got["health"] if got["health"] in ("CURRENT", "DEGRADED", "DISCONNECTED", "STALE") else "DEGRADED"
     if not complete and health == "CURRENT":
         health = "DEGRADED"
-    return {"schema": SCHEMA, "observed_at": got["observed_at"], "lookback_hours": hours, "limit": limit, "pages": got["pages"], "sync": "UNVERIFIED",
-            "events": events[:MAX_EVENTS], "health": health, "complete": complete, "scanned": len(got["messages"]),
-            "limit_reached": got["truncated"] or overflow}
+    return {
+        "schema": SCHEMA,
+        "observed_at": got["observed_at"],
+        "lookback_hours": hours,
+        "limit": limit,
+        "pages": got["pages"],
+        "sync": "UNVERIFIED",
+        "events": events[:MAX_EVENTS],
+        "health": health,
+        "complete": complete,
+        "scanned": len(got["messages"]),
+        "limit_reached": got["truncated"] or overflow,
+    }
 
 
 def telegram(key, run=subprocess.run):
@@ -243,7 +267,9 @@ def telegram(key, run=subprocess.run):
     missing, slow or malformed adapter is UNAVAILABLE with null counts, never a zero.
     """
     try:
-        done = run(["/usr/bin/python3", "-I", TELEGRAM, "attention"], capture_output=True, text=True, timeout=TELEGRAM_TIMEOUT)
+        done = run(
+            ["/usr/bin/python3", "-I", TELEGRAM, "attention"], capture_output=True, text=True, timeout=TELEGRAM_TIMEOUT
+        )
         got = json.loads(done.stdout) if done.returncode == 0 else None
     except (OSError, ValueError, subprocess.SubprocessError):
         got = None
@@ -254,19 +280,37 @@ def telegram(key, run=subprocess.run):
 
 
 def _attention_block(got, key, healths):
-    blank = {"health": "UNAVAILABLE", "auth": "ADAPTER_UNAVAILABLE", "error": None, "observed_at": None, "latest_state": "UNAVAILABLE", "latest": None,
-             **{k: None for k in TG_COUNTS}}
+    blank = {
+        "health": "UNAVAILABLE",
+        "auth": "ADAPTER_UNAVAILABLE",
+        "error": None,
+        "observed_at": None,
+        "latest_state": "UNAVAILABLE",
+        "latest": None,
+        **{k: None for k in TG_COUNTS},
+    }
     if not isinstance(got, dict) or got.get("health") not in healths:
         return blank
     current = got["health"] == "CURRENT"
     counts = {k: got.get(k) if current and type(got.get(k)) is int and got.get(k) >= 0 else None for k in TG_COUNTS}
-    name = got.get("latest_name") if current and got.get("latest_state") == "PRESENT" and isinstance(got.get("latest_name"), str) else None
+    name = (
+        got.get("latest_name")
+        if current and got.get("latest_state") == "PRESENT" and isinstance(got.get("latest_name"), str)
+        else None
+    )
     state = got.get("latest_state") if current and got.get("latest_state") in ("PRESENT", "NONE") else "UNAVAILABLE"
     if state == "PRESENT" and not name:
         state = "UNAVAILABLE"
-    return {**blank, **counts, "health": got["health"] if got["health"] in ("CURRENT", "DEGRADED", "UNAVAILABLE") else "UNAVAILABLE",
-            "auth": str(got.get("auth") or got["health"])[:40], "error": str(got.get("error") or "")[:40] or None,
-            "observed_at": got.get("observed_at"), "latest_state": state, "latest": scramble(key, name[:MAX_NAME]) if name else None}
+    return {
+        **blank,
+        **counts,
+        "health": got["health"] if got["health"] in ("CURRENT", "DEGRADED", "UNAVAILABLE") else "UNAVAILABLE",
+        "auth": str(got.get("auth") or got["health"])[:40],
+        "error": str(got.get("error") or "")[:40] or None,
+        "observed_at": got.get("observed_at"),
+        "latest_state": state,
+        "latest": scramble(key, name[:MAX_NAME]) if name else None,
+    }
 
 
 def _wa_snapshot(path):
@@ -355,7 +399,19 @@ def concord1(frame, path=CONCORD_SOCKET, wait=CONCORD_WAIT):
     return data
 
 
-def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats, gran=gran1, drive=drive1, concord=concord1):
+def main(
+    stdin=None,
+    stdout=None,
+    lookup=whois,
+    wrapper_path=WRAPPER,
+    key_path=EVENT_KEY,
+    now=None,
+    uid=loopback_peer_uid,
+    stats=oracle_stats,
+    gran=gran1,
+    drive=drive1,
+    concord=concord1,
+):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
     try:

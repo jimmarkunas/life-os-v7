@@ -3,6 +3,7 @@
 A batched PR passes every key; each ticket gets the same receipt listing every ticket and its proof. A ticket already
 Done, or already carrying this PR's receipt, is not written again. Needs JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN.
 Output: one line per ticket, key and outcome only."""
+
 import argparse
 import re
 import sys
@@ -30,7 +31,11 @@ def marker(pr, sha):
 
 
 def adf(text):
-    return {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": line}]} for line in text.splitlines()]}
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": line}]} for line in text.splitlines()],
+    }
 
 
 def read(jira, key):
@@ -49,13 +54,19 @@ def close(jira, key, text, mark, live=False):
     if done and has:
         return {"key": key, "outcome": "already_done", "problems": []}
     if not live:
-        return {"key": key, "outcome": "dry_run", "problems": [] + ([] if has else ["would comment"]) + ([] if done else ["would move to Done"])}
+        return {
+            "key": key,
+            "outcome": "dry_run",
+            "problems": [] + ([] if has else ["would comment"]) + ([] if done else ["would move to Done"]),
+        }
     if not has:
         jira.post(f"/rest/api/3/issue/{key}/comment", {"body": adf(text)})
     if not done:
         jira.post(f"/rest/api/3/issue/{key}/transitions", {"transition": {"id": DONE}})
     status, comments = read(jira, key)
-    problems = ([] if status.lower() == "done" else [f"status reads {status or 'empty'}"]) + ([] if any(mark in c for c in comments) else ["receipt comment not read back"])
+    problems = ([] if status.lower() == "done" else [f"status reads {status or 'empty'}"]) + (
+        [] if any(mark in c for c in comments) else ["receipt comment not read back"]
+    )
     return {"key": key, "outcome": "partial" if problems else "closed", "problems": problems}
 
 
@@ -78,7 +89,11 @@ def main(argv=None, jira=None, now=None, out=sys.stdout):
     worst = 0
     for key in args.keys:
         result = close(jira, key, text, mark, args.live)
-        print(f"closeout: {key} {result['outcome']}" + (": " + "; ".join(result["problems"]) if result["problems"] else ""), file=out)
+        print(
+            f"closeout: {key} {result['outcome']}"
+            + (": " + "; ".join(result["problems"]) if result["problems"] else ""),
+            file=out,
+        )
         worst = worst or int(result["outcome"] == "partial")
     return worst
 

@@ -17,6 +17,7 @@ Failure codes (ok false), all prefixed SECRET_: BAD_ARGS, NOT_ROOT, REGISTRY_UNS
 RATE_LIMITED, AUDIT_UNAVAILABLE, CRED_UNREADABLE, FETCH_FAILED, BAD_REPLY, FIELD_NOT_SCALAR, OUTPUT_TOO_LARGE,
 OUTPUT_CONTAINS_SECRET. Stdlib only.
 """
+
 import base64
 import binascii
 import hashlib
@@ -40,7 +41,9 @@ DECRYPT = "/usr/bin/systemd-creds"
 PURPOSE = re.compile(r"[a-z][a-z0-9_]{1,40}")
 NAME = re.compile(r"[a-z][a-z0-9_]{1,60}")
 HTTPS = re.compile(r"https://[a-z0-9.-]+(/[A-Za-z0-9._~/-]*)?")
-ATLASSIAN = re.compile(r"https://api\.atlassian\.com/ex/jira/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/rest/api/3/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}(\?fields=[a-z,]+)?")
+ATLASSIAN = re.compile(
+    r"https://api\.atlassian\.com/ex/jira/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/rest/api/3/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}(\?fields=[a-z,]+)?"
+)
 ANTHROPIC_URL = "https://api.anthropic.com/v1/models"
 ANTHROPIC_VERSION = "2023-06-01"
 BASIC_CRED = re.compile(r"[^:\s@]+@[^:\s@]+:[^\s]+")
@@ -77,7 +80,12 @@ def secret_forms(value, auth="bearer"):
 
 def systemd_decrypt(name):
     try:
-        done = subprocess.run([DECRYPT, "decrypt", "--name=" + name, os.path.join(CREDS, name + ".cred"), "-"], capture_output=True, timeout=15, stdin=subprocess.DEVNULL)
+        done = subprocess.run(
+            [DECRYPT, "decrypt", "--name=" + name, os.path.join(CREDS, name + ".cred"), "-"],
+            capture_output=True,
+            timeout=15,
+            stdin=subprocess.DEVNULL,
+        )
     except (OSError, subprocess.SubprocessError):
         raise Refused("SECRET_CRED_UNREADABLE") from None
     if done.returncode != 0 or not done.stdout.strip():
@@ -89,7 +97,6 @@ def systemd_decrypt(name):
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
-
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
@@ -99,17 +106,29 @@ def http_fetch(url, secret, auth="bearer"):
     if auth == "x-api-key":
         headers.update({"x-api-key": secret, "anthropic-version": ANTHROPIC_VERSION})
     else:
-        headers["Authorization"] = ("Basic " + base64.b64encode(secret.encode()).decode()) if auth == "basic" else "Bearer " + secret
+        headers["Authorization"] = (
+            ("Basic " + base64.b64encode(secret.encode()).decode()) if auth == "basic" else "Bearer " + secret
+        )
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.build_opener(NoRedirect).open(request, timeout=FETCH_WAIT) as reply:      # nosec: https only, checked against the registry pattern
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=FETCH_WAIT) as reply:  # nosec: https only, checked against the registry pattern
             return reply.read(FETCH_MAX + 1)
     except (urllib.error.URLError, OSError, ValueError):
         raise Refused("SECRET_FETCH_FAILED") from None
 
 
 class Broker:
-    def __init__(self, registry=REGISTRY, creds=CREDS, log=LOG, decrypt=systemd_decrypt, fetch=http_fetch, euid=None, clock=time.time, owner=0):
+    def __init__(
+        self,
+        registry=REGISTRY,
+        creds=CREDS,
+        log=LOG,
+        decrypt=systemd_decrypt,
+        fetch=http_fetch,
+        euid=None,
+        clock=time.time,
+        owner=0,
+    ):
         self.registry, self.creds, self.log = registry, creds, log
         self.decrypt, self.fetch, self.clock, self.owner = decrypt, fetch, clock, owner
         self.euid = os.geteuid() if euid is None else euid
@@ -136,8 +155,13 @@ class Broker:
                 row = json.loads(line)
             except ValueError:
                 continue
-            if (isinstance(row, dict) and row.get("caller") == caller and row.get("result") != "START"
-                    and isinstance(row.get("epoch"), (int, float)) and row["epoch"] > now - 60):
+            if (
+                isinstance(row, dict)
+                and row.get("caller") == caller
+                and row.get("result") != "START"
+                and isinstance(row.get("epoch"), (int, float))
+                and row["epoch"] > now - 60
+            ):
                 count += 1
         return count
 
@@ -148,29 +172,57 @@ class Broker:
         except OSError:
             raise Refused("SECRET_UNKNOWN_PURPOSE") from None
         dir_info = os.stat(self.registry)
-        if info.st_uid != self.owner or dir_info.st_uid != self.owner or info.st_mode & 0o022 or dir_info.st_mode & 0o022:
+        if (
+            info.st_uid != self.owner
+            or dir_info.st_uid != self.owner
+            or info.st_mode & 0o022
+            or dir_info.st_mode & 0o022
+        ):
             raise Refused("SECRET_REGISTRY_UNSAFE")
         try:
             with open(path) as handle:
                 spec = json.load(handle)
         except (OSError, ValueError):
             raise Refused("SECRET_REGISTRY_UNSAFE") from None
-        ok = (isinstance(spec, dict) and spec.get("purpose") == purpose and isinstance(spec.get("secret"), str) and NAME.fullmatch(spec["secret"])
-              and spec.get("action") in ACTIONS and isinstance(spec.get("callers"), list) and spec["callers"] and all(isinstance(c, str) for c in spec["callers"]))
+        ok = (
+            isinstance(spec, dict)
+            and spec.get("purpose") == purpose
+            and isinstance(spec.get("secret"), str)
+            and NAME.fullmatch(spec["secret"])
+            and spec.get("action") in ACTIONS
+            and isinstance(spec.get("callers"), list)
+            and spec["callers"]
+            and all(isinstance(c, str) for c in spec["callers"])
+        )
         if ok and spec.get("auth", "bearer") not in AUTHS:
             ok = False
         if ok and spec["action"] == "http_get_fields":
             pattern = ATLASSIAN if spec.get("auth") == "basic" else HTTPS
-            url_ok = spec.get("url") == ANTHROPIC_URL if spec.get("auth") == "x-api-key" else (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]))
-            ok = (url_ok and isinstance(spec.get("fields"), list) and spec["fields"]
-                  and all(isinstance(f, str) and re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*", f) for f in spec["fields"]))
+            url_ok = (
+                spec.get("url") == ANTHROPIC_URL
+                if spec.get("auth") == "x-api-key"
+                else (isinstance(spec.get("url"), str) and pattern.fullmatch(spec["url"]))
+            )
+            ok = (
+                url_ok
+                and isinstance(spec.get("fields"), list)
+                and spec["fields"]
+                and all(
+                    isinstance(f, str) and re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*", f)
+                    for f in spec["fields"]
+                )
+            )
         if not ok:
             raise Refused("SECRET_REGISTRY_UNSAFE")
         return spec
 
     def act(self, spec, value):
         if spec["action"] == "check_credential":
-            return {"name": spec["secret"], "length": len(value), "sha256_prefix": hashlib.sha256(value.encode()).hexdigest()[:8]}
+            return {
+                "name": spec["secret"],
+                "length": len(value),
+                "sha256_prefix": hashlib.sha256(value.encode()).hexdigest()[:8],
+            }
         if spec.get("auth") == "basic":
             if not BASIC_CRED.fullmatch(value):
                 raise Refused("SECRET_CRED_UNREADABLE")
@@ -198,7 +250,15 @@ class Broker:
     def run(self, argv, caller):
         """-> (exit code, stdout text). The audit line is written before any credential is touched and again with the outcome."""
         now = self.clock()
-        row = {"epoch": int(now), "ct": datetime.fromtimestamp(now, CT).strftime("%Y-%m-%d %I:%M:%S %p CT"), "caller": caller, "pid": os.getpid(), "purpose": "-", "secret": "-", "bytes": 0}
+        row = {
+            "epoch": int(now),
+            "ct": datetime.fromtimestamp(now, CT).strftime("%Y-%m-%d %I:%M:%S %p CT"),
+            "caller": caller,
+            "pid": os.getpid(),
+            "purpose": "-",
+            "secret": "-",
+            "bytes": 0,
+        }
         code, text = "OK", ""
         try:
             try:

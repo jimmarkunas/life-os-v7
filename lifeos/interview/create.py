@@ -1,4 +1,5 @@
 """Creates the Interview opportunity and round pages: one page per evidence pass, no write retries."""
+
 import hashlib
 import json
 import re
@@ -13,15 +14,36 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, RoundQuery, Scan, State
-from .template import (DECISION_LINE, DECISION_MAX, DONE_LINE, DONE_MAX, HAND_MAX, HOLD_LINE, NEXT_LINE, PAGE_ICONS, REPAIRED_LINE, SENT_LINE, SENT_MAX, UNSENT_LINE, machine_part, opportunity_page, render_line,
-                       repaired_line, round_page, transcript_lines)
+from .template import (
+    DECISION_LINE,
+    DECISION_MAX,
+    DONE_LINE,
+    DONE_MAX,
+    HAND_MAX,
+    HOLD_LINE,
+    NEXT_LINE,
+    PAGE_ICONS,
+    REPAIRED_LINE,
+    SENT_LINE,
+    SENT_MAX,
+    UNSENT_LINE,
+    machine_part,
+    opportunity_page,
+    render_line,
+    repaired_line,
+    round_page,
+    transcript_lines,
+)
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
 
 def identity_text(query):
-    data = {"interview_date": query.interview_date, "interviewer": query.interviewer.strip() if query.interviewer else None,
-            "ordinal": query.ordinal}
+    data = {
+        "interview_date": query.interview_date,
+        "interviewer": query.interviewer.strip() if query.interviewer else None,
+        "ordinal": query.ordinal,
+    }
     return IDENTITY_PREFIX + json.dumps(data, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -29,10 +51,12 @@ def parse_identity(value):
     try:
         if not value.startswith(IDENTITY_PREFIX):
             return None
-        data = json.loads(value[len(IDENTITY_PREFIX):])
+        data = json.loads(value[len(IDENTITY_PREFIX) :])
         if list(data) != ["interview_date", "interviewer", "ordinal"]:
             return None
-        if not valid_date(data["interview_date"]) and not (data["interview_date"] is None and data["ordinal"] == 1 and type(data["ordinal"]) is int):
+        if not valid_date(data["interview_date"]) and not (
+            data["interview_date"] is None and data["ordinal"] == 1 and type(data["ordinal"]) is int
+        ):
             return None
         who, ordinal = data["interviewer"], data["ordinal"]
         if who is not None and (not isinstance(who, str) or not who.strip()):
@@ -54,15 +78,21 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
         return "pursuit_unconfirmed"
     blocks = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
     labels = [notion.text(b) for b in blocks]
-    if (labels.count(notion.ADOPT) != 1 or notion.JIM_NOTES in labels or notion.FOLD in labels
-            or any("v7-interview" in label for label in labels)):
+    if (
+        labels.count(notion.ADOPT) != 1
+        or notion.JIM_NOTES in labels
+        or notion.FOLD in labels
+        or any("v7-interview" in label for label in labels)
+    ):
         return "adopt_conflict"
     before = notion.human_tail(client, parent.page_id, blocks)
     out["writes_planned"] = 1
     if not live:
         return "adopt_allowed"
     context.require_time()
-    kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
+    kids = notion.child_scan(
+        client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company)
+    )
     if not kids.complete:
         return "child_scan_incomplete"
     current = _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
@@ -83,7 +113,13 @@ def begin_adopt(client, page_id, live, out, context=None):
     """Put one adopt line at the top of a hand-made page and prove every existing block is unchanged."""
     blocks = notion.children(client, page_id, [notion.MAX_CALLS], context)
     labels = [notion.text(b) for b in blocks]
-    if not blocks or notion.ADOPT in labels or notion.FOLD in labels or notion.JIM_NOTES in labels or any("v7-interview" in label for label in labels):
+    if (
+        not blocks
+        or notion.ADOPT in labels
+        or notion.FOLD in labels
+        or notion.JIM_NOTES in labels
+        or any("v7-interview" in label for label in labels)
+    ):
         return "adopt_line_conflict"
     before = notion.human_tail(client, page_id, [{}] + blocks)
     out["writes_planned"] = 1
@@ -92,12 +128,20 @@ def begin_adopt(client, page_id, live, out, context=None):
     if context:
         context.require_time()
     try:
-        client.call("PATCH", f"/blocks/{page_id}/children", {"children": [notion.paragraph(notion.ADOPT)], "position": {"type": "start"}})
+        client.call(
+            "PATCH",
+            f"/blocks/{page_id}/children",
+            {"children": [notion.paragraph(notion.ADOPT)], "position": {"type": "start"}},
+        )
     except NotionError:
         return "write_failed"
     out["writes"] = out["readback_failed"] = 1
     after = notion.children(client, page_id, [notion.MAX_CALLS], context)
-    if len(after) != len(blocks) + 1 or notion.text(after[0]) != notion.ADOPT or [b.get("id") for b in after[1:]] != [b.get("id") for b in blocks]:
+    if (
+        len(after) != len(blocks) + 1
+        or notion.text(after[0]) != notion.ADOPT
+        or [b.get("id") for b in after[1:]] != [b.get("id") for b in blocks]
+    ):
         return "readback_layout_mismatch"
     if notion.human_tail(client, page_id, after) != before:
         return "readback_protected_changed"
@@ -119,10 +163,12 @@ def today():
 def rendered(current, adopted=None, tail=0):
     """(blocks, source): the machine region plus the first `tail` notes blocks (None: all), and its digest."""
     draft = opportunity_page(current, today(), adopted=adopted)
-    source = hashlib.sha256(json.dumps(machine_part(draft), sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+    source = hashlib.sha256(json.dumps(machine_part(draft), sort_keys=True, ensure_ascii=False).encode()).hexdigest()[
+        :16
+    ]
     blocks = opportunity_page(current, today(), source, adopted=adopted)
     machine = machine_part(blocks)
-    return (blocks if tail is None else machine + blocks[len(machine):][:tail]), source
+    return (blocks if tail is None else machine + blocks[len(machine) :][:tail]), source
 
 
 RENDER = re.compile(r"v7-render:1;job=(.+);source=([0-9a-f]{16});page=([0-9a-f]{16}|pending)")
@@ -131,7 +177,9 @@ ORIGIN = re.compile(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?")
 
 def _view(client, environ, *args, **kwargs):
     base = (environ.get("V7_CLOSE_BASE_URL") or "").strip()
-    return replace(views.opportunity(client, *args, **kwargs), close_base=base.rstrip("/") if ORIGIN.fullmatch(base) else None)
+    return replace(
+        views.opportunity(client, *args, **kwargs), close_base=base.rstrip("/") if ORIGIN.fullmatch(base) else None
+    )
 
 
 def done_lines(lines):
@@ -144,11 +192,17 @@ def done_lines(lines):
 
 
 def decision_lines(lines):
-    return tuple(t for t in (notion.text(b) for b in lines if b.get("type") == "paragraph") if DECISION_LINE.fullmatch(t))[-DECISION_MAX:]
+    return tuple(
+        t for t in (notion.text(b) for b in lines if b.get("type") == "paragraph") if DECISION_LINE.fullmatch(t)
+    )[-DECISION_MAX:]
 
 
 def hand_lines(lines):
-    found = [t for t in (notion.text(b) for b in lines if b.get("type") == "paragraph") if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t)]
+    found = [
+        t
+        for t in (notion.text(b) for b in lines if b.get("type") == "paragraph")
+        if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t)
+    ]
     hand = [i for i, t in enumerate(found) if not (SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t))][-HAND_MAX:]
     sent = [i for i, t in enumerate(found) if SENT_LINE.fullmatch(t)][-SENT_MAX:]
     unsent = [i for i, t in enumerate(found) if UNSENT_LINE.fullmatch(t)][-SENT_MAX:]
@@ -156,8 +210,14 @@ def hand_lines(lines):
 
 
 def _undone(nodes):
-    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes
-            if not any(p.fullmatch(n.get("text", "")) for p in (DONE_LINE, DECISION_LINE, HOLD_LINE, NEXT_LINE, SENT_LINE, UNSENT_LINE))]
+    return [
+        {**n, "children": _undone(n["children"])} if "children" in n else n
+        for n in nodes
+        if not any(
+            p.fullmatch(n.get("text", ""))
+            for p in (DONE_LINE, DECISION_LINE, HOLD_LINE, NEXT_LINE, SENT_LINE, UNSENT_LINE)
+        )
+    ]
 
 
 def _clock():
@@ -189,10 +249,12 @@ def machine_region(client, page_id, context=None):
     """(machine blocks, fold lines, top blocks): everything before the notes heading, minus a trailing Preserved
     toggle."""
     tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
-    heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
+    heads = [
+        i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES
+    ]
     if len(heads) != 1 or not notion.is_fold(tops[0]):
         return None, [], tops
-    body = tops[:heads[0]]
+    body = tops[: heads[0]]
     if len(body) > 1 and notion.is_preserved(body[-1]):
         body = body[:-1]
     return body, notion.children(client, tops[0]["id"], [notion.MAX_CALLS], context), tops
@@ -201,10 +263,18 @@ def machine_region(client, page_id, context=None):
 def prefold_region(client, page_id, context=None):
     """(machine blocks, [marker], top blocks) of a page with the plain, unfolded marker; else machine blocks None."""
     tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
-    heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
-    if len(heads) != 1 or not tops or tops[0].get("type") != "paragraph" or not notion.is_marker(notion.text(tops[0]), "opportunity") or notion.is_fold(tops[0]):
+    heads = [
+        i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES
+    ]
+    if (
+        len(heads) != 1
+        or not tops
+        or tops[0].get("type") != "paragraph"
+        or not notion.is_marker(notion.text(tops[0]), "opportunity")
+        or notion.is_fold(tops[0])
+    ):
         return None, [], tops
-    return tops[:heads[0]], [tops[0]], tops
+    return tops[: heads[0]], [tops[0]], tops
 
 
 def _pages(tops):
@@ -212,8 +282,11 @@ def _pages(tops):
 
 
 def _fields(nodes):
-    return [{**{k: v for k, v in n.items() if k not in ("icon", "children")}, "children": _fields(n.get("children", []))}
-            for n in nodes if not n.get("text", "").startswith("v7-render:")]
+    return [
+        {**{k: v for k, v in n.items() if k not in ("icon", "children")}, "children": _fields(n.get("children", []))}
+        for n in nodes
+        if not n.get("text", "").startswith("v7-render:")
+    ]
 
 
 def finalize(client, page_id, current, sections, before=None):
@@ -229,7 +302,9 @@ def finalize(client, page_id, current, sections, before=None):
     if _fields(nodes) != _fields(want):
         return "readback_content_mismatch"
     job, source, _ = RENDER.fullmatch(notion.text(renders[0])).groups()
-    notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(_undone(nodes)))))
+    notion.set_text(
+        client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(_undone(nodes))))
+    )
     if before is not None and (notion.human_tail(client, page_id) != before[0] or _pages(tops) != before[1]):
         return "readback_protected_changed"
     return "readback_ok"
@@ -243,9 +318,16 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     if machine is None and migrate:
         machine, lines, tops = prefold_region(client, page_id, context)
         prefold = machine is not None
-    if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
+    if (
+        machine is None
+        or not lines
+        or not notion.is_marker(notion.text(lines[0]), "opportunity")
+        or "child_page" in [b.get("type") for b in machine]
+    ):
         return "parent_unrecognized"
-    current = replace(current, done=done_lines(lines), decisions=decision_lines(lines), hand=hand_lines(lines), page_id=page_id)
+    current = replace(
+        current, done=done_lines(lines), decisions=decision_lines(lines), hand=hand_lines(lines), page_id=page_id
+    )
     found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     shown, edited = [], False
     if found:
@@ -256,7 +338,10 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         shown = notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)
         edited = page != notion.tree_digest(_undone(shown))
         current = replace(current, repaired=next((t for t in _lines(shown) if REPAIRED_LINE.fullmatch(t)), ""))
-    elif not (migrate and (prefold or (len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")))):
+    elif not (
+        migrate
+        and (prefold or (len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")))
+    ):
         return "parent_legacy_layout"
     if edited:
         current = replace(current, repaired=repaired_line(_clock()))
@@ -272,7 +357,14 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     if edited:
         toggle = tops[len(machine)] if len(tops) > len(machine) and notion.is_preserved(tops[len(machine)]) else None
         try:
-            notion.preserve(client, page_id, toggle, _differing(shown, notion.as_nodes(machine_part(sections))) or [NOTHING], f"Preserved {_clock()} CT", after=machine[-1]["id"])
+            notion.preserve(
+                client,
+                page_id,
+                toggle,
+                _differing(shown, notion.as_nodes(machine_part(sections))) or [NOTHING],
+                f"Preserved {_clock()} CT",
+                after=machine[-1]["id"],
+            )
         except NotionError:
             return "preserve_failed"
         out["writes"] = out["readback_failed"] = 1
@@ -282,7 +374,11 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         client.call("PATCH", f"/pages/{page_id}", {"icon": PAGE_ICONS["opportunity"]})
         for block in machine:
             notion.delete_block(client, block["id"])
-        heading = next(b for b in tops[len(machine):] if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES)
+        heading = next(
+            b
+            for b in tops[len(machine) :]
+            if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES
+        )
         if notion.text(heading) != notion.JIM_NOTES:
             notion.set_text(client, heading["id"], heading["type"], rich_text(notion.JIM_NOTES))
     except NotionError:
@@ -333,11 +429,19 @@ def link_transcript(client, round_id, live, out):
     for column in notion.children(client, lists[0], [notion.MAX_CALLS])[1:]:
         boxes += [b for b in notion.children(client, column["id"], [notion.MAX_CALLS]) if b.get("type") == "callout"]
     want = {notion.text(line).split(":")[0]: line["paragraph"]["rich_text"] for line in transcript_lines(state, page)}
-    found = [(b, want[notion.text(b).split(":")[0]]) for box in boxes for b in notion.children(client, box["id"], [notion.MAX_CALLS])
-             if b.get("type") == "paragraph" and notion.text(b).split(":")[0] in want]
+    found = [
+        (b, want[notion.text(b).split(":")[0]])
+        for box in boxes
+        for b in notion.children(client, box["id"], [notion.MAX_CALLS])
+        if b.get("type") == "paragraph" and notion.text(b).split(":")[0] in want
+    ]
     if len(found) != 2:
         return "transcript_unrecognized"
-    stale = [(b, rich) for b, rich in found if not carried(b) and notion._plain(b["paragraph"].get("rich_text")) != notion._plain(rich)]
+    stale = [
+        (b, rich)
+        for b, rich in found
+        if not carried(b) and notion._plain(b["paragraph"].get("rich_text")) != notion._plain(rich)
+    ]
     if not stale:
         return "transcript_unchanged"
     out["writes_planned"] = 1
@@ -361,7 +465,11 @@ def _sections_readback(client, page_id, before, out, done, current=None, section
         return "readback_protected_missing"
     if notion.human_tail(client, page_id) != before:
         return "readback_protected_changed"
-    out["readback_failed"], out["readback_ok"], out["parents_adopted" if done == "parent_adopted" else "parents_upgraded"] = 0, 1, 1
+    (
+        out["readback_failed"],
+        out["readback_ok"],
+        out["parents_adopted" if done == "parent_adopted" else "parents_upgraded"],
+    ) = 0, 1, 1
     return done
 
 
@@ -370,15 +478,21 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
         return "pursuit_unconfirmed"
     labels = [notion.text(b) for b in blocks]
     heads = [notion.text(b) for b in blocks if b.get("type", "").startswith("heading")]
-    if (labels.count(notion.FOLD) > 1 or notion.ADOPT in labels or any(label in notion.MARKERS.values() for label in labels[1:])
-            or not all(label in heads for label in notion.PROTECTED)):
+    if (
+        labels.count(notion.FOLD) > 1
+        or notion.ADOPT in labels
+        or any(label in notion.MARKERS.values() for label in labels[1:])
+        or not all(label in heads for label in notion.PROTECTED)
+    ):
         return "upgrade_unrecognized"
     before = notion.human_tail(client, parent.page_id, blocks)
     out["writes_planned"] = 1
     if not live:
         return "upgrade_allowed"
     context.require_time()
-    kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
+    kids = notion.child_scan(
+        client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company)
+    )
     if not kids.complete:
         return "child_scan_incomplete"
     current = _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
@@ -414,15 +528,18 @@ def round_logistics(client, page_id, budget=None):
     found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
     ref, cancelled = (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
     held = [b for b, line in zip(nodes, lines) if line.startswith(MEETING)]
-    value = notion.text(held[0])[len(MEETING):] if len(held) == 1 and not carried(held[0]) else "Unavailable"
+    value = notion.text(held[0])[len(MEETING) :] if len(held) == 1 and not carried(held[0]) else "Unavailable"
     join = next(iter(_links(held[0])), None) if len(held) == 1 else None
     place = value.removeprefix("Join link ↗").removeprefix(" · ") if join else value
     return ref, cancelled, (join, place or None) if join or (place and place != "Unavailable") else None
 
 
 def _links(block):
-    return [((p.get("text") or {}).get("link") or {}).get("url") or p.get("href") for p in (block.get(block.get("type")) or {}).get("rich_text") or []
-            if ((p.get("text") or {}).get("link") or {}).get("url") or p.get("href")]
+    return [
+        ((p.get("text") or {}).get("link") or {}).get("url") or p.get("href")
+        for p in (block.get(block.get("type")) or {}).get("rich_text") or []
+        if ((p.get("text") or {}).get("link") or {}).get("url") or p.get("href")
+    ]
 
 
 def _changed(old, new, path=()):
@@ -467,8 +584,13 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     The page's event reference must equal the event's. Only blocks whose text differs change, the identity line
     last (the commit point); a human edit is preserved, then repaired. Live and Raw Notes never change."""
     fresh = notion.explicit_child(client, child_id)
-    if (fresh is None or fresh.identity_valid is not True or not notion.same_notion_id(fresh.parent_id, parent_id) or not valid_date(want.interview_date)
-            or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)):
+    if (
+        fresh is None
+        or fresh.identity_valid is not True
+        or not notion.same_notion_id(fresh.parent_id, parent_id)
+        or not valid_date(want.interview_date)
+        or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)
+    ):
         return "round_unconfirmable"
     budget = [notion.MAX_CALLS]
     ref, cancelled, joining = round_logistics(client, child_id, budget)
@@ -479,17 +601,39 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     else:
         if not ref or ref != want.calendar_ref:
             return "round_unlinked"
-        source = RoundQuery(True, fresh.interview_date, fresh.interviewer, fresh.ordinal, calendar_ref=ref, cancelled=cancelled, meeting=joining)
+        source = RoundQuery(
+            True,
+            fresh.interview_date,
+            fresh.interviewer,
+            fresh.ordinal,
+            calendar_ref=ref,
+            cancelled=cancelled,
+            meeting=joining,
+        )
         if want.cancelled and want.interview_date != fresh.interview_date:
             return "round_unconfirmable"
-        kind = "cancel" if want.cancelled else "reschedule" if want.interview_date != fresh.interview_date or cancelled else "details"
+        kind = (
+            "cancel"
+            if want.cancelled
+            else "reschedule"
+            if want.interview_date != fresh.interview_date or cancelled
+            else "details"
+        )
     if source == want:
         return "round_unchanged"
-    edits = _changed(round_page(current, source, parent_id, identity_text(source)), round_page(current, want, parent_id, identity_text(want)))
+    edits = _changed(
+        round_page(current, source, parent_id, identity_text(source)),
+        round_page(current, want, parent_id, identity_text(want)),
+    )
     tops = notion.children(client, child_id, budget)
     targets = _round_targets(client, child_id, edits, budget, tops)
     lines = notion.machine_lines(client, child_id, 2)[0]
-    if targets is None or len(lines) < 2 or lines[1].get("type") != "paragraph" or not notion.text(lines[1]).startswith(IDENTITY_PREFIX):
+    if (
+        targets is None
+        or len(lines) < 2
+        or lines[1].get("type") != "paragraph"
+        or not notion.text(lines[1]).startswith(IDENTITY_PREFIX)
+    ):
         return "machine_region_edited"
     if all(t[0]["id"] != lines[1]["id"] for t in targets) and notion.text(lines[1]) != identity_text(want):
         targets.append((lines[1], notion.paragraph(identity_text(source)), notion.paragraph(identity_text(want))))
@@ -506,22 +650,38 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
         return f"{kind}_allowed"
     if context:
         context.require_time()
-    todo = sorted([t for t in targets if (notion.text(t[0]), _links(t[0])) != (notion.text(t[2]), _links(t[2]))], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
+    todo = sorted(
+        [t for t in targets if (notion.text(t[0]), _links(t[0])) != (notion.text(t[2]), _links(t[2]))],
+        key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX),
+    )
     undo = []
     try:
         if edited:
             try:
-                notion.preserve(client, child_id, next((b for b in reversed(tops) if notion.is_preserved(b)), None), [t for t in (notion.text(e[0]) for e in edited) if t.strip()] or [NOTHING], f"Preserved {_clock()} CT")
+                notion.preserve(
+                    client,
+                    child_id,
+                    next((b for b in reversed(tops) if notion.is_preserved(b)), None),
+                    [t for t in (notion.text(e[0]) for e in edited) if t.strip()] or [NOTHING],
+                    f"Preserved {_clock()} CT",
+                )
             except NotionError:
                 return "preserve_failed"
             out["writes"] = out["readback_failed"] = 1
-            marker = next((b for b in notion.children(client, snapshot["id"], budget) if REPAIRED_LINE.fullmatch(notion.text(b))), None)
+            marker = next(
+                (b for b in notion.children(client, snapshot["id"], budget) if REPAIRED_LINE.fullmatch(notion.text(b))),
+                None,
+            )
             if marker:
                 was = notion.writable(marker[marker["type"]]["rich_text"])
                 notion.set_text(client, marker["id"], marker["type"], rich_text(repaired_line(_clock())))
                 undo.append(lambda m=marker, w=was: notion.set_text(client, m["id"], m["type"], w))
             else:
-                made = client.call("PATCH", f"/blocks/{snapshot['id']}/children", {"children": [notion.paragraph(repaired_line(_clock()))]})["results"][0]["id"]
+                made = client.call(
+                    "PATCH",
+                    f"/blocks/{snapshot['id']}/children",
+                    {"children": [notion.paragraph(repaired_line(_clock()))]},
+                )["results"][0]["id"]
                 undo.append(lambda i=made: notion.delete_block(client, i))
         for block, _, new in todo:
             was = notion.writable(block[block["type"]]["rich_text"])
@@ -537,17 +697,35 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
         return "write_failed"
     after = notion.explicit_child(client, child_id)
     check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
-    if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
-            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check if not carried(b))
-            or (edited and not any(REPAIRED_LINE.fullmatch(notion.text(b)) for b in notion.children(client, snapshot["id"], [notion.MAX_CALLS])))
-            or round_logistics(client, child_id) != (want.calendar_ref, want.cancelled, None if want.cancelled or meeting_kept else want.meeting)):
+    if (
+        after is None
+        or after.identity_valid is not True
+        or (after.interview_date, after.interviewer, after.ordinal)
+        != (want.interview_date, want.interviewer, want.ordinal)
+        or check is None
+        or any(notion.text(b) != notion.text(new) for b, _, new in check if not carried(b))
+        or (
+            edited
+            and not any(
+                REPAIRED_LINE.fullmatch(notion.text(b))
+                for b in notion.children(client, snapshot["id"], [notion.MAX_CALLS])
+            )
+        )
+        or round_logistics(client, child_id)
+        != (want.calendar_ref, want.cancelled, None if want.cancelled or meeting_kept else want.meeting)
+    ):
         return "readback_content_mismatch"
     if notion.protected_snapshot(client, child_id, "round") != before:
         return "readback_protected_changed"
     out["readback_failed"], out["readback_ok"] = 0, 1
     if edited:
         out["repaired_edits"] = 1
-    return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled", "details": "round_details"}[kind]
+    return {
+        "confirm": "round_confirmed",
+        "reschedule": "round_rescheduled",
+        "cancel": "round_cancelled",
+        "details": "round_details",
+    }[kind]
 
 
 def _create_in_row(client, environ, source, row, parent_query, query, current, blocks, out, context, deferred):
@@ -556,10 +734,13 @@ def _create_in_row(client, environ, source, row, parent_query, query, current, b
     company, role = parent_query.company.strip(), parent_query.role.strip()
     try:
         if row is None:
-            claim_key, claimant = query.stable_job_key or ledger_claim.role_key(company, role), ledger_claim.who("opportunity")
+            claim_key, claimant = (
+                query.stable_job_key or ledger_claim.role_key(company, role),
+                ledger_claim.who("opportunity"),
+            )
             try:
                 state, _ = ledger_claim.claim(claim_key, claimant)
-            except Exception:                                                       # noqa: BLE001 - no claim means no create; a fixed code, never the exception text
+            except Exception:  # noqa: BLE001 - no claim means no create; a fixed code, never the exception text
                 out["claim"] = "unavailable"
                 return "write_failed"
             code, found = notion.ledger_row(client, source, company, role, query.stable_job_key)
@@ -593,7 +774,9 @@ def _create_in_row(client, environ, source, row, parent_query, query, current, b
         return check
     if original:
         after = notion.children(client, row_id, [notion.MAX_CALLS], context)
-        if [b.get("id") for b in after[-len(original):]] != [b.get("id") for b in original] or [notion.text(b) for b in after[-len(original):]] != [notion.text(b) for b in original]:
+        if [b.get("id") for b in after[-len(original) :]] != [b.get("id") for b in original] or [
+            notion.text(b) for b in after[-len(original) :]
+        ] != [notion.text(b) for b in original]:
             return "readback_protected_changed"
     if not row or row["stage"] in (None, "Found"):
         try:
@@ -609,11 +792,22 @@ def _create_in_row(client, environ, source, row, parent_query, query, current, b
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
-    out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0,
-           "parents_created": 0, "parents_adopted": 0, "parents_upgraded": 0, "rounds_created": 0, "code": "pipeline_incomplete"}
+    out = {
+        "writes_planned": 0,
+        "writes": 0,
+        "readback_ok": 0,
+        "readback_failed": 0,
+        "parents_created": 0,
+        "parents_adopted": 0,
+        "parents_upgraded": 0,
+        "rounds_created": 0,
+        "code": "pipeline_incomplete",
+    }
+
     def finish(code):
         out["code"] = code
         return out
+
     try:
         context.require_time()
         target = notion.target_check(client, environ)
@@ -625,17 +819,31 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             return finish(parent.code)
         before, pipeline = None, environ["HIRING_PIPELINE_PAGE_ID"].strip()
         if query.refresh_only:
-            if parent.state != State.MATCH or notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE:
+            if (
+                parent.state != State.MATCH
+                or notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE
+            ):
                 return finish("refresh_not_machine")
             if any(notion.same_notion_id(parent.page_id, key) for key in deferred):
                 return finish("parent_exists")
             children = notion.child_scan(client, parent.page_id, context)
             if not children.complete or children.items:
                 return finish("child_scan_incomplete" if not children.complete else "refresh_has_rounds")
-            done = refresh(client, parent.page_id, _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), children, today()), live, out, context)
+            done = refresh(
+                client,
+                parent.page_id,
+                _view(
+                    client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), children, today()
+                ),
+                live,
+                out,
+                context,
+            )
             if done in ("parent_refreshed", "refresh_allowed"):
                 deferred.add(parent.page_id)
-            return finish("parent_exists" if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized") else done)
+            return finish(
+                "parent_exists" if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized") else done
+            )
         if parent.state == State.NOT_FOUND:
             company, role = parent_query.company.strip(), parent_query.role.strip()
             title = f"{company} — {role}"
@@ -657,7 +865,12 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("ledger_row_closed")
             if row:
                 labels = [notion.text(b) for b in notion.children(client, row["id"], [notion.MAX_CALLS], context)]
-                if notion.FOLD in labels or notion.ADOPT in labels or notion.JIM_NOTES in labels or any("v7-interview" in label for label in labels):
+                if (
+                    notion.FOLD in labels
+                    or notion.ADOPT in labels
+                    or notion.JIM_NOTES in labels
+                    or any("v7-interview" in label for label in labels)
+                ):
                     return finish("ledger_row_conflict")
             insertion = row["id"] if row else None
             kind, code = "opportunity", "parent_create_allowed"
@@ -686,25 +899,60 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 if code == "parent_upgraded":
                     deferred.add(parent.page_id)
                 return finish(code)
-            children = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
-            explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
+            children = notion.child_scan(
+                client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company)
+            )
+            explicit = (
+                notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
+            )
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)
             current = _view(client, environ, parent_query, query, pipeline, children, today())
-            held = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True]
-            if code == "child_match" and query.explicit_child_page_id and query.interview_date and query.calendar_ref and held:
+            held = [
+                c
+                for c in children.items
+                if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True
+            ]
+            if (
+                code == "child_match"
+                and query.explicit_child_page_id
+                and query.interview_date
+                and query.calendar_ref
+                and held
+            ):
                 deferred.add(parent.page_id)
-                want = RoundQuery(True, query.interview_date, held[0].interviewer, held[0].ordinal, calendar_ref=query.calendar_ref, cancelled=query.cancelled,
-                                  meeting=query.meeting)
+                want = RoundQuery(
+                    True,
+                    query.interview_date,
+                    held[0].interviewer,
+                    held[0].ordinal,
+                    calendar_ref=query.calendar_ref,
+                    cancelled=query.cancelled,
+                    meeting=query.meeting,
+                )
                 return finish(transition(client, parent.page_id, held[0].page_id, current, want, live, out, context))
             if code == "child_match":
-                done = refresh(client, parent.page_id, current, live, out, context, migrate=notion.is_legacy_company(environ, parent_query.company))
+                done = refresh(
+                    client,
+                    parent.page_id,
+                    current,
+                    live,
+                    out,
+                    context,
+                    migrate=notion.is_legacy_company(environ, parent_query.company),
+                )
                 if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized"):
                     done = link_transcript(client, child.page_id, live, out)
-                    done = done if done in ("transcript_linked", "transcript_link_allowed", "readback_content_mismatch") else "parent_unchanged"
+                    done = (
+                        done
+                        if done in ("transcript_linked", "transcript_link_allowed", "readback_content_mismatch")
+                        else "parent_unchanged"
+                    )
                 if done in ("parent_refreshed", "refresh_allowed", "transcript_linked", "transcript_link_allowed"):
                     deferred.add(parent.page_id)
-                return finish(code if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized") else done)
+                return finish(
+                    code if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized") else done
+                )
             if code != "create_allowed":
                 return finish(code)
             deferred.add(parent.page_id)
@@ -723,9 +971,15 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("readback_protected_missing")
         context.require_time()
         if kind == "opportunity":
-            return finish(_create_in_row(client, environ, source, row, parent_query, query, current, blocks, out, context, deferred))
+            return finish(
+                _create_in_row(
+                    client, environ, source, row, parent_query, query, current, blocks, out, context, deferred
+                )
+            )
         try:
-            page_id = notion.write_tree(client, insertion, blocks, title=title, icon=PAGE_ICONS[kind], template=notion.FULL_WIDTH)
+            page_id = notion.write_tree(
+                client, insertion, blocks, title=title, icon=PAGE_ICONS[kind], template=notion.FULL_WIDTH
+            )
         except NotionError:
             return finish("write_failed")
         out["writes"] = 1

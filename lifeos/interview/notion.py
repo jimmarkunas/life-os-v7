@@ -1,4 +1,5 @@
 """Notion evidence and reusable protected read-back primitives."""
+
 from lifeos.platform.notion_ids import notion_id
 import hashlib
 import json
@@ -35,8 +36,10 @@ def same_notion_id(a, b):
 
 
 def environment(environ):
-    return {"NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(),
-            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "interview-unused"}
+    return {
+        "NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(),
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "interview-unused",
+    }
 
 
 def make_client(environ=os.environ):
@@ -47,6 +50,7 @@ def is_marker(value, kind):
     if value == MARKERS.get(kind):
         return True
     from .identity import valid_date
+
     found = ADOPTED.fullmatch(value) if kind == "opportunity" else None
     return bool(found) and valid_date(found.group(1))
 
@@ -73,8 +77,16 @@ def target_check(client, environ):
     try:
         page = client.call("GET", f"/pages/{root}")
         titles = [p.get("title") for p in (page.get("properties") or {}).values() if p.get("type") == "title"]
-        title = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
-        return "target_ok" if title == "Hiring Pipeline" and not page.get("archived") and not page.get("in_trash") else "target_mismatch"
+        title = (
+            "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0])
+            if len(titles) == 1
+            else ""
+        )
+        return (
+            "target_ok"
+            if title == "Hiring Pipeline" and not page.get("archived") and not page.get("in_trash")
+            else "target_mismatch"
+        )
     except (NotionError, KeyError, TypeError, ValueError):
         return "target_unreadable"
 
@@ -101,7 +113,12 @@ def children(client, page_id, budget, context=None):
         budget[0] -= 1
         path = f"/blocks/{page_id}/children?page_size=100"
         return client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else ""))
-    return [block for data in notion_pages.pages(fetch, NotionError, "INTERVIEW_SCAN_INCOMPLETE") for block in data["results"]]
+
+    return [
+        block
+        for data in notion_pages.pages(fetch, NotionError, "INTERVIEW_SCAN_INCOMPLETE")
+        for block in data["results"]
+    ]
 
 
 def parent_scan(client, root, context=None):
@@ -112,8 +129,11 @@ def parent_scan(client, root, context=None):
             raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
         current = active
         blocks = children(client, page_id, budget, context)
-        containers = [b for b in blocks if b.get("type") == "child_page"
-                      and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
+        containers = [
+            b
+            for b in blocks
+            if b.get("type") == "child_page" and (b.get("child_page") or {}).get("title") == "Active Opportunities"
+        ]
         if same_notion_id(page_id, root) and len(containers) > 1:
             raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
         for block in blocks:
@@ -124,10 +144,16 @@ def parent_scan(client, root, context=None):
                     if not same_notion_id(page_id, root):
                         continue
                     container = client.call("GET", f"/pages/{block['id']}")
-                    if not same_notion_id((container.get("parent") or {}).get("page_id"), root) or container.get("archived") or container.get("in_trash"):
+                    if (
+                        not same_notion_id((container.get("parent") or {}).get("page_id"), root)
+                        or container.get("archived")
+                        or container.get("in_trash")
+                    ):
                         raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
                 walk(block["id"], title == "Active Opportunities", depth + 1)
-            elif title in ("Active Opportunities", "Retired Opportunities") and (kind.startswith("heading") or kind == "toggle"):
+            elif title in ("Active Opportunities", "Retired Opportunities") and (
+                kind.startswith("heading") or kind == "toggle"
+            ):
                 current = title == "Active Opportunities"
                 if block.get("has_children"):
                     walk(block["id"], current, depth + 1)
@@ -158,19 +184,35 @@ def _ledger_pages(client, source_id, body, context):
         if context:
             context.require_time()
         return client.query_data_source(source_id, {**body, **({"start_cursor": cursor} if cursor else {})})
+
     return notion_pages.pages(fetch, NotionError, "INTERVIEW_SCAN_INCOMPLETE", limit=LEDGER_PAGES)
 
 
 def parents_from_ledger(client, source_id, context=None):
     """Every Ledger row with Stage set, as a Parent. An incomplete read gives Scan((), False)."""
     try:
-        rows = [row for page in _ledger_pages(client, source_id, {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}}, context)
-                for row in page["results"]]
+        rows = [
+            row
+            for page in _ledger_pages(
+                client,
+                source_id,
+                {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}},
+                context,
+            )
+            for row in page["results"]
+        ]
         found = []
         for row in map(_ledger_row, rows):
             if not (row["company"] and row["role"] and row["stage"] and row["id"]):
                 continue
-            found.append(Parent(row["id"], f"{row['company']} - {row['role']}", row["stage"] in LEDGER_ACTIVE and not row["decision"], row["stage"]))
+            found.append(
+                Parent(
+                    row["id"],
+                    f"{row['company']} - {row['role']}",
+                    row["stage"] in LEDGER_ACTIVE and not row["decision"],
+                    row["stage"],
+                )
+            )
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
         return Scan((), False)
@@ -186,7 +228,11 @@ def parents(client, environ, context=None):
     if not ledger.complete or not tree.complete:
         return Scan((), False)
     keys = [split_title(p.title) for p in ledger.items]
-    kept = [p for p in tree.items if not any(same_company(split_title(p.title)[0], c) and same_role(split_title(p.title)[1], r) for c, r in keys)]
+    kept = [
+        p
+        for p in tree.items
+        if not any(same_company(split_title(p.title)[0], c) and same_role(split_title(p.title)[1], r) for c, r in keys)
+    ]
     return Scan(tuple(ledger.items) + tuple(kept), True, len(ledger.items), len(kept))
 
 
@@ -196,10 +242,14 @@ MANUAL = "Manual"
 
 def _ledger_row(row):
     props = row.get("properties") or {}
-    return {"id": row.get("id"), "company": _ledger_text(props.get("Company"), "rich_text"), "role": _ledger_text(props.get("Job"), "title"),
-            "key": _ledger_text(props.get("Stable Job Key"), "rich_text"),
-            "stage": ((props.get(LEDGER_STAGE) or {}).get("select") or {}).get("name"),
-            "decision": ((props.get(LEDGER_DECISION) or {}).get("select") or {}).get("name")}
+    return {
+        "id": row.get("id"),
+        "company": _ledger_text(props.get("Company"), "rich_text"),
+        "role": _ledger_text(props.get("Job"), "title"),
+        "key": _ledger_text(props.get("Stable Job Key"), "rich_text"),
+        "stage": ((props.get(LEDGER_STAGE) or {}).get("select") or {}).get("name"),
+        "decision": ((props.get(LEDGER_DECISION) or {}).get("select") or {}).get("name"),
+    }
 
 
 def ledger_row(client, source_id, company, role, key=None, context=None):
@@ -209,8 +259,17 @@ def ledger_row(client, source_id, company, role, key=None, context=None):
     if not words or not role.strip():
         return "ledger_unreadable", None
     try:
-        rows = [_ledger_row(r) for page in _ledger_pages(client, source_id, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}}}, context)
-                for r in page["results"] if not r.get("archived") and not r.get("in_trash")]
+        rows = [
+            _ledger_row(r)
+            for page in _ledger_pages(
+                client,
+                source_id,
+                {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}}},
+                context,
+            )
+            for r in page["results"]
+            if not r.get("archived") and not r.get("in_trash")
+        ]
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
         return "ledger_unreadable", None
     keyed = [r for r in rows if key and r["key"] == key]
@@ -222,10 +281,16 @@ def ledger_row(client, source_id, company, role, key=None, context=None):
 
 def create_ledger_row(client, source_id, company, role, key=None):
     """A new Manual Ledger row (Stage is set later, as the commit point). One request, never retried."""
-    props = {"Job": {"title": rich_text(role)}, "Company": {"rich_text": rich_text(company)}, "Source Types": {"multi_select": [{"name": MANUAL}]}}
+    props = {
+        "Job": {"title": rich_text(role)},
+        "Company": {"rich_text": rich_text(company)},
+        "Source Types": {"multi_select": [{"name": MANUAL}]},
+    }
     if key:
         props["Stable Job Key"] = {"rich_text": rich_text(key)}
-    return client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": props})["id"]
+    return client.call_once(
+        "POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": props}
+    )["id"]
 
 
 def set_stage(client, row_id, stage):
@@ -248,7 +313,12 @@ def ledger_shape(client, source_id, context=None):
         names = [o.get("name") for o in ((stage.get("select") or {}).get("options") or [])]
         out["ledger_stage_options"] = len(names)
         manual = MANUAL in [o.get("name") for o in ((sources.get("multi_select") or {}).get("options") or [])]
-        if stage.get("type") == "select" and sorted(names) == sorted(LEDGER_STAGES) and len(names) == len(LEDGER_STAGES) and manual:
+        if (
+            stage.get("type") == "select"
+            and sorted(names) == sorted(LEDGER_STAGES)
+            and len(names) == len(LEDGER_STAGES)
+            and manual
+        ):
             out["insertion_supported"], out["code"] = True, "ledger_shape_supported"
     except DeadlineExceeded:
         out["code"] = "ledger_shape_incomplete"
@@ -338,12 +408,15 @@ def explicit_child(client, page_id, home=None, via=None):
     if home and via and same_notion_id(parent.get("block_id"), via):
         parent = {"page_id": home}
     from .create import parse_identity
+
     blocks, _ = machine_lines(client, page_id, 2)
     first = text(blocks[0]) if blocks else ""
     machine = first == MARKERS["round"]
     created = page.get("created_time") if isinstance(page.get("created_time"), str) else None
     if not machine:
-        return Child(page_id, parent.get("page_id", ""), identity_valid=False if "interview:" in first else None, created=created)
+        return Child(
+            page_id, parent.get("page_id", ""), identity_valid=False if "interview:" in first else None, created=created
+        )
     data = parse_identity(text(blocks[1])) if len(blocks) > 1 and blocks[1].get("type") == "paragraph" else None
     if data is None:
         return Child(page_id, parent.get("page_id", ""), identity_valid=False, created=created)
@@ -367,7 +440,9 @@ def _subtree(client, block, budget, depth=0):
     if isinstance(body, dict) and body.get("type") == "file" and isinstance(body.get("file"), dict):
         value[value["type"]] = {**body, "file": {}}  # signed file URLs change on every read
     if block.get("has_children"):
-        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
+        value["protected_children"] = [
+            _subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)
+        ]
     return value
 
 
@@ -430,7 +505,7 @@ def human_tail(client, page_id, blocks=None):
         heads = [i for i, b in enumerate(blocks) if text(b) in NOTES and b.get("type", "").startswith("heading")]
         if len(heads) != 1 or len(blocks) <= heads[0] + 1 or blocks[heads[0] + 1].get("type") != "callout":
             raise NotionError("INTERVIEW_PROTECTED_SHAPE")
-        blocks = blocks[heads[0] + 2:]
+        blocks = blocks[heads[0] + 2 :]
     else:
         blocks = blocks[1:]
     return _digest([_subtree(client, b, budget) for b in blocks if b.get("type") != "child_page"])
@@ -463,7 +538,7 @@ def _shell(block, depth):
         if kind != "column" or depth >= 2:
             return None
         payload[kind]["children"], placeholder = [PLACEHOLDER], True
-    return payload, kept, inner[len(kept):], placeholder
+    return payload, kept, inner[len(kept) :], placeholder
 
 
 def _deferred(plan):
@@ -495,7 +570,12 @@ def clear_template_filler(client, page_id, budget):
     while gone < FILLER_MAX and len(top) - gone > 1:
         block = top[gone]
         runs = (block.get("paragraph") or {}).get("rich_text") or []
-        if block.get("type") != "paragraph" or block.get("has_children") or text(block).strip() or any(r.get("type", "text") != "text" for r in runs):
+        if (
+            block.get("type") != "paragraph"
+            or block.get("has_children")
+            or text(block).strip()
+            or any(r.get("type", "text") != "text" for r in runs)
+        ):
             break
         delete_block(client, block["id"])
         gone += 1
@@ -514,10 +594,15 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
         raise NotionError("INTERVIEW_TREE_BUDGET")
     body = {"children": [plan[0] for plan in plans]}
     if title is not None:
-        page = {"parent": {"type": "page_id", "page_id": parent_id}, "properties": {"title": {"type": "title", "title": rich_text(title)}},
-                **({"icon": icon} if icon else {})}
+        page = {
+            "parent": {"type": "page_id", "page_id": parent_id},
+            "properties": {"title": {"type": "title", "title": rich_text(title)}},
+            **({"icon": icon} if icon else {}),
+        }
         if template:
-            target = client.call("POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}})["id"]
+            target = client.call(
+                "POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}}
+            )["id"]
             time.sleep(TEMPLATE_WAIT)
             clear_template_filler(client, target, budget)  # a late template leaves an empty paragraph above the fold
             written = write_tree(client, target, blocks, budget=budget)
@@ -538,8 +623,12 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
 
 
 def _plain(runs):
-    return "".join(f"@{((r.get('mention') or {}).get('page') or {}).get('id', '').replace('-', '')}" if r.get("type") == "mention"
-                   else r.get("plain_text", (r.get("text") or {}).get("content", "")) for r in runs or [])
+    return "".join(
+        f"@{((r.get('mention') or {}).get('page') or {}).get('id', '').replace('-', '')}"
+        if r.get("type") == "mention"
+        else r.get("plain_text", (r.get("text") or {}).get("content", ""))
+        for r in runs or []
+    )
 
 
 def _node(kind, body, value):
@@ -556,7 +645,10 @@ def _node(kind, body, value):
 
 
 def as_nodes(blocks):
-    return [{**_node(b["type"], b[b["type"]], text(b)), **({"children": as_nodes(kids(b))} if kids(b) else {})} for b in blocks]
+    return [
+        {**_node(b["type"], b[b["type"]], text(b)), **({"children": as_nodes(kids(b))} if kids(b) else {})}
+        for b in blocks
+    ]
 
 
 def region_nodes(client, blocks, budget, skip=(), depth=0):
@@ -590,8 +682,11 @@ def outline(nodes, depth=0, parent="", icons=True):
         if kind in CONTENT and parent != "tab":
             continue
         label = node["text"] if kind.startswith("heading") or kind == "toggle" or parent == "tab" else ""
-        extra = [f"{k}={node[k]}" for k in ("width_ratio", "color", "icon", "table_width", "has_column_header", "has_row_header")
-                 if k in node and (icons or k != "icon")]
+        extra = [
+            f"{k}={node[k]}"
+            for k in ("width_ratio", "color", "icon", "table_width", "has_column_header", "has_row_header")
+            if k in node and (icons or k != "icon")
+        ]
         out.append(f"{depth}:{kind}" + (f" {label}" if label else "") + (f" [{' '.join(extra)}]" if extra else ""))
         out += outline(node.get("children", []), depth + 1, kind, icons)
     return out
@@ -628,8 +723,18 @@ def writable(runs):
     out = []
     for run in runs or []:
         kind = run.get("type") or ("mention" if run.get("mention") else "text")
-        body = (({"type": "mention", "mention": run["mention"]} if kind == "mention" else {"type": "text", "text": {k: v for k, v in (run.get("text") or {"content": run.get("plain_text", "")}).items() if v is not None}})
-                | ({"annotations": run["annotations"]} if run.get("annotations") else {}))
+        body = (
+            {"type": "mention", "mention": run["mention"]}
+            if kind == "mention"
+            else {
+                "type": "text",
+                "text": {
+                    k: v
+                    for k, v in (run.get("text") or {"content": run.get("plain_text", "")}).items()
+                    if v is not None
+                },
+            }
+        ) | ({"annotations": run["annotations"]} if run.get("annotations") else {})
         out.append(body)
     return out
 
@@ -641,16 +746,28 @@ def preserve(client, page_id, toggle, lines, stamp, after=None):
     try:
         head = batch[:PRESERVE_BATCH]
         if toggle is None:
-            made = client.call("PATCH", f"/blocks/{page_id}/children", {"children": [{"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text(PRESERVED), "color": "gray", "children": head}}],
-                                                                       **({"after": after} if after else {})})
+            made = client.call(
+                "PATCH",
+                f"/blocks/{page_id}/children",
+                {
+                    "children": [
+                        {
+                            "object": "block",
+                            "type": "toggle",
+                            "toggle": {"rich_text": rich_text(PRESERVED), "color": "gray", "children": head},
+                        }
+                    ],
+                    **({"after": after} if after else {}),
+                },
+            )
             toggle_id = made["results"][0]["id"]
         else:
             toggle_id = toggle["id"]
             client.call("PATCH", f"/blocks/{toggle_id}/children", {"children": head})
         for at in range(PRESERVE_BATCH, len(batch), PRESERVE_BATCH):
-            client.call("PATCH", f"/blocks/{toggle_id}/children", {"children": batch[at:at + PRESERVE_BATCH]})
+            client.call("PATCH", f"/blocks/{toggle_id}/children", {"children": batch[at : at + PRESERVE_BATCH]})
         held = [text(b) for b in children(client, toggle_id, [MAX_CALLS])]
-        if held[-len(batch):] != [text(b) for b in batch]:
+        if held[-len(batch) :] != [text(b) for b in batch]:
             raise NotionError("INTERVIEW_PRESERVE_FAILED")
     except (NotionError, KeyError, IndexError, TypeError):
         raise NotionError("INTERVIEW_PRESERVE_FAILED") from None
@@ -662,7 +779,9 @@ DERIVED_MAX_CALLS = 100
 
 def derived_blocks(client, page_id):
     heading, payload, ended = None, [], False
-    for data in notion_pages.children(client, page_id, NotionError, incomplete="INTERVIEW_SCAN_INCOMPLETE", limit=DERIVED_MAX_CALLS):
+    for data in notion_pages.children(
+        client, page_id, NotionError, incomplete="INTERVIEW_SCAN_INCOMPLETE", limit=DERIVED_MAX_CALLS
+    ):
         for block in data["results"]:
             kind = block.get("type")
             major = kind in ("heading_1", "heading_2")

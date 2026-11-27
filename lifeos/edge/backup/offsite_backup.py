@@ -6,6 +6,7 @@ snapshot -> tar.gz -> gpg -> Drive (`drive.file` scope) -> checksum check -> kee
 SECRET_TREES); credentials only from SECRET_TREES, every other list stays behind DENY. Every error is a fixed code;
 status and output hold counts and codes, never a path, name, token or response body. Drive credential: systemd
 credential `drive`, one JSON object {"client_id", "client_secret", "refresh_token"}. Stdlib only."""
+
 import datetime
 import hashlib
 import json
@@ -45,11 +46,36 @@ HERMES = "/var/lib/hermeseval/home/.hermes"
 SQLITE = (
     ("grans/grans.db", GRANS + "/.local/share/grans/grans.db", "grans", True),
     ("openclaw/state/openclaw.sqlite", UBUNTU + "/.openclaw/state/openclaw.sqlite", "ubuntu", True),
-    ("openclaw/state/openclaw-quarantine.sqlite", UBUNTU + "/.openclaw/state/openclaw-quarantine.sqlite", "ubuntu", False),
-    ("openclaw/agents/main/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/main/agent/openclaw-agent.sqlite", "ubuntu", True),
-    ("openclaw/agents/fit/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit/agent/openclaw-agent.sqlite", "ubuntu", False),
-    ("openclaw/agents/fit2/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit2/agent/openclaw-agent.sqlite", "ubuntu", False),
-    ("openclaw/agents/fit3/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit3/agent/openclaw-agent.sqlite", "ubuntu", False),
+    (
+        "openclaw/state/openclaw-quarantine.sqlite",
+        UBUNTU + "/.openclaw/state/openclaw-quarantine.sqlite",
+        "ubuntu",
+        False,
+    ),
+    (
+        "openclaw/agents/main/openclaw-agent.sqlite",
+        UBUNTU + "/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+        "ubuntu",
+        True,
+    ),
+    (
+        "openclaw/agents/fit/openclaw-agent.sqlite",
+        UBUNTU + "/.openclaw/agents/fit/agent/openclaw-agent.sqlite",
+        "ubuntu",
+        False,
+    ),
+    (
+        "openclaw/agents/fit2/openclaw-agent.sqlite",
+        UBUNTU + "/.openclaw/agents/fit2/agent/openclaw-agent.sqlite",
+        "ubuntu",
+        False,
+    ),
+    (
+        "openclaw/agents/fit3/openclaw-agent.sqlite",
+        UBUNTU + "/.openclaw/agents/fit3/agent/openclaw-agent.sqlite",
+        "ubuntu",
+        False,
+    ),
     ("hermes/state.db", HERMES + "/state.db", "hermes", False),
     ("hermes/shared-state.db", HERMES + "/shared-state.db", "hermes", False),
     ("hermes/kanban.db", HERMES + "/kanban.db", "hermes", False),
@@ -63,7 +89,11 @@ SQLITE = (
 FILES = (
     ("openclaw/openclaw.json", UBUNTU + "/.openclaw/openclaw.json", True),
     ("close/policy.json", "/etc/lifeos-close/policy.json", False),
-    ("systemd-user/lifeos-imessage-alerts@.service", UBUNTU + "/.config/systemd/user/lifeos-imessage-alerts@.service", False),
+    (
+        "systemd-user/lifeos-imessage-alerts@.service",
+        UBUNTU + "/.config/systemd/user/lifeos-imessage-alerts@.service",
+        False,
+    ),
     ("systemd-user/lifeos-fit-gw.service", UBUNTU + "/.config/systemd/user/lifeos-fit-gw.service", False),
     ("sbin/lifeos-fit-deploy", "/usr/local/sbin/lifeos-fit-deploy", False),
     ("systemd/lifeos-resume.socket", "/etc/systemd/system/lifeos-resume.socket", False),
@@ -97,9 +127,7 @@ TREES = (
     ("hermes/profiles/research/memories", HERMES + "/profiles/research/memories"),
     ("hermes/profiles/writer/memories", HERMES + "/profiles/writer/memories"),
 )
-SECRET_TREES = (
-    ("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),
-)
+SECRET_TREES = (("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),)
 CODE_PRUNE = ("node_modules", "__pycache__")
 
 
@@ -118,29 +146,39 @@ def denied(*names):
     return any(DENY.search(n) for n in names)
 
 
-
-_SNAP = ("import sqlite3, sys\n"
-         "src = sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True, timeout=30)\n"
-         "dst = sqlite3.connect(sys.argv[2])\n"
-         "src.backup(dst)\n"
-         "ok = dst.execute('pragma integrity_check').fetchone() == ('ok',)\n"
-         "dst.close(); src.close()\n"
-         "sys.exit(0 if ok else 3)\n")
+_SNAP = (
+    "import sqlite3, sys\n"
+    "src = sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True, timeout=30)\n"
+    "dst = sqlite3.connect(sys.argv[2])\n"
+    "src.backup(dst)\n"
+    "ok = dst.execute('pragma integrity_check').fetchone() == ('ok',)\n"
+    "dst.close(); src.close()\n"
+    "sys.exit(0 if ok else 3)\n"
+)
 
 
 def snapshot(source, dest, owner, run=subprocess.run):
-    done = run(["runuser", "-u", owner, "--", "python3", "-I", "-c", _SNAP, source, dest], capture_output=True, timeout=300)
+    done = run(
+        ["runuser", "-u", owner, "--", "python3", "-I", "-c", _SNAP, source, dest], capture_output=True, timeout=300
+    )
     if done.returncode == 3:
         raise BackupError("backup_db_corrupt")
     if done.returncode != 0:
         raise BackupError("backup_db_snapshot")
 
 
-def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None, mac_inbox=None):
+def collect(
+    work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None, mac_inbox=None
+):
     """Everything on the list -> {archive name: file in `work`}, plus counts. A missing required source stops the run;
     optional ones are counted.
     """
-    sqlite, files, trees, chown = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees, chown or shutil.chown
+    sqlite, files, trees, chown = (
+        SQLITE if sqlite is None else sqlite,
+        FILES if files is None else files,
+        TREES if trees is None else trees,
+        chown or shutil.chown,
+    )
     secret_trees = SECRET_TREES if secret_trees is None else secret_trees
     out, missing, skipped, credentials, db_failed = {}, 0, 0, 0, 0
     for name, source, owner, required in sqlite:
@@ -199,7 +237,13 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
                 credentials += 1
     inbox = MAC_INBOX if mac_inbox is None else mac_inbox
     try:
-        newest = sorted(n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n)))
+        newest = sorted(
+            n
+            for n in os.listdir(inbox)
+            if MAC_NAME.match(n)
+            and os.path.isfile(os.path.join(inbox, n))
+            and not os.path.islink(os.path.join(inbox, n))
+        )
     except OSError:
         newest = None
     if newest:
@@ -230,7 +274,6 @@ def build_archive(entries, dest):
     return len(entries)
 
 
-
 def encrypt(plain, dest, work, key_file=KEY_FILE, run=subprocess.run):
     home = os.path.join(work, "gnupg")
     os.makedirs(home, mode=0o700, exist_ok=True)
@@ -248,7 +291,6 @@ def encrypt(plain, dest, work, key_file=KEY_FILE, run=subprocess.run):
         command += ["--recipient", fingerprint]
     if run(command + [plain], capture_output=True, timeout=300).returncode != 0 or not os.path.getsize(dest):
         raise BackupError("backup_encrypt")
-
 
 
 def credential(raw):
@@ -291,30 +333,66 @@ class Drive:
     def _access_token(self):
         if self._token is None:
             client_id, client_secret, refresh = self._creds
-            reply = self._call("POST", TOKEN_URL, urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret, "refresh_token": refresh,
-                                                                          "grant_type": "refresh_token"}).encode(), "application/x-www-form-urlencoded", auth=False)
+            reply = self._call(
+                "POST",
+                TOKEN_URL,
+                urllib.parse.urlencode(
+                    {
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "refresh_token": refresh,
+                        "grant_type": "refresh_token",
+                    }
+                ).encode(),
+                "application/x-www-form-urlencoded",
+                auth=False,
+            )
             token = reply.get("access_token")
             if not isinstance(token, str) or not token:
                 raise BackupError("backup_drive_token_refused")
-            if SCOPE not in str(reply.get("scope", "")).split() or "https://www.googleapis.com/auth/drive" in str(reply.get("scope", "")).split():
+            if (
+                SCOPE not in str(reply.get("scope", "")).split()
+                or "https://www.googleapis.com/auth/drive" in str(reply.get("scope", "")).split()
+            ):
                 raise BackupError("backup_drive_scope")
             self._token = token
         return self._token
 
     def _find(self, query, order="createdTime desc"):
-        reply = self._call("GET", API + "?" + urllib.parse.urlencode({"q": query + " and trashed=false", "spaces": "drive", "orderBy": order, "pageSize": 1000,
-                                                                       "fields": "files(id,name,createdTime,md5Checksum,size)"}))
+        reply = self._call(
+            "GET",
+            API
+            + "?"
+            + urllib.parse.urlencode(
+                {
+                    "q": query + " and trashed=false",
+                    "spaces": "drive",
+                    "orderBy": order,
+                    "pageSize": 1000,
+                    "fields": "files(id,name,createdTime,md5Checksum,size)",
+                }
+            ),
+        )
         files = reply.get("files")
         if not isinstance(files, list):
             raise BackupError("backup_drive_off_contract")
         return files
 
     def folder(self):
-        found = self._find(f"mimeType='{FOLDER_MIME}' and name='{_q(FOLDER_NAME)}' and appProperties has {{ key='lifeos' and value='{FOLDER_TAG}' }}", "createdTime")
+        found = self._find(
+            f"mimeType='{FOLDER_MIME}' and name='{_q(FOLDER_NAME)}' and appProperties has {{ key='lifeos' and value='{FOLDER_TAG}' }}",
+            "createdTime",
+        )
         if found:
             return found[0]["id"]
-        made = self._call("POST", API + "?fields=id", json.dumps({"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "appProperties": {"lifeos": FOLDER_TAG}}).encode(),
-                          "application/json")
+        made = self._call(
+            "POST",
+            API + "?fields=id",
+            json.dumps(
+                {"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "appProperties": {"lifeos": FOLDER_TAG}}
+            ).encode(),
+            "application/json",
+        )
         if not isinstance(made.get("id"), str):
             raise BackupError("backup_drive_off_contract")
         return made["id"]
@@ -322,9 +400,22 @@ class Drive:
     def upload(self, folder_id, name, path):
         with open(path, "rb") as handle:
             data = handle.read()
-        meta = json.dumps({"name": name, "parents": [folder_id], "mimeType": "application/octet-stream", "appProperties": {"lifeos": FILE_TAG}}).encode()
-        _, headers = self._call("POST", UPLOAD + "?uploadType=resumable&fields=id,md5Checksum,size", meta, "application/json; charset=UTF-8", want_headers=True,
-                                extra={"X-Upload-Content-Type": "application/octet-stream", "X-Upload-Content-Length": str(len(data))})
+        meta = json.dumps(
+            {
+                "name": name,
+                "parents": [folder_id],
+                "mimeType": "application/octet-stream",
+                "appProperties": {"lifeos": FILE_TAG},
+            }
+        ).encode()
+        _, headers = self._call(
+            "POST",
+            UPLOAD + "?uploadType=resumable&fields=id,md5Checksum,size",
+            meta,
+            "application/json; charset=UTF-8",
+            want_headers=True,
+            extra={"X-Upload-Content-Type": "application/octet-stream", "X-Upload-Content-Length": str(len(data))},
+        )
         location = headers.get("Location")
         if not location or not location.startswith("https://www.googleapis.com/"):
             raise BackupError("backup_drive_off_contract")
@@ -334,7 +425,9 @@ class Drive:
         return made
 
     def kept(self, folder_id):
-        return self._find(f"'{_q(folder_id)}' in parents and appProperties has {{ key='lifeos' and value='{FILE_TAG}' }}")
+        return self._find(
+            f"'{_q(folder_id)}' in parents and appProperties has {{ key='lifeos' and value='{FILE_TAG}' }}"
+        )
 
     def remove(self, file_id):
         self._call("DELETE", f"{API}/{urllib.parse.quote(file_id, safe='')}")
@@ -349,7 +442,6 @@ def prune(drive, folder_id, keep=KEEP, limit=MAX_DELETE):
         drive.remove(old["id"])
         removed += 1
     return len(files) - removed, removed
-
 
 
 def write_status(state_dir, ok, code, clock=time.time, **counts):
@@ -421,7 +513,13 @@ def mac_check(inbox=MAC_INBOX, clock=time.time, limit=MAC_STALE_SECONDS):
     and never fails on it.
     """
     try:
-        names = [n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n))]
+        names = [
+            n
+            for n in os.listdir(inbox)
+            if MAC_NAME.match(n)
+            and os.path.isfile(os.path.join(inbox, n))
+            and not os.path.islink(os.path.join(inbox, n))
+        ]
         if not names:
             return False, "mac_backup_none", None
         age = clock() - max(os.path.getmtime(os.path.join(inbox, n)) for n in names)
@@ -448,7 +546,13 @@ def main(argv=None, environ=None):
             record = run("", state_dir=scratch, dry=True)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
-        print(record["code"], "files=%s bytes=%s missing=%s skipped=%s credentials=%s optional_db_failed=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "missing", "skipped", "credentials", "optional_db_failed")))
+        print(
+            record["code"],
+            "files=%s bytes=%s missing=%s skipped=%s credentials=%s optional_db_failed=%s"
+            % tuple(
+                record.get(k, 0) for k in ("files", "bytes", "missing", "skipped", "credentials", "optional_db_failed")
+            ),
+        )
         return 0 if record["ok"] else 1
     if argv[:1] != ["run"]:
         print("usage: offsite_backup.py run|check|mac-check|dry")
@@ -461,7 +565,10 @@ def main(argv=None, environ=None):
         print(write_status(STATE, False, "backup_credential_missing")["code"])
         return 1
     record = run(raw)
-    print(record["code"], "files=%s bytes=%s kept=%s removed=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "kept", "removed")))
+    print(
+        record["code"],
+        "files=%s bytes=%s kept=%s removed=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "kept", "removed")),
+    )
     return 0 if record["ok"] else 1
 
 
