@@ -1,12 +1,12 @@
-"""LIFE-129 (Jim, Oct 27 2026): the nightly off-site backup of the Oracle state that cannot be rebuilt, run as root by systemd on the Edge. Boot-volume backups stay in
-one region; this copy goes to Jim's Google Drive, encrypted with a PUBLIC key before it leaves the machine (the private key is never on Oracle: Jim keeps it).
-  run     snapshot -> tar.gz -> gpg -> Drive (own folder, own credential, `drive.file` scope only) -> checksum check -> keep the newest 14 -> status file
-  check   exit 0 only when the last run succeeded recently (a missed night is a failure, not silence)
-What goes in is an explicit list (SQLITE, FILES, TREES, SECRET_TREES): databases (online snapshot, never a raw copy of a live file) and app config. Credential, token and key
-material is collected ONLY from SECRET_TREES (Jim's decision, Oct 28 2026: the OpenClaw credentials folder, so a lost machine does not mean re-linking every channel); every other
-list stays behind DENY, so a stray token file in a config folder is still skipped. That is safe only because the archive is encrypted to Jim's public key before it leaves. Stdlib only. Every error is a fixed code; the
-status file and the output hold counts and codes, never a path, a name, a token or a response body. The Drive credential is one JSON object
-{"client_id", "client_secret", "refresh_token"} (systemd credential `drive`)."""
+"""Nightly off-site backup of the Oracle state that cannot be rebuilt, run as root by systemd. The archive is
+encrypted with a PUBLIC key before it leaves the machine (the private key is never on Oracle) and goes to a Google
+Drive. `run`: snapshot -> tar.gz -> gpg -> Drive (own folder, `drive.file` scope) -> checksum check -> keep newest 14
+-> status file. `check`: exit 0 only when the last run succeeded recently. What goes in is an explicit list (SQLITE,
+FILES, TREES, SECRET_TREES); credential material is collected only from SECRET_TREES, every other list stays behind
+DENY. Every error is a fixed code; status and output hold counts and codes, never a path, name, token or response
+body. The Drive credential is one JSON object {"client_id", "client_secret", "refresh_token"} (systemd credential
+`drive`). Stdlib only.
+"""
 import datetime
 import hashlib
 import json
@@ -24,26 +24,27 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 
-SCOPE = "https://www.googleapis.com/auth/drive.file"                  # only files this app creates; it can never see the rest of the Drive
+SCOPE = "https://www.googleapis.com/auth/drive.file"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/drive/v3/files"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 FOLDER_NAME, FOLDER_TAG, FILE_TAG = "LIFE OS Backups", "offsite-backup-folder", "offsite-backup"
 FOLDER_MIME = "application/vnd.google-apps.folder"
-KEEP = 14                                                              # nightly copies kept
-MAX_DELETE = 3                                                         # never more than this many removals in one run (a bug cannot empty the folder)
+KEEP = 14
+MAX_DELETE = 3  # never more than this many removals in one run (a bug cannot empty the folder)
 MAX_ARCHIVE = 200 * 1024 * 1024
-STALE_SECONDS = 36 * 3600                                              # `check`: a night and a half
+STALE_SECONDS = 36 * 3600
 STATE = "/var/lib/lifeos-offsite"
 KEY_FILE = "/etc/lifeos-offsite/recipient.asc"
-MAC_INBOX = "/srv/mac-inbox/in"                                         # LIFE-538: the SFTP-only drop folder the MacBook Pro pushes its already-encrypted archive to (lifeos/edge/backup/mac_push.py); only the newest file is taken
+# SFTP-only drop folder the MacBook Pro pushes its encrypted archive to (mac_push.py); only the newest file is taken
+MAC_INBOX = "/srv/mac-inbox/in"
 MAC_NAME = re.compile(r"^mac-\d{8}-\d{4}\.tar\.gz\.gpg$")
-MAC_STALE_SECONDS = 9 * 86400                                           # LIFE-542 (Jim, Nov 10 2026): the Mac pushes weekly, so a week and two days without a new file is the warning line
+MAC_STALE_SECONDS = 9 * 86400  # the Mac pushes weekly: a week and two days without a new file is the warning line
 CENTRAL = ZoneInfo("America/Chicago")
 
 UBUNTU, GRANS = "/home/ubuntu", "/home/grans"
-HERMES = "/var/lib/hermeseval/home/.hermes"                           # LIFE-318 (Jim, Nov 5 2026: "Hermes backup: add to nightly"): the Hermes history, settings and memory notes; owner is the `hermes` user
-# (archive name, source path, owner, required): databases are snapshotted by their OWNER through the sqlite backup API, so no file on the host changes hands.
+HERMES = "/var/lib/hermeseval/home/.hermes"
+# (archive name, source path, owner, required): databases are snapshotted by their owner through the sqlite backup API
 SQLITE = (
     ("grans/grans.db", GRANS + "/.local/share/grans/grans.db", "grans", True),
     ("openclaw/state/openclaw.sqlite", UBUNTU + "/.openclaw/state/openclaw.sqlite", "ubuntu", True),
@@ -52,7 +53,8 @@ SQLITE = (
     ("openclaw/agents/fit/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit/agent/openclaw-agent.sqlite", "ubuntu", False),
     ("openclaw/agents/fit2/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit2/agent/openclaw-agent.sqlite", "ubuntu", False),
     ("openclaw/agents/fit3/openclaw-agent.sqlite", UBUNTU + "/.openclaw/agents/fit3/agent/openclaw-agent.sqlite", "ubuntu", False),
-    ("hermes/state.db", HERMES + "/state.db", "hermes", False),   # every Hermes entry is OPTIONAL: a Hermes problem must never stop the Granola and OpenClaw copies; it shows as `missing` in the status
+    # every Hermes entry is optional: a Hermes problem must not stop the Granola and OpenClaw copies
+    ("hermes/state.db", HERMES + "/state.db", "hermes", False),
     ("hermes/shared-state.db", HERMES + "/shared-state.db", "hermes", False),
     ("hermes/kanban.db", HERMES + "/kanban.db", "hermes", False),
     ("hermes/projects.db", HERMES + "/projects.db", "hermes", False),
@@ -62,13 +64,13 @@ SQLITE = (
     ("hermes/profiles/research/state.db", HERMES + "/profiles/research/state.db", "hermes", False),
     ("hermes/profiles/writer/state.db", HERMES + "/profiles/writer/state.db", "hermes", False),
 )
-FILES = (   # (archive name, source path, required)
+FILES = (
     ("openclaw/openclaw.json", UBUNTU + "/.openclaw/openclaw.json", True),
     ("close/policy.json", "/etc/lifeos-close/policy.json", False),
     ("systemd-user/lifeos-imessage-alerts@.service", UBUNTU + "/.config/systemd/user/lifeos-imessage-alerts@.service", False),
-    ("systemd-user/lifeos-fit-gw.service", UBUNTU + "/.config/systemd/user/lifeos-fit-gw.service", False),           # LIFE-529 (Jim, Nov 9 2026, 11:58 PM CT): the Cloud Fit service unit and its deploy helper, so a restore can bring Fit back
+    ("systemd-user/lifeos-fit-gw.service", UBUNTU + "/.config/systemd/user/lifeos-fit-gw.service", False),
     ("sbin/lifeos-fit-deploy", "/usr/local/sbin/lifeos-fit-deploy", False),
-    ("systemd/lifeos-resume.socket", "/etc/systemd/system/lifeos-resume.socket", False),                              # LIFE-529 (Jim, Nov 10 2026): the resume builder's system units, so a restore can bring it back
+    ("systemd/lifeos-resume.socket", "/etc/systemd/system/lifeos-resume.socket", False),
     ("systemd/lifeos-resume@.service", "/etc/systemd/system/lifeos-resume@.service", False),
     ("hermes/config.yaml", HERMES + "/config.yaml", False),
     ("hermes/SOUL.md", HERMES + "/SOUL.md", False),
@@ -83,11 +85,12 @@ FILES = (   # (archive name, source path, required)
     ("hermes/profiles/writer/config.yaml", HERMES + "/profiles/writer/config.yaml", False),
     ("hermes/profiles/writer/SOUL.md", HERMES + "/profiles/writer/SOUL.md", False),
 )
-TREES = (   # (archive prefix, source directory): every regular file inside, except the DENY names and old *.bak copies
+TREES = (
     ("config/lifeos-fit", UBUNTU + "/.config/lifeos-fit"),
     ("config/lifeos-resume", UBUNTU + "/.config/lifeos-resume"),
     ("config/lifeos-alerts", UBUNTU + "/.config/lifeos-alerts"),
-    ("code/lifeos-fit", UBUNTU + "/.local/lib/lifeos-fit"),            # LIFE-529: the Cloud Fit and resume-builder CODE (VM-only by design, never in the public repo); the config folders above were already saved, the code was not
+    # code is VM-only by design, never in the public repo
+    ("code/lifeos-fit", UBUNTU + "/.local/lib/lifeos-fit"),
     ("code/lifeos-resume", UBUNTU + "/.local/lib/lifeos-resume"),
     ("openclaw/workspace", UBUNTU + "/.openclaw/workspace"),
     ("openclaw/jira-approvals", UBUNTU + "/.openclaw/jira-approvals"),
@@ -98,13 +101,15 @@ TREES = (   # (archive prefix, source directory): every regular file inside, exc
     ("hermes/profiles/research/memories", HERMES + "/profiles/research/memories"),
     ("hermes/profiles/writer/memories", HERMES + "/profiles/writer/memories"),
 )
-SECRET_TREES = (   # (archive prefix, source directory): credential material Jim chose to back up. Exempt from DENY, and ONLY these; never named in any output, counted only
+# credential material that is deliberately backed up: exempt from DENY, only these; never named in any output
+SECRET_TREES = (
     ("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),
 )
-CODE_PRUNE = ("node_modules", "__pycache__")                                # LIFE-529: under code/ only, folders that are rebuilt from package-lock.json or the interpreter; every other tree is walked as before
+CODE_PRUNE = ("node_modules", "__pycache__")
 
 
-DENY = re.compile(r"credential|secret|token|passw|\.env\b|auth|key|bws|/gh/|notion|\.pem|id_rsa|\.bak", re.I)    # never collected, and a test holds every list above clear of it
+# never collected; a test holds every list above clear of it
+DENY = re.compile(r"credential|secret|token|passw|\.env\b|auth|key|bws|/gh/|notion|\.pem|id_rsa|\.bak", re.I)
 
 
 class BackupError(RuntimeError):
@@ -112,7 +117,6 @@ class BackupError(RuntimeError):
 
 
 def now_central(clock=time.time):
-    """A file name in Central time, 12-hour (Jim reads these names)."""
     return datetime.datetime.fromtimestamp(clock(), CENTRAL).strftime("%Y-%m-%d_%I%M%p_CT")
 
 
@@ -120,7 +124,6 @@ def denied(*names):
     return any(DENY.search(n) for n in names)
 
 
-# --- collect -------------------------------------------------------------------------------------------------------------------------------------------------------
 
 _SNAP = ("import sqlite3, sys\n"
          "src = sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True, timeout=30)\n"
@@ -132,7 +135,9 @@ _SNAP = ("import sqlite3, sys\n"
 
 
 def snapshot(source, dest, owner, run=subprocess.run):
-    """One database -> a consistent copy, made BY ITS OWNER (so the owner's own -wal/-shm files are never created or changed by root). Code, never a path."""
+    """One database -> a consistent copy made by its owner (so the owner's -wal/-shm files are never created or
+    changed by root). Code, never a path.
+    """
     done = run(["runuser", "-u", owner, "--", "python3", "-I", "-c", _SNAP, source, dest], capture_output=True, timeout=300)
     if done.returncode == 3:
         raise BackupError("backup_db_corrupt")
@@ -141,7 +146,9 @@ def snapshot(source, dest, owner, run=subprocess.run):
 
 
 def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None, mac_inbox=None):
-    """Everything on the list -> {archive name: file in `work`}, plus counts. A missing REQUIRED source stops the run (nothing is uploaded); a missing optional one is counted, and an optional database that cannot be snapshotted is counted as `optional_db_failed`."""
+    """Everything on the list -> {archive name: file in `work`}, plus counts. A missing required source stops the run;
+    a missing optional one is counted, as is an optional database that cannot be snapshotted (`optional_db_failed`).
+    """
     sqlite, files, trees, chown = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees, chown or shutil.chown
     secret_trees = SECRET_TREES if secret_trees is None else secret_trees
     out, missing, skipped, credentials, db_failed = {}, 0, 0, 0, 0
@@ -159,12 +166,13 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
         dest = os.path.join(holder, hashlib.sha256(name.encode()).hexdigest()[:16] + ".sqlite")
         try:
             snapshot(source, dest, owner, run)
-        except (BackupError, subprocess.TimeoutExpired):       # LIFE-652: a corrupt, locked or hung OPTIONAL database is counted and skipped; a required one still stops the run
+        # a corrupt, locked or hung optional database is counted and skipped; a required one stops the run
+        except (BackupError, subprocess.TimeoutExpired):
             if required:
                 raise
             db_failed += 1
             if os.path.exists(dest):
-                os.unlink(dest)                                  # a half-made copy is never archived
+                os.unlink(dest)
             continue
         out[name] = dest
     for name, source, required in files:
@@ -203,23 +211,22 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
     try:
         newest = sorted(n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n)))
     except OSError:
-        newest = None                                                               # no inbox folder on this machine: not configured, nothing counted
+        newest = None  # no inbox folder on this machine: not configured
     if newest:
         if denied("mac/" + newest[-1], os.path.join(inbox, newest[-1])):
             raise BackupError("backup_secret_path")
-        out["mac/" + newest[-1]] = os.path.join(inbox, newest[-1])                  # already encrypted to the same public key; it rides inside the outer encrypted archive
+        out["mac/" + newest[-1]] = os.path.join(inbox, newest[-1])  # already encrypted to the same public key
     elif newest is not None:
-        missing += 1                                                                # the folder exists but holds no archive (the Mac stopped pushing): shows as `missing` in the status
+        missing += 1  # the folder exists but holds no archive: shows as `missing` in the status
     if not out:
         raise BackupError("backup_nothing_to_save")
     counts = {"missing": missing, "skipped": skipped, "credentials": credentials}
     if db_failed:
-        counts["optional_db_failed"] = db_failed                    # LIFE-652: present only when it happened, so the status record is otherwise identical
+        counts["optional_db_failed"] = db_failed
     return out, counts
 
 
 def build_archive(entries, dest):
-    """{name: file} -> one tar.gz, owner and mode normalised. Returns the number of files."""
     with tarfile.open(dest, "w:gz") as tar:
         for name in sorted(entries):
             info = tar.gettarinfo(entries[name], arcname=name)
@@ -233,10 +240,8 @@ def build_archive(entries, dest):
     return len(entries)
 
 
-# --- encrypt -------------------------------------------------------------------------------------------------------------------------------------------------------
 
 def encrypt(plain, dest, work, key_file=KEY_FILE, run=subprocess.run):
-    """Encrypt to the PUBLIC key in `key_file`. Refuses a key file that carries a secret key (Jim's private key must never be on this machine)."""
     home = os.path.join(work, "gnupg")
     os.makedirs(home, mode=0o700, exist_ok=True)
     base = ["gpg", "--batch", "--no-tty", "--homedir", home]
@@ -255,7 +260,6 @@ def encrypt(plain, dest, work, key_file=KEY_FILE, run=subprocess.run):
         raise BackupError("backup_encrypt")
 
 
-# --- Drive ---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 def credential(raw):
     try:
@@ -303,7 +307,7 @@ class Drive:
             if not isinstance(token, str) or not token:
                 raise BackupError("backup_drive_token_refused")
             if SCOPE not in str(reply.get("scope", "")).split() or "https://www.googleapis.com/auth/drive" in str(reply.get("scope", "")).split():
-                raise BackupError("backup_drive_scope")                  # exactly drive.file: a wider grant is refused, not used
+                raise BackupError("backup_drive_scope")
             self._token = token
         return self._token
 
@@ -316,7 +320,6 @@ class Drive:
         return files
 
     def folder(self):
-        """The one backups folder this app made (oldest if there were ever two), created once at the top of My Drive."""
         found = self._find(f"mimeType='{FOLDER_MIME}' and name='{_q(FOLDER_NAME)}' and appProperties has {{ key='lifeos' and value='{FOLDER_TAG}' }}", "createdTime")
         if found:
             return found[0]["id"]
@@ -327,7 +330,6 @@ class Drive:
         return made["id"]
 
     def upload(self, folder_id, name, path):
-        """One file, resumable upload -> its metadata, checked: the checksum Drive reports must be the bytes we hold."""
         with open(path, "rb") as handle:
             data = handle.read()
         meta = json.dumps({"name": name, "parents": [folder_id], "mimeType": "application/octet-stream", "appProperties": {"lifeos": FILE_TAG}}).encode()
@@ -336,7 +338,7 @@ class Drive:
         location = headers.get("Location")
         if not location or not location.startswith("https://www.googleapis.com/"):
             raise BackupError("backup_drive_off_contract")
-        made = self._call("PUT", location, data, "application/octet-stream")            # the reply carries the fields asked for when the session was opened
+        made = self._call("PUT", location, data, "application/octet-stream")
         if made.get("md5Checksum") != hashlib.md5(data).hexdigest() or str(made.get("size")) != str(len(data)):
             raise BackupError("backup_drive_upload_unverified")
         return made
@@ -349,7 +351,9 @@ class Drive:
 
 
 def prune(drive, folder_id, keep=KEEP, limit=MAX_DELETE):
-    """Newest `keep` stay. Only this app's own tagged files in its own folder are ever listed; at most `limit` are removed per run. -> (kept, removed)."""
+    """Newest `keep` stay. Only this app's own tagged files in its own folder are listed; at most `limit` are removed
+    per run. -> (kept, removed)
+    """
     files = drive.kept(folder_id)
     extra = files[keep:]
     removed = 0
@@ -359,7 +363,6 @@ def prune(drive, folder_id, keep=KEEP, limit=MAX_DELETE):
     return len(files) - removed, removed
 
 
-# --- run / status --------------------------------------------------------------------------------------------------------------------------------------------------
 
 def write_status(state_dir, ok, code, clock=time.time, **counts):
     os.makedirs(state_dir, mode=0o755, exist_ok=True)
@@ -373,8 +376,9 @@ def write_status(state_dir, ok, code, clock=time.time, **counts):
 
 
 def run(raw_credential, state_dir=STATE, key_file=KEY_FILE, drive=None, sh=subprocess.run, clock=time.time, dry=False):
-    """One night's backup. -> the status record (also written to the state dir). Never raises; a failure is the record's `code`.
-    `dry`: stop after the encrypted copy exists (no Drive, no status file written): the proof the snapshots and the key work before any credential is installed."""
+    """One night's backup -> the status record (also written to the state dir). Never raises; a failure is the
+    record's `code`. `dry` stops after the encrypted copy exists (no Drive, no status file).
+    """
     work = snaps = None
     counts = {}
     write = (lambda *a, **k: {"ok": a[1], "code": a[2], **{x: int(y) for x, y in k.items()}}) if dry else write_status
@@ -382,7 +386,8 @@ def run(raw_credential, state_dir=STATE, key_file=KEY_FILE, drive=None, sh=subpr
         os.makedirs(state_dir, mode=0o700, exist_ok=True)
         work = tempfile.mkdtemp(prefix="work-", dir=state_dir)
         os.chmod(work, 0o700)
-        snaps = tempfile.mkdtemp(prefix="offsite-snap-", dir="/var/tmp")                # traversable by the database owners (they write their own snapshot here); nothing else lives in it
+        # traversable by the database owners, who write their own snapshot here
+        snaps = tempfile.mkdtemp(prefix="offsite-snap-", dir="/var/tmp")
         os.chmod(snaps, 0o711)
         entries, extra = collect(snaps, sh)
         counts.update(extra, files=len(entries))
@@ -391,7 +396,7 @@ def run(raw_credential, state_dir=STATE, key_file=KEY_FILE, drive=None, sh=subpr
         sealed = os.path.join(work, "state.tar.gz.gpg")
         encrypt(archive, sealed, work, key_file, sh)
         counts["bytes"] = os.path.getsize(sealed)
-        os.unlink(archive)                                                # the plain copy goes first
+        os.unlink(archive)
         shutil.rmtree(snaps, ignore_errors=True)
         if dry:
             return write(state_dir, True, "dry_ok", clock, **counts)
@@ -412,7 +417,6 @@ def run(raw_credential, state_dir=STATE, key_file=KEY_FILE, drive=None, sh=subpr
 
 
 def check(state_dir=STATE, clock=time.time, limit=STALE_SECONDS):
-    """-> (ok, code): the last run succeeded and is recent."""
     try:
         with open(os.path.join(state_dir, "status.json")) as handle:
             record = json.load(handle)
@@ -426,8 +430,9 @@ def check(state_dir=STATE, clock=time.time, limit=STALE_SECONDS):
 
 
 def mac_check(inbox=MAC_INBOX, clock=time.time, limit=MAC_STALE_SECONDS):
-    """LIFE-542: -> (ok, code, whole days old or None) for the newest Mac archive in the inbox, by the time it arrived. WARN-only: `verify` prints it and never fails on it.
-    Codes: mac_backup_ok | mac_backup_stale | mac_backup_none (folder readable, no archive) | mac_backup_unreadable (no folder, or it cannot be read)."""
+    """-> (ok, code, whole days old or None) for the newest Mac archive in the inbox. Warn-only: `verify` prints it
+    and never fails on it. Codes: mac_backup_ok | mac_backup_stale | mac_backup_none | mac_backup_unreadable.
+    """
     try:
         names = [n for n in os.listdir(inbox) if MAC_NAME.match(n) and os.path.isfile(os.path.join(inbox, n)) and not os.path.islink(os.path.join(inbox, n))]
         if not names:

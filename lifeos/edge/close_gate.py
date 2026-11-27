@@ -1,12 +1,11 @@
-"""LIFE-47 S2 (Edge): transport gate of the private Close Opportunity service (Option B, LIFE-47 10248/10249). One process per connection (127.0.0.1:47344,
-Accept=yes) as a DynamicUser isolated from OpenClaw (`ubuntu`, no root); Tailscale Serve terminates TLS on 47443 and adds PROXY v2. Before the app sees the request:
-  1. the loopback peer must be root (tailscaled): no local user, OpenClaw included, can present a PROXY header;
-  2. PROXY v2 source -> tailscaled whois: the approved login, untagged, StableID on the approved list (iPhone, MacBook; never Oracle or the Mac mini);
-  3. ONE bounded HTTP/1.1 request: GET or POST, exact Host, no duplicate header or chunked body; POST same-origin and form-encoded;
-  4. GET never gets the Notion token, only a read-only client; POST gets the token. Refusals are fixed statuses; nothing is logged.
-  5. The optional `bwsalerts` credential (a Bitwarden machine-account token for the LIFE OS ALERTS project, LIFE-733; it replaced the GitHub `ghvars` token) reaches the app only for the path /alerts (the Alert settings screen), on GET and POST.
-After a POST's response is written, a refresh the app asked for (Jim, Oct 24: closed rows should leave the Daily Report without waiting for the hour) is one GitHub
-workflow_dispatch made with the optional `github` credential, which the app never sees; without that credential nothing is asked."""
+"""Transport gate of the private Close Opportunity service: one process per connection (127.0.0.1:47344, Accept=yes)
+as an isolated DynamicUser behind Tailscale Serve (TLS on 47443, PROXY v2). Before the app sees a request the loopback
+peer must be root (tailscaled), the PROXY source must resolve via tailscaled whois to the approved untagged login on
+an approved StableID, and it must be one bounded GET or POST (exact Host, no duplicate header or chunked body; POST
+same-origin, form-encoded). GET gets a read-only Notion client, POST the token. Refusals are fixed statuses; nothing
+is logged. The `bwsalerts` credential reaches the app only for /alerts. After a POST's response, a refresh the app
+asked for is one GitHub workflow_dispatch made with the optional `github` credential, which the app never sees.
+"""
 import json
 import os
 import subprocess
@@ -19,30 +18,32 @@ from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions"
-REFRESH = {"hiring": {"refresh": "hiring", "live": "true"},             # the only runs an app may ask for: a Daily Report region, redrawn by its own hourly writer
-           "recruiters": {"refresh": "recruiters", "live": "true"}}     # the Recruiter Outreach table only (no mail read), after a verified recruiter close, status or Mark as Sent
+REFRESH = {"hiring": {"refresh": "hiring", "live": "true"},
+           "recruiters": {"refresh": "recruiters", "live": "true"}}
 WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
-# same-origin, never no-referrer: under no-referrer a browser sends `Origin: null` on the form POST and the origin check below refuses every Review (iPhone Safari, Oct 16 2026)
+# same-origin, never no-referrer: under no-referrer a browser sends `Origin: null` on the form POST and the origin
+# check refuses it
 SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Connection", "close"))
 REFERRER = "same-origin"
 CSP = "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
-# LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): the Manage hub alone may load Google's Drive picker and sign-in (scripts, their frames and token calls);
-# every other screen keeps CSP. Still no inline script, form-action and base-uri unchanged, and the page itself is never framed.
+# The Manage hub alone may load Google's Drive picker and sign-in; every other screen keeps CSP. No inline script, and
+# the page itself is never framed.
 PICKER_CSP = ("default-src 'self'; script-src 'self' https://apis.google.com https://accounts.google.com; frame-src https://docs.google.com https://drive.google.com "
               "https://accounts.google.com https://content.googleapis.com; connect-src 'self' https://accounts.google.com https://www.googleapis.com https://content.googleapis.com; "
               "img-src 'self' data: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; "
               "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 PICKER_PATHS = ("/manage",)
-# LIFE-173 (Jim, Nov 6 2026: "fix both"): Google checks the picker's API key against the page's address, and same-origin sends Google none, so the picker said
-# "The API developer key is invalid". The Manage hub alone sends Google its origin (never the path or ?o=); same-origin posts still carry their Origin.
+# Google checks the picker's API key against the page's address, so the Manage hub alone sends Google its origin
+# (never the path or ?o=); same-origin posts still carry their Origin.
 PICKER_REFERRER = "strict-origin-when-cross-origin"
 
 
 class ReadOnly:
-    """GET's Notion client. Reads pass through (GET calls, data-source queries, page reads, the configured source id); every write is refused
-    before anything is sent. The token stays inside the wrapped client."""
+    """GET's Notion client: reads pass through, every write is refused before anything is sent; the token stays inside
+    the wrapped client.
+    """
 
     def __init__(self, client):
         self._client, self.source = client, client.source
@@ -60,7 +61,6 @@ class ReadOnly:
 
 
 def notion_client(token, policy):
-    """The real client for the canonical Job Ledger; a policy without the ledger id fails closed (NOTION_CONFIG_MISSING)."""
     return Client({"NOTION_API_TOKEN": token.decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": policy.get("ledger", "")})
 
 
@@ -90,7 +90,7 @@ def read_request(stream):
     for line in lines[1:]:
         name, sep, value = line.partition(":")
         if not sep or name.strip().lower() in headers:
-            return None                                                    # a duplicate header is refused, never resolved
+            return None
         headers[name.strip().lower()] = value.strip()
     size = headers.get("content-length", "0")
     if "transfer-encoding" in headers or not size.isdigit() or int(size) > MAX_BODY:
@@ -121,8 +121,10 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=(), 
 
 
 def refresh(token, wants, opener=urllib.request.urlopen):
-    """One workflow_dispatch per known refresh the app asked for, unless any run in the repository is already waiting: an after-tick domains run redraws the region anyway,
-    and the manual Recruiters and Amazon runs share the same concurrency group, where a second waiting run replaces the first (the Oct 21 stall). Best effort and silent: the response is already sent, and the hourly run still redraws. -> codes, for tests."""
+    """One workflow_dispatch per refresh the app asked for, unless any run in the repository is already waiting (a
+    second waiting run in the shared concurrency group would replace the first). Best effort and silent. -> codes, for
+    tests.
+    """
     def call(method, path, body=None):
         req = urllib.request.Request(API + path, None if body is None else json.dumps(body).encode(), method=method, headers={
             "Authorization": "Bearer " + token.decode(), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-close"})
@@ -136,18 +138,19 @@ def refresh(token, wants, opener=urllib.request.urlopen):
                 continue
             call("POST", "/workflows/domains.yml/dispatches", {"ref": "main", "inputs": REFRESH[name]})
             done.append("dispatched")
-        except Exception:                                                  # noqa: BLE001 - nothing is reported to anyone: the close itself is already verified
+        except Exception:                                                  # noqa: BLE001
             done.append("failed")
     return done
 
 
 def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
-    """app(req, who, secrets) -> (status, content type, body bytes, extra headers).
-    secrets: GET {"link", "reader": ReadOnly client, "config"}; POST {"link", "notion": the token, "config", "after", "gdrive"?}; config = canonical ledger/pipeline ids."""
+    """app(req, who, secrets) -> (status, content type, body bytes, extra headers). secrets: GET {"link", "reader",
+    "config"}; POST {"link", "notion", "config", "after", "gdrive"?}.
+    """
     stdin, stdout = stdin or sys.stdin.buffer, stdout or sys.stdout.buffer
     try:
         if uid() != 0:
-            return 1                                                       # not tailscaled: refused before any header is read
+            return 1
     except (OSError, ValueError):
         return 1
     ip = ep.proxy_source(stdin)
@@ -165,21 +168,22 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in ("link", "notion")}
     github = os.path.join(creds, "github")
     try:
-        token = open(github, "rb").read().strip() if os.path.isfile(github) else b""  # optional: absent or unreadable = no refresh is ever asked
+        token = open(github, "rb").read().strip() if os.path.isfile(github) else b""
     except OSError:
         token = b""
     drive = os.path.join(creds, "gdrive")
     try:
-        gdrive = open(drive, "rb").read().strip() if os.path.isfile(drive) else b""   # optional (Jim, Oct 24): résumés go to Google Drive; absent = the Notion upload
+        gdrive = open(drive, "rb").read().strip() if os.path.isfile(drive) else b""
     except OSError:
         gdrive = b""
     bws_path = os.path.join(creds, "bwsalerts")
     try:
-        bwsalerts = open(bws_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(bws_path) else b""      # optional (Jim, Oct 26): the Alert settings screen edits the three alert items in Bitwarden; ONLY /alerts ever gets it, GET and POST
+        # optional: the Alert settings screen; only /alerts ever gets it
+        bwsalerts = open(bws_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(bws_path) else b""
     except OSError:
         bwsalerts = b""
     picker_path = os.path.join(creds, "picker")
-    try:                                                                  # optional (LIFE-217, Jim Oct 31): the Drive picker's browser identifiers; ONLY GET /manage gets them
+    try:
         picker = json.loads(open(picker_path, "rb").read()) if req["method"] == "GET" and req["path"] in PICKER_PATHS and os.path.isfile(picker_path) else None
     except (OSError, ValueError):
         picker = None
@@ -187,19 +191,20 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if isinstance(picker, dict):
         secrets["picker"] = {k: picker[k] for k in ("client_id", "api_key", "app_id") if isinstance(picker.get(k), str)}
-    if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
+    # Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
+    if policy.get("recruiters"):
         secrets["config"]["recruiters"] = policy["recruiters"]
     try:
         if req["method"] == "GET":
             secrets["reader"] = ReadOnly(client(secrets.pop("notion"), policy))
         else:
-            secrets["after"] = after                                       # the app appends refresh names (REFRESH keys) after a verified write
+            secrets["after"] = after
             if gdrive:
-                secrets["gdrive"] = gdrive                                 # POST only, like the Notion token; GET never gets it
+                secrets["gdrive"] = gdrive
         if bwsalerts:
             secrets["bwsalerts"] = bwsalerts
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
-    except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
+    except Exception:                                                      # noqa: BLE001
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
     hub = req["method"] == "GET" and req["path"] in PICKER_PATHS and status == 200 and ctype.startswith("text/html")
     respond(stdout, status, body, ctype, extra, PICKER_CSP if hub else CSP, PICKER_REFERRER if hub else REFERRER)

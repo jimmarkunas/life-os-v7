@@ -1,5 +1,7 @@
-"""LIFE-643 row 1 helper for the move of WhatsApp Attention to its own user (python3 standard library only, so the same file runs on Oracle and in the tests).
-Prints names, modes, ids and counts only. It copies session files without ever printing or inspecting what is in them; nothing here reads a session file's contents except to copy the bytes."""
+"""Helper for moving WhatsApp Attention to its own user (python3 standard library only, so the same file runs on
+Oracle and in the tests). Prints names, modes, ids and counts only. It copies session files without ever printing or
+inspecting what is in them; nothing here reads a session file's contents except to copy the bytes.
+"""
 import hashlib
 import os
 import shutil
@@ -7,7 +9,8 @@ import socket
 import stat
 import sys
 
-NO_CHOWN = False                                           # `--no-chown` as the first argument: tests only (no root, no second user); the host run never passes it
+# `--no-chown` as the first argument: tests only (no root, no second user); the host run never passes it
+NO_CHOWN = False
 
 
 def walk(tree):
@@ -37,7 +40,6 @@ def mkparents(path, uid, gid):
 
 
 def cmd_check(owner, tree):
-    """Refuse (exit 1, one fixed word) on a link, an entry not owned by the owner, or anything but files, folders and the one answer socket."""
     for rel, info in walk(tree):
         if stat.S_ISLNK(info.st_mode):
             print("symlink")
@@ -110,7 +112,6 @@ def listing(tree):
 
 
 def cmd_same(src, dst):
-    """Same names, kinds and sizes (the socket does not count)."""
     a, b = listing(src), listing(dst)
     if a == b:
         print("same entries=%d" % len(a))
@@ -157,7 +158,6 @@ def cmd_install_tree(src, dst):
 
 
 def cmd_tree_summary(tree):
-    """entries and bytes, the same measure install-tree prints (links count as entries)."""
     count = size = 0
     for _rel, info in walk(tree):
         count += 1
@@ -167,7 +167,6 @@ def cmd_tree_summary(tree):
 
 
 def cmd_wipe(path, keep_under):
-    """Remove a folder, but only one that lies strictly under keep_under (the new user's own home)."""
     real, base = os.path.realpath(path), os.path.realpath(keep_under)
     if not real.startswith(base.rstrip("/") + "/"):
         print("refused")
@@ -179,7 +178,6 @@ def cmd_wipe(path, keep_under):
 
 
 def cmd_connect(path):
-    """Connect to the answer socket and count the bytes it sends back; the answer is dropped, never printed."""
     total = 0
     with socket.socket(socket.AF_UNIX) as sock:
         sock.settimeout(5)
@@ -194,7 +192,6 @@ def cmd_connect(path):
 
 
 def cmd_canlist(path):
-    """Can this user list the folder? (run as ubuntu against the new state folder: it must say denied)"""
     try:
         os.listdir(path)
     except OSError:

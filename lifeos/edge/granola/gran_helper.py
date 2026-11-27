@@ -1,26 +1,16 @@
 #!/usr/bin/python3 -I
-"""LIFE-37 Step 2 (Jim's approval Oct 26 2026; call shape agreed with Career Claude in Jira comments 11235 and 11242): the Granola transcript helper on Oracle.
-
-systemd starts one process per connection as the `grans` user (socket activation, Accept=yes: the connection is stdin/stdout). The only caller is the private
-endpoint (lifeos/imessage/alerts_endpoint.py), which has already checked Tailscale's PROXY header and that the caller carries tag:v7-runner. One request per
-connection: `gran1 <len>\\n` + a JSON object of 1..4096 bytes; one reply: `gran1 <len>\\n` + a JSON object `{"ok", "code", "nonce", ...}`.
-Four fixed operations, no shell and nothing the caller can choose beyond a meeting id and a hash:
-  sync   `grans sync documents`, then `grans sync transcripts` (no date limit). Reply {"documents": n, "transcripts": n, "exit": 0}, counts read from the local database.
-  list   every live meeting: {"id", "start" (the calendar start when the meeting has one, else when Granola created it, ISO with zone), "title", "attendees"}, plus
-         "caps": what this helper can do beyond the base verbs ("notes", "purge_all"; LIFE-122 comment 11269).
-         Private fields travel to the one caller in memory; nothing is logged, written or kept here.
-  show   {"id"} -> `grans show <id> --transcript --json --no-color` stdout verbatim in "json" (at most 25,000,000 bytes: the contract's own limit), plus "notes" and
-         "summary" (Granola's own, each at most 60,000 characters, "" when there is none).
-  purge  {"id", "content_sha256"} -> deletes that one meeting's transcript utterances from grans.db, but only if the caller's hash equals the hash this process computes
-         itself with the transcript contract (lifeos/interview/transcript.py, installed beside this file) over a fresh `grans show` of that meeting. The caller sends
-         it after it has written the transcript to Notion and read it back. Reply {"purged": 0|1}. Titles, notes and attendees stay (they are what `list` matches on).
-  purge  {"id", "content_sha256", "scope": "all"} -> the same hash check, then deletes EVERYTHING held for that meeting: utterances, panels, text chunks and their vectors,
-         sync-log rows, attendees, its calendar event, and the meeting row itself (notes, summary, title). Reply {"purged": n >= 1 on first success, "scope": "all"}.
-         Idempotent: a meeting that is already gone answers {"purged": 0, "scope": "all"}. Granola's next `sync` can bring a purged meeting back; the caller's catalog stops it
-         being carried twice. Any other scope value is GRAN_BAD_FRAME.
-Fixed error codes (reply ok false): GRAN_BAD_FRAME, GRAN_BAD_OP, GRAN_NOT_FOUND, GRAN_SYNC_FAILED, GRAN_AUTH_EXPIRED, GRAN_TIMEOUT, GRAN_OVERSIZE, GRAN_HASH_MISMATCH, and
-the contract's own TRANSCRIPT_* code when `purge` meets a transcript that no longer passes it. Never a message, path, exception text or transcript content.
-The Mac and Oracle share one Granola session, so a refresh on the Mac can sign Oracle out: that is GRAN_AUTH_EXPIRED, and a person signs Oracle in again. Stdlib only."""
+"""Granola transcript helper on Oracle: one process per connection as `grans` (socket activation, stdin/stdout); the
+only caller is lifeos/imessage/alerts_endpoint.py. Request `gran1 <len>\\n` + a JSON object of 1..4096 bytes; reply
+`gran1 <len>\\n` + `{"ok", "code", "nonce", ...}`. Operations, no shell: sync (`grans sync documents`, then
+`transcripts`), list (live meetings {"id", "start", "title", "attendees"} plus "caps"), show ({"id"}: `grans show
+--transcript --json` stdout in "json", at most 25,000,000 bytes, plus "notes" and "summary" of at most 60,000
+characters each) and purge ({"id", "content_sha256"} deletes the meeting's transcript utterances only if the hash
+equals the one computed here with lifeos/interview/transcript.py over a fresh show; with "scope": "all" it deletes
+everything held for the meeting, idempotently; any other scope is GRAN_BAD_FRAME). Error codes: GRAN_BAD_FRAME,
+GRAN_BAD_OP, GRAN_NOT_FOUND, GRAN_SYNC_FAILED, GRAN_AUTH_EXPIRED (the Mac and Oracle share one Granola session),
+GRAN_TIMEOUT, GRAN_OVERSIZE, GRAN_HASH_MISMATCH or the contract's TRANSCRIPT_* code; never a message, path or
+transcript content. Stdlib only.
+"""
 import json
 import os
 import re
@@ -34,10 +24,10 @@ CONTRACT_DIR = "/opt/lifeos-gran"
 MAX_FRAME = 4096
 MAX_SHOW = 25_000_000
 MAX_REPLY = MAX_SHOW + 4096
-SYNC_EACH, SHOW_WAIT, SHORT_WAIT = 35, 50, 20          # seconds; the endpoint's hard limit is 90 for the whole connection
+SYNC_EACH, SHOW_WAIT, SHORT_WAIT = 35, 50, 20  # seconds; the endpoint's hard limit is 90 for the whole connection
 ID = re.compile(r"^[0-9A-Za-z_-]{8,64}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-MAX_TEXT = 60_000                                       # characters of notes, and of summary, sent with a show
+MAX_TEXT = 60_000
 CAPS = ["notes", "purge_all"]
 
 
@@ -47,7 +37,6 @@ def _frame(body):
 
 
 def read_request(stream):
-    """-> the request dict, or None when the frame is not exactly `gran1 <1..4096>\\n` + that many bytes of a JSON object."""
     raw = b""
     while len(raw) < 16:
         c = stream.read(1)
@@ -166,7 +155,6 @@ def _known(ctx, doc_id):
 
 
 def _show(ctx, doc_id):
-    """-> (stdout text, None) or (None, a fixed error code)."""
     try:
         done = ctx.grans_run(["show", doc_id, "--transcript", "--json", "--no-color"], SHOW_WAIT)
     except subprocess.TimeoutExpired:
@@ -197,7 +185,7 @@ def op_show(req, ctx, nonce):
 
 
 def _notes(ctx, doc_id):
-    """-> (notes, summary): Granola's own notes (markdown, else plain) and its AI summary (the summary column, else the meeting's panels), each cut at MAX_TEXT."""
+    """-> (notes, summary): Granola's notes (markdown, else plain) and AI summary, each cut at MAX_TEXT."""
     try:
         db = ctx.database()
         row = db.execute("select notes_markdown, notes_plain, summary from documents where id=?", (doc_id,)).fetchone() or (None, None, None)
@@ -215,7 +203,7 @@ def op_purge(req, ctx, nonce):
     if not isinstance(doc_id, str) or not ID.match(doc_id) or not isinstance(want, str) or not HEX64.match(want) or scope not in (None, "all"):
         return fail("GRAN_BAD_FRAME", nonce)
     if not _known(ctx, doc_id):
-        return good(nonce, purged=0, scope="all") if scope == "all" else fail("GRAN_NOT_FOUND", nonce)   # whole-meeting purge is idempotent
+        return good(nonce, purged=0, scope="all") if scope == "all" else fail("GRAN_NOT_FOUND", nonce)
     text, code = _show(ctx, doc_id)
     if code:
         return fail(code, nonce)
@@ -241,7 +229,7 @@ def op_purge(req, ctx, nonce):
 
 
 def _purge_all(db, doc_id):
-    """Delete everything held for one meeting in one transaction -> the number of rows removed. Tables Granola has not created on this install are skipped."""
+    """Delete everything held for one meeting in one transaction -> rows removed (tables missing here are skipped)."""
     have = {name for (name,) in db.execute("select name from sqlite_master where type='table'")}
     removed = 0
     event = None
@@ -273,7 +261,7 @@ def handle(req, ctx):
         return fail("GRAN_BAD_OP", nonce)
     try:
         return op(req, ctx, nonce)
-    except Exception:                                              # noqa: BLE001 - fixed code only; never an exception text
+    except Exception:                                              # noqa: BLE001
         return fail("GRAN_SYNC_FAILED", nonce)
 
 
