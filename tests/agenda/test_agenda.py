@@ -386,8 +386,8 @@ class RealCalendarShapeTests(unittest.TestCase):
 class HyphenatedIdTests(unittest.TestCase):
     """The API returns ids with hyphens"""
 
-    HYPHENATED = "fc809376-99e6-45a2-ac96-257d093d8e7c"
-    PLAIN = "fc80937699e645a2ac96257d093d8e7c"
+    HYPHENATED = "00000000-0000-0000-0000-000000000001"
+    PLAIN = "00000000000000000000000000000001"
 
     class Client:
         def __init__(self, hyphenated):
