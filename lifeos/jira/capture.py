@@ -61,7 +61,10 @@ def decision_text(body):
 
 def public_address(host, urlopen=urllib.request.urlopen):
     """The public (Funnel) address of a name, over DNS-over-HTTPS. A runner on the tailnet resolves the name to a tailnet address its policy does not allow; the public address answers."""
-    request = urllib.request.Request(f"https://cloudflare-dns.com/dns-query?name={host}&type=A", headers={"Accept": "application/dns-json", "User-Agent": "life-os-v7"})
+    request = urllib.request.Request(
+        f"https://cloudflare-dns.com/dns-query?name={host}&type=A",
+        headers={"Accept": "application/dns-json", "User-Agent": "life-os-v7"},
+    )
     with urlopen(request, timeout=10) as reply:
         answers = json.loads(reply.read()).get("Answer") or []
     return next(a["data"] for a in answers if a.get("type") == 1)
@@ -81,6 +84,7 @@ def pinned_open(address):
     class Handler(urllib.request.HTTPSHandler):
         def https_open(self, req):
             return self.do_open(lambda host, **kw: type("Pinned", (_Pinned,), {"address": address})(host, **kw), req)
+
     return urllib.request.build_opener(Handler).open
 
 
@@ -118,7 +122,11 @@ class Memory:
                 with self.urlopen(request, timeout=30) as reply:
                     return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
             except (urllib.error.URLError, OSError) as error:
-                if self.urlopen is not urllib.request.urlopen or self.public or not isinstance(getattr(error, "reason", error), (TimeoutError, socket.timeout)):
+                if (
+                    self.urlopen is not urllib.request.urlopen
+                    or self.public
+                    or not isinstance(getattr(error, "reason", error), (TimeoutError, socket.timeout))
+                ):
                     raise
                 self.public = True  # one retry through the public address; the first failure is not the answer
                 host = urllib.parse.urlsplit(self.url).hostname
