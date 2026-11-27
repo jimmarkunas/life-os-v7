@@ -101,7 +101,7 @@ class Trims(unittest.TestCase):
         finish = (ROOT / ".github/workflows-src/hourly/060-finish.yml").read_text()
         self.assertIn("hashFiles('requirements-fit.lock')", finish)
         self.assertLess(
-            finish.index("Pip download cache for the semantic layer"), finish.index("Install semantic layer")
+            finish.index("Pip cache for the semantic layer"), finish.index("Install semantic layer")
         )
 
     def test_profile_sync_follows_only_the_hourly_runs_that_started_in_the_11_and_23_utc_hours(self):

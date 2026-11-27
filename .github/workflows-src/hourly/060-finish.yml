@@ -25,7 +25,7 @@
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-v1
-      - name: Pip download cache for the semantic layer (keyed on requirements-fit.lock)
+      - name: Pip cache for the semantic layer (requirements-fit.lock)
         if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
