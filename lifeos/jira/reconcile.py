@@ -255,14 +255,22 @@ def _closed_at(issue):
     return _when(f.get("statuscategorychangedate") or f.get("resolutiondate"))
 
 
+def _cancelled(issue):
+    """True for a closed issue that was administratively cancelled (resolution other than Done, or label superseded)."""
+    resolution = (_field(issue, "resolution") or {}).get("name")
+    return (resolution is not None and resolution != "Done") or "superseded" in (_field(issue, "labels") or [])
+
+
 def closure_counts(issues, since=None):
-    """-> manual, automatic and total closed counts. The split starts at `since`; earlier closures count only in the total."""
+    """-> manual, automatic, cancelled and total closed counts; cancelled work is never delivered. The manual/automatic
+    split starts at `since`; earlier closures count only in the total."""
     done = [i for i in issues if _norm(i)["category"] == "done"]
+    cancelled = sum(1 for i in done if _cancelled(i))
     if since is None:
-        return {"manual": None, "automatic": None, "total": len(done), "split": False}
-    later = [i for i in done if (_closed_at(i) is not None and _closed_at(i) >= since)]
+        return {"manual": None, "automatic": None, "cancelled": cancelled, "total": len(done), "split": False}
+    later = [i for i in done if (_closed_at(i) is not None and _closed_at(i) >= since and not _cancelled(i))]
     auto = sum(1 for i in later if AUTO_LABEL in (_field(i, "labels") or []))
-    return {"manual": len(later) - auto, "automatic": auto, "total": len(done), "split": True}
+    return {"manual": len(later) - auto, "automatic": auto, "cancelled": cancelled, "total": len(done), "split": True}
 
 
 def since(environ=None):

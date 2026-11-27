@@ -219,8 +219,8 @@ class Counts(unittest.TestCase):
             made["fields"]["statuscategorychangedate"] = at(2026, 11, 25, hour).isoformat()
             return made
         issues = [done("A-1", 10), done("A-2", 16, ["auto-closed"]), done("A-3", 17, ["auto-closed", "x"]), issue("A-4")]
-        self.assertEqual(rc.closure_counts(issues, at(2026, 11, 25, 14)), {"manual": 0, "automatic": 2, "total": 3, "split": True})   # A-1 closed before activation: total only
-        self.assertEqual(rc.closure_counts(issues), {"manual": None, "automatic": None, "total": 3, "split": False})
+        self.assertEqual(rc.closure_counts(issues, at(2026, 11, 25, 14)), {"manual": 0, "automatic": 2, "cancelled": 0, "total": 3, "split": True})   # A-1 closed before activation: total only
+        self.assertEqual(rc.closure_counts(issues), {"manual": None, "automatic": None, "cancelled": 0, "total": 3, "split": False})
 
     def test_the_marker_is_one_label_and_one_comment_line(self):
         self.assertEqual(rc.auto_close_fields("123456"), {"label": "auto-closed", "comment": "Closed automatically by LIFE OS run 123456."})

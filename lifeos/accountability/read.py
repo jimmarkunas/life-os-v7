@@ -10,12 +10,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.parse import quote, urlparse
 
+from lifeos.accountability import closure
 from lifeos.platform.jira import JiraError
 
 PEOPLE = (("Jim", "JFM"), ("Matt", "MEJ"))
 WEEK_FIELDS = "summary,status,duedate,issuetype"
 EPIC_FIELDS = "summary"
-CHILD_FIELDS = "status,parent,resolutiondate,issuetype"
+CHILD_FIELDS = "status,parent,resolutiondate,issuetype," + closure.FIELDS
 MEJ_MEMBERSHIP = Path(__file__).with_name("mej_quarter_membership.json")
 PAGE, MAX_PAGES = 100, 30
 URL = re.compile(r"https?://[^\s\"\\<>)]+")
@@ -120,6 +121,8 @@ def _counts(children, first, last):
         if not parent:
             continue
         done = ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done"
+        if done and closure.classify(fields) == "cancelled":
+            continue
         if done:
             resolved = (fields.get("resolutiondate") or "")[:10]
             if not resolved or not first.isoformat() <= resolved <= last.isoformat():
@@ -252,6 +255,8 @@ def _mej_v2_tally(jira, quarter_keys, first, last, manifest=None, project="MEJ")
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_DRIFT")
         seen.add(key)
         done = ((fields.get("status") or {}).get("statusCategory") or {}).get("key") == "done"
+        if done and closure.classify(fields) == "cancelled":
+            continue
         if done:
             completed = _first_verified_done(jira, key, (fields.get("status") or {}).get("id"))
             tally[goal][0] += int(first <= completed <= last)
