@@ -1,4 +1,4 @@
-"""The model-judge test harness (LIFE-1064): candidates keep every safeguard, the judge sees exactly what memory_recall
+"""The model-judge test harness: candidates keep every safeguard, the judge sees exactly what memory_recall
 returns, the request fits the meter, and scoring keeps wrong answers apart from wrong silences. No network."""
 
 import importlib.util

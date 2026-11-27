@@ -1,4 +1,4 @@
-"""The J1 judge set is frozen before the judge prompt runs on it: it cannot change to make the judge pass (LIFE-1064)."""
+"""The J1 judge set is frozen before the judge prompt runs on it: it cannot change to make the judge pass."""
 
 import hashlib
 import json

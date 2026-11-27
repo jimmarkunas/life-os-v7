@@ -10,7 +10,7 @@ embedding model (nomic-embed-text, the one Honcho uses) ranking each tenant's st
 included and flagged, as Honcho's reader flags them. That stand-in is stated in every report.
 
 Paid route: the judge calls claude-haiku-5-5 only through the Honcho meter (spend-capped, audited); one call per query
-and repetition, max_tokens 200, temperature 0. Embeddings are loopback and free.
+and repetition, max_tokens 200 (this model takes no temperature; stability is checked across repetitions). Embeddings are loopback and free.
 Usage (on lifeos-edge-01): python3 tools/um_judge_eval.py --evidence-final /var/tmp/um-t6/evidence-final.jsonl
   --out /var/tmp/um-t8/judge.jsonl [--reps 2] [--sets H1,H2,J1] [--judge haiku|top1]"""
 
@@ -132,7 +132,6 @@ class HaikuJudge:
         body = {
             "model": MODEL,
             "max_tokens": MAX_TOKENS,
-            "temperature": 0,
             "system": SYSTEM,
             "messages": [
                 {
