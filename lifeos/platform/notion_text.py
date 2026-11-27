@@ -1,4 +1,4 @@
-"""LIFE-645: the plain text of a Notion rich_text list or of a block, read the one way (plain_text, else the text content; anything that is not an object is skipped)."""
+"""The plain text of a Notion rich_text list or of a block, read the one way (plain_text, else text content)."""
 
 
 def plain(items):

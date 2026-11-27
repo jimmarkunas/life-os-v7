@@ -1,7 +1,7 @@
-"""Jobright final apply link: log in with the saved secrets, click Apply, read where the chain lands (D12/D14).
+"""Jobright final apply link: log in with the saved secrets, click Apply, read where the chain lands.
 
-Free: Chromium runs inside the GitHub Actions runner (no paid browser). Selectors are the ones proven in V2.
-Only the link chain is done here - no descriptions, dates or parsing. Logs: fixed outcome codes and counts only.
+Chromium runs inside the CI runner (no paid browser). Only the link chain is done here: no descriptions, dates or
+parsing. Logs: fixed outcome codes and counts only.
 """
 import asyncio
 import json
@@ -37,7 +37,7 @@ async def login(page, email, password):
         if await button.count():
             try:
                 await button.first.click(timeout=2000)
-            except Exception:                                   # noqa: BLE001 - consent banner is optional
+            except Exception:  # noqa: BLE001 - consent banner is optional
                 pass
             break
     stage, seen = "start", []
@@ -57,7 +57,7 @@ async def login(page, email, password):
             seen.append(stage)
             if attempt < 2:
                 await page.goto(HOME, wait_until="domcontentloaded")
-    try:                                                        # value-free page facts for the public log
+    try:  # value-free page facts for the public log
         html = (await page.content()).lower()
         texts = await page.evaluate("""() => [...document.querySelectorAll('a,button,span,div')]
             .filter(e => e.children.length === 0 && /sign|log ?in|join|continue/i.test(e.textContent || ''))
@@ -73,8 +73,9 @@ DATA_JS = "() => { const el = document.getElementById('__NEXT_DATA__'); return e
 
 
 def job_result_link(data_text):
-    """The ONE employer URL of this job (V2 rule): only props.pageProps.dataSource.jobResult.{originalUrl, applyLink}, never another job's
-    link elsewhere in the page data (similar or recommended jobs); two different links, or none, give None and the Apply click decides."""
+    """The ONE employer URL of this job: only props.pageProps.dataSource.jobResult.{originalUrl, applyLink}, never
+    another job's link in the page data. Two different links, or none, give None.
+    """
     try:
         job = json.loads(data_text)["props"]["pageProps"]["dataSource"]["jobResult"]
     except (KeyError, TypeError, ValueError):

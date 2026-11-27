@@ -1,7 +1,7 @@
-"""Find the employer's own posting through web search (free TinyFish Search), precision first.
+"""Find the employer's own posting through web search (TinyFish Search), precision first.
 
-Attempt 1: ATS domains only. Attempt 2: any non-aggregator site whose host carries the company name.
-Accept only when the result title contains the job title AND the company name appears in host/title/snippet."""
+Accept only when the result title contains the job title AND the company name appears in host/title/snippet.
+"""
 from lifeos.jobs.resolve import ats_match
 from lifeos.jobs import classify, quality
 from lifeos.platform import tinyfish_search
@@ -20,12 +20,13 @@ def _good(result, company, title, need_host):
     host = classify.host(result["url"])
     if classify.apply_kind(result["url"]) == "aggregator":
         return False
-    if quality.url_problem(result["url"]):                  # search/listing pages are not the job
+    if quality.url_problem(result["url"]):
         return False
     page_title = ats_match.norm(result.get("title") or "")
     text = ats_match.norm(" ".join([result.get("title") or "", result.get("snippet") or ""]))
     tokens = _company_tokens(company)
-    if not tokens or not any(v in page_title for v in ats_match.title_variants(title)):    # the page TITLE must carry the job title (as written, or without the aggregator's Remote/location noise)
+    # the page TITLE must carry the job title (as written, or without the aggregator's Remote/location noise)
+    if not tokens or not any(v in page_title for v in ats_match.title_variants(title)):
         return False
     hay = ats_match.norm(host + " " + result["url"]) + " " + text
     if not all(t in hay for t in tokens[:2]):
@@ -37,21 +38,23 @@ FAILED = {"tinyfish_search_http_429": "rate_limited", "tinyfish_search_network":
 
 
 def failed_cause(code):
-    """The search error code -> the specific cause shown after `failed_search:` (Jim, Oct 17: name what failed, never a generic label)."""
+    """The search error code -> the specific cause shown after `failed_search:`."""
     code = str(code).lower()
     return FAILED.get(code) or (code.replace("tinyfish_search_", "") if code.startswith("tinyfish_search_http_") else "error")
 
 
 def find(company, title):
-    """('hit', kind, url) | ('miss', reason) | ('failed_search', cause). Reasons are fixed codes: `no_result` = the search found nothing,
-    `no_fit` = it found pages but none passed the checks below. `failed_search` = the search itself failed, with its specific cause
-    (`rate_limited`, `network`, `unreadable_answer` or `http_<status>`): not an attempt and never a miss."""
+    """('hit', kind, url) | ('miss', reason) | ('failed_search', cause). Reasons are fixed codes: `no_result` (nothing
+    found), `no_fit` (pages found, none passed the checks). `failed_search` carries the cause (`rate_limited`,
+    `network`, `unreadable_answer`, `http_<status>`): not an attempt and never a miss.
+    """
     if not company or not title:
         return ("miss", "no_company_or_title")
     try:
-        # ONE search per job (it used to be two, ATS domains then any site: live runs showed the any-site hits dominate and the second call doubled the time and the budget).
-        # Each result is judged by the rule for its own kind: an ATS-domain page needs the job title and company; an employer page also needs the company in its host.
-        results = tinyfish_search.search(f"{company} {ats_match.title_variants(title)[-1]} careers apply")[:8]        # the cleanest form: "(Fully Remote)" only dilutes the query
+        # ONE search per job: any-site hits dominate and a second call doubled time and budget. Each result is judged
+        # by the rule for its own kind: an ATS-domain page needs the job title and company; an employer page also
+        # needs the company in its host.
+        results = tinyfish_search.search(f"{company} {ats_match.title_variants(title)[-1]} careers apply")[:8]
         for result in results:
             on_ats = any(domain in classify.host(result["url"]) for domain in ATS_DOMAINS)
             if _good(result, company, title, need_host=not on_ats):

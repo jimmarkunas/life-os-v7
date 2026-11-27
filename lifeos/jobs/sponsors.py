@@ -1,9 +1,8 @@
-"""UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors (Skilled Worker route)?
+"""UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors?
 
-The register is loaded into `v7_sponsors` by lifeos.sources.discovery.sponsor_register. Lookup is by distinctive-token equality of the employer name
-(lifeos.jobs.names), never a fuzzy score. States: POSITIVE (the employer is on the register), NEGATIVE (the register is loaded and the
-employer is not on it), UNRESOLVED (no register loaded, an empty company, or a recruiter/intermediary whose own licence cannot qualify an
-unresolved client employer, so the job goes to Review).
+The register is loaded into `v7_sponsors` by lifeos.sources.discovery.sponsor_register. Lookup is by distinctive-token
+equality of the employer name (lifeos.jobs.names), never a fuzzy score. States: POSITIVE (on the register), NEGATIVE
+(register loaded, employer not on it), UNRESOLVED (no register, an empty company, or a recruiter/intermediary).
 """
 from lifeos.jobs import names, store
 from lifeos.jobs.lanes import NEGATIVE, POSITIVE, UNRESOLVED
@@ -32,8 +31,10 @@ class Register:
 
 
 def load(connection=None):
-    """The register from Hostinger, or an empty one (every state UNRESOLVED) when it has not been loaded yet.
-    store.connect() is a context manager (it opens the tunnel and the connection together), so it is always used with `with`."""
+    """The register from the store, or an empty one (every state UNRESOLVED) when it has not been loaded yet.
+
+    store.connect() is a context manager (tunnel and connection together), so always use it with `with`.
+    """
     if connection is not None:
         with connection.cursor() as cursor:
             cursor.execute("SELECT name FROM v7_sponsors")

@@ -1,11 +1,11 @@
 #!/usr/bin/python3 -I
-"""LIFE-977 (Jim, Nov 25 2026 10:58 AM CT, "Concord YES"): the read-only Concord health helper on Oracle. It adds no credential, token, timer or scheduler.
-
-systemd starts one process per connection as the `concord` user (socket activation, Accept=yes: the connection is stdin/stdout). The only caller is the private endpoint
-(lifeos/imessage/alerts_endpoint.py), which has already checked Tailscale's PROXY header and that the caller carries tag:v7-runner. One request per connection: `concord1\\n`.
-One reply line of JSON: {"ok": bool, "code": "" or a fixed word, "messages": a count, "at": epoch seconds}. It runs `concord -C <repo> messages --json` (the CLI's own read-only listing, the same call the
-Orca Concord Room worker makes) with a short timeout, checks the shape of every message record, and counts them. It never prints, stores or forwards a message, an id, a name, a path or a CLI line.
-Fixed codes: CONCORD_BAD_FRAME, CONCORD_CLI_MISSING, CONCORD_READ_FAILED, CONCORD_TIMEOUT, CONCORD_BAD_OUTPUT. Stdlib only."""
+"""Read-only Concord health helper on Oracle; adds no credential, timer or scheduler. One process per connection as
+the `concord` user (socket activation, stdin/stdout); the only caller is lifeos/imessage/alerts_endpoint.py. Request
+`concord1\\n`; one JSON reply line {"ok", "code" ("" or a fixed word), "messages" (a count), "at" (epoch seconds)}. It
+runs `concord -C <repo> messages --json` with a short timeout, checks the shape of each message record and counts
+them; nothing else of the CLI's output leaves. Codes: CONCORD_BAD_FRAME, CONCORD_CLI_MISSING, CONCORD_READ_FAILED,
+CONCORD_TIMEOUT, CONCORD_BAD_OUTPUT. Stdlib only.
+"""
 import json
 import os
 import subprocess
@@ -15,7 +15,8 @@ import time
 CLI = "/home/concord/.npm-global/bin/concord"
 REPO = "/home/concord/life-os-v7"
 WAIT = 25
-FIELDS = ("messageId", "senderAgentId", "recipientAgentId", "content", "createdAt", "status")     # the same shape lifeos/inbox/concord_source.py requires of a record
+# the same shape lifeos/inbox/concord_source.py requires of a record
+FIELDS = ("messageId", "senderAgentId", "recipientAgentId", "content", "createdAt", "status")
 
 
 def _valid(message):
@@ -36,7 +37,6 @@ def count_messages(stdout):
 
 
 def answer(raw, run=subprocess.run, now=time.time, cli=CLI, repo=REPO):
-    """-> the reply dict for one raw request line. `run` is injectable for the tests; nothing of the CLI's output leaves except a count."""
     if raw != b"concord1\n":
         return {"ok": False, "code": "CONCORD_BAD_FRAME", "messages": 0, "at": int(now())}
     env = {"PATH": "/usr/bin:/bin", "HOME": os.path.dirname(repo), "CONCORD_TELEMETRY_DISABLED": "1"}
@@ -46,7 +46,7 @@ def answer(raw, run=subprocess.run, now=time.time, cli=CLI, repo=REPO):
         return {"ok": False, "code": "CONCORD_CLI_MISSING", "messages": 0, "at": int(now())}
     except subprocess.TimeoutExpired:
         return {"ok": False, "code": "CONCORD_TIMEOUT", "messages": 0, "at": int(now())}
-    except Exception:                                           # noqa: BLE001 - one fixed code, never exception text
+    except Exception:                                           # noqa: BLE001
         return {"ok": False, "code": "CONCORD_READ_FAILED", "messages": 0, "at": int(now())}
     if done.returncode != 0:
         return {"ok": False, "code": "CONCORD_READ_FAILED", "messages": 0, "at": int(now())}

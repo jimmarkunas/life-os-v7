@@ -4,14 +4,18 @@ from lifeos.jobs import identity, repost, tombstone
 
 
 def add_job(cursor, job, now):
-    """job: url, status, title, company, location, salary, source, provider, lane, age_days, received, provider_score [, posted, identity_url].
-    Returns (dedupe_key, is_new). A repeat of the same URL bumps seen_count; the same opening under a new URL
-    becomes a DUPLICATE of the original (D6). Producers may supply identity_url when their tracking URLs change
-    per observation; url remains the stored source_url."""
+    """job: url, status, title, company, location, salary, source, provider, lane, age_days, received, provider_score
+    [, posted, identity_url]. Returns (dedupe_key, is_new).
+
+    A repeat of the same URL bumps seen_count; the same opening under a new URL becomes a DUPLICATE of the original.
+    Producers may supply identity_url when their tracking URLs change per observation; url remains the stored
+    source_url.
+    """
     key = identity.url_hash(job.get("identity_url") or job["url"])
     fuzzy = identity.fuzzy_key(job["company"], job["title"], job["location"], job.get("identity_url") or job["url"])
     if tombstone.blocked(cursor, key, fuzzy, job.get("posted"), now):
-        return key, False                                    # retired in the last 90 days and nothing proves it is a new vacancy
+        # retired in the last 90 days and nothing proves it is a new vacancy
+        return key, False
     cursor.execute(
         "INSERT IGNORE INTO v7_jobs (dedupe_key, status, title, company, location_text, source_url, salary_text,"
         " source, fuzzy_key, posted_age_days, mail_received_at, provider_score, first_seen, last_seen, updated_at,"

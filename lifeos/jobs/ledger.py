@@ -1,6 +1,8 @@
-"""Production target guard: before any Notion write, verify the configured data source really is the LIFE OS Job Ledger.
+"""Production target guard: before any Notion write, verify the configured data source really is the Job Ledger.
 
-Applies to publish, audit trash and retention trash. Checks the properties this code reads and writes and their types, once per client. Wrong or unreadable target = no write."""
+Applies to publish, audit trash and retention trash. Checks the properties this code reads and writes and their types,
+once per client. Wrong or unreadable target = no write.
+"""
 from datetime import timezone
 from zoneinfo import ZoneInfo
 
@@ -13,8 +15,9 @@ CT = ZoneInfo("America/Chicago")
 
 
 def ct_day(moment):
-    """LIFE-170 (Jim, Oct 30 2026): the Ledger's day stamps (First Surfaced, Last Seen) are Jim's calendar day in US Central, so "today" turns over at midnight CT,
-    not 7 PM. Jobs OS stores naive UTC instants; a date (or None) passes through unchanged."""
+    """The Ledger's day stamps (First Surfaced, Last Seen) are the owner's calendar day in US Central, so "today" turns
+    over at midnight CT, not UTC. Jobs OS stores naive UTC instants; a date (or None) passes through unchanged.
+    """
     if not hasattr(moment, "hour"):
         return moment
     return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(CT).date()
@@ -39,8 +42,11 @@ def verify(client):
 
 
 def page_state(client, page_id):
-    """'gone' | 'open' | 'unreadable': whether Notion still holds this page. A page in the trash or archived answers a read (so it is told apart from one that cannot be read)
-    but refuses every property write, which is how a page that was deleted by hand stays 'due' and 'failed' on every run. Read only."""
+    """'gone' | 'open' | 'unreadable': whether Notion still holds this page. Read only.
+
+    A trashed or archived page answers a read but refuses every property write, which is how a hand-deleted page stays
+    'due' and 'failed' on every run.
+    """
     try:
         page = client.call("GET", f"/pages/{page_id}")
     except NotionError:
@@ -51,13 +57,15 @@ def page_state(client, page_id):
 
 
 def missing(client):
-    """Names of required properties that are absent or the wrong type (counts-only diagnostics: names are schema, not content)."""
+    """Names of required properties that are absent or the wrong type (counts-only: names are schema, not content)."""
     props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
     return sorted(n for n, k in REQUIRED.items() if (props.get(n) or {}).get("type") != k)
 
 
 def select_options(client, prop):
-    """The option names of one select property, as the Ledger spells them (a filter naming an option that does not exist is refused with HTTP 400)."""
+    """The option names of one select property, as the Ledger spells them (a filter naming a missing option is refused
+    with HTTP 400).
+    """
     props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
     return [option["name"] for option in ((props.get(prop) or {}).get("select") or {}).get("options") or [] if option.get("name")]
 

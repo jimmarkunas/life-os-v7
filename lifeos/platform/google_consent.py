@@ -1,10 +1,9 @@
-"""One-time Google sign-in for the Drive credential: full `drive` scope, reply caught on a loopback port, credential written only to a pipe.
+"""One-time Google sign-in for the Drive credential: full `drive` scope, reply caught on a loopback port.
 
-Writes {"client_id", "client_secret", "refresh_token"} to stdout, which must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal; prompts go to the terminal, never to stdout.
-Standalone (stdlib only), platform, no job knowledge:
+Writes {"client_id", "client_secret", "refresh_token"} to stdout, which must be a pipe (it refuses a terminal). Standalone,
+stdlib only (docs/DRIVE_RESUMES.md):
   python3 google_consent.py --port 8765 | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-close/bin/install-close.sh credential gdrive"
-Runs on Jim's Mac, where the browser is, and pipes over ssh; the client is the existing LIFE OS Gmail Web client (docs/DRIVE_RESUMES.md)."""
-# Jim, Oct 24 2026: the scope is the full `drive` ("full") so résumés land in My Drive / LIFE OS / Résumés; it runs on his Mac because an SSH -L tunnel to the Edge proved fragile.
+"""
 import base64
 import getpass
 import hashlib
@@ -15,7 +14,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-SCOPE = "https://www.googleapis.com/auth/drive"          # the same values as lifeos.platform.gdrive (a test holds them equal)
+SCOPE = "https://www.googleapis.com/auth/drive"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -34,7 +33,7 @@ def exchange(client_id, client_secret, code, redirect, verifier, opener=urllib.r
     with opener(urllib.request.Request(TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
     granted = str(reply.get("scope", "")).split()
-    if (granted != [scope] if exact else scope not in granted) or not reply.get("refresh_token"):          # exact: nothing wider than `scope` may come with it
+    if (granted != [scope] if exact else scope not in granted) or not reply.get("refresh_token"):
         raise SystemExit(f"Google did not grant {'exactly ' if exact else ''}the {scope.rsplit('/', 1)[1]} scope with a refresh token; nothing was stored.")
     return json.dumps({"client_id": client_id, "client_secret": client_secret, "refresh_token": reply["refresh_token"]})
 
@@ -69,11 +68,11 @@ def main(argv=(), stdout=sys.stdout, tty=None, scope=SCOPE, exact=False, sink="E
         return 2
     client_id = input_tty("Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty).strip()
     client_secret = getpass.getpass("Its client secret (Bitwarden openclaw/gmail/clientSecret; not shown): ").strip()
-    port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 0             # a fixed port for the SSH tunnel; 0 = any free port
+    port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 0
     server = http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
     redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
     url = auth_url(client_id, redirect, state, verifier, scope)
-    tty.write("Open this address in the browser on this Mac and click Allow (Google sends the reply back to this window):\n" + url + "\n")     # never a browser on the Edge
+    tty.write("Open this address in the browser on this Mac and click Allow (Google sends the reply back to this window):\n" + url + "\n")
     tty.flush()
     code = catch(server, state)
     if not code:

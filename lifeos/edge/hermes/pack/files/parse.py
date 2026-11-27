@@ -1,6 +1,9 @@
-"""LIFE-518 pack helper: reads one tool output on stdin and prints ONLY a date, fixed method words or yes/no. Nothing else can leave this file.
-  status   -> `date=YYYY-MM-DD|unknown` and `method=<fixed words>` (from `claude auth status`; the login expiry as a Central Time date)
-  message  -> `ok=yes|no` (the one tiny message produced a non-error result)"""
+"""Pack helper: reads one tool output on stdin and prints only a date, fixed method words or yes/no. Nothing else can
+leave this file.
+  status   -> `date=YYYY-MM-DD|unknown` and `method=<fixed words>` (from `claude auth status`; the login expiry as a
+              Central Time date)
+  message  -> `ok=yes|no` (the one tiny message produced a non-error result)
+"""
 import json
 import re
 import sys

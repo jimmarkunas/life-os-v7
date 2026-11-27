@@ -15,7 +15,8 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
 PATH = "lifeos/edge/backup/offsite_backup.py"
 HOST = "/opt/lifeos-offsite/offsite_backup.py"
-OLD_SHA256 = "817022e4c71bf49f8804e8b21017fc066c69521e78b20ecfefa56012081c4a2b"      # the host's file today (main before LIFE-652), checked read-only on Nov 13 2026
+# sha256 of the file installed on the host before the fix; the manifest restore list puts it back on failure
+OLD_SHA256 = "817022e4c71bf49f8804e8b21017fc066c69521e78b20ecfefa56012081c4a2b"
 
 
 def build(out, commit="HEAD"):

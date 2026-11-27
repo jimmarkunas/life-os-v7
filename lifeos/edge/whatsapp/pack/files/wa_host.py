@@ -1,4 +1,6 @@
-"""LIFE-643 helper for the WhatsApp pack steps (python3 standard library only, so the same file runs on Oracle and in the tests). Prints names, modes and counts only; it never opens a session file (only the unit file is hashed)."""
+"""Helper for the WhatsApp pack steps (python3 standard library only, so the same file runs on Oracle and in the
+tests). Prints names, modes and counts only; it never opens a session file (only the unit file is hashed).
+"""
 import hashlib
 import json
 import os
@@ -17,7 +19,6 @@ def walk(trees):
 
 
 def cmd_check(owner, trees):
-    """Refuse (exit 1, one fixed word) on a link, an entry not owned by the owner, or anything but files, folders and the one answer socket."""
     for path, info in walk(trees):
         if stat.S_ISLNK(info.st_mode):
             print("symlink")
@@ -108,7 +109,6 @@ def cmd_rollback(listing):
 
 
 def cmd_connect(path):
-    """Connect to the answer socket and count the bytes it sends back; the answer is dropped, never printed."""
     total = 0
     with socket.socket(socket.AF_UNIX) as sock:
         sock.settimeout(5)

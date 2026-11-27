@@ -52,15 +52,20 @@ class Memory:
 
     def __init__(self, url, token, urlopen=urllib.request.urlopen):
         self.url, self.token, self.urlopen = url, token, urlopen
+        self.down = ""  # the error class of the first failed call; later calls fail at once instead of waiting out 30 seconds each
 
     def call(self, operation, arguments):
+        if self.down:
+            return {"ok": False, "error": "capture_unreachable"}
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": operation, "arguments": arguments}}}).encode()
         request = urllib.request.Request(self.url, data=body, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18",
                                                                                       "Authorization": "Bearer " + self.token, "User-Agent": "life-os-v7"})
         try:
             with self.urlopen(request, timeout=30) as reply:
                 return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
-        except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError):
+        except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError) as error:
+            reason = getattr(error, "reason", None)
+            self.down = (type(error).__name__ + ("/" + type(reason).__name__ if reason is not None else ""))[:40]
             return {"ok": False, "error": "capture_unreachable"}
 
     def store(self, text, source):
@@ -141,6 +146,9 @@ def capture_issue(jira, key, memory, state, live, now, total):
             state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": "", "state": "filtered"}, now)
         else:
             _tick(total, "failed", str(reply.get("error") or "capture_failed")[:40])
+            if getattr(memory, "down", ""):
+                total["why"]["down_" + memory.down.replace("/", "_")] = 1
+                return
     if live and state:
         for gone in sorted(set(state.issue(key)) - seen):
             prior = state.comment(gone) or {}

@@ -1,8 +1,8 @@
-"""LIFE-875: read-only Gmail and Drive for two named accounts (personal, bytalos), stdlib only, for the governed MCP.
+"""Read-only Gmail and Drive for two named accounts (personal, bytalos), stdlib only, for the governed MCP.
 
-GET requests only (one `_get`; the token exchange is the one POST and moves no data). Scopes are gmail.readonly and drive.readonly and no other route exists: no send, modify, delete, label, upload or share.
-Authorization is the gate's (tenant = the account's workspace, tool = the operation, purpose `governed-google-read`); an omitted or unknown account is refused here before Google is called. A credential is a refresh token named by
-account and service, read by the caller and handed in as `creds(account, service)`; it is never returned, logged or put in an error. Results carry the account and the message or file id; text is trimmed. Fixed reasons only."""
+GET requests only (the token exchange is the one POST), gmail.readonly and drive.readonly scopes, no write route. An
+omitted or unknown account is refused before Google is called. A credential is handed in as `creds(account, service)`
+and never returned, logged or put in an error. Fixed reasons only."""
 import base64
 import hashlib
 import json
@@ -11,17 +11,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ACCOUNTS = {"personal": "personal", "bytalos": "bytalos"}                       # account -> the gate tenant (workspace) it is checked in
+ACCOUNTS = {"personal": "personal", "bytalos": "bytalos"}
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL, DRIVE = "https://gmail.googleapis.com/gmail/v1/users/me", "https://www.googleapis.com/drive/v3/files"
-SCOPE = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.readonly"}   # what this module asks for
-READ_SCOPES = {"gmail": {SCOPE["gmail"], "https://www.googleapis.com/auth/gmail.modify", "https://mail.google.com/"}, "drive": {SCOPE["drive"], "https://www.googleapis.com/auth/drive"}}   # a token that already holds a wider scope may be used: this module only ever sends GET requests, so the extra scope is never exercised
+SCOPE = {"gmail": "https://www.googleapis.com/auth/gmail.readonly", "drive": "https://www.googleapis.com/auth/drive.readonly"}
+READ_SCOPES = {"gmail": {SCOPE["gmail"], "https://www.googleapis.com/auth/gmail.modify", "https://mail.google.com/"}, "drive": {SCOPE["drive"], "https://www.googleapis.com/auth/drive"}}
 MAX_TEXT, MAX_HITS = 4000, 10
 ID = re.compile(r"^[A-Za-z0-9_-]{6,128}$")
 SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
 TEXT_TYPES = ("text/", "application/json")
 GOOGLE_DOC = "application/vnd.google-apps.document"
-OWNER_SHA256 = {"personal": "46f409d1f24b8a492700db422d65ed2fa94cd8dfc1a2c7e80f8c8401f095a498", "bytalos": "cd72ab1e22b5e26f609ac8c9ed57d3ff3ec3db74c5c55a0be34cb35ea425f1d9"}   # SHA-256 of each account's own address: a token for another mailbox is refused, and no address is held here
+OWNER_SHA256 = {"personal": "46f409d1f24b8a492700db422d65ed2fa94cd8dfc1a2c7e80f8c8401f095a498", "bytalos": "cd72ab1e22b5e26f609ac8c9ed57d3ff3ec3db74c5c55a0be34cb35ea425f1d9"}
 WHO = {"gmail": f"{GMAIL}/profile", "drive": "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)"}
 
 
@@ -48,17 +48,18 @@ def _http(request, opener):
         if error.code == 401 or b"invalid_grant" in body:
             raise GoogleError("consent_revoked") from None
         raise GoogleError("not_found" if error.code == 404 else "google_unavailable") from None
-    except Exception:                                                                # noqa: BLE001 - a transport failure never shows its message
+    except Exception:  # noqa:
         raise GoogleError("google_unavailable") from None
 
 
 class Google:
-    """`creds(account, service)` -> {"client_id", "client_secret", "refresh_token"} or None (not configured). `opener` is urllib's urlopen, or a fake in tests."""
+    """`creds(account, service)` -> {"client_id", "client_secret", "refresh_token"} or None (not configured)."""
     def __init__(self, creds, opener=urllib.request.urlopen):
         self.creds, self.opener, self.tokens = creds, opener, {}
 
     def _token(self, account, service):
-        """The access token for one account and service, checked once per client: the address Google reports for it must be the named account's (`wrong_account` otherwise, before any data is read)."""
+        """The access token for one account and service, checked once: Google must report the named account's
+        address (`wrong_account` otherwise)."""
         if (account, service) not in self.tokens:
             token = self._exchange(account, service)
             who, _ = _http(urllib.request.Request(WHO[service], headers={"Authorization": "Bearer " + token, "Accept": "application/json"}, method="GET"), self.opener)
@@ -89,7 +90,7 @@ class Google:
                     return reply.read(MAX_TEXT * 4).decode("utf-8", "replace")
             except urllib.error.HTTPError as error:
                 raise GoogleError("not_found" if error.code == 404 else "google_unavailable") from None
-            except Exception:                                                        # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 raise GoogleError("google_unavailable") from None
         return _http(request, self.opener)[0]
 
@@ -133,7 +134,7 @@ def _quote(value):
 
 
 def _redact(value, count):
-    """Every secret-looking value in the result (a `token=...` tracking link, a pasted password) becomes `[redacted]`, in any string at any depth; `count[0]` counts them. The gate refuses a whole result that still looks like a secret, so a real mailbox would never read otherwise."""
+    """Replace every secret-looking value with `[redacted]` in any string at any depth; `count[0]` counts them."""
     if isinstance(value, str):
         value, n = SECRET.subn("[redacted]", value)
         count[0] += n
@@ -158,7 +159,6 @@ def _clean(out):
 
 
 def _text(part):
-    """The plain text of a Gmail message: the first text/plain body found, else empty. No HTML is rendered."""
     if part.get("mimeType") == "text/plain" and (part.get("body") or {}).get("data"):
         return base64.urlsafe_b64decode(part["body"]["data"] + "=" * (-len(part["body"]["data"]) % 4)).decode("utf-8", "replace")
     for child in part.get("parts") or []:
@@ -169,7 +169,7 @@ def _text(part):
 
 
 def creds_from_env(environ):
-    """-> `creds(account, service)` reading the six credential names from `environ`, or None when none is set. Names only here; a value is read at call time and never kept in a result."""
+    """-> `creds(account, service)` reading the six credential names from `environ`, or None when none is set."""
     client = (environ.get("GOOGLE_READ_CLIENT_ID") or "", environ.get("GOOGLE_READ_CLIENT_SECRET") or "")
     refresh = {("personal", "gmail"): environ.get("GOOGLE_READ_PERSONAL_GMAIL_REFRESH"), ("bytalos", "gmail"): environ.get("GOOGLE_READ_BYTALOS_GMAIL_REFRESH"),
                ("personal", "drive"): environ.get("GOOGLE_READ_PERSONAL_DRIVE_REFRESH"), ("bytalos", "drive"): environ.get("GOOGLE_READ_BYTALOS_DRIVE_REFRESH")}
@@ -192,7 +192,8 @@ def run(op, args, state):
 
 
 def route(op, args, tenant):
-    """-> (tenant, action, account, service) for the gate: the named account is the boundary (its workspace is the tenant); an omitted or unknown one is refused before the gate and before Google."""
+    """-> (tenant, action, account, service) for the gate; an omitted or unknown account is refused before the gate
+    and Google."""
     account = args.get("account")
     if account not in ACCOUNTS:
         raise GoogleError("account_required" if account is None else "unknown_account")

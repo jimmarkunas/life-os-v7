@@ -1,10 +1,12 @@
 #!/usr/bin/python3 -I
-"""LIFE-945 (Jim, Nov 24 2026, "945 drive 2"): the read-only Drive weekly-count helper on Oracle, for the Weekly Review's Drive lane. It adds no credential: its unit loads the Drive credentials Oracle already holds.
-
-systemd starts one process per connection as `buzz-mcp` (socket activation, Accept=yes: the connection is stdin/stdout). The only caller is the private endpoint (lifeos/imessage/alerts_endpoint.py), which has checked Tailscale's
-PROXY header and that the caller carries tag:v7-runner. One request per connection: `drive1 <days 1..14>\\n`. One reply line of JSON: counts only, {"ok": true, "new", "changed", "unfiled", "duplicates",
-"missing_metadata", "complete"}, or {"ok": false, "code": <fixed word>}. It lists file metadata through google_read.Google (drive.readonly, GET only, the wrong-account check) for the personal account; it never reads a file's
-content, name, id or link, and never writes anything. Fixed codes: DRIVE_BAD_FRAME, DRIVE_NOT_CONFIGURED, DRIVE_WRONG_ACCOUNT, DRIVE_CONSENT_REVOKED, DRIVE_UNAVAILABLE. Stdlib only."""
+"""Read-only Drive weekly-count helper on Oracle for the Weekly Review; adds no credential (its unit loads the Drive
+credentials Oracle already holds). One process per connection as `buzz-mcp` (socket activation, stdin/stdout); the
+only caller is lifeos/imessage/alerts_endpoint.py. Request `drive1 <days 1..14>\\n`; one JSON reply line of counts
+only ({"ok": true, "new", "changed", "unfiled", "duplicates", "missing_metadata", "complete"}) or {"ok": false,
+"code": <fixed word>}. It lists file metadata through google_read.Google (drive.readonly, GET only, wrong-account
+check) and never reads a file's content, name, id or link. Codes: DRIVE_BAD_FRAME, DRIVE_NOT_CONFIGURED,
+DRIVE_WRONG_ACCOUNT, DRIVE_CONSENT_REVOKED, DRIVE_UNAVAILABLE. Stdlib only.
+"""
 import json
 import os
 import re
@@ -23,7 +25,6 @@ CODES = {"wrong_account": "DRIVE_WRONG_ACCOUNT", "consent_revoked": "DRIVE_CONSE
 
 
 def creds_from(directory):
-    """-> google_read's `creds(account, service)` from the systemd credentials directory, or None when a file is missing."""
     def read(name):
         try:
             with open(os.path.join(directory, name), encoding="utf-8") as handle:
@@ -37,7 +38,6 @@ def creds_from(directory):
 
 
 def answer(raw, creds, opener=None):
-    """-> the reply dict for one raw request line."""
     match = REQUEST.match(raw)
     if not match:
         return {"ok": False, "code": "DRIVE_BAD_FRAME"}
@@ -48,7 +48,7 @@ def answer(raw, creds, opener=None):
         return {"ok": True, **drive_week.summary(google, ACCOUNT, int(match.group(1)))}
     except google_read.GoogleError as error:
         return {"ok": False, "code": CODES.get(getattr(error, "reason", ""), "DRIVE_UNAVAILABLE")}
-    except Exception:                                           # noqa: BLE001 - one fixed code, never exception text
+    except Exception:                                           # noqa: BLE001
         return {"ok": False, "code": "DRIVE_UNAVAILABLE"}
 
 

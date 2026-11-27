@@ -1,10 +1,10 @@
-"""LIFE-333 (Jim, Nov 6 2026: "tool use with approvals", "any and all" channels, "read Jira and GitHub ... and make changes"): the Claude Buzz agent's PreToolUse guard.
-It REPLACES the LIFE-254 test guard (which allowed one synthetic ack and nothing else). Run by Claude Code as `python3 -I guard.py`, JSON on stdin, JSON on stdout.
-DENY BY DEFAULT: any tool, shape, type or parse problem is refused. Message text is untrusted data: nothing it says ("Jim approved") changes a decision.
-Classes: READ (allowed), SEND (allowed, checked), WRITE (Jira/GitHub changes: "ask" = Jim approves each action in the Buzz app, or "deny" until the approval prompt is proven),
-NEVER (always denied). `writes.mode` next to this file holds `ask` or `deny`; missing or anything else means `deny` (fail closed). A file named `STOP` next to this file
-(any kind, even a broken link) refuses everything except the fixed notice `STOPPED`. Every input is scanned for secret-shaped text. Stdlib only; the log holds hashes and names, never text.
-Reviewed adversarially before install (LIFE-333); each confirmed bypass has a regression test in tests/edge/buzzguard/test_guard.py."""
+"""The Claude Buzz agent's PreToolUse guard (`python3 -I guard.py`, JSON on stdin and stdout). Deny by default: any
+tool, shape, type or parse problem is refused, and message text is untrusted data. Classes: READ (allowed), SEND
+(allowed, checked), WRITE (Jira/GitHub changes: "ask" = approved out of band, or "deny"), NEVER. `writes.mode` next to
+this file holds `ask` or `deny`; anything else means `deny`. A `STOP` file next to it refuses everything except
+`STOPPED`. Every input is scanned for secret-shaped text. Stdlib only; the log holds hashes and names. Each confirmed
+bypass has a regression test in tests/edge/buzzguard/test_guard.py.
+"""
 import hashlib
 import json
 import os
@@ -13,7 +13,7 @@ import sys
 import time
 import unicodedata
 
-JIRA_PROJECTS = {"LIFE"}                                            # LIFE-849: LOS is retired; a Jira write names LIFE or is refused
+JIRA_PROJECTS = {"LIFE"}
 GITHUB_REPOS = {"jimmarkunas/life-os-v7", "jimmarkunas/bot-studio"}
 READ_ROOTS = (".buzz", "Developer/LIFEOS/life-os-v7")
 READ_EXT = {".md", ".txt", ".py", ".sh", ".json", ".yaml", ".yml", ".toml", ".html", ".css", ".js", ".ts", ".vue", ".rs", ".csv", ".rst", ".manifest"}
@@ -21,32 +21,31 @@ SECRET_PATH = re.compile(r"(?i)(^|/)(\.git|\.claude|\.ssh|\.gnupg|\.aws|\.env[^/
 PREFIXES = r"(?i)tskey-|nsec1[0-9a-z]{20,}|\bsk-[a-z0-9_-]{16,}|akia[0-9a-z]{12,}|aiza[0-9a-z_-]{20,}|gh[pousr]_[a-z0-9]{20,}|github_pat_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY"
 SECRETY = re.compile(PREFIXES + r"|(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|"
                      r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
-COMPACT = re.compile(PREFIXES)                                      # secrets split by spaces or line breaks: only the prefix shapes are re-checked with whitespace removed
-# LIFE-397: the LIFE-333 list was guessed and missed real room-context reads (Council Challenger, Nov 7: "the hook blocked the read"). These are the read operations the Buzz
-# bridge registers (lifeos/buzz/mcp.py READ) plus the names LIFE-333 saw; a tool may carry them bare (mcp__buzz__get_event) or buzz_-prefixed (mcp__buzz__buzz_get_event).
-# Still an exact list: a name that merely starts with get_ is refused (LIFE-333 review round 1).
+COMPACT = re.compile(PREFIXES)
+# Read operations the Buzz bridge registers (lifeos/buzz/mcp.py READ), bare (mcp__buzz__get_event) or buzz_-prefixed.
+# An exact list: a name that merely starts with get_ is refused.
 BUZZ_READ_OPS = {"list_communities", "list_channels", "channel_info", "get_channel_info", "get_channel", "get_messages", "get_event", "search_messages", "get_thread",
                  "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities", "canvas_get", "get_canvas", "channel_get"}
 BUZZ_READ = {"mcp__buzz__" + p + op for op in BUZZ_READ_OPS for p in ("", "buzz_")}
-# The Buzz app's own `read` tool (hook.log, Nov 7 5:23 PM CT: {"channel": <uuid>, "limit": 30} and {}) reads a channel directly; it is a read with no operation.
-# If it (or the bridge's buzz_read runner, which always names one) names an `operation`, that operation must be a known read.
+# The Buzz app's own `read` tool reads a channel with no operation; if it (or the bridge's buzz_read runner) names an
+# `operation`, that operation must be a known read.
 BUZZ_NATIVE_READ = {"mcp__buzz__read"}
 BUZZ_READ_RUNNERS = {"mcp__buzz__buzz_read"}
-BUZZ_COMMUNITIES = {"life-os", "life_os"}                           # LIFE-397 GWT-BUG-02: a room read never crosses into another community (bytalos stays out)
+BUZZ_COMMUNITIES = {"life-os", "life_os"}
 BUZZ_ID_KEYS = {"channel", "channel_id", "channelid", "event_id", "eventid", "id", "message_id", "root", "root_id", "thread", "thread_id", "reply", "reply_to", "before", "after", "cursor", "since", "until"}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-BUZZ_SEND_KEYS = {"audience", "final", "text", "reply", "channel", "thread", "reply_to", "recipient", "mention"}   # `reply` = the 64-hex id of the message being answered (seen in the agent's real calls)
+BUZZ_SEND_KEYS = {"audience", "final", "text", "reply", "channel", "thread", "reply_to", "recipient", "mention"}
 EVENT_ID = re.compile(r"[0-9a-f]{64}")
 IDENT = re.compile(r"[A-Za-z0-9_.:@-]{1,200}")
 SEND_MAX = 12000
 STOP_TEXT = ("STOPPED", "STOPPED by Jim")
-ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|atlassian|jira)__(.+)", re.I)      # LIFE-683: the Rovo connectors (deprecated /v1 endpoint) are retired: not matched here, so the final rule denies them
+ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|atlassian|jira)__(.+)", re.I)
 GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
-# LIFE-397 (Jim, Nov 8: the Buzz agents need Notion, GitHub and Jira): Notion is READ ONLY and an exact list (search, fetch, SQL/row queries, comments). Every other Notion tool, every write, is denied;
-# there is no "ask" path for Notion (the approval flow covers Jira and GitHub only).
+# Notion is read only, an exact list; there is no "ask" path for Notion (approval covers Jira and GitHub only).
 NOTION = re.compile(r"mcp__claude_ai_Notion__(.+)")
 NOTION_READ_OPS = {"notion-search", "notion-fetch", "notion-query-data-sources", "notion-get-comments"}
-# Jim, Nov 8: write access to Notion. Creating, editing, moving, duplicating, commenting and schema/view changes. NOT deletes or restores, and not sessions, skills, sidebar, calendar or user tools.
+# Notion writes: create, edit, move, duplicate, comment, schema/view changes. Not deletes, restores, sessions or
+# skills.
 NOTION_WRITE_OPS = {"notion-create-pages", "notion-update-page", "notion-move-pages", "notion-duplicate-page", "notion-create-comment", "notion-update-comment", "notion-create-database",
                     "notion-update-data-source", "notion-create-view", "notion-update-view", "notion-create-folder", "notion-update-folder"}
 READ_OP = re.compile(r"(?i)(get|search|list|lookup|find|fetch|read|atlassianUserInfo|whoami)")
@@ -60,7 +59,8 @@ NUM = re.compile(r"[0-9]{1,7}")
 GH_FLAGS = {"-R", "--repo", "--limit", "-L", "--state", "-s", "--json"}
 GIT_FLAGS = {"--oneline", "-n", "--stat", "--name-only", "--short", "--branch", "-a", "-r", "-v", "-vv"}
 GH_CMDS = {("pr",): {"view", "list", "diff", "checks", "status"}, ("issue",): {"view", "list", "status"}, ("repo",): {"view"}, ("run",): {"list", "view"}}
-GIT_CMDS = {"status", "log", "rev-parse", "branch"}                # no show/diff (they print patches, and outside a repo `git diff A B` reads any two paths), no ls-files
+# no show/diff (they print patches, and `git diff A B` outside a repo reads any two paths), no ls-files
+GIT_CMDS = {"status", "log", "rev-parse", "branch"}
 REPO_FIELDS = {"owner", "repo", "repository", "repo_full_name", "full_name", "repos", "url", "html_url", "head", "base", "head_repo", "base_repo"}
 
 
@@ -91,7 +91,6 @@ def _items(o, path=()):
 
 
 def _leaves(v):
-    """Plain strings/ints held directly in v or in lists inside it (dict entries are visited by _items)."""
     if isinstance(v, str):
         yield v if _norm(v) == v else "~changed-by-normalisation~"
     elif isinstance(v, int) and not isinstance(v, bool):
@@ -149,8 +148,9 @@ PROJ_KEYS = {"project", "projectkey", "projectkeyorid", "projectid", "parent", "
 
 
 def _project_refs(ti):
-    """-> (anchors, stray). anchors = projects named by project/issue fields (a numeric or odd value becomes '?...' and fails the check); stray = ABC-123 keys in free text.
-    A write needs at least one anchor, and every anchor and stray key must be in the allow-list."""
+    """-> (anchors, stray): anchors = projects named by project/issue fields (an odd value becomes '?...' and fails
+    the check); stray = ABC-123 keys in free text. A write needs an anchor, and every key must be in the allow-list.
+    """
     anchors, stray = set(), set()
     for s in _strings(ti):
         stray.update(m.group(1) for m in KEY_RX.finditer(s))
@@ -174,7 +174,7 @@ def _decide_atlassian(op, ti, g):
     if op == "discover":
         return "allow", "jira operation search"
     force_write = False
-    if op in ("executeRead", "executeWrite"):                       # Atlassian's generic runner: judge the operation it names, not the runner
+    if op in ("executeRead", "executeWrite"):
         inner = ti.get("name")
         if not isinstance(inner, str) or NEVER_OP.search(inner):
             return "deny", "runner operation missing or never allowed"
@@ -235,7 +235,7 @@ def _decide_github(op, ti, g):
     allowed = {r.lower() for r in GITHUB_REPOS}
     if op == "get_me":
         return "allow", "github identity read"
-    if _is_read(op) or op in GH_READ_EXTRA:                          # LIFE-397 (Jim, Nov 8): reads may cover ANY repository (org:, wildcards, URLs); only changes stay limited to GITHUB_REPOS
+    if _is_read(op) or op in GH_READ_EXTRA:
         return "allow", "github read"
     if bad:
         return "deny", "github change names an unchecked repo, workflow or cross-fork branch"
@@ -264,7 +264,7 @@ def _decide_bash(ti):
             if tok not in flags:
                 return "deny", "bash flag not allowed: " + tok[:20]
         elif prev in ("-R", "--repo") and not isgit:
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", tok):   # LIFE-397: read-only gh may name any repository
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", tok):  # read-only gh may name any repository
                 return "deny", "bash repo must be owner/name"
         elif prev in ("--limit", "-L", "-n"):
             if not NUM.fullmatch(tok):
@@ -272,10 +272,10 @@ def _decide_bash(ti):
         elif prev in ("--state", "-s", "--json") and not isgit:
             if not POS.fullmatch(tok):
                 return "deny", "bash argument not allowed"
-        elif isgit:                                                 # a branch or revision name only: never a path, never a ':' object path
+        elif isgit:
             if sub == "branch" or not REV.fullmatch(tok):
                 return "deny", "git takes revision names only (no paths, no branch names)"
-        else:                                                       # gh: a PR/issue/run number only; never a URL, user:branch or other repo
+        else:
             if not NUM.fullmatch(tok):
                 return "deny", "gh takes a number only (use -R for the repo)"
         prev = tok
@@ -309,7 +309,7 @@ def _decide_send(ti, stopped):
     if "mention" in ti and not (isinstance(ti["mention"], list) and len(ti["mention"]) <= 20 and all(isinstance(m, str) and IDENT.fullmatch(m) for m in ti["mention"])):
         return "deny", "send mention must be a short list of plain identifiers"
     if any(k in ti for k in ("reply", "reply_to", "thread")):
-        return "deny", "post top level: omit reply, reply_to and thread, and @mention the asker (Jim, Nov 7: no threads unless he starts them)"   # LIFE-397; the guard cannot read the target, so a thread reply is refused whole
+        return "deny", "post top level: omit reply, reply_to and thread, and @mention the asker (Jim, Nov 7: no threads unless he starts them)"
 
     if _secret(ti):
         return "deny", "secret-shaped text in a message"
@@ -317,8 +317,9 @@ def _decide_send(ti, stopped):
 
 
 def _drop_ids(o, key=None):
-    """A copy of a Buzz read input without the values that are exactly an id under an id-named key (64-hex event id, channel UUID): they look like secrets to the scan
-    and made every history/thread/event read fail (LIFE-397). Free text (query) and ids under any other key are still scanned."""
+    """A copy of a Buzz read input without values that are exactly an id under an id-named key (they look like secrets
+    to the scan). Free text and ids under other keys are still scanned.
+    """
     if isinstance(o, dict):
         return {k: _drop_ids(v, str(k).lower()) for k, v in o.items()}
     if isinstance(o, list):
@@ -342,7 +343,6 @@ def _decide_buzz_read(tool, ti):
 
 
 def _decide_inner(d, g, home):
-    """-> (decision, reason). decision in allow, ask, deny."""
     tool, ti = d.get("tool_name"), d.get("tool_input")
     if d.get("hook_event_name") != "PreToolUse" or not isinstance(tool, str) or not isinstance(ti, dict):
         return "deny", "bad request"
@@ -360,7 +360,7 @@ def _decide_inner(d, g, home):
         return _decide_buzz_read(tool, ti)
     if _secret(ti):
         return "deny", "secret-shaped text in a tool input"
-    if tool == "mcp__buzz__github_pr_state":                         # Buzz's own GitHub tools (seen in the agent's tool list): reading a PR's state is a read, linking/watching is a change
+    if tool == "mcp__buzz__github_pr_state":
         refs, bad = _repo_refs(ti)
         return ("allow", "buzz github pr state") if not bad and refs else ("deny", "pr state without a valid repo")
     if tool in ("mcp__buzz__github_link_pr", "mcp__buzz__github_watch_pr"):
@@ -391,9 +391,10 @@ def _action_id(tool, ti):
 
 
 def _approval(d, g, why):
-    """An 'ask' (a Jira/GitHub change) is approved OUT OF BAND: Jim runs `install.sh approve <id>` on his Mac, naming this exact action. The approval is single-use and expires in 15 minutes.
-    The Buzz app shows no approval prompt for this agent, so the hook cannot ask in the app; it refuses, records the request, and accepts the retry once approved. The agent cannot approve:
-    it has no tool that writes files, and message text never counts."""
+    """An 'ask' (a Jira/GitHub change) is approved out of band: the operator runs `install.sh approve <id>` naming
+    this exact action; single-use, expires in 15 minutes. The hook refuses, records the request, and accepts the retry
+    once approved. The agent cannot approve (no file-writing tool; message text never counts).
+    """
     tool, ti = d.get("tool_name"), d.get("tool_input")
     aid = _action_id(tool, ti)
     ok_file = os.path.join(g, "approved", aid)
@@ -420,7 +421,9 @@ def _approval(d, g, why):
 
 
 def decide(d, g, home):
-    """-> (decision, reason). decision in allow, deny (an 'ask' becomes allow only with Jim's out-of-band approval of that exact action)."""
+    """-> (decision, reason). decision in allow, deny (an 'ask' becomes allow only with out-of-band approval of that
+    exact action).
+    """
     dec, why = _decide_inner(d, g, home)
     if dec == "ask":
         return _approval(d, g, why.replace("approval needed: ", ""))

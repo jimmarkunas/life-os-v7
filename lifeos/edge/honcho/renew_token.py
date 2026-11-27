@@ -1,10 +1,10 @@
 #!/usr/bin/python3 -I
-"""LIFE-950: keep the Honcho memory token alive. The Oracle LIFE OS MCP reads HONCHO_MEMORY_TOKEN (a Honcho JWT scoped to the `personal` workspace) from /etc/lifeos-buzz-mcp/config.env; it used to end Dec 5 2026.
-
-Run once a day by lifeos-honcho-token-renew.timer (3:45 AM CT, after the nightly backup). When the token has 30 days or fewer left it mints a new 60-day one for the same workspace (Honcho's own generate_jwt.py inside
-the API container), proves the new token on the live Honcho API, swaps only that one line of config.env atomically (mode 0600 kept), restarts the MCP and checks it answers 401 without credentials. If any step after the swap
-fails, the old line is put back and the MCP restarted. Any failure sends one Agent Inbox alert (honcho-alert; same subject, same row) and exits non-zero; a failed renewal never leaves the MCP without a working token.
-Prints days left and the outcome; the token is never printed, logged or put in an alert. No agent is started. Stdlib only."""
+"""Keep the Honcho memory token alive. The Oracle MCP reads HONCHO_MEMORY_TOKEN (a Honcho JWT for the `personal`
+workspace) from /etc/lifeos-buzz-mcp/config.env. Run daily (3:45 AM CT): with 30 days or fewer left it mints a 60-day
+token, proves it on the live API, swaps only that config.env line atomically (mode 0600), restarts the MCP and checks
+it answers 401 without credentials; if a step after the swap fails the old line is restored. Any failure sends one
+Agent Inbox alert and exits non-zero. The token is never printed, logged or alerted. Stdlib only.
+"""
 import base64
 import json
 import os
@@ -19,7 +19,8 @@ KEY = "HONCHO_MEMORY_TOKEN"
 WORKSPACE = "personal"
 PEER = "lifeos-memory"
 LIFETIME = "60d"
-RENEW_WITHIN = 30 * 86400                                   # renew when this much or less is left: the token always has at least 30 days, so it never reaches its end
+# renew when this much or less is left: the token always has at least 30 days, so it never reaches its end
+RENEW_WITHIN = 30 * 86400
 MIN_NEW = 50 * 86400                                        # a freshly minted token must be good for at least this long
 API = "http://127.0.0.1:8000"
 MCP = "http://127.0.0.1:8787/mcp"
@@ -29,7 +30,6 @@ MINT = ["docker", "exec", "honcho-api-1", "/app/.venv/bin/python", "scripts/gene
 
 
 def claims(token):
-    """-> the JWT's claims (read, not verified: it is our own token), or None."""
     try:
         part = token.split(".")[1]
         return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
@@ -46,7 +46,6 @@ def read_token(path=CONFIG):
 
 
 def write_token(token, path=CONFIG):
-    """Replace only the KEY line (atomic, same mode); a missing line is added."""
     with open(path) as handle:
         lines = handle.read().splitlines()
     out, done = [], False
@@ -75,7 +74,6 @@ def mint(run=subprocess.run):
 
 
 def answers(token, opener=urllib.request.urlopen):
-    """True when Honcho accepts the token for the personal workspace (the same read the memory client makes)."""
     request = urllib.request.Request(f"{API}/v3/workspaces/{WORKSPACE}/conclusions/list?page=1&size=1", data=json.dumps({"filters": {"observer_id": PEER}}).encode(), method="POST",
                                      headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
     try:
@@ -86,7 +84,6 @@ def answers(token, opener=urllib.request.urlopen):
 
 
 def mcp_ok(run=subprocess.run, opener=urllib.request.urlopen, sleep=time.sleep):
-    """The MCP is active and answers 401 to an unauthenticated call."""
     sleep(3)
     if run(["systemctl", "is-active", "--quiet", SERVICE]).returncode != 0:
         return False

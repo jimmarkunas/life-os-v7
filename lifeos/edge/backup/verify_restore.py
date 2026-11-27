@@ -1,11 +1,11 @@
-"""LIFE-318: check a DECRYPTED nightly backup (the .tar.gz Jim gets by decrypting the Drive file with his private key, see README.md) on Jim's Mac, without touching any live file.
+"""Check a decrypted nightly backup (.tar.gz) without touching any live file:
   python3 verify_restore.py ARCHIVE.tar.gz [--prefix hermes/] [--min-files 1]
-It unpacks into a throw-away folder (member names are checked first: nothing absolute, no `..`, regular files only, size capped), then for every `*.sqlite` or `*.db` file
-under the prefix runs `PRAGMA integrity_check` and counts the rows of every table. It prints file names' COUNT, database names with their integrity result and row counts per
-table; never a file's content. Exit 0 only when the prefix holds at least --min-files files, every database passes, and no member was unsafe. The folder is always removed.
-Every database is checked (one bad one does not hide the others); a failure names the database and SQLite's own error text, never its content.
-Stdlib only. Fixed codes on failure: RESTORE_UNSAFE_PATH, RESTORE_TOO_BIG, RESTORE_NOTHING_UNDER_PREFIX, RESTORE_DB_CORRUPT (SQLite reports damage), RESTORE_DB_UNCHECKED
-(SQLite cannot run the check here, for example a missing extension module: not proof of damage), RESTORE_UNREADABLE."""
+It unpacks into a throw-away folder (member names checked first: nothing absolute, no `..`, regular files only, size
+capped), then runs `PRAGMA integrity_check` and counts the rows of every table for each `*.sqlite` or `*.db` under the
+prefix. Output is counts and names, never content. Exit 0 only when the prefix holds at least --min-files files, every
+database passes and no member was unsafe. Codes: RESTORE_UNSAFE_PATH, RESTORE_TOO_BIG, RESTORE_NOTHING_UNDER_PREFIX,
+RESTORE_DB_CORRUPT, RESTORE_DB_UNCHECKED (the check cannot run here: not proof of damage), RESTORE_UNREADABLE.
+"""
 import os
 import shutil
 import sqlite3
@@ -18,7 +18,7 @@ MAX_TOTAL = 400 * 1024 * 1024
 
 
 class RestoreError(RuntimeError):
-    """The message is always a fixed code; `detail` names the databases and SQLite's error text (never content)."""
+    """The message is always a fixed code; `detail` names the databases and SQLite's error text, never content."""
 
     def __init__(self, code, detail=""):
         super().__init__(code)
@@ -43,10 +43,10 @@ MODULE_HINTS = ("no such module", "no such tokenizer", "unknown tokenizer", "no 
 
 
 def _open(path):
-    """Open the extracted COPY (a private throw-away file, so nothing live is touched). A plain open is used first: Hermes's databases are WAL-mode, and a
-    read-only URI open of a WAL database fails with 'unable to open database file' when its helper files cannot be made (LIFE-318, Nov 6 2026: all nine databases
-    were wrongly reported corrupt). If that still fails, an immutable open (no helper files, no locking) is tried with the path properly quoted. The SQLite
-    version is added to a failure so a machine-specific problem is visible."""
+    """Open the extracted copy. A plain open comes first: Hermes's databases are WAL-mode, and a read-only URI open
+    fails there when helper files cannot be made. If that fails, an immutable open (no helper files, no locking) is
+    tried with the path quoted. The SQLite version is added to a failure.
+    """
     errors = []
     for how in ("plain", "immutable"):
         try:
@@ -54,7 +54,8 @@ def _open(path):
                 db = sqlite3.connect(path)
             else:
                 db = sqlite3.connect("file:%s?mode=ro&immutable=1" % urllib.parse.quote(path), uri=True)
-            db.execute("select count(*) from sqlite_master").fetchone()                  # opening is lazy: this is what really touches the file
+            # opening is lazy: this is what touches the file
+            db.execute("select count(*) from sqlite_master").fetchone()
             return db
         except sqlite3.DatabaseError as error:
             errors.append("%s open: %s" % (how, error))
@@ -62,7 +63,9 @@ def _open(path):
 
 
 def tables(path):
-    """{table: rows}. Raises RestoreError RESTORE_DB_CORRUPT (damage reported by SQLite) or RESTORE_DB_UNCHECKED (the check could not run here)."""
+    """{table: rows}. Raises RestoreError RESTORE_DB_CORRUPT (damage) or RESTORE_DB_UNCHECKED (the check could not run
+    here).
+    """
     db = _open(path)
     try:
         try:
@@ -78,7 +81,7 @@ def tables(path):
             try:
                 out[name] = db.execute('select count(*) from "%s"' % name.replace('"', '""')).fetchone()[0]
             except sqlite3.DatabaseError:
-                out[name] = None                                  # a virtual table whose module is not loaded here: not counted
+                out[name] = None
         return out
     except sqlite3.DatabaseError as error:
         raise RestoreError("RESTORE_DB_CORRUPT", str(error)) from None

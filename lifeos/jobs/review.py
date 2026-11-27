@@ -1,9 +1,9 @@
-"""Fit review (D97): one private Notion page that lists what happened to every job of one company or source, and why.
+"""Fit review: one private Notion page listing what happened to every job of one company or source, and why.
 
-The logs of this public repository carry counts only, so a question like "which Revolut roles did we find and why were they not published" cannot
-be answered from them. This stage writes the answer to a page in the Job Ledger (private) instead: each job with its title, place, Fit score and the
-stored reason, grouped by what became of it. The page is not a job: it has no row in v7_jobs, so no other stage ever touches it, and Jim deletes it
-when he has read it. The log carries counts only. Input: REVIEW_COMPANY (a substring of the company name or of the source id)."""
+Logs carry counts only, so this stage writes the answer to a page in the Job Ledger (private): each job with its
+title, place, Fit score and stored reason, grouped by outcome. The page has no row in v7_jobs, so no other stage
+touches it. Input: REVIEW_COMPANY (a substring of the company name or of the source id).
+"""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import os
@@ -48,7 +48,8 @@ def blocks_for(rows):
 
 def run(limit, live, environ=os.environ):
     needle = (environ.get("REVIEW_COMPANY") or "").strip()
-    names = [n.strip() for n in needle.split(",") if len(n.strip()) >= 3][:12]          # several companies at once: comma separated, each 3+ letters
+    # several companies at once: comma separated, each 3+ letters
+    names = [n.strip() for n in needle.split(",") if len(n.strip()) >= 3][:12]
     if not names:
         return {"error": "REVIEW_COMPANY_missing_or_short"}
     likes = ["%" + n.replace("%", "").replace("_", "") + "%" for n in names]

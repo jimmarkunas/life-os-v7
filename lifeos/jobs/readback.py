@@ -1,8 +1,9 @@
-"""Ledger read-back: a PUBLISHED job is only finished once the page Notion holds matches what was sent (D212).
+"""Ledger read-back: a PUBLISHED job is only finished once the page Notion holds matches what was sent.
 
-Checks the Apply URL, the Stable Job Key, a title, the Fit being present when one was scored, and the v7-jd marker that opens the description body. Fixed reason codes only.
-The properties come from ONE data-source query per KEY_CHUNK Stable Job Keys (an OR of exact-key filters); the body marker is still read per page. A page the query does not return is `page_gone`; two pages with one key is `key_ambiguous`."""
-# D212 (Jim, LIFE-76 10451): every page is verified by reading Notion; a create response is never a read-back.
+Checks the Apply URL, Stable Job Key, a title, the Fit when one was scored, and the v7-jd marker that opens the body.
+Properties come from ONE query per KEY_CHUNK keys. A page the query does not return is `page_gone`; two pages with one
+key is `key_ambiguous`. Fixed reason codes only.
+"""
 
 from lifeos.jobs import store
 from lifeos.platform import ledger_body as body, notion_pages, notion_text
@@ -10,7 +11,7 @@ from lifeos.jobs.identity import url_key
 from lifeos.platform.notion_client import NotionError
 
 BATCH = 60
-KEY_CHUNK = 25          # exact-key filters per Ledger query (one OR); a batch of 60 is three queries instead of 60 page GETs
+KEY_CHUNK = 25
 
 
 _now = store.now
@@ -21,7 +22,8 @@ def _text(prop, kind):
 
 
 def properties_match(page, key, url, fit):
-    """-> None when the page's stored properties match what was sent, else a fixed reason. Shared by the read-back and publish's check of the create response (D211)."""
+    """-> None when the page's stored properties match what was sent, else a fixed reason. Also used for the create response.
+    """
     if page.get("archived") or page.get("in_trash"):
         return "page_gone"
     props = page.get("properties") or {}
@@ -32,7 +34,7 @@ def properties_match(page, key, url, fit):
     if not _text(props.get("Job"), "title"):
         return "no_title"
     if fit is not None and (props.get("LIFE OS Fit") or {}).get("number") is None:
-        return "fit_missing"                                                  # a later re-score may change the number; it must be present
+        return "fit_missing"  # a later re-score may change the number; it must be present
     return None
 
 
@@ -41,12 +43,12 @@ def _bare(page_id):
 
 
 def _query(client, body):
-    """The pages of one Ledger query; a missing or repeated cursor would skip or loop pages: refused, never read as `no page`."""
+    """The pages of one Ledger query; a missing or repeated cursor is refused, never read as `no page`."""
     return notion_pages.pages(lambda cursor: client.call("POST", f"/data_sources/{client.source}/query", {**body, **({"start_cursor": cursor} if cursor else {})}), NotionError, "ledger_lookup_unreadable")
 
 
 def ledger_pages(client, keys):
-    """{key: [page, ...]} as the Ledger holds them now: one data-source query per KEY_CHUNK keys, paged. An unreadable answer raises (never read as `no page`)."""
+    """{key: [page, ...]} as the Ledger holds them now. An unreadable answer raises (never read as `no page`)."""
     found = {key: [] for key in keys}
     for start in range(0, len(keys), KEY_CHUNK):
         body = {"filter": {"or": [{"property": "Stable Job Key", "rich_text": {"equals": key}} for key in keys[start:start + KEY_CHUNK]]}, "page_size": 100}
@@ -61,10 +63,10 @@ def ledger_pages(client, keys):
 
 
 def check_listed(client, page_id, key, url, fit, pages):
-    """-> None when a page whose properties came from ledger_pages() matches what was sent, else a fixed reason."""
+    """-> None when a page from ledger_pages() matches what was sent, else a fixed reason."""
     mine = [page for page in pages if _bare(page.get("id")) == _bare(page_id)]
     if not mine:
-        return "page_gone"                                                  # trashed, archived or moved out of the Ledger: the query does not return it
+        return "page_gone"  # trashed, archived or moved out of the Ledger
     if len(pages) > 1:
         return "key_ambiguous"
     why = properties_match(mine[0], key, url, fit)
@@ -72,9 +74,9 @@ def check_listed(client, page_id, key, url, fit, pages):
         return why
     children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
     if not children or not body.is_marker(children[0]) or len(children) < 2:
-        return "no_description"                                                      # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
+        return "no_description"  # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
     if children[1].get("type") == "column_list" and not (body.find(client, page_id, children, key) or {}).get("toggle"):
-        return "no_description"                                                      # the two-column layout must hold its Overview column and the Full job description toggle
+        return "no_description"
     return None
 
 

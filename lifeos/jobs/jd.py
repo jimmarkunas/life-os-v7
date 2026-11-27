@@ -1,7 +1,6 @@
 """Job description handling: HTML -> clean text -> sections (summary / responsibilities / requirements / qualifications).
 
-Pure functions, no network. The full text is ALWAYS kept; sections are a best-effort split by headings, so a
-posting with unusual headings still has its complete text available for scoring. Stored only in Hostinger.
+Pure functions, no network. The full text is ALWAYS kept; sections are a best-effort split by headings.
 """
 from html.parser import HTMLParser
 from hashlib import sha256
@@ -52,7 +51,7 @@ def html_to_text(html):
 
 
 VOID_TAGS = {"br", "hr", "img", "input", "meta", "link", "wbr"}
-LINKEDIN_MARKUP = "show-more-less-html__markup"      # the element LinkedIn's public guest posting page puts the employer's description in
+LINKEDIN_MARKUP = "show-more-less-html__markup"
 
 
 class _Region(_Text):
@@ -95,9 +94,10 @@ class _Region(_Text):
 
 
 def linkedin_description(html):
-    """The employer's description from a LinkedIn guest posting page, without the page's sign-in forms, cookie notice and Show more/less chrome.
-    None when the page has no such element (the caller keeps its whole-page reading, never a guess); '' when it has one and it is empty, which is an empty
-    description, not a cue to read the sign-in text instead."""
+    """The employer's description from a LinkedIn guest posting page, without sign-in forms, cookie notice and Show
+    more/less chrome. None when the page has no such element (the caller keeps its whole-page reading); '' when it has
+    one and it is empty, which is an empty description, not a cue to read the sign-in text.
+    """
     if LINKEDIN_MARKUP not in (html or ""):
         return None
     parser = _Region(LINKEDIN_MARKUP)
@@ -105,11 +105,11 @@ def linkedin_description(html):
     return _clean(parser.parts)
 
 
-LINKEDIN_TITLE = "top-card-layout__title"      # LIFE-212 (Jim, Oct 31 2026): the element a LinkedIn guest posting (page or jobPosting fragment) names the role in
+LINKEDIN_TITLE = "top-card-layout__title"
 
 
 def linkedin_title(html):
-    """The role as a LinkedIn guest posting names it (its top card's h1/h2/a), or None when the page has no such element. The guest API fragment has no <title>."""
+    """The role as a LinkedIn guest posting names it (its top card's h1/h2/a), or None."""
     if LINKEDIN_TITLE not in (html or ""):
         return None
     parser = _Region(LINKEDIN_TITLE)

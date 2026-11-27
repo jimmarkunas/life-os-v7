@@ -23,12 +23,13 @@ class Fetched:
 
     def __init__(self, final_url: str, status: int, html: str = "", hops: int = 0, error: str = "", codes: Iterable[int] = (), validators: dict[str, str] | None = None) -> None:
         self.final_url, self.status, self.html, self.hops, self.error = final_url, status, html, hops, error
-        self.codes = tuple(codes)      # status code of every hop, e.g. (302, 403)
-        self.validators = validators or {}     # D216: the answer's ETag / Last-Modified, for a later conditional GET
+        self.codes = tuple(codes)
+        self.validators = validators or {}
 
 
 def _validators(headers):
-    """D216: the cache validators an answer carries ({"etag": ..., "last_modified": ...}), each only when present and of a sane length."""
+    """The cache validators an answer carries ({"etag": ..., "last_modified": ...}), each only when present and of a
+    sane length."""
     if not headers:
         return {}
     out = {"etag": headers.get("ETag"), "last_modified": headers.get("Last-Modified")}
@@ -52,7 +53,7 @@ def fetch(url: str, timeout: int = 12, max_hops: int = 8, max_bytes: int = 1_500
                 current = urljoin(current, location)
                 continue
             return Fetched(current, error.code, "", hop, "http", codes, _validators(error.headers) if error.code == 304 else None)
-        except (http.client.InvalidURL, ValueError):                 # a redirect to a malformed address (a bot-protection page): a miss, never a crash
+        except (http.client.InvalidURL, ValueError):
             return Fetched(current, 0, "", hop, "bad_url", codes)
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             return Fetched(current, 0, "", hop, "timeout" if "timed out" in str(error).lower() else "network", codes)

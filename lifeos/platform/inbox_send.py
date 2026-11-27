@@ -1,16 +1,15 @@
-"""LIFE-876: the governed send_to_jim operation of the Oracle MCP and the one Agent Inbox delivery.
+"""The governed send_to_jim operation of the Oracle MCP and the one Agent Inbox delivery.
 
-Any granted client puts one item in Jim's Agent Inbox, the sender is always the verified client, and a repeat updates the same row. It is a thin layer over the existing capability (lifeos.platform.agent_inbox: the one Notion write, the idempotency key derived from sender, subject, due and link when absent, the update of an existing row without
-resetting Jim's Status, the refusal of another sender's key). Added here: the gate route (tenant = the item's workspace, action write, account agent-inbox, service notion), From taken ONLY from the server (`_client`, the verified
-credential or OAuth client; a caller cannot send it, the schema has no such field), and fixed reasons. Credential: NOTION_READONLY_TOKEN. Since Jim's decision of Nov 22 2026 (LIFE-876 comment 13823) that integration, "LIFE OS Oracle Read",
-has Read, Insert and Update content and is connected to the Agent Inbox: so despite its name this token now WRITES the Agent Inbox (and nothing else it is not connected to); the name was kept so nothing is placed twice."""
+A thin layer over lifeos.platform.agent_inbox: the gate route, From taken ONLY from the server (`_client`) and fixed
+reasons. Credential: NOTION_READONLY_TOKEN, whose integration despite its name can write the Agent Inbox and nothing
+else."""
 from datetime import datetime, timezone
 
 from lifeos.platform import agent_inbox
 from lifeos.platform.inbox_error import InboxError
 from lifeos.platform.notion_client import Client, NotionError
 
-TENANT = {"Personal": "personal", "Bytalos": "bytalos"}                          # the gate decides which is granted; TGP and any other name are an unknown tenant, refused before anything runs
+TENANT = {"Personal": "personal", "Bytalos": "bytalos"}
 FIELDS = {"from": "who is writing (an agent id or a person's name)", "subject": "what it is, one line (160 characters at most)", "urgency": "Now, Today, This week or FYI (default Today)",
           "workspace": "Personal or Bytalos (default Personal)", "due": "optional date or date-time, ISO 8601", "link": "optional https link to the context (ticket, PR, page, thread)",
           "details": "optional short note (1,500 characters at most); never a secret or personal data", "key": "optional idempotency key: the same key never adds a second row"}
@@ -25,12 +24,12 @@ class InboxSendError(ValueError):
 
 
 def deliver(item, client, now=None):
-    """-> {"ok": true, "created"|"updated"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never raises; never carries content. (Moved here from lifeos.inbox.send_to_jim, which now calls it.)"""
+    """-> {"ok": true, "created"|"updated"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}."""
     try:
         source = agent_inbox.locate(client)
         result = agent_inbox.send(client, item, now=now, source=source)
         try:
-            result.update(agent_inbox.recount_page(client, source=source))                         # the tiles follow the row; a failure here never loses the row
+            result.update(agent_inbox.recount_page(client, source=source))
         except (InboxError, NotionError):
             result["tiles_changed"] = -1
         return {"ok": True, **result}
@@ -41,7 +40,6 @@ def deliver(item, client, now=None):
 
 
 def route(op, args, tenant):
-    """-> (tenant, action, account, service) for the gate."""
     return TENANT.get(args.get("workspace") or "Personal", "unknown"), "write", "agent-inbox", "notion"
 
 
@@ -58,6 +56,7 @@ def run(op, args, state):
 
 
 def wire(environ, state):
-    """The Notion client for the inbox, from the service's own environment; None (inbox_not_configured) until NOTION_READONLY_TOKEN is placed."""
+    """The Notion client for the inbox from the environment; None (inbox_not_configured) until
+    NOTION_READONLY_TOKEN is set."""
     token = (environ.get("NOTION_READONLY_TOKEN") or "").strip()
     state["client"] = Client({"NOTION_READONLY_TOKEN": token, "NOTION_INBOX_VIEW_SOURCE": "0" * 32}, token_name="NOTION_READONLY_TOKEN", source_name="NOTION_INBOX_VIEW_SOURCE") if token else None

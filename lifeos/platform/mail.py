@@ -1,7 +1,8 @@
-"""One small provider-neutral mail record for read-only classification. Gmail and Outlook are read differently inside; classifier code sees only this shape.
+"""One small provider-neutral mail record for read-only classification; classifier code sees only this shape.
 
-A record: provider, id, received (ISO 8601 UTC), sender_name, sender_address, subject, body, folder ("INBOX" or "JUNK"), markers (bulk, auto, noreply: booleans), url (a link to the
-message when it is deterministic, else ""). Content stays in memory: nothing here writes, logs, labels, moves, deletes, sends or forwards mail, and errors are fixed codes only."""
+A record: provider, id, received (ISO 8601 UTC), sender_name, sender_address, subject, body, folder ("INBOX" or
+"JUNK"), markers (bulk, auto, noreply), url. Content stays in memory: nothing here writes, labels, moves, deletes or
+sends mail."""
 import os
 import re
 import time
@@ -37,7 +38,8 @@ def _markers(headers, address):
 
 
 def _old_enough(record, now, fresh_hours):
-    """True when a held record may be reused: it was received more than `fresh_hours` ago (a newer message can still change folder). An unreadable time means read it again."""
+    """True when a held record may be reused: it was received more than `fresh_hours` ago (a newer message can still
+    change folder)."""
     try:
         return (now - datetime.fromisoformat(record["received"])).total_seconds() > fresh_hours * 3600
     except (KeyError, TypeError, ValueError):
@@ -45,17 +47,16 @@ def _old_enough(record, now, fresh_hours):
 
 
 def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", known=None, stats=None, workers=1, timing=None, heal=False, reuse=None, fresh_hours=2):
-    """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError.
-    LIFE-906: `reuse` ({message id: the record an earlier COMPLETE read made}) lets the read skip mail it already holds: a listed id in `reuse` is not read again unless it arrived in the last `fresh_hours` (its folder
-    can still change), and an id no longer listed is simply absent, so the result is the same records in the same listed order as a full read; `timing` gets `reused`."""
+    """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search
+    `terms`."""
     query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
     began = time.monotonic()
     with fixed(GmailError, MailError, "MAIL_GMAIL_LISTING_INCOMPLETE"):
         ids = gmail.list_ids_complete(query, limit, include_spam=True)
     listed = len(ids)
-    if timing is not None:                                                   # LIFE-793: where a Gmail read spends its time, counts and seconds only
+    if timing is not None:
         timing["listed"], timing["list_s"] = listed, round(time.monotonic() - began, 1)
-    if known is not None:                                                    # LIFE-610: only ids new to the system are read; `known(provider, id)` says which are not
+    if known is not None:
         ids = [i for i in ids if not known("gmail", i)]
     if stats is not None:
         stats["scanned"] = stats.get("scanned", 0) + listed
@@ -63,10 +64,10 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
     out, unreadable = [], 0
     listed_ids = ids
     kept = {i for i in ids if reuse and i in reuse and _old_enough(reuse[i], now, fresh_hours)}
-    ids = [i for i in ids if i not in kept]                                  # LIFE-906: only mail this read does not already hold
+    ids = [i for i in ids if i not in kept]
     read_began = time.monotonic()
 
-    failures, missing = {}, set()                                            # message id -> the fixed cause of its last failed read; the ids Gmail answered 404 for
+    failures, missing = {}, set()
 
     def read(message_id):
         try:
@@ -76,15 +77,15 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
             if re.search(r"\bHTTP 404\b", str(error)):
                 missing.add(message_id)
             return None
-    if workers > 1 and len(ids) > 1:                                         # LIFE-793: the same reads, the same order and the same unreadable count, at most `workers` at a time; the first read goes alone so the access token is fetched once
+    if workers > 1 and len(ids) > 1:
         first = [read(ids[0])]
         with ThreadPoolExecutor(max_workers=workers) as pool:
             raws = first + list(pool.map(read, ids[1:]))
     else:
         raws = [read(message_id) for message_id in ids]
     gone = set()
-    if heal:                                                                 # LIFE-793: a read that failed gets one more try; a listed message Gmail then says does not exist was deleted after the listing (the
-        for position, message_id in enumerate(ids):                          # read takes minutes) and can hold no pending request: dropped, not "unreadable". Anything else still failing is counted and named by its fixed code
+    if heal:
+        for position, message_id in enumerate(ids):
             if raws[position] is None:
                 failures.pop(message_id, None)
                 missing.discard(message_id)
@@ -118,7 +119,7 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms="", kn
     return out, unreadable
 
 
-NEW_READ_LIMIT = 100          # LIFE-610: more new messages than this are cheaper to read through one full listing than one by one
+NEW_READ_LIMIT = 100
 
 
 def _outlook_record(raw, account, label):
@@ -135,8 +136,7 @@ def _outlook_record(raw, account, label):
 
 
 def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, known=None, stats=None):
-    """Outlook Inbox and Junk Email of one account, last `days` days (default WINDOW_DAYS). Returns (records, unreadable). An incomplete listing raises MailError.
-    With `known` (LIFE-610) only messages new to the system are read: the listing carries ids and times, and each new message is then read on its own."""
+    """Outlook Inbox and Junk Email of one account, last `days` days (default WINDOW_DAYS)."""
     since = (now - timedelta(days=days)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     out, unreadable = [], 0
     text = 'outlook.body-content-type="text"'
@@ -168,16 +168,15 @@ def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, 
 
 
 def source_name(label):
-    """A fixed, lower-case name for an Outlook account label, safe to print (LIFE-646, LIFE-648)."""
     return "Outlook " + (re.sub(r"[^a-z0-9_-]", "", str(label).lower())[:24] or "account")
 
 
 def outlook_accounts(environ=os.environ):
-    """[(label, client or None)] for every signed-in Outlook account (tokens live in the private database; reading only, no schema is created)."""
+    """[(label, client or None)] for every signed-in Outlook account (read-only; no schema is created)."""
     client_id = (environ.get("OUTLOOK_CLIENT_ID") or "").strip()
     if not client_id:
         return []
-    from lifeos.platform import db, outlook_tokens as store              # noqa: PLC0415
+    from lifeos.platform import db, outlook_tokens as store  # noqa: PLC0415
     out = []
     with db.connect() as connection:
         for label in store.accounts(connection):
@@ -189,6 +188,6 @@ def outlook_accounts(environ=os.environ):
 
 
 def _save(label, token):
-    from lifeos.platform import db, outlook_tokens as store              # noqa: PLC0415
+    from lifeos.platform import db, outlook_tokens as store  # noqa: PLC0415
     with db.connect() as connection:
         store.save(connection, label, token)
