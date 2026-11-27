@@ -1,20 +1,15 @@
-"""COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31): classify Oracle's alert metadata and push the phone through ntfy.
+"""Urgent iMessage alerts in the hourly run: classify Oracle's alert metadata and push the phone through ntfy.
 
-Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private alert-METADATA endpoint -> this stage -> the existing ntfy sink; the private v7_alerts table is the only state.
-Input: keyed event ids, severity, reason codes and completeness only; this stage never sees message text, names, numbers or chat ids, and the push says only how many texts need Jim.
-Policy: INFORMATIONAL and ATTENTION never push; ACTION_REQUIRED pushes once per event and waits out quiet hours (10 PM-8 AM America/Chicago); TIME_CRITICAL pushes at any hour. One push per event version.
-Failure: a coverage gap, a scan that hit the reader's limit, or an unreachable, stale or off-contract endpoint counts as `failed`, never as complete. Delivery is claim-then-send, so a database failure cannot duplicate a push."""
-# Detail moved out of the docstring (LIFE-595):
-# LIFE-31 was approved by Jim on Oct 13 2026. The job joins the tailnet as an ephemeral tag:v7-runner node; the existing private v7_alerts table is the only state.
-# The endpoint reads and classifies the Mac Mini's messages privately on Oracle.
-# Policy is Communications', not the platform's reminder cadence:
-# - TIME_CRITICAL is an emergency signal from a known contact in a direct conversation, never a `review` verdict.
-# - One push per event version: the row key is the event id plus its severity, so the same message escalating to TIME_CRITICAL is a new version; an unchanged event is never pushed again.
-#   A push the service did not accept stays queued and is retried next run (up to 24 h), never marked sent. ACTION_REQUIRED held for quiet hours goes out at the first run after 8 AM.
-# - Coverage: the lookback runs from the last COMPLETE scan (the `imsg_scan_ok` marker row) plus an hour of overlap, 2-72 h. A gap over 72 h is a failure.
-# - Delivery is claim-then-send: events are recorded first; the ones about to go out are marked IMSG_P (pending) and committed BEFORE the push; the receipt then sets IMSG_S (accepted) or back to IMSG_Q (rejected: retried next run).
-#   A row still IMSG_P at the next run means the outcome is unknown (the receipt was lost): it is closed as IMSG_U (outcome unknown, never recorded as sent) WITHOUT a second push and reported as `ambiguous` and `failed`.
-# Rows use their own statuses (IMSG_Q queued, IMSG_P pending, IMSG_S sent, IMSG_U outcome unknown, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs alert stage owns.
+Input is keyed event ids, severity, reason codes and completeness only (no text, names or chat ids); the private
+v7_alerts table is the only state. INFORMATIONAL and ATTENTION never push; ACTION_REQUIRED pushes once per event and
+waits out quiet hours (10 PM-8 AM America/Chicago); TIME_CRITICAL (never a `review` verdict) pushes at any hour. One
+push per event version (key = event id + severity); a rejected push stays queued for up to 24 h.
+Coverage: the lookback runs from the last COMPLETE scan (`imsg_scan_ok` marker) plus an hour, 2-72 h; a longer gap, a
+scan that hit the reader's limit, or a bad endpoint is `failed`, never complete.
+Delivery is claim-then-send: rows about to go out are marked IMSG_P and committed BEFORE the push; the receipt sets
+IMSG_S or back to IMSG_Q. A row still IMSG_P next run has an unknown outcome: it becomes IMSG_U WITHOUT a second push
+and is reported `ambiguous` and `failed`. The IMSG_* statuses are this stage's own; 'OPEN' belongs to the Jobs alert
+stage."""
 import datetime as dt
 import json
 import math
@@ -41,7 +36,6 @@ MAX_REPLY, MAX_EVENTS = 131072, 500
 
 
 def window(now, mark):
-    """(lookback hours, coverage gap): from the last complete scan with an hour of overlap; the first run looks back FIRST hours only (no backlog flood)."""
     if mark is None:
         return FIRST, False
     hours = math.ceil((now - mark).total_seconds() / 3600) + 1
@@ -49,7 +43,8 @@ def window(now, mark):
 
 
 def fetch(host, hours, port=PORT):
-    """One request over the tailnet. No half-close: Tailscale Serve drops the whole connection on the client's FIN. Empty bytes = refused or unreachable."""
+    """One request over the tailnet. No half-close: Tailscale Serve drops the connection on the client's FIN. Empty
+    bytes = refused or unreachable."""
     try:
         with socket.create_connection((host, port), timeout=15) as s:
             s.settimeout(40)
@@ -72,7 +67,6 @@ def _when(text):
 
 
 def validate(raw, hours, now):
-    """The endpoint's one JSON line -> payload, or None. Every field is checked; a fresh observation time is required (stale or replayed answers fail)."""
     if not raw or len(raw) > MAX_REPLY or not raw.endswith(b"\n") or raw.count(b"\n") != 1:
         return None
     try:
@@ -101,12 +95,14 @@ def quiet(now):
 
 
 def plan(payload, rows, now):
-    """Pure: payload (or None when the scan failed) + stored imsg rows -> what to write and push. rows: {key: {"status", "severity", "first_seen", "last_seen"}}."""
+    """Pure: payload (None when the scan failed) + stored imsg rows -> what to write and push.
+
+    rows: {key: {"status", "severity", "first_seen", "last_seen"}}."""
     events = [] if payload is None else payload["events"]
     found = {}
     for e in events:
         if e["severity"] == "TIME_CRITICAL" and e["review"]:
-            continue                                                # a TIME_CRITICAL verdict is never a review one; refuse rather than wake Jim on doubt
+            continue                                                # a TIME_CRITICAL verdict is never a review one; refuse rather than page on doubt
         if e["severity"] in CODE:
             found[PREFIX + e["key"][:24] + ":" + CODE[e["severity"]]] = CODE[e["severity"]]
     new = {k: c for k, c in found.items() if k not in rows}
@@ -139,7 +135,7 @@ def _mark(cursor):
     return row[0] if row else None
 
 
-KEY = "imessage_action"                       # LIFE-75: the registered alert every iMessage push is (PAGE since Jim's word on Oct 25 2026; quiet hours still hold action-required ones)
+KEY = "imessage_action"                       # the registered alert every iMessage push is (PAGE; quiet hours still hold action-required ones)
 
 
 def _gateway(topic, title, body, severity):
@@ -158,7 +154,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.con
         p = plan(payload, rows, now)
         accepted = False
         if live:
-            with connection.cursor() as cursor:                     # 1. record everything this scan learned, before any push
+            with connection.cursor() as cursor:
                 for key, code in p["new"].items():
                     cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,%s,%s,%s,%s,NULL)",
                                    (key, code, QUEUED, now, now))
@@ -174,10 +170,10 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.con
                     observed = _when(payload["observed_at"])
                     cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,'info',%s,%s,%s,NULL) "
                                    "ON DUPLICATE KEY UPDATE last_seen=VALUES(last_seen)", (MARK, MARKER, observed, observed))
-                for key in p["deliver"]:                            # 2. claim what is about to go out
+                for key in p["deliver"]:
                     cursor.execute("UPDATE v7_alerts SET status=%s, last_notified=%s WHERE alert_key=%s AND status=%s", (PENDING, now, key, QUEUED))
             connection.commit()
-            if p["push"]:                                           # 3. push, then 4. the receipt
+            if p["push"]:
                 accepted = send(environ.get("NTFY_TOPIC", ""), *p["push"])
                 with connection.cursor() as cursor:
                     for key in p["deliver"]:

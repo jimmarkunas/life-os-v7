@@ -1,7 +1,7 @@
 """Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
 
-Every date label is derived from the stored event start and the run's `now`, never stored, so a past interview can only read as held. One concrete status per row;
-no checkbox and no task state. Source is ONE `Opportunity Notes` link when exactly one parent was resolved, else `Needs Notes` (a URL is never guessed)."""
+Date labels are derived from the stored event start and `now`, never stored. Source is ONE `Opportunity Notes` link
+when exactly one parent was resolved, else `Needs Notes`."""
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
@@ -13,7 +13,7 @@ from . import models as M
 
 TZ = ZoneInfo("America/Chicago")
 STALE_HOURS = 6
-MAX_ROWS = 80                                                   # one Notion append takes 100 blocks; more rows than this are counted, never silently cut
+MAX_ROWS = 80
 NOTES_URL = "https://www.notion.so/"
 KIND_LABEL = {"assessment": "assessment", "hiring_manager": "hiring-manager interview", "recruiter_screen": "recruiter screen", "interview": "interview"}
 REASON_TEXT = {"LEDGER_UNAVAILABLE": "Job Ledger unreadable", "OPPORTUNITIES_UNAVAILABLE": "Hiring Pipeline pages unreadable", "CALENDAR_UNAVAILABLE": "Calendar unreadable",
@@ -32,7 +32,6 @@ def clock(moment):
 
 
 def when(start, now):
-    """-> (is_past, label). Upcoming reads Today / Tomorrow / Upcoming; a past start reads Held and can never be upcoming."""
     at, now = local(start), local(now)
     if at <= now:
         return True, ("today" if at.date() == now.date() else at.strftime("%b %-d"))
@@ -43,33 +42,33 @@ def when(start, now):
     return False, f"Upcoming {at.strftime('%b %-d')}, {clock(at)}"
 
 
-RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actionable or due · waiting · verified upcoming activity (LIFE-47); a dot is a cue, the words say the same
-HELD = "⏸"                                                      # LIFE-111: Jim paused it, or it waits on the employer: no to-do, listed after every other row
+RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actionable or due · waiting · verified upcoming activity
+HELD = "⏸"
 
 
 def next_step(row, now):
-    """-> (dot, next step · due, sort date). Due dates come only from supported evidence: a Calendar event, or evidence + AWAIT_DAYS (D189); none is ever invented.
-    A hand-set hold (LIFE-111) has no to-do and no due date until Jim sets it back to Active or new evidence clears it."""
+    """-> (dot, next step · due, sort date). Due dates come only from a Calendar event or evidence + AWAIT_DAYS, never
+    invented; a hand-set hold has no to-do and no due date."""
     outcome, kind = row.get("outcome"), KIND_LABEL.get(row.get("event_kind"), "interview")
     if row.get("hold"):
         return HELD, f"No to-do · {M.HOLD_LABEL[row['hold']['state']].lower()} (set by Jim {local(row['hold']['at']).strftime('%b %-d')})", ""
     dot, step, due = _step(row, now, outcome, kind)
     gone = row.get("hold_cleared")
-    if gone and (local(now).date() - local(gone["on"]).date()).days < M.AWAIT_DAYS:     # the row says why it is back on the to-do list, for a week
+    if gone and (local(now).date() - local(gone["on"]).date()).days < M.AWAIT_DAYS:
         step += f" · {M.HOLD_LABEL[gone['state']]} cleared by new {gone['by']} {local(gone['on']).strftime('%b %-d')}"
     return dot, step, due
 
 
 def _step(row, now, outcome, kind):
-    if row.get("stage") == M.LEAD and not outcome and not row.get("replied"):     # E01b: recruiter outreach is the first warning; there is no deadline to invent
+    if row.get("stage") == M.LEAD and not outcome and not row.get("replied"):
         return RED, "Recruiter outreach · reply, or close it", ""
-    if outcome:                                                      # D190: outcome mail is a source-backed action to confirm, never a stage or a deadline; its received date is the evidence
+    if outcome:
         sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
         if outcome["kind"] == "OFFER":
             return RED, f"{'Offer' if sure else 'Possible offer'} email received {day} · review and respond", ""
         where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"
         return RED, f"{'Rejection' if sure else 'Possible rejection'} email received {day} · {where}", ""
-    if row.get("stage") == M.LEAD and not outcome:                   # E05: Jim replied (marked done on the page): the reply day starts the follow-up clock
+    if row.get("stage") == M.LEAD and not outcome:
         start, waiting, quiet = row["replied"], f"Replied {local(row['replied'] + 'T12:00:00').strftime('%b %-d')} · awaiting the recruiter", "reply"
     elif row.get("event_start"):
         past, label = when(row["event_start"], now)
@@ -83,7 +82,7 @@ def _step(row, now, outcome, kind):
         if not start:
             return YELLOW, waiting, "9"
     if row.get("contact") and local(row["contact"]) > local(start if "T" in start else start + "T00:00:00"):
-        start, waiting = row["contact"], f"Last contact {local(row['contact']).strftime('%b %-d')}"       # LIFE-26: a direct message resets the clock
+        start, waiting = row["contact"], f"Last contact {local(row['contact']).strftime('%b %-d')}"
         quiet = "contact"
     due, days = local(start).date() + timedelta(days=M.AWAIT_DAYS), (local(now).date() - local(start).date()).days
     if days >= M.AWAIT_DAYS:
@@ -92,44 +91,45 @@ def _step(row, now, outcome, kind):
 
 
 def close_url(base, pid):
-    """D194 S3: the private Close screen link, or None. `base` must be a bare https origin (host and optional port: no credentials, path, query or fragment) and `pid` one 32-hex page id; nothing is guessed or half-built."""
+    """The private Close screen link, or None. `base` must be a bare https origin and `pid` one 32-hex page id."""
     return f"{base.rstrip('/')}/?{urlencode({'o': pid})}" if re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?", base or "") and re.fullmatch(r"[0-9a-f]{32}", pid or "") else None
 
 
 def row_cells(row, now, close=None):
-    """-> [(text, link)] x 4: Company — Role · Stage · Next step · Due · Notes. Plain text; the Notes page is linked only when exactly one parent was resolved (a URL is never guessed). `close` adds the second Notes link as segments."""
-    _, step, _ = next_step(row, now)                                 # the dot classifies and sorts the row (render below); it is never printed beside the name
+    """-> [(text, link)] x 4 (Company — Role, Stage, Next step · Due, Notes). Plain text."""
+    _, step, _ = next_step(row, now)
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
     source = [source, (" · ", None), ("Close ↗", close)] if close else source
-    held = M.HOLD_LABEL[row["hold"]["state"]] + " · " if row.get("hold") else ""        # LIFE-111: the hand-set state first; the evidence stage stays as evidence says
+    held = M.HOLD_LABEL[row["hold"]["state"]] + " · " if row.get("hold") else ""
     return [(M.label(row['company'], row['role']), None), (held + row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
 
 
 def _older(row, now):
-    """A submitted role with no newer evidence stays listed for APPLIED_DAYS after Applied On; an undated one stays."""
     return (row["stage"] == M.SUBMITTED and row.get("applied_on") and not row.get("carried")
             and (now.date() - local(row["applied_on"]).date()).days > M.APPLIED_DAYS)
 
 
-older_submitted = _older                                             # the one active-row rule, shared with network matching (NET-2.2); not a second lifecycle
+older_submitted = _older                                             # the one active-row rule, shared with network matching
 
 
 def render(result, stored, now, close=(None, {})):
-    """result: compile_rows output; close: (private base URL, {row key: page id}). -> (status text, table rows or None, counts). None leaves the table as it was (UNAVAILABLE)."""
+    """result: compile_rows output; close: (private base URL, {row key: page id}).
+
+    -> (status text, table rows or None, counts). None leaves the table as it was (UNAVAILABLE)."""
     now = local(now)
     reasons = list(result["reasons"])
     accepted = (stored or {}).get("accepted_at")
     if accepted and not reasons and local(accepted) < now - timedelta(hours=STALE_HOURS):
         reasons.append("SNAPSHOT_STALE")
     rows = result["rows"]
-    unread = result.get("outcome_unread")                       # LIFE-648: the fixed names of the mail sources the last outcome scan could not read
+    unread = result.get("outcome_unread")
     note = " · ".join(REASON_TEXT.get(r, r.lower()) + (f" ({', '.join(unread)} unread)" if r == "OUTCOME_MAIL_PARTIAL" and unread else "") for r in reasons)
     if rows is None:
         return (f"DEGRADED · Hiring Pipeline unavailable at {ct_stamp.when(now)} · {note} · no accepted state yet",
                 None, {"status": "unavailable", "rows": 0, "reasons": reasons})
     hidden_older = sum(1 for r in rows if _older(r, now))
     rows = [r for r in rows if not _older(r, now)]
-    rows.sort(key=lambda r: ((n := next_step(r, now))[0] == HELD, n[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))     # attention first, then by due date; held rows last
+    rows.sort(key=lambda r: ((n := next_step(r, now))[0] == HELD, n[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))
     shown = rows[:MAX_ROWS]
     cells = [row_cells(r, now, close_url(close[0], close[1].get(r["key"]))) for r in shown]
     extra = []
@@ -138,7 +138,7 @@ def render(result, stored, now, close=(None, {})):
     if hidden_older:
         extra.append(f"{hidden_older} older submitted not shown")
     held = sum(1 for r in rows if r.get("hold"))
-    extra = ([f"{held} paused or waiting"] if held else []) + extra   # LIFE-111: listed, but not counted as active to-dos
+    extra = ([f"{held} paused or waiting"] if held else []) + extra
     tail = (" · " + " · ".join(extra)) if extra else ""
     if reasons:
         when_text = ct_stamp.when(local(accepted)) if accepted else "never"
