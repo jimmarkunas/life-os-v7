@@ -1,22 +1,23 @@
-"""LIFE-756: the read-only check of the V7 database for the five Followup tables (stage `followup-schema-check`) and the DDL plan; it creates nothing."""
-# Jim approved the table family on Nov 16 2026 (D258, LIFE-737). `plan()` is the DDL from `followup_store.SCHEMA`. `check(cursor)` runs five SELECT/SHOW statements and returns fixed flags and counts
-# only (no database name, user, host, grant text or row): server kind and version, the default row format, which of the five tables exist, whether the account may create and write them, and whether
-# the largest key fits that row format (computed from the DDL: at most 762 bytes, so it fits even COMPACT's 767). The one-time apply is `followup_apply`.
+"""Read-only check of the V7 database for the five Followup tables (stage `followup-schema-check`) and the DDL plan.
+
+`check(cursor)` runs five SELECT/SHOW statements and returns fixed flags and counts only: server version, row format,
+which tables exist, whether the account may create and write them, and whether the largest key (computed from the DDL)
+fits the row format. It creates nothing; the apply is `followup_apply`.
+"""
 import re
 
 from lifeos.inbox import followup_store
 from lifeos.platform import db
 
 TABLES = followup_store.TABLES
-NEEDED = ("CREATE", "SELECT", "INSERT", "UPDATE")                  # no DELETE, DROP or ALTER: nothing here ever removes a row
-KEY_LIMITS = {"dynamic": 3072, "compressed": 3072, "compact": 767, "redundant": 767}   # InnoDB index key limit in bytes by row format
+NEEDED = ("CREATE", "SELECT", "INSERT", "UPDATE")
+KEY_LIMITS = {"dynamic": 3072, "compressed": 3072, "compact": 767, "redundant": 767}
 _COLUMN = re.compile(r"(\w+)\s+(CHAR|VARCHAR)\((\d+)\)")
 _KEY = re.compile(r"\bKEY\s*(?:\w+\s*)?\(([^)]*)\)")
 
 
 
 def plan():
-    """The DDL statements in the order they run."""
     return list(followup_store.SCHEMA)
 
 
@@ -25,7 +26,6 @@ def _table(statement):
 
 
 def _parts(statement):
-    """The top-level comma-separated parts inside the CREATE TABLE parentheses."""
     body = statement[statement.index("(") + 1: statement.rindex(")")]
     parts, depth, current = [], 0, ""
     for char in body:
@@ -39,12 +39,12 @@ def _parts(statement):
 
 
 def column_counts():
-    """-> {table: number of columns}, counted from the DDL (key definitions are not columns)."""
+    """Returns {table: number of columns}, counted from the DDL (key definitions are not columns)."""
     return {_table(s): sum(1 for p in _parts(s) if not re.match(r"(PRIMARY|UNIQUE|KEY)\b", p)) for s in plan()}
 
 
 def key_bytes():
-    """-> {table: the largest key in bytes at 4 bytes per character (utf8mb4), plus 1 or 2 length bytes for a VARCHAR}."""
+    """Returns {table: largest key in bytes at 4 bytes per utf8mb4 character, plus 1 or 2 length bytes for a VARCHAR}."""
     out = {}
     for statement in plan():
         widths = {}
@@ -70,7 +70,6 @@ def _grants(cursor):
 
 
 def check(cursor):
-    """-> counts and fixed flags only; a statement the server refuses is recorded as None, never as an error text."""
     largest = max(key_bytes().values())
     out = {"server": None, "version": None, "row_format": None, "tables_present": [], "grants": None, "largest_key_bytes": largest, "key_limit_bytes": None, "keys_fit": None}
     try:
@@ -100,7 +99,6 @@ def check(cursor):
 
 
 def run(limit, live):
-    """The stage `followup-schema-check`: read-only, counts only. `live` changes nothing: this stage never writes."""
     with db.connect() as connection, connection.cursor() as cursor:
         return {"check": check(cursor), "tables_in_plan": len(plan())}
 

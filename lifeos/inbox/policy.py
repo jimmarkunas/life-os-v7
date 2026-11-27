@@ -1,7 +1,9 @@
-"""The approved action matrix (Jim, Nov 13 2026), grants, and the exact authorization every protected action needs (LIFE-685).
+"""The action matrix, grants, and the exact authorization every protected action needs.
 
-Every answer is (allowed, reason) with a fixed lower-case reason word; fail closed. Three gates must all pass: the product matrix, the principal's grant for that exact source,
-workspace, account and action (a grant can only narrow the matrix), and the record's own eligibility proven by its adapter. Concord approve and resume are two actions with two grants."""
+Answers are (allowed, reason) with a fixed lower-case reason word; fail closed. Three gates must all pass: the matrix,
+the principal's grant for that exact source, workspace, account and action (a grant only narrows the matrix), and the
+record's eligibility proven by its adapter.
+"""
 import hashlib
 import hmac
 from dataclasses import dataclass, replace
@@ -11,26 +13,28 @@ from lifeos.inbox.model import UNRELEASED_WORKSPACES, WORKSPACES, SOURCES, Inbox
 
 READ_ACTIONS = frozenset({"view", "open"})
 MATRIX = {
-    "jira": READ_ACTIONS | {"accept_uat", "reject_uat"},                                   # Human UAT only; never a general edit, assignment or transition
-    "todoist": READ_ACTIONS | {"complete_task"},                                           # selected personal tasks only; no edit, reschedule, bulk or delete
-    "concord": READ_ACTIONS | {"approve", "reject", "request_changes", "resume_work"},     # resume is its own action, never implied by an approval
-    "followup": READ_ACTIONS | {"confirm_resolution", "update_checkpoint"},                # through the canonical Followup authority only
+    "jira": READ_ACTIONS | {"accept_uat", "reject_uat"},
+    "todoist": READ_ACTIONS | {"complete_task"},
+    "concord": READ_ACTIONS | {"approve", "reject", "request_changes", "resume_work"},
+    "followup": READ_ACTIONS | {"confirm_resolution", "update_checkpoint"},
     "calendar": READ_ACTIONS,
     "asana": READ_ACTIONS,
 }
-EXPECTED_STATUS = {                                                                         # what the source's own read-back must show before anything is called done: SYNTHETIC until a source is in VERIFIED_COMPLETION
+# What the source's read-back must show before anything is called done (synthetic until verified)
+EXPECTED_STATUS = {
     "accept_uat": {"Done"}, "reject_uat": {"In Progress", "Agent Go"}, "complete_task": {"completed"}, "approve": {"approved"}, "reject": {"rejected"},
     "request_changes": {"changes_requested"}, "resume_work": {"running"}, "confirm_resolution": {"resolved"}, "update_checkpoint": {"open", "waiting"},
 }
 SOURCE_OF_ACTION = {action: source for source, actions in MATRIX.items() for action in actions - READ_ACTIONS}
-VERIFIED_COMPLETION = frozenset()                                                           # sources whose EXPECTED_STATUS Jim matched to the real workflow; empty: no live completion can be claimed (LIFE-697)
-LIVE_WRITES_ENABLED = False                                                                 # no real action runs until Jim separately authorizes it and a source is in VERIFIED_COMPLETION
+# Sources whose EXPECTED_STATUS matches the real workflow; empty: no live completion can be claimed
+VERIFIED_COMPLETION = frozenset()
+LIVE_WRITES_ENABLED = False
 AUTH_TTL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
 class Grant:
-    """One scoped access: exactly one source, workspace and account, the actions allowed, and the NAME of the credential (never its value). Grants are never merged across workspaces."""
+    """One source, workspace and account, the actions allowed, and the credential NAME (never its value)."""
     source: str
     workspace: str
     account: str
@@ -47,7 +51,6 @@ class Principal:
 
 
 def find_grant(principal, source, workspace, account, action, now):
-    """-> (grant, None) or (None, reason): no_grant | grant_revoked | grant_expired | action_not_granted."""
     seen = None
     for grant in principal.grants:
         if (grant.source, grant.workspace, grant.account) != (source, workspace, account):
@@ -73,11 +76,10 @@ def _eligible(record, action):
         return None if record.kind == "approval_request" and record.approval_required else "no_pending_approval"
     if action == "resume_work":
         return None if "resumable" in record.flags else "not_resumable"
-    return None if record.kind == "checkpoint" else "not_a_checkpoint"                      # confirm_resolution, update_checkpoint
+    return None if record.kind == "checkpoint" else "not_a_checkpoint"
 
 
 def decide(principal, record, action, now):
-    """-> (allowed, reason). `ok` when all three gates pass. This is the only place the matrix, the grant and the record's eligibility meet."""
     if record.workspace in UNRELEASED_WORKSPACES:
         return False, "workspace_not_released"
     if record.workspace not in WORKSPACES or record.source not in SOURCES:
@@ -92,12 +94,10 @@ def decide(principal, record, action, now):
 
 
 def permitted_actions(principal, record, now):
-    """The actions this principal could request on this record right now, for display; the exact-authorization and freshness gates still apply at request time."""
     return tuple(a for a in sorted(MATRIX[record.source]) if decide(principal, record, a, now)[0])
 
 
 def read_grant(principal, source, workspace, account, now):
-    """-> (grant, None) or (None, reason) for reading one source in one workspace. TGP is refused here, before any credential is looked up."""
     if workspace in UNRELEASED_WORKSPACES:
         return None, "workspace_not_released"
     if workspace not in WORKSPACES:
@@ -107,8 +107,9 @@ def read_grant(principal, source, workspace, account, now):
 
 @dataclass(frozen=True)
 class ExactAuthorization:
-    """Permission for ONE protected action on ONE record revision by ONE principal, single-use and short-lived. Minted server-side only after a human confirmed it; signed so it cannot be forged
-    or edited. It authorizes the request; the grant still decides whether the underlying source may be touched."""
+    """ONE protected action on ONE record revision by ONE principal: single-use, short-lived, signed, minted after
+    human confirmation.
+    """
     principal_id: str
     record_id: str
     action: str
@@ -116,7 +117,7 @@ class ExactAuthorization:
     nonce: str
     expires_at: object
     mac: str
-    source: str = ""                                                                        # LIFE-697: also bound, so an authorization cannot cross a source, workspace or account
+    source: str = ""
     workspace: str = ""
     account: str = ""
 
@@ -135,7 +136,6 @@ def sign(key, principal_id, record, action, nonce, expires_at):
 
 
 def verify(key, auth, principal, record, action, now):
-    """-> None when the authorization is for exactly this principal, source, workspace, account, record revision and action and is unexpired and untampered; else a fixed reason."""
     if not isinstance(auth, ExactAuthorization):
         return "authorization_missing"
     if not hmac.compare_digest(_mac(key, _parts(auth)), auth.mac):
@@ -147,7 +147,7 @@ def verify(key, auth, principal, record, action, now):
 
 
 def completion_proven(record, action, readback, synthetic):
-    """True only when the source's own read-back is for this record, on a NEW revision, with the status this action must end in; a live claim also needs the source in VERIFIED_COMPLETION."""
+    """True only when the read-back is for this record on a NEW revision with the status this action must end in."""
     if not synthetic and SOURCE_OF_ACTION.get(action) not in VERIFIED_COMPLETION:
         return False
     return (isinstance(readback, dict) and readback.get("record_id") == record.record_id and readback.get("revision") not in (None, record.revision)
@@ -155,7 +155,6 @@ def completion_proven(record, action, readback, synthetic):
 
 
 def mint(key, principal, record, action, nonce, now, ttl=AUTH_TTL):
-    """Server-side only. Raises InboxError when the request could never be allowed, so no authorization exists for a forbidden action."""
     allowed, reason = decide(principal, record, action, now)
     if not allowed or action in READ_ACTIONS:
         raise InboxError(reason if not allowed else "action_not_protected")

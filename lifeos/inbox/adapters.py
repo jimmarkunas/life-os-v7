@@ -1,6 +1,8 @@
-"""One normalizer per source: a native record in the source's own field names becomes one Record (LIFE-685).
+"""One normalizer per source: a native record in the source's own field names becomes one Record.
 
-A normalizer only reads the native dict it is given and never calls a provider. The presentation status and the eligibility flags come from the source's own state, never from agent-written text."""
+Normalizers only read the dict they are given and never call a provider. Status and eligibility come from the source's
+own state, never from agent-written text.
+"""
 import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -88,7 +90,9 @@ NORMALIZERS = {"jira": jira, "todoist": todoist, "concord": concord, "followup":
 
 
 def normalize(source, workspace, account, raw, identity, now, retrieved_at, health="ok"):
-    """-> one validated Record. A native record missing a field the source always has is InboxError(record_incomplete), never a guess."""
+    """Returns one validated Record; a native record missing a field the source always has raises
+    InboxError(record_incomplete).
+    """
     try:
         return NORMALIZERS[source](workspace, account, raw, identity, now, retrieved_at, health)
     except KeyError:

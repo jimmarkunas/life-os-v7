@@ -1,28 +1,26 @@
-"""Read-only Jira, Calendar, Todoist and Asana sources for the Action Inbox (LIFE-708, LIFE-709).
+"""Read-only Jira, Calendar, Todoist and Asana sources for the Action Inbox.
 
-A source is what `inbox.build_inbox` expects: `.source .workspace .account .identity` and `.fetch(credential_ref) -> native dicts`. These get their data from ONE read callable each, never from a client
-object: Jira's `board_issues` and Calendar's `list_events` (both GET-only); Todoist and Asana take a read function the same way and have no V7 client yet. No write, transition, comment, insert, update or delete can be reached from here, and a test scans this file to keep it so.
-
-Nothing is fetched live: `open_reader` defaults to a refusal while `LIVE_READS_ENABLED` is False. Turning it on needs Jim's recorded approval of the account, scope and credential per workspace
-(docs/platform/inbox-access-contract.md, section F). Output is native dicts only: no shadow task store, no description text mined, no exception message kept."""
+A source has `.source .workspace .account .identity` and `.fetch(credential_ref) -> native dicts`, fed by ONE injected
+read callable (never a client), so no write is reachable; a test scans this file to keep it so. `open_reader` refuses
+while `LIVE_READS_ENABLED` is False.
+"""
 from datetime import timedelta
 
 from lifeos.inbox.model import InboxError
 
-LIVE_READS_ENABLED = False                  # no real Jira or Calendar read until Jim approves the exact account, scope and credential per workspace and a stage is released
-LIVE_READ_SOURCES = frozenset({"concord"})  # LIFE-977 (Jim, Nov 25 2026 10:58 AM CT, "Concord YES"): the one source that may be read live, and only by lifeos/inbox/concord_reader.py (counts and a fixed code); every other source still refuses
+LIVE_READS_ENABLED = False
+# Sources readable live, each only by its own reader (concord: concord_reader.py); the rest refuse.
+LIVE_READ_SOURCES = frozenset({"concord"})
 JIRA_FIELDS = "summary,status,assignee,duedate,updated"
 JIRA_JQL = 'status = "Human UAT" OR (assignee = currentUser() AND statusCategory != Done)'
 WINDOW_DAYS = 14
 
 
 def live_allowed(source):
-    """True only for a source on the per-source allow-list. The global switch above is untouched: Jira, Calendar, Todoist, Asana and Followup keep refusing."""
     return source in LIVE_READ_SOURCES
 
 
 def refuse_live(credential_ref):
-    """The default `open_reader`: a fixed refusal, and no client or credential is ever built. Even with the switch on, no live reader exists yet."""
     raise InboxError("live_reader_missing" if LIVE_READS_ENABLED else "live_reads_not_authorized")
 
 
@@ -36,14 +34,13 @@ class _Source:
             try:
                 native = self._native(item)
             except (KeyError, TypeError, AttributeError):
-                native = {}                                                                 # the Inbox rejects it and shows this source as degraded; the good rows stay
-            if native is not None:                                                          # None: out of scope for this account, left out without a trace
+                native = {}  # the Inbox rejects it and shows this source as degraded; the good rows stay
+            if native is not None:
                 out.append(native)
         return out
 
 
 class JiraSource(_Source):
-    """`open_reader(credential_ref)` returns a callable `(board_id, jql, fields) -> issues`; in production only `Jira.board_issues` (a GET)."""
     source = "jira"
 
     def __init__(self, workspace, account, identity, board_id, base_url, **kwargs):
@@ -53,18 +50,17 @@ class JiraSource(_Source):
     def _read(self, read):
         issues = read(self._board, JIRA_JQL, JIRA_FIELDS)
         if not isinstance(issues, list):
-            raise InboxError("listing_incomplete")                                           # a partial answer is an error, never a smaller list
+            raise InboxError("listing_incomplete")
         return issues
 
     def _native(self, issue):
         fields = issue["fields"]
         who, url, status = fields.get("assignee") or {}, f"{self._base}/browse/{issue['key']}", fields["status"]["name"]
         return {"key": issue["key"], "url": url, "summary": fields.get("summary"), "description": "", "assignee": who.get("accountId", ""), "status": status,
-                "updated": fields["updated"], "tz": self._tz, "due": fields.get("duedate"), "evidence": [url] if status == "Human UAT" else []}      # the receipt lives on the issue itself
+                "updated": fields["updated"], "tz": self._tz, "due": fields.get("duedate"), "evidence": [url] if status == "Human UAT" else []}
 
 
 class CalendarSource(_Source):
-    """`open_reader(credential_ref)` returns a callable `(time_min, time_max) -> events`; in production only `GoogleCalendar.list_events` (a GET)."""
     source = "calendar"
 
     def __init__(self, workspace, account, identity, now, **kwargs):
@@ -84,8 +80,9 @@ class CalendarSource(_Source):
 
 
 class TodoistSource(_Source):
-    """Personal tasks from the approved projects only. `open_reader(credential_ref)` returns `() -> tasks` (the active-task listing). Todoist is Personal-only in this release.
-    Todoist's task listing carries no update time, so the revision follows status and creation until the real shape is verified (documented shape, not a live read)."""
+    """Personal tasks from the approved projects only; `open_reader(credential_ref)` returns `() -> tasks`. The
+    revision follows status and creation (no update time).
+    """
     source = "todoist"
 
     def __init__(self, workspace, account, identity, projects, **kwargs):
@@ -112,8 +109,10 @@ class TodoistSource(_Source):
 
 
 class AsanaSource(_Source):
-    """Bytalos programme work only. `open_reader(credential_ref)` returns `(project_gids) -> tasks`. A task counts only when every project it sits in is on the approved list; a task in none of
-    them is out of scope, and a task in an approved project AND any other (or in no project) is ambiguous, so it is rejected and the source shows degraded. Never TGP or client projects."""
+    """Bytalos programme work only; `open_reader(credential_ref)` returns `(project_gids) -> tasks`. A task counts
+    only when every project it sits in is approved; an approved plus any other project (or none) is ambiguous and
+    rejected.
+    """
     source = "asana"
 
     def __init__(self, workspace, account, identity, projects, **kwargs):
@@ -134,11 +133,11 @@ class AsanaSource(_Source):
     def _native(self, task):
         sitting = {str(p["gid"]) for p in task["projects"]}
         if not sitting:
-            raise KeyError("projects")                                                     # in no project: ambiguous
+            raise KeyError("projects")
         if not sitting & self._projects:
             return None
         if not sitting <= self._projects:
-            raise KeyError("projects")                                                     # also in a project that is not approved (possibly TGP or client): ambiguous
+            raise KeyError("projects")
         if task.get("completed"):
             return None
         who = task.get("assignee") or {}
