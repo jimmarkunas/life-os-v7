@@ -5,6 +5,7 @@ not_codes.json for configuration names); this module collects them. Each code ha
 retry-budget flag, a meaning, a next action and a severity (SEVERITIES). Config names that look like codes belong in
 NOT_CODES; tests/contracts/test_codes.py fails on a code-shaped string that is neither.
 """
+
 import ast
 import json
 import re
@@ -37,25 +38,58 @@ def declared(root=Path(__file__).resolve().parents[1]):
     meaning, action[, severity]]}), reasons.json ({word: [stage, class, attempt, meaning, action, public]}) and
     not_codes.json (a list of names). A code is declared in exactly one file.
     """
+
     def read(name):
         return [json.loads(path.read_text()) for path in sorted(root.glob("*/" + name))]
-    return ({code: _r(*row) for data in read("codes.json") for code, row in data.items()}, {word: _r(*row[:5], public=row[5]) for data in read("reasons.json") for word, row in data.items()},
-            {name for data in read("not_codes.json") for name in data})
+
+    return (
+        {code: _r(*row) for data in read("codes.json") for code, row in data.items()},
+        {word: _r(*row[:5], public=row[5]) for data in read("reasons.json") for word, row in data.items()},
+        {name for data in read("not_codes.json") for name in data},
+    )
 
 
 CODES, REASONS, _NAMES = declared()
-for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT", "LIMIT_UNCONFIGURED", "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE",
-                "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH", "PURGE_FAILED", "USAGE_UNAVAILABLE", "QUOTA_RESERVE", "QUOTA_UNCONFIGURED",
-                "METER_UNAVAILABLE", "AUTH_UNAVAILABLE"):
+for _reason in (
+    "NOT_ALLOWLISTED",
+    "NONCE_REPLAYED",
+    "COUNTER_UNAVAILABLE",
+    "DAILY_LIMIT",
+    "LIMIT_UNCONFIGURED",
+    "REAL_DISABLED",
+    "BRIEF_MISSING",
+    "BRIEF_UNSAFE",
+    "BRIEF_HASH_MISMATCH",
+    "BRIEF_INVALID",
+    "PROFILE_MISMATCH",
+    "PURGE_FAILED",
+    "USAGE_UNAVAILABLE",
+    "QUOTA_RESERVE",
+    "QUOTA_UNCONFIGURED",
+    "METER_UNAVAILABLE",
+    "AUTH_UNAVAILABLE",
+):
     if "FIT_EDGE_REFUSED_" + _reason not in CODES:  # the f-string forms Fit builds from Oracle's refusal reasons
         _base = CODES[_reason]
-        CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
+        CODES["FIT_EDGE_REFUSED_" + _reason] = _r(
+            _base.stage,
+            _base.klass,
+            _base.attempt,
+            "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:],
+            _base.action,
+            _base.severity,
+        )
 
 CODES.update(registry.code_rows(_r))
 
 # Every name in the environment-variable registry is a configuration name, never a result code.
-from lifeos.platform import credentials    # noqa: E402 - placed beside the list it extends
-NOT_CODES = frozenset(_NAMES) | frozenset(row["name"] for row in credentials.config()["names"]) | frozenset(credentials.config()["provided"]["names"])
+from lifeos.platform import credentials  # noqa: E402 - placed beside the list it extends
+
+NOT_CODES = (
+    frozenset(_NAMES)
+    | frozenset(row["name"] for row in credentials.config()["names"])
+    | frozenset(credentials.config()["provided"]["names"])
+)
 
 
 def public_reasons():
@@ -81,7 +115,12 @@ def candidates(source):
     parent = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     found = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and CANDIDATE.match(node.value) and not isinstance(parent.get(node), ast.Expr):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and CANDIDATE.match(node.value)
+            and not isinstance(parent.get(node), ast.Expr)
+        ):
             found.setdefault(node.value, node.lineno)
     return found
 
