@@ -41,7 +41,7 @@ FOLLOWUP_ACCOUNT_TODOIST_PERSONAL input Short account label for the Followup tod
 FOLLOWUP_GCAL_BYTALOS_CALENDAR_ID input Google calendar id the Followup calendar reader calls (bytalos)
 FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID input Google calendar id the Followup calendar reader calls (personal)
 FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH secret New read-only Gmail (Bytalos) credential for the Followup stage; a name only, never a value
-FOLLOWUP_TODOIST_PERSONAL_TOKEN secret New read-only Todoist (Personal) credential for the Followup stage; a name only, never a value
+FOLLOWUP_TODOIST_PERSONAL_TOKEN secret The one-hour read-only (data:read) Todoist access token the Oracle ticker keeps fresh in the ALERTS project, for the Followup stage and the Todoist counter; a name only, never a value
 FOLLOWUP_WIRING flag:workflow Turns on the hourly followup job: the stage reads the approved sources (dry run) and writes access receipts; off by default
 GATE_MIN_GAP_MINUTES workflow_only:workflow Minimum minutes between two pipeline ticks for the gate
 GCAL_CALENDAR_ID input Which Google calendar the calendar bridge reads
