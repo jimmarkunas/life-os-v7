@@ -1037,6 +1037,40 @@ class Credentials(Server):
         self.assertTrue({"memory_recall", "memory_store"} <= set(out["valid"]), out["valid"])
         self.assertNotIn("buzz_capabilities", out["valid"])
 
+    def test_honcho_alerts_send_to_jim_needs_no_community_and_names_none(self):
+        """the alert client sends without a community; the sender is still the verified client"""
+        from datetime import datetime, timezone
+        from unittest import mock
+
+        sent = []
+        self.start(access=self.access(no_identity=True))
+        with (
+            mock.patch.dict(
+                buzz_mcp.INBOX, {"client": object(), "now": lambda: datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)}
+            ),
+            mock.patch(
+                "lifeos.platform.inbox_send.deliver",
+                lambda item, client, now=None: sent.append(item) or {"ok": True, "created": 1},
+            ),
+        ):
+            status, out = self.tool(
+                self.tok("honcho-alerts"),
+                "buzz_read",
+                operation="send_to_jim",
+                arguments={"subject": "Honcho budget stopped", "urgency": "Today"},
+            )
+            self.assertEqual((status, out.get("ok"), [i["from"] for i in sent]), (200, True, ["honcho-alerts"]))
+            status, out = self.tool(
+                self.tok("honcho-alerts"),
+                "buzz_read",
+                operation="send_to_jim",
+                community="not-granted",
+                arguments={"subject": "x", "urgency": "Today"},
+            )
+            self.assertEqual(
+                (out.get("ok"), len(sent)), (False, 1)
+            )  # a community the client does not hold is still refused
+
     def test_honcho_alerts_may_send_to_jim_only_and_is_named_as_the_sender(self):
         """the alert client holds one grant, send_to_jim"""
         from datetime import datetime, timezone
