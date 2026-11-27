@@ -16,7 +16,7 @@ set -euo pipefail
 OPT=/opt/lifeos-ticker; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
 PROG="$OPT/ticker.py"; GH="$CREDS/lifeos-ticker.github"; NT="$CREDS/lifeos-ticker.ntfy"; BW="$CREDS/lifeos-ticker.bwsalerts"; DROPIN=/etc/systemd/system/lifeos-ticker-watch.service.d/bwsalerts.conf     # LIFE-733: optional; present = the alert switches come from Bitwarden
 UNIT_FILES="lifeos-ticker-tick.service lifeos-ticker-tick.timer lifeos-ticker-watch.service lifeos-ticker-watch.timer"
-MODULES="gate.py alerts.py alert_registry.py alert_settings.py alert_store.py redact.py drift.py health.py release_proof.py"
+MODULES="gate.py alerts.py alert_registry.py alert_settings.py alert_store.py redact.py drift.py health.py release_proof.py todoist_refresh.py"
 say() { printf '%s\n' "$*"; }
 die() { say "STOP: $*"; exit 1; }
 [ "$(id -u)" = 0 ] || die "run as root via opc"

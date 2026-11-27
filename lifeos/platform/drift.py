@@ -54,6 +54,7 @@ _TICKER_MODULES = (
     "drift.py",
     "health.py",
     "release_proof.py",
+    "todoist_refresh.py",
 )
 SURFACES = (
     Surface("ticker", "lifeos/edge/ticker/ticker.py", "/opt/lifeos-ticker/ticker.py", "lifeos-ticker-watch.timer"),

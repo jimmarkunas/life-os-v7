@@ -31,6 +31,7 @@
   {"module": "lifeos/platform/gate.py", "host": ["oracle"], "surface": "ticker/gate.py", "installed": "/opt/lifeos-ticker/lifeos/platform/gate.py", "unit": "lifeos-ticker-watch.timer"},
   {"module": "lifeos/platform/health.py", "host": ["oracle"], "surface": "ticker/health.py", "installed": "/opt/lifeos-ticker/lifeos/platform/health.py", "unit": "lifeos-ticker-watch.timer"},
   {"module": "lifeos/platform/release_proof.py", "host": ["oracle"], "surface": "ticker/release_proof.py", "installed": "/opt/lifeos-ticker/lifeos/platform/release_proof.py", "unit": "lifeos-ticker-watch.timer"},
+  {"module": "lifeos/platform/todoist_refresh.py", "host": ["oracle"], "surface": "ticker/todoist_refresh.py", "installed": "/opt/lifeos-ticker/lifeos/platform/todoist_refresh.py", "unit": "lifeos-ticker-watch.timer"},
   {"module": "lifeos/platform/alerts.py", "host": ["oracle"], "surface": "ticker/alerts.py", "installed": "/opt/lifeos-ticker/lifeos/platform/alerts.py", "unit": "lifeos-ticker-watch.timer"},
   {"module": "lifeos/platform/alert_registry.py", "host": ["oracle"], "surface": "ticker/alert_registry.py", "installed": "/opt/lifeos-ticker/lifeos/platform/alert_registry.py", "unit": "lifeos-ticker-watch.timer"},
   {"module": "lifeos/platform/alert_settings.py", "host": ["oracle"], "surface": "ticker/alert_settings.py", "installed": "/opt/lifeos-ticker/lifeos/platform/alert_settings.py", "unit": "lifeos-ticker-watch.timer"},
