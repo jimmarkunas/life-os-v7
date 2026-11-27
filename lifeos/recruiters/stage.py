@@ -1,11 +1,8 @@
-"""RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
+"""Configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification
+-> the existing Recruiters data source.
 
-Dry run unless live; counts and fixed codes only (no name, address, subject, id or URL ever leaves this function). Mail is never changed. If every source listing is incomplete the run is
-DEGRADED: classification counts are reported, nothing is written, and the run fails instead of reporting a trustworthy zero. If only some sources are incomplete (LIFE-646: one Outlook
-account returning server errors) the run is PARTIAL: what the readable sources hold is written (every write rests on a message that was read), nothing is concluded from the unread
-source, the heading and the counts name it (`unread`), and the ledger records only what was read, so the next run reads the unread source's mail as new.
-
-A LinkedIn notification with no recruiting evidence is UNRESOLVED (counted, no row; D193). Rows already made from such a notification are never changed here: a sweep over past rows is a separate decision."""
+Dry run unless live; counts and fixed codes only. Mail is never changed. If every source listing is incomplete
+the run is DEGRADED (nothing written, run fails); if only some are, it is PARTIAL (readable sources written)."""
 import json
 import os
 import time
@@ -19,7 +16,7 @@ from lifeos.platform import mail_seen as seen
 from . import backfill, classify, fill, notion as store, qualify, scan
 
 CHICAGO = ZoneInfo("America/Chicago")
-AUTO = object()                       # LIFE-610: "build the production ledger if the database is configured"
+AUTO = object()
 REASONS = ("AUTOREPLY", "BULK", "AUTOMATION_ADDRESS", "HIRING_MANAGER", "NO_RECRUITER_EVIDENCE", "RELAY_NOT_A_MESSAGE")
 
 
@@ -28,8 +25,6 @@ def _client(environ):
 
 
 def _announce(environ, kind, moment, unread=()):
-    """The kind and Central time of the mail read the Recruiter Outreach heading reports, passed to the next steps as step outputs (a skipped read reports the last one).
-    A partial read names the unread sources in the kind, e.g. `14-day scan (Outlook personal unread)`."""
     path = environ.get("GITHUB_OUTPUT")
     if path and kind and moment:
         shown = f"{kind} ({', '.join(unread)} unread)" if unread else kind
@@ -50,13 +45,13 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
             ledger_status = "unavailable"
     action, kind, why = scan.plan(now, scan.step_row(), state, gate.is_tick_event(environ))
     if action == "read" and environ.get("RECRUITERS_FULL_SCAN") == "on":
-        kind, why = seen.FULL_SCAN, "manual full scan"                    # LIFE-715: the manual workflow's "full rescan" box: read all 14 days this run, ignoring the seen list
+        kind, why = seen.FULL_SCAN, "manual full scan"
     stats = {"scanned": 0, "new": 0}
     if action == "skip":
         _announce(environ, state[1], state[0])
         skipped = {"scan": "skipped", "why": why, "ledger": ledger_status}
         if chores:
-            skipped.update(_chores(environ, live, now, notion))                       # LIFE-973: the status sync and reply-by dates need no mail, so a skipped read still runs them
+            skipped.update(_chores(environ, live, now, notion))
         return skipped
     incremental = kind == seen.NEW_MAIL
     known = (lambda provider, ident: seen.key(provider, ident) in known_keys) if incremental else None
@@ -92,7 +87,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
             continue
         take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), mail.source_name(label))
     counts["messages"] = len(records)
-    counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))      # a 14-day scan reads everything it lists
+    counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))
     candidates = []
     for message in records:
         shape, reason, evidence = classify.classify(message)
@@ -108,7 +103,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
             counts["needs_review"] += 1 if detail["needs_review"] else 0
             candidates.append(detail)
     degraded = counts["sources_failed"] > 0
-    partial = degraded and len(unread) < 1 + len(accounts)                # LIFE-646: some source was read, some was not
+    partial = degraded and len(unread) < 1 + len(accounts)
     write = live and (not degraded or partial)
     try:
         notion = notion or _client(environ)
@@ -119,7 +114,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         counts["notion"] = "unavailable"
         notion = None
     if notion is not None:
-        _apply(candidates, notion, write, counts)                          # every candidate is a message that was read; an unread source adds none
+        _apply(candidates, notion, write, counts)
         _follow_ups(notion, write, counts, now.astimezone(CHICAGO).date())
         if chores:
             _status_and_dates(notion, write, counts, now.astimezone(CHICAGO).date())
@@ -130,12 +125,13 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     if degraded and not partial:
         if live:
             counts["notion"] = "not_written_degraded"
-        print("recruiters:", json.dumps(counts, sort_keys=True))        # counts only: so a degraded run still says what it saw
+        print("recruiters:", json.dumps(counts, sort_keys=True))
         raise store.RecruitersError("RECRUITERS_DEGRADED_SOURCE_INCOMPLETE")
-    if live and counts["failed"]:                                     # a write or its read-back failed: not a success, whatever the other rows did (stage-local: D182's publish-only exit is untouched)
+    if live and counts["failed"]:
         print("recruiters:", json.dumps(counts, sort_keys=True))
         raise store.RecruitersError("RECRUITERS_RECORDS_FAILED")
-    if live and ledger is not None and counts["notion"] == "ok":                     # recorded only after a complete live run: a failed write is read again next time
+    # recorded only after a complete live run, so a failed write is read again
+    if live and ledger is not None and counts["notion"] == "ok":
         try:
             ledger.commit({seen.key(m["provider"], m["id"]) for m in records}, kind, now)
         except seen.LedgerError:
@@ -147,7 +143,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
 
 def _apply(candidates, notion, write, counts):
     cache, newest = {}, {}
-    for c in candidates:                                              # one proposal per natural key: the newest message wins, so a replay and a double mail agree
+    for c in candidates:
         k = (c["week_ending"],) + tuple(" ".join(str(c[f]).split()).casefold() for f in ("person", "company", "role"))
         if k not in newest or c["last_contact"] > newest[k]["last_contact"]:
             newest[k] = c
@@ -155,7 +151,7 @@ def _apply(candidates, notion, write, counts):
         if c["week_ending"] not in cache:
             cache[c["week_ending"]] = store.week_rows(notion, c["week_ending"])
         action, row, props = store.plan(cache[c["week_ending"]], c)
-        if action == "create" or (action == "update" and not str(row["what"] or "").strip()):         # LIFE-989: What they want is never written blank
+        if action == "create" or (action == "update" and not str(row["what"] or "").strip()):
             c["what"], c["what_fallback"] = store.what_or_fallback(c)
             if c["what_fallback"]:
                 c["needs_review"] = True
@@ -188,7 +184,6 @@ def _apply(candidates, notion, write, counts):
 
 
 def _follow_ups(notion, write, counts, today):
-    """RECR-1.4: a Waiting row gets a follow-up date two business days out, and returns to Needs Action when that date comes (D220)."""
     rows = store.waiting_rows(notion)
     counts["waiting"] = len(rows)
     for row in rows:
@@ -205,7 +200,8 @@ def _follow_ups(notion, write, counts, today):
 
 
 def _chores(environ, live, now, notion):
-    """The Notion-only work of a run that reads no mail: Done / Active / Needs review follow Action Status, and every open row gets its reply-by date. -> counts."""
+    """The Notion-only work of a run that reads no mail: sync Done / Active / Needs review to Action Status and
+    fill reply-by dates."""
     counts = {"status_synced": 0, "would_sync": 0, "dates_set": 0, "would_set_date": 0, "failed": 0}
     try:
         notion = notion or _client(environ)
@@ -217,8 +213,6 @@ def _chores(environ, live, now, notion):
 
 
 def _status_and_dates(notion, write, counts, today):
-    """LIFE-973: Action Status is the only source of truth. A row whose Done / Active / Needs review disagree with it is corrected (Completed, Dismissed, Declined: Done on, Active and Needs review off;
-    Needs Action: Done off, Active on). A Needs Action row with no Follow-up Date gets one (a set date is never replaced). Each write is read back."""
     for key in ("status_synced", "would_sync", "dates_set", "would_set_date", "failed"):
         counts.setdefault(key, 0)
     for row in store.disagreeing_rows(notion):
@@ -246,8 +240,7 @@ def _status_and_dates(notion, write, counts, today):
 
 
 def _asks(notion, write, counts, records, gm, accounts):
-    """LIFE-989: What they want is never empty. Every open row (Needs Action, Waiting, Replied) with a blank one gets the ask from the message behind it, or the fallback sentence with Needs review ticked.
-    Older rows' messages are read once more (backfill.MAX_PER_RUN a run, read-only); a row that already has text is skipped. The log carries the row's page id and `ask` or `fallback`, never a name or text."""
+    """Fill a blank What they want from the message behind each open row, or the fallback with Needs review ticked."""
     counts.update(asks_filled=0, asks_would_fill=0, asks_fallback=0, asks_unread=0)
     by_url = {m["url"]: m for m in records if m.get("url")}
     older = 0
@@ -273,8 +266,7 @@ def _asks(notion, write, counts, records, gm, accounts):
 
 
 def _fill(notion, write, counts, records, gm, accounts):
-    """LIFE-973: Company, Role and Client of every open row that has a blank one, from the one message behind it (lifeos.recruiters.fill). Messages this run read are used as read; older rows' messages
-    are read once more (backfill.MAX_PER_RUN a run). A set value is never replaced. The log carries the row's page id and where each value came from, never a name or a company."""
+    """Fill the Company, Role and Client of open rows that have a blank one. A set value is never replaced."""
     counts.update(filled=0, would_fill=0, fill_unread=0)
     by_url = {m["url"]: m for m in records if m.get("url")}
     older = 0

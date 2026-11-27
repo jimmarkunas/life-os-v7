@@ -1,8 +1,8 @@
-"""'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (D54: no language model, D193).
+"""'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (no
+language model).
 
-Only a second-person request in the message counts: a call or conversation, a resume, a rate, availability, or application information. The phrase is evergreen
-(no 'today' or 'tomorrow') and carries only the role and requisition the source states. No pattern -> '' (blank). Conflicting durations -> '' and ambiguous, so the row is
-marked for review instead of guessing. Returns (phrase, ambiguous)."""
+Only a second-person request counts. The phrase is evergreen and carries only the role and requisition the
+source states. No pattern -> ''. Conflicting durations -> '' and ambiguous. Returns (phrase, ambiguous)."""
 import re
 
 NOUN = r"(?P<noun>phone call|intro(?:ductory)? call|conversation|discussion|meeting|call|chat)"
@@ -26,7 +26,6 @@ def _sentences(body):
 
 
 def _clean(sentence, found):
-    """A match counts unless a negation comes before it in the same sentence ('no need to send a resume')."""
     return not NEGATION.search(sentence[:found.start()][-40:] + " " + found.group(0)[:30])
 
 
@@ -54,7 +53,7 @@ def request(body, role="", requisition=""):
                 found_kinds.add(kind)
     durations = {d for d, _ in calls if d}
     if len(durations) > 1:
-        return "", True                                               # two different durations: not one clear request
+        return "", True
     parts = []
     if calls:
         duration, noun = next(((d, n) for d, n in calls if d), calls[0])

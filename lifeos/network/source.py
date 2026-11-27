@@ -1,7 +1,7 @@
-"""Find and fetch the connections file attached to a private Notion page. Read-only: nothing is written to Notion, and the file is held in memory only.
-
-The file is never saved, logged, uploaded or committed. Only Notion-hosted files are accepted (an external link on the page is refused)."""
-# Notion serves an attached file from a short-lived signed address (about an hour). The address is read from the page's blocks on each run, used once, and never stored or printed.
+"""Find and fetch the connections file attached to a private Notion page. Read-only; the file is held in memory
+only and never saved, logged or uploaded. Only Notion-hosted files are accepted."""
+# Notion serves attachments from a short-lived signed address: read from the page's blocks each run, used once,
+# never stored or printed.
 import re
 import urllib.error
 import urllib.parse
@@ -10,9 +10,9 @@ import urllib.request
 from lifeos.network.errors import NetworkError
 from lifeos.platform import notion_pages
 
-MAX_FILE_BYTES = 20 * 1024 * 1024           # a 5,000-row export is well under 1 MB; this only stops a wrong file
+MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_CHILD_PAGES = 20
-HOST_SUFFIX = ".amazonaws.com"              # Notion's file storage
+HOST_SUFFIX = ".amazonaws.com"
 PAGE_ID = re.compile(r"[0-9a-fA-F]{32}")
 
 
@@ -24,7 +24,7 @@ def clean_page_id(value):
 
 
 def csv_file_blocks(client, page_id):
-    """Every CSV file block on the page, with its name, time and address. Incomplete listings raise rather than guess."""
+    """Every CSV file block on the page, with name, time and address. Incomplete listings raise."""
     out = []
     for reply in notion_pages.children(client, clean_page_id(page_id), NetworkError, incomplete="NETWORK_PAGE_INCOMPLETE", limit=MAX_CHILD_PAGES):
         for block in reply["results"]:
@@ -32,7 +32,7 @@ def csv_file_blocks(client, page_id):
                 continue
             attached = block.get("file") or {}
             if attached.get("type") != "file":
-                continue                                          # an external link is never fetched
+                continue
             url = (attached.get("file") or {}).get("url") or ""
             name = attached.get("name") or urllib.parse.unquote(urllib.parse.urlparse(url).path.rsplit("/", 1)[-1])
             if name.lower().endswith(".csv") and url:
@@ -41,7 +41,6 @@ def csv_file_blocks(client, page_id):
 
 
 def newest(blocks):
-    """The most recently attached file (later position wins a tie)."""
     best = None
     for block in blocks:
         if best is None or block["created"] >= best["created"]:
@@ -50,13 +49,13 @@ def newest(blocks):
 
 
 def export_date(name):
-    """The date in a file name such as ..._20260907.csv or ...-2026-09-07.csv, as an ISO string, else None."""
+    """The date in a file name such as ..._20260907.csv, as an ISO string, else None."""
     match = re.search(r"(20\d{2})[-_]?(\d{2})[-_]?(\d{2})", name or "")
     return f"{match.group(1)}-{match.group(2)}-{match.group(3)}" if match else None
 
 
 def download(url, opener=urllib.request.urlopen):
-    """The file's text. https and Notion-hosted only, size-capped, one retry on a transient failure; fixed codes on every failure."""
+    """The file's text: https and Notion-hosted only, size-capped, one retry."""
     parts = urllib.parse.urlparse(url)
     if parts.scheme != "https" or not (parts.hostname or "").endswith(HOST_SUFFIX):
         raise NetworkError("NETWORK_FILE_URL_REFUSED")

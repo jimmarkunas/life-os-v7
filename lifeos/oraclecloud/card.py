@@ -1,12 +1,9 @@
-"""The Daily Report's System callout (LIFE-975 step 4d: it was the Oracle Cloud callout), written every tick: its heading's stamp and the cells of its one table.
+"""The Daily Report's System callout, written every tick: its heading's stamp and the cells of its one table.
 
-Flow: hourly tick -> domains.yml `imessage` job -> Oracle's private endpoint (request `oracle1`, and `limits` for Codex, read once) -> lifeos.sources.cards.oracle_card -> this module -> Notion.
-This module owns the Oracle contract (`fetch`, `validate`) and the writing: the callout is found at the top level of the page by its heading; only the heading text and the table's row cells are written, in place,
-each read back (the table's shape is never changed). The rows themselves are built by lifeos.oraclecloud.system_table. Counts and fixed codes only."""
-# Detail moved out of the docstring (LIFE-595):
-# Approved by Jim on Oct 15 2026 (Option B, OCI's own data): the callout sits under Communications Attention, or under the JIRA card where Jim moved it. Oct 24 2026: refreshed every tick so its Codex lines match the AI Capacity card.
-# Oracle's numbers: month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health.
-# The Codex reading is `plan`, left = 100 - used. The paragraph has one line per reading, with text bars for memory, disk and the ChatGPT plan. The `imessage` job is already on the tailnet as tag:v7-runner.
+Flow: tick -> `imessage` job -> Oracle's private endpoint (`oracle1`, and `limits` for Codex) ->
+lifeos.sources.cards.oracle_card -> this module -> Notion. This module owns the Oracle contract (`fetch`,
+`validate`) and the writing: only the heading text and the table's row cells are written, in place, each read
+back. Rows come from lifeos.oraclecloud.system_table."""
 import json
 import os
 import re
@@ -24,13 +21,15 @@ MODULE = router.OWNERS[TITLE]
 PORT = 47341
 SCHEMA = "lifeos.oracle.stats.v1"
 MAX_REPLY = 4096
-WAIT = 100                                                             # seconds: the endpoint itself stops at 90
+WAIT = 100
 REPLY_TTL_SECONDS = 600
 KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
-OPTIONAL = {"backup", "workers", "backups", "honcho", "anthropic"}             # LIFE-129: the off-site backup's last result; optional so the card and Oracle's stats.mjs can be updated in either order
+# optional so the card and Oracle's stats.mjs can be updated in either order
+OPTIONAL = {"backup", "workers", "backups", "honcho", "anthropic"}
 CODE = re.compile(r"[a-z0-9_]{1,40}")
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
-UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
+# no plan windows under Sign in with ChatGPT: a known state, never counted as missing
+UNREPORTED = "unreported"
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
@@ -70,17 +69,14 @@ def _backup_ok(b):
 
 
 def _workers_ok(w):
-    """LIFE-531: the Codex worker count and the agent count, two whole numbers (or absent: Oracle's stats.mjs may be older)."""
     return w is None or (isinstance(w, dict) and set(w) == {"count", "agents"} and _whole(w["count"]) and _whole(w["agents"]) and w["agents"] >= 1 and w["count"] <= 1000)
 
 
 def _backups_ok(b):
-    """LIFE-808: Oracle's boot-volume backup slots, two whole numbers (or absent: Oracle's stats.mjs may be older)."""
     return b is None or (isinstance(b, dict) and set(b) == {"used", "available"} and _whole(b["used"]) and _whole(b["available"]) and b["used"] + b["available"] <= 1000000)
 
 
 def validate(raw, now):
-    """-> the readings ({key: value or None}). Off-contract or stale raises; a reply is used whole or not at all."""
     if not raw or len(raw) > MAX_REPLY:
         raise _fail("ORACLE_UNREACHABLE")
     with fixed((ValueError, TypeError, KeyError, AttributeError), _fail, "ORACLE_OFF_CONTRACT"):
@@ -104,7 +100,7 @@ def validate(raw, now):
 
 
 def items_of(segments):
-    """Segments [(text, colour)] -> Notion rich text; `bold` marks the header, any other colour is a colour annotation."""
+    """Segments [(text, colour)] -> Notion rich text; `bold` marks the header, any other colour is an annotation."""
     out = []
     for text, color in segments:
         extra = {"annotations": {"bold": True}} if color == "bold" else {"annotations": {"color": color}} if color else {}
@@ -116,17 +112,15 @@ def text_of(segments):
     return "".join(text for text, _ in segments)
 
 
-COLS, ROWS = 5, 17                                               # the table: the header and the sixteen rows, five columns
+COLS, ROWS = 5, 17
 
 
 def _parent_of(client, anchor):
-    """The id of the page that holds the anchor block (the Jira card), climbing its parents."""
     meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
     return report_region.page_of(client, meta, _fail)
 
 
 def _cell(rich):
-    """A table cell's rich text -> [(text, colour or None)], neighbours of one colour merged (Notion merges them too); a bold cell is ('text', 'bold')."""
     out = []
     for item in rich:
         ann = item.get("annotations") or {}
@@ -141,8 +135,8 @@ def cells_of(row):
 
 
 def locate(client, anchor):
-    """-> (heading block, table block, [row blocks]): exactly one callout at the top level of the page (found through the Jira card's block, which is on it) whose first child is the System heading and
-    which holds exactly one table of five columns and seventeen rows. Two callouts, none, or any other shape is CARD_NOT_OWNED and nothing is written."""
+    """-> (heading block, table block, [row blocks]) of the one top-level callout holding the System heading and a
+    5x17 table. Any other shape is CARD_NOT_OWNED and nothing is written."""
     page = _parent_of(client, anchor)
     if not page:
         raise _fail("CARD_NOT_OWNED")
@@ -168,7 +162,7 @@ def table_of(rows):
 
 
 def write(client, heading, rows, table, heading_text, live):
-    """In place only: each row whose cells differ and the heading when its text differs, then both read back. -> {"rows_changed", "rows_written", "heading_written"}."""
+    """In place only: rows and heading whose text differs, then read back."""
     changed = [(r["id"], want) for r, want in zip(rows, table) if cells_of(r) != [_cell(items_of(c)) for c in want]]
     heading_changed = report_region.plain(heading) != heading_text
     result = {"rows_changed": len(changed), "rows_written": 0, "heading_written": False}
@@ -198,7 +192,6 @@ def heading_text_of(heading):
 
 
 def scoped(environ, client, heading, rows):
-    """A client that refuses any write outside the located heading and rows (LIFE-613), after the other regions' block ids are proven configured."""
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
     return report_region.ScopedClient(client, heading["id"], _fail).adopt(*(r["id"] for r in rows))
 
@@ -208,7 +201,7 @@ def _writer(environ):
 
 
 def stats_of(host, fetcher, now):
-    """-> the validated `oracle1` readings, or None when Oracle cannot be trusted this run (the rows then go stale, never zero)."""
+    """-> the validated `oracle1` readings, or None when Oracle cannot be trusted (rows then go stale, never zero)."""
     try:
         raw = fetcher(host)
     except OSError:

@@ -1,37 +1,14 @@
 #!/usr/bin/python3 -I
-"""COMM-1.1 (LIFE-28, Jim's approval Oct 15 2026): copy every LIFE OS phone alert into Jim's WhatsApp self-chat and his Telegram DM with the
-LIFE OS bot, alongside ntfy. WhatsApp self-chat messages raise no phone notification (they come from Jim's own account); the bot's do.
+"""Copy every LIFE OS phone alert from ntfy into the WhatsApp self-chat and the Telegram DM with the bot.
 
-It polls ntfy every POLL seconds for messages after the last forwarded one (a long-lived stream is buffered by urllib and never yields).
-V7 already decides which events alert (Action Required / Time Critical, deduplication, quiet hours) and already redacts them to counts and fixed
-words before posting to ntfy. This always-on user service on Oracle follows the same ntfy topic and sends each alert, unchanged, to the ONE
-allowlisted recipient of each OpenClaw channel (WhatsApp: Jim's number = self-chat; Telegram: Jim's user id = his chat with the bot) with
-`openclaw message send`. Each channel keeps its own position, so one channel's failure never repeats or drops an alert on the other. It adds no alert, decision or schedule of its own.
+Polls ntfy and sends each alert, unchanged, to the single allowlisted recipient of each OpenClaw channel. The
+ntfy topic is the only credential: resolved from Bitwarden, kept in memory, re-read every TOPIC_REFRESH seconds.
+Stdlib only.
 
-The topic is the only credential: resolved from Bitwarden at start through the existing resolver (`lifeos/github-actions/NTFY_TOPIC`), kept in memory.
-Only the last forwarded ntfy message id is written (0600), so a restart resumes with `since=<id>`. A missing secret or a recipient list that is not
-exactly one number is retried later; nothing else is ever messaged. Stdlib only; no output.
-
-LIFE-71 (the Oct 17-18 floods): `openclaw message send` sometimes exited non-zero AFTER delivering, and this relay re-sent the same alert every poll. Each send
-now runs with --json and is classified from OpenClaw 2026.9.9's own result contract, never from the exit code: DELIVERED only on verified evidence (a
-messageId, a "sent"/"delivered" status, or sentBeforeError / partial_failed: something went out); NOT_DELIVERED only when the send provably never reached the
-transport (deliveryStatus "suppressed" without sentBeforeError, or the CLI never started); everything else is AMBIGUOUS (a generic ok:false or "failed", a
-gateway-queued delivery, no or contradictory result, a timeout). Only NOT_DELIVERED is retried, at most MAX_ATTEMPTS times per alert per channel; AMBIGUOUS is
-never re-sent (at most once: a possible loss is recorded, a flood is impossible). The attempt is written before the send, so a relay killed mid-send finds it
-on restart and treats it as AMBIGUOUS instead of replaying. Saved state fails closed: an attempt or cursor file that exists but is unreadable or invalid holds
-that channel (no poll, no send; one HELD diagnostic) until a person repairs it; only an absent file is a fresh start. Every outcome is appended to a
-size-capped 0600 diagnostics file (deliveries.jsonl: time, channel, ntfy id, outcome, exit code, a fixed class), never the alert text.
-
-LIFE-75 (the Alert settings page): the V7 gateway tags each push with the copies it is meant for (`ch-telegram`, `ch-whatsapp`); this relay forwards a copy to a channel only when
-that tag is present, so what Jim ticks per alert on the page decides it. An untagged message is skipped silently and the position moves on.
-
-LIFE-73 (the flood cap): each channel forwards at most RELAY_CAP copies per clock hour. The next one sends ONE "paused" notice and the rest of that hour's copies are dropped
-(ntfy keeps every original). The count is persisted (rate-<channel>, 0600) and written before the send; an unreadable count file holds the channel instead of lifting the cap.
-
-LIFE-608 (the Nov 6 silence): the relay used to read the ntfy topic once at start and keep it for as long as it ran, so when the topic secret changed it kept polling the old topic
-and forwarded nothing for days, logging nothing. Now it reads the topic again every TOPIC_REFRESH seconds (one line, TOPIC_CHANGED, if it differs; the topic itself is never logged;
-a failed re-read keeps the working topic and tries again soon), and when no ntfy message of any kind has arrived for QUIET_AFTER seconds it writes one RELAY_QUIET line to the
-diagnostics file per such period, so a silent relay can be told from a quiet topic."""
+Delivery is classified from `openclaw message send --json`, never the exit code: DELIVERED on verified evidence;
+NOT_DELIVERED when provably never sent (retried up to MAX_ATTEMPTS); AMBIGUOUS otherwise (never re-sent). The
+attempt is written before the send, so a killed relay treats it as AMBIGUOUS. An unreadable state file holds
+that channel. A push goes only to channels it is tagged for, at most RELAY_CAP per channel per clock hour."""
 import json
 import os
 import re
@@ -42,7 +19,7 @@ import urllib.request
 
 HOME = os.path.expanduser("~")
 STATE = os.path.join(HOME, ".local/state/lifeos-alerts")
-LAST = os.path.join(STATE, "last-id")                                   # WhatsApp (the first channel); other channels: last-id-<channel>
+LAST = os.path.join(STATE, "last-id")
 CHANNELS = ("whatsapp", "telegram")
 OPENCLAW = os.path.join(HOME, ".openclaw/tools/node/bin/openclaw")
 OPENCLAW_CONFIG = os.path.join(HOME, ".openclaw/openclaw.json")
@@ -53,17 +30,17 @@ SECRET = "lifeos/github-actions/NTFY_TOPIC"
 MAX_TEXT = 1500
 POLL = 20
 ICON = {5: "🚨", 4: "🔔"}
-MAX_ATTEMPTS = 3                                                        # LIFE-71: explicit non-delivery is retried at most this often per alert per channel
+MAX_ATTEMPTS = 3
 DIAGNOSTICS, DIAGNOSTICS_KEEP = "deliveries.jsonl", 500
 DELIVERED, NOT_DELIVERED, AMBIGUOUS, GAVE_UP, HELD = "DELIVERED", "NOT_DELIVERED", "AMBIGUOUS", "GAVE_UP", "HELD"
 CAPPED, PAUSED = "CAPPED", "PAUSED"
-RELAY_CAP = 6                                                           # LIFE-73: forwards per channel per clock hour; the next alert sends ONE "paused" notice and the rest of the hour's copies are dropped (ntfy keeps the originals)
+RELAY_CAP = 6
 PAUSE_TEXT = f"⏸ LIFE OS alerts paused: more than {RELAY_CAP} in an hour. Copies resume next hour; ntfy has them all."
-TOPIC_REFRESH = 900                                                     # LIFE-608: seconds between topic re-reads (a changed secret is picked up within this)
-TOPIC_RETRY = 60                                                        # LIFE-608: seconds before a failed re-read is tried again
-QUIET_AFTER = 6 * 3600                                                  # LIFE-608: seconds without any ntfy message before one QUIET line is written (then again per period)
+TOPIC_REFRESH = 900
+TOPIC_RETRY = 60
+QUIET_AFTER = 6 * 3600
 TOPIC_CHANGED, QUIET = "TOPIC_CHANGED", "RELAY_QUIET"
-ID = re.compile(r"[A-Za-z0-9]{1,32}")                                  # an ntfy message id, or a Unix time written as a fresh-start cursor
+ID = re.compile(r"[A-Za-z0-9]{1,32}")
 
 
 def topic(run=subprocess.run):
@@ -80,7 +57,6 @@ def topic(run=subprocess.run):
 
 
 def recipient(path=OPENCLAW_CONFIG, channel="whatsapp"):
-    """The single entry on the channel's OpenClaw allowlist (WhatsApp: E.164 number; Telegram: numeric user id); anything else is None (refuse)."""
     with open(path) as f:
         allow = ((json.load(f).get("channels") or {}).get(channel) or {}).get("allowFrom") or []
     if len(allow) != 1:
@@ -93,14 +69,12 @@ def recipient(path=OPENCLAW_CONFIG, channel="whatsapp"):
 
 
 def text(event):
-    """An ntfy message event -> the WhatsApp text: icon by priority, the title, then the body (both already redacted by V7)."""
     title, body = (event.get("title") or "").strip(), (event.get("message") or "").strip()
     head = f"{ICON.get(event.get('priority'), '🔔')} {title or 'LIFE OS'}"
     return (head + ("\n" + body if body and body != title else ""))[:MAX_TEXT]
 
 
 def events(lines):
-    """ntfy's JSON stream -> message events only (open/keepalive skipped, malformed lines ignored)."""
     for line in lines:
         try:
             e = json.loads(line)
@@ -111,7 +85,6 @@ def events(lines):
 
 
 def result_json(stdout):
-    """OpenClaw's --json result object, or None when there is none (it may be pretty-printed, and other lines may precede it)."""
     out = (stdout or "").strip()
     for candidate in (out, out[out.find("{"):out.rfind("}") + 1] if "{" in out else ""):
         try:
@@ -124,23 +97,22 @@ def result_json(stdout):
 
 
 def classify(returncode, stdout):
-    """-> (outcome, fixed class), from OpenClaw 2026.9.9's --json result only (buildMessageCliJson / resolveMessageSendOutcome); the exit code proves nothing
-    either way (the floods were deliveries that exited 1, and exit 0 can carry an explicit failure). It is kept only in the diagnostics line."""
+    """-> (outcome, fixed class) from the --json result only; the exit code is kept only in diagnostics."""
     result = result_json(stdout)
     if result is None:
-        return AMBIGUOUS, "no_result"                                    # a thrown error (pre- or post-send) prints only to stderr: unprovable
+        return AMBIGUOUS, "no_result"  # a thrown error prints only to stderr: unprovable
     if result.get("dryRun") is not False or result.get("action") not in (None, "send"):
         return AMBIGUOUS, "not_a_send_result"
     payload = result.get("payload") if isinstance(result.get("payload"), dict) else {}
     status = result.get("deliveryStatus")
     if result.get("sentBeforeError") is True or status == "partial_failed":
-        return DELIVERED, "sent_before_error"                            # something reached the transport: never re-sent
+        return DELIVERED, "sent_before_error"
     if result.get("ok") is False:
         if status == "suppressed":
-            return NOT_DELIVERED, "suppressed_before_send"               # refused before the transport, with nothing sent
-        return AMBIGUOUS, "failed_unproven"                              # "failed" or unknown: it may have reached the transport
+            return NOT_DELIVERED, "suppressed_before_send"
+        return AMBIGUOUS, "failed_unproven"
     if payload.get("status") == "delivery_queued" or payload.get("delivered") is False:
-        return AMBIGUOUS, "gateway_queued"                               # OpenClaw: the gateway owns retry; do not resend
+        return AMBIGUOUS, "gateway_queued"
     if isinstance(result.get("messageId"), str) and result["messageId"].strip():
         return DELIVERED, "message_id"
     if status in ("sent", "delivered") or payload.get("deliveryStatus") in ("sent", "delivered"):
@@ -153,9 +125,9 @@ def send(to, body, run=subprocess.run, channel="whatsapp"):
     try:
         done = run([OPENCLAW, "message", "send", "--json", "--channel", channel, "--target", to, "-m", body], capture_output=True, text=True, timeout=90)
     except subprocess.TimeoutExpired:
-        return AMBIGUOUS, "timeout", None                                  # it may have sent: never retried
+        return AMBIGUOUS, "timeout", None
     except OSError:
-        return NOT_DELIVERED, "not_started", None                          # the CLI never ran: nothing was sent
+        return NOT_DELIVERED, "not_started", None
     return (*classify(done.returncode, done.stdout), done.returncode)
 
 
@@ -164,8 +136,8 @@ def _position(channel):
 
 
 def cursor(channel="whatsapp"):
-    """-> ("absent", None) only when no cursor file exists (a first start), ("valid", id), or ("invalid", None) for one that exists but cannot be read or
-    is malformed: that channel is held, never restarted from the 10-minute window."""
+    """-> ("absent", None) only when no cursor file exists, ("valid", id), or ("invalid", None): the channel is
+    held."""
     try:
         with open(_position(channel)) as f:
             value = f.read().strip()
@@ -182,7 +154,6 @@ def last_id(channel="whatsapp"):
 
 
 def _store(path, text):
-    """The one atomic write: the state folder (0700), a 0600 temp file beside the target, then a rename."""
     os.makedirs(STATE, mode=0o700, exist_ok=True)
     fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
@@ -199,8 +170,7 @@ def _attempts_path(channel):
 
 
 def attempt_state(channel):
-    """-> ("absent", {}) when no attempt file exists, ("valid", {"id", "count", "pending"}) or ("invalid", {}) for one that exists but cannot be read or is
-    not exactly that shape (an id like ntfy's, a count 1..MAX_ATTEMPTS, a boolean pending). An invalid one holds the channel: it may hide a sent alert."""
+    """-> ("absent", {}), ("valid", {"id", "count", "pending"}) or ("invalid", {}): invalid holds the channel."""
     try:
         with open(_attempts_path(channel)) as f:
             value = json.load(f)
@@ -222,7 +192,6 @@ def _write_attempts(channel, value):
 
 
 def diagnose(channel, message_id, outcome, cls, code=None, now=time.time):
-    """One line per send outcome (no alert text), kept to the last DIAGNOSTICS_KEEP lines. Best effort: it never stops the relay."""
     try:
         path = os.path.join(STATE, DIAGNOSTICS)
         try:
@@ -241,8 +210,7 @@ def _rate_path(channel):
 
 
 def rate_state(channel, now=time.time):
-    """-> ("ok", {"hour", "count", "paused"}) for this clock hour (a missing file or an older hour starts at zero), or ("invalid", {}) for a file that exists but is not
-    exactly that shape: the channel is held, never reset, because a reset would lift the cap."""
+    """-> ("ok", {"hour", "count", "paused"}) for this clock hour, or ("invalid", {}): held, never reset."""
     hour = int(now() // 3600)
     try:
         with open(_rate_path(channel)) as f:
@@ -271,7 +239,6 @@ def _done(channel, message_id):
 
 
 def _held(channel, cls):
-    """One HELD diagnostic per cause (not one every poll): the channel waits for a person; nothing is polled or sent."""
     try:
         with open(os.path.join(STATE, DIAGNOSTICS)) as f:
             last = [json.loads(x) for x in f.read().splitlines() if x.strip()]
@@ -283,9 +250,8 @@ def _held(channel, cls):
 
 
 def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsapp", now=time.time):
-    """One poll for one channel: every message after its last forwarded one, oldest first. Only a proven non-delivery stops here (the next poll retries
-    it, at most MAX_ATTEMPTS in all); a delivery, an ambiguous outcome or an exhausted alert moves the position on, so no alert can be sent forever. A cursor
-    or attempt file that exists but is unreadable or invalid holds this channel (fail closed); the other channel is unaffected."""
+    """One poll for one channel: every message after its last forwarded one, oldest first. Only a proven
+    non-delivery stops here (the next poll retries it)."""
     position, since = cursor(channel)
     if position == "invalid":
         return _held(channel, "invalid_cursor")
@@ -298,13 +264,14 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
         seen = 0
         for e in events(lines):
             seen += 1
-            if "ch-" + channel not in (e.get("tags") or []):                  # LIFE-75: a copy goes to this channel only when the push was tagged for it (the Alert settings page)
+            if "ch-" + channel not in (e.get("tags") or []):
                 remember(e["id"], channel)
                 continue
             state = attempts(channel)
             mine = state if state.get("id") == e["id"] else {}
             if mine.get("pending"):
-                diagnose(channel, e["id"], AMBIGUOUS, "interrupted")          # the relay died mid-send last time: it may have been delivered; never replayed
+                # the relay died mid-send last time: it may have been delivered; never replayed
+                diagnose(channel, e["id"], AMBIGUOUS, "interrupted")
                 _done(channel, e["id"])
                 continue
             if mine.get("count", 0) >= MAX_ATTEMPTS:
@@ -313,7 +280,7 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
                 continue
             count = mine.get("count", 0) + 1
             rate = rate_state(channel, now)[1]
-            if rate["count"] >= RELAY_CAP:                                  # LIFE-73: past the hour's cap this copy is dropped (ntfy keeps it), after ONE notice
+            if rate["count"] >= RELAY_CAP:
                 if not rate["paused"]:
                     _write_rate(channel, {**rate, "paused": True})
                     got = sender(to, PAUSE_TEXT)
@@ -321,8 +288,8 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
                 diagnose(channel, e["id"], CAPPED, "rate_cap")
                 _done(channel, e["id"])
                 continue
-            _write_rate(channel, {**rate, "count": rate["count"] + 1})     # counted BEFORE the send, like the attempt
-            _write_attempts(channel, {"id": e["id"], "count": count, "pending": True})     # written BEFORE the send
+            _write_rate(channel, {**rate, "count": rate["count"] + 1})
+            _write_attempts(channel, {"id": e["id"], "count": count, "pending": True})
             got = sender(to, text(e))
             outcome, cls, code = got if isinstance(got, tuple) else ((DELIVERED, "sender_true", 0) if got else (NOT_DELIVERED, "sender_false", 1))
             diagnose(channel, e["id"], outcome, cls, code)
@@ -332,13 +299,12 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
                     _done(channel, e["id"])
                     continue
                 _write_attempts(channel, {"id": e["id"], "count": count, "pending": False})
-                return seen                                              # keep the order: the next poll retries this alert first
-            _done(channel, e["id"])                                      # DELIVERED or AMBIGUOUS: never sent again
-        return seen                                                      # LIFE-608: how many ntfy messages this poll saw (tagged or not), for the quiet check
+                return seen  # keep the order: the next poll retries this alert first
+            _done(channel, e["id"])
+        return seen
 
 
 def step(state, now=time.time, resolve=topic, lookup=recipient, poll=follow, send_to=send):
-    """One poll cycle for every channel. `state` carries the topic, when it was read, and the quiet-check clock between cycles (LIFE-608)."""
     t = now()
     if state.get("name") is None or t - state.get("read_at", 0) >= TOPIC_REFRESH:
         fresh = resolve()
@@ -347,7 +313,7 @@ def step(state, now=time.time, resolve=topic, lookup=recipient, poll=follow, sen
                 diagnose("relay", None, TOPIC_CHANGED, "reread", now=now)
             state["name"], state["read_at"] = fresh, t
         else:
-            state["read_at"] = t - TOPIC_REFRESH + TOPIC_RETRY             # a failed read keeps the working topic and is tried again soon
+            state["read_at"] = t - TOPIC_REFRESH + TOPIC_RETRY
     seen = 0
     for channel in CHANNELS:
         to = lookup(channel=channel)
@@ -358,18 +324,18 @@ def step(state, now=time.time, resolve=topic, lookup=recipient, poll=follow, sen
     if seen:
         state["last_seen"] = t
     elif t - max(state["last_seen"], state.get("quiet_logged", 0)) >= QUIET_AFTER:
-        diagnose("relay", None, QUIET, "no_messages", now=now)             # one line per quiet period: counts and a fixed word, never a topic or text
+        diagnose("relay", None, QUIET, "no_messages", now=now)
         state["quiet_logged"] = t
 
 
 def main():
-    os.environ["PATH"] = os.path.dirname(NODE) + ":" + os.environ.get("PATH", "/usr/bin:/bin")      # openclaw runs on this node
+    os.environ["PATH"] = os.path.dirname(NODE) + ":" + os.environ.get("PATH", "/usr/bin:/bin")
     state, delay = {}, POLL
     while True:
         try:
             step(state)
             delay = POLL
-        except Exception:                                                   # network, Bitwarden or OpenClaw unavailable: back off and resume (the topic is read again next cycle)
+        except Exception:
             state["name"], delay = None, min(delay * 2, 300)
         time.sleep(delay)
 

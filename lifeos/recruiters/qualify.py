@@ -1,9 +1,9 @@
-"""Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
+"""Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. ->
+("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 
-Person: a human name from the sender. Company: only from the signature line, a first-person statement ("I'm with (Acme)", "I work with Acme"), or the sender's company domain when the message writes the same name as capitalized words (LIFE-971). Client: only when the source
-says so explicitly. Role: only from a fixed pattern ("for a X role", or a "Role: [requisition -] X" line). What they want: only a fixed request pattern (intent.py).
-A missing company, a relay or an ambiguous request makes the row Needs review; a name that cannot be read at all is UNRESOLVED (no row, nothing invented), and so is a LinkedIn
-notification with no recruiting evidence (D193)."""
+Company comes only from the signature, a first-person statement, or an agreeing sender domain; Client only when
+stated; Role from a fixed pattern; What they want from intent.py. A missing company or ambiguous request makes
+the row Needs review; an unreadable name or a LinkedIn notification without recruiting evidence is UNRESOLVED."""
 import re
 from datetime import datetime
 
@@ -26,7 +26,7 @@ MEDIUM = "Email"
 
 
 def minute(moment):
-    """The message time to the minute, as ISO 8601. Notion stores date-times to the minute, so comparing and reading back at full precision would never match."""
+    """The message time to the minute, as ISO 8601 (Notion stores date-times to the minute)."""
     return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).replace(second=0, microsecond=0).isoformat()
 
 
@@ -39,8 +39,6 @@ def _company(evidence):
 
 
 def _stated_company(body):
-    """The organization a first-person statement names ("I'm with (Acme)", "I work with Acme Staffing"), or ''. Title Case words only, five at most, no generic noun:
-    'I work with Fortune 500 companies' names no one."""
     for found in STATED_COMPANY.finditer(str(body or "")[:4000]):
         name = found.group("c").strip(" ,;:")
         words = name.split()
@@ -55,7 +53,7 @@ def _stated_company(body):
 
 
 def _role(subject, body):
-    """-> (role, requisition). The sentence pattern first (so a row written before this label rule keeps its key), then a 'Role: [requisition -] Title' line."""
+    """-> (role, requisition): the sentence pattern first, then a 'Role: [req -] Title' line."""
     role = _search(ROLE, "r", subject, body)
     labeled = ROLE_LABEL.search(body or "")
     req = ""
@@ -68,12 +66,11 @@ def _role(subject, body):
         if not role and 3 <= len(title) <= 80 and len(title.split()) <= 10 and not title.endswith(("?", ":")) and title.casefold() not in NOT_A_TITLE:
             role = title
         elif role and role.casefold() != title.casefold():
-            req = ""                                                  # the requisition belongs to the labeled title, not to a different sentence-pattern role
+            req = ""
     return role, req
 
 
 def _org_from_signature(body):
-    """A closing line that is only an organization name (it ends in a company word such as Inc, LLC, Solutions or Staffing), or ''."""
     for line in [l.strip() for l in str(body or "").splitlines() if l.strip()][-14:]:
         found = ORG_LINE.match(line) if len(line) <= 70 else None
         if found:
@@ -89,7 +86,6 @@ SUFFIX_WORDS = {"inc", "inc.", "llc", "ltd", "ltd.", "corp", "corp.", "corporati
 
 
 def _domain_label(address):
-    """The company part of a sender's address (`acme` of a sender at mail.acme.co.uk), or '' for a free-mail, job-board or relay domain, or one too short to be a name."""
     domain = str(address or "").rsplit("@", 1)[-1].lower().strip()
     parts = [p for p in domain.split(".") if p]
     if len(parts) < 2 or C._is_relay(str(address or "")):
@@ -99,8 +95,8 @@ def _domain_label(address):
 
 
 def _org_from_domain(address, body):
-    """A company name only when two sources agree (LIFE-971): the sender's own company domain (`itbrainiac.com`) AND the message itself writing that same name as capitalized words
-    (`ITBrainiac Inc.`, `Hallmark Global`), the words as written plus one closing company word on the same line. Free-mail, job-board and relay senders, or no matching words, give ''."""
+    """A company name only when the sender's company domain and the message text agree on the same name; otherwise
+    ''."""
     label = _domain_label(address)
     if not label:
         return ""
@@ -140,7 +136,7 @@ def qualify(message, shape, reason, evidence):
     if not person:
         return "UNRESOLVED", "NAME_UNREADABLE"
     if relay and reason == C.RELAY_UNVERIFIED:
-        return "UNRESOLVED", reason                                   # a name and a notification are not recruiting evidence
+        return "UNRESOLVED", reason
     body = message.get("body", "")[:6000]
     company = "" if relay else (_company(evidence) or _stated_company(body) or _org_from_signature(message.get("body", "")) or _org_from_domain(message.get("sender_address", ""), message.get("body", "")))
     client = _search(CLIENT, "c", body)

@@ -1,7 +1,9 @@
-"""LIFE-610: which mail read the Recruiters mail step does this run. Pure logic; the clock, the ledger times and the table row are passed in.
+"""Which mail read the Recruiters mail step does this run. Pure logic; clock, ledger times and table row are passed
+in.
 
-Every 3 hours on a scheduled tick (the step is skipped in between), and the first read after 09:00 CT each day is the full 14-day scan, exactly as before. Manual runs are never skipped.
-No ledger record (empty, unreadable, or no 14-day scan ever recorded) also means the full scan, and the reason says so."""
+A scheduled tick reads every 3 hours (skipped in between); the first read after 09:00 CT each day is the full
+14-day scan. Manual runs are never skipped. No usable ledger record also means the full scan, and the reason
+says so."""
 import datetime as dt
 import json
 from pathlib import Path
@@ -17,7 +19,7 @@ def step_row(path=due.TABLE):
 
 
 def plan(now, row, ledger_state, scheduled):
-    """-> (action, kind, why). action: 'read' or 'skip'. ledger_state: None (no ledger available) or (last_read, last_kind, last_full) from seen.last_read."""
+    """-> (action, kind, why); action is 'read' or 'skip'. ledger_state: None or (last_read, last_kind, last_full)."""
     if ledger_state is None:
         return "read", FULL_SCAN, "no ledger: full scan"
     last_read, _kind, last_full = ledger_state

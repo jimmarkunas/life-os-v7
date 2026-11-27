@@ -1,8 +1,7 @@
-"""Read a LinkedIn connections export and measure it. Pure functions over text: no I/O, no network, nothing stored.
+"""Read a LinkedIn connections export and measure it. Pure functions over text: no I/O, nothing stored.
 
-The export is a CSV with LinkedIn's standard columns (first name, last name, profile URL, email address, company, position, connected on),
-usually preceded by a few lines of notes. Columns are found by heading, not position. Every function here returns counts or keys; a person's
-name, company and address are used in memory to compare rows and are never returned."""
+Columns are found by heading, not position. Functions return counts or keys; names, companies and addresses are
+used in memory to compare rows and never returned."""
 import csv
 import io
 import re
@@ -16,7 +15,8 @@ from lifeos.network.errors import NetworkError
 HEADINGS = {"first name": "first", "last name": "last", "url": "url", "email address": "email", "company": "company",
             "position": "title", "connected on": "connected"}
 REQUIRED = ("first", "last", "url", "company", "title", "connected")
-# Company values that name no employer. Exact phrases only: "Independent Bank" is an employer, "Independent" is not.
+# Company values that name no employer. Exact phrases only: "Independent Bank" is an employer, "Independent" is
+# not.
 NO_EMPLOYER = {"freelance", "freelancer", "freelance consultant", "self employed", "self-employed", "independent", "independent consultant",
                "independent contractor", "consultant", "contractor", "retired", "student", "unemployed", "stealth", "stealth startup",
                "confidential", "n/a", "na", "none", "seeking opportunities", "open to work"}
@@ -28,8 +28,8 @@ def _squash(text):
 
 
 def url_key(url):
-    """The identity of a profile: the part after /in/, lower-cased, with scheme, country prefix, query, fragment and trailing slash removed.
-    None when the address is blank or is not a profile address."""
+    """The profile identity: the part after /in/, lower-cased, without scheme, country prefix, query or trailing
+    slash; None when the address is not a profile."""
     value = unquote((url or "").strip()).lower()
     if not value:
         return None
@@ -41,12 +41,10 @@ def url_key(url):
 
 
 def company_key(name):
-    """The distinctive tokens of an employer name, joined ("Acme Technologies, Inc." gives "acme"). Empty when there is nothing to key on."""
     return " ".join(names.core(name))
 
 
 def not_an_employer(company, first, last):
-    """True when the company value is the person's own name or wording such as freelance or self-employed."""
     value = _squash(company)
     if not value:
         return False
@@ -64,7 +62,7 @@ def parse_date(text):
 
 
 def read_rows(text):
-    """-> (rows, malformed). rows: dicts keyed by field. Raises NETWORK_NO_HEADER when no heading row is found, so a wrong file fails closed."""
+    """-> (rows, malformed); rows are dicts keyed by field. Raises NETWORK_NO_HEADER when no heading row is found."""
     reader = csv.reader(io.StringIO((text or "").lstrip("﻿")))
     index, rows, malformed = None, [], 0
     for cells in reader:
@@ -88,7 +86,6 @@ def read_rows(text):
 
 
 def analyse(rows, malformed=0):
-    """Counts only. 'matchable' rows have a valid profile key, an employer, and are not flagged as having no employer."""
     keys, blank_url, bad_url, no_employer = {}, 0, 0, 0
     blank_company = blank_title = blank_date = bad_date = emails = matchable = 0
     companies, loose, dates = set(), {}, []
@@ -117,7 +114,7 @@ def analyse(rows, malformed=0):
         if ckey and not flagged:
             companies.add(ckey)
             matchable += bool(key)
-        if key is None:                                           # no profile key: identity would fall back to name plus employer
+        if key is None:
             fallback = (_squash(f"{row['first']} {row['last']}"), ckey)
             loose[fallback] = loose.get(fallback, 0) + 1
     out = {"rows": len(rows), "malformed_rows": malformed, "blank_url": blank_url, "invalid_url": bad_url,

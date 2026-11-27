@@ -1,8 +1,8 @@
-"""NET-1a: measure the connections file attached to a private Notion page, by count only.  python -m lifeos.run network-inspect
+"""Measure the connections file attached to a private Notion page, by count only.  python -m lifeos.run
+network-inspect
 
-Read-only by construction: it never writes to Notion or the database, creates no table, and prints counts and the file's export date, never a
-name, company, address or link. `live` has no effect. It exists to prove the door (V7 can read the file) and the file's real shape
-(columns found, blanks, duplicates, employer-less companies) before anything is stored."""
+Read-only by construction: no Notion or database write; prints counts and the export date, never a name,
+company, address or link. `live` has no effect."""
 import os
 from datetime import date
 

@@ -1,9 +1,8 @@
-"""LIFE-973 (Jim, Nov 25 2026: "fill companies"): the Company, Role and Client of a recruiter row, from the one message behind it.
+"""The Company, Role and Client of a recruiter row, from the one message behind it.
 
-Company, in order: the email signature (a company line), the sender's display name ("Name | Agency"), the sender's domain when it is not a free-mail domain. Role: the subject line's job title,
-then the first job title named in the body. Client: when the message names the end client separately from the agency. Only words that appear in the message; nothing inferred. A field the message
-does not state is written `Not stated`, so a checked-but-empty field is different from one never checked. A value that is already set is never replaced.
-Every answer carries where it came from (signature, display name, domain, subject, body, not stated); the logs carry that label and the row's page id, never a name or a company (public repository)."""
+Only words that appear in the message; nothing inferred. A field the message does not state is written `Not
+stated`; a set value is never replaced. Logs carry source labels and page ids, never names or companies (public
+repository)."""
 import re
 
 from lifeos.platform.fixed_code import fixed
@@ -26,7 +25,6 @@ MAX_WORDS_ROLE = 9
 
 
 def _words_in(value, message):
-    """True when every alphanumeric word of `value` appears in the message (sender, subject or body), the rule that nothing is invented."""
     haystack = " ".join(str(message.get(k) or "") for k in ("sender_name", "sender_address", "subject", "body")).casefold()
     return all(w in haystack for w in re.findall(r"[a-z0-9]+", value.casefold()))
 
@@ -36,7 +34,7 @@ def _signature_company(message, evidence):
     found = Q._company(evidence) or Q._org_from_signature(body)
     if found:
         return found
-    for line in [l.strip() for l in body.splitlines() if l.strip()][-SIGNATURE_LINES:]:       # "Recruiter | Acme" or "Senior Recruiter at Acme" in the closing lines
+    for line in [l.strip() for l in body.splitlines() if l.strip()][-SIGNATURE_LINES:]:
         m = Q.TITLE_AT.search(line) if len(line) <= 90 else None
         if m:
             return m.group("c").strip()
@@ -61,7 +59,6 @@ def _domain_company(message):
 
 
 def company(message, evidence):
-    """-> (value, source) or ("", "")."""
     for source, value in (("signature", _signature_company(message, evidence)), ("display name", _display_company(message)), ("domain", _domain_company(message))):
         if value and _words_in(value, message):
             return value.strip(), source
@@ -86,7 +83,6 @@ def _subject_role(subject):
 
 
 def role(message):
-    """-> (value, source): the subject's job title first, then the body's sentence pattern, `Role:` label or first title phrase."""
     found = _subject_role(message.get("subject"))
     if found:
         return found, "subject"
@@ -107,7 +103,7 @@ def client(message):
 
 
 def derive(message):
-    """-> {"company": (value, source), "role": ..., "client": ...}; a field the message does not state is (NOT_STATED, "not stated"). Only words from the message (checked)."""
+    """-> {"company": (value, source), "role": ..., "client": ...}; unstated is (NOT_STATED, "not stated")."""
     shape, _reason, evidence = C.classify(message)
     out = {"company": company(message, evidence), "role": role(message), "client": client(message)}
     for field, (value, source) in list(out.items()):
@@ -117,7 +113,7 @@ def derive(message):
 
 
 def plan(row, message):
-    """-> (props, sources): Notion properties filling only the BLANK fields of `row`, and {field: source} for the fields written. A set value (including `Not stated`) is never touched."""
+    """-> (props, sources): properties filling only the BLANK fields of `row`, and {field: source} for them."""
     found, props, sources = derive(message), {}, {}
     for field, name in FIELDS:
         if str(row[field] or "").strip():
@@ -129,7 +125,7 @@ def plan(row, message):
 
 
 def apply(notion, row, message, write):
-    """Fill one row from its message. -> {field: source} (what was or would be written). One write, read back: the filled fields hold the values and nothing else changed."""
+    """Fill one row from its message. -> {field: source}. One write, read back."""
     props, sources = plan(row, message)
     if not props or not write:
         return sources
@@ -140,18 +136,15 @@ def apply(notion, row, message, write):
 
 
 def blank_rows(notion):
-    """The open (Needs Action or Waiting) rows with at least one blank Company, Role or Client: the rows to fill."""
     rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in (store.NEEDS_ACTION, store.WAITING)]})
     return [r for r in rows if r["active"] and not r["done"] and any(not str(r[f] or "").strip() for f, _ in FIELDS)]
 
 
-# ---------- LIFE-989: What they want is never empty ----------
 ASK_STATUSES = (store.NEEDS_ACTION, store.WAITING, store.REPLIED)
 
 
 def ask_of(message):
-    """-> (the one-sentence ask, used_fallback) for the message behind a row: the extracted ask, else `Reply to their message about <role or subject>.`, else `Reply to their message.` Never empty.
-    Only the sentence is kept; no message text beyond it."""
+    """-> (ask sentence, used_fallback): the extracted ask, else `Reply to their message about <role or subject>.`."""
     shape, reason, evidence = C.classify(message)
     verdict, detail = Q.qualify(message, shape, reason, evidence)
     found = detail if verdict == "CANDIDATE" and isinstance(detail, dict) else {}
@@ -160,13 +153,12 @@ def ask_of(message):
 
 
 def blank_ask_rows(notion):
-    """The open (Needs Action, Waiting or Replied) rows whose What they want is blank: the rows the ask backfill fills."""
     rows = store.rows_where(notion, {"or": [{"property": "Action Status", "select": {"equals": s}} for s in ASK_STATUSES]})
     return [r for r in rows if not str(r["what"] or "").strip()]
 
 
 def ask_plan(row, message):
-    """-> (props, fallback): the properties that fill a blank What they want (and tick Needs review when the fallback was used); ({}, False) for a row that already has text."""
+    """-> (props, fallback); ({}, False) when the row already has text."""
     if str(row["what"] or "").strip():
         return {}, False
     text, fallback = ask_of(message)
@@ -177,7 +169,7 @@ def ask_plan(row, message):
 
 
 def apply_ask(notion, row, message, write):
-    """Fill one blank What they want. -> "ask" | "fallback" | "" (what was or would be written). One write, read back: the ask holds, Needs review as written, nothing else changed."""
+    """Fill one blank What they want. -> "ask" | "fallback" | "". One write, read back."""
     props, fallback = ask_plan(row, message)
     if not props:
         return ""

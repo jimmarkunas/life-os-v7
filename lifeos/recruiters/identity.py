@@ -11,7 +11,8 @@ VIA = re.compile(r"\s+(?:via|\(via|from|at|\||-|–|—|,)\s+.*$|\s*\(.*?\)\s*",
 
 
 def clean_name(display, allow_single=False):
-    """A human name from a sender display name, or None. 'Last, First' is reordered; trailing 'via Board' / 'at Company' / '(...)' is dropped."""
+    """A human name from a sender display name, or None: 'Last, First' is reordered; 'via Board' / 'at Company' is
+    dropped."""
     text = str(display or "").strip().strip("\"'")
     if "," in text and text.count(",") == 1 and "@" not in text:
         last, first = [part.strip() for part in text.split(",")]
@@ -36,7 +37,7 @@ def key(week_ending, person, company, role):
 
 
 def week_ending(moment):
-    """The Sunday (ISO date) of the Monday-to-Sunday week, in Chicago time, that holds `moment` (an aware datetime or an ISO string)."""
+    """The Sunday (ISO date) of the Monday-to-Sunday week, in Chicago time, holding `moment`."""
     if isinstance(moment, str):
         moment = datetime.fromisoformat(moment.replace("Z", "+00:00"))
     local = moment.astimezone(CHICAGO)

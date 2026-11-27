@@ -1,16 +1,16 @@
 #!/usr/bin/python3 -I
-"""COMM-1.2 (LIFE-29, Jim's approval Oct 15 2026, Jira 10203): Jim's personal Telegram attention, read on Oracle through TDLib's JSON interface.
+"""The user's personal Telegram attention, read on Oracle through TDLib's JSON interface.
 
-Installed on Oracle as ~/.local/lib/lifeos-telegram/attention.py (stdlib + the locally built libtdjson). Two forms:
-    attention    one bounded observation, printed as ONE JSON line for the private comms endpoint: unread messages and unread chats in the Main
-                 chat list (Archive excluded), each total and excluding muted chats, the newest genuinely incoming sender's display name, health
-    login        Jim's one-time interactive sign-in (phone, code, 2FA password typed by Jim; never printed, logged or stored by this file)
+Installed on Oracle as ~/.local/lib/lifeos-telegram/attention.py (stdlib + the locally built libtdjson). Two
+forms:
+    attention  one JSON line: unread messages and chats in the Main list (Archive excluded), total and excluding
+    muted,
+               the newest incoming sender's display name, and health
+    login      one-time interactive sign-in (credentials typed by the user; never printed or stored)
 
-The session is a full-access Telegram login, so the read-only boundary is enforced HERE: every TDLib request type must be in ALLOWED, which has no
-send, edit, delete, forward, view/read-marking, chat-open, join or download request. TDLib's message, file and chat-info databases are off (no message or
-media archive); its session database is encrypted with a key that never leaves Oracle. The API id/hash are resolved per run from Bitwarden through the
-existing OpenClaw resolver and never stored. Anything not proven (not signed in, not connected, list not fully loaded, timeout) is a fixed health with
-null counts: never a zero or a guess. Message text is never read into the output; history is fetched only to find the newest incoming sender and date."""
+The session is full-access, so the read-only boundary is enforced HERE: every TDLib request type must be in
+ALLOWED (no send, edit, delete, forward, read-marking, chat-open, join or download). Anything not proven is a
+fixed health with null counts, never a zero or a guess. Message text never enters the output."""
 import base64
 import ctypes
 import getpass
@@ -23,8 +23,9 @@ from datetime import datetime, timezone
 
 HOME = os.path.expanduser("~")
 LIB = os.path.join(HOME, ".local/lib/lifeos-telegram/td/lib/libtdjson.so")
-STATE = os.path.join(HOME, ".local/state/lifeos-telegram")               # 0700: TDLib's encrypted session database only
-DB_KEY = os.path.join(HOME, ".config/lifeos-telegram/db-key")            # 0600, generated on Oracle at login, never copied anywhere
+STATE = os.path.join(HOME, ".local/state/lifeos-telegram")
+# 0600, generated on Oracle at login, never copied anywhere
+DB_KEY = os.path.join(HOME, ".config/lifeos-telegram/db-key")
 RESOLVER = os.path.join(HOME, ".local/bin/openclaw-bws-resolver.mjs")
 BWS_ENV = os.path.join(HOME, ".config/bws/openclaw.env")
 NODE = os.path.join(HOME, ".openclaw/tools/node/bin/node")
@@ -35,19 +36,19 @@ LOGIN_ONLY = {"setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkA
 TELEGRAM_SERVICE = 777000
 SENT_BY_A_PERSON = {"messageText", "messageAnimatedEmoji", "messagePhoto", "messageVideo", "messageVideoNote", "messageVoiceNote", "messageAudio",
                     "messageDocument", "messageSticker", "messageAnimation", "messageContact", "messageLocation", "messageVenue", "messagePoll",
-                    "messageDice", "messageStory", "messagePaidMedia"}          # content KINDS only; service notices (joined Telegram, pins, calls) are not
-MAX_HISTORY = 12                                                          # chats whose newest message is outgoing that may be scanned for an incoming one
+                    # content KINDS only; service notices (joined Telegram, pins, calls) are not
+                    "messageDice", "messageStory", "messagePaidMedia"}
+MAX_HISTORY = 12
 MAX_NAME = 80
 SCOPES = {"chatTypePrivate": "notificationSettingsScopePrivateChats", "chatTypeBasicGroup": "notificationSettingsScopeGroupChats",
-          "chatTypeSupergroup": None}                                    # supergroup scope depends on is_channel, resolved below
+          "chatTypeSupergroup": None}
 
 
 class Refused(Exception):
-    """A fixed state code; never source text."""
+    """Raised with a fixed code."""
 
 
 def secrets(run=subprocess.run):
-    """The API id and hash from Bitwarden through the existing resolver; nothing is written or printed."""
     env = dict(os.environ)
     with open(BWS_ENV) as f:
         for line in f:
@@ -76,7 +77,7 @@ def db_key(create=False):
 
 
 class Td:
-    """The JSON client with a request allowlist. TDLib's own log stream is switched off before the client exists."""
+    """The JSON client with a request allowlist; TDLib's own log stream is switched off before the client exists."""
 
     def __init__(self, login=False, lib=LIB):
         self.td = ctypes.CDLL(lib)
@@ -113,7 +114,6 @@ def params(api_id, api_hash, key):
 
 
 class Session:
-    """Chat state folded from TDLib updates (no persistence)."""
 
     def __init__(self, td):
         self.td, self.chats, self.users, self.scopes, self.replies = td, {}, {}, {}, {}
@@ -163,12 +163,12 @@ class Session:
                 c["notification_settings"] = e["notification_settings"]
 
     def start(self, api_id, api_hash, key, deadline):
-        self.td.send({"@type": "getOption", "name": "version"})               # TDLib starts a client only when it receives its first request
+        self.td.send({"@type": "getOption", "name": "version"})
         if not self.pump(lambda: self.auth == "authorizationStateWaitTdlibParameters", deadline):
             raise Refused("TDLIB_NOT_STARTED")
         reply = self.call(params(api_id, api_hash, key), deadline)
         if reply.get("@type") == "error":
-            raise Refused("DATABASE_UNAVAILABLE")                         # wrong key, or locked by a running login
+            raise Refused("DATABASE_UNAVAILABLE")
         self.pump(lambda: self.auth not in (None, "authorizationStateWaitTdlibParameters"), deadline)
 
     def close(self, deadline):
@@ -207,7 +207,8 @@ def counts(chats, scopes):
 
 
 def person(message, me, users=None):
-    """A message from another person (not me, a bot, a channel post or Telegram's service account): its user id, else None."""
+    """A message from another person (not me, a bot, a channel post or Telegram's service account): its user id,
+    else None."""
     sender = message.get("sender_id") or {}
     if message.get("is_outgoing") or sender.get("@type") != "messageSenderUser" or sender.get("user_id") in (me, TELEGRAM_SERVICE):
         return None
@@ -219,8 +220,8 @@ def person(message, me, users=None):
 
 
 def latest_incoming(s, deadline):
-    """(user id, unix date) of the newest message from another person across Main-list chats that are not channels. A chat whose newest message is
-    outgoing (or a channel post) may still hold a newer incoming message than the other chats, so its recent history is checked, newest first."""
+    """(user id, unix date) of the newest message from another person across non-channel Main-list chats; a chat
+    whose newest message is outgoing may still hold an older incoming one."""
     candidates = sorted((c for c in s.chats.values() if in_main(c) and c.get("last_message") and not (c.get("type") or {}).get("is_channel")),
                         key=lambda c: c["last_message"]["date"], reverse=True)
     best, scanned = None, 0
@@ -265,12 +266,12 @@ def observe(budget=40.0, lib=LIB, creds=secrets):
         if s.auth != "authorizationStateReady":
             return {**out, "auth": "NOT_SIGNED_IN" if s.auth and "Wait" in s.auth else "CLOSED"}
         out["auth"] = "READY"
-        if not s.pump(lambda: s.connection == "connectionStateReady", deadline):          # connected AND caught up on missed updates
+        if not s.pump(lambda: s.connection == "connectionStateReady", deadline):
             raise Refused("NOT_CONNECTED")
         s.me = s.call({"@type": "getMe"}, deadline).get("id")
         for scope in ("notificationSettingsScopePrivateChats", "notificationSettingsScopeGroupChats", "notificationSettingsScopeChannelChats"):
             s.scopes[scope] = s.call({"@type": "getScopeNotificationSettings", "scope": {"@type": scope}}, deadline).get("mute_for", 0)
-        while True:                                                                         # TDLib answers 404 once the whole Main list is known
+        while True:
             reply = s.call({"@type": "loadChats", "chat_list": {"@type": "chatListMain"}, "limit": 100}, deadline)
             if reply.get("@type") == "error":
                 if reply.get("code") != 404:
@@ -291,7 +292,6 @@ def observe(budget=40.0, lib=LIB, creds=secrets):
 
 
 def login():
-    """Jim's one-time sign-in. Prompts go to the terminal; nothing typed is printed or written by this file."""
     api_id, api_hash = secrets()
     s = Session(Td(login=True))
     deadline = time.monotonic() + 600
@@ -311,7 +311,7 @@ def login():
         if reply.get("@type") == "error":
             print("Telegram refused that entry; try again.")
         else:
-            s.pump(lambda step=step: s.auth != step, time.monotonic() + 20)          # wait for Telegram's next step before asking again
+            s.pump(lambda step=step: s.auth != step, time.monotonic() + 20)
     print("Signed in. This Oracle session is now listed in Telegram > Settings > Devices as 'LIFE OS attention (Oracle)'.")
     s.close(time.monotonic() + 10)
     return 0
