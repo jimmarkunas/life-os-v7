@@ -1,0 +1,1068 @@
+{
+ "cases": [
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-010",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-001",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-001",
+      "sources": [
+       "FAKE-MSG-001"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "B01",
+   "query": "What does Avery prefer for meeting times?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-002",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-002",
+      "sources": [
+       "FAKE-MSG-002",
+       "FAKE-MSG-003"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "B02",
+   "query": "What status update format does the alpha team like?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-003",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-003",
+      "sources": [
+       "FAKE-MSG-004"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "B03",
+   "query": "Where did the alpha team decide to triage issues?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-004",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-010",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-004",
+      "sources": [
+       "FAKE-MSG-005"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "B04",
+   "query": "What kind of pull requests does Avery want?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-005",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-005",
+      "sources": [
+       "FAKE-MSG-006"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "B05",
+   "query": "Which channel did the alpha team choose for release questions?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-020",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-020",
+      "sources": [
+       "FAKE-MSG-020"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "B06",
+   "query": "What does Blake prefer for email summaries?",
+   "split": "heldout",
+   "tenant": "beta"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-006",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-007",
+      "sources": [
+       "FAKE-MSG-008"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "C01",
+   "query": "When does Avery prefer demos?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-006",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-007",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-007",
+      "sources": [
+       "FAKE-MSG-008"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "C02",
+   "query": "When does Avery prefer demos?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-008",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-009",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-009",
+      "sources": [
+       "FAKE-MSG-010"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "C03",
+   "query": "What format of release notes does the alpha team prefer?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-010",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "graph_down": false,
+   "id": "A01",
+   "query": "What does Avery prefer for breakfast?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "graph_down": false,
+   "id": "A02",
+   "query": "Which airline does the alpha team like?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-001",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-999",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": []
+   },
+   "graph_down": false,
+   "id": "A03",
+   "query": "What does Avery prefer for transport?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-011",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": [],
+    "forbidden": [
+     "FAKE-MEM-011"
+    ]
+   },
+   "graph_down": false,
+   "id": "R01",
+   "query": "How does Avery prefer urgent pages?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-020",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": [],
+    "forbidden": [
+     "FAKE-MEM-020"
+    ]
+   },
+   "graph_down": false,
+   "id": "R02",
+   "query": "What does Blake prefer for email summaries?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-001",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": [],
+    "client_calls": 0
+   },
+   "graph_down": false,
+   "id": "R03",
+   "query": "What does Avery prefer for meeting times?",
+   "split": "heldout",
+   "tenant": "gamma"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-012",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-013",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-012",
+      "sources": [
+       "FAKE-MSG-013",
+       "FAKE-MSG-014"
+      ]
+     }
+    ],
+    "merged": [
+     "FAKE-MEM-013"
+    ]
+   },
+   "graph_down": false,
+   "id": "M01",
+   "query": "Which retro summary does the alpha team prefer?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-014",
+      "text": "client text is never trusted"
+     },
+     {
+      "source_ref": "FAKE-MEM-015",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-015",
+      "sources": [
+       "FAKE-MSG-016"
+      ]
+     },
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-014",
+      "sources": [
+       "FAKE-MSG-015"
+      ]
+     }
+    ]
+   },
+   "graph_down": false,
+   "id": "M02",
+   "query": "Which rooms does Avery prefer?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-016",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "canonical",
+      "ref": "FAKE-CAN-001",
+      "sources": [
+       "FAKE-CAN-001"
+      ]
+     }
+    ],
+    "forbidden": [
+     "FAKE-MEM-016"
+    ]
+   },
+   "graph_down": false,
+   "id": "K01",
+   "query": "What release day does Avery prefer?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [],
+    "mode": "raises"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": [],
+    "degraded": "memory_unavailable"
+   },
+   "graph_down": false,
+   "id": "O01",
+   "query": "What does Avery prefer for meeting times?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     null,
+     "x",
+     {
+      "source_ref": 5,
+      "text": "t"
+     },
+     {
+      "text": "no ref"
+     },
+     {
+      "source_ref": "FAKE-MEM-001",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-001",
+      "sources": [
+       "FAKE-MSG-001"
+      ]
+     }
+    ],
+    "malformed": 4
+   },
+   "graph_down": false,
+   "id": "O02",
+   "query": "What does Avery prefer for meeting times?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-001",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": [],
+    "client_calls": 0,
+    "intent": "unknown"
+   },
+   "graph_down": false,
+   "id": "O03",
+   "query": "Hmm?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "source_ref": "FAKE-MEM-016",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "canonical",
+      "ref": "FAKE-CAN-001",
+      "sources": [
+       "FAKE-CAN-001"
+      ]
+     }
+    ],
+    "client_calls": 0,
+    "degraded": "graph_unavailable"
+   },
+   "graph_down": true,
+   "id": "O04",
+   "query": "What is the approved release day?",
+   "split": "heldout",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "refs": [
+       "FAKE-MSG-999",
+       "FAKE-MSG-020"
+      ],
+      "source_ref": "FAKE-MEM-001",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": false,
+    "answers": [
+     {
+      "authority": "memory",
+      "ref": "FAKE-MEM-001",
+      "sources": [
+       "FAKE-MSG-001"
+      ]
+     }
+    ],
+    "unvalidated_refs": 2
+   },
+   "graph_down": false,
+   "id": "O05",
+   "query": "What does Avery prefer for meeting times?",
+   "split": "dev",
+   "tenant": "alpha"
+  },
+  {
+   "client": {
+    "items": [
+     {
+      "revision": "r1",
+      "source_ref": "FAKE-MEM-007",
+      "text": "client text is never trusted"
+     }
+    ],
+    "mode": "returns"
+   },
+   "expect": {
+    "abstain": true,
+    "answers": [],
+    "forbidden": [
+     "FAKE-MEM-007"
+    ]
+   },
+   "graph_down": false,
+   "id": "O06",
+   "query": "When does Avery prefer demos?",
+   "split": "heldout",
+   "tenant": "alpha"
+  }
+ ],
+ "dependency_cases": [],
+ "edges": [],
+ "grants": {
+  "alpha": [
+   "read"
+  ],
+  "beta": [
+   "read"
+  ]
+ },
+ "messages": [
+  {
+   "id": "FAKE-MSG-001",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-002",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-003",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-004",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-005",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-006",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-007",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-008",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-009",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-010",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-011",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-012",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-013",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-014",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-015",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-016",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-017",
+   "tenant": "alpha"
+  },
+  {
+   "id": "FAKE-MSG-020",
+   "tenant": "beta"
+  }
+ ],
+ "note": "Frozen behavioral-memory acceptance cases. Fabricated; expectations were fixed before any retrieval code was written. split=heldout cases were run only after the dev cases passed.",
+ "questions": [],
+ "sources": [
+  {
+   "at": "2026-03-01",
+   "authority": "memory",
+   "id": "FAKE-MEM-001",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-001"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "meeting-time",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery prefers morning meeting times before ten.",
+   "title": "Meeting time"
+  },
+  {
+   "at": "2026-03-02",
+   "authority": "memory",
+   "id": "FAKE-MEM-002",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-002",
+    "FAKE-MSG-003"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "status-format",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team likes short written status updates on Fridays.",
+   "title": "Status format"
+  },
+  {
+   "at": "2026-03-03",
+   "authority": "memory",
+   "id": "FAKE-MEM-003",
+   "kind": "decision",
+   "provenance": [
+    "FAKE-MSG-004"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "triage-tool",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team decided to triage issues in the shared board.",
+   "title": "Triage tool"
+  },
+  {
+   "at": "2026-03-04",
+   "authority": "memory",
+   "id": "FAKE-MEM-004",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-005"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "review-style",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery wants small pull requests with a short description.",
+   "title": "Review style"
+  },
+  {
+   "at": "2026-03-05",
+   "authority": "memory",
+   "id": "FAKE-MEM-005",
+   "kind": "decision",
+   "provenance": [
+    "FAKE-MSG-006"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "chat-channel",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team chose the project channel for release questions.",
+   "title": "Chat channel"
+  },
+  {
+   "at": "2026-02-01",
+   "authority": "memory",
+   "id": "FAKE-MEM-006",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-007"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "stale",
+   "subject": "demo-day",
+   "superseded_by": "FAKE-MEM-007",
+   "tenant": "alpha",
+   "text": "Avery prefers demos on Thursday afternoons.",
+   "title": "Demo day"
+  },
+  {
+   "at": "2026-03-10",
+   "authority": "memory",
+   "id": "FAKE-MEM-007",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-008"
+   ],
+   "refs": [],
+   "revision": "r2",
+   "status": "current",
+   "subject": "demo-day",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery now prefers demos on Wednesday mornings.",
+   "title": "Demo day"
+  },
+  {
+   "at": "2026-02-20",
+   "authority": "memory",
+   "id": "FAKE-MEM-008",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-009"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "doc-format",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team prefers plain text release notes.",
+   "title": "Release note format"
+  },
+  {
+   "at": "2026-03-12",
+   "authority": "memory",
+   "id": "FAKE-MEM-009",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-010"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "doc-format",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team prefers formatted release notes with headings.",
+   "title": "Release note format"
+  },
+  {
+   "at": "2026-03-01",
+   "authority": "memory",
+   "id": "FAKE-MEM-010",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-011"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "lunch",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery usually eats lunch at noon.",
+   "title": "Lunch time"
+  },
+  {
+   "at": "2026-03-01",
+   "authority": "memory",
+   "id": "FAKE-MEM-011",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-012"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "revoked",
+   "subject": "pager",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery prefers phone calls for urgent pages.",
+   "title": "Urgent pages"
+  },
+  {
+   "at": "2026-03-06",
+   "authority": "memory",
+   "id": "FAKE-MEM-012",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-013"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "retro-summary",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team prefers a written retro summary.",
+   "title": "Retro summary"
+  },
+  {
+   "at": "2026-03-07",
+   "authority": "memory",
+   "id": "FAKE-MEM-013",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-014"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "retro-summary",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The alpha team prefers a written retro summary.",
+   "title": "Retro summary"
+  },
+  {
+   "at": "2026-03-08",
+   "authority": "memory",
+   "id": "FAKE-MEM-014",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-015"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "focus-room",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery prefers quiet rooms for focus time.",
+   "title": "Focus rooms"
+  },
+  {
+   "at": "2026-03-09",
+   "authority": "memory",
+   "id": "FAKE-MEM-015",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-016"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "workshop-room",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery prefers shared rooms for workshops.",
+   "title": "Workshop rooms"
+  },
+  {
+   "at": "2026-03-11",
+   "authority": "memory",
+   "id": "FAKE-MEM-016",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-017"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "release-day",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "Avery prefers releases on Fridays.",
+   "title": "Release day"
+  },
+  {
+   "at": "2026-03-01",
+   "authority": "memory",
+   "id": "FAKE-MEM-020",
+   "kind": "preference",
+   "provenance": [
+    "FAKE-MSG-020"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "summary-channel",
+   "superseded_by": null,
+   "tenant": "beta",
+   "text": "Blake prefers email summaries on Mondays.",
+   "title": "Summary channel"
+  },
+  {
+   "at": "2026-01-15",
+   "authority": "canonical",
+   "id": "FAKE-CAN-001",
+   "kind": "policy",
+   "provenance": [
+    "FAKE-CAN-001"
+   ],
+   "refs": [],
+   "revision": "r1",
+   "status": "current",
+   "subject": "release-day",
+   "superseded_by": null,
+   "tenant": "alpha",
+   "text": "The approved release day is Tuesday.",
+   "title": "Release day policy"
+  }
+ ],
+ "tenants": [
+  "alpha",
+  "beta"
+ ],
+ "version": 1
+}
