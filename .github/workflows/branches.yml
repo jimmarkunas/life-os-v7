@@ -103,7 +103,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN }}
           WEEKLY_REVIEW_PAGE_ID: ""
         run: python -m lifeos.platform.settings
-      - name: Repository hygiene report (stale branches and the idle-branch sweep: a dry run listing what it would delete while .github/branch-deletes is off; run summary, and the Weekly Review callout when live)
+      - name: Repository hygiene report (stale branches and the idle-branch sweep, a dry run listing what it would delete while .github/branch-deletes is off; run summary, and the Weekly Review callout when live)
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           GITHUB_TOKEN: ${{ github.token }}
