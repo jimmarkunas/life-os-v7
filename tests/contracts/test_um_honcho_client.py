@@ -157,7 +157,7 @@ class Calls(unittest.TestCase):
         )
         items = h.recall("what", "beta", 5)
         self.assertEqual([i["source_ref"] for i in items], ["FAKE-REQ-001", "FAKE-DEC-002", None])
-        self.assertEqual(op.log[0][2]["filters"], {"observed_id": "t-beta"})
+        self.assertEqual(op.log[0][2]["filters"], {"observer": "t-beta", "observed": "t-beta"})
 
     def test_a_dream_is_finished_only_when_a_new_run_exists_and_the_queue_is_idle(self):
         h, op = make(replies=[{"items": []}, {}])
