@@ -22,6 +22,18 @@ def count(service):
         _totals[service] = _totals.get(service, 0) + 1
 
 
+def add(name, amount):
+    """Add `amount` to a named tally of this stage (units, seconds waited); a name with `peak` in it keeps the largest
+    value seen instead of the sum."""
+    mine = getattr(_local, "calls", None)
+    if mine is None:
+        mine = _local.calls = {}
+    keep = max if "peak" in name else lambda a, b: a + b
+    mine[name] = keep(mine.get(name, 0), amount)
+    with _lock:
+        _totals[name] = keep(_totals.get(name, 0), amount)
+
+
 def begin():
     _local.calls = {}
 
