@@ -5,6 +5,7 @@ lookup, no run, a newer non-green run, a run too old or a SHA that is not a full
 `python -m lifeos.platform.testgate` (env: GITHUB_SHA, GITHUB_REPOSITORY, GITHUB_TOKEN) writes skip=true|false to
 $GITHUB_OUTPUT.
 """
+
 import datetime as dt
 import json
 import os
@@ -25,7 +26,15 @@ def decide(runs, sha, now, max_age_hours=MAX_AGE_HOURS):
     """-> (skip: bool, reason: str)."""
     if not isinstance(sha, str) or not SHA.match(sha):
         return False, "no full commit id"
-    mine = [r for r in (runs or []) if isinstance(r, dict) and r.get("head_sha") == sha and r.get("head_branch") == "main" and r.get("event") == "push" and r.get("path") == PATH]
+    mine = [
+        r
+        for r in (runs or [])
+        if isinstance(r, dict)
+        and r.get("head_sha") == sha
+        and r.get("head_branch") == "main"
+        and r.get("event") == "push"
+        and r.get("path") == PATH
+    ]
     if not mine:
         return False, "no pr-tests push run on main for this commit"
     newest = max(mine, key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0))
@@ -44,22 +53,36 @@ def decide(runs, sha, now, max_age_hours=MAX_AGE_HOURS):
 
 
 def fetch(sha, repo, token, opener=urllib.request.urlopen):
-    request = urllib.request.Request(f"https://api.github.com/repos/{repo}/actions/workflows/{WORKFLOW}/runs?branch=main&event=push&head_sha={sha}&per_page=20",
-                                     headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-testgate"})
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/workflows/{WORKFLOW}/runs?branch=main&event=push&head_sha={sha}&per_page=20",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "lifeos-testgate",
+        },
+    )
     with opener(request, timeout=30) as response:
         return json.loads(response.read()).get("workflow_runs") or []
 
 
 def main(environ=None, opener=urllib.request.urlopen, now=None):
     environ = os.environ if environ is None else environ
-    sha, repo, token = environ.get("GITHUB_SHA", ""), environ.get("GITHUB_REPOSITORY", ""), environ.get("GITHUB_TOKEN", "")
+    sha, repo, token = (
+        environ.get("GITHUB_SHA", ""),
+        environ.get("GITHUB_REPOSITORY", ""),
+        environ.get("GITHUB_TOKEN", ""),
+    )
     try:
         skip, reason = decide(fetch(sha, repo, token, opener), sha, now or dt.datetime.now(dt.timezone.utc))
     except Exception:  # noqa: BLE001 - fail closed
         skip, reason = False, "the pr-tests lookup failed"
     line = f"tests skipped: {reason}" if skip else f"tests run: {reason}"
     print(line)
-    for path, text in ((environ.get("GITHUB_OUTPUT"), f"skip={'true' if skip else 'false'}\n"), (environ.get("GITHUB_STEP_SUMMARY"), f"{line}\n")):
+    for path, text in (
+        (environ.get("GITHUB_OUTPUT"), f"skip={'true' if skip else 'false'}\n"),
+        (environ.get("GITHUB_STEP_SUMMARY"), f"{line}\n"),
+    ):
         if path:
             with open(path, "a") as handle:
                 handle.write(text)

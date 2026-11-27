@@ -3,6 +3,7 @@
 Writes ran=true|false|unknown to $GITHUB_OUTPUT; the workflow treats unknown as true, since the guarded steps are
 bounded and repeat harmlessly.
 """
+
 import os
 import sys
 
@@ -21,7 +22,9 @@ def main(environ=os.environ, api=gate._api):
         run_id = str(environ["TICK_RUN"]).strip()
         jobs = api(f"actions/runs/{run_id}/jobs?per_page=100").get("jobs", [])
         output = "true" if ran(jobs) else "false"
-        print(f"pipeline: the tick's finish job {'ran' if output == 'true' else 'did not run'}; the moved jobs {'run' if output == 'true' else 'are skipped'}")
+        print(
+            f"pipeline: the tick's finish job {'ran' if output == 'true' else 'did not run'}; the moved jobs {'run' if output == 'true' else 'are skipped'}"
+        )
     except Exception as error:  # noqa: BLE001
         print(f"pipeline: the tick's jobs are unreadable ({type(error).__name__}); the moved jobs run")
     path = environ.get("GITHUB_OUTPUT")

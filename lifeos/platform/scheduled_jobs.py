@@ -5,6 +5,7 @@ lifeos.platform.scheduled_jobs`. Jobs and tolerances are data (scheduled_jobs.js
 workflow schedule or systemd timer has no row). A job that leaves no trace in public run history (Oracle timers,
 launchd) is `unknown`.
 """
+
 import datetime as dt
 import json
 import os
@@ -28,7 +29,9 @@ def _t(text):
 
 def slot(now, weekday, hhmm):
     hour, minute = map(int, hhmm.split(":"))
-    found = now.replace(hour=hour, minute=minute, second=0, microsecond=0) - dt.timedelta(days=(now.weekday() - weekday) % 7)
+    found = now.replace(hour=hour, minute=minute, second=0, microsecond=0) - dt.timedelta(
+        days=(now.weekday() - weekday) % 7
+    )
     return found if found <= now else found - dt.timedelta(days=7)
 
 
@@ -39,15 +42,27 @@ def state(job, runs, now):
         return UNKNOWN, None
     found = [r for r in runs[source] if all(r.get(k) == v for k, v in job.get("match", {}).items())]
     last = max((_t(r["created_at"]) for r in found), default=None)
-    minutes = lambda since: (now - since).total_seconds() / 60            # noqa: E731
+    minutes = lambda since: (now - since).total_seconds() / 60  # noqa: E731
     if rule == "gap":
         age = minutes(last) if last else None
         return (MISSING if age is None or age > job["missing"] else LATE if age > job["late"] else ON_TIME), last
     if rule == "weekly":
         due = slot(now, job["weekday"], job["utc"])
         age = minutes(due)
-        return (ON_TIME if last and last >= due else NOT_DUE if age <= job["late"] else LATE if age <= job["missing"] else MISSING), last
-    ticks = [r for r in runs[job["after"]] if r.get("display_title") == "tick" and r.get("status") == "completed" and r.get("conclusion") != "cancelled"]
+        return (
+            ON_TIME
+            if last and last >= due
+            else NOT_DUE
+            if age <= job["late"]
+            else LATE
+            if age <= job["missing"]
+            else MISSING
+        ), last
+    ticks = [
+        r
+        for r in runs[job["after"]]
+        if r.get("display_title") == "tick" and r.get("status") == "completed" and r.get("conclusion") != "cancelled"
+    ]
     if not ticks:
         return UNKNOWN, last
     tick = max(ticks, key=lambda r: r["created_at"])
@@ -60,7 +75,11 @@ def evaluate(now, runs, jobs=None):
     rows = []
     for job in jobs or load()["jobs"]:
         found, last = state(job, runs, now)
-        schedule = slot(now, job["weekday"], job["utc"]).astimezone(CT).strftime("%A %-I:%M %p %Z") if job["rule"] == "weekly" else job["schedule"]
+        schedule = (
+            slot(now, job["weekday"], job["utc"]).astimezone(CT).strftime("%A %-I:%M %p %Z")
+            if job["rule"] == "weekly"
+            else job["schedule"]
+        )
         rows.append({"job": job["job"], "host": job["host"], "schedule": schedule, "last": last, "state": found})
     return rows
 
@@ -71,7 +90,18 @@ def late_names(rows):
 
 def render(rows):
     lines = ["job | host | schedule (CT) | last run (CT) | state"]
-    lines += [" | ".join((r["job"], r["host"], r["schedule"], r["last"].astimezone(CT).strftime("%b %-d, %-I:%M %p CT") if r["last"] else "none seen", r["state"])) for r in rows]
+    lines += [
+        " | ".join(
+            (
+                r["job"],
+                r["host"],
+                r["schedule"],
+                r["last"].astimezone(CT).strftime("%b %-d, %-I:%M %p CT") if r["last"] else "none seen",
+                r["state"],
+            )
+        )
+        for r in rows
+    ]
     return "\n".join(lines)
 
 
@@ -87,11 +117,19 @@ def fetch(api, jobs=None):
 
 
 def main():
-    repo = os.environ.get("GITHUB_REPOSITORY") or subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip().removesuffix(".git").split("github.com")[-1].strip(":/")
+    repo = os.environ.get("GITHUB_REPOSITORY") or subprocess.run(
+        ["git", "remote", "get-url", "origin"], capture_output=True, text=True
+    ).stdout.strip().removesuffix(".git").split("github.com")[-1].strip(":/")
     token = os.environ.get("GITHUB_TOKEN")
 
     def api(path):
-        request = urllib.request.Request(f"https://api.github.com/repos/{repo}/{path}", headers={"Accept": "application/vnd.github+json", **({"Authorization": f"Bearer {token}"} if token else {})})
+        request = urllib.request.Request(
+            f"https://api.github.com/repos/{repo}/{path}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                **({"Authorization": f"Bearer {token}"} if token else {}),
+            },
+        )
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read())
 

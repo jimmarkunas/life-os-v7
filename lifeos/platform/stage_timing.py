@@ -3,6 +3,7 @@
 Written to stderr, and appended to STAGE_TIMING_FILE when set. Waiting seconds = wait for the services' slots before
 the stage's budget plus its own thread's wait in read_slots. An unknown item count is null, never zero.
 """
+
 import datetime as dt
 import json
 import os
@@ -76,7 +77,13 @@ def items_key_for(stage):
     if not _KEYS:
         try:
             table = json.load(open(os.path.join(os.path.dirname(__file__), "stages.json")))["stages"]
-            _KEYS.update({name: row["items_key"] for name, row in table.items() if isinstance(row, dict) and isinstance(row.get("items_key"), str)})
+            _KEYS.update(
+                {
+                    name: row["items_key"]
+                    for name, row in table.items()
+                    if isinstance(row, dict) and isinstance(row.get("items_key"), str)
+                }
+            )
         except (OSError, ValueError, KeyError):
             _KEYS["__none__"] = None
     return _KEYS.get(stage)
@@ -89,8 +96,17 @@ def items_of(counts, key):
 
 def record(stage, label, seconds, wait_seconds=0.0, counts=None, items_key=None, ended=None, environ=os.environ):
     ended = ended or dt.datetime.now(dt.timezone.utc)
-    return {"stage": stage, "outcome": outcome_of(label, counts), "result": label, "begin": stamp(ended - dt.timedelta(seconds=seconds)), "end": stamp(ended),
-            "elapsed_s": round(seconds, 1), "wait_s": round(wait_seconds, 1), "items": items_of(counts, items_key), "run": str(environ.get("GITHUB_RUN_ID") or "") or None}
+    return {
+        "stage": stage,
+        "outcome": outcome_of(label, counts),
+        "result": label,
+        "begin": stamp(ended - dt.timedelta(seconds=seconds)),
+        "end": stamp(ended),
+        "elapsed_s": round(seconds, 1),
+        "wait_s": round(wait_seconds, 1),
+        "items": items_of(counts, items_key),
+        "run": str(environ.get("GITHUB_RUN_ID") or "") or None,
+    }
 
 
 def emit(row, environ=os.environ, err=None):

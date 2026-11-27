@@ -3,11 +3,25 @@
 Only the connect is retried; once sent, the request is never resent (a timeout is the caller's fixed code; any other
 socket error after the send returns b""). No half-close: Tailscale Serve drops the connection on a FIN.
 """
+
 import socket
 import time
 
 
-def exchange(host, data, port, wait, max_reply, connect_failed, timed_out, sleep=None, attempts=2, pause=3, chunk=None, connect_timeout=15):
+def exchange(
+    host,
+    data,
+    port,
+    wait,
+    max_reply,
+    connect_failed,
+    timed_out,
+    sleep=None,
+    attempts=2,
+    pause=3,
+    chunk=None,
+    connect_timeout=15,
+):
     """-> the reply bytes (b"" if the server closed with no output). `connect_failed()` and `timed_out()` return the
     exceptions to raise.
     """

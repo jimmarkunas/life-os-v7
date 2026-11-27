@@ -5,6 +5,7 @@ At import time `lifeos/run.py` adds the stage (exit 1 with the row's `partial_fa
 `tests/contracts/test_source_registry.py` fails for a stage under lifeos/sources/ that is neither registered nor on
 its "not yet migrated" list.
 """
+
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,9 +28,21 @@ class Source:
 
 
 def load(path=FILE):
-    return tuple(Source(**{**entry, "codes": {code: tuple(row) for code, row in (entry.get("codes") or {}).items()},
-                           "tick": {**entry["tick"], **({"providers": tuple(entry["tick"]["providers"])} if "providers" in entry["tick"] else {})} if entry.get("tick") else None})
-                 for entry in json.loads(Path(path).read_text())["sources"])
+    return tuple(
+        Source(
+            **{
+                **entry,
+                "codes": {code: tuple(row) for code, row in (entry.get("codes") or {}).items()},
+                "tick": {
+                    **entry["tick"],
+                    **({"providers": tuple(entry["tick"]["providers"])} if "providers" in entry["tick"] else {}),
+                }
+                if entry.get("tick")
+                else None,
+            }
+        )
+        for entry in json.loads(Path(path).read_text())["sources"]
+    )
 
 
 SOURCES = load()
@@ -52,7 +65,9 @@ def with_tick_steps(base, make_step, sources=SOURCES):
         if s.after not in names:
             raise ValueError(f"source {s.name}: tick step {s.after!r} is not in the plan")
         if s.after in followed:
-            raise ValueError(f"sources {followed[s.after]} and {s.name} both follow tick step {s.after!r}; name the other source's step instead")
+            raise ValueError(
+                f"sources {followed[s.after]} and {s.name} both follow tick step {s.after!r}; name the other source's step instead"
+            )
         followed[s.after] = s.name
         plan.insert(names.index(s.after) + 1, make_step(s.name, **s.tick))
     return tuple(plan)

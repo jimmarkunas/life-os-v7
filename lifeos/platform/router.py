@@ -2,6 +2,7 @@
 
 The three outcome words and strict ownership of Daily Report regions. Fixed codes only.
 """
+
 PASS, NO_ACTION, DEGRADED = "PASS", "NO_ACTION", "DEGRADED"
 
 # A region is a callout whose first child heading names its owner; nothing else is writable.
@@ -18,7 +19,19 @@ ORACLE_REGION = "System"  # lifeos/oraclecloud/card.py: the heading and the cell
 RECRUITER_OUTREACH_REGION = "🤝 Recruiter Outreach"  # lifeos/recruiters/outreach_card.py
 # Not on the Daily Report: a callout on the Weekly LIFE OS Review page (lifeos/platform/branches.py).
 REPO_REGION = "🧹 Repository hygiene"
-OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", MAIL_ALERTS_REGION: "v7-mail-alerts", HIRING_REGION: "v7-hiring", DCC_REGION: "daily-command-center", COMMS_REGION: "v7-comms", ORACLE_REGION: "v7-oracle", REPO_REGION: "v7-repo-hygiene", RECRUITER_OUTREACH_REGION: "v7-recruiter-outreach"}
+OWNERS = {
+    JIRA_REGION: "v7-jira",
+    CALENDAR_REGION: "v7-calendar",
+    BILLS_REGION: "v7-bills",
+    AMAZON_REGION: "v7-amazon",
+    MAIL_ALERTS_REGION: "v7-mail-alerts",
+    HIRING_REGION: "v7-hiring",
+    DCC_REGION: "daily-command-center",
+    COMMS_REGION: "v7-comms",
+    ORACLE_REGION: "v7-oracle",
+    REPO_REGION: "v7-repo-hygiene",
+    RECRUITER_OUTREACH_REGION: "v7-recruiter-outreach",
+}
 
 # owned regions that are NOT callouts
 FLOATING = (HIRING_REGION, RECRUITER_OUTREACH_REGION)
