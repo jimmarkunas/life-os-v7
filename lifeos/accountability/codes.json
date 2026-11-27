@@ -157,8 +157,8 @@
     "accountability",
     "blocked",
     false,
-    "The check passed but the V2_OFFICIAL row could not be set (V7 has no safe writer of Runtime Configuration rows yet).",
-    "Jim sets V2_OFFICIAL by hand or approves a row writer; legacy stays official."
+    "The check passed twice but the V2_OFFICIAL row could not be set.",
+    "Check the Runtime Configuration row and the integration's edit access; legacy stays official."
   ],
   "ACCOUNTABILITY_PROMOTION_ALERT_FAILED": [
     "accountability",
@@ -236,5 +236,26 @@
     false,
     "An overdue issue in a future sprint has no readable sprint name.",
     "Nothing was written; the week region is stamped DEGRADED and keeps its last body until the sprint reads."
+  ],
+  "ACCOUNTABILITY_PROMOTION_STABILITY_UNAVAILABLE": [
+    "accountability",
+    "blocked",
+    false,
+    "The check passed but the 24-hour stability record could not be read or written, so nothing was promoted.",
+    "Fix the database connection; the next daily pass starts a new window and legacy stays official."
+  ],
+  "RUNTIME_CONFIG_PROOF_EXPECTATION_MISMATCH": [
+    "accountability",
+    "blocked",
+    false,
+    "The same-value setter proof found V2_OFFICIAL not off, or at another revision than approved, so no request was sent.",
+    "Nothing changed; re-read the row and ask for a new approval at the revision it holds."
+  ],
+  "RUNTIME_CONFIG_PROOF_UNVERIFIED": [
+    "accountability",
+    "blocked",
+    false,
+    "The same-value setter proof was refused, could not be read back, or the page differed after the request.",
+    "Stop: the request is never repeated; report the run and check the row by hand."
   ]
 }
