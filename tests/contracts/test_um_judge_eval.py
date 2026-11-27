@@ -63,6 +63,13 @@ class Candidates(unittest.TestCase):
                 self.assertEqual((rec["status"], rec["tenant"]), ("current", q["tenant"]), qid)
                 self.assertTrue(c["sources"], qid)
 
+    def test_a_question_the_word_router_calls_a_dependency_still_reaches_memory(self):
+        q = QS["J1-009"]  # "When is Rowan's protected deep-work block?": "block" reads as a dependency word
+        self.assertEqual(je.rt.route(q["query"]), "dependency")
+        cands = je.validated(self.window("J1-009"), q["query"], q["tenant"], REG)
+        self.assertTrue(cands)  # memory was asked; before the bypass this list was empty
+        self.assertEqual(je.rt.route(q["query"]), "dependency")  # the bypass is undone afterwards
+
     def test_the_view_is_the_recall_shape_with_the_answer_rule(self):
         q = QS["J1-021"]
         view = je.recall_view(je.validated(self.window("J1-021"), q["query"], q["tenant"], REG))
@@ -90,6 +97,9 @@ class Judge(unittest.TestCase):
         reservation, why = meter.admission(sent["body"])
         self.assertEqual(why, "")
         self.assertGreater(reservation, 0)
+
+    def test_the_output_limit_leaves_room_for_thinking_and_the_reply(self):
+        self.assertGreaterEqual(je.MAX_TOKENS, 2000)
 
     def test_the_judge_only_goes_through_the_meter(self):
         with self.assertRaises(ValueError):
