@@ -8,21 +8,45 @@ from tests.kit import shared
 
 class BodyTests(unittest.TestCase):
     def test_contract_order_marker_and_headings(self):
-        blocks = publish.body_blocks("k1", {"summary": "About the role", "responsibilities": "",
-                                           "requirements": "\u2022 Python\n\u2022 SQL", "qualifications": "BS degree"})
+        blocks = publish.body_blocks(
+            "k1",
+            {
+                "summary": "About the role",
+                "responsibilities": "",
+                "requirements": "\u2022 Python\n\u2022 SQL",
+                "qualifications": "BS degree",
+            },
+        )
         kinds = [b["type"] for b in blocks]
-        self.assertEqual(kinds, ["paragraph", "heading_2", "paragraph", "heading_2", "bulleted_list_item",
-                                 "bulleted_list_item", "heading_2", "paragraph"])
+        self.assertEqual(
+            kinds,
+            [
+                "paragraph",
+                "heading_2",
+                "paragraph",
+                "heading_2",
+                "bulleted_list_item",
+                "bulleted_list_item",
+                "heading_2",
+                "paragraph",
+            ],
+        )
         self.assertEqual(blocks[0]["paragraph"]["rich_text"][0]["text"]["content"], "v7-jd:1 | key=k1")
-        self.assertEqual([b["heading_2"]["rich_text"][0]["text"]["content"] for b in blocks if b["type"] == "heading_2"],
-                         ["Summary", "Requirements", "Qualifications"])
+        self.assertEqual(
+            [b["heading_2"]["rich_text"][0]["text"]["content"] for b in blocks if b["type"] == "heading_2"],
+            ["Summary", "Requirements", "Qualifications"],
+        )
 
     def test_the_limit_counts_utf16_units_not_python_characters(self):
-        text = "a" * 1997 + "\U0001F600" * 3
+        text = "a" * 1997 + "\U0001f600" * 3
         parts = [p["text"]["content"] for p in notion_client.rich_text(text)]
         self.assertEqual("".join(parts), text)  # nothing lost or reordered
-        self.assertTrue(len(parts) == 2 and all(len(c.encode("utf-16-le")) // 2 <= limits.NOTION_MAX_RICH_TEXT_CHARS for c in parts))
-        self.assertEqual([len(p["text"]["content"]) for p in notion_client.rich_text("x" * 4500)], [2000, 2000, 500])  # plain text splits as before
+        self.assertTrue(
+            len(parts) == 2 and all(len(c.encode("utf-16-le")) // 2 <= limits.NOTION_MAX_RICH_TEXT_CHARS for c in parts)
+        )
+        self.assertEqual(
+            [len(p["text"]["content"]) for p in notion_client.rich_text("x" * 4500)], [2000, 2000, 500]
+        )  # plain text splits as before
         self.assertEqual(notion_client.rich_text(""), [{"type": "text", "text": {"content": ""}}])
 
     def test_long_text_is_split_under_the_rich_text_limit(self):
@@ -33,8 +57,17 @@ class BodyTests(unittest.TestCase):
 
 class PropertyTests(unittest.TestCase):
     def test_core_properties_and_no_fit_fields(self):
-        row = {"title": "Data Engineer", "company": "Acme", "url": "https://x.example/j/1", "source": "lensa",
-               "provider": "Lensa", "lane": "US Remote", "key": "abc", "first_seen": datetime.date(2026, 9, 30), "posted": datetime.date(2026, 9, 28)}
+        row = {
+            "title": "Data Engineer",
+            "company": "Acme",
+            "url": "https://x.example/j/1",
+            "source": "lensa",
+            "provider": "Lensa",
+            "lane": "US Remote",
+            "key": "abc",
+            "first_seen": datetime.date(2026, 9, 30),
+            "posted": datetime.date(2026, 9, 28),
+        }
         props = publish.properties(row)
         self.assertEqual(props["Admission Status"]["select"]["name"], "Passed / Review")
         self.assertEqual(props["Source Types"]["multi_select"][0]["name"], "Lensa")
@@ -44,17 +77,39 @@ class PropertyTests(unittest.TestCase):
             self.assertNotIn(fit, props)
 
     def test_fit_fields_appear_only_when_scored(self):
-        row = {"title": "T", "company": "C", "url": "https://x.example/j/1", "source": "lensa", "provider": "Lensa",
-               "lane": "Newsletter", "key": "k", "first_seen": datetime.date(2026, 9, 30), "posted": None}
+        row = {
+            "title": "T",
+            "company": "C",
+            "url": "https://x.example/j/1",
+            "source": "lensa",
+            "provider": "Lensa",
+            "lane": "Newsletter",
+            "key": "k",
+            "first_seen": datetime.date(2026, 9, 30),
+            "posted": None,
+        }
         props = publish.properties({**row, "fit": 81, "fit_line": "[81%] Go | Strengths: a | Gaps: none"})
         self.assertEqual(props["LIFE OS Fit"]["number"], 81)
         self.assertTrue(props["Why It Fits"]["rich_text"][0]["text"]["content"].startswith("[81%] Go"))
 
     def test_lane_admission_work_mode_and_pay_are_written(self):
-        row = {"title": "T", "company": "C", "url": "https://x.example/j/1", "source": "lensa", "provider": "Lensa",
-               "lane": "Newsletter", "key": "k", "first_seen": datetime.date(2026, 9, 30), "posted": None, "fit": 80,
-               "fit_line": "[80%] Go", "admission": "REVIEW", "admission_reason": "work mode unresolved",
-               "work_mode": "unknown", "salary": "$100K/yr"}
+        row = {
+            "title": "T",
+            "company": "C",
+            "url": "https://x.example/j/1",
+            "source": "lensa",
+            "provider": "Lensa",
+            "lane": "Newsletter",
+            "key": "k",
+            "first_seen": datetime.date(2026, 9, 30),
+            "posted": None,
+            "fit": 80,
+            "fit_line": "[80%] Go",
+            "admission": "REVIEW",
+            "admission_reason": "work mode unresolved",
+            "work_mode": "unknown",
+            "salary": "$100K/yr",
+        }
         props = publish.properties(row)
         self.assertEqual(props["Visible Lane"]["select"]["name"], "US Remote")  # a newsletter job is a US Remote job
         self.assertEqual(props["Admission Status"]["select"]["name"], "Passed / Review")
@@ -66,8 +121,18 @@ class PropertyTests(unittest.TestCase):
         self.assertNotIn("Review Reason", admitted)
 
     def test_easy_apply_is_flagged_in_source_types(self):
-        row = {"title": "T", "company": "C", "url": "https://www.linkedin.com/jobs/view/1", "source": "linkedin", "provider": "LinkedIn",
-               "lane": "Newsletter", "key": "k", "first_seen": datetime.date(2026, 9, 30), "posted": None, "apply_kind": "easy_apply"}
+        row = {
+            "title": "T",
+            "company": "C",
+            "url": "https://www.linkedin.com/jobs/view/1",
+            "source": "linkedin",
+            "provider": "LinkedIn",
+            "lane": "Newsletter",
+            "key": "k",
+            "first_seen": datetime.date(2026, 9, 30),
+            "posted": None,
+            "apply_kind": "easy_apply",
+        }
         names = [o["name"] for o in publish.properties(row)["Source Types"]["multi_select"]]
         self.assertEqual(names, ["LinkedIn", "Easy Apply"])
         plain = publish.properties({**row, "apply_kind": "ats"})["Source Types"]["multi_select"]
@@ -76,31 +141,61 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual([o["name"] for o in agg], ["LinkedIn", "Aggregator Link"])
 
     def test_url_key_ignores_query_case_and_trailing_slash(self):
-        self.assertEqual(identity.url_key("https://Boards.Greenhouse.io/a/jobs/1/?gh_src=x"),
-                         identity.url_key("https://boards.greenhouse.io/a/jobs/1"))
+        self.assertEqual(
+            identity.url_key("https://Boards.Greenhouse.io/a/jobs/1/?gh_src=x"),
+            identity.url_key("https://boards.greenhouse.io/a/jobs/1"),
+        )
 
     def test_url_key_names_the_ats_vacancy_so_distinct_jobs_stay_apart_and_one_job_converges(self):
         k = identity.url_key
         embed = "https://job-boards.greenhouse.io/embed/job_app?for={}&token={}"
-        self.assertNotEqual(k("https://www.example.com/careers?gh_jid=1"), k("https://www.example.com/careers?gh_jid=2"))
+        self.assertNotEqual(
+            k("https://www.example.com/careers?gh_jid=1"), k("https://www.example.com/careers?gh_jid=2")
+        )
         self.assertNotEqual(k(embed.format("acme", 1)), k(embed.format("other", 2)))
-        self.assertEqual(k("https://www.example.com/careers?gh_jid=1&gh_src=x&utm_source=y"), k("https://WWW.example.com/careers/?gh_jid=1"))  # tracking ignored
-        one = {k(embed.format("acme", 7007)), k("https://boards.greenhouse.io/acme/jobs/7007"), k("https://job-boards.greenhouse.io/acme/jobs/7007?gh_src=li"),
-               k("https://www.acme.example/careers?gh_jid=7007")}
+        self.assertEqual(
+            k("https://www.example.com/careers?gh_jid=1&gh_src=x&utm_source=y"),
+            k("https://WWW.example.com/careers/?gh_jid=1"),
+        )  # tracking ignored
+        one = {
+            k(embed.format("acme", 7007)),
+            k("https://boards.greenhouse.io/acme/jobs/7007"),
+            k("https://job-boards.greenhouse.io/acme/jobs/7007?gh_src=li"),
+            k("https://www.acme.example/careers?gh_jid=7007"),
+        }
         self.assertEqual(len(one), 1)
-        self.assertEqual(k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100/apply"), k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100"))
-        self.assertNotEqual(k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R1"), k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R2"))
-        self.assertEqual(k("https://careers.example.com/jobs/director-ta"), __import__("hashlib").sha256(b"careers.example.com/jobs/director-ta").hexdigest())  # no id: key unchanged
-
+        self.assertEqual(
+            k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100/apply"),
+            k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100"),
+        )
+        self.assertNotEqual(
+            k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R1"),
+            k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R2"),
+        )
+        self.assertEqual(
+            k("https://careers.example.com/jobs/director-ta"),
+            __import__("hashlib").sha256(b"careers.example.com/jobs/director-ta").hexdigest(),
+        )  # no id: key unchanged
 
 
 class VisibleLaneLabel(unittest.TestCase):
     def test_scale_up_uses_the_ledgers_existing_option_spelling(self):
-        row = {"title": "T", "company": "C", "url": "https://x.example/j/1", "source": "web", "provider": "Ashby", "lane": "Scale-Up",
-               "key": "k", "first_seen": datetime.date(2026, 10, 1), "posted": None}
+        row = {
+            "title": "T",
+            "company": "C",
+            "url": "https://x.example/j/1",
+            "source": "web",
+            "provider": "Ashby",
+            "lane": "Scale-Up",
+            "key": "k",
+            "first_seen": datetime.date(2026, 10, 1),
+            "posted": None,
+        }
         props = publish.properties(row)
         self.assertEqual(props["Visible Lane"]["select"]["name"], "Scale-up")  # not a new "Scale-Up" option
-        self.assertEqual(props["Eligible Lanes"]["multi_select"], [{"name": "Scale-Up"}])  # Eligible Lanes' own option is "Scale-Up"
+        self.assertEqual(
+            props["Eligible Lanes"]["multi_select"], [{"name": "Scale-Up"}]
+        )  # Eligible Lanes' own option is "Scale-Up"
 
 
 class SameOpeningTests(unittest.TestCase):
@@ -111,13 +206,27 @@ class SameOpeningTests(unittest.TestCase):
     def setUp(self):
         from datetime import datetime
         from tests.jobs.fakes_jobsdb import JobsDB
+
         self.db, self.now, self.n = JobsDB(), datetime(2026, 10, 18, 12, 0), 0
 
     def published(self, company, title, url, location=None):
         self.n += 1
-        self.db.insert("v7_jobs", dedupe_key=identity.url_hash(url + str(self.n)), status="PUBLISHED", title=title, company=company, source="web:x",
-                       source_url=url, final_apply_url=url, first_seen=self.now, last_seen=self.now, updated_at=self.now, lane="US Remote", notion_page_id=f"p{self.n}",
-                       location_text=location)
+        self.db.insert(
+            "v7_jobs",
+            dedupe_key=identity.url_hash(url + str(self.n)),
+            status="PUBLISHED",
+            title=title,
+            company=company,
+            source="web:x",
+            source_url=url,
+            final_apply_url=url,
+            first_seen=self.now,
+            last_seen=self.now,
+            updated_at=self.now,
+            lane="US Remote",
+            notion_page_id=f"p{self.n}",
+            location_text=location,
+        )
         return self.db.raw.execute("SELECT MAX(id) FROM v7_jobs").fetchone()[0]
 
     def same(self, company, title, url, location=None):
@@ -125,55 +234,132 @@ class SameOpeningTests(unittest.TestCase):
             return publish.same_opening(cursor, 999, company, title, url, location)
 
     def test_a_state_or_a_bare_city_is_never_a_place(self):
-        for location, url, other in (("New York, United States", "https://x.wd1.myworkdayjobs.com/a/job/Albany-New-York/PM_R1", ""),
-                                     ("New Jersey, US", "https://x.wd1.myworkdayjobs.com/a/job/Newark-New-Jersey/PM_R1", ""),
-                                     ("San Francisco", "https://x.wd1.myworkdayjobs.com/a/job/San-Francisco-CA/PM_R1", "")):
+        for location, url, other in (
+            ("New York, United States", "https://x.wd1.myworkdayjobs.com/a/job/Albany-New-York/PM_R1", ""),
+            ("New Jersey, US", "https://x.wd1.myworkdayjobs.com/a/job/Newark-New-Jersey/PM_R1", ""),
+            ("San Francisco", "https://x.wd1.myworkdayjobs.com/a/job/San-Francisco-CA/PM_R1", ""),
+        ):
             self.assertFalse(identity.same_place(location, url, other), location)
         self.assertTrue(identity.same_place("New York, NY", "https://x.wd1.myworkdayjobs.com/a/job/New-York-NY/PM_R1"))
-        for city, other in (("San Francisco, CA", "South San Francisco, CA"), ("Las Vegas, NV", "North Las Vegas, NV"), ("Portland, ME", "South Portland, ME")):
-            self.assertFalse(identity.same_place(city, "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", other), other)  # a neighbouring city is another place
-        self.assertTrue(identity.same_place("San Francisco, CA", "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", "Remote; San Francisco, CA"))
+        for city, other in (
+            ("San Francisco, CA", "South San Francisco, CA"),
+            ("Las Vegas, NV", "North Las Vegas, NV"),
+            ("Portland, ME", "South Portland, ME"),
+        ):
+            self.assertFalse(
+                identity.same_place(city, "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", other), other
+            )  # a neighbouring city is another place
+        self.assertTrue(
+            identity.same_place(
+                "San Francisco, CA", "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", "Remote; San Francisco, CA"
+            )
+        )
 
     def test_an_aggregator_link_at_the_ats_vacancys_place_is_that_opening(self):
-        ats = self.published("Clarus Technology", "Project Manager - Advanced",
-                             "https://independencepetgroup.wd12.myworkdayjobs.com/clarus/job/Chicago-IL/Project-Manager---Advanced_JR102945", "Remote / Enterprise Software")
+        ats = self.published(
+            "Clarus Technology",
+            "Project Manager - Advanced",
+            "https://independencepetgroup.wd12.myworkdayjobs.com/clarus/job/Chicago-IL/Project-Manager---Advanced_JR102945",
+            "Remote / Enterprise Software",
+        )
         li = "https://www.linkedin.com/jobs/view/4482175447"
         self.assertEqual(self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL"), ats)
-        self.assertEqual(self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL, United States"), ats)
-        for place in ("Austin, TX", "Remote", "Chicago", "", None, "Illinois, United States", "Chicago, Illinois", "IL", "Remote, IL"):
+        self.assertEqual(
+            self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL, United States"), ats
+        )
+        for place in (
+            "Austin, TX",
+            "Remote",
+            "Chicago",
+            "",
+            None,
+            "Illinois, United States",
+            "Chicago, Illinois",
+            "IL",
+            "Remote, IL",
+        ):
             self.assertIsNone(self.same("Clarus Technology", "Project Manager - Advanced", li, place), place)
-        self.assertIsNone(self.same("Clarus Technology", "Project Manager - Advanced", "https://careers.clarus.example/pm-advanced", "Chicago, IL"))  # not an aggregator
+        self.assertIsNone(
+            self.same(
+                "Clarus Technology",
+                "Project Manager - Advanced",
+                "https://careers.clarus.example/pm-advanced",
+                "Chicago, IL",
+            )
+        )  # not an aggregator
 
     def test_the_same_company_and_title_with_no_vacancy_ids_is_one_opening_and_generic_titles_never_merge(self):
         first = self.published("ServiceNow", "Director, TA Infrastructure", "https://careers.example.com/director-ta")
-        self.assertEqual(self.same("ServiceNow", "Director, TA Infrastructure", "https://careers.example.com/director-ta-chicago"), first)
-        self.assertIsNone(self.same("ServiceNow", "Product Manager", "https://careers.example.com/pm"))  # two words: generic
+        self.assertEqual(
+            self.same("ServiceNow", "Director, TA Infrastructure", "https://careers.example.com/director-ta-chicago"),
+            first,
+        )
+        self.assertIsNone(
+            self.same("ServiceNow", "Product Manager", "https://careers.example.com/pm")
+        )  # two words: generic
         self.assertIsNone(self.same("", "Director, TA Infrastructure", "https://careers.example.com/director-ta"))
 
     def test_two_requisitions_with_the_same_company_title_and_path_stay_two_openings(self):
         self.published("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=1001")
-        self.assertIsNone(self.same("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=2002"))
-        self.published("Acme", "Senior Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=3003")
-        self.assertIsNone(self.same("Acme", "Senior Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=4004"))
-        self.published("Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R5005")
-        self.assertIsNone(self.same("Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R6006"))
+        self.assertIsNone(
+            self.same("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=2002")
+        )
+        self.published(
+            "Acme", "Senior Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=3003"
+        )
+        self.assertIsNone(
+            self.same(
+                "Acme", "Senior Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=4004"
+            )
+        )
+        self.published(
+            "Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R5005"
+        )
+        self.assertIsNone(
+            self.same(
+                "Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R6006"
+            )
+        )
 
     def test_one_vacancy_under_another_link_converges_and_a_one_sided_id_is_not_proof(self):
-        board = self.published("Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/7007")
-        self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=7007"), board)
-        self.assertIsNone(self.same("Acme", "Senior Technical Program Manager", "https://www.linkedin.com/jobs/view/4478543856"))  # id on one side only: not shown
-        req = self.published("Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Chicago/Delivery-PM_R8008")
-        self.assertEqual(self.same("Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/Delivery-PM_R8008-1"), req)  # one req, two places
+        board = self.published(
+            "Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/7007"
+        )
+        self.assertEqual(
+            self.same(
+                "Acme",
+                "Senior Technical Program Manager",
+                "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=7007",
+            ),
+            board,
+        )
+        self.assertIsNone(
+            self.same("Acme", "Senior Technical Program Manager", "https://www.linkedin.com/jobs/view/4478543856")
+        )  # id on one side only: not shown
+        req = self.published(
+            "Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Chicago/Delivery-PM_R8008"
+        )
+        self.assertEqual(
+            self.same(
+                "Acme",
+                "Delivery Program Manager",
+                "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/Delivery-PM_R8008-1",
+            ),
+            req,
+        )  # one req, two places
 
     def test_a_matching_page_with_another_vacancy_does_not_hide_one_that_is_the_same(self):
         self.published("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=1001")
-        same = self.published("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=2002")
-        self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/2002"), same)
+        same = self.published(
+            "Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=2002"
+        )
+        self.assertEqual(
+            self.same("Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/2002"), same
+        )
 
 
 class LedgerReseedTests(unittest.TestCase):
-    """the remembered Ledger URLs were taken before the 9/30 purge, so every archived role stayed 'in_ledger' for good.
-    """
+    """the remembered Ledger URLs were taken before the 9/30 purge, so every archived role stayed 'in_ledger' for good."""
 
     class Cur:
         def __init__(self, held, known):
@@ -188,7 +374,13 @@ class LedgerReseedTests(unittest.TestCase):
         def execute(self, sql, params=()):
             sql % tuple("x" for _ in params)  # survives driver formatting
             self.sql.append((sql, params))
-            self.next = (self.held if "final_apply_url" in sql and sql.startswith("SELECT") else [(h,) for h in self.known] if "SELECT url_hash" in sql else [(1 if self.count else 0,)])
+            self.next = (
+                self.held
+                if "final_apply_url" in sql and sql.startswith("SELECT")
+                else [(h,) for h in self.known]
+                if "SELECT url_hash" in sql
+                else [(1 if self.count else 0,)]
+            )
 
         def executemany(self, sql, rows):
             self.sql.append((sql, list(rows)))
@@ -204,6 +396,7 @@ class LedgerReseedTests(unittest.TestCase):
     def test_the_seed_is_replaced_and_only_jobs_no_longer_in_the_ledger_are_released(self):
         from lifeos.jobs import publish
         from lifeos.jobs.identity import url_key
+
         archived, live = "https://bluestonex.com/sap-project-manager/", "https://x.example/still-on-the-board"
         cur = self.Cur([(1, archived), (2, live)], [url_key(live)])  # the new seed holds only what is in the Ledger now
         released = publish._store_seed(self.Conn(cur), {url_key(live)})
@@ -216,6 +409,7 @@ class LedgerReseedTests(unittest.TestCase):
 
     def test_the_new_marker_is_what_decides_whether_the_ledger_is_read_again(self):
         from lifeos.jobs import publish
+
         cur = self.Cur([], [])
         self.assertFalse(publish._seeded(self.Conn(cur)))
         self.assertEqual(cur.sql[0][1], (publish.SEED_MARKER,))
@@ -229,27 +423,62 @@ class PublicationOrderTests(unittest.TestCase):
 
     def setUp(self):
         from tests.jobs.fakes_jobsdb import JobsDB
+
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 
     def ready(self, job_id, score, admission="ADMIT", age_days=1, posted_days=None, page=None, described=True):
         first = self.NOW - datetime.timedelta(days=age_days)
-        self.db.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status="READY", title="Product Manager", company="Acme", final_apply_url=f"https://boards.example.com/a/{job_id}",
-                       first_seen=first, last_seen=first, updated_at=first, posted_date=(self.NOW - datetime.timedelta(days=posted_days)).date() if posted_days is not None else None,
-                       source="web", lane="US Remote", notion_page_id=page)
-        self.db.insert("v7_job_fit", job_id=job_id, score=score, decision="Go", line="fits", confidence="high", model_version="v3", profile_hash="p", jd_fingerprint="f",
-                       scored_at=first, admission=admission)
+        self.db.insert(
+            "v7_jobs",
+            id=job_id,
+            dedupe_key=f"k{job_id}",
+            status="READY",
+            title="Product Manager",
+            company="Acme",
+            final_apply_url=f"https://boards.example.com/a/{job_id}",
+            first_seen=first,
+            last_seen=first,
+            updated_at=first,
+            posted_date=(self.NOW - datetime.timedelta(days=posted_days)).date() if posted_days is not None else None,
+            source="web",
+            lane="US Remote",
+            notion_page_id=page,
+        )
+        self.db.insert(
+            "v7_job_fit",
+            job_id=job_id,
+            score=score,
+            decision="Go",
+            line="fits",
+            confidence="high",
+            model_version="v3",
+            profile_hash="p",
+            jd_fingerprint="f",
+            scored_at=first,
+            admission=admission,
+        )
         if described:
-            self.db.insert("v7_job_descriptions", job_id=job_id, source_kind="ats", full_text="A real description.", fingerprint="f", fetched_at=first)
+            self.db.insert(
+                "v7_job_descriptions",
+                job_id=job_id,
+                source_kind="ats",
+                full_text="A real description.",
+                fingerprint="f",
+                fetched_at=first,
+            )
 
     def pick(self, n, gated=True, hour=1):
         from lifeos.jobs import publish
+
         rows, known = publish._pick(self.db, n, gated, hour)
         return [row[0] for row in rows]
 
     def publish(self, ids):
         for job_id in ids:
-            self.db.raw.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=? WHERE id=?", (f"page-{job_id}", job_id))
+            self.db.raw.execute(
+                "UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=? WHERE id=?", (f"page-{job_id}", job_id)
+            )
 
     def test_the_waiting_counts_show_the_whole_backlog_not_the_run_limit(self):
         for job_id in range(1, 8):
@@ -257,6 +486,7 @@ class PublicationOrderTests(unittest.TestCase):
         self.ready(8, 70, admission=None)  # READY but not yet scored into ADMIT or REVIEW
         self.ready(9, 85, page="page-9")  # already published
         from lifeos.jobs import publish
+
         stats = {}
         rows, _ = publish._pick(self.db, 3, True, 1, stats=stats)
         self.assertEqual(len(rows), 3)
@@ -313,7 +543,16 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(served, {1: 1, 2: 2, 3: 3, 4: 4, 5: 5})  # ...
 
     def test_the_order_holds_for_a_large_backlog(self):
-        rows = [(i, "ADMIT" if i % 3 else "REVIEW", 60 + i % 40, None, datetime.datetime(2026, 9, 1) + datetime.timedelta(minutes=i)) for i in range(1, 20001)]
+        rows = [
+            (
+                i,
+                "ADMIT" if i % 3 else "REVIEW",
+                60 + i % 40,
+                None,
+                datetime.datetime(2026, 9, 1) + datetime.timedelta(minutes=i),
+            )
+            for i in range(1, 20001)
+        ]
         chosen = publish.order(rows, 60)
         self.assertEqual((len(chosen), len(set(chosen))), (60, 60))
         self.assertEqual(chosen, publish.order(list(reversed(rows)), 60))
@@ -321,15 +560,21 @@ class PublicationOrderTests(unittest.TestCase):
 
     def test_d248_a_quarter_of_the_places_go_first_to_the_strongest_jobs_not_from_a_board_scan(self):
         t0 = datetime.datetime(2026, 10, 24)
-        boards = [(i, "ADMIT", 95, None, t0 + datetime.timedelta(minutes=i), "web:greenhouse:acme") for i in range(1, 101)]  # a backfill flood, all stronger
+        boards = [
+            (i, "ADMIT", 95, None, t0 + datetime.timedelta(minutes=i), "web:greenhouse:acme") for i in range(1, 101)
+        ]  # a backfill flood, all stronger
         mail = [(1000 + i, "ADMIT", 70 + i, None, t0 + datetime.timedelta(minutes=i), "jobright") for i in range(15)]
         chosen = publish.order(boards + mail, 40)
         self.assertEqual(len(chosen), 40)
-        self.assertEqual(chosen[:10], [1014, 1013, 1012, 1011, 1010, 1009, 1008, 1007, 1006, 1005])  # the 10 strongest mail jobs, first
+        self.assertEqual(
+            chosen[:10], [1014, 1013, 1012, 1011, 1010, 1009, 1008, 1007, 1006, 1005]
+        )  # the 10 strongest mail jobs, first
         self.assertEqual(chosen[10:30], list(range(1, 21)))  # then the strongest of the rest, as before
         self.assertEqual(len(chosen[30:]), 10)  # 's oldest share is unchanged
         self.assertEqual(chosen, publish.order(list(reversed(boards + mail)), 40))
-        self.assertEqual(publish.order(boards, 40), publish.order([r[:5] for r in boards], 40))  # no mail waiting: the line is exactly 's
+        self.assertEqual(
+            publish.order(boards, 40), publish.order([r[:5] for r in boards], 40)
+        )  # no mail waiting: the line is exactly 's
         few = publish.order(boards + mail[:2], 40)
         self.assertEqual(few[:2], [1001, 1000])
         self.assertEqual(len(few), 40)
@@ -355,8 +600,19 @@ class PublicationOrderTests(unittest.TestCase):
                     self.assertTrue(all(job_id >= 100 for job_id in ids), (n, run, ids))
             self.assertEqual(sorted(served), old, n)  # every old job was served...
             self.assertEqual([served[j] for j in old], [4, 8, 12, 16, 20], n)  # ...
-            self.assertEqual(self.db.raw.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='READY' AND id<6").fetchone()[0], 0)
-        rows = [(i, "ADMIT" if i % 3 else "REVIEW", 60 + i % 40, None, datetime.datetime(2026, 9, 1) + datetime.timedelta(minutes=i)) for i in range(1, 400)]
+            self.assertEqual(
+                self.db.raw.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='READY' AND id<6").fetchone()[0], 0
+            )
+        rows = [
+            (
+                i,
+                "ADMIT" if i % 3 else "REVIEW",
+                60 + i % 40,
+                None,
+                datetime.datetime(2026, 9, 1) + datetime.timedelta(minutes=i),
+            )
+            for i in range(1, 400)
+        ]
         for n in (4, 5, 8, 15, 60):
             self.assertEqual(len({tuple(publish.order(rows, n, hour)) for hour in range(8)}), 1, n)
         self.assertEqual(publish.order(rows, 60)[45:], list(range(1, 16)))
@@ -366,12 +622,25 @@ class PublicationOrderTests(unittest.TestCase):
         """The audit keeps the URL hash of a page it trashes so the role is never published again"""
         from lifeos.jobs import publish
         from lifeos.jobs.identity import url_key
+
         self.db.insert("v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW)
-        for job_id, company, title, page in ((1, "Revolut Ltd", "Product Owner (UX)", None), (2, "Revolut Ltd", "Product Owner (Crypto)", None),
-                                              (3, "Acme", "Product Owner (UX)", None), (4, "Revolut Ltd", "Product Owner (Technical)", "page-4")):
+        for job_id, company, title, page in (
+            (1, "Revolut Ltd", "Product Owner (UX)", None),
+            (2, "Revolut Ltd", "Product Owner (Crypto)", None),
+            (3, "Acme", "Product Owner (UX)", None),
+            (4, "Revolut Ltd", "Product Owner (Technical)", "page-4"),
+        ):
             self.ready(job_id, 70)
-            self.db.raw.execute("UPDATE v7_jobs SET company=?, title=?, status='DUPLICATE', unresolved_reason='in_ledger', notion_page_id=? WHERE id=?", (company, title, page, job_id))
-            self.db.insert("v7_ledger_urls", url_hash=url_key(f"https://boards.example.com/a/{job_id}"), source="v7", seen_at=self.NOW)
+            self.db.raw.execute(
+                "UPDATE v7_jobs SET company=?, title=?, status='DUPLICATE', unresolved_reason='in_ledger', notion_page_id=? WHERE id=?",
+                (company, title, page, job_id),
+            )
+            self.db.insert(
+                "v7_ledger_urls",
+                url_hash=url_key(f"https://boards.example.com/a/{job_id}"),
+                source="v7",
+                seen_at=self.NOW,
+            )
         self.assertEqual(publish.release_kept_in_ledger(self.db), 1)
         states = dict(self.db.raw.execute("SELECT id, status FROM v7_jobs").fetchall())
         self.assertEqual(states, {1: "READY", 2: "DUPLICATE", 3: "DUPLICATE", 4: "DUPLICATE"})
@@ -381,9 +650,12 @@ class PublicationOrderTests(unittest.TestCase):
     def test_a_role_that_is_not_on_the_keep_list_is_still_set_aside_by_its_remembered_url(self):
         from lifeos.jobs import publish
         from lifeos.jobs.identity import url_key
+
         self.db.insert("v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW)
         self.ready(1, 70)
-        self.db.insert("v7_ledger_urls", url_hash=url_key("https://boards.example.com/a/1"), source="v7", seen_at=self.NOW)
+        self.db.insert(
+            "v7_ledger_urls", url_hash=url_key("https://boards.example.com/a/1"), source="v7", seen_at=self.NOW
+        )
         rows, known = publish._pick(self.db, 10, True, 1)
         self.assertEqual(([r[0] for r in rows], known), ([1], {1}))
 
@@ -393,11 +665,13 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(self.pick(10, gated=False), [2, 1])
 
     def test_the_real_publish_run_creates_pages_in_priority_order_and_records_each_one(self):
-        """The production composition: publish.run -> _pick -> Notion create -> the store writes, over the real SQL.
-        """
+        """The production composition: publish.run -> _pick -> Notion create -> the store writes, over the real SQL."""
         from unittest import mock
         from lifeos.jobs import fit_sync, publish, readback
-        self.db.insert("v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW)  # the Ledger was read once: no cold-start read
+
+        self.db.insert(
+            "v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW
+        )  # the Ledger was read once: no cold-start read
         self.ready(1, 70, age_days=9)
         self.ready(2, 91, age_days=0)
         self.ready(3, 80, age_days=5, admission="REVIEW")
@@ -417,10 +691,16 @@ class PublicationOrderTests(unittest.TestCase):
                 created.append(props["Stable Job Key"]["rich_text"][0]["text"]["content"])
                 return "page-" + created[-1]
 
-        with mock.patch.object(publish, "Client", Client), mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
-                mock.patch.object(publish.store, "connect", return_value=self.db), mock.patch.object(publish.store, "ensure_schema"), \
-                mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}), mock.patch.object(publish.body, "fill", return_value=0), \
-                mock.patch.object(publish, "_now", return_value=datetime.datetime(2026, 10, 13, 9, 0)):
+        with (
+            mock.patch.object(publish, "Client", Client),
+            mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK),
+            mock.patch.object(publish.store, "connect", return_value=self.db),
+            mock.patch.object(publish.store, "ensure_schema"),
+            mock.patch.object(fit_sync, "run", return_value={}),
+            mock.patch.object(readback, "run", return_value={}),
+            mock.patch.object(publish.body, "fill", return_value=0),
+            mock.patch.object(publish, "_now", return_value=datetime.datetime(2026, 10, 13, 9, 0)),
+        ):
             counts = publish.run(2, True, {"V7_FIT_GATE": "true"})
         self.assertEqual((counts["picked"], counts["created"], counts["failed"]), (2, 2, 0))
         self.assertEqual(counts["picked_not_board"], 2)
@@ -437,8 +717,13 @@ class ReseedUnderVacancyKeys(unittest.TestCase):
     EMBED = "https://job-boards.greenhouse.io/embed/job_app?for=acme&token={}"
     CAREERS = "https://www.acme.example/careers?gh_jid={}"
     ON_LEDGER = (EMBED.format(1001), CAREERS.format(2002), "https://careers.example.com/jobs/director-ta")
-    HELD = {"distinct_embed": EMBED.format(3003), "same_as_1001": "https://boards.greenhouse.io/acme/jobs/1001", "distinct_careers": CAREERS.format(4004),
-            "exact_2002": CAREERS.format(2002), "plain_on_ledger": "https://careers.example.com/jobs/director-ta"}
+    HELD = {
+        "distinct_embed": EMBED.format(3003),
+        "same_as_1001": "https://boards.greenhouse.io/acme/jobs/1001",
+        "distinct_careers": CAREERS.format(4004),
+        "exact_2002": CAREERS.format(2002),
+        "plain_on_ledger": "https://careers.example.com/jobs/director-ta",
+    }
 
     def setUp(self):
         from hashlib import sha256
@@ -446,18 +731,43 @@ class ReseedUnderVacancyKeys(unittest.TestCase):
         from lifeos.jobs import store
         from tests.jobs.test_newsletter_golden_path import ENV, JobLedger
         from tests.jobs.fakes_jobsdb import JobsDB
+
         self.db, self.ledger, self.env, now = JobsDB(), JobLedger(), ENV, datetime.datetime(2026, 10, 18, 12, 0)
         for n, url in enumerate(self.ON_LEDGER):
-            self.ledger.pages[f"old{n}"] = {"props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": f"k{n}"}]}}, "archived": False}
-        legacy = [("0" * 64, "seed"), ("0" * 63 + "2", "seed"), (sha256(b"job-boards.greenhouse.io/embed/job_app").hexdigest(), "seed"),
-                  (sha256(b"www.acme.example/careers").hexdigest(), "v7"), (sha256(b"careers.example.com/jobs/director-ta").hexdigest(), "seed")]
+            self.ledger.pages[f"old{n}"] = {
+                "props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": f"k{n}"}]}},
+                "archived": False,
+            }
+        legacy = [
+            ("0" * 64, "seed"),
+            ("0" * 63 + "2", "seed"),
+            (sha256(b"job-boards.greenhouse.io/embed/job_app").hexdigest(), "seed"),
+            (sha256(b"www.acme.example/careers").hexdigest(), "v7"),
+            (sha256(b"careers.example.com/jobs/director-ta").hexdigest(), "seed"),
+        ]
         for key, source in legacy:  # what the old url_key stored
             self.db.insert("v7_ledger_urls", url_hash=key, source=source, seen_at=now)
         for name, url in self.HELD.items():
-            self.db.insert("v7_jobs", dedupe_key=identity.url_hash(name), status="DUPLICATE", unresolved_reason="in_ledger", title="Senior Program Manager",
-                           company=name, source="jobright", source_url=url, final_apply_url=url, first_seen=now, last_seen=now, updated_at=now, lane="US Remote")
-        for p in (mock.patch.object(store, "connect", lambda: self.db), mock.patch.object(store, "ensure_schema", lambda c: None),
-                  mock.patch.object(publish, "Client", lambda environ: self.ledger)):
+            self.db.insert(
+                "v7_jobs",
+                dedupe_key=identity.url_hash(name),
+                status="DUPLICATE",
+                unresolved_reason="in_ledger",
+                title="Senior Program Manager",
+                company=name,
+                source="jobright",
+                source_url=url,
+                final_apply_url=url,
+                first_seen=now,
+                last_seen=now,
+                updated_at=now,
+                lane="US Remote",
+            )
+        for p in (
+            mock.patch.object(store, "connect", lambda: self.db),
+            mock.patch.object(store, "ensure_schema", lambda c: None),
+            mock.patch.object(publish, "Client", lambda environ: self.ledger),
+        ):
             p.start()
             self.addCleanup(p.stop)
 
@@ -467,8 +777,16 @@ class ReseedUnderVacancyKeys(unittest.TestCase):
     def test_only_the_jobs_held_by_a_dropped_vacancy_id_are_released(self):
         counts = publish.run(0, True, self.env)
         self.assertEqual((counts["seeded"], counts["released"]), (3, 2))
-        self.assertEqual(self.states(), {"distinct_embed": "READY", "distinct_careers": "READY", "same_as_1001": "DUPLICATE", "exact_2002": "DUPLICATE",
-                                         "plain_on_ledger": "DUPLICATE"})
+        self.assertEqual(
+            self.states(),
+            {
+                "distinct_embed": "READY",
+                "distinct_careers": "READY",
+                "same_as_1001": "DUPLICATE",
+                "exact_2002": "DUPLICATE",
+                "plain_on_ledger": "DUPLICATE",
+            },
+        )
         self.assertEqual(self.ledger.created, 0)  # the Ledger is only read
 
     def test_a_second_run_reads_no_ledger_urls_and_changes_nothing(self):
@@ -486,10 +804,13 @@ class ReseedUnderVacancyKeys(unittest.TestCase):
             if method == "POST" and path.endswith("/query"):
                 raise notion_client.NotionError("http_502")
             return real(method, path, body)
+
         self.ledger.call = failing
         with self.assertRaises(notion_client.NotionError):
             publish.run(0, True, self.env)
-        self.assertEqual(self.db.raw.execute("SELECT url_hash, source FROM v7_ledger_urls ORDER BY url_hash").fetchall(), rows)
+        self.assertEqual(
+            self.db.raw.execute("SELECT url_hash, source FROM v7_ledger_urls ORDER BY url_hash").fetchall(), rows
+        )
         self.assertEqual(set(self.states().values()), {"DUPLICATE"})
 
 
@@ -498,6 +819,7 @@ class BatchedKeyLookup(unittest.TestCase):
 
     def test_thirty_keys_take_two_queries_and_an_unreadable_answer_falls_back(self):
         from lifeos.jobs import publish, readback
+
         sizes = []
 
         class Client:
@@ -506,13 +828,17 @@ class BatchedKeyLookup(unittest.TestCase):
             def call(self, method, path, body=None):
                 sizes.append(len(body["filter"]["or"]))
                 return {"results": [], "has_more": False}
+
         counts = {}
         found = publish._listed(Client(), [f"k{i}" for i in range(30)] + ["k0", None], counts)
-        self.assertEqual((sizes, len(found), counts), ([readback.KEY_CHUNK, 30 - readback.KEY_CHUNK], 30, {}))  # duplicates and empty keys asked once / not at all
+        self.assertEqual(
+            (sizes, len(found), counts), ([readback.KEY_CHUNK, 30 - readback.KEY_CHUNK], 30, {})
+        )  # duplicates and empty keys asked once / not at all
 
         class Broken(Client):
             def call(self, method, path, body=None):
                 return {"results": None}
+
         self.assertIsNone(publish._listed(Broken(), ["k1"], counts))
         self.assertEqual(counts, {"key_lookup": "per_key"})
         self.assertEqual(publish._listed(Client(), [], {}), {})
@@ -520,6 +846,7 @@ class BatchedKeyLookup(unittest.TestCase):
     def test_adopted_is_existing_page_for_a_batched_answer(self):
         from lifeos.jobs import publish
         from lifeos.platform.notion_client import NotionError
+
         self.assertIsNone(publish.adopted([]))
         self.assertEqual(publish.adopted([{"id": "p1"}]), "p1")
         with self.assertRaises(NotionError) as raised:

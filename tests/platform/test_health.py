@@ -1,6 +1,7 @@
 """the health model: close on 3 passes with exactly one recovered push, a permanent known state is WARN and silent until
 one PAGE at day 7, and a push.
 """
+
 import datetime as dt
 import json
 import unittest
@@ -12,7 +13,13 @@ NOW = dt.datetime(2026, 11, 14, 12, 0, tzinfo=dt.timezone.utc)
 
 def tick(hours_ago, conclusion, title="tick"):
     when = (NOW - dt.timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return {"id": int(hours_ago * 10), "display_title": title, "conclusion": conclusion, "created_at": when, "updated_at": when}
+    return {
+        "id": int(hours_ago * 10),
+        "display_title": title,
+        "conclusion": conclusion,
+        "created_at": when,
+        "updated_at": when,
+    }
 
 
 class Recovered(unittest.TestCase):
@@ -31,7 +38,11 @@ class Recovered(unittest.TestCase):
         self.assertIsNone(gate.stalled(one, NOW))
         three = [tick(1, "success"), tick(2, "success"), tick(3, "success"), tick(4, "failure")]
         self.assertIs(gate.stalled(three, NOW), False)
-        self.assertIsNone(gate.stalled([tick(1, "success"), tick(1.5, "success", "manual"), tick(2, "cancelled"), tick(3, "failure")], NOW))  # manual and cancelled runs count for nothing
+        self.assertIsNone(
+            gate.stalled(
+                [tick(1, "success"), tick(1.5, "success", "manual"), tick(2, "cancelled"), tick(3, "failure")], NOW
+            )
+        )  # manual and cancelled runs count for nothing
 
 
 class FakeGitHub:
@@ -45,7 +56,13 @@ class FakeGitHub:
             return [self.issue] if self.issue and self.issue["state"] == "open" else []
         if method == "POST" and path == "issues":
             stamp = self.now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            self.issue = {"number": 1, "state": "open", "labels": [{"name": n} for n in body["labels"]], "created_at": stamp, "updated_at": stamp}
+            self.issue = {
+                "number": 1,
+                "state": "open",
+                "labels": [{"name": n} for n in body["labels"]],
+                "created_at": stamp,
+                "updated_at": stamp,
+            }
         elif method == "POST" and path.endswith("/comments"):
             self.issue["updated_at"] = self.now.strftime("%Y-%m-%dT%H:%M:%SZ")
         elif method == "PATCH":
@@ -54,16 +71,29 @@ class FakeGitHub:
 
 
 class IncidentLifecycle(unittest.TestCase):
-    def test_an_incident_opens_once_reminds_no_more_than_every_three_hours_and_closes_with_exactly_one_recovered_push(self):
+    def test_an_incident_opens_once_reminds_no_more_than_every_three_hours_and_closes_with_exactly_one_recovered_push(
+        self,
+    ):
         api, pushes, history = FakeGitHub(), [], []
         old, gate._api = gate._api, api
         try:
+
             def step(hour, conclusion):
                 api.now = NOW + dt.timedelta(hours=hour)
                 history.insert(0, tick(-hour, conclusion))
                 signal = gate.failing(history, api.now)
-                return gate.sync_incident("pipeline-failing", "t", "b", signal, ("opened", "b", "page", "pipeline_failing"), ("recovered", "", "info", "pipeline_failing_recovered"),
-                                          push=lambda title, body, severity, key, hour=hour: pushes.append((hour, severity, key)) or True, now=api.now, remind=not gate.last_tick_passed(history))
+                return gate.sync_incident(
+                    "pipeline-failing",
+                    "t",
+                    "b",
+                    signal,
+                    ("opened", "b", "page", "pipeline_failing"),
+                    ("recovered", "", "info", "pipeline_failing_recovered"),
+                    push=lambda title, body, severity, key, hour=hour: pushes.append((hour, severity, key)) or True,
+                    now=api.now,
+                    remind=not gate.last_tick_passed(history),
+                )
+
             for hour in range(0, 3):
                 step(hour, "failure")  # 3 failed ticks: the incident opens
             for hour in range(3, 12):
@@ -95,7 +125,9 @@ class KnownStateRules(unittest.TestCase):
         _, observations = self.runs(24)
         self.assertEqual(observations[0].new, ["interview:thread-7"])  # run 1: the normal failure path
         for observation in observations[1:]:
-            self.assertEqual((observation.new, observation.escalate, len(observation.known)), ([], [], 1))  # runs 2 to 24: WARN, no push
+            self.assertEqual(
+                (observation.new, observation.escalate, len(observation.known)), ([], [], 1)
+            )  # runs 2 to 24: WARN, no push
         lines = health.card_lines(observations[-1].known, NOW + dt.timedelta(hours=23))
         self.assertEqual(lines, ["WARN interview:thread-7: STORE_SSH_UNREACHABLE, failing on 24 runs over 0 days"])
 
@@ -128,7 +160,7 @@ class KnownStateRules(unittest.TestCase):
 class StateKeys(unittest.TestCase):
     def test_a_push_without_a_state_key_is_never_sent(self):
         sent = []
-        post = lambda *a, **k: sent.append(a) or True      # noqa: E731
+        post = lambda *a, **k: sent.append(a) or True  # noqa: E731
         for key in (None, "", 7, "not_registered_anywhere"):
             self.assertFalse(alerts.push(key, "t", "b", "topic", post=post), key)
         self.assertEqual(sent, [])
@@ -144,7 +176,9 @@ class StateKeys(unittest.TestCase):
         """PAGE reminds every 6 h in the watchers and every 3 quiet hours in the pipeline incidents"""
         page = alerts.Alert("expiry_x", alerts.PAGE, "t")
         for hours, expect in ((2, 0), (5, 0), (6, 1)):
-            plan = alerts.reconcile([page], {"expiry_x": {"severity": alerts.PAGE, "last_notified": NOW - dt.timedelta(hours=hours)}}, NOW)
+            plan = alerts.reconcile(
+                [page], {"expiry_x": {"severity": alerts.PAGE, "last_notified": NOW - dt.timedelta(hours=hours)}}, NOW
+            )
             self.assertEqual(len(plan.notify), expect, hours)
         self.assertGreaterEqual(alerts.REMIND_HOURS[alerts.PAGE], 3)
         self.assertGreaterEqual(gate.REMIND_HOURS, 3)

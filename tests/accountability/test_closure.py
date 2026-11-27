@@ -19,7 +19,9 @@ AFTER = datetime(2026, 11, 26, 16, 13, tzinfo=ZoneInfo("America/Chicago"))
 def creative_q4():
     """Matt's Creative Q4: 3 delivered, 3 cancelled (MEJ-38, 147, 352) and 11 open under one goal."""
     kids = [child(f"MEJ-{n}", "MEJ-1", True, RESOLVED) for n in (10, 11, 12)]
-    kids += [child(f"MEJ-{n}", "MEJ-1", True, RESOLVED, resolution="Won't Do", labels=["superseded"]) for n in (38, 147, 352)]
+    kids += [
+        child(f"MEJ-{n}", "MEJ-1", True, RESOLVED, resolution="Won't Do", labels=["superseded"]) for n in (38, 147, 352)
+    ]
     kids += [child(f"MEJ-{n}", "MEJ-1", False) for n in range(200, 211)]
     return kids
 
@@ -27,7 +29,9 @@ def creative_q4():
 class Tally(unittest.TestCase):
     def test_the_migration_fixture_goes_from_6_of_17_to_3_of_14(self):
         kids = creative_q4()
-        without_resolution_check = [dict(k, fields=dict(k["fields"], resolution={"name": "Done"}, labels=[])) for k in kids]
+        without_resolution_check = [
+            dict(k, fields=dict(k["fields"], resolution={"name": "Done"}, labels=[])) for k in kids
+        ]
         self.assertEqual(read._counts(without_resolution_check, FIRST, LAST), {"MEJ-1": [6, 17]})  # R1.2 before
         self.assertEqual(read._counts(kids, FIRST, LAST), {"MEJ-1": [3, 14]})  # R1.1 and R1.2 after
 
@@ -53,23 +57,43 @@ class Classes(unittest.TestCase):
             "manual": ({"resolution": {"name": "Done"}, "labels": []}, AFTER),
             "auto": ({"resolution": {"name": "Done"}, "labels": ["auto-closed"]}, AFTER),
             "cancelled": ({"resolution": {"name": "Won't Do"}, "labels": ["superseded"]}, AFTER),
-            "unknown": ({"resolution": {"name": "Done"}, "labels": []}, datetime(2026, 11, 1, tzinfo=ZoneInfo("America/Chicago"))),
+            "unknown": (
+                {"resolution": {"name": "Done"}, "labels": []},
+                datetime(2026, 11, 1, tzinfo=ZoneInfo("America/Chicago")),
+            ),
         }
         got = {name: closure.classify(fields, at, SINCE) for name, (fields, at) in cases.items()}
-        self.assertEqual(got, {"manual": "delivered_manual", "auto": "delivered_auto", "cancelled": "cancelled", "unknown": "unknown"})
+        self.assertEqual(
+            got,
+            {"manual": "delivered_manual", "auto": "delivered_auto", "cancelled": "cancelled", "unknown": "unknown"},
+        )
         totals = closure.counts(got.values())
-        self.assertEqual(totals, {"delivered_manual": 1, "delivered_auto": 1, "cancelled": 1, "unknown": 1, "total": 4})  # R1.4
+        self.assertEqual(
+            totals, {"delivered_manual": 1, "delivered_auto": 1, "cancelled": 1, "unknown": 1, "total": 4}
+        )  # R1.4
 
     def test_without_a_tracking_start_a_done_issue_is_unknown_never_manual(self):
         self.assertEqual(closure.classify({"resolution": {"name": "Done"}, "labels": []}, AFTER, None), "unknown")
 
     def test_the_weekly_closure_split_never_shows_a_cancellation_as_delivered_by_hand(self):
         def issue(key, resolution, labels):
-            return {"key": key, "fields": {"labels": labels, "resolution": {"name": resolution}, "resolutiondate": "2026-11-26T16:13:15.000-0600",
-                                           "statuscategorychangedate": "2026-11-26T16:13:15.000-0600",
-                                           "status": {"statusCategory": {"key": "done"}}}}
-        issues = [issue("MEJ-364", "Done", []), issue("MEJ-38", "Won't Do", ["superseded"]), issue("MEJ-147", "Won't Do", ["superseded"]),
-                  issue("MEJ-5", "Done", ["auto-closed"])]
+            return {
+                "key": key,
+                "fields": {
+                    "labels": labels,
+                    "resolution": {"name": resolution},
+                    "resolutiondate": "2026-11-26T16:13:15.000-0600",
+                    "statuscategorychangedate": "2026-11-26T16:13:15.000-0600",
+                    "status": {"statusCategory": {"key": "done"}},
+                },
+            }
+
+        issues = [
+            issue("MEJ-364", "Done", []),
+            issue("MEJ-38", "Won't Do", ["superseded"]),
+            issue("MEJ-147", "Won't Do", ["superseded"]),
+            issue("MEJ-5", "Done", ["auto-closed"]),
+        ]
         got = rc.closure_counts(issues, SINCE)
         self.assertEqual(got, {"manual": 1, "automatic": 1, "cancelled": 2, "total": 4, "split": True})
 

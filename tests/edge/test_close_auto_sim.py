@@ -1,4 +1,5 @@
 """The real script, bash, flock and install(1) run"""
+
 import os
 import shutil
 import socket
@@ -46,14 +47,19 @@ esac
 '''
 
 
-ANSWERS = {"ok": b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n", "server_error": b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n",
-           "garbage": b"hello\r\n", "silent": b""}
+ANSWERS = {
+    "ok": b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n",
+    "server_error": b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n",
+    "garbage": b"hello\r\n",
+    "silent": b"",
+}
 
 
 class FakeService:
     """Stands in for the socket-activated Close service on a loopback port: what it answers depends on which tree
     `current` points at, so a test can make.
     """
+
     def __init__(self, opt):
         self.opt, self.by_tree, self.default, self.requests = opt, {}, "ok", []
         self.sock = socket.socket()
@@ -72,7 +78,9 @@ class FakeService:
                 conn.settimeout(5)
                 try:
                     data = b""
-                    while not (b"GET" in data and data.endswith(b"\r\n\r\n")) and len(data) < 4096:  # bash may write the request in several pieces
+                    while (
+                        not (b"GET" in data and data.endswith(b"\r\n\r\n")) and len(data) < 4096
+                    ):  # bash may write the request in several pieces
                         chunk = conn.recv(4096)
                         if not chunk:
                             break
@@ -94,7 +102,9 @@ class FakeService:
         self.sock.close()
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("flock") and shutil.which("install"), "needs bash, flock and install(1)")
+@unittest.skipUnless(
+    shutil.which("bash") and shutil.which("flock") and shutil.which("install"), "needs bash, flock and install(1)"
+)
 class AutoReleaseRun(unittest.TestCase):
     def setUp(self):
         self.sim = tempfile.mkdtemp()
@@ -102,8 +112,11 @@ class AutoReleaseRun(unittest.TestCase):
         for d in ("opt", "etc", "creds", "units", app, bin_):
             os.makedirs(os.path.join(self.sim, d), exist_ok=True)
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
-        script = script.replace("OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system",
-                                'OPT=$SIM/opt; ETC=$SIM/etc; CREDS=$SIM/creds; UNITS=$SIM/units', 1)
+        script = script.replace(
+            "OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system",
+            'OPT=$SIM/opt; ETC=$SIM/etc; CREDS=$SIM/creds; UNITS=$SIM/units',
+            1,
+        )
         self.service = FakeService(os.path.join(self.sim, "opt"))
         self.addCleanup(self.service.close)
         script = script.replace("LOCAL=47344;", f"LOCAL={self.service.port};", 1)
@@ -125,8 +138,13 @@ class AutoReleaseRun(unittest.TestCase):
         for f in ("etc/policy.json", "creds/lifeos-close.notion", "creds/lifeos-close.link"):
             open(os.path.join(self.sim, f), "w").write("x")
         open(os.path.join(self.sim, "log"), "w").close()
-        self.env = {**os.environ, "SIM": self.sim, "PATH": bin_ + os.pathsep + os.environ["PATH"], "PORT": str(self.service.port),
-                    "REAL_REL": os.path.join(ROOT, "lifeos/edge/oracle/close_release.py")}
+        self.env = {
+            **os.environ,
+            "SIM": self.sim,
+            "PATH": bin_ + os.pathsep + os.environ["PATH"],
+            "PORT": str(self.service.port),
+            "REAL_REL": os.path.join(ROOT, "lifeos/edge/oracle/close_release.py"),
+        }
         self.main, self.bodies = None, {}
 
     def tearDown(self):
@@ -158,7 +176,9 @@ class AutoReleaseRun(unittest.TestCase):
         if args[0] in ("install", "rollback") and "MAIN" not in env and getattr(self, "main", None):
             env["MAIN"] = self.main
         env.setdefault("BODIES", ",".join(f"{k}={v}" for k, v in self.bodies.items()))
-        done = subprocess.run(["bash", self.script, *args], env={**self.env, **env}, capture_output=True, text=True, timeout=60)
+        done = subprocess.run(
+            ["bash", self.script, *args], env={**self.env, **env}, capture_output=True, text=True, timeout=60
+        )
         return done.returncode, done.stdout + done.stderr
 
     def at(self, name):
@@ -188,15 +208,32 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertNotIn("github", open(unit).read())
 
     def test_the_drive_credential_is_piped_never_typed_loaded_only_while_it_exists_and_gdrive_off_removes_it(self):
-        unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.gdrive")
+        unit, stored = (
+            os.path.join(self.sim, "units", "lifeos-close@.service"),
+            os.path.join(self.sim, "creds", "lifeos-close.gdrive"),
+        )
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         self.assertNotIn("gdrive", open(unit).read())  # absent: the unit never names it
         good = '{"client_id": "c", "client_secret": "s", "refresh_token": "r"}'
-        done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=good, capture_output=True, text=True, timeout=60)
+        done = subprocess.run(
+            ["bash", self.script, "credential", "gdrive"],
+            env=self.env,
+            input=good,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(open(stored).read(), good)
         for bad in ("", "not json", '{"client_id": "c"}'):
-            done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=bad, capture_output=True, text=True, timeout=60)
+            done = subprocess.run(
+                ["bash", self.script, "credential", "gdrive"],
+                env=self.env,
+                input=bad,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
             self.assertEqual(done.returncode, 1, bad)
             self.assertIn("unchanged", done.stdout)
             self.assertEqual(open(stored).read(), good)
@@ -211,15 +248,36 @@ class AutoReleaseRun(unittest.TestCase):
 
     def test_the_picker_credential_is_piped_shape_checked_loaded_only_while_it_exists_and_picker_off_removes_it(self):
         """the Drive picker's browser identifiers, piped as JSON"""
-        unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.picker")
+        unit, stored = (
+            os.path.join(self.sim, "units", "lifeos-close@.service"),
+            os.path.join(self.sim, "creds", "lifeos-close.picker"),
+        )
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         self.assertNotIn("picker", open(unit).read())
-        good = '{"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza' + "x" * 35 + '", "app_id": "1234567"}'
-        done = subprocess.run(["bash", self.script, "credential", "picker"], env=self.env, input=good, capture_output=True, text=True, timeout=60)
+        good = (
+            '{"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza'
+            + "x" * 35
+            + '", "app_id": "1234567"}'
+        )
+        done = subprocess.run(
+            ["bash", self.script, "credential", "picker"],
+            env=self.env,
+            input=good,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(open(stored).read(), good)
         for bad in ("", "not json", '{"client_id": "c", "api_key": "k", "app_id": "1"}', good[:-1] + ', "x": "y"}'):
-            done = subprocess.run(["bash", self.script, "credential", "picker"], env=self.env, input=bad, capture_output=True, text=True, timeout=60)
+            done = subprocess.run(
+                ["bash", self.script, "credential", "picker"],
+                env=self.env,
+                input=bad,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
             self.assertEqual(done.returncode, 1, bad)
             self.assertIn("unchanged", done.stdout)
             self.assertEqual(open(stored).read(), good)
@@ -233,8 +291,12 @@ class AutoReleaseRun(unittest.TestCase):
 
     def test_a_green_changed_commit_is_released_and_a_rerun_or_unchanged_commit_is_not(self):
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
-        self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.checked")), (0, B[:12], A[:12], [B]), out)
-        self.assertFalse(os.path.exists(os.path.join(self.sim, "opt", P)))  # only the live tree and its previous are kept
+        self.assertEqual(
+            (rc, self.at("current"), self.at("previous"), self.etc("auto.checked")), (0, B[:12], A[:12], [B]), out
+        )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.sim, "opt", P))
+        )  # only the live tree and its previous are kept
         staged = self.stages()  # the probe, then install's own proven stage
         self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)
         self.assertEqual(self.stages(), staged)  # the same commit again: nothing downloaded
@@ -250,7 +312,9 @@ class AutoReleaseRun(unittest.TestCase):
 
     def test_a_release_that_fails_verify_is_restored_exactly(self):
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])
-        self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.attempts")), (1, A[:12], P, [B, "1"]), out)
+        self.assertEqual(
+            (rc, self.at("current"), self.at("previous"), self.etc("auto.attempts")), (1, A[:12], P, [B, "1"]), out
+        )
         self.assertIn("restored", out)
         self.assertIsNone(self.etc("auto.pending"))
 
@@ -260,7 +324,9 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertIn("[PASS] one request gets a fixed answer", out)
         self.assertEqual(len(self.service.requests), 1)
         sent = self.service.requests[0]
-        self.assertTrue(sent.startswith(b"\r\n\r\n\x00\r\nQUIT\n\x21\x11\x00\x0c"))  # a PROXY v2 header first, as the real gate requires
+        self.assertTrue(
+            sent.startswith(b"\r\n\r\n\x00\r\nQUIT\n\x21\x11\x00\x0c")
+        )  # a PROXY v2 header first, as the real gate requires
         self.assertIn(b"GET / HTTP/1.1", sent)
 
     def test_verify_fails_when_the_service_answers_with_a_server_error_garbage_or_nothing(self):
@@ -293,6 +359,7 @@ class AutoReleaseRun(unittest.TestCase):
 
     def test_the_stall_marker_is_written_after_the_decision_says_two_hours_and_not_before(self):
         import time
+
         wait_file = os.path.join(self.sim, "etc", "auto.waiting")
         rc, out = self.run_("auto")  # main not green: the wait starts
         self.assertEqual((rc, self.etc("auto.stalled")), (0, None), out)
@@ -329,7 +396,9 @@ class AutoReleaseRun(unittest.TestCase):
         marker = os.path.join(self.sim, "etc", "auto.proof-unreadable")
         os.utime(marker, (1, 1))
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py", PAUSE="4")
-        self.assertEqual((self.etc("auto.proof-unreadable"), os.stat(marker).st_mtime), (first, 1))  # written once, never rewritten
+        self.assertEqual(
+            (self.etc("auto.proof-unreadable"), os.stat(marker).st_mtime), (first, 1)
+        )  # written once, never rewritten
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current"), self.etc("auto.proof-unreadable")), (0, B[:12], None), out)
 
@@ -342,17 +411,25 @@ class AutoReleaseRun(unittest.TestCase):
         self.tree(B[:12], B)
         self.link("current", B[:12])
         self.link("previous", A[:12])
-        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(
+            f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n"
+        )
         open(os.path.join(self.sim, "etc", "auto.attempts"), "w").write(f"{B} 3\n")
-        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])  # main moved on, and B was the third attempt
-        self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.pending")), (0, A[:12], P, None), out)
+        rc, out = self.run_(
+            "auto", HEAD=C, BODY="y lifeos/a.py", CHECK_FAIL=B[:12]
+        )  # main moved on, and B was the third attempt
+        self.assertEqual(
+            (rc, self.at("current"), self.at("previous"), self.etc("auto.pending")), (0, A[:12], P, None), out
+        )
         self.assertEqual(self.stages(), 0)  # settled first
         self.assertIn("unverified after a cut-off run", out)
 
     def test_a_cut_off_release_that_verifies_stays(self):
         self.tree(B[:12], B)
         self.link("current", B[:12])
-        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(
+            f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n"
+        )
         self.assertEqual(self.run_("auto", HEAD=B)[0], 0)
         self.assertEqual((self.at("current"), self.etc("auto.pending")), (B[:12], None))
         self.assertEqual((self.run_("auto", HEAD=B)[0], self.etc("auto.checked")), (0, [B]))
@@ -393,14 +470,18 @@ class AutoReleaseRun(unittest.TestCase):
         self.run_("auto", HEAD=D, BODY="z lifeos/a.py")  # a fix is released, then rolled back too
         self.assertEqual(self.at("current"), D[:12])
         self.run_("rollback")
-        self.assertEqual(self.run_("auto", HEAD=E, BODY="y lifeos/a.py")[0], 0)  # reverting the fix brings B's code back: still out
+        self.assertEqual(
+            self.run_("auto", HEAD=E, BODY="y lifeos/a.py")[0], 0
+        )  # reverting the fix brings B's code back: still out
         self.assertEqual(self.at("current"), A[:12])
 
     def test_jims_manual_install_is_not_undone_by_the_next_merge(self):
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual(self.run_("install", A, BODY="x lifeos/a.py")[0], 0)  # Jim goes back to A by hand
         self.assertEqual(self.at("current"), A[:12])
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)  # a docs-only merge still carrying B's code
+        self.assertEqual(
+            self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0
+        )  # a docs-only merge still carrying B's code
         self.assertEqual(self.at("current"), A[:12])
         D = "d" * 12 + "5" * 28
         self.run_("auto", HEAD=D, BODY="z lifeos/a.py")  # new code is released
@@ -409,13 +490,17 @@ class AutoReleaseRun(unittest.TestCase):
     def test_code_that_was_ever_live_is_never_brought_back_however_jim_moved_away(self):
         self.run_("install", B, BODY="y lifeos/a.py")  # Jim installs main's head himself
         self.run_("install", A, BODY="x lifeos/a.py")
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)  # a docs-only merge still carrying B's code
+        self.assertEqual(
+            self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0
+        )  # a docs-only merge still carrying B's code
         self.assertEqual(self.at("current"), A[:12])
         self.tree(B[:12], B)  # a cut-off release of B that settles as verified
         self.writable()
         open(os.path.join(self.sim, "opt", B[:12], "MANIFEST"), "w").write(f"commit {B}\nw lifeos/a.py\n")
         self.link("current", B[:12])
-        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(
+            f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n"
+        )
         self.run_("auto", HEAD=B)
         self.run_("install", A, BODY="x lifeos/a.py")
         D = "d" * 12 + "5" * 28
@@ -425,17 +510,23 @@ class AutoReleaseRun(unittest.TestCase):
     def test_a_release_that_went_live_and_failed_never_overrides_jim(self):
         for jim in (("rollback",), ("install", P)):
             self.setUp()
-            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])[0], 1)  # live, failed verify, restored
+            self.assertEqual(
+                self.run_("auto", HEAD=B, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])[0], 1
+            )  # live, failed verify, restored
             rc, out = self.run_(*jim, BODY="x lifeos/a.py")  # Jim reacts by hand
             chosen = self.at("current")
-            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)  # B would now verify, but it was live once
+            self.assertEqual(
+                self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0
+            )  # B would now verify, but it was live once
             self.assertEqual(self.at("current"), chosen, jim)
 
     def test_jims_install_is_not_overridden_by_main_as_it_was_then_only_by_newer_code(self):
         rc, out = self.run_("install", P, MAIN=B, BODY="x lifeos/a.py")  # B is merged and green but not yet live
         self.assertEqual(self.at("current"), P, out)
         self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)  # B itself: held
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)  # a docs-only C on top of B: B's code counts as seen
+        self.assertEqual(
+            self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0
+        )  # a docs-only C on top of B: B's code counts as seen
         self.assertEqual(self.at("current"), P)
         D = "d" * 12 + "5" * 28
         self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)  # new code: released
@@ -446,20 +537,26 @@ class AutoReleaseRun(unittest.TestCase):
         D = "d" * 12 + "5" * 28
         self.assertEqual(self.run_("rollback", MAIN="")[0], 0)  # GitHub unreadable during the incident
         self.assertEqual(self.etc("auto.hold"), ["unknown"])
-        self.assertEqual(self.run_("auto", HEAD=C, BODY="w lifeos/a.py")[0], 0)  # C was merged meanwhile: held, not released
+        self.assertEqual(
+            self.run_("auto", HEAD=C, BODY="w lifeos/a.py")[0], 0
+        )  # C was merged meanwhile: held, not released
         self.assertEqual(self.at("current"), A[:12])
         self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)  # newer code after that is released
         self.assertEqual(self.at("current"), D[:12])
 
     def test_a_rollback_after_a_cut_off_between_the_links_has_its_target(self):
         self.link("previous", A[:12])  # cut off: install set previous to the live tree
-        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(
+            f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n"
+        )
         self.assertEqual(self.run_("rollback", MAIN=B)[0], 0)
         self.assertEqual(self.at("current"), P)
 
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])
-        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(
+            f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n"
+        )
         self.assertEqual(self.run_("auto", HEAD=B)[0], 0)
         self.assertEqual((self.at("current"), self.at("previous"), self.etc("auto.pending")), (A[:12], P, None))
 

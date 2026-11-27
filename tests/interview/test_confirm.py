@@ -1,6 +1,7 @@
 """E07: accepted and cancelled Calendar events move the SAME round page in place (production-shaped fake): Interview 1 in
 Scheduling Pending is dated, a.
 """
+
 import unittest
 from unittest.mock import patch
 from lifeos.interview import create, notion, stage
@@ -25,7 +26,16 @@ def pending_round():
 
 
 def move(client, child_id, live=True, date=DATE, ref=REF, cancelled=False):
-    query = RoundQuery(True, date, None, 1, explicit_child_page_id=child_id, source="https://example.test/thread/1", calendar_ref=ref, cancelled=cancelled)
+    query = RoundQuery(
+        True,
+        date,
+        None,
+        1,
+        explicit_child_page_id=child_id,
+        source="https://example.test/thread/1",
+        calendar_ref=ref,
+        cancelled=cancelled,
+    )
     return stage.run(10, live, environ=ENV, client=client, evidence=[(PARENT, query)])
 
 
@@ -38,11 +48,12 @@ def snapshot(client, child):
 
 
 class Confirm(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_the_pending_round_is_dated_in_place_with_its_event_reference_and_nothing_else_is_created(self):
         client, parent, child = pending_round()
         posts, notes = len(client.posts), notion.protected_snapshot(client, child, "round")
@@ -50,8 +61,13 @@ class Confirm(unittest.TestCase):
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_confirmed")), (1, 1, 1))
         self.assertEqual(len(client.posts), posts)  # no new page
         (dated,) = notion.child_scan(client, parent).items
-        self.assertEqual((dated.page_id, dated.interview_date, dated.ordinal, dated.interviewer, dated.identity_valid), (child, DATE, 1, None, True))
-        self.assertEqual(texts(client, child + "-block-0")[1], create.identity_text(RoundQuery(True, DATE, None, 1)))  # still the v1 line
+        self.assertEqual(
+            (dated.page_id, dated.interview_date, dated.ordinal, dated.interviewer, dated.identity_valid),
+            (child, DATE, 1, None, True),
+        )
+        self.assertEqual(
+            texts(client, child + "-block-0")[1], create.identity_text(RoundQuery(True, DATE, None, 1))
+        )  # still the v1 line
         self.assertEqual(create.round_calendar(client, child), (REF, False))
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)  # Live and Raw Notes untouched
         self.assertIn(f"{DATE} · accepted Calendar invite", snapshot(client, child))
@@ -73,9 +89,18 @@ class Confirm(unittest.TestCase):
     def test_a_human_edit_in_a_machine_block_is_repaired_not_a_stop(self):
         """the edit is preserved and the round is dated (details in tests/interview/test_repair.py)."""
         client, _, child = pending_round()
-        client.blocks[client.blocks[child][1]["id"]][1]["paragraph"]["rich_text"] = [{"plain_text": "When: Jim wrote this"}]
+        client.blocks[client.blocks[child][1]["id"]][1]["paragraph"]["rich_text"] = [
+            {"plain_text": "When: Jim wrote this"}
+        ]
         result = move(client, child)
-        self.assertEqual((result["why"].get("round_confirmed"), result["why"].get("machine_region_edited"), result["repaired_edits"]), (1, None, 1))
+        self.assertEqual(
+            (
+                result["why"].get("round_confirmed"),
+                result["why"].get("machine_region_edited"),
+                result["repaired_edits"],
+            ),
+            (1, None, 1),
+        )
         self.assertEqual(notion.child_scan(client, "created-1").items[0].interview_date, DATE)
 
     def test_a_changed_live_note_during_the_write_is_reported(self):
@@ -84,10 +109,18 @@ class Confirm(unittest.TestCase):
 
         def edit_notes(c, block_id, kind, rich):
             out = real(c, block_id, kind, rich)
-            tab = next(b for blocks in c.blocks.values() for b in blocks if b.get("type") == "tab" and b["id"].startswith(child))
+            tab = next(
+                b
+                for blocks in c.blocks.values()
+                for b in blocks
+                if b.get("type") == "tab" and b["id"].startswith(child)
+            )
             live = next(b for b in c.blocks[tab["id"]] if notion.text(b) == notion.LIVE_PANE)
-            c.blocks.setdefault(live["id"], []).append({"id": "jim", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Jim typed"}]}})
+            c.blocks.setdefault(live["id"], []).append(
+                {"id": "jim", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Jim typed"}]}}
+            )
             return out
+
         with patch.object(notion, "set_text", side_effect=edit_notes):
             result = move(client, child)
         self.assertEqual(result["why"].get("readback_protected_changed"), 1)
@@ -102,6 +135,7 @@ class Confirm(unittest.TestCase):
             if len(calls) == 2:
                 raise NotionError("NOTION_HTTP_500")
             return real(c, block_id, kind, rich)
+
         with patch.object(notion, "set_text", side_effect=fail_second):
             result = move(client, child)
         self.assertEqual(result["why"].get("write_failed"), 1)
@@ -112,17 +146,25 @@ class Confirm(unittest.TestCase):
     def test_another_parents_child_or_a_cancel_of_a_pending_round_is_refused(self):
         client, parent, child = pending_round()
         want = RoundQuery(True, DATE, None, 1, calendar_ref=REF)
-        self.assertEqual(create.transition(client, "another-parent", child, None, want, True, {}), "round_unconfirmable")
-        self.assertEqual(create.transition(client, parent, child, None, RoundQuery(True, DATE, None, 1, calendar_ref=REF, cancelled=True), True, {}), "round_unconfirmable")
+        self.assertEqual(
+            create.transition(client, "another-parent", child, None, want, True, {}), "round_unconfirmable"
+        )
+        self.assertEqual(
+            create.transition(
+                client, parent, child, None, RoundQuery(True, DATE, None, 1, calendar_ref=REF, cancelled=True), True, {}
+            ),
+            "round_unconfirmable",
+        )
         self.assertIsNone(notion.child_scan(client, parent).items[0].interview_date)
 
 
 class Reschedule(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def dated(self):
         client, parent, child = pending_round()
         move(client, child)
@@ -146,11 +188,12 @@ class Reschedule(unittest.TestCase):
 
 
 class Cancel(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_a_cancelled_event_marks_its_round_cancelled_and_keeps_its_date_and_identity(self):
         client, parent, child = pending_round()
         move(client, child)
@@ -158,7 +201,9 @@ class Cancel(unittest.TestCase):
         result = move(client, child, cancelled=True)
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_cancelled")), (1, 1, 1))
         (round_,) = notion.child_scan(client, parent).items
-        self.assertEqual((round_.interview_date, round_.ordinal, round_.identity_valid), (DATE, 1, True))  # still one valid machine child
+        self.assertEqual(
+            (round_.interview_date, round_.ordinal, round_.identity_valid), (DATE, 1, True)
+        )  # still one valid machine child
         self.assertEqual(create.round_calendar(client, child), (REF, True))
         self.assertIn(f"Cancelled {DATE}", snapshot(client, child))
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
@@ -176,17 +221,20 @@ class Cancel(unittest.TestCase):
 
 
 class Life43(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_every_state_reads_as_the_same_valid_machine_identity(self):
         client, parent, child = pending_round()
         for step in ({}, {"date": LATER}, {"date": LATER, "cancelled": True}):
             move(client, child, **step)
             (found,) = notion.child_scan(client, parent).items
-            self.assertEqual((found.page_id, found.identity_valid, found.ordinal), (child, True, 1), step)  # J1C's progression signal stays TRUE
+            self.assertEqual(
+                (found.page_id, found.identity_valid, found.ordinal), (child, True, 1), step
+            )  # J1C's progression signal stays TRUE
 
 
 if __name__ == "__main__":
@@ -200,6 +248,7 @@ class CarriedOver(unittest.TestCase):
 
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
 
@@ -217,7 +266,10 @@ class CarriedOver(unittest.TestCase):
         return kept
 
     def read(self, client, kept):
-        return {p: next(notion.text(b) for bs in client.blocks.values() for b in bs if b["id"] == i) for p, (i, _) in kept.items()}
+        return {
+            p: next(notion.text(b) for bs in client.blocks.values() for b in bs if b["id"] == i)
+            for p, (i, _) in kept.items()
+        }
 
     def test_a_calendar_move_keeps_every_carried_line_and_still_reads_back(self):
         client, _, child = pending_round()
@@ -226,7 +278,9 @@ class CarriedOver(unittest.TestCase):
         self.assertEqual(len(kept), 3)
         notes = notion.protected_snapshot(client, child, "round")
         result = move(client, child, date=LATER)
-        self.assertEqual((result["why"].get("round_rescheduled"), result["readback_ok"], result.get("repaired_edits", 0)), (1, 1, 0))
+        self.assertEqual(
+            (result["why"].get("round_rescheduled"), result["readback_ok"], result.get("repaired_edits", 0)), (1, 1, 0)
+        )
         self.assertEqual(self.read(client, kept), {p: t for p, (_, t) in kept.items()})
         self.assertIn(f"{LATER} · accepted Calendar invite", snapshot(client, child))  # the uncarried lines still move
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
@@ -235,7 +289,13 @@ class CarriedOver(unittest.TestCase):
     def test_the_transcript_link_lines_are_kept_when_the_page_has_no_marker(self):
         client, _, child = pending_round()
         client.blocks[child].append({"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}})
-        client.blocks["ft"] = [{"id": "ft-1", "type": "paragraph", "paragraph": {"rich_text": rich_text("Speaker A: copied word for word")}}]
+        client.blocks["ft"] = [
+            {
+                "id": "ft-1",
+                "type": "paragraph",
+                "paragraph": {"rich_text": rich_text("Speaker A: copied word for word")},
+            }
+        ]
         kept = self.carry(client, ("Transcript: ", "Full Transcript page: "))
         self.assertEqual(len(kept), 2)
         out = {}
@@ -245,5 +305,11 @@ class CarriedOver(unittest.TestCase):
     def test_an_uncarried_stale_line_is_still_updated(self):
         client, _, child = pending_round()
         client.blocks[child].append({"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}})
-        client.blocks["ft"] = [{"id": "ft-1", "type": "paragraph", "paragraph": {"rich_text": rich_text(create.TRANSCRIPT_MARKER + "placeholder")}}]
+        client.blocks["ft"] = [
+            {
+                "id": "ft-1",
+                "type": "paragraph",
+                "paragraph": {"rich_text": rich_text(create.TRANSCRIPT_MARKER + "placeholder")},
+            }
+        ]
         self.assertEqual(create.link_transcript(client, child, True, {}), "transcript_linked")

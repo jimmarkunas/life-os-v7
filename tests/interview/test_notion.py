@@ -6,13 +6,6 @@ from lifeos.platform.notion_client import NotionError
 from tests.interview.support import ENV, Fake, block, page
 
 
-
-
-
-
-
-
-
 class NotionTests(unittest.TestCase):
     def test_token_isolation(self):
         self.assertEqual(notion.environment({"NOTION_API_TOKEN": "jobs"})["NOTION_API_TOKEN"], "")
@@ -34,7 +27,11 @@ class NotionTests(unittest.TestCase):
         client = Fake()
         self.assertEqual(notion.ownership(client, "p", "opportunity"), Ownership.MACHINE)
         self.assertEqual(client.calls[-1][1], "/blocks/p/children?page_size=1")
-        for marker, expected in (("human", Ownership.HUMAN), ("v7-interview:2;owner=machine", Ownership.UNKNOWN), (notion.MARKERS["round"], Ownership.UNKNOWN)):
+        for marker, expected in (
+            ("human", Ownership.HUMAN),
+            ("v7-interview:2;owner=machine", Ownership.UNKNOWN),
+            (notion.MARKERS["round"], Ownership.UNKNOWN),
+        ):
             client.blocks["p"][0] = block(marker)
             self.assertEqual(notion.ownership(client, "p", "opportunity"), expected)
         client.fail.add("/blocks/p/children?page_size=1")
@@ -46,7 +43,9 @@ class NotionTests(unittest.TestCase):
         self.assertEqual(notion.readback(client, "p", "root", "opportunity", before), "readback_ok")
         client.blocks["p"][2] = block("changed", id="note")
         self.assertEqual(notion.readback(client, "p", "root", "opportunity", before), "readback_protected_changed")
-        self.assertEqual(notion.readback(client, "p", "elsewhere", "opportunity"), "readback_ok")  # where the page sits is not checked
+        self.assertEqual(
+            notion.readback(client, "p", "elsewhere", "opportunity"), "readback_ok"
+        )  # where the page sits is not checked
         client.blocks["p"].pop()
         self.assertEqual(notion.readback(client, "p", "root", "opportunity"), "readback_protected_missing")
         client.blocks["p"][0] = block("human")
@@ -63,7 +62,12 @@ class NotionTests(unittest.TestCase):
         client.blocks["live"] = [block("nested change")]
         self.assertNotEqual(before, notion.protected_snapshot(client, "p"))
         before = notion.protected_snapshot(client, "p")
-        client.blocks["p"] = [client.blocks["p"][0], client.blocks["p"][3], client.blocks["p"][1], client.blocks["p"][2]]
+        client.blocks["p"] = [
+            client.blocks["p"][0],
+            client.blocks["p"][3],
+            client.blocks["p"][1],
+            client.blocks["p"][2],
+        ]
         self.assertNotEqual(before, notion.protected_snapshot(client, "p"))
 
     def nested(self):
@@ -71,9 +75,17 @@ class NotionTests(unittest.TestCase):
         cp = lambda id, title: {"id": id, "type": "child_page", "child_page": {"title": title}}
         client.blocks["p"] = client.blocks["p"] + [{"id": "cols", "type": "column_list", "has_children": True}]
         client.blocks["cols"] = [{"id": "col", "type": "column", "has_children": True}]
-        client.blocks["col"] = [cp("n1", "Interview 1: Jane Doe (9/10/26)"), cp("n2", "Meeting notes"), cp("n3", "Interview 2: Joe Roe (9/14/26)")]
+        client.blocks["col"] = [
+            cp("n1", "Interview 1: Jane Doe (9/10/26)"),
+            cp("n2", "Meeting notes"),
+            cp("n3", "Interview 2: Joe Roe (9/14/26)"),
+        ]
         client.pages["n1"], client.pages["n2"], client.pages["n3"] = page(), page(), page()
-        client.pages["n1"]["parent"], client.pages["n2"]["parent"], client.pages["n3"]["parent"] = {"block_id": "col"}, {"block_id": "col"}, {"block_id": "elsewhere"}
+        client.pages["n1"]["parent"], client.pages["n2"]["parent"], client.pages["n3"]["parent"] = (
+            {"block_id": "col"},
+            {"block_id": "col"},
+            {"block_id": "elsewhere"},
+        )
         for key in ("n1", "n2", "n3"):
             client.blocks[key] = [block("my own words")]
         return client
@@ -82,7 +94,9 @@ class NotionTests(unittest.TestCase):
         client = self.nested()
         found = notion.child_scan(client, "p", legacy=True)
         self.assertTrue(found.complete)
-        self.assertEqual([(c.page_id, c.ordinal, c.interview_date, c.legacy) for c in found.items], [("n1", 1, "2026-09-10", True)])  # n2 is not a round title
+        self.assertEqual(
+            [(c.page_id, c.ordinal, c.interview_date, c.legacy) for c in found.items], [("n1", 1, "2026-09-10", True)]
+        )  # n2 is not a round title
         self.assertEqual(notion.child_scan(client, "p").items, ())
         self.assertTrue(all(method == "GET" for method, _ in client.calls))
 
@@ -102,11 +116,20 @@ class NotionTests(unittest.TestCase):
 
 def row(rid, company, job, stage, decision=None):
     sel = lambda name: {"select": {"name": name} if name else None}
-    return {"id": rid, "properties": {"Company": {"rich_text": [{"plain_text": company}]}, "Job": {"title": [{"plain_text": job}]}, "Stage": sel(stage), "Hiring Decision": sel(decision)}}
+    return {
+        "id": rid,
+        "properties": {
+            "Company": {"rich_text": [{"plain_text": company}]},
+            "Job": {"title": [{"plain_text": job}]},
+            "Stage": sel(stage),
+            "Hiring Decision": sel(decision),
+        },
+    }
 
 
 class FakeLedger(Fake):
     """The page tree of Fake plus a Job Ledger data source."""
+
     def __init__(self, pages):
         super().__init__()
         self.pages_of_rows, self.queries = pages, []
@@ -125,18 +148,36 @@ LENV = {**ENV, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc123"}
 
 class LedgerParentTests(unittest.TestCase):
     def test_rows_with_stage_become_parents(self):
-        client = FakeLedger([[row("r1", "Acme", "Director", "Interviewing"), row("r2", "Beta", "Lead", "Ended"), row("r3", "Gamma", "Head", "Offer", "Declined"), row("r4", "", "Nameless", "Applied")]])
+        client = FakeLedger(
+            [
+                [
+                    row("r1", "Acme", "Director", "Interviewing"),
+                    row("r2", "Beta", "Lead", "Ended"),
+                    row("r3", "Gamma", "Head", "Offer", "Declined"),
+                    row("r4", "", "Nameless", "Applied"),
+                ]
+            ]
+        )
         scan = notion.parents_from_ledger(client, "abc123")
         self.assertTrue(scan.complete)
-        self.assertEqual([(p.page_id, p.title, p.active) for p in scan.items], [("r1", "Acme - Director", True), ("r2", "Beta - Lead", False), ("r3", "Gamma - Head", False)])
+        self.assertEqual(
+            [(p.page_id, p.title, p.active) for p in scan.items],
+            [("r1", "Acme - Director", True), ("r2", "Beta - Lead", False), ("r3", "Gamma - Head", False)],
+        )
         self.assertEqual(client.queries[0][1]["filter"], {"property": "Stage", "select": {"is_not_empty": True}})
 
     def test_incomplete_ledger_returns_nothing(self):
         client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])
-        client.query_data_source = lambda source_id=None, body=None: {"results": [], "has_more": True, "next_cursor": None}
+        client.query_data_source = lambda source_id=None, body=None: {
+            "results": [],
+            "has_more": True,
+            "next_cursor": None,
+        }
         scan = notion.parents_from_ledger(client, "abc123")
         self.assertEqual((scan.items, scan.complete), ((), False))
-        client.query_data_source = lambda source_id=None, body=None: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))
+        client.query_data_source = lambda source_id=None, body=None: (_ for _ in ()).throw(
+            NotionError("NOTION_NETWORK")
+        )
         self.assertFalse(notion.parents_from_ledger(client, "abc123").complete)
 
     def test_rows_come_first_and_the_tree_fills_the_rest(self):
@@ -158,7 +199,9 @@ class LedgerParentTests(unittest.TestCase):
         client.more = True
         self.assertEqual(notion.parents(client, LENV).items, ())
         ledger_down = FakeLedger([[]])
-        ledger_down.query_data_source = lambda source_id=None, body=None: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))
+        ledger_down.query_data_source = lambda source_id=None, body=None: (_ for _ in ()).throw(
+            NotionError("NOTION_NETWORK")
+        )
         self.assertFalse(notion.parents(ledger_down, LENV).complete)
 
 
@@ -167,10 +210,15 @@ class NotionIdTests(unittest.TestCase):
         dashed = "abcdefab-cdef-4abc-8def-abcdefabcdef"
         compact = dashed.replace("-", "")
         for left, right, expected in (
-            (dashed, compact, True), (dashed.upper(), compact, True),
+            (dashed, compact, True),
+            (dashed.upper(), compact, True),
             (dashed, "fedcbafe-dcba-4abc-8def-abcdefabcdef", False),
-            (None, compact, False), (compact, None, False), ("", "", False),
-            ("---", "", False), (None, None, False), (1, 1, False),
+            (None, compact, False),
+            (compact, None, False),
+            ("", "", False),
+            ("---", "", False),
+            (None, None, False),
+            (1, 1, False),
         ):
             with self.subTest(left=left, right=right):
                 self.assertEqual(notion.same_notion_id(left, right), expected)
@@ -178,6 +226,7 @@ class NotionIdTests(unittest.TestCase):
     def test_readback_and_child_resolution_use_canonical_parent_ids(self):
         from lifeos.interview.identity import resolve_child
         from lifeos.interview.models import Child, Resolution, RoundQuery, Scan, State
+
         dashed = "abcdefab-cdef-4abc-8def-abcdefabcdef"
         compact = dashed.replace("-", "")
         client = Fake()
@@ -187,5 +236,7 @@ class NotionIdTests(unittest.TestCase):
         parent = Resolution(State.MATCH, "parent_match", compact.upper())
         result = resolve_child(parent, RoundQuery(True, explicit_child_page_id=compact), Scan((child,), True), child)
         self.assertEqual(result.code, "child_match")
-        result = resolve_child(parent, RoundQuery(True, explicit_child_page_id=compact), Scan((child,), True), Child(dashed, "different"))
+        result = resolve_child(
+            parent, RoundQuery(True, explicit_child_page_id=compact), Scan((child,), True), Child(dashed, "different")
+        )
         self.assertEqual(result.code, "child_wrong_parent")

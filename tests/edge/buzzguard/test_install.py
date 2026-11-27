@@ -1,4 +1,5 @@
 """the guard installer."""
+
 import hashlib
 import os
 import shutil
@@ -31,7 +32,11 @@ class Install(unittest.TestCase):
             handle.write('{"hooks": {"command": "/usr/bin/python3 -I \\"x/LIFEOS-Buzz-Guard/guard.py\\""}}')
 
     def run_script(self, verb, *args):
-        done = subprocess.run(["bash", SCRIPT, verb, "--dir", self.dir, "--settings", self.settings, *args], capture_output=True, text=True)
+        done = subprocess.run(
+            ["bash", SCRIPT, verb, "--dir", self.dir, "--settings", self.settings, *args],
+            capture_output=True,
+            text=True,
+        )
         return done.returncode, done.stdout + done.stderr
 
     def test_syntax_and_dry_run_writes_nothing(self):
@@ -107,13 +112,22 @@ class Install(unittest.TestCase):
         aid = "0123456789abcdef"
         os.makedirs(os.path.join(self.dir, "pending"))
         with open(os.path.join(self.dir, "pending", aid + ".json"), "w") as handle:
-            handle.write('{"id": "%s", "t": "2026-11-06 12:40:00 -0600", "tool": "mcp__x__addOrEditJiraIssueComment", "why": "jira comment on LIFE", "preview": "{\\"commentBody\\": \\"hello\\"}"}' % aid)
+            handle.write(
+                '{"id": "%s", "t": "2026-11-06 12:40:00 -0600", "tool": "mcp__x__addOrEditJiraIssueComment", "why": "jira comment on LIFE", "preview": "{\\"commentBody\\": \\"hello\\"}"}'
+                % aid
+            )
         status, out = self.run_script("pending")
         self.assertIn(aid, out)
         self.assertIn("addOrEditJiraIssueComment", out)
+
         def approve(a, *flags):
-            done = subprocess.run(["bash", SCRIPT, "approve", a, *flags, "--dir", self.dir, "--settings", self.settings], capture_output=True, text=True)
+            done = subprocess.run(
+                ["bash", SCRIPT, "approve", a, *flags, "--dir", self.dir, "--settings", self.settings],
+                capture_output=True,
+                text=True,
+            )
             return done.returncode, done.stdout + done.stderr
+
         status, out = approve(aid, "--yes")
         self.assertEqual(status, 0, out)
         self.assertIn("UNTRUSTED", out)

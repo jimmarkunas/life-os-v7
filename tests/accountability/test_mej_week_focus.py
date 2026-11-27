@@ -1,4 +1,5 @@
 """Matt's weekly view shows deliverables, not project internals."""
+
 import unittest
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -9,9 +10,15 @@ from lifeos.platform.jira import JiraError
 
 
 def issue(key, status="To Do", due=None, kind="Task"):
-    return {"key": key, "fields": {"summary": f"Synthetic {key}", "status": {
-        "name": status, "statusCategory": {"key": "done" if status == "Done" else "new"}},
-        "issuetype": {"name": kind, "subtask": kind == "Sub-task"}, "duedate": due}}
+    return {
+        "key": key,
+        "fields": {
+            "summary": f"Synthetic {key}",
+            "status": {"name": status, "statusCategory": {"key": "done" if status == "Done" else "new"}},
+            "issuetype": {"name": kind, "subtask": kind == "Sub-task"},
+            "duedate": due,
+        },
+    }
 
 
 class FakeJira:
@@ -26,8 +33,7 @@ class FakeJira:
         elif "sprint in openSprints()" in jql:
             rows = [issue("MEJ-100", "To Do", "2026-11-20")]
         elif 'duedate <= "2026-11-22"' in jql:
-            rows = [issue("MEJ-100", "To Do", "2026-11-20"),
-                    issue("MEJ-200", "blocked", "2026-11-10")]
+            rows = [issue("MEJ-100", "To Do", "2026-11-20"), issue("MEJ-200", "blocked", "2026-11-10")]
         else:
             raise AssertionError(f"Unexpected Jira query: {jql}")
         return {"issues": rows, "isLast": True}
@@ -56,11 +62,12 @@ class WeekFocus(unittest.TestCase):
                     self.queries.append(params["jql"])
                     raise JiraError("ACCOUNTABILITY_JIRA_HTTP_400")
                 return super().get(path, params)
+
         fake = InvalidSprint()
         with self.assertRaises(JiraError):
             read.week(fake, "MEJ", date(2026, 11, 18), mej_task_focus=True)
         self.assertFalse(any('statusCategory = "In Progress"' in q for q in fake.queries))
-        
+
     def test_jfm_keeps_the_legacy_weekly_query_and_summary_shape(self):
         class JimFake(FakeJira):
             def get(self, path, params):
@@ -71,6 +78,7 @@ class WeekFocus(unittest.TestCase):
                 else:
                     rows = [issue("JFM-100")]
                 return {"issues": rows, "isLast": True}
+
         fake = JimFake()
         got = read.week(fake, "JFM", date(2026, 11, 18))
         self.assertNotIn("outside", got)
@@ -90,8 +98,15 @@ class FakeBoard:
 
     def sprints(self, board_id, state):
         if state == "active":
-            return [{"id": 178, "name": f"{self.project} Sprint 12", "state": "active",
-                     "startDate": "2026-11-16T00:00:00-06:00", "endDate": "2026-11-22T23:30:00-06:00"}]
+            return [
+                {
+                    "id": 178,
+                    "name": f"{self.project} Sprint 12",
+                    "state": "active",
+                    "startDate": "2026-11-16T00:00:00-06:00",
+                    "endDate": "2026-11-22T23:30:00-06:00",
+                }
+            ]
         return []
 
     def board_issues(self, board_id, jql, fields):
@@ -102,16 +117,24 @@ class FakeBoard:
 class SnapshotFocus(unittest.TestCase):
     def test_mej_snapshot_filters_subtasks_only_from_task_level_sections(self):
         fake = FakeBoard("MEJ")
-        snap = project_snapshot(fake, "MEJ", 38, True,
-                                datetime(2026, 11, 18, tzinfo=ZoneInfo("America/Chicago")), keys=["MEJ"], mej_task_focus=True)
+        snap = project_snapshot(
+            fake,
+            "MEJ",
+            38,
+            True,
+            datetime(2026, 11, 18, tzinfo=ZoneInfo("America/Chicago")),
+            keys=["MEJ"],
+            mej_task_focus=True,
+        )
         self.assertEqual(snap["project"], "MEJ")
         self.assertTrue(fake.queries)
         self.assertTrue(all("issuetype != Sub-task" in q for q in fake.queries))
 
     def test_jfm_snapshot_does_not_inherit_mej_filters(self):
         fake = FakeBoard("JFM")
-        project_snapshot(fake, "JFM", 38, True,
-                         datetime(2026, 11, 18, tzinfo=ZoneInfo("America/Chicago")), keys=["JFM"])
+        project_snapshot(
+            fake, "JFM", 38, True, datetime(2026, 11, 18, tzinfo=ZoneInfo("America/Chicago")), keys=["JFM"]
+        )
         self.assertTrue(fake.queries)
         self.assertTrue(all("issuetype != Sub-task" not in q for q in fake.queries))
 
@@ -130,8 +153,7 @@ MAIN_SNAPSHOT_QUERIES = [
 
 
 class OffByDefault(unittest.TestCase):
-    """isolation: with no explicit argument MEJ behaves exactly as on main (JFM, V3 blocks and the summary untouched).
-    """
+    """isolation: with no explicit argument MEJ behaves exactly as on main (JFM, V3 blocks and the summary untouched)."""
 
     def week_run(self, project, rows_open, rows_done):
         class F:
@@ -140,25 +162,35 @@ class OffByDefault(unittest.TestCase):
             def get(self, path, params):
                 F.queries.append(params["jql"])
                 return {"issues": rows_done if "statusCategory = Done" in params["jql"] else rows_open, "isLast": True}
+
         F.queries = []
         got = read.week(F(), project, date(2026, 11, 18))
         return got, F.queries
 
     def test_default_week_queries_and_shape_are_mains_for_mej_and_jfm(self):
         for project in ("MEJ", "JFM"):
-            got, queries = self.week_run(project, [issue(f"{project}-1", "blocked", "2026-11-10")], [issue(f"{project}-2", "Done")])
+            got, queries = self.week_run(
+                project, [issue(f"{project}-1", "blocked", "2026-11-10")], [issue(f"{project}-2", "Done")]
+            )
             self.assertEqual(queries, [q.format(p=project) for q in MAIN_WEEK_QUERIES])
             self.assertEqual(set(got), {"open", "done", "jql"})
 
     def test_default_week_view_text_is_identical_for_mej_and_jfm_in_normal_and_empty_cases(self):
         for project in ("MEJ", "JFM"):
-            got, _ = self.week_run(project, [issue(f"{project}-1", "blocked", "2026-11-10"), issue(f"{project}-3")], [issue(f"{project}-2", "Done")])
+            got, _ = self.week_run(
+                project,
+                [issue(f"{project}-1", "blocked", "2026-11-10"), issue(f"{project}-3")],
+                [issue(f"{project}-2", "Done")],
+            )
             _, lines = render.week_view(got, date(2026, 11, 18), "https://example.invalid")
             self.assertEqual(lines[0], "2 open · 1 overdue · 1 blocked · 1 done this week")
             self.assertIn("In progress / To do (2):", lines)
             self.assertNotIn("Sprint commitments", " ".join(lines))
             empty, _ = self.week_run(project, [], [])
-            self.assertEqual(render.week_view(empty, date(2026, 11, 18), "https://example.invalid")[1][0], "0 open · 0 overdue · 0 blocked · 0 done this week")
+            self.assertEqual(
+                render.week_view(empty, date(2026, 11, 18), "https://example.invalid")[1][0],
+                "0 open · 0 overdue · 0 blocked · 0 done this week",
+            )
 
     def test_default_mej_keeps_mains_project_without_sprints_fallback_and_real_failures_still_raise(self):
         class NoSprints:
@@ -169,6 +201,7 @@ class OffByDefault(unittest.TestCase):
                 if "sprint in openSprints()" in params["jql"]:
                     raise JiraError("ACCOUNTABILITY_JIRA_HTTP_400")
                 return {"issues": [], "isLast": True}
+
         NoSprints.queries = []
         read.week(NoSprints(), "MEJ", date(2026, 11, 18))
         self.assertTrue(any('statusCategory = "In Progress"' in q for q in NoSprints.queries))
@@ -176,18 +209,22 @@ class OffByDefault(unittest.TestCase):
         class Down:
             def get(self, path, params):
                 raise JiraError("ACCOUNTABILITY_JIRA_HTTP_500")
+
         with self.assertRaises(JiraError):
             read.week(Down(), "MEJ", date(2026, 11, 18))
 
     def test_default_snapshot_queries_are_mains_for_mej_and_jfm(self):
         for project in ("MEJ", "JFM"):
             fake = FakeBoard(project)
-            project_snapshot(fake, project, 38, True, datetime(2026, 11, 18, tzinfo=ZoneInfo("America/Chicago")), keys=[project])
+            project_snapshot(
+                fake, project, 38, True, datetime(2026, 11, 18, tzinfo=ZoneInfo("America/Chicago")), keys=[project]
+            )
             self.assertEqual(sorted(fake.queries), sorted(q.format(p=project) for q in MAIN_SNAPSHOT_QUERIES))
 
     def test_week_caller_never_passes_the_argument(self):
         import inspect
         from lifeos.accountability import week as caller
+
         self.assertNotIn("mej_task_focus", inspect.getsource(caller))
 
 

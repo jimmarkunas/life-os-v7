@@ -1,32 +1,75 @@
 """synthetic only: recording a reply or a referral on a conversation Mark as Sent already recorded."""
+
 import unittest
 from datetime import date
 
 from lifeos.recruiters import notion as store, outreach as O
 from lifeos.sources.pipeline import job_page_outreach as JP
 from tests.recruiters.fakes import FakeRecruiters, page
-from tests.recruiters.test_outreach import (JOB_A, JOB_B, LEDGER, SCHEMA, Ledger, Service, fields, ledger_page, mark, walk)
+from tests.recruiters.test_outreach import (
+    JOB_A,
+    JOB_B,
+    LEDGER,
+    SCHEMA,
+    Ledger,
+    Service,
+    fields,
+    ledger_page,
+    mark,
+    walk,
+)
 
-OPTIONS = {"Action Status": {"type": "select", "select": {"options": [{"name": n} for n in ("Needs Action", "Waiting", *store.CONVERSATION, store.DECLINED)]}}}
+OPTIONS = {
+    "Action Status": {
+        "type": "select",
+        "select": {"options": [{"name": n} for n in ("Needs Action", "Waiting", *store.CONVERSATION, store.DECLINED)]},
+    }
+}
 JOB = {"id": JOB_A, "company": "Northwind Labs", "role": "Senior Technical Program Manager"}
 
 
 def table_blocks(page_id, people):
-    row = lambda name: {"id": f"r-{name}", "type": "table_row", "table_row": {"cells": [[{"type": "text", "plain_text": name}, {"type": "text", "plain_text": "\n"}], [], [], []]}}   # noqa: E731
-    top = [{"id": "h", "type": "heading_3", "heading_3": {"rich_text": [{"plain_text": "🤝 Outreach (Updated 10/15 @ 10:00 AM CT)"}]}, "has_children": False},
-           {"id": "tbl", "type": "table", "table": {"table_width": 4, "has_column_header": True}, "has_children": True}]
-    header = {"id": "r-h", "type": "table_row", "table_row": {"cells": [[{"plain_text": "Person — Employer"}], [], [], []]}}
+    row = lambda name: {
+        "id": f"r-{name}",
+        "type": "table_row",
+        "table_row": {
+            "cells": [[{"type": "text", "plain_text": name}, {"type": "text", "plain_text": "\n"}], [], [], []]
+        },
+    }  # noqa: E731
+    top = [
+        {
+            "id": "h",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"plain_text": "🤝 Outreach (Updated 10/15 @ 10:00 AM CT)"}]},
+            "has_children": False,
+        },
+        {"id": "tbl", "type": "table", "table": {"table_width": 4, "has_column_header": True}, "has_children": True},
+    ]
+    header = {
+        "id": "r-h",
+        "type": "table_row",
+        "table_row": {"cells": [[{"plain_text": "Person — Employer"}], [], [], []]},
+    }
     return {page_id: top, "tbl": [header] + [row(n) for n in people]}
 
 
 def world(action="Waiting", schema=None):
     rec = FakeRecruiters([_row(action)], schema=SCHEMA | (schema if schema is not None else OPTIONS))
-    ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), blocks=table_blocks(JOB_A, ["Avery Synthetic"]))
+    ledger = Ledger(
+        ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"),
+        blocks=table_blocks(JOB_A, ["Avery Synthetic"]),
+    )
     return ledger, rec
 
 
 def _row(action):
-    row = page("Avery Synthetic", client="Northwind Labs", role="Senior Technical Program Manager", action=action, follow_up="2026-10-19")
+    row = page(
+        "Avery Synthetic",
+        client="Northwind Labs",
+        role="Senior Technical Program Manager",
+        action=action,
+        follow_up="2026-10-19",
+    )
     row["properties"]["Job"] = {"type": "relation", "relation": [{"id": JOB_A}]}
     return row
 
@@ -40,19 +83,27 @@ class SetConversation(unittest.TestCase):
         _, rec = world()
         self.assertEqual(O.set_conversation(rec, JOB, "Avery Synthetic", store.OFFERED, LEDGER)["status"], "recorded")
         self.assertEqual(store.read(rec.pages[0])["action"], "Referral Offered")
-        self.assertEqual(O.set_conversation(rec, JOB, "avery  synthetic", store.CONFIRMED, LEDGER)["action"], "Referral Confirmed")
+        self.assertEqual(
+            O.set_conversation(rec, JOB, "avery  synthetic", store.CONFIRMED, LEDGER)["action"], "Referral Confirmed"
+        )
         self.assertEqual(store.read(rec.pages[0])["follow_up"], "2026-10-19")
 
     def test_replay_writes_nothing_and_confirmed_never_moves_back_to_offered(self):
         _, rec = world("Referral Confirmed")
-        for status, expected in ((store.CONFIRMED, "already_recorded"), (store.OFFERED, "not_changed"), (store.REPLIED, "not_changed")):
+        for status, expected in (
+            (store.CONFIRMED, "already_recorded"),
+            (store.OFFERED, "not_changed"),
+            (store.REPLIED, "not_changed"),
+        ):
             self.assertEqual(O.set_conversation(rec, JOB, "Avery Synthetic", status, LEDGER)["status"], expected)
         self.assertEqual(rec.writes, [])
 
     def test_a_closed_conversation_is_never_changed(self):
         for action in ("Declined", "Completed", "Dismissed"):
             _, rec = world(action)
-            self.assertEqual(O.set_conversation(rec, JOB, "Avery Synthetic", store.CONFIRMED, LEDGER)["status"], "not_changed")
+            self.assertEqual(
+                O.set_conversation(rec, JOB, "Avery Synthetic", store.CONFIRMED, LEDGER)["status"], "not_changed"
+            )
             self.assertEqual(rec.writes, [])
 
     def test_no_recorded_conversation_creates_nothing(self):
@@ -88,13 +139,17 @@ class Projection(unittest.TestCase):
             self.assertEqual(JP._next(r, date(2026, 10, 15))[0][0], text)
         self.assertEqual(JP._conversation(rows[0]), "Referral Offered")
         self.assertEqual(JP._conversation(rows[1]), "Referral Confirmed")
-        rolled = O.project(rows, {O._id(JOB_A): {"company": "Northwind Labs", "role": "TPM", "url": "u"}}, date(2026, 10, 15))
+        rolled = O.project(
+            rows, {O._id(JOB_A): {"company": "Northwind Labs", "role": "TPM", "url": "u"}}, date(2026, 10, 15)
+        )
         self.assertEqual(rolled[0]["outreach"], "3 contacted · 0 need action · 3 replied · 1 referral confirmed")
 
     def test_declined_is_closed_history(self):
         row = store.read(_row("Declined"))
         self.assertEqual(JP._next(row, date(2026, 10, 15))[0][0], "No follow-up")
-        self.assertEqual(O.project([row], {O._id(JOB_A): {"company": "x", "role": "y", "url": "u"}}, date(2026, 10, 15)), [])
+        self.assertEqual(
+            O.project([row], {O._id(JOB_A): {"company": "x", "role": "y", "url": "u"}}, date(2026, 10, 15)), []
+        )
 
 
 class EntryPoint(unittest.TestCase):
@@ -130,11 +185,17 @@ class MarkAsSentInTheTable(unittest.TestCase):
         rows = [store.read(_row(a)) for a in ("Waiting", "Referral Offered", "Declined")]
         cells = JP.cells(rows, date(2026, 10, 15), None, sent)
         for row in cells:
-            self.assertEqual([span[:2] for span in row[1] if span[1]], [("Mark as Sent ↗", sent)])  # the channel cell, under the channel and role lines
+            self.assertEqual(
+                [span[:2] for span in row[1] if span[1]], [("Mark as Sent ↗", sent)]
+            )  # the channel cell, under the channel and role lines
             self.assertEqual([span for col in (0, 2, 3) for span in row[col] if span[1]], [])
         plain = JP.cells(rows, date(2026, 10, 15))
-        self.assertTrue(all(span[1] is None for row in plain for span in row[1]))  # no origin, no link, no dangling text
-        self.assertTrue(all(len(row[1]) == 1 or row[1][-1][0] != "Mark as Sent ↗" for row in plain))  # and no dangling "Mark as Sent" text without a link
+        self.assertTrue(
+            all(span[1] is None for row in plain for span in row[1])
+        )  # no origin, no link, no dangling text
+        self.assertTrue(
+            all(len(row[1]) == 1 or row[1][-1][0] != "Mark as Sent ↗" for row in plain)
+        )  # and no dangling "Mark as Sent" text without a link
 
 
 class Screen(unittest.TestCase):
@@ -167,7 +228,9 @@ class Screen(unittest.TestCase):
         review = svc("POST", "/referral", form={**good, "who": "0", "status": "Referral Offered", "step": "review"})
         confirm = fields(review[2])
         for patch in ({"l0": "Mallory"}, {"status": "Referral Confirmed"}, {"who": "5"}, {"c": "bad"}, {"t": "bad"}):
-            self.assertEqual(svc("POST", "/referral", form={**confirm, **patch, "step": "confirm"})[0] in (400, 403), True, patch)
+            self.assertEqual(
+                svc("POST", "/referral", form={**confirm, **patch, "step": "confirm"})[0] in (400, 403), True, patch
+            )
         self.assertEqual(rec.writes, [])
 
     def test_no_conversation_on_the_page_offers_nothing(self):
@@ -184,7 +247,10 @@ class Screen(unittest.TestCase):
         self.assertEqual(rec.writes, [])
 
     def test_mark_as_sent_then_referral_is_one_row_end_to_end(self):
-        ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), blocks=table_blocks(JOB_A, ["Avery Synthetic"]))
+        ledger = Ledger(
+            ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"),
+            blocks=table_blocks(JOB_A, ["Avery Synthetic"]),
+        )
         rec = FakeRecruiters(schema=SCHEMA | OPTIONS)
         svc = Service(ledger, rec)
         self.assertEqual(mark(svc, JOB_A, "Avery Synthetic")[0], 200)

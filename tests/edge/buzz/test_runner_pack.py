@@ -1,6 +1,7 @@
 """the Oracle install pack for the renamed Buzz modules, built from the repo and run through the REAL runner on a temp
 tree with fake systemctl and curl.
 """
+
 import os
 import shutil
 import stat
@@ -55,10 +56,17 @@ class PackTests(unittest.TestCase):
             path.write_text(body)
             path.chmod(path.stat().st_mode | stat.S_IEXEC)
         self.pack = self.tmp / "pack"
-        subprocess.run([sys.executable, str(BUILDER), str(self.pack), "--root-prefix", str(self.prefix)], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(
+            [sys.executable, str(BUILDER), str(self.pack), "--root-prefix", str(self.prefix)],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
         self.state, self.inbox = str(self.tmp / "state"), str(self.tmp / "lifeos-pack-{key}")
         shutil.copytree(self.pack, self.inbox.format(key="LIFE-590"))
-        self.host = runner.Host(state=self.state, inbox=self.inbox, require_root=False, systemctl=FakeSystemd(str(self.tmp)))
+        self.host = runner.Host(
+            state=self.state, inbox=self.inbox, require_root=False, systemctl=FakeSystemd(str(self.tmp))
+        )
         self.sha8 = runner.pack_hash(self.inbox.format(key="LIFE-590"))[:8]
 
     def release(self):
@@ -76,8 +84,22 @@ class PackTests(unittest.TestCase):
     def test_the_pack_is_valid_and_holds_exactly_the_files_the_comment_names(self):
         manifest = runner.load_manifest(str(self.pack))
         self.assertEqual(manifest["services"], ["lifeos-buzz-mcp.service"])
-        shipped = sorted(str(p.relative_to(self.pack / "files" / "tree")) for p in (self.pack / "files" / "tree").rglob("*") if p.is_file())
-        self.assertEqual(shipped, ["lifeos/__init__.py", "lifeos/buzz/__init__.py", "lifeos/buzz/auth.py", "lifeos/buzz/mcp.py", "lifeos/buzz/nip98.py", "lifeos/buzz/relay.py"])
+        shipped = sorted(
+            str(p.relative_to(self.pack / "files" / "tree"))
+            for p in (self.pack / "files" / "tree").rglob("*")
+            if p.is_file()
+        )
+        self.assertEqual(
+            shipped,
+            [
+                "lifeos/__init__.py",
+                "lifeos/buzz/__init__.py",
+                "lifeos/buzz/auth.py",
+                "lifeos/buzz/mcp.py",
+                "lifeos/buzz/nip98.py",
+                "lifeos/buzz/relay.py",
+            ],
+        )
         self.assertIn("-m lifeos.buzz.mcp", (self.pack / "files" / "lifeos-buzz-mcp.service").read_text())
         self.assertEqual(len(manifest["files"]), 1 + len(shipped))
 
@@ -87,7 +109,13 @@ class PackTests(unittest.TestCase):
         self.assertEqual(self.current(), "releases/" + self.release())
         self.assertIn("-m lifeos.buzz.mcp", self.unit())
         readback = " ".join(result["readback"]) if isinstance(result["readback"], list) else str(result["readback"])
-        for want in ("switched=yes", "service_active=active", "process_module=lifeos.buzz.mcp", "previous_release_present=yes", "http_mcp=401"):
+        for want in (
+            "switched=yes",
+            "service_active=active",
+            "process_module=lifeos.buzz.mcp",
+            "previous_release_present=yes",
+            "http_mcp=401",
+        ):
             self.assertIn(want, readback)
         self.assertTrue((self.prefix / "opt" / "lifeos-buzz-mcp" / "releases" / "c423a4434c4c").is_dir())
 
@@ -95,8 +123,14 @@ class PackTests(unittest.TestCase):
         self.assertEqual((result["outcome"], result["code"]), ("fail", code), result)
         self.assertEqual(self.current(), "releases/c423a4434c4c")
         self.assertEqual(self.unit(), OLD_UNIT)
-        self.assertEqual((self.prefix / "running-release").read_text().strip(), "releases/c423a4434c4c")  # the service was restarted on the old release
-        self.assertFalse((self.prefix / "opt" / "lifeos-buzz-mcp" / "releases" / self.release() / "lifeos" / "buzz" / "mcp.py").exists())  # the runner removed the new files
+        self.assertEqual(
+            (self.prefix / "running-release").read_text().strip(), "releases/c423a4434c4c"
+        )  # the service was restarted on the old release
+        self.assertFalse(
+            (
+                self.prefix / "opt" / "lifeos-buzz-mcp" / "releases" / self.release() / "lifeos" / "buzz" / "mcp.py"
+            ).exists()
+        )  # the runner removed the new files
 
     def test_a_failed_restart_puts_the_old_unit_and_release_back(self):
         (self.prefix / "fail-restart").touch()
@@ -132,11 +166,16 @@ class ScratchPackTests(unittest.TestCase):
     def test_the_scratch_pack_is_valid_and_leaves_nothing_behind_when_it_succeeds(self):
         pack = ROOT / "lifeos" / "edge" / "runner" / "scratch-pack"
         manifest = runner.load_manifest(str(pack))
-        self.assertEqual((manifest["ticket"], manifest["files"], manifest["services"]), ("LIFE-310", ["/tmp/lifeos-runner-scratch.txt"], []))
+        self.assertEqual(
+            (manifest["ticket"], manifest["files"], manifest["services"]),
+            ("LIFE-310", ["/tmp/lifeos-runner-scratch.txt"], []),
+        )
         with tempfile.TemporaryDirectory() as folder:
             inbox = os.path.join(folder, "lifeos-pack-{key}")
             shutil.copytree(pack, inbox.format(key="LIFE-310"))
-            host = runner.Host(state=os.path.join(folder, "state"), inbox=inbox, require_root=False, systemctl=FakeSystemd(folder))
+            host = runner.Host(
+                state=os.path.join(folder, "state"), inbox=inbox, require_root=False, systemctl=FakeSystemd(folder)
+            )
             result = runner.execute("LIFE-310", runner.pack_hash(inbox.format(key="LIFE-310"))[:8], host)
         self.assertEqual((result["outcome"], result["code"]), ("ok", None), result)
         self.assertFalse(os.path.exists("/tmp/lifeos-runner-scratch.txt"))

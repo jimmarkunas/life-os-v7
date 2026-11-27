@@ -33,7 +33,9 @@ class Router:
 
 
 def page(count, start=0, link=None, unread=0):
-    body = {"value": [{"id": f"m{start + i}", "isRead": i >= unread, "subject": "Private subject"} for i in range(count)]}
+    body = {
+        "value": [{"id": f"m{start + i}", "isRead": i >= unread, "subject": "Private subject"} for i in range(count)]
+    }
     if link:
         body["@odata.nextLink"] = link
     return body
@@ -106,22 +108,34 @@ class ClientTests(unittest.TestCase):
                 Outlook(*bad)
 
     def test_device_sign_in_waits_then_returns_tokens_and_fails_closed_on_decline(self):
-        replies = iter([{"error": "authorization_pending"}, {"error": "slow_down"}, {"refresh_token": "R", "access_token": "A"}])
+        replies = iter(
+            [{"error": "authorization_pending"}, {"error": "slow_down"}, {"refresh_token": "R", "access_token": "A"}]
+        )
         with patch.object(outlook, "_post_form", side_effect=lambda url, form: next(replies)):
             clock = iter(range(0, 1000, 1))
-            got = outlook.device_wait("cid", {"device_code": "D", "expires_in": 900, "interval": 1}, sleep=lambda s: None,
-                                      clock=lambda: next(clock))
+            got = outlook.device_wait(
+                "cid",
+                {"device_code": "D", "expires_in": 900, "interval": 1},
+                sleep=lambda s: None,
+                clock=lambda: next(clock),
+            )
         self.assertEqual(got["refresh_token"], "R")
         with patch.object(outlook, "_post_form", side_effect=lambda url, form: {"error": "authorization_declined"}):
             with self.assertRaises(OutlookError) as error:
-                outlook.device_wait("cid", {"device_code": "D", "expires_in": 900}, sleep=lambda s: None, clock=lambda: 0)
+                outlook.device_wait(
+                    "cid", {"device_code": "D", "expires_in": 900}, sleep=lambda s: None, clock=lambda: 0
+                )
         self.assertEqual(str(error.exception), "OUTLOOK_SIGNIN_AUTHORIZATION_DECLINED")
 
 
 class WriteTests(unittest.TestCase):
     def test_the_write_sign_in_asks_for_the_write_scope_and_refresh_never_narrows_it(self):
         sent = []
-        with patch.object(outlook, "_post_form", side_effect=lambda url, form: (sent.append(form), {"device_code": "D", "access_token": "A"})[1]):
+        with patch.object(
+            outlook,
+            "_post_form",
+            side_effect=lambda url, form: (sent.append(form), {"device_code": "D", "access_token": "A"})[1],
+        ):
             outlook.device_start("cid")
             outlook.device_start("cid", write=True)
             outlook.refresh("cid", "R")
@@ -211,11 +225,27 @@ class StageTests(unittest.TestCase):
 
     def sign_in(self, db, token, env=None, replace=False, ids=None):
         said = []
-        with patch.object(stage, "device_start", return_value={"device_code": "D", "user_code": "ABCD-1234",
-                                                               "verification_uri": "https://example.invalid/device"}), \
-                patch.object(stage, "device_wait", return_value={"refresh_token": token}):
-            out = stage.auth(1, True, environ=env or self.ENV, connect=db.connect, say=said.append, replace=replace,
-                             client_factory=Mailbox(ids or {"SECRET-REFRESH": "inbox-1", "OTHER": "inbox-2"}))
+        with (
+            patch.object(
+                stage,
+                "device_start",
+                return_value={
+                    "device_code": "D",
+                    "user_code": "ABCD-1234",
+                    "verification_uri": "https://example.invalid/device",
+                },
+            ),
+            patch.object(stage, "device_wait", return_value={"refresh_token": token}),
+        ):
+            out = stage.auth(
+                1,
+                True,
+                environ=env or self.ENV,
+                connect=db.connect,
+                say=said.append,
+                replace=replace,
+                client_factory=Mailbox(ids or {"SECRET-REFRESH": "inbox-1", "OTHER": "inbox-2"}),
+            )
         return out, said
 
     def test_auth_dry_run_saves_nothing_and_live_saves_the_token_without_printing_it(self):
@@ -238,9 +268,13 @@ class StageTests(unittest.TestCase):
         with self.assertRaises(OutlookError) as error:  # same mailbox, different label
             self.sign_in(db, "SECRET-REFRESH", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})
         self.assertEqual(str(error.exception), "OUTLOOK_MAILBOX_ALREADY_SIGNED_IN_AS_OTHER_LABEL")
-        self.sign_in(db, "OTHER", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})  # a different mailbox on a free label
+        self.sign_in(
+            db, "OTHER", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"}
+        )  # a different mailbox on a free label
         self.assertEqual(sorted(db.rows), ["personal", "work"])
-        self.sign_in(db, "OTHER", replace=True, env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})  # same mailbox again is fine
+        self.sign_in(
+            db, "OTHER", replace=True, env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"}
+        )  # same mailbox again is fine
 
     def test_an_unfingerprinted_legacy_row_may_be_replaced_and_a_rotated_token_keeps_the_fingerprint(self):
         db = FakeDb({"personal": ["OLD", None]})
@@ -252,7 +286,10 @@ class StageTests(unittest.TestCase):
         self.assertEqual(db.rows["personal"], ["ROTATED", fp])
 
     def test_config_must_name_a_known_label_and_a_client_id(self):
-        for env in ({"OUTLOOK_CLIENT_ID": "c", "OUTLOOK_ACCOUNT": "not-a-known-label"}, {"OUTLOOK_ACCOUNT": "personal"}):
+        for env in (
+            {"OUTLOOK_CLIENT_ID": "c", "OUTLOOK_ACCOUNT": "not-a-known-label"},
+            {"OUTLOOK_ACCOUNT": "personal"},
+        ):
             with self.assertRaises(OutlookError):
                 stage.auth(1, True, environ=env, connect=FakeDb().connect)
 
@@ -260,17 +297,26 @@ class StageTests(unittest.TestCase):
         db = FakeDb({"personal": ["R1", "f1"], "work": ["R2", "f2"]})
 
         class Ok:
-            def __init__(self, cid, token, save): self.token = token
+            def __init__(self, cid, token, save):
+                self.token = token
+
             def messages(self, folder, since):
                 return [{"isRead": False}, {"isRead": True}] if self.token == "R1" else [{"isRead": False}]
 
-        out = stage.probe(1, False, environ=self.ENV, connect=db.connect, client_factory=Ok,
-                          now=datetime(2026, 10, 7, tzinfo=timezone.utc))
+        out = stage.probe(
+            1,
+            False,
+            environ=self.ENV,
+            connect=db.connect,
+            client_factory=Ok,
+            now=datetime(2026, 10, 7, tzinfo=timezone.utc),
+        )
         self.assertEqual((out["accounts"], out["ok"], out["recent"], out["unread"]), (2, 2, 3, 2))
         self.assertNotIn("personal", json.dumps(out))
 
         class Bad(Ok):
-            def messages(self, folder, since): raise OutlookError("OUTLOOK_HTTP_403")
+            def messages(self, folder, since):
+                raise OutlookError("OUTLOOK_HTTP_403")
 
         with self.assertRaises(OutlookError) as error:
             stage.probe(1, False, environ=self.ENV, connect=db.connect, client_factory=Bad)
@@ -289,9 +335,24 @@ class WorkflowTests(unittest.TestCase):
     def test_manual_only_and_only_the_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
-        self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),
-                         sorted(["OUTLOOK_CLIENT_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
+        self.assertEqual(
+            sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),
+            sorted(
+                ["OUTLOOK_CLIENT_ID"]
+                + [
+                    f"LIFEOS_ACQ_{n}"
+                    for n in (
+                        "SSH_PRIVATE_KEY",
+                        "DB_PASSWORD",
+                        "SSH_HOST",
+                        "SSH_USER",
+                        "SSH_KNOWN_HOSTS",
+                        "DB_NAME",
+                        "DB_USER",
+                    )
+                ]
+            ),
+        )
 
     def test_no_mailbox_address_anywhere_in_tracked_outlook_code(self):
         for path in list((ROOT / "lifeos" / "outlook").glob("*.py")) + [ROOT / "lifeos/platform/outlook.py"]:

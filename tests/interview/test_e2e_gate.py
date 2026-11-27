@@ -1,4 +1,5 @@
 """E01-E16 release gate (comment 10895)."""
+
 import importlib
 import json
 import pathlib
@@ -23,7 +24,9 @@ class Gate(unittest.TestCase):
                 with self.subTest(key=key, ref=ref):
                     case, method = resolve(ref)
                     self.assertTrue(issubclass(case, unittest.TestCase))
-                    self.assertFalse(getattr(case, "__unittest_skip__", False) or getattr(method, "__unittest_skip__", False))
+                    self.assertFalse(
+                        getattr(case, "__unittest_skip__", False) or getattr(method, "__unittest_skip__", False)
+                    )
 
     def test_a_pass_is_backed_and_every_gap_is_named(self):
         for key, item in GATE.items():

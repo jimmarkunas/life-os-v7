@@ -1,4 +1,5 @@
 """Fit engine behaviour on a synthetic profile."""
+
 from datetime import date
 import unittest
 
@@ -6,23 +7,49 @@ from lifeos.jobs.fit import GO_THRESHOLD, exclusions, extract
 from lifeos.jobs.fit.profile import Profile, ProfileError, load
 from lifeos.jobs.fit.score import evaluate
 
-PROFILE = Profile({
-    "years": 15, "scope": {"team_size": 10, "budget_usd": 20_000_000, "global": "direct", "enterprise": "direct",
-                           "multi_team": "direct", "executive": "adjacent", "people_leadership": "direct"},
-    "capabilities": [
-        {"id": "erp", "label": "ERP integrations", "class": "direct", "terms": ["netsuite", "erp"], "committed": True},
-        {"id": "cms", "label": "headless CMS", "class": "adjacent", "terms": ["contentful", "cms"]},
-        {"id": "pay", "label": "payments", "class": "direct", "terms": ["stripe", "payment"], "bucket": "skill"},
-        {"id": "etl", "label": "data pipelines", "class": "method", "terms": ["etl", "snowflake"]},
-        {"id": "pm", "label": "program delivery", "class": "direct", "terms": ["program management", "delivery"], "bucket": "skill"},
-    ],
-    "functions": [{"terms": ["program manager", "technical program manager", "roadmap"], "class": "direct"},
-                  {"terms": ["implementation", "integration"], "class": "adjacent"}],
-    "advantage": ["ai", "automation"], "specialization": ["technical program manager"],
-    "exclusions": [{"id": "acme", "reason": "named employer", "terms": ["acmecorp"], "where": "company"}],
-})
+PROFILE = Profile(
+    {
+        "years": 15,
+        "scope": {
+            "team_size": 10,
+            "budget_usd": 20_000_000,
+            "global": "direct",
+            "enterprise": "direct",
+            "multi_team": "direct",
+            "executive": "adjacent",
+            "people_leadership": "direct",
+        },
+        "capabilities": [
+            {
+                "id": "erp",
+                "label": "ERP integrations",
+                "class": "direct",
+                "terms": ["netsuite", "erp"],
+                "committed": True,
+            },
+            {"id": "cms", "label": "headless CMS", "class": "adjacent", "terms": ["contentful", "cms"]},
+            {"id": "pay", "label": "payments", "class": "direct", "terms": ["stripe", "payment"], "bucket": "skill"},
+            {"id": "etl", "label": "data pipelines", "class": "method", "terms": ["etl", "snowflake"]},
+            {
+                "id": "pm",
+                "label": "program delivery",
+                "class": "direct",
+                "terms": ["program management", "delivery"],
+                "bucket": "skill",
+            },
+        ],
+        "functions": [
+            {"terms": ["program manager", "technical program manager", "roadmap"], "class": "direct"},
+            {"terms": ["implementation", "integration"], "class": "adjacent"},
+        ],
+        "advantage": ["ai", "automation"],
+        "specialization": ["technical program manager"],
+        "exclusions": [{"id": "acme", "reason": "named employer", "terms": ["acmecorp"], "where": "company"}],
+    }
+)
 TODAY = date(2026, 10, 1)
-GOOD = """About the role
+GOOD = (
+    """About the role
 We are hiring a Technical Program Manager to lead delivery of our commerce platform.
 
 Responsibilities
@@ -40,7 +67,9 @@ Requirements
 Preferred
 • Familiarity with Snowflake
 • Experience with Kubernetes
-""" + "Join a collaborative remote team shipping software for merchants worldwide. " * 12
+"""
+    + "Join a collaborative remote team shipping software for merchants worldwide. " * 12
+)
 
 
 class Exclusions(unittest.TestCase):
@@ -53,7 +82,9 @@ class Exclusions(unittest.TestCase):
         one, soft = exclusions.check("Program Manager", "Acme", filler + "Clients include healthcare firms.")
         self.assertIsNone(one)
         self.assertEqual(soft, ["healthcare"])
-        two, _ = exclusions.check("Program Manager", "Acme", filler + "Clinical trial sites. More clinical trial work.")  # the default is two mentions
+        two, _ = exclusions.check(
+            "Program Manager", "Acme", filler + "Clinical trial sites. More clinical trial work."
+        )  # the default is two mentions
         self.assertEqual(two["id"], "clinical")
 
     def test_early_mention_is_hard_and_clearance_is_always_hard(self):
@@ -81,17 +112,25 @@ class Extraction(unittest.TestCase):
         terms = dict(extract.platform_hits(units))
         self.assertFalse(terms["netsuite"])
         self.assertTrue(terms["snowflake"])  # preferred -> optional
-        self.assertIn("Kubernetes", [n for n, _ in extract.candidates(extract.parse("Requirements\n• Experience with Zorbix, Quuxly"), set())] + ["Kubernetes"])
+        self.assertIn(
+            "Kubernetes",
+            [n for n, _ in extract.candidates(extract.parse("Requirements\n• Experience with Zorbix, Quuxly"), set())]
+            + ["Kubernetes"],
+        )
 
     def test_headingless_posting_still_yields_requirements(self):
-        text = ("We need a program manager with experience running NetSuite integrations. You must have 5 years of "
-                "experience in delivery. Experience with Contentful is a plus. " + "Great team and culture. " * 20)
+        text = (
+            "We need a program manager with experience running NetSuite integrations. You must have 5 years of "
+            "experience in delivery. Experience with Contentful is a plus. " + "Great team and culture. " * 20
+        )
         r = evaluate("Program Manager", "B", text, PROFILE, TODAY)
         self.assertIsNotNone(r.score)
         self.assertIn("Technical/Platform", r.buckets)
 
     def test_go_to_market_is_not_a_language(self):
-        self.assertEqual(extract.platform_hits(extract.parse("Requirements\n• Experience with go-to-market planning")), [])
+        self.assertEqual(
+            extract.platform_hits(extract.parse("Requirements\n• Experience with go-to-market planning")), []
+        )
 
 
 class Scoring(unittest.TestCase):
@@ -103,9 +142,11 @@ class Scoring(unittest.TestCase):
         self.assertEqual(set(r.buckets), {"Role/Seniority", "Functional", "Technical/Platform", "Delivery complexity"})
 
     def test_off_profile_posting_is_no_go_with_a_reason(self):
-        text = ("Responsibilities\n• Build backend services as a software engineer\n• Write Rust and Go services\n\n"
-                "Requirements\n• Experience with Rust, Terraform and Kubernetes\n• Experience with Kafka and Spark\n"
-                "• Proficiency in distributed systems\n• 5+ years of experience in backend development\n") + "Filler words here. " * 80
+        text = (
+            "Responsibilities\n• Build backend services as a software engineer\n• Write Rust and Go services\n\n"
+            "Requirements\n• Experience with Rust, Terraform and Kubernetes\n• Experience with Kafka and Spark\n"
+            "• Proficiency in distributed systems\n• 5+ years of experience in backend development\n"
+        ) + "Filler words here. " * 80
         r = evaluate("Senior Software Engineer", "Beta", text, PROFILE, TODAY)
         self.assertEqual(r.decision, "No-Go")
         self.assertTrue(r.capped)
@@ -113,14 +154,28 @@ class Scoring(unittest.TestCase):
         self.assertIn("Capped at 40", r.why)
 
     def test_committed_correction_is_direct_whatever_its_class(self):
-        p = Profile({"years": 10, "capabilities": [{"id": "x", "label": "x", "class": "unsupported", "terms": ["netsuite"], "committed": True}]})
+        p = Profile(
+            {
+                "years": 10,
+                "capabilities": [
+                    {"id": "x", "label": "x", "class": "unsupported", "terms": ["netsuite"], "committed": True}
+                ],
+            }
+        )
         r = evaluate("Manager", "B", "Requirements\n• Experience with NetSuite\n" + "pad " * 100, p, TODAY)
         self.assertEqual([i[2] for i in r.items if i[1] == "netsuite"], ["direct"])
 
     def test_inflated_requirement_counts_half(self):
         def weights(years):
-            r = evaluate("Manager", "B", f"Requirements\n• Must have {years}+ years of experience leading programs\n" + "pad " * 100, PROFILE, TODAY)
+            r = evaluate(
+                "Manager",
+                "B",
+                f"Requirements\n• Must have {years}+ years of experience leading programs\n" + "pad " * 100,
+                PROFILE,
+                TODAY,
+            )
             return [i[3] for i in r.items if i[1] == f"{years}+ years"]
+
         self.assertEqual(weights(10), [2.0])  # REQUIRED counts double
         self.assertEqual(weights(20), [1.0])  # 20 years is inflated: half of that
 
@@ -141,11 +196,20 @@ class Scoring(unittest.TestCase):
         self.assertIn("professional Fit is", r.why)
 
     def test_a_stray_engineering_requirement_does_not_cap(self):
-        r = evaluate("Technical Program Manager", "B", GOOD + "\nRequirements\n• Experience with software development practices\n", PROFILE, TODAY)
+        r = evaluate(
+            "Technical Program Manager",
+            "B",
+            GOOD + "\nRequirements\n• Experience with software development practices\n",
+            PROFILE,
+            TODAY,
+        )
         self.assertFalse(r.capped)
 
     def test_dimensions_the_posting_does_not_activate_do_not_lower_fit(self):
-        text = "Responsibilities\n• Own the program roadmap\n• Drive program delivery for the team\n" + "pad words here " * 40
+        text = (
+            "Responsibilities\n• Own the program roadmap\n• Drive program delivery for the team\n"
+            + "pad words here " * 40
+        )
         r = evaluate("Program Manager", "B", text, PROFILE, TODAY)
         self.assertGreaterEqual(r.score, 90)
 
@@ -172,8 +236,11 @@ class Scoring(unittest.TestCase):
 class Stage(unittest.TestCase):
     def test_lane_decision_for_a_newsletter_job(self):
         from lifeos.jobs.fit import stage
+
         base = (1, "Technical Program Manager", "Beta", GOOD, "fp", "Newsletter")
-        remote = stage.score_rows([base + ("Remote - United States", "$120K/yr - $150K/yr", None, date(2026, 9, 30))], PROFILE, TODAY)[0]
+        remote = stage.score_rows(
+            [base + ("Remote - United States", "$120K/yr - $150K/yr", None, date(2026, 9, 30))], PROFILE, TODAY
+        )[0]
         self.assertEqual((remote[3].status, remote[4], remote[5]), ("ADMIT", "US Remote", "remote"))
         onsite = stage.score_rows([base + ("Austin, TX (Hybrid)", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual(onsite[3].status, "EXCLUDE")
@@ -181,36 +248,73 @@ class Stage(unittest.TestCase):
         self.assertEqual(low[3].status, "EXCLUDE")  # explicit pay below $75K
         stale = stage.score_rows([base + ("Remote", None, date(2026, 8, 1), date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual(stale[3].status, "EXCLUDE")  # employer Posting Date beats First Surfaced
-        gated = stage.score_rows([(2, "Program Manager", "AcmeCorp Inc", GOOD, "fp", "Newsletter", "Remote", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
+        gated = stage.score_rows(
+            [(2, "Program Manager", "AcmeCorp Inc", GOOD, "fp", "Newsletter", "Remote", None, None, date(2026, 9, 30))],
+            PROFILE,
+            TODAY,
+        )[0]
         self.assertEqual((gated[3].status, gated[2].decision), ("EXCLUDE", "No-Go"))
 
     def test_a_keep_list_credit_manager_product_role_is_not_excluded_by_the_financial_risk_title_rule(self):
         from lifeos.jobs.fit import stage
-        london = ("Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", "web:su-revolut-ltd")
-        kept = stage.score_rows([(1, "Credit Manager (Product)", "Revolut Ltd", GOOD, "fp") + london], PROFILE, TODAY)[0]
+
+        london = (
+            "Scale-Up",
+            "London \u00b7 office \u00b7 United Kingdom",
+            None,
+            None,
+            date(2026, 9, 30),
+            "Scale-up:POSITIVE",
+            "web:su-revolut-ltd",
+        )
+        kept = stage.score_rows([(1, "Credit Manager (Product)", "Revolut Ltd", GOOD, "fp") + london], PROFILE, TODAY)[
+            0
+        ]
         self.assertNotEqual(kept[3].status, "EXCLUDE")
         self.assertEqual(kept[2].exclusion, "finance_risk_domain")  # the rule still fires on the Fit result
         for title, company in (("Credit Manager (Risk)", "Revolut Ltd"), ("Credit Manager (Product)", "Acme Ltd")):
             other = stage.score_rows([(2, title, company, GOOD, "fp") + london], PROFILE, TODAY)[0]
             self.assertEqual(other[3].status, "EXCLUDE", (title, company))
 
-    def test_a_thin_page_on_a_scale_up_boards_own_source_is_admitted_when_the_title_fits_and_never_excluded_for_fit(self):
+    def test_a_thin_page_on_a_scale_up_boards_own_source_is_admitted_when_the_title_fits_and_never_excluded_for_fit(
+        self,
+    ):
         """The same page from any other source is judged as before."""
         from lifeos.jobs.fit import stage
+
         thin = "We are hiring a delivery lead to join our team in London. " * 4
-        row = lambda source: (7, "Delivery Lead", "Example Ltd", thin, "fp", "Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", source)
+        row = lambda source: (
+            7,
+            "Delivery Lead",
+            "Example Ltd",
+            thin,
+            "fp",
+            "Scale-Up",
+            "London \u00b7 office \u00b7 United Kingdom",
+            None,
+            None,
+            date(2026, 9, 30),
+            "Scale-up:POSITIVE",
+            source,
+        )
         for score, want in ((40, "REVIEW"), (90, "ADMIT")):
             kept = stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: score})[0]
             self.assertEqual(kept[3].status, want, score)
-        self.assertEqual(stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: 40})[0][3].reason, "Fit 40 below 72 (on Jim's keep list)")
+        self.assertEqual(
+            stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: 40})[0][3].reason,
+            "Fit 40 below 72 (on Jim's keep list)",
+        )
         other = stage.score_rows([row("web:greenhouse-example")], PROFILE, TODAY, fit={7: 40})[0]
         self.assertEqual(other[3].status, "EXCLUDE")
 
     def test_score_rows_is_pure_and_missing_profile_is_a_noop(self):
         from lifeos.jobs.fit import stage
+
         out = stage.score_rows([(1, "Technical Program Manager", "Beta", GOOD, "fp")], PROFILE, TODAY)
         self.assertEqual((out[0][0], out[0][2].decision), (1, "Go"))
-        self.assertEqual((out[0][3].status, out[0][3].reason), ("ADMIT", "remote assumed"))  # no office requirement: remote presumed
+        self.assertEqual(
+            (out[0][3].status, out[0][3].reason), ("ADMIT", "remote assumed")
+        )  # no office requirement: remote presumed
         self.assertEqual(stage.run(10, False, environ={})["profile"], "missing")
 
 
@@ -227,19 +331,21 @@ class ProfileLoading(unittest.TestCase):
         self.assertNotEqual(Profile({"years": 1}).hash, Profile({"years": 2}).hash)
 
 
-
 class RequeueFloorTests(unittest.TestCase):
     def test_one_statement_for_old_floor_exclusions_only(self):
         from lifeos.jobs.fit import stage
         from tests.kit.db import FakeConn
+
         conn = FakeConn()
         conn.cur.rowcount = 7
         self.assertEqual(stage.requeue_floor(conn.cursor()), 7)
         self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_jobs"])
         import inspect
+
         source = inspect.getsource(stage.requeue_floor)
-        sql = source[source.index('"UPDATE'):source.index('(_now(),))')]
+        sql = source[source.index('"UPDATE') : source.index('(_now(),))')]
         import re
+
         literal = "".join(re.findall(r'"([^"]*)"', sql))
         literal % ("2026-10-03",)
 
@@ -248,11 +354,13 @@ class RejudgeExcludedTests(unittest.TestCase):
     def test_marks_stale_only_the_fit_row_of_a_ready_job_with_no_page_and_an_exclude_decision(self):
         from lifeos.jobs.fit import stage
         from tests.kit.db import FakeConn
+
         conn = FakeConn()
         conn.cur.rowcount = 39
         self.assertEqual(stage.rejudge_excluded(conn.cursor()), 39)
         self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_job_fit"])
         import inspect
+
         sql = inspect.getsource(stage.rejudge_excluded)
         for part in ("j.status='READY'", "j.notion_page_id IS NULL", "f.admission='EXCLUDE'"):
             self.assertIn(part, sql)
@@ -262,8 +370,9 @@ class RejudgeExcludedTests(unittest.TestCase):
     def test_the_statement_survives_the_driver_formatting(self):
         import inspect
         from lifeos.jobs.fit import stage
+
         source = inspect.getsource(stage.rejudge_excluded)
-        sql = source[source.index('"UPDATE'):source.index('")\n    return')]
+        sql = source[source.index('"UPDATE') : source.index('")\n    return')]
         "".join(sql.split('"')) % ()  # no stray % in the statement
 
 
@@ -276,7 +385,9 @@ class ProfessionGate(unittest.TestCase):
 
     def test_the_rows_jim_rejected_are_hard_exclusions(self):
         self.assertEqual(self.hard("Director, TA Infrastructure"), "hr_function")
-        self.assertEqual(self.hard("Senior Manager, Strategy and Operations - People Experience [Remote]"), "hr_function")
+        self.assertEqual(
+            self.hard("Senior Manager, Strategy and Operations - People Experience [Remote]"), "hr_function"
+        )
         self.assertEqual(self.hard("Senior Director, Back Up Care Program"), "care_hospitality")
         self.assertEqual(self.hard("Nursery Housekeeper"), "care_hospitality")
         self.assertEqual(self.hard("Nursery Chef - NEW LAUNCH!"), "care_hospitality")
@@ -284,8 +395,15 @@ class ProfessionGate(unittest.TestCase):
         self.assertEqual(self.hard("Senior Project Manager", "Mayo Clinic"), "healthcare_employer")
 
     def test_legitimate_program_titles_are_not_caught(self):
-        for title in ("Technical Program Manager", "Senior Director, Technical Program Management", "Benefits Realization Manager",
-                      "Director, Platform Infrastructure", "Engagement Manager", "Partner Manager", "Senior Scrum Master"):
+        for title in (
+            "Technical Program Manager",
+            "Senior Director, Technical Program Management",
+            "Benefits Realization Manager",
+            "Director, Platform Infrastructure",
+            "Engagement Manager",
+            "Partner Manager",
+            "Senior Scrum Master",
+        ):
             self.assertIsNone(self.hard(title), title)
 
     def test_an_analyst_level_title_is_capped_below_the_review_band(self):
@@ -294,12 +412,16 @@ class ProfessionGate(unittest.TestCase):
         self.assertLessEqual(analyst.score, 55)
         self.assertIn("analyst-level", analyst.why)
         self.assertGreater(manager.score, 55)
-        self.assertGreater(evaluate("Associate Director, Technical Program Management", "Acme", GOOD, PROFILE, TODAY).score, 55)
+        self.assertGreater(
+            evaluate("Associate Director, Technical Program Management", "Acme", GOOD, PROFILE, TODAY).score, 55
+        )
 
     def test_generic_requirements_with_no_matching_function_are_capped(self):
-        generic = ("About the role\nWe need an organised person to look after the daily running of the site.\n\nRequirements\n"
-                   "• Strong communication skills\n• Good organisational skills\n• Attention to detail and time management\n"
-                   "• Ability to collaborate and prioritise\n• Bachelor's degree preferred\n") + "We are a friendly team who value collaboration. " * 12
+        generic = (
+            "About the role\nWe need an organised person to look after the daily running of the site.\n\nRequirements\n"
+            "• Strong communication skills\n• Good organisational skills\n• Attention to detail and time management\n"
+            "• Ability to collaborate and prioritise\n• Bachelor's degree preferred\n"
+        ) + "We are a friendly team who value collaboration. " * 12
         result = evaluate("Site Lead", "Acme", generic, PROFILE, TODAY)
         self.assertLessEqual(result.score, 50)
         self.assertEqual(result.decision, "No-Go")
@@ -307,12 +429,19 @@ class ProfessionGate(unittest.TestCase):
 
     def test_a_city_and_state_is_no_longer_an_office_job_but_a_stated_requirement_is(self):
         from lifeos.jobs import lanes  # withdraws 's city rule
+
         self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "unknown")
-        self.assertEqual(lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "You must work onsite in Rochester."), "onsite")
+        self.assertEqual(
+            lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "You must work onsite in Rochester."), "onsite"
+        )
         self.assertEqual(lanes.work_mode_for_fit("United States", "Project Manager", ""), "unknown")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX (Remote)", "Project Manager", ""), "remote")
-        self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Project Manager", "This is a fully remote role."), "remote")
-        self.assertEqual(lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown")  # acquisition filters never guess
+        self.assertEqual(
+            lanes.work_mode_for_fit("Austin, TX", "Project Manager", "This is a fully remote role."), "remote"
+        )
+        self.assertEqual(
+            lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown"
+        )  # acquisition filters never guess
 
 
 class JimsExclusions(unittest.TestCase):
@@ -323,12 +452,26 @@ class JimsExclusions(unittest.TestCase):
         return got and got["id"]
 
     def test_five_named_roles_are_excluded(self):
-        for title in ("Head of Revenue Enablement", "Revenue Enablement Lead", "Director of Engineering", "Technical Trainer", "Senior Event Manager"):
+        for title in (
+            "Head of Revenue Enablement",
+            "Revenue Enablement Lead",
+            "Director of Engineering",
+            "Technical Trainer",
+            "Senior Event Manager",
+        ):
             self.assertEqual(self.hard(title), "not_my_function", title)
 
     def test_wanted_roles_are_not_caught(self):
-        for title in ("Head of Product (Fraud)", "Product Owner (Technical)", "Product Owner (UX)", "Entrepreneur in Residence",
-                      "Operations Manager (Revenue)", "Engineering Program Manager", "Product Designer (Platform)", "Partnerships Manager (Lifestyle)"):
+        for title in (
+            "Head of Product (Fraud)",
+            "Product Owner (Technical)",
+            "Product Owner (UX)",
+            "Entrepreneur in Residence",
+            "Operations Manager (Revenue)",
+            "Engineering Program Manager",
+            "Product Designer (Platform)",
+            "Partnerships Manager (Lifestyle)",
+        ):
             self.assertIsNone(self.hard(title), title)
 
     def test_plain_fraud_and_fincrime_roles_stay_excluded(self):
@@ -338,14 +481,20 @@ class JimsExclusions(unittest.TestCase):
 
 class BoilerplateIsNotARequirement(unittest.TestCase):
     def test_equal_opportunity_and_application_legal_lines_are_dropped(self):
-        text = ("Requirements\n3+ years in product\nThat\u2019s why we encourage applications from people with diverse backgrounds\n"
-                "By submitting this application, I confirm that all the information given is correct")
+        text = (
+            "Requirements\n3+ years in product\nThat\u2019s why we encourage applications from people with diverse backgrounds\n"
+            "By submitting this application, I confirm that all the information given is correct"
+        )
         self.assertEqual([u.text for u in extract.requirement_units(extract.parse(text))], ["3+ years in product"])
 
 
 class EducationGate(unittest.TestCase):
     def test_education_titles_and_school_employers_are_hard_exclusions(self):
-        for title in ("Senior Manager of Ellucian Student Delivery Excellence & Enablement |Remote", "Director, Admissions Operations", "K-12 Program Manager"):
+        for title in (
+            "Senior Manager of Ellucian Student Delivery Excellence & Enablement |Remote",
+            "Director, Admissions Operations",
+            "K-12 Program Manager",
+        ):
             hard, _ = exclusions.check(title, "Acme", GOOD)
             self.assertEqual(hard["id"], "education_role", title)
         hard, _ = exclusions.check("Program Manager", "Kido Schools UK Limited", GOOD)
@@ -356,11 +505,22 @@ class EducationGate(unittest.TestCase):
 class WorkModeWindow(unittest.TestCase):
     def test_an_explicit_statement_deep_in_the_description_counts_in_the_fit_stage_only(self):
         from lifeos.jobs import lanes
-        text = "Overview of the company and the team. " * 80 + "This is a remote position open to candidates in the United States."
+
+        text = (
+            "Overview of the company and the team. " * 80
+            + "This is a remote position open to candidates in the United States."
+        )
         self.assertGreater(text.lower().index("this is a remote position"), 1500)
         self.assertEqual(lanes.work_mode_for_fit("United States", "Program Manager", text), "remote")
         self.assertEqual(lanes.detect_work_mode("United States", "Program Manager", text), "unknown")
-        self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Program Manager", "Overview. " * 300 + "This is a hybrid position, three days a week in the office."), "hybrid")
+        self.assertEqual(
+            lanes.work_mode_for_fit(
+                "Austin, TX",
+                "Program Manager",
+                "Overview. " * 300 + "This is a hybrid position, three days a week in the office.",
+            ),
+            "hybrid",
+        )
 
 
 class ScaleUpJunk(unittest.TestCase):
@@ -373,52 +533,97 @@ class ScaleUpJunk(unittest.TestCase):
         return got and got["id"]
 
     def test_sales_and_language_titles_are_hard_exclusions(self):
-        for title in ("API Enterprise Sales Executive", "API Enterprise Sales Executive (Spanish-Speaking)", "API Enterprise Sales Executive (German-Speaking)",
-                      "Senior Account Executive", "Business Development Manager", "Customer Success Manager II, Enterprise", "SDR, Fintech"):
+        for title in (
+            "API Enterprise Sales Executive",
+            "API Enterprise Sales Executive (Spanish-Speaking)",
+            "API Enterprise Sales Executive (German-Speaking)",
+            "Senior Account Executive",
+            "Business Development Manager",
+            "Customer Success Manager II, Enterprise",
+            "SDR, Fintech",
+        ):
             self.assertIn(self.hard(title), ("sales_role", "language_requirement"), title)
         self.assertEqual(self.hard("Technical Program Manager (Polish-Speaking)"), "language_requirement")
 
     def test_pre_sales_solutions_and_program_titles_are_left_to_fit(self):
-        for title in ("Solutions Architect - Pre Sales", "Pre Sales and Client Implementation Manager", "Technical Program Manager", "Director of Delivery"):
+        for title in (
+            "Solutions Architect - Pre Sales",
+            "Pre Sales and Client Implementation Manager",
+            "Technical Program Manager",
+            "Director of Delivery",
+        ):
             self.assertIsNone(self.hard(title), title)
 
     def test_junior_and_graduate_titles_are_capped_below_the_review_band(self):
-        for title in ("Junior Product Designer", "Systems Associate (Graduate/Entry-level opportunity)", "Content Operations Associate"):
+        for title in (
+            "Junior Product Designer",
+            "Systems Associate (Graduate/Entry-level opportunity)",
+            "Content Operations Associate",
+        ):
             self.assertLessEqual(evaluate(title, "Acme", GOOD, PROFILE, TODAY).score, 55, title)
 
 
 class LegalComplianceTitles(unittest.TestCase):
     def test_titles_from_the_adobe_flood_and_the_methodology_list_are_excluded_and_program_titles_are_not(self):
-        for title in ("Senior Manager, Legal Operations", "Senior Manager, Employee Relations", "Research Scientist (Applied) - IV", "AML Analyst",
-                      "Threat Intelligence / Reverse Engineering Investigator", "Senior Media Planner", "Compliance Officer"):
+        for title in (
+            "Senior Manager, Legal Operations",
+            "Senior Manager, Employee Relations",
+            "Research Scientist (Applied) - IV",
+            "AML Analyst",
+            "Threat Intelligence / Reverse Engineering Investigator",
+            "Senior Media Planner",
+            "Compliance Officer",
+        ):
             hard, _ = exclusions.check(title, "Acme", GOOD)
             self.assertEqual(hard["id"], "legal_compliance", title)
-        for title in ("Sr Technology Compliance Product Owner", "Program Lead, e-Invoicing", "Senior Product Manager, AI Brand Visibility"):
+        for title in (
+            "Sr Technology Compliance Product Owner",
+            "Program Lead, e-Invoicing",
+            "Senior Product Manager, AI Brand Visibility",
+        ):
             self.assertIsNone(exclusions.check(title, "Acme", GOOD)[0], title)
 
 
 class FinanceDomainAndFunctionalCap(unittest.TestCase):
-    """Chief Risk Officer at Fit 84, Operational Risk Manager 75, FinCrime Risk Manager 68-78 for a program manager.
-    """
+    """Chief Risk Officer at Fit 84, Operational Risk Manager 75, FinCrime Risk Manager 68-78 for a program manager."""
 
     def hard(self, title):
         got, _ = exclusions.check(title, "Acme", GOOD)
         return got and got["id"]
 
     def test_financial_risk_fincrime_and_audit_titles_are_hard_exclusions(self):
-        for title in ("Chief Risk Officer", "Enterprise Risk Manager", "Operational Risk Manager (Outsourcing)", "FinCrime Risk Manager (Fraud)",
-                      "Financial Crime Compliance Governance Manager", "Regulatory Compliance Manager (Wealth & Trading)", "Head of Risk (Non-Retail)",
-                      "Credit Risk Director", "Treasury Manager", "Internal Audit Lead", "MLRO", "Sanctions Compliance Officer"):
+        for title in (
+            "Chief Risk Officer",
+            "Enterprise Risk Manager",
+            "Operational Risk Manager (Outsourcing)",
+            "FinCrime Risk Manager (Fraud)",
+            "Financial Crime Compliance Governance Manager",
+            "Regulatory Compliance Manager (Wealth & Trading)",
+            "Head of Risk (Non-Retail)",
+            "Credit Risk Director",
+            "Treasury Manager",
+            "Internal Audit Lead",
+            "MLRO",
+            "Sanctions Compliance Officer",
+        ):
             self.assertIsNotNone(self.hard(title), title)
 
     def test_program_and_product_titles_that_mention_risk_or_compliance_are_not_caught(self):
-        for title in ("Technical Program Manager", "Sr Technology Compliance Product Owner", "Program Risk Manager", "Project Risk Lead",
-                      "Senior Program Manager, Payments Platform", "Delivery Risk Manager", "Director, Platform Risk and Dependency Management"):
+        for title in (
+            "Technical Program Manager",
+            "Sr Technology Compliance Product Owner",
+            "Program Risk Manager",
+            "Project Risk Lead",
+            "Senior Program Manager, Payments Platform",
+            "Delivery Risk Manager",
+            "Director, Platform Risk and Dependency Management",
+        ):
             self.assertIsNone(self.hard(title), title)
 
     def test_fit_cannot_exceed_the_functional_area_by_more_than_the_margin(self):
         from unittest import mock
         from lifeos.jobs.fit import score
+
         buckets = {"role": 100, "functional": 33, "delivery": 100}
         with mock.patch.object(score, "_arithmetic", return_value=(80, buckets)):
             result = evaluate("Technical Program Manager", "Acme", GOOD, PROFILE, TODAY)
@@ -434,11 +639,14 @@ class FinanceDomainAndFunctionalCap(unittest.TestCase):
 
 class ExtraProfileBlock(unittest.TestCase):
     """evidence is added through FIT_PROFILE_EXTRA_JSON without replacing the profile."""
+
     BASE = '{"years": 15, "capabilities": [{"id": "a", "label": "A", "class": "direct", "terms": ["alpha"]}], "scope": {"team_size": 10}}'
 
     def test_the_extra_block_adds_and_never_replaces(self):
-        extra = ('{"years": 20, "capabilities": [{"id": "b", "label": "B", "class": "direct", "terms": ["beta"]}], '
-                 '"functions": [{"terms": ["product owner"], "class": "direct"}], "scope": {"team_size": 99, "budget_usd": 5}}')
+        extra = (
+            '{"years": 20, "capabilities": [{"id": "b", "label": "B", "class": "direct", "terms": ["beta"]}], '
+            '"functions": [{"terms": ["product owner"], "class": "direct"}], "scope": {"team_size": 99, "budget_usd": 5}}'
+        )
         profile = load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": extra})
         self.assertEqual([c["id"] for c in profile.capabilities], ["a", "b"])
         self.assertEqual(profile.years, 20)
@@ -446,19 +654,28 @@ class ExtraProfileBlock(unittest.TestCase):
         self.assertIsNotNone(profile.function("product owner"))
 
     def test_no_extra_block_is_the_same_profile_and_hash(self):
-        self.assertEqual(load({"FIT_PROFILE_JSON": self.BASE}).hash, load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": ""}).hash)
+        self.assertEqual(
+            load({"FIT_PROFILE_JSON": self.BASE}).hash,
+            load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": ""}).hash,
+        )
 
     def test_an_invalid_extra_block_is_an_error_not_silently_ignored(self):
         with self.assertRaises(ProfileError):
             load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": "{not json"})
         with self.assertRaises(ProfileError):
-            load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": '{"capabilities": [{"id": "x", "class": "bogus", "terms": ["x"]}]}'})
+            load(
+                {
+                    "FIT_PROFILE_JSON": self.BASE,
+                    "FIT_PROFILE_EXTRA_JSON": '{"capabilities": [{"id": "x", "class": "bogus", "terms": ["x"]}]}',
+                }
+            )
 
 
 class RevivedStatement(unittest.TestCase):
     def test_the_revive_statement_survives_driver_formatting_and_is_guarded(self):
         import inspect, re
         from lifeos.jobs.fit import stage
+
         source = inspect.getsource(stage._gate)
         start = source.index('"UPDATE v7_jobs SET status=\'READY\', unresolved_reason=\'requeued_fit\'')
         end = source.index("(_now(), job_id))", start)
@@ -477,6 +694,7 @@ class FitTag(unittest.TestCase):
         from unittest import mock
         from lifeos.jobs import lanes
         from lifeos.jobs.fit import stage
+
         for semantic in (False, True):
             for policy in ("l9", "l13", "l100"):
                 with mock.patch.object(lanes, "POLICY_VERSION", policy):
@@ -494,6 +712,7 @@ class FitTag(unittest.TestCase):
 class OnlyClause(unittest.TestCase):
     def test_named_companies_become_a_bound_or_filter_and_funnel_or_short_names_are_ignored(self):
         from lifeos.jobs.fit import stage
+
         sql, params = stage.only_clause("revolut, wheely ,ab")
         self.assertEqual(params, ("%revolut%", "%revolut%", "%wheely%", "%wheely%"))
         self.assertEqual(sql.count("j.company LIKE"), 2)
@@ -504,6 +723,7 @@ class OnlyClause(unittest.TestCase):
 
     def test_the_pick_statement_with_the_filter_has_one_placeholder_per_parameter(self):
         from lifeos.jobs.fit import stage
+
         extra_sql, extra_params = stage.only_clause("revolut")
         query = (stage.PICK % (", ".join(stage.AUTO), "%s", "%s", "%s")).replace(stage.ORDER, extra_sql + stage.ORDER)
         self.assertEqual(query.count("%s"), 3 + len(extra_params))
@@ -512,19 +732,32 @@ class OnlyClause(unittest.TestCase):
     def test_d248_fit_takes_jobs_not_from_a_board_scan_first_then_the_oldest(self):
         import sqlite3
         from lifeos.jobs.fit import stage
+
         self.assertIn(stage.ORDER + " LIMIT %s", stage.PICK)
         db = sqlite3.connect(":memory:")
         db.execute("CREATE TABLE v7_jobs (id INTEGER, source TEXT, first_seen TEXT)")
-        db.executemany("INSERT INTO v7_jobs VALUES (?, ?, ?)", [(1, "web:greenhouse:a", "2026-10-01"), (2, "jobright", "2026-10-20"), (3, None, "2026-10-21"),
-                                                                 (4, "web:titlewatch:b", "2026-09-01"), (5, "linkedin", "2026-10-02")])
+        db.executemany(
+            "INSERT INTO v7_jobs VALUES (?, ?, ?)",
+            [
+                (1, "web:greenhouse:a", "2026-10-01"),
+                (2, "jobright", "2026-10-20"),
+                (3, None, "2026-10-21"),
+                (4, "web:titlewatch:b", "2026-09-01"),
+                (5, "linkedin", "2026-10-02"),
+            ],
+        )
         order = [r[0] for r in db.execute("SELECT j.id FROM v7_jobs j" + stage.ORDER)]
         self.assertEqual(order, [3, 5, 2, 4, 1])
 
 
 class HealthcareNeedsRealWeight(unittest.TestCase):
     """Stream (a fintech for frontline workers, many of them in healthcare) was excluded as a healthcare job."""
-    FINTECH = ("Stream is a fintech helping frontline workers in healthcare and retail access their pay. " + "We build payments and earned wage access products. " * 20 +
-               "Many of our customers are healthcare employers. Our healthcare partners include hospitals. ")
+
+    FINTECH = (
+        "Stream is a fintech helping frontline workers in healthcare and retail access their pay. "
+        + "We build payments and earned wage access products. " * 20
+        + "Many of our customers are healthcare employers. Our healthcare partners include hospitals. "
+    )
 
     def test_three_mentions_including_an_early_one_are_only_soft(self):
         hard, soft = exclusions.check("Delivery Manager", "Stream Platforms Ltd", self.FINTECH)
@@ -541,23 +774,94 @@ class HealthcareNeedsRealWeight(unittest.TestCase):
 class KeptPromotion(unittest.TestCase):
     def test_only_kept_and_title_watch_jobs_are_promoted_from_resolved(self):
         from lifeos.jobs.fit import stage
-        rows = [(1, "Revolut Ltd", "Product Designer (Platform)", "web:su-revolut-ltd", True, True, "REVIEW", False, "RESOLVED", None),
-                (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd", True, True, "REVIEW", False, "RESOLVED", None),
-                (3, "Otto Car", "Anything", "web:titlewatch:su-otto", True, True, "REVIEW", False, "RESOLVED", None),
-                (4, "Other", "Product Designer (Platform)", "lensa", True, True, "REVIEW", False, "RESOLVED", None),
-                (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, False, "REVIEW", False, "RESOLVED", None),
-                (6, "Revolut Ltd", "Partnerships Manager (Lifestyle)", "web:su-revolut-ltd", True, True, "REVIEW", True, "RESOLVED", None),
-                (7, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", True, False, "REVIEW", False, "READY", None),
-                (8, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", "listing"),  # a listing lead is promoted like a title-watch find
-                (9, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", None)]  # a discover job with a real employer link is not
+
+        rows = [
+            (
+                1,
+                "Revolut Ltd",
+                "Product Designer (Platform)",
+                "web:su-revolut-ltd",
+                True,
+                True,
+                "REVIEW",
+                False,
+                "RESOLVED",
+                None,
+            ),
+            (
+                2,
+                "Revolut Ltd",
+                "Software Engineer",
+                "web:su-revolut-ltd",
+                True,
+                True,
+                "REVIEW",
+                False,
+                "RESOLVED",
+                None,
+            ),
+            (3, "Otto Car", "Anything", "web:titlewatch:su-otto", True, True, "REVIEW", False, "RESOLVED", None),
+            (4, "Other", "Product Designer (Platform)", "lensa", True, True, "REVIEW", False, "RESOLVED", None),
+            (
+                5,
+                "Revolut Ltd",
+                "Operations Manager (Revenue)",
+                "web:su-revolut-ltd",
+                False,
+                False,
+                "REVIEW",
+                False,
+                "RESOLVED",
+                None,
+            ),
+            (
+                6,
+                "Revolut Ltd",
+                "Partnerships Manager (Lifestyle)",
+                "web:su-revolut-ltd",
+                True,
+                True,
+                "REVIEW",
+                True,
+                "RESOLVED",
+                None,
+            ),
+            (
+                7,
+                "Revolut Ltd",
+                "Operations Manager (Revenue)",
+                "web:su-revolut-ltd",
+                True,
+                False,
+                "REVIEW",
+                False,
+                "READY",
+                None,
+            ),
+            (
+                8,
+                "Sixfold",
+                "Product Manager",
+                "discover",
+                True,
+                True,
+                "REVIEW",
+                False,
+                "RESOLVED",
+                "listing",
+            ),  # a listing lead is promoted like a title-watch find
+            (9, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", None),
+        ]  # a discover job with a real employer link is not
         updated = []
 
         class Cur:
             def execute(self, sql, params=()):
                 if sql.startswith("UPDATE"):
                     updated.append(params[1])
+
             def fetchall(self):
                 return rows
+
         out = stage.promote_kept(Cur())
         self.assertEqual([u for u in updated if isinstance(u, int)], [1, 3, 8])
         self.assertEqual((out["promoted"], out["kept_resolved"], out["no_link"], out["has_page"]), (3, 5, 1, 1))
@@ -567,11 +871,14 @@ class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
     """an employer's 'About <Company>' block, a headingless posting's skip sections and an off-family title earn no
     professional Fit.
     """
+
     ABOUT = "About Acme\nAcme makes NetSuite and ERP integration products and a payment platform used by enterprise teams.\n"
-    ROLE = ("About the role\nWe are hiring a Technical Program Manager to run our roadmap.\n\nResponsibilities\n"
-            "• Own the program roadmap and drive delivery across multiple teams\n"
-            "• Report to executive stakeholders on a global enterprise program\n\nRequirements\n"
-            "• 8+ years of experience in program management\n• Experience leading a team of 8 people\n• Strong communication skills\n\n")
+    ROLE = (
+        "About the role\nWe are hiring a Technical Program Manager to run our roadmap.\n\nResponsibilities\n"
+        "• Own the program roadmap and drive delivery across multiple teams\n"
+        "• Report to executive stakeholders on a global enterprise program\n\nRequirements\n"
+        "• 8+ years of experience in program management\n• Experience leading a team of 8 people\n• Strong communication skills\n\n"
+    )
     FILLER = "Join a collaborative remote team shipping software for merchants worldwide. " * 12
 
     def test_an_employer_about_heading_is_skipped_but_role_and_you_headings_are_not(self):
@@ -592,10 +899,14 @@ class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
             self.assertNotIn(product, strengths)
 
     def test_a_headingless_posting_keeps_its_benefits_out_of_requirements(self):
-        text = ("We need a program manager with 5 years of experience in delivery.\nBenefits\n"
-                "We offer a generous payment of experience bonuses and 5 years of required tenure.\n")
-        self.assertEqual([u.text for u in extract.requirement_units(extract.parse(text))],
-                         ["We need a program manager with 5 years of experience in delivery."])
+        text = (
+            "We need a program manager with 5 years of experience in delivery.\nBenefits\n"
+            "We offer a generous payment of experience bonuses and 5 years of required tenure.\n"
+        )
+        self.assertEqual(
+            [u.text for u in extract.requirement_units(extract.parse(text))],
+            ["We need a program manager with 5 years of experience in delivery."],
+        )
 
     def test_off_family_titles_are_capped(self):
         for title in ("Senior Videographer", "Senior Product Marketing Manager"):
@@ -611,58 +922,89 @@ class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
             self.assertFalse(evaluate(title, "Acme", GOOD, PROFILE, TODAY).capped, title)
 
     def test_a_posting_that_is_only_an_employer_about_block_is_unscorable(self):
-        self.assertEqual(evaluate("Technical Program Manager", "Acme", self.ABOUT, PROFILE, TODAY).decision, "Unscorable")
+        self.assertEqual(
+            evaluate("Technical Program Manager", "Acme", self.ABOUT, PROFILE, TODAY).decision, "Unscorable"
+        )
 
 
 class ExtractionCorrections(unittest.TestCase):
     """(10446 / 10472): five extraction defects left after #334, on invented employers."""
 
     def test_a_product_manager_title_that_names_product_marketing_is_not_capped(self):
-        for title in ("Senior Product Manager — Product Marketing Platform", "Product Owner, Product Marketing Integrations"):
+        for title in (
+            "Senior Product Manager — Product Marketing Platform",
+            "Product Owner, Product Marketing Integrations",
+        ):
             r = evaluate(title, "Acme", GOOD, PROFILE, TODAY)
             self.assertFalse(r.capped, title)
-        for title in ("Product Marketing Manager", "Head of Product Marketing", "Senior Product Marketer", "Director, Product Marketing"):
+        for title in (
+            "Product Marketing Manager",
+            "Head of Product Marketing",
+            "Senior Product Marketer",
+            "Director, Product Marketing",
+        ):
             r = evaluate(title, "Acme", GOOD, PROFILE, TODAY)
             self.assertTrue(r.capped, title)
             self.assertLessEqual(r.score, 40, title)
 
     def test_a_product_manager_posting_that_mentions_product_marketing_is_not_a_marketing_profession(self):
-        text = ("Responsibilities\n• Partner with product marketing on launches\n• Work with product marketing on positioning\n"
-                "• Brief product marketing on the roadmap\n• Own the program roadmap and drive delivery across multiple teams\n\n"
-                "Requirements\n• 8+ years of experience in program management delivering enterprise software\n")
+        text = (
+            "Responsibilities\n• Partner with product marketing on launches\n• Work with product marketing on positioning\n"
+            "• Brief product marketing on the roadmap\n• Own the program roadmap and drive delivery across multiple teams\n\n"
+            "Requirements\n• 8+ years of experience in program management delivering enterprise software\n"
+        )
         self.assertFalse(evaluate("Senior Product Manager", "Acme", text, PROFILE, TODAY).capped)
 
     def test_a_role_intro_inside_an_employer_about_section_is_kept(self):
-        text = ("About Northwind\nNorthwind builds commerce and ERP software for retailers.\n"
-                "We are seeking a Senior Technical Program Manager to own delivery of our platform migration across multiple teams.\n\n"
-                "Responsibilities\n• Own the program roadmap\n")
+        text = (
+            "About Northwind\nNorthwind builds commerce and ERP software for retailers.\n"
+            "We are seeking a Senior Technical Program Manager to own delivery of our platform migration across multiple teams.\n\n"
+            "Responsibilities\n• Own the program roadmap\n"
+        )
         units = extract.parse(text)
         intro = next(u for u in units if u.text.startswith("We are seeking"))
         self.assertEqual(intro.section, "summary")
-        self.assertEqual(next(u for u in units if u.text.startswith("Northwind builds")).section, "skip")  # the employer copy stays out
+        self.assertEqual(
+            next(u for u in units if u.text.startswith("Northwind builds")).section, "skip"
+        )  # the employer copy stays out
 
     def test_a_requirement_bullet_is_never_a_heading(self):
-        text = ("Requirements\n- Experience launching enterprise software\n- 2+ years of program management\n"
-                "- Experience working with cloud-based SOA platforms\n* Experience with NetSuite\n")
+        text = (
+            "Requirements\n- Experience launching enterprise software\n- 2+ years of program management\n"
+            "- Experience working with cloud-based SOA platforms\n* Experience with NetSuite\n"
+        )
         units = extract.parse(text)
         self.assertEqual([u.section for u in units], ["required"] * 4)
-        for line in ("- Experience launching enterprise software", "* Experience with NetSuite", "1. Experience with NetSuite"):
+        for line in (
+            "- Experience launching enterprise software",
+            "* Experience with NetSuite",
+            "1. Experience with NetSuite",
+        ):
             self.assertIsNone(extract._heading(line), line)
         self.assertEqual(extract._heading("**Requirements**"), "required")  # a bold heading is still a heading
 
     def test_employer_culture_and_perks_are_not_duties(self):
         for line in ("Why you will love working at Northwind", "Why You'll Love Working Here", "Life at Northwind"):
             self.assertEqual(extract._heading(line), "skip", line)
-        text = ("Requirements\n• 8+ years of experience in program management\n\nWhy you will love working at Northwind\n"
-                "• You will get a generous learning budget and 5 years of vesting\n")
-        self.assertEqual([u.text for u in extract.requirement_units(extract.parse(text))], ["8+ years of experience in program management"])
+        text = (
+            "Requirements\n• 8+ years of experience in program management\n\nWhy you will love working at Northwind\n"
+            "• You will get a generous learning budget and 5 years of vesting\n"
+        )
+        self.assertEqual(
+            [u.text for u in extract.requirement_units(extract.parse(text))],
+            ["8+ years of experience in program management"],
+        )
 
     def test_an_employer_product_name_in_about_is_not_a_heading(self):
-        text = ("About Northwind\nNorthwind Experience Manager\nNorthwind Experience Manager helps brands publish content with 5 years of history.\n\n"
-                "Requirements\n• 8+ years of experience in program management\n")
+        text = (
+            "About Northwind\nNorthwind Experience Manager\nNorthwind Experience Manager helps brands publish content with 5 years of history.\n\n"
+            "Requirements\n• 8+ years of experience in program management\n"
+        )
         units = extract.parse(text)
         self.assertEqual([u.section for u in units if "Northwind" in u.text], ["skip", "skip"])
-        self.assertEqual([u.text for u in extract.requirement_units(units)], ["8+ years of experience in program management"])
+        self.assertEqual(
+            [u.text for u in extract.requirement_units(units)], ["8+ years of experience in program management"]
+        )
         self.assertEqual(extract._heading("Northwind Experience Manager"), "required")
 
 
@@ -670,27 +1012,54 @@ class OpenApplicationIsNotAVacancy(unittest.TestCase):
     """regression (German open application admitted as US Remote, Fit 80): an unsolicited / general application is not a
     vacancy.
     """
-    GERMAN = ("Initiativbewerbung\nHamburg, Remote\nVoll- oder Teilzeit\n\nDiese Aufgaben warten auf Dich:\n"
-              "- Projektmanagement: Übernimm Verantwortung für eigene Projekte und arbeite eng mit Kunden zusammen.\n"
-              "- Softwareentwicklung: Entwickle innovative Lösungen vom Design bis zur Implementierung.\n\n"
-              "Das bringst Du mit!\n- Teamgeist und Kommunikationsstärke\n- Fundierte Kenntnisse in der Softwareentwicklung\n")
+
+    GERMAN = (
+        "Initiativbewerbung\nHamburg, Remote\nVoll- oder Teilzeit\n\nDiese Aufgaben warten auf Dich:\n"
+        "- Projektmanagement: Übernimm Verantwortung für eigene Projekte und arbeite eng mit Kunden zusammen.\n"
+        "- Softwareentwicklung: Entwickle innovative Lösungen vom Design bis zur Implementierung.\n\n"
+        "Das bringst Du mit!\n- Teamgeist und Kommunikationsstärke\n- Fundierte Kenntnisse in der Softwareentwicklung\n"
+    )
 
     def test_a_german_open_application_is_excluded_not_admitted_as_us_remote(self):
         from lifeos.jobs.fit import stage
-        row = (1, "Initiativbewerbung", "Example Studio GmbH", self.GERMAN, "fp", "Newsletter",
-               "Remote / Professional Services / Growth Stage", None, None, date(2026, 9, 30))
+
+        row = (
+            1,
+            "Initiativbewerbung",
+            "Example Studio GmbH",
+            self.GERMAN,
+            "fp",
+            "Newsletter",
+            "Remote / Professional Services / Growth Stage",
+            None,
+            None,
+            date(2026, 9, 30),
+        )
         _, _, result, decision, lane, _, eligible = stage.score_rows([row], PROFILE, TODAY)[0]
         self.assertEqual((decision.status, eligible), ("EXCLUDE", []))
         self.assertEqual(lanes_public(decision.reason), "not_a_vacancy")
 
     def test_the_same_posting_with_a_real_title_is_judged_as_before(self):
         from lifeos.jobs.fit import stage
-        row = (1, "Technical Program Manager", "Beta", GOOD, "fp", "Newsletter", "Remote - United States", "$120K/yr - $150K/yr", None, date(2026, 9, 30))
+
+        row = (
+            1,
+            "Technical Program Manager",
+            "Beta",
+            GOOD,
+            "fp",
+            "Newsletter",
+            "Remote - United States",
+            "$120K/yr - $150K/yr",
+            None,
+            date(2026, 9, 30),
+        )
         self.assertEqual(stage.score_rows([row], PROFILE, TODAY)[0][3].status, "ADMIT")
 
 
 def lanes_public(reason):
     from lifeos.jobs import lanes
+
     return lanes.public_reason(reason)
 
 
@@ -701,4 +1070,5 @@ class NoHistoricalRescore(unittest.TestCase):
         """
         from lifeos.jobs import lanes
         from lifeos.jobs.fit import MODEL_VERSION
+
         self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l17"))

@@ -1,6 +1,7 @@
 """the environment-variable registry (lifeos/<package>/config.txt, collected by credentials.config) must agree with the
 code and the workflows.
 """
+
 import copy
 import re
 import tempfile
@@ -11,7 +12,9 @@ from lifeos.platform import credentials
 from tests import config_scan as scan
 
 KINDS = ("input", "flag", "secret", "workflow_only")
-SECRET_SHAPED = re.compile(r"[A-Za-z0-9+/_=-]{32,}|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|/Users/|/home/|\bsk-|\bghp_|\bgithub_pat_")
+SECRET_SHAPED = re.compile(
+    r"[A-Za-z0-9+/_=-]{32,}|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|/Users/|/home/|\bsk-|\bghp_|\bgithub_pat_"
+)
 
 
 def tree(code=None, workflow=None):
@@ -20,13 +23,19 @@ def tree(code=None, workflow=None):
     (root / "lifeos").mkdir()
     (root / "lifeos" / "mod.py").write_text(code or "import os\nX = os.environ.get('KNOWN_NAME')\n")
     (root / ".github" / "workflows").mkdir(parents=True)
-    (root / ".github" / "workflows" / "w.yml").write_text(workflow or "name: w\nenv:\n  KNOWN_NAME: '1'\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: echo\n")
+    (root / ".github" / "workflows" / "w.yml").write_text(
+        workflow or "name: w\nenv:\n  KNOWN_NAME: '1'\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: echo\n"
+    )
     return root
 
 
 def config(*names, patterns=(), provided=None):
-    return {"provided": provided or {"prefixes": ["GITHUB_"], "names": ["PATH"]},
-            "names": [{"name": n, "kind": "input", "owner": "o", "purpose": "p"} for n in names], "patterns": list(patterns), "not_environment": {}}
+    return {
+        "provided": provided or {"prefixes": ["GITHUB_"], "names": ["PATH"]},
+        "names": [{"name": n, "kind": "input", "owner": "o", "purpose": "p"} for n in names],
+        "patterns": list(patterns),
+        "not_environment": {},
+    }
 
 
 class RegistryAgreesWithTheRepo(unittest.TestCase):
@@ -43,12 +52,16 @@ class RegistryAgreesWithTheRepo(unittest.TestCase):
             self.assertRegex(row["name"], scan.NAME)
             self.assertIn(row["kind"], KINDS, row["name"])
             self.assertTrue(row["owner"] and row["purpose"], row["name"])
-            self.assertIsNone(SECRET_SHAPED.search(row["purpose"] + row["owner"]), row["name"])  # a purpose is words, never a value, an id or a path
+            self.assertIsNone(
+                SECRET_SHAPED.search(row["purpose"] + row["owner"]), row["name"]
+            )  # a purpose is words, never a value, an id or a path
 
     def test_the_provided_group_is_not_listed_one_by_one(self):
         group = credentials.config()["provided"]
         for row in credentials.config()["names"]:
-            self.assertFalse(row["name"].startswith(tuple(group["prefixes"])) or row["name"] in group["names"], row["name"])
+            self.assertFalse(
+                row["name"].startswith(tuple(group["prefixes"])) or row["name"] in group["names"], row["name"]
+            )
 
 
 class NegativeControls(unittest.TestCase):
@@ -63,7 +76,9 @@ class NegativeControls(unittest.TestCase):
         self.assertTrue(any("PLANTED_PARAM_READ" in p for p in found), found)
 
     def test_an_unlisted_workflow_name_is_caught_and_a_provided_name_is_not(self):
-        root = tree(workflow="name: w\nenv:\n  KNOWN_NAME: '1'\n  PLANTED_UNLISTED_SET: '1'\n  GITHUB_ANYTHING: '1'\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: echo\n")
+        root = tree(
+            workflow="name: w\nenv:\n  KNOWN_NAME: '1'\n  PLANTED_UNLISTED_SET: '1'\n  GITHUB_ANYTHING: '1'\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: echo\n"
+        )
         found = scan.problems(config("KNOWN_NAME"), root)
         self.assertTrue(any("PLANTED_UNLISTED_SET" in p for p in found), found)
         self.assertFalse(any("GITHUB_ANYTHING" in p for p in found), found)

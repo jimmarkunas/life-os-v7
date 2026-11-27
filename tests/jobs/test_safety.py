@@ -19,6 +19,7 @@ class SqlSmokeTests(unittest.TestCase):
         # "replaces v7_sponsors with..." (a stage contract's prose) starts with the prefix REPLACE and was run through.
         import tempfile
         from pathlib import Path
+
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / "lifeos"
             root.mkdir()
@@ -29,13 +30,15 @@ class SqlSmokeTests(unittest.TestCase):
                 'D = "insert into v7_jobs (id) values (%s)"\n'
                 'E = "DELETE FROM v7_jobs WHERE id = %s"\n'
                 'F = "SELECT id FROM v7_jobs"\n'
-                'G = "UPDATE v7_jobs SET id = %s"\n')
+                'G = "UPDATE v7_jobs SET id = %s"\n'
+            )
             self.assertEqual([line for _, line, _ in safety.statements(root)], [3, 4, 5, 6, 7])
 
     def test_the_pieces_of_an_f_string_statement_are_not_taken_as_statements(self):
         # the weekly check failed 1064 on audit.py:62 and ledger_layout:60, the first piece of an f-string statement.
         import tempfile
         from pathlib import Path
+
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / "lifeos"
             root.mkdir()
@@ -44,7 +47,8 @@ class SqlSmokeTests(unittest.TestCase):
                 '    cursor.execute("SELECT j.id FROM v7_jobs j"\n'
                 '                   f" WHERE j.status IN {statuses}"\n'
                 '                   " ORDER BY j.id LIMIT %s", (1,))\n'
-                '    cursor.execute("SELECT id FROM v7_jobs WHERE id = %s", (1,))\n')
+                '    cursor.execute("SELECT id FROM v7_jobs WHERE id = %s", (1,))\n'
+            )
             found = safety.statements(root)
         self.assertEqual([(line, sql) for _, line, sql in found], [(5, "SELECT id FROM v7_jobs WHERE id = %s")])
 
@@ -56,7 +60,13 @@ class SqlSmokeTests(unittest.TestCase):
 
     def test_in_placeholders_take_a_tuple_and_runtime_fragments_are_skipped(self):
         conn = RecorderConn()
-        counts = safety.sql_smoke(conn, [("a.py", 1, "SELECT id FROM v7_jobs WHERE status IN %s AND x = %s"), ("b.py", 2, "SELECT id FROM v7_jobs WHERE k IN (")])
+        counts = safety.sql_smoke(
+            conn,
+            [
+                ("a.py", 1, "SELECT id FROM v7_jobs WHERE status IN %s AND x = %s"),
+                ("b.py", 2, "SELECT id FROM v7_jobs WHERE k IN ("),
+            ],
+        )
         self.assertEqual(conn.cur.statements[0][1], ((1,), 1))
         self.assertEqual((counts["ok"], counts["fragments"], len(conn.cur.statements)), (1, 1, 1))
 
@@ -67,7 +77,9 @@ class SqlSmokeTests(unittest.TestCase):
         self.assertNotIn("secret_name", json.dumps(counts))
 
     def test_a_table_the_first_live_run_has_not_created_is_not_a_failure(self):
-        counts = safety.sql_smoke(RecorderConn(errors={"v7_later": Exception(1146, "no such table")}), [("a.py", 1, "SELECT 1 FROM v7_later")])
+        counts = safety.sql_smoke(
+            RecorderConn(errors={"v7_later": Exception(1146, "no such table")}), [("a.py", 1, "SELECT 1 FROM v7_later")]
+        )
         self.assertEqual((counts["missing_table"], counts["failed"]), (1, 0))
 
 

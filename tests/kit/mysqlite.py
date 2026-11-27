@@ -1,6 +1,7 @@
 """A MySQL-shaped connection over in-memory sqlite, so the Network store's real SQL (inserts, ignores, joins,
 transactions) runs in tests.
 """
+
 import re
 import sqlite3
 

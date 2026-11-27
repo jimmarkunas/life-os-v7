@@ -29,8 +29,9 @@ class LinkedInApplyTests(unittest.TestCase):
 
     def test_job_id(self):
         self.assertEqual(li_apply.job_id("https://www.linkedin.com/jobs/view/1234567890"), "1234567890")
-        self.assertEqual(li_apply.job_id("https://www.linkedin.com/jobs/view/project-manager-at-acme-1234567890"), "1234567890")
-
+        self.assertEqual(
+            li_apply.job_id("https://www.linkedin.com/jobs/view/project-manager-at-acme-1234567890"), "1234567890"
+        )
 
 
 class ClosedAndShapeTests(unittest.TestCase):
@@ -40,10 +41,14 @@ class ClosedAndShapeTests(unittest.TestCase):
 
 class RelativeWrapperTests(unittest.TestCase):
     def test_relative_redir_href_is_unwrapped(self):
-        page = ('<a data-tracking-control-name="public_jobs_apply-link-offsite" '
-                'href="/redir/redirect?url=https%3A%2F%2Fcareers.acme.example%2Fjob%2F9%3Fsrc%3Dli&amp;urlhash=abc">Apply</a>')
+        page = (
+            '<a data-tracking-control-name="public_jobs_apply-link-offsite" '
+            'href="/redir/redirect?url=https%3A%2F%2Fcareers.acme.example%2Fjob%2F9%3Fsrc%3Dli&amp;urlhash=abc">Apply</a>'
+        )
         self.assertEqual(li_apply.read(page), ("external", "https://careers.acme.example/job/9?src=li"))
 
     def test_relative_safety_go_href(self):
-        self.assertEqual(li_apply.unwrap("/safety/go/?url=https%3A%2F%2Fboards.greenhouse.io%2Facme%2Fjobs%2F1"),
-                         "https://boards.greenhouse.io/acme/jobs/1")
+        self.assertEqual(
+            li_apply.unwrap("/safety/go/?url=https%3A%2F%2Fboards.greenhouse.io%2Facme%2Fjobs%2F1"),
+            "https://boards.greenhouse.io/acme/jobs/1",
+        )

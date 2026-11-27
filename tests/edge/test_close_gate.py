@@ -1,4 +1,5 @@
 """S2 Edge gate: synthetic identities, fake tailscaled and a recording fake application only."""
+
 import io
 import json
 import os
@@ -16,7 +17,10 @@ WHOIS = {RUNNER: {"Node": {"StableID": PHONE}, "UserProfile": {"LoginName": LOGI
 
 
 def whois_as(node=PHONE, login=LOGIN, tags=None):
-    return lambda ip: {"Node": {"StableID": node, **({"Tags": tags} if tags else {})}, "UserProfile": {"LoginName": login}}
+    return lambda ip: {
+        "Node": {"StableID": node, **({"Tags": tags} if tags else {})},
+        "UserProfile": {"LoginName": login},
+    }
 
 
 def http(method="GET", path="/close", headers=None, body=b""):
@@ -24,7 +28,11 @@ def http(method="GET", path="/close", headers=None, body=b""):
     return (f"{method} {path} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in h.items()) + "\r\n").encode() + body
 
 
-POST_OK = {"Origin": "https://" + HOST, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/x-www-form-urlencoded"}
+POST_OK = {
+    "Origin": "https://" + HOST,
+    "Sec-Fetch-Site": "same-origin",
+    "Content-Type": "application/x-www-form-urlencoded",
+}
 
 
 class Gate(unittest.TestCase):
@@ -46,7 +54,16 @@ class Gate(unittest.TestCase):
 
     def run_gate(self, raw, lookup=None, uid=0, app=None):
         out = io.BytesIO()
-        code = gate.main(app or self.app, io.BytesIO(raw), out, lookup or whois_as(), lambda: uid, self.policy, self.creds, client=lambda t, p: type("C", (), {"source": "ds"})())
+        code = gate.main(
+            app or self.app,
+            io.BytesIO(raw),
+            out,
+            lookup or whois_as(),
+            lambda: uid,
+            self.policy,
+            self.creds,
+            client=lambda t, p: type("C", (), {"source": "ds"})(),
+        )
         text = out.getvalue().decode("latin-1")
         return code, (int(text.split(" ")[1]) if text else None), text
 
@@ -56,15 +73,28 @@ class Gate(unittest.TestCase):
             code, status, text = self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), whois_as(node))
             self.assertEqual((code, status), (0, 200))
             req, who, secrets = self.calls[0]
-            self.assertEqual((req["method"], req["path"], req["query"], who), ("GET", "/close", {"l": "abc"}, {"login": LOGIN, "node": node}))
+            self.assertEqual(
+                (req["method"], req["path"], req["query"], who),
+                ("GET", "/close", {"l": "abc"}, {"login": LOGIN, "node": node}),
+            )
             self.assertEqual(set(secrets), {"link", "reader", "config"})
-            for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff", "Referrer-Policy: same-origin"):
+            for header in (
+                "Cache-Control: no-store",
+                "X-Frame-Options: DENY",
+                "Content-Security-Policy:",
+                "X-Content-Type-Options: nosniff",
+                "Referrer-Policy: same-origin",
+            ):
                 self.assertIn(header, text)
 
     def test_only_the_manage_hub_page_may_load_googles_drive_picker(self):
         """GET /manage's HTML gets the picker CSP"""
+
         def csp(text):
-            return next(line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Content-Security-Policy: "))
+            return next(
+                line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Content-Security-Policy: ")
+            )
+
         _, status, text = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
         self.assertEqual((status, csp(text)), (200, gate.PICKER_CSP))
         self.assertEqual(text.count("Content-Security-Policy:"), 1)
@@ -76,10 +106,10 @@ class Gate(unittest.TestCase):
         for raw in (http(path="/close?l=abc"), http(path="/manage.css"), http("POST", "/manage", POST_OK, b"o=abc")):
             _, _, text = self.run_gate(v2(RUNNER) + raw, whois_as(PHONE))
             self.assertEqual(csp(text), gate.CSP, raw[:30])
-        js = lambda req, who, secrets: (200, "text/javascript; charset=utf-8", b"1", ())          # noqa: E731
+        js = lambda req, who, secrets: (200, "text/javascript; charset=utf-8", b"1", ())  # noqa: E731
         _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=js)
         self.assertEqual(csp(text), gate.CSP)
-        refused = lambda req, who, secrets: (403, "text/html; charset=utf-8", b"no", ())          # noqa: E731
+        refused = lambda req, who, secrets: (403, "text/html; charset=utf-8", b"no", ())  # noqa: E731
         _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=refused)
         self.assertEqual(csp(text), gate.CSP)
 
@@ -87,27 +117,42 @@ class Gate(unittest.TestCase):
         """the picker's API key is restricted to this origin, so GET /manage's HTML sends Google its origin (never the
         path)
         """
+
         def policy(text):
             return [line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Referrer-Policy: ")]
+
         _, status, text = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
         self.assertEqual((status, policy(text)), (200, ["strict-origin-when-cross-origin"]))
-        for raw in (http(path="/close?l=abc"), http(path="/manage.css"), http(path="/manage-picker.js"), http("POST", "/manage", POST_OK, b"o=abc")):
+        for raw in (
+            http(path="/close?l=abc"),
+            http(path="/manage.css"),
+            http(path="/manage-picker.js"),
+            http("POST", "/manage", POST_OK, b"o=abc"),
+        ):
             _, _, text = self.run_gate(v2(RUNNER) + raw, whois_as(PHONE))
             self.assertEqual(policy(text), ["same-origin"], raw[:30])
-        refused = lambda req, who, secrets: (403, "text/html; charset=utf-8", b"no", ())          # noqa: E731
+        refused = lambda req, who, secrets: (403, "text/html; charset=utf-8", b"no", ())  # noqa: E731
         _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=refused)
         self.assertEqual(policy(text), ["same-origin"])
 
     def test_the_picker_credential_reaches_only_get_manage(self):
         """the optional `picker` credential (the Drive picker's browser identifiers) is read for GET /manage only"""
-        ids = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
+        ids = {
+            "client_id": "1234567-exampleclientid.apps.googleusercontent.com",
+            "api_key": "AIza" + "x" * 35,
+            "app_id": "1234567",
+        }
         self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
         self.assertNotIn("picker", self.calls[-1][2])  # absent: no picker
         with open(os.path.join(self.creds, "picker"), "w") as f:
             json.dump({**ids, "other": "dropped"}, f)
         self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
         self.assertEqual(self.calls[-1][2]["picker"], ids)
-        for raw in (http(path="/close?l=abc"), http("POST", "/manage", POST_OK, b"o=abc"), http(path="/manage-picker.js")):
+        for raw in (
+            http(path="/close?l=abc"),
+            http("POST", "/manage", POST_OK, b"o=abc"),
+            http(path="/manage-picker.js"),
+        ):
             self.run_gate(v2(RUNNER) + raw, whois_as(PHONE))
             self.assertNotIn("picker", self.calls[-1][2], raw[:30])
         with open(os.path.join(self.creds, "picker"), "w") as f:
@@ -139,22 +184,44 @@ class Gate(unittest.TestCase):
             reader.query_data_source(body={"filter": {}})
             for write in (lambda: reader.call("PATCH", "/pages/page-1", {}), lambda: reader.call("POST", "/pages", {})):
                 self.assertRaises(PermissionError, write)
-            self.assertFalse(hasattr(reader, "update_page_properties") or hasattr(reader, "call_once") or hasattr(reader, "create"))
-            return (409, "text/plain", b"stale", ()) if live != req["query"]["stage"] else (200, "text/html", b"current", ())
+            self.assertFalse(
+                hasattr(reader, "update_page_properties") or hasattr(reader, "call_once") or hasattr(reader, "create")
+            )
+            return (
+                (409, "text/plain", b"stale", ())
+                if live != req["query"]["stage"]
+                else (200, "text/html", b"current", ())
+            )
 
         for stage, want in (("Interview", 200), ("Offer", 409)):
             notion = Notion(stage)
             out = io.BytesIO()
-            gate.main(screen, io.BytesIO(v2(RUNNER) + http(path="/close?stage=Interview")), out, whois_as(), lambda: 0, self.policy, self.creds,
-                      client=lambda token, policy, notion=notion: (self.assertEqual(token, b"synthetic-notion-token"), notion)[1])
+            gate.main(
+                screen,
+                io.BytesIO(v2(RUNNER) + http(path="/close?stage=Interview")),
+                out,
+                whois_as(),
+                lambda: 0,
+                self.policy,
+                self.creds,
+                client=lambda token, policy, notion=notion: (
+                    self.assertEqual(token, b"synthetic-notion-token"),
+                    notion,
+                )[1],
+            )
             self.assertEqual(int(out.getvalue().split(b" ")[1]), want)
-            self.assertEqual(notion.log, [("GET", "/pages/page-1"), ("POST", "/data_sources/ds-ledger/query")])  # reads only: zero writes reached Notion
+            self.assertEqual(
+                notion.log, [("GET", "/pages/page-1"), ("POST", "/data_sources/ds-ledger/query")]
+            )  # reads only: zero writes reached Notion
 
     def test_a_same_origin_form_post_gets_the_notion_credential_and_the_parsed_form(self):
         body = b"reason=Rejected&confirm=yes&csrf=t"
         self.assertEqual(self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=body))[1], 200)
         req, _, secrets = self.calls[0]
-        self.assertEqual((secrets["notion"], req["form"]), (b"synthetic-notion-token", {"reason": "Rejected", "confirm": "yes", "csrf": "t"}))
+        self.assertEqual(
+            (secrets["notion"], req["form"]),
+            (b"synthetic-notion-token", {"reason": "Rejected", "confirm": "yes", "csrf": "t"}),
+        )
 
     def test_openclaw_or_any_local_non_root_peer_is_refused_before_reading(self):
         self.assertEqual(self.run_gate(v2(RUNNER) + http(), uid=1001), (1, None, ""))
@@ -166,22 +233,31 @@ class Gate(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_wrong_identities_are_refused_with_403_and_nothing_reaches_the_app(self):
-        for lookup in (whois_as(ORACLE), whois_as(MAC_MINI), whois_as(login="someone@example.com"), whois_as(tags=["tag:v7-runner"]),
-                       lambda ip: {}, lambda ip: (_ for _ in ()).throw(OSError())):
+        for lookup in (
+            whois_as(ORACLE),
+            whois_as(MAC_MINI),
+            whois_as(login="someone@example.com"),
+            whois_as(tags=["tag:v7-runner"]),
+            lambda ip: {},
+            lambda ip: (_ for _ in ()).throw(OSError()),
+        ):
             self.assertEqual(self.run_gate(v2(OTHER) + http(), lookup)[1], 403)
         self.assertEqual(self.calls, [])
 
     def test_bad_requests_are_refused_without_reaching_the_app(self):
-        cases = [(http(headers={"Host": "evil.example:47443"}), 400), (b"GET /close HTTP/1.0\r\nHost: " + HOST.encode() + b"\r\n\r\n", 400),
-                 (http(headers={"host": HOST}), 400),  # a duplicate Host header
-                 (http("POST", headers={**POST_OK, "Transfer-Encoding": "chunked"}), 400),
-                 (http(body=b"x=1"), 400),  # a GET with a body
-                 (http("PUT", headers=POST_OK, body=b"a=1"), 405),
-                 (http("POST", headers={**POST_OK, "Origin": "https://evil.example"}, body=b"a=1"), 403),
-                 (http("POST", headers={**POST_OK, "Sec-Fetch-Site": "cross-site"}, body=b"a=1"), 403),
-                 (http("POST", headers={**POST_OK, "Content-Type": "application/json"}, body=b"{}"), 403),
-                 (http("POST", headers={k: v for k, v in POST_OK.items() if k != "Origin"}, body=b"a=1"), 403),
-                 (http("POST", headers={**POST_OK, "Content-Length": str(gate.MAX_BODY + 1)}), 400)]
+        cases = [
+            (http(headers={"Host": "evil.example:47443"}), 400),
+            (b"GET /close HTTP/1.0\r\nHost: " + HOST.encode() + b"\r\n\r\n", 400),
+            (http(headers={"host": HOST}), 400),  # a duplicate Host header
+            (http("POST", headers={**POST_OK, "Transfer-Encoding": "chunked"}), 400),
+            (http(body=b"x=1"), 400),  # a GET with a body
+            (http("PUT", headers=POST_OK, body=b"a=1"), 405),
+            (http("POST", headers={**POST_OK, "Origin": "https://evil.example"}, body=b"a=1"), 403),
+            (http("POST", headers={**POST_OK, "Sec-Fetch-Site": "cross-site"}, body=b"a=1"), 403),
+            (http("POST", headers={**POST_OK, "Content-Type": "application/json"}, body=b"{}"), 403),
+            (http("POST", headers={k: v for k, v in POST_OK.items() if k != "Origin"}, body=b"a=1"), 403),
+            (http("POST", headers={**POST_OK, "Content-Length": str(gate.MAX_BODY + 1)}), 400),
+        ]
         for raw, want in cases:
             self.assertEqual(self.run_gate(v2(RUNNER) + raw)[1], want, raw[:60])
         self.assertEqual(self.calls, [])
@@ -189,6 +265,7 @@ class Gate(unittest.TestCase):
     def test_an_application_failure_is_a_bare_500(self):
         def boom(req, who, secrets):
             raise RuntimeError("SECRET DETAIL")
+
         _, status, text = self.run_gate(v2(RUNNER) + http(), app=boom)
         self.assertEqual(status, 500)
         self.assertNotIn("SECRET", text)
@@ -199,13 +276,16 @@ if __name__ == "__main__":
 
 
 class RealClientGet(unittest.TestCase):
-
     LEDGER, PIPELINE = "1" * 32, "2" * 32
 
     def setUp(self):
         from lifeos.edge.oracle import close_release as rel
-        status = {"Self": {"ID": ORACLE, "DNSName": "edge.example.ts.net."}, "User": {"7": {"LoginName": LOGIN}},
-                  "Peer": {"k1": {"ID": PHONE, "UserID": 7}, "k2": {"ID": MAC_MINI, "UserID": 7}}}
+
+        status = {
+            "Self": {"ID": ORACLE, "DNSName": "edge.example.ts.net."},
+            "User": {"7": {"LoginName": LOGIN}},
+            "Peer": {"k1": {"ID": PHONE, "UserID": 7}, "k2": {"ID": MAC_MINI, "UserID": 7}},
+        }
         d = tempfile.mkdtemp()
         self.policy, self.creds = os.path.join(d, "policy.json"), os.path.join(d, "creds")
         with open(self.policy, "w") as f:
@@ -217,15 +297,33 @@ class RealClientGet(unittest.TestCase):
         self.sent = []
 
     def urlopen(self, request, timeout=None):
-        self.sent.append((request.get_method(), request.full_url.split("/v1", 1)[1], request.get_header("Authorization")))
+        self.sent.append(
+            (request.get_method(), request.full_url.split("/v1", 1)[1], request.get_header("Authorization"))
+        )
         body = {"id": "page", "properties": {}} if request.get_method() == "GET" else {"results": [], "has_more": False}
-        return type("R", (), {"__enter__": lambda s: s, "__exit__": lambda s, *a: None, "read": lambda s: json.dumps(body).encode()})()
+        return type(
+            "R",
+            (),
+            {"__enter__": lambda s: s, "__exit__": lambda s, *a: None, "read": lambda s: json.dumps(body).encode()},
+        )()
 
     def run_get(self, app):
         from unittest import mock
+
         out = io.BytesIO()
-        with mock.patch("lifeos.platform.notion_client.urllib.request.urlopen", self.urlopen), mock.patch("lifeos.platform.notion_client.time.sleep"):
-            gate.main(app, io.BytesIO(v2(RUNNER) + http(headers={"Host": "edge.example.ts.net:47443"})), out, whois_as(), lambda: 0, self.policy, self.creds)
+        with (
+            mock.patch("lifeos.platform.notion_client.urllib.request.urlopen", self.urlopen),
+            mock.patch("lifeos.platform.notion_client.time.sleep"),
+        ):
+            gate.main(
+                app,
+                io.BytesIO(v2(RUNNER) + http(headers={"Host": "edge.example.ts.net:47443"})),
+                out,
+                whois_as(),
+                lambda: 0,
+                self.policy,
+                self.creds,
+            )
         return int(out.getvalue().split(b" ")[1])
 
     def test_get_gets_the_canonical_ids_and_a_real_read_only_client_and_sends_only_reads(self):
@@ -240,8 +338,13 @@ class RealClientGet(unittest.TestCase):
             return 200, "text/html", b"ok", ()
 
         self.assertEqual(self.run_get(screen), 200)
-        self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE}, "token": False, "source": self.LEDGER})
-        self.assertEqual([(m, p) for m, p, _ in self.sent], [("GET", "/pages/" + "3" * 32), ("POST", f"/data_sources/{self.LEDGER}/query")])
+        self.assertEqual(
+            seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE}, "token": False, "source": self.LEDGER}
+        )
+        self.assertEqual(
+            [(m, p) for m, p, _ in self.sent],
+            [("GET", "/pages/" + "3" * 32), ("POST", f"/data_sources/{self.LEDGER}/query")],
+        )
         self.assertTrue(all(a == "Bearer synthetic-notion" for _, _, a in self.sent))
 
     def test_a_policy_without_the_ledger_id_fails_closed_and_sends_nothing(self):
@@ -253,10 +356,24 @@ class RealClientGet(unittest.TestCase):
 
     def test_the_policy_builder_refuses_bad_ids_and_wrong_nodes(self):
         from lifeos.edge.oracle import close_release as rel
-        status = {"Self": {"ID": ORACLE, "DNSName": "edge.example.ts.net."}, "User": {"7": {"LoginName": LOGIN}, "8": {"LoginName": "x@example.com"}},
-                  "Peer": {"a": {"ID": PHONE, "UserID": 7}, "b": {"ID": "nTAGGED", "UserID": 7, "Tags": ["tag:x"]}, "c": {"ID": "nOTHER", "UserID": 8}}}
-        for ledger, nodes, code in (("xyz", [PHONE], "NOTION_ID_INVALID"), (self.LEDGER, [ORACLE], "NODE_REFUSED"), (self.LEDGER, ["nTAGGED"], "NODE_REFUSED"),
-                                    (self.LEDGER, ["nOTHER"], "NODE_REFUSED"), (self.LEDGER, ["nUNKNOWN"], "NODE_REFUSED"), (self.LEDGER, [], "NO_NODES")):
+
+        status = {
+            "Self": {"ID": ORACLE, "DNSName": "edge.example.ts.net."},
+            "User": {"7": {"LoginName": LOGIN}, "8": {"LoginName": "x@example.com"}},
+            "Peer": {
+                "a": {"ID": PHONE, "UserID": 7},
+                "b": {"ID": "nTAGGED", "UserID": 7, "Tags": ["tag:x"]},
+                "c": {"ID": "nOTHER", "UserID": 8},
+            },
+        }
+        for ledger, nodes, code in (
+            ("xyz", [PHONE], "NOTION_ID_INVALID"),
+            (self.LEDGER, [ORACLE], "NODE_REFUSED"),
+            (self.LEDGER, ["nTAGGED"], "NODE_REFUSED"),
+            (self.LEDGER, ["nOTHER"], "NODE_REFUSED"),
+            (self.LEDGER, ["nUNKNOWN"], "NODE_REFUSED"),
+            (self.LEDGER, [], "NO_NODES"),
+        ):
             with self.assertRaises(rel.Refused) as caught:
                 rel.policy(status, "47443", LOGIN, ledger, self.PIPELINE, nodes)
             self.assertTrue(str(caught.exception).startswith(code))
@@ -276,6 +393,7 @@ class Refresh(Gate):
             self.calls.append((req, who, secrets))
             secrets.get("after", []).append("hiring")
             return status, "text/html; charset=utf-8", b"<p>ok</p>", ()
+
         return app
 
     def test_a_verified_post_asks_once_after_the_response_and_the_app_never_sees_the_token(self):
@@ -291,14 +409,19 @@ class Refresh(Gate):
             self.calls.append((req, who, secrets))
             secrets.get("after", []).append("card")
             return status, "text/html; charset=utf-8", b"<p>ok</p>", ()
+
         return app
 
     def test_no_credential_a_get_or_a_refused_post_asks_nothing(self):
         with mock.patch.object(gate, "refresh") as asked:
-            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking())  # no github credential
+            self.run_gate(
+                v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking()
+            )  # no github credential
             self.with_token()
             self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), app=self.asking())  # GET: no `after` list at all
-            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))  # not a success
+            self.run_gate(
+                v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409)
+            )  # not a success
         asked.assert_not_called()
         self.assertNotIn("after", self.calls[1][2])
 
@@ -345,16 +468,27 @@ class Refresh(Gate):
                 return False
 
         def open_(req, timeout):
-            sent.append((req.get_method(), req.full_url, req.get_header("Authorization"), req.data and json.loads(req.data)))
+            sent.append(
+                (req.get_method(), req.full_url, req.get_header("Authorization"), req.data and json.loads(req.data))
+            )
             if fail:
                 raise OSError("down")
             return Response(json.dumps({"workflow_runs": runs}).encode() if req.get_method() == "GET" else b"")
+
         return sent, open_
 
     def test_one_dispatch_for_the_hiring_region_and_unknown_names_are_ignored(self):
         sent, open_ = self.opener([{"status": "completed"}, {"status": "in_progress"}])
         self.assertEqual(gate.refresh(b"tok", ["hiring", "hiring", "anything"], open_), ["dispatched"])
-        self.assertEqual(sent[1], ("POST", gate.API + "/workflows/domains.yml/dispatches", "Bearer tok", {"ref": "main", "inputs": {"refresh": "hiring", "live": "true"}}))
+        self.assertEqual(
+            sent[1],
+            (
+                "POST",
+                gate.API + "/workflows/domains.yml/dispatches",
+                "Bearer tok",
+                {"ref": "main", "inputs": {"refresh": "hiring", "live": "true"}},
+            ),
+        )
         self.assertEqual(len(sent), 2)
         sent, open_ = self.opener([])
         self.assertEqual(gate.refresh(b"tok", ["recruiters"], open_), ["dispatched"])
@@ -364,6 +498,7 @@ class Refresh(Gate):
     def test_every_refresh_name_is_a_domains_refresh_option_and_always_writes(self):
         import yaml
         from pathlib import Path
+
         inputs = yaml.safe_load(Path(".github/workflows/domains.yml").read_text())[True]["workflow_dispatch"]["inputs"]
         self.assertEqual(["none", *gate.REFRESH], inputs["refresh"]["options"])
         for name, body in gate.REFRESH.items():

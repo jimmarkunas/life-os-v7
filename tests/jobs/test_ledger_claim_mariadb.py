@@ -1,6 +1,7 @@
 """(comment 13848): the two-process Ledger-creation race on a real MariaDB with the real `v7_jobs` schema (the two claim
 columns and the UNIQUE.
 """
+
 import glob
 import os
 import pathlib
@@ -21,9 +22,18 @@ HOST = os.environ.get("LIFEOS_RACE_DB_HOST", "")
 
 def connect():
     import pymysql
+
     env = os.environ
-    return pymysql.connect(host=HOST, port=int(env.get("LIFEOS_RACE_DB_PORT") or 3306), user=env["LIFEOS_RACE_DB_USER"], password=env.get("LIFEOS_RACE_DB_PASSWORD", ""),
-                           database=NAME, charset="utf8mb4", autocommit=True, connect_timeout=10)
+    return pymysql.connect(
+        host=HOST,
+        port=int(env.get("LIFEOS_RACE_DB_PORT") or 3306),
+        user=env["LIFEOS_RACE_DB_USER"],
+        password=env.get("LIFEOS_RACE_DB_PASSWORD", ""),
+        database=NAME,
+        charset="utf8mb4",
+        autocommit=True,
+        connect_timeout=10,
+    )
 
 
 @unittest.skipUnless(NAME, "LIFEOS_RACE_DB_NAME is set only by the mariadb-race workflow")
@@ -41,9 +51,13 @@ class MariaDbRace(unittest.TestCase):
 
     def test_the_real_schema_has_the_unique_key_and_both_claim_columns(self):
         with connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='v7_jobs' AND column_name IN ('ledger_claim_by','ledger_claim_at') AND is_nullable='YES'")
+            cursor.execute(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='v7_jobs' AND column_name IN ('ledger_claim_by','ledger_claim_at') AND is_nullable='YES'"
+            )
             columns = cursor.fetchone()[0]
-            cursor.execute("SELECT non_unique FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='v7_jobs' AND column_name='dedupe_key' AND index_name='uq_v7_jobs_dedupe'")
+            cursor.execute(
+                "SELECT non_unique FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='v7_jobs' AND column_name='dedupe_key' AND index_name='uq_v7_jobs_dedupe'"
+            )
             unique = cursor.fetchone()
         self.assertEqual((columns, unique), (2, (0,)))
 
@@ -51,8 +65,27 @@ class MariaDbRace(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger_file, go_file = os.path.join(tmp, "ledger.txt"), os.path.join(tmp, "go")
             open(ledger_file, "w").close()
-            procs = [subprocess.Popen([sys.executable, "-B", "-m", "tests.jobs.claim_race_worker", "mariadb", ledger_file, KEY, role, go_file, mode, str(len(roles))], cwd=ROOT, stdout=subprocess.PIPE, text=True)
-                     for role in roles]
+            procs = [
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-B",
+                        "-m",
+                        "tests.jobs.claim_race_worker",
+                        "mariadb",
+                        ledger_file,
+                        KEY,
+                        role,
+                        go_file,
+                        mode,
+                        str(len(roles)),
+                    ],
+                    cwd=ROOT,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
+                for role in roles
+            ]
             deadline = time.monotonic() + 60
             while len(glob.glob(go_file + ".ready.*")) < len(roles) and time.monotonic() < deadline:
                 time.sleep(0.005)

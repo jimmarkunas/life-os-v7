@@ -1,6 +1,7 @@
 """the Alert settings screen on the Close service: reads and saves the three Bitwarden items through a signed review and
 confirm, and the saved values.
 """
+
 import datetime as dt
 import json
 import re
@@ -32,7 +33,13 @@ class Bitwarden:
             return mock.Mock(returncode=1, stdout="", stderr="down")
         name = names[item]
         if verb == "get":
-            return mock.Mock(returncode=0, stdout=json.dumps({"id": item, "key": "lifeos/github-actions/" + name, "value": self.vars.get(name, "")}), stderr="")
+            return mock.Mock(
+                returncode=0,
+                stdout=json.dumps(
+                    {"id": item, "key": "lifeos/github-actions/" + name, "value": self.vars.get(name, "")}
+                ),
+                stderr="",
+            )
         if not self.drop:
             self.vars[name] = argv[argv.index("--value") + 1]
         return mock.Mock(returncode=0, stdout="", stderr="")
@@ -93,7 +100,9 @@ class Screen(unittest.TestCase):
         for key, spec in registry.REGISTRY.items():
             with self.subTest(key=key):
                 self.assertIn(f'name="ch:{key}:telegram"', text)
-        self.assertIn('name="ch:run_failed:ntfy" value="1" aria-label="Phone for run_failed" checked disabled>', text)  # a PAGE alert's phone box is fixed on
+        self.assertIn(
+            'name="ch:run_failed:ntfy" value="1" aria-label="Phone for run_failed" checked disabled>', text
+        )  # a PAGE alert's phone box is fixed on
         self.assertIn('name="ch:quiet_24h:ntfy" value="1" aria-label="Phone for quiet_24h" checked', text)
         self.assertNotRegex(text, r'name="ch:quiet_24h:telegram" value="1" aria-label="Telegram for quiet_24h" checked')
         self.assertNotIn("bws-token", text)
@@ -111,7 +120,11 @@ class Screen(unittest.TestCase):
         self.assertNotIn("down", page_text(result))
 
     def test_a_saved_state_is_shown_back(self):
-        self.gh.vars = {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2026-10-27T08:00:00-05:00", "ALERT_SETTINGS": json.dumps({"v": 1, "channels": {"quiet_24h": ["ntfy", "telegram"]}})}
+        self.gh.vars = {
+            "ALERTS_ENABLED": "on",
+            "ALERTS_MUTED_UNTIL": "2026-10-27T08:00:00-05:00",
+            "ALERT_SETTINGS": json.dumps({"v": 1, "channels": {"quiet_24h": ["ntfy", "telegram"]}}),
+        }
         text = page_text(self.get())
         self.assertIn('name="enabled" value="1" checked', text)
         self.assertIn('value="2026-10-27T08:00"', text)
@@ -133,24 +146,43 @@ class Screen(unittest.TestCase):
         self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])  # review never writes
 
     def test_confirm_saves_the_three_variables_and_reports_only_after_they_read_back(self):
-        review = self.post(self.propose(enabled=True, mute="2026-10-27T08:00", edit={"ch:quiet_24h:telegram": "1", "ch:stuck_jobs:ntfy": None}))
+        review = self.post(
+            self.propose(
+                enabled=True, mute="2026-10-27T08:00", edit={"ch:quiet_24h:telegram": "1", "ch:stuck_jobs:ntfy": None}
+            )
+        )
         result = self.post({**self.fields(page_text(review)), "step": "confirm"})
         self.assertEqual(result[0], 200, page_text(result))
         self.assertIn("Alert settings saved", page_text(result))
         self.assertEqual(self.gh.vars["ALERTS_ENABLED"], "on")
         self.assertEqual(self.gh.vars["ALERTS_MUTED_UNTIL"], "2026-10-27T08:00:00-05:00")
-        self.assertEqual(json.loads(self.gh.vars["ALERT_SETTINGS"]), {"v": 1, "channels": {"quiet_24h": ["ntfy", "telegram"], "stuck_jobs": []}})
+        self.assertEqual(
+            json.loads(self.gh.vars["ALERT_SETTINGS"]),
+            {"v": 1, "channels": {"quiet_24h": ["ntfy", "telegram"], "stuck_jobs": []}},
+        )
         self.assertTrue(all(auth == "bws-token-synthetic" for _, _, auth in self.gh.log))
 
     def test_what_is_saved_is_exactly_what_the_senders_read(self):
-        review = self.post(self.propose(enabled=True, mute="2026-10-27T08:00", edit={"ch:quiet_24h:telegram": "1", "ch:run_failed:telegram": None}))
+        review = self.post(
+            self.propose(
+                enabled=True,
+                mute="2026-10-27T08:00",
+                edit={"ch:quiet_24h:telegram": "1", "ch:run_failed:telegram": None},
+            )
+        )
         self.post({**self.fields(page_text(review)), "step": "confirm"})
         env = dict(self.gh.vars)
         self.assertTrue(settings.enabled(env))
         self.assertEqual(settings.channels("quiet_24h", env), ("ntfy", "telegram"))
-        self.assertEqual(settings.channels("run_failed", env), ("ntfy", "whatsapp"))  # Telegram unticked, the phone kept
-        self.assertTrue(alerts.muted(env, dt.datetime(2026, 10, 27, 12, 0, tzinfo=dt.timezone.utc)))  # 7 AM Central, before the 8 AM mute ends
-        self.assertFalse(alerts.muted(env, dt.datetime(2026, 10, 27, 14, 0, tzinfo=dt.timezone.utc)))  # 9 AM Central, after
+        self.assertEqual(
+            settings.channels("run_failed", env), ("ntfy", "whatsapp")
+        )  # Telegram unticked, the phone kept
+        self.assertTrue(
+            alerts.muted(env, dt.datetime(2026, 10, 27, 12, 0, tzinfo=dt.timezone.utc))
+        )  # 7 AM Central, before the 8 AM mute ends
+        self.assertFalse(
+            alerts.muted(env, dt.datetime(2026, 10, 27, 14, 0, tzinfo=dt.timezone.utc))
+        )  # 9 AM Central, after
 
     def test_the_pages_carry_no_inline_style_or_script_the_services_policy_would_block(self):
         for html in (page_text(self.get()), page_text(self.post(self.propose(enabled=True)))):
@@ -163,7 +195,12 @@ class Screen(unittest.TestCase):
 
     def test_a_forged_expired_or_tampered_form_is_refused_and_nothing_is_written(self):
         good = self.propose(enabled=True)
-        for name, form in (("forged token", {**good, "t": "0" * 64}), ("expired", {**good, "exp": "1"}), ("bad mute", {**good, "mute": "tomorrow"}), ("no step", {**good, "step": "x"})):
+        for name, form in (
+            ("forged token", {**good, "t": "0" * 64}),
+            ("expired", {**good, "exp": "1"}),
+            ("bad mute", {**good, "mute": "tomorrow"}),
+            ("no step", {**good, "step": "x"}),
+        ):
             with self.subTest(name):
                 result = self.post(form)
                 self.assertEqual(result[0], 403)
@@ -198,7 +235,13 @@ class Screen(unittest.TestCase):
         self.assertIn(".sw input:checked", body.decode())
 
     def test_the_release_closure_carries_the_screen_and_what_it_imports(self):
-        for path in ("lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py"):
+        for path in (
+            "lifeos/sources/apps/alerts_app.py",
+            "lifeos/platform/alerts.py",
+            "lifeos/platform/alert_registry.py",
+            "lifeos/platform/alert_settings.py",
+            "lifeos/platform/redact.py",
+        ):
             self.assertIn(path, C.CLOSURE)
 
 

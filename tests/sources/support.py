@@ -1,4 +1,5 @@
 """test helpers that more than one test module (often in another domain) uses."""
+
 from tests.interview.support import ENV
 from lifeos.sources.interview import interview_evidence as ev
 from datetime import datetime
@@ -8,16 +9,49 @@ from lifeos.interview import create, notion
 from unittest.mock import patch
 
 
-def mail(subject="Schedule your interview - ExampleCo Program Manager", body="Please select a time for a call. Requisition 12345.", **extra):
-    return {"provider": "gmail", "id": subject, "received": "2026-10-20T15:00:00Z", "sender_name": "ExampleCo Talent", "sender_address": "no-reply.example",
-            "subject": subject, "body": body, "folder": "INBOX", "markers": {"bulk": False, "auto": True, "noreply": True}, "url": "https://example.test/thread/9", **extra}
+def mail(
+    subject="Schedule your interview - ExampleCo Program Manager",
+    body="Please select a time for a call. Requisition 12345.",
+    **extra,
+):
+    return {
+        "provider": "gmail",
+        "id": subject,
+        "received": "2026-10-20T15:00:00Z",
+        "sender_name": "ExampleCo Talent",
+        "sender_address": "no-reply.example",
+        "subject": subject,
+        "body": body,
+        "folder": "INBOX",
+        "markers": {"bulk": False, "auto": True, "noreply": True},
+        "url": "https://example.test/thread/9",
+        **extra,
+    }
 
 
-def outreach(role="Program Manager", client="ExampleCo", person="Pat Example", url="https://example.test/thread/5", received="2026-10-20T15:00:00Z", extra=""):
+def outreach(
+    role="Program Manager",
+    client="ExampleCo",
+    person="Pat Example",
+    url="https://example.test/thread/5",
+    received="2026-10-20T15:00:00Z",
+    extra="",
+):
     """A recruiter's first message: a person who says they are a recruiter, a role and (when given) the client."""
-    return {"provider": "gmail", "id": url, "received": received, "sender_name": person, "sender_address": "pat-example", "subject": f"{role} opportunity", "folder": "INBOX",
-            "markers": {"bulk": False, "auto": False, "noreply": False}, "url": url,
-            "body": f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role" + (f" for our client {client}" if client else "") + f". {extra}\n\n{person}\nSenior Recruiter\nStaffing Example Inc\n"}
+    return {
+        "provider": "gmail",
+        "id": url,
+        "received": received,
+        "sender_name": person,
+        "sender_address": "pat-example",
+        "subject": f"{role} opportunity",
+        "folder": "INBOX",
+        "markers": {"bulk": False, "auto": False, "noreply": False},
+        "url": url,
+        "body": f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role"
+        + (f" for our client {client}" if client else "")
+        + f". {extra}\n\n{person}\nSenior Recruiter\nStaffing Example Inc\n",
+    }
 
 
 def event(title, start="2026-10-28T10:00:00-05:00", **extra):
@@ -30,11 +64,17 @@ REQ, KEY = "777777", "recruiter-exampleco-777777"
 LEAD = outreach(url="https://example.test/thread/lead", received="2026-10-19T15:00:00Z", extra=f"Requisition {REQ}.")
 
 
-REQUEST = mail(subject="Schedule your interview - ExampleCo Program Manager", body=f"Please select a time for a call. Requisition {REQ}.",
-               url="https://example.test/thread/request", received="2026-10-20T15:00:00Z")
+REQUEST = mail(
+    subject="Schedule your interview - ExampleCo Program Manager",
+    body=f"Please select a time for a call. Requisition {REQ}.",
+    url="https://example.test/thread/request",
+    received="2026-10-20T15:00:00Z",
+)
 
 
-NO_REQ = outreach(role="Data Analyst", client="OtherCo", url="https://example.test/thread/noreq", received="2026-10-19T16:00:00Z")
+NO_REQ = outreach(
+    role="Data Analyst", client="OtherCo", url="https://example.test/thread/noreq", received="2026-10-19T16:00:00Z"
+)
 
 
 INVITE = "ExampleCo Program Manager Interview"
@@ -50,6 +90,7 @@ class Ledger:
     """The Job Ledger, keyed like the real one: the target check, an exact Stable Job Key lookup, one create and its
     read-back.
     """
+
     source = "ledger-source"
 
     def __init__(self):
@@ -62,13 +103,23 @@ class Ledger:
             key = body["filter"]["rich_text"]["equals"]
             return {"results": [{"id": pid} for pid, row in self.rows.items() if row["stable_job_key"] == key]}
         row = self.rows[path.rsplit("/", 1)[1]]
-        return {"properties": {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": row["stable_job_key"]}]}, "Visible Lane": {"select": {"name": row["lane"]}}}}
+        return {
+            "properties": {
+                "Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": row["stable_job_key"]}]},
+                "Visible Lane": {"select": {"name": row["lane"]}},
+            }
+        }
 
     def create(self, props, blocks):
         pid = f"ledger-{len(self.rows) + 1}"
-        self.rows[pid] = {"page_id": pid, "company": props["Company"]["rich_text"][0]["text"]["content"], "role": props["Job"]["title"][0]["text"]["content"],
-                          "stable_job_key": props["Stable Job Key"]["rich_text"][0]["text"]["content"], "requisition": None,
-                          "lane": props["Visible Lane"]["select"]["name"]}
+        self.rows[pid] = {
+            "page_id": pid,
+            "company": props["Company"]["rich_text"][0]["text"]["content"],
+            "role": props["Job"]["title"][0]["text"]["content"],
+            "stable_job_key": props["Stable Job Key"]["rich_text"][0]["text"]["content"],
+            "requisition": None,
+            "lane": props["Visible Lane"]["select"]["name"],
+        }
         return pid
 
     def for_company(self, company):
@@ -76,8 +127,8 @@ class Ledger:
 
 
 class NotionLike(WritableFake):
-    """The production-shaped fake, plus what Notion itself adds on read: every rich-text run carries its plain_text.
-    """
+    """The production-shaped fake, plus what Notion itself adds on read: every rich-text run carries its plain_text."""
+
     def register(self, prefix, items, depth=0):
         out = super().register(prefix, items, depth)
         for item in out:
@@ -91,27 +142,50 @@ class JourneyFixture:
 
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _db, _stop = claim_store()
         self.addCleanup(_stop)
         self.notion, self.ledger, self.events, self.recruiters = NotionLike(), Ledger(), [], None
         self.human = [dict(b) for b in self.notion.blocks["human"]]
         made = self.ledger.create
+
         def create(props, blocks):
             pid = made(props, blocks)
             row = self.ledger.rows[pid]
             self.notion.add_row(pid, row["company"], row["role"], key=row["stable_job_key"])
             return pid
+
         self.ledger.create = create
 
     def tick(self, *records):
         """One natural run of the Interview step, exactly as the runner calls it, with the mailbox and Calendar as they
         are now.
         """
-        calendar = type("Calendar", (), {"list_events": lambda s, a, b: [e for e in self.events if e.get("status") != "cancelled"],
-                                         "request": lambda s, m, p, params=None: {"items": list(self.events)}})()
-        with patch.object(ev.pipeline, "read_applied", return_value=[]), patch.object(create, "today", lambda: NOW.date().isoformat()):
-            return ev.run(20, True, environ=LIVE, client=self.notion, calendar=calendar, now=NOW, ledger=object(), records=list(records),
-                          ledger_rows=self.ledger.for_company, writer=self.ledger, recruiters=self.recruiters)
+        calendar = type(
+            "Calendar",
+            (),
+            {
+                "list_events": lambda s, a, b: [e for e in self.events if e.get("status") != "cancelled"],
+                "request": lambda s, m, p, params=None: {"items": list(self.events)},
+            },
+        )()
+        with (
+            patch.object(ev.pipeline, "read_applied", return_value=[]),
+            patch.object(create, "today", lambda: NOW.date().isoformat()),
+        ):
+            return ev.run(
+                20,
+                True,
+                environ=LIVE,
+                client=self.notion,
+                calendar=calendar,
+                now=NOW,
+                ledger=object(),
+                records=list(records),
+                ledger_rows=self.ledger.for_company,
+                writer=self.ledger,
+                recruiters=self.recruiters,
+            )
 
     def settle(self, *records):
         """Ticks until a tick writes nothing (each opportunity takes at most one write per tick)"""
@@ -119,16 +193,25 @@ class JourneyFixture:
         while ticks[-1]["writes"] and len(ticks) < 6:
             ticks.append(self.tick(*records))
         self.assertEqual(ticks[-1]["writes"], 0, "the journey never settled")
-        self.assertEqual((ticks[-1]["failed"], ticks[-1]["why"].get("round_identity_incomplete")), (0, None), "a settled run must not stay DEGRADED")
+        self.assertEqual(
+            (ticks[-1]["failed"], ticks[-1]["why"].get("round_identity_incomplete")),
+            (0, None),
+            "a settled run must not stay DEGRADED",
+        )
         return ticks
 
     def shown(self, page_id):
         """Every text on a page, nested blocks and table cells included, as Jim reads it."""
+
         def walk(block_id):
             for b in self.notion.blocks.get(block_id, []):
                 yield notion.text(b)
-                yield from ("".join(r.get("text", {}).get("content", "") for r in cell) for cell in (b.get("table_row") or {}).get("cells", []))
+                yield from (
+                    "".join(r.get("text", {}).get("content", "") for r in cell)
+                    for cell in (b.get("table_row") or {}).get("cells", [])
+                )
                 yield from walk(b.get("id"))
+
         return "\n".join(walk(page_id))
 
     def pages(self):
@@ -136,4 +219,8 @@ class JourneyFixture:
         must stay untouched).
         """
         scan = notion.parents(self.notion, LIVE)  # an opportunity is its Ledger row
-        return [(p, notion.child_scan(self.notion, p.page_id).items) for p in scan.items if p.active and p.page_id != "human"]
+        return [
+            (p, notion.child_scan(self.notion, p.page_id).items)
+            for p in scan.items
+            if p.active and p.page_id != "human"
+        ]

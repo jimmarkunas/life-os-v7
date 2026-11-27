@@ -9,7 +9,11 @@ from unittest import mock
 from lifeos.platform import gcal
 
 OIDC_URL = "https://actions.example/idtoken?api-version=2.0"
-ENV = {"ACTIONS_ID_TOKEN_REQUEST_URL": OIDC_URL, "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "REQ-BEARER-SECRET", "GCAL_CALENDAR_ID": "cal-id"}
+ENV = {
+    "ACTIONS_ID_TOKEN_REQUEST_URL": OIDC_URL,
+    "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "REQ-BEARER-SECRET",
+    "GCAL_CALENDAR_ID": "cal-id",
+}
 OIDC_JWT, FEDERATED, ACCESS = "OIDC.JWT.VALUE", "ya29.federated-token", "ya29.calendar-access-token"
 
 
@@ -34,7 +38,15 @@ class Net:
     def __call__(self, request, timeout=None):
         url = request.full_url
         self.seen.append((url, request.get_method(), dict(request.header_items()), request.data))
-        stage = "oidc" if url.startswith("https://actions.example") else "sts" if url == gcal.STS_URL else "iam" if url == gcal.IAM_URL else "api"
+        stage = (
+            "oidc"
+            if url.startswith("https://actions.example")
+            else "sts"
+            if url == gcal.STS_URL
+            else "iam"
+            if url == gcal.IAM_URL
+            else "api"
+        )
         if self.fail == stage:
             raise urllib.error.HTTPError(url, 403, "refused", {}, io.BytesIO(b"{}"))
         if stage in self.bad:
@@ -74,7 +86,9 @@ class Keyless(unittest.TestCase):
         )
         self.assertEqual(sent["subjectToken"], OIDC_JWT)
         self.assertEqual(iam[2]["Authorization"], "Bearer " + FEDERATED)
-        self.assertEqual(json.loads(iam[3]), {"scope": [gcal.SCOPE], "lifetime": "3600s"})  # the calendar scope the client already uses
+        self.assertEqual(
+            json.loads(iam[3]), {"scope": [gcal.SCOPE], "lifetime": "3600s"}
+        )  # the calendar scope the client already uses
         self.assertEqual(api[2]["Authorization"], "Bearer " + ACCESS)
         self.assertTrue(api[0].startswith("https://www.googleapis.com/calendar/v3/calendars/cal-id/events"))
 
@@ -88,7 +102,10 @@ class Keyless(unittest.TestCase):
         lines = []
         with mock.patch("urllib.request.urlopen", Net()):
             client(lines.append).list_events("a", "b")
-        self.assertEqual(lines, [f"::add-mask::{OIDC_JWT}", f"::add-mask::{FEDERATED}", f"::add-mask::{ACCESS}", "gcal auth: keyless ok"])
+        self.assertEqual(
+            lines,
+            [f"::add-mask::{OIDC_JWT}", f"::add-mask::{FEDERATED}", f"::add-mask::{ACCESS}", "gcal auth: keyless ok"],
+        )
         self.assertTrue(all("\n" not in line for line in lines))
         self.assertNotIn("REQ-BEARER-SECRET", "".join(lines))
 
@@ -102,7 +119,11 @@ class Keyless(unittest.TestCase):
         self.assertEqual(lines.count("gcal auth: keyless ok"), 1)
 
     def test_each_stage_failing_is_its_own_fixed_code_and_nothing_secret_leaks_into_it(self):
-        for stage, code in (("oidc", "GCAL_OIDC_UNAVAILABLE"), ("sts", "GCAL_STS_REFUSED"), ("iam", "GCAL_IAM_REFUSED")):
+        for stage, code in (
+            ("oidc", "GCAL_OIDC_UNAVAILABLE"),
+            ("sts", "GCAL_STS_REFUSED"),
+            ("iam", "GCAL_IAM_REFUSED"),
+        ):
             with self.subTest(stage):
                 lines = []
                 with mock.patch("urllib.request.urlopen", Net(fail=stage)):
@@ -112,7 +133,11 @@ class Keyless(unittest.TestCase):
                 self.assertNotIn("gcal auth: keyless ok", lines)
 
     def test_a_reply_without_the_token_is_refused_with_the_stage_code(self):
-        for stage, bad, code in (("sts", {"error": "x"}, "GCAL_STS_REFUSED"), ("iam", {}, "GCAL_IAM_REFUSED"), ("oidc", {"nope": 1}, "GCAL_OIDC_UNAVAILABLE")):
+        for stage, bad, code in (
+            ("sts", {"error": "x"}, "GCAL_STS_REFUSED"),
+            ("iam", {}, "GCAL_IAM_REFUSED"),
+            ("oidc", {"nope": 1}, "GCAL_OIDC_UNAVAILABLE"),
+        ):
             with self.subTest(stage):
                 with mock.patch("urllib.request.urlopen", Net(bad={stage: bad})):
                     with self.assertRaises(gcal.GcalError) as error:
@@ -132,12 +157,16 @@ class Keyless(unittest.TestCase):
         self.assertFalse(gcal.keyless_available({"GCAL_CALENDAR_ID": "c"}))
         with self.assertRaises(gcal.GcalError) as error:
             gcal.GoogleCalendar.from_env({"GCAL_CALENDAR_ID": "c"})
-        self.assertEqual(str(error.exception), "GCAL_CONFIG_MISSING:GCAL_SERVICE_ACCOUNT_JSON")  # no OIDC, no key: degrades like a missing key
+        self.assertEqual(
+            str(error.exception), "GCAL_CONFIG_MISSING:GCAL_SERVICE_ACCOUNT_JSON"
+        )  # no OIDC, no key: degrades like a missing key
         with self.assertRaises(gcal.GcalError) as error:
             gcal.GoogleCalendar.from_env({"ACTIONS_ID_TOKEN_REQUEST_URL": OIDC_URL})
         self.assertEqual(str(error.exception), "GCAL_CONFIG_MISSING:GCAL_CALENDAR_ID")
         key = json.dumps({"client_email": "x", "private_key": "k"})
-        self.assertFalse(gcal.GoogleCalendar.from_env({"GCAL_SERVICE_ACCOUNT_JSON": key, "GCAL_CALENDAR_ID": "c"})._keyless)
+        self.assertFalse(
+            gcal.GoogleCalendar.from_env({"GCAL_SERVICE_ACCOUNT_JSON": key, "GCAL_CALENDAR_ID": "c"})._keyless
+        )
 
     def test_a_keyless_environment_ignores_a_leftover_key_value(self):
         key = json.dumps({"client_email": "x", "private_key": "k"})
@@ -158,7 +187,10 @@ class Keyless(unittest.TestCase):
 
         seen = []
         ref = next(r for r, k in F._BY_REF.items() if k[0] == "calendar")
-        fetch = F.build_fetchers({**ENV, "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": "cal"}, factories={"calendar": lambda s, c: seen.append(s) or Cal(s, c)})["calendar"]
+        fetch = F.build_fetchers(
+            {**ENV, "FOLLOWUP_GCAL_PERSONAL_CALENDAR_ID": "cal"},
+            factories={"calendar": lambda s, c: seen.append(s) or Cal(s, c)},
+        )["calendar"]
         fetch(ref, None)
         self.assertEqual(seen, [gcal.KEYLESS])
 

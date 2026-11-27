@@ -1,4 +1,5 @@
 """a Bitwarden secret id that appears in the workflow files must not be copied anywhere else in the repo."""
+
 import re
 import subprocess
 import tempfile
@@ -9,8 +10,14 @@ ROOT = Path(__file__).resolve().parents[2]
 UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 MAPPING_LINE = re.compile(r">|secrets?:")
 ALLOWED = {  # path: (most copies it may hold, why)
-    "tests/contracts/test_workflow.py": (63, "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test; 58 since LIFE-699 added the two private acceptance cases; 60 since LIFE-696 added the Bytalos Gmail refresh token and the Todoist token to the followup job); 61 since LIFE-711 added the Action Inbox view QA job's Notion token loader; 62 since LIFE-844 added the Runtime Configuration bootstrap ID"),
-    "docs/NOTION_INTEGRATIONS.md": (6, "the integrations table names the Bitwarden id each Notion token is loaded from (identifiers only, already public in the workflows)"),
+    "tests/contracts/test_workflow.py": (
+        63,
+        "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test; 58 since LIFE-699 added the two private acceptance cases; 60 since LIFE-696 added the Bytalos Gmail refresh token and the Todoist token to the followup job); 61 since LIFE-711 added the Action Inbox view QA job's Notion token loader; 62 since LIFE-844 added the Runtime Configuration bootstrap ID",
+    ),
+    "docs/NOTION_INTEGRATIONS.md": (
+        6,
+        "the integrations table names the Bitwarden id each Notion token is loaded from (identifiers only, already public in the workflows)",
+    ),
 }
 
 
@@ -35,8 +42,11 @@ def copies(root, files=None, ids=None):
     """{path: how many workflow ids it holds}, for every file outside.github/workflows that holds at least one."""
     ids = workflow_ids(root) if ids is None else ids
     found = {}
-    for rel in (tracked(root) if files is None else files):
-        if rel.startswith((".github/workflows/", ".github/workflows-src/")) or rel == ".github/actions/bws-load/sets.yml":
+    for rel in tracked(root) if files is None else files:
+        if (
+            rel.startswith((".github/workflows/", ".github/workflows-src/"))
+            or rel == ".github/actions/bws-load/sets.yml"
+        ):
             continue
         try:
             text = (Path(root) / rel).read_text(errors="ignore").lower()
@@ -90,7 +100,10 @@ class WorkflowIdsAreNotCopied(unittest.TestCase):
             self.assertFalse([f for f in flagged if fake in f.lower()])
 
     def test_negative_control_an_allow_listed_file_may_not_grow_and_a_stale_entry_is_flagged(self):
-        allowed = {"a.py": (2, "pins a mapping on purpose for a test of the rule"), "b.py": (1, "stale entry used to prove staleness is flagged")}
+        allowed = {
+            "a.py": (2, "pins a mapping on purpose for a test of the rule"),
+            "b.py": (1, "stale entry used to prove staleness is flagged"),
+        }
         self.assertTrue([p for p in problems({"a.py": 3}, allowed) if "more than" in p])
         self.assertTrue([p for p in problems({"a.py": 2}, allowed) if "b.py" in p and "remove it" in p])
 

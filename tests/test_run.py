@@ -1,4 +1,5 @@
 """Every pipeline stage resolves to a real function"""
+
 import contextlib
 import importlib
 import inspect
@@ -25,7 +26,9 @@ class RegistryTests(unittest.TestCase):
 
     def test_lazy_passes_limit_floor_live_and_fixed_arguments(self):
         calls = []
-        fake = type("M", (), {"go": staticmethod(lambda limit, live, **kw: calls.append((limit, live, kw)) or {"n": 1})})
+        fake = type(
+            "M", (), {"go": staticmethod(lambda limit, live, **kw: calls.append((limit, live, kw)) or {"n": 1})}
+        )
         with patch("importlib.import_module", return_value=fake):
             self.assertEqual(run.lazy("m", "go", floor=500, lane="X")(40, True), {"n": 1})
         self.assertEqual(calls, [(500, True, {"lane": "X"})])
@@ -35,19 +38,33 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(calls[1:], [(True, {})])
 
     def test_a_failing_stage_prints_a_fixed_code_and_returns_1(self):
-        with patch.dict(run.STAGES, {"probe": lambda limit, live: (_ for _ in ()).throw(run.JiraError("JIRA_NETWORK"))}):
+        with patch.dict(
+            run.STAGES, {"probe": lambda limit, live: (_ for _ in ()).throw(run.JiraError("JIRA_NETWORK"))}
+        ):
             self.assertEqual(run.main(["probe"]), 1)
 
 
 class GranolaHeadlineTests(unittest.TestCase):
-
-    COUNTS = {"already": 12, "carried": 0, "code": "GRAN_AUTO_NOTHING_NEW", "failed": 0, "meetings": 12, "unfiled_created": 0, "unfiled_waiting": 0, "why": {}}
+    COUNTS = {
+        "already": 12,
+        "carried": 0,
+        "code": "GRAN_AUTO_NOTHING_NEW",
+        "failed": 0,
+        "meetings": 12,
+        "unfiled_created": 0,
+        "unfiled_waiting": 0,
+        "why": {},
+    }
 
     def run_stage(self, counts, summary=None):
         out, err = io.StringIO(), io.StringIO()
         env = {"GITHUB_STEP_SUMMARY": summary} if summary else {}
-        with patch.dict(os.environ, env, clear=False), patch.dict(run.STAGES, {"granola-auto": lambda limit, live: counts}), \
-                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.dict(run.STAGES, {"granola-auto": lambda limit, live: counts}),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
             status = run.main(["granola-auto"])
         return status, out.getvalue(), err.getvalue()
 
@@ -55,11 +72,23 @@ class GranolaHeadlineTests(unittest.TestCase):
         status, out, _ = self.run_stage(self.COUNTS)
         self.assertEqual(status, 0)
         lines = out.splitlines()
-        self.assertEqual(lines[0], "Granola auto: GRAN_AUTO_NOTHING_NEW. On Oracle: 12; already filed: 12; filed this run: 0; waiting for Jim (Unfiled): 0; failed: 0.")
+        self.assertEqual(
+            lines[0],
+            "Granola auto: GRAN_AUTO_NOTHING_NEW. On Oracle: 12; already filed: 12; filed this run: 0; waiting for Jim (Unfiled): 0; failed: 0.",
+        )
         self.assertTrue(lines[1].startswith("granola-auto: {"))  # the full counts line is kept unchanged
 
     def test_a_busy_run_reports_what_was_filed_and_what_waits(self):
-        _, out, _ = self.run_stage({**self.COUNTS, "code": "GRAN_AUTO_DONE", "carried": 3, "meetings": 15, "unfiled_created": 1, "unfiled_waiting": 2})
+        _, out, _ = self.run_stage(
+            {
+                **self.COUNTS,
+                "code": "GRAN_AUTO_DONE",
+                "carried": 3,
+                "meetings": 15,
+                "unfiled_created": 1,
+                "unfiled_waiting": 2,
+            }
+        )
         self.assertIn("filed this run: 3", out.splitlines()[0])
         self.assertIn("waiting for Jim (Unfiled): 3", out.splitlines()[0])
 
@@ -70,7 +99,15 @@ class GranolaHeadlineTests(unittest.TestCase):
         self.assertIn("GRANOLA-AUTO FAILED: GRAN_AUTO_FAILED", err)
 
     def test_the_sentence_never_carries_free_text(self):
-        _, out, _ = self.run_stage({**self.COUNTS, "code": "not a code <script>", "meetings": "twelve", "already": True, "title": "Secret client meeting"})
+        _, out, _ = self.run_stage(
+            {
+                **self.COUNTS,
+                "code": "not a code <script>",
+                "meetings": "twelve",
+                "already": True,
+                "title": "Secret client meeting",
+            }
+        )
         first = out.splitlines()[0]
         self.assertIn("Granola auto: no code.", first)
         self.assertIn("On Oracle: 0;", first)
@@ -79,6 +116,7 @@ class GranolaHeadlineTests(unittest.TestCase):
 
     def test_the_github_step_summary_gets_the_same_sentence_and_a_bad_path_is_harmless(self):
         import tempfile
+
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "summary.md")
             self.run_stage(self.COUNTS, summary=path)
@@ -92,7 +130,11 @@ class GranolaHeadlineTests(unittest.TestCase):
 
     def test_other_stages_and_counts_without_meetings_print_nothing_extra(self):
         out, err = io.StringIO(), io.StringIO()
-        with patch.dict(run.STAGES, {"probe": lambda limit, live: {"x": 1}}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with (
+            patch.dict(run.STAGES, {"probe": lambda limit, live: {"x": 1}}),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
             run.main(["probe"])
         self.assertEqual(out.getvalue().splitlines(), ['probe: {"x": 1}'])
         self.assertIsNone(run._headline("granola-auto", {"code": "X"}))
@@ -105,30 +147,58 @@ class PartialFailureExitTests(unittest.TestCase):
     @staticmethod
     def _main(stage, counts):
         out, err = io.StringIO(), io.StringIO()
-        with warnings.catch_warnings(), patch.dict(run.STAGES, {stage: lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with (
+            warnings.catch_warnings(),
+            patch.dict(run.STAGES, {stage: lambda limit, live: counts}),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
             warnings.simplefilter("ignore", ResourceWarning)
             code = run.main([stage, "--live"])
         return code, out.getvalue(), err.getvalue()
 
     def test_publish_with_a_failed_record_exits_1_keeps_the_counts_line_and_names_a_fixed_code(self):
-        counts = {"picked": 2, "created": 1, "duplicate": 0, "failed": 1, "seeded": 0, "calls": 6, "error": "NOTION_HTTP_400 validation_error body.children[2]",
-                  "fit_sync": {"due": 0, "failed": 0, "synced": 0}, "readback": {"checked": 1, "failed": 0, "verified": 1}, "target": "ok"}
+        counts = {
+            "picked": 2,
+            "created": 1,
+            "duplicate": 0,
+            "failed": 1,
+            "seeded": 0,
+            "calls": 6,
+            "error": "NOTION_HTTP_400 validation_error body.children[2]",
+            "fit_sync": {"due": 0, "failed": 0, "synced": 0},
+            "readback": {"checked": 1, "failed": 0, "verified": 1},
+            "target": "ok",
+        }
         code, out, err = self._main("publish", counts)
         self.assertEqual(code, 1)
-        self.assertEqual(out, "publish: " + json.dumps(counts, sort_keys=True) + "\n")  # the counts-only line is exactly what it was
+        self.assertEqual(
+            out, "publish: " + json.dumps(counts, sort_keys=True) + "\n"
+        )  # the counts-only line is exactly what it was
         self.assertEqual(err, "PUBLISH FAILED: PUBLISH_RECORDS_FAILED\n")  # a fixed code: no job, title or Notion text
 
     def test_publish_with_no_failed_record_exits_0(self):
-        counts = {"picked": 3, "created": 3, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 9, "fit_sync": {"due": 0, "failed": 0, "synced": 0},
-                  "readback": {"checked": 3, "failed": 0, "verified": 3}, "target": "ok"}
+        counts = {
+            "picked": 3,
+            "created": 3,
+            "duplicate": 0,
+            "failed": 0,
+            "seeded": 0,
+            "calls": 9,
+            "fit_sync": {"due": 0, "failed": 0, "synced": 0},
+            "readback": {"checked": 3, "failed": 0, "verified": 3},
+            "target": "ok",
+        }
         code, out, err = self._main("publish", counts)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out, "publish: " + json.dumps(counts, sort_keys=True) + "\n")
 
     def test_publish_that_returned_early_without_a_failed_count_exits_0(self):
-        """The wrong-target return carries no `failed` key: it is not this correction's concern and keeps its exit code.
-        """
-        code, out, err = self._main("publish", {"calls": 0, "created": 0, "duplicate": 0, "failed": 0, "picked": 0, "seeded": 0, "target": "wrong"})
+        """The wrong-target return carries no `failed` key: it is not this correction's concern and keeps its exit code."""
+        code, out, err = self._main(
+            "publish",
+            {"calls": 0, "created": 0, "duplicate": 0, "failed": 0, "picked": 0, "seeded": 0, "target": "wrong"},
+        )
         self.assertEqual((code, err), (0, ""))
         code, _, err = self._main("publish", {"target": "wrong"})
         self.assertEqual((code, err), (0, ""))
@@ -160,13 +230,21 @@ class PartialFailureExitTests(unittest.TestCase):
         """an off-mode Fit run (failed 0) exits 0"""
         code, _, err = self._main("fit", {"cloud_fit": "off", "cloud_degraded": 0, "failed": 0, "picked": 3})
         self.assertEqual((code, err), (0, ""))
-        code, out, err = self._main("fit", {"cloud_fit": "DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", "cloud_degraded": 1, "failed": 1, "picked": 3})
+        code, out, err = self._main(
+            "fit",
+            {"cloud_fit": "DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", "cloud_degraded": 1, "failed": 1, "picked": 3},
+        )
         self.assertEqual((code, err), (1, "FIT FAILED: FIT_CLOUD_DEGRADED\n"))
         self.assertIn("DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", out)
 
     def test_a_raised_store_or_notion_error_still_returns_1_with_its_own_code(self):
         err = io.StringIO()
-        with patch.dict(run.STAGES, {"publish": lambda limit, live: (_ for _ in ()).throw(run.NotionError("NOTION_HTTP_429"))}), contextlib.redirect_stderr(err):
+        with (
+            patch.dict(
+                run.STAGES, {"publish": lambda limit, live: (_ for _ in ()).throw(run.NotionError("NOTION_HTTP_429"))}
+            ),
+            contextlib.redirect_stderr(err),
+        ):
             self.assertEqual(run.main(["publish"]), 1)
         self.assertEqual(err.getvalue(), "PUBLISH FAILED: NOTION_HTTP_429\n")
 
@@ -219,11 +297,39 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
     @staticmethod
     def _row(job_id, key):
         from datetime import datetime
-        return (job_id, key, f"Senior Staff Engineer {job_id}", "Example Co", f"https://example.com/jobs/{job_id}", "web", "greenhouse", "US Remote",
-                datetime(2026, 10, 12, 8, 0), None, "A short summary.", None, None, None, None, 70, "fits", None, None, None, None, "direct", None, "", None, None)
+
+        return (
+            job_id,
+            key,
+            f"Senior Staff Engineer {job_id}",
+            "Example Co",
+            f"https://example.com/jobs/{job_id}",
+            "web",
+            "greenhouse",
+            "US Remote",
+            datetime(2026, 10, 12, 8, 0),
+            None,
+            "A short summary.",
+            None,
+            None,
+            None,
+            None,
+            70,
+            "fits",
+            None,
+            None,
+            None,
+            None,
+            "direct",
+            None,
+            "",
+            None,
+            None,
+        )
 
     def _publish(self, fail_ids):
         from lifeos.jobs import fit_sync, publish, readback
+
         writes, created = [], []
 
         class Client:
@@ -250,11 +356,18 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
 
         rows = [self._row(1, "key-1"), self._row(2, "key-2")]
         out, err = io.StringIO(), io.StringIO()
-        with patch.object(publish, "Client", Client), patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
-                patch.object(publish.store, "connect", lambda: self.Connection(rows, writes)), patch.object(publish.store, "ensure_schema", lambda c: None), \
-                patch.object(fit_sync, "run", return_value={"due": 0, "failed": 0, "synced": 0}), patch.object(publish.ledger_claim, "claim", lambda *a, **k: ("won", None)), \
-                patch.object(readback, "run", return_value={"checked": 1, "failed": 0, "verified": 1}), patch.object(publish.body, "fill", return_value=0), \
-                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with (
+            patch.object(publish, "Client", Client),
+            patch.object(publish.ledger, "verify", return_value=publish.ledger.OK),
+            patch.object(publish.store, "connect", lambda: self.Connection(rows, writes)),
+            patch.object(publish.store, "ensure_schema", lambda c: None),
+            patch.object(fit_sync, "run", return_value={"due": 0, "failed": 0, "synced": 0}),
+            patch.object(publish.ledger_claim, "claim", lambda *a, **k: ("won", None)),
+            patch.object(readback, "run", return_value={"checked": 1, "failed": 0, "verified": 1}),
+            patch.object(publish.body, "fill", return_value=0),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
             code = run.main(["publish", "--live"])
         return code, out.getvalue(), err.getvalue(), writes, created
 

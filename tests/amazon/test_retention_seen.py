@@ -1,4 +1,5 @@
 """Amazon retention reads only mail its checkpoint does not hold."""
+
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -35,7 +36,10 @@ class Checkpoint(unittest.TestCase):
     def seen(self, now=STAMP, parser=None, connect=None):
         connect = connect or (lambda: self.db)
         parser = parser or self.parser
-        return (lambda: mail_checkpoint.load(retention.READER, parser, now, connect), lambda digests: mail_checkpoint.save(retention.READER, parser, now, digests, connect))
+        return (
+            lambda: mail_checkpoint.load(retention.READER, parser, now, connect),
+            lambda digests: mail_checkpoint.save(retention.READER, parser, now, digests, connect),
+        )
 
     def run_(self, gmail, notion, seen, live=False):
         return retention.run(100, live, environ=LIVE, gmail=gmail, notion=notion, now=NOW, seen=seen)
@@ -46,7 +50,10 @@ class Checkpoint(unittest.TestCase):
     def test_the_first_run_reads_everything_and_saves_the_second_reads_nothing_and_judges_the_same(self):
         gmail, notion = counting()
         first = self.run_(gmail, notion, self.seen())
-        self.assertEqual((first["gmail"], first["checkpoint"], sorted(gmail.reads)), ({"listed": 2, "read": 2, "reused": 0}, "saved", ["m-1", "m-2"]))
+        self.assertEqual(
+            (first["gmail"], first["checkpoint"], sorted(gmail.reads)),
+            ({"listed": 2, "read": 2, "reused": 0}, "saved", ["m-1", "m-2"]),
+        )
         gmail.reads.clear()
         second = self.run_(gmail, notion, self.seen())
         self.assertEqual((second["gmail"], gmail.reads), ({"listed": 2, "read": 0, "reused": 2}, []))
@@ -55,7 +62,9 @@ class Checkpoint(unittest.TestCase):
     def test_new_mail_is_read_once_and_the_rest_is_not(self):
         gmail, notion = counting()
         self.run_(gmail, notion, self.seen())
-        gmail.messages["m-3"] = {**gmail.messages["m-2"], "id": "m-3"} if "id" in gmail.messages["m-2"] else dict(gmail.messages["m-2"])
+        gmail.messages["m-3"] = (
+            {**gmail.messages["m-2"], "id": "m-3"} if "id" in gmail.messages["m-2"] else dict(gmail.messages["m-2"])
+        )
         gmail.reads.clear()
         counts = self.run_(gmail, notion, self.seen())
         self.assertEqual((counts["gmail"], gmail.reads), ({"listed": 3, "read": 1, "reused": 2}, ["m-3"]))
@@ -63,9 +72,11 @@ class Checkpoint(unittest.TestCase):
     def test_a_stale_checkpoint_a_different_parser_and_an_unreadable_store_all_read_in_full(self):
         gmail, notion = counting()
         self.run_(gmail, notion, self.seen())
-        for label, seen in (("stale", self.seen(now=STAMP + timedelta(hours=mail_checkpoint.REUSE_HOURS + 1))),
-                            ("parser", self.seen(parser="0" * 16)),
-                            ("store", self.seen(connect=lambda: (_ for _ in ()).throw(RuntimeError("down"))))):
+        for label, seen in (
+            ("stale", self.seen(now=STAMP + timedelta(hours=mail_checkpoint.REUSE_HOURS + 1))),
+            ("parser", self.seen(parser="0" * 16)),
+            ("store", self.seen(connect=lambda: (_ for _ in ()).throw(RuntimeError("down")))),
+        ):
             gmail.reads.clear()
             counts = self.run_(gmail, notion, seen)
             self.assertEqual((counts["gmail"]["read"], counts["gmail"]["reused"]), (2, 0), label)
@@ -73,13 +84,20 @@ class Checkpoint(unittest.TestCase):
     def test_a_run_that_did_not_finish_leaves_the_checkpoint_alone(self):
         gmail, notion = counting()
         self.run_(gmail, notion, self.seen())
-        before = self.db.raw.execute("SELECT message_id, seen_at FROM v7_mail_checkpoint ORDER BY message_id").fetchall()
+        before = self.db.raw.execute(
+            "SELECT message_id, seen_at FROM v7_mail_checkpoint ORDER BY message_id"
+        ).fetchall()
         gmail.messages["m-3"] = dict(gmail.messages["m-2"])
         later = self.seen(now=STAMP + timedelta(hours=1))
-        gmail.message_record = lambda *a, **k: (_ for _ in ()).throw(retention.GmailError("GMAIL_HTTP_500"))  # the next read fails part way
+        gmail.message_record = lambda *a, **k: (_ for _ in ()).throw(
+            retention.GmailError("GMAIL_HTTP_500")
+        )  # the next read fails part way
         counts = self.run_(gmail, notion, later)
         self.assertNotIn("checkpoint", counts)
-        self.assertEqual(self.db.raw.execute("SELECT message_id, seen_at FROM v7_mail_checkpoint ORDER BY message_id").fetchall(), before)
+        self.assertEqual(
+            self.db.raw.execute("SELECT message_id, seen_at FROM v7_mail_checkpoint ORDER BY message_id").fetchall(),
+            before,
+        )
 
     def test_a_trashed_message_leaves_the_checkpoint_and_the_digest_holds_no_mail_text(self):
         gmail, notion = counting()
@@ -88,6 +106,7 @@ class Checkpoint(unittest.TestCase):
         rows = self.db.raw.execute("SELECT message_id, digest FROM v7_mail_checkpoint").fetchall()
         self.assertEqual([r[0] for r in rows], ["m-2"])  # m-1 was trashed
         import json
+
         digest = json.loads(rows[0][1])
         self.assertEqual(sorted(digest), ["events", "received_at", "shape"])
         self.assertEqual(sorted(digest["events"][0]), ["has_total", "order_id", "reason", "status"])

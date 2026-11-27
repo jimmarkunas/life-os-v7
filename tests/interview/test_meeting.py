@@ -1,6 +1,7 @@
 """E10: the accepted Calendar invite's own joining details (join link, location) on the round page's Logistics, written
 in place with the round's other.
 """
+
 import unittest
 from datetime import datetime
 from lifeos.interview import create, notion, stage
@@ -17,22 +18,36 @@ JOIN, PLACE = "https://meet.example.test/abc-defg-hij", "Example HQ, Room 4"
 
 
 def move(client, child_id, meeting=None, date=DATE, cancelled=False, live=True):
-    query = RoundQuery(True, date, None, 1, explicit_child_page_id=child_id, source="https://example.test/thread/1", calendar_ref=REF, cancelled=cancelled,
-                       meeting=meeting)
+    query = RoundQuery(
+        True,
+        date,
+        None,
+        1,
+        explicit_child_page_id=child_id,
+        source="https://example.test/thread/1",
+        calendar_ref=REF,
+        cancelled=cancelled,
+        meeting=meeting,
+    )
     return stage.run(10, live, environ=ENV, client=client, evidence=[(PARENT, query)])
 
 
 def logistics(client, child):
-    return " ".join(notion.text(b) for blocks in client.blocks.values() for b in blocks if notion.text(b).startswith("Meeting link / location: ")
-                    and b["id"].startswith(child))
+    return " ".join(
+        notion.text(b)
+        for blocks in client.blocks.values()
+        for b in blocks
+        if notion.text(b).startswith("Meeting link / location: ") and b["id"].startswith(child)
+    )
 
 
 class Joining(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_the_confirmed_round_shows_the_invites_join_link_and_location_and_reads_them_back(self):
         client, _, child = pending_round()
         notes = notion.protected_snapshot(client, child, "round")
@@ -83,31 +98,52 @@ class Joining(unittest.TestCase):
 
 
 class FromTheInvite(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def event(self, **extra):
-        return {"id": "e1", "summary": "ExampleCo Interview", "status": "confirmed", "start": {"dateTime": "2026-10-28T15:00:00Z"}, **extra}
+        return {
+            "id": "e1",
+            "summary": "ExampleCo Interview",
+            "status": "confirmed",
+            "start": {"dateTime": "2026-10-28T15:00:00Z"},
+            **extra,
+        }
 
     def read(self, *events):
         class Calendar:
             def list_events(self, *_):
                 return list(events)
+
         return hiring.read_events(Calendar(), datetime(2026, 10, 23, tzinfo=hiring.TZ))
 
     def test_the_video_entry_point_wins_then_the_meet_link_and_only_https(self):
-        video = {"conferenceData": {"entryPoints": [{"entryPointType": "phone", "uri": "tel:+1-555-0100"}, {"entryPointType": "video", "uri": JOIN}]},
-                 "hangoutLink": "https://meet.example.test/other"}
+        video = {
+            "conferenceData": {
+                "entryPoints": [
+                    {"entryPointType": "phone", "uri": "tel:+1-555-0100"},
+                    {"entryPointType": "video", "uri": JOIN},
+                ]
+            },
+            "hangoutLink": "https://meet.example.test/other",
+        }
         self.assertEqual(self.read(self.event(**video))[0]["meeting"], (JOIN, None))
         self.assertEqual(self.read(self.event(hangoutLink=JOIN))[0]["meeting"], (JOIN, None))
-        self.assertEqual(self.read(self.event(hangoutLink="http://meet.example.test/plain", location="  Example HQ,\n Room 4 "))[0]["meeting"], (None, PLACE))
+        self.assertEqual(
+            self.read(self.event(hangoutLink="http://meet.example.test/plain", location="  Example HQ,\n Room 4 "))[0][
+                "meeting"
+            ],
+            (None, PLACE),
+        )
 
     def test_an_invite_with_no_details_has_no_meeting_key(self):
-        self.assertEqual(self.read(self.event(description="Join at https://zoom.example.test/j/1")), [{"id": "e1", "title": "ExampleCo Interview",
-                                                                                                        "start": "2026-10-28T10:00:00-05:00"}])
-
+        self.assertEqual(
+            self.read(self.event(description="Join at https://zoom.example.test/j/1")),
+            [{"id": "e1", "title": "ExampleCo Interview", "start": "2026-10-28T10:00:00-05:00"}],
+        )
 
 
 class Through(JourneyFixture, unittest.TestCase):
@@ -115,18 +151,19 @@ class Through(JourneyFixture, unittest.TestCase):
     writes.
     """
 
-
     def test_the_accepted_invites_details_land_on_its_round_and_a_later_change_updates_it_in_place(self):
         self.settle(LEAD, NO_REQ, REQUEST)
         self.events.append(event(INVITE, hangoutLink=JOIN))
         ticks = self.settle(LEAD, NO_REQ, REQUEST)
         self.assertEqual(ticks[0]["why"].get("round_confirmed"), 1)
-        (_, (round_,)), = self.pages()
-        self.assertEqual(create.round_logistics(self.notion, round_.page_id), (ev.reference(INVITE), False, (JOIN, None)))
+        ((_, (round_,)),) = self.pages()
+        self.assertEqual(
+            create.round_logistics(self.notion, round_.page_id), (ev.reference(INVITE), False, (JOIN, None))
+        )
         self.events[0] = event(INVITE, hangoutLink=JOIN, location=PLACE)
         ticks = self.settle(LEAD, NO_REQ, REQUEST)
         self.assertEqual(ticks[0]["why"].get("round_details"), 1)
-        (_, (again,)), = self.pages()
+        ((_, (again,)),) = self.pages()
         self.assertEqual((again.page_id, again.interview_date), (round_.page_id, "2026-10-28"))
         self.assertEqual(create.round_logistics(self.notion, round_.page_id)[2], (JOIN, PLACE))
         self.assertEqual(self.tick(LEAD, NO_REQ, REQUEST)["writes"], 0)  # replay

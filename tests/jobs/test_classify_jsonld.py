@@ -14,7 +14,9 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(classify.apply_kind("https://acme.wd5.myworkdayjobs.com/en-US/x"), "ats")
         self.assertEqual(classify.apply_kind("https://www.linkedin.com/jobs/view/1"), "aggregator")
         self.assertEqual(classify.apply_kind("https://careers.acme.example/job/1"), "employer")
-        self.assertEqual(classify.apply_kind("https://notlinkedin.com/x"), "employer")  # suffix match needs a dot boundary
+        self.assertEqual(
+            classify.apply_kind("https://notlinkedin.com/x"), "employer"
+        )  # suffix match needs a dot boundary
 
 
 class JsonLdTests(unittest.TestCase):
@@ -33,8 +35,12 @@ class JsonLdTests(unittest.TestCase):
 class EmbeddedDataTests(unittest.TestCase):
     def test_longest_description_like_string_in_next_data(self):
         text = "Build things. " * 30
-        page = ('<script id="__NEXT_DATA__" type="application/json">'
-                '{"props": {"pageProps": {"job": {"title": "PM", "jobDescription": "' + text + '", "other": {"description": "short"}}}}}</script>')
+        page = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            '{"props": {"pageProps": {"job": {"title": "PM", "jobDescription": "'
+            + text
+            + '", "other": {"description": "short"}}}}}</script>'
+        )
         self.assertEqual(jsonld.embedded_description(page), text)
         self.assertIsNone(jsonld.embedded_description("<p>no data</p>"))
         self.assertIsNone(jsonld.embedded_description('<script id="__NEXT_DATA__">{"description": "short"}</script>'))

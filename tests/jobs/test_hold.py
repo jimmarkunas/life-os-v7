@@ -40,9 +40,25 @@ class HoldExpiryTests(unittest.TestCase):
 
     def test_dry_run_counts_what_is_due_and_writes_nothing(self):
         out, seen = self.go(False)
-        self.assertEqual(out, {"on_hold": 9, "due": 3, "excluded": 0, "by_reason": {"jd_thin": 9}, "by_source": {"jobright": 9}, "by_source_reason": {"jobright": {"jd_thin": 9}}, "saved": False,
-                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0, "source_retired_openjobs": 0}, "release_candidates": 0, "released": 0,
-                               "mismatch_candidates": 0, "mismatch_released": 0})
+        self.assertEqual(
+            out,
+            {
+                "on_hold": 9,
+                "due": 3,
+                "excluded": 0,
+                "by_reason": {"jd_thin": 9},
+                "by_source": {"jobright": 9},
+                "by_source_reason": {"jobright": {"jd_thin": 9}},
+                "saved": False,
+                "recovery_candidates": 0,
+                "recovered": 0,
+                "retired": {"source_retired_lensa": 0, "source_retired_openjobs": 0},
+                "release_candidates": 0,
+                "released": 0,
+                "mismatch_candidates": 0,
+                "mismatch_released": 0,
+            },
+        )
         self.assertFalse([s for s, _ in seen if s.startswith("UPDATE")])
 
     def test_live_excludes_only_hold_jobs_older_than_seven_days_as_a_terminal_status(self):
@@ -51,7 +67,9 @@ class HoldExpiryTests(unittest.TestCase):
         sql, args = [(s, a) for s, a in seen if s.startswith("UPDATE")][0]
         self.assertIn("WHERE ((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL))", sql)
         self.assertEqual(args[0], "EXCLUDED_UNRESOLVED")
-        self.assertEqual(args[4:], (datetime(2026, 10, 3, 12, 0), datetime(2026, 10, 10, 0, 0)))  # exactly seven days before now
+        self.assertEqual(
+            args[4:], (datetime(2026, 10, 3, 12, 0), datetime(2026, 10, 10, 0, 0))
+        )  # exactly seven days before now
         self.assertTrue(args[0].startswith("EXCLUDED_"))  # the finalize stage treats EXCLUDED_* as an outcome
 
     def test_a_terminal_update_that_the_read_back_cannot_confirm_fails_closed(self):
@@ -67,6 +85,7 @@ class HoldExpiryTests(unittest.TestCase):
 
     def test_the_stage_is_registered_and_the_status_fits_the_column(self):
         from lifeos import run
+
         self.assertIn("expire-holds", run.STAGES)
         self.assertLessEqual(len(hold.EXCLUDED), 24)  # v7_jobs.status is VARCHAR(24)
 
@@ -76,25 +95,57 @@ LINK = "https://boards.example.com/acme/jobs/4711"
 
 
 class RecoveryDB(JobsDB):
-    def job(self, job_id, status="HOLD", days_held=6.2, reason="no_match_title", lane="Newsletter", age_days=8, link=None, source="jobright", recovered=None):
+    def job(
+        self,
+        job_id,
+        status="HOLD",
+        days_held=6.2,
+        reason="no_match_title",
+        lane="Newsletter",
+        age_days=8,
+        link=None,
+        source="jobright",
+        recovered=None,
+    ):
         first = NOW - timedelta(days=age_days)
-        self.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status=status, title="Product Manager", company="Acme", source_url=f"https://aggregator.example.com/j/{job_id}",
-                    final_apply_url=link, unresolved_reason=reason, first_seen=first, last_seen=first, updated_at=NOW - timedelta(days=days_held), lane=lane, source=source,
-                    resolve_attempts=limits.RESOLVE_MAX_ATTEMPTS, recovered_at=recovered)
+        self.insert(
+            "v7_jobs",
+            id=job_id,
+            dedupe_key=f"k{job_id}",
+            status=status,
+            title="Product Manager",
+            company="Acme",
+            source_url=f"https://aggregator.example.com/j/{job_id}",
+            final_apply_url=link,
+            unresolved_reason=reason,
+            first_seen=first,
+            last_seen=first,
+            updated_at=NOW - timedelta(days=days_held),
+            lane=lane,
+            source=source,
+            resolve_attempts=limits.RESOLVE_MAX_ATTEMPTS,
+            recovered_at=recovered,
+        )
 
     def row(self, job_id):
-        return self.raw.execute("SELECT status, unresolved_reason, final_apply_url, notion_page_id, resolve_attempts, recovered_at, dedupe_key FROM v7_jobs WHERE id=?", (job_id,)).fetchone()
+        return self.raw.execute(
+            "SELECT status, unresolved_reason, final_apply_url, notion_page_id, resolve_attempts, recovered_at, dedupe_key FROM v7_jobs WHERE id=?",
+            (job_id,),
+        ).fetchone()
 
 
 class WholeSecondsDB(RecoveryDB):
     """A DATETIME column (no fractional seconds) keeps whole seconds on write, as the production MariaDB does, while a
     comparison still sees the exact value.
     """
+
     def cursor(self):
         cur = super().cursor()
         execute = cur.execute
         floor = lambda a: a.replace(microsecond=0) if isinstance(a, datetime) else a
-        cur.execute = lambda sql, args=(): execute(sql, tuple(floor(a) for a in args) if sql.lstrip().upper().startswith(("UPDATE", "INSERT")) else args)
+        cur.execute = lambda sql, args=(): execute(
+            sql, tuple(floor(a) for a in args) if sql.lstrip().upper().startswith(("UPDATE", "INSERT")) else args
+        )
         return cur
 
 
@@ -104,7 +155,10 @@ class RecoveryTests(unittest.TestCase):
         self.addCleanup(self.db.raw.close)
 
     def go(self, now=NOW, live=True):
-        with mock.patch.object(hold.store, "connect", return_value=self.db), mock.patch.object(hold.store, "ensure_schema"):
+        with (
+            mock.patch.object(hold.store, "connect", return_value=self.db),
+            mock.patch.object(hold.store, "ensure_schema"),
+        ):
             return hold.run(0, live, now=now)
 
     def test_an_unresolved_job_is_recovered_through_the_resolver_and_keeps_its_identity(self):
@@ -116,7 +170,9 @@ class RecoveryTests(unittest.TestCase):
         status, reason, final, page, attempts, recovered, key = self.db.row(1)
         self.assertEqual((status, final, page, recovered, key), ("NEW", None, None, NOW, "k1"))
         self.assertEqual(attempts, limits.RESOLVE_MAX_ATTEMPTS - 1)  # exactly one attempt left
-        self.assertEqual([row[0] for row in resolve_stage.pick_rows(self.db, "jobright", 10)], [1])  # the existing resolver picks it
+        self.assertEqual(
+            [row[0] for row in resolve_stage.pick_rows(self.db, "jobright", 10)], [1]
+        )  # the existing resolver picks it
         resolve_stage.apply_result(self.db, 1, {"outcome": "landed", "url": LINK, "kind": "ats"})
         self.assertEqual(self.db.row(1)[:3], ("RESOLVED", None, LINK))
         self.assertEqual(self.db.row(2)[:3], ("HOLD", "no_match_title", None))
@@ -129,8 +185,14 @@ class RecoveryTests(unittest.TestCase):
             db = RecoveryDB()
             self.addCleanup(db.raw.close)
             db.job(1)
-            db.raw.execute(f"CREATE TRIGGER undo AFTER UPDATE OF recovered_at ON v7_jobs BEGIN UPDATE v7_jobs SET {change} WHERE id=NEW.id; END")
-            with mock.patch.object(hold.store, "connect", return_value=db), mock.patch.object(hold.store, "ensure_schema"), self.assertRaises(store.StoreError) as caught:
+            db.raw.execute(
+                f"CREATE TRIGGER undo AFTER UPDATE OF recovered_at ON v7_jobs BEGIN UPDATE v7_jobs SET {change} WHERE id=NEW.id; END"
+            )
+            with (
+                mock.patch.object(hold.store, "connect", return_value=db),
+                mock.patch.object(hold.store, "ensure_schema"),
+                self.assertRaises(store.StoreError) as caught,
+            ):
                 hold.run(0, True, now=NOW)
             self.assertEqual(str(caught.exception), "HOLD_READBACK_MISMATCH", change)
 
@@ -156,17 +218,23 @@ class RecoveryTests(unittest.TestCase):
     def test_a_job_that_cannot_be_recovered_is_excluded_and_never_published(self):
         self.db.job(1)
         self.go()
-        self.db.raw.execute("UPDATE v7_jobs SET status='HOLD', resolve_attempts=?, unresolved_reason='no_match_title', updated_at=? WHERE id=1",
-                            (limits.RESOLVE_MAX_ATTEMPTS, NOW + timedelta(hours=1)))
+        self.db.raw.execute(
+            "UPDATE v7_jobs SET status='HOLD', resolve_attempts=?, unresolved_reason='no_match_title', updated_at=? WHERE id=1",
+            (limits.RESOLVE_MAX_ATTEMPTS, NOW + timedelta(hours=1)),
+        )
         out = self.go(NOW + timedelta(hours=1, minutes=5))
         self.assertEqual((out["excluded"], out["recovered"]), (1, 0))
         self.assertEqual(self.db.row(1)[:4], ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", None, None))
-        self.assertEqual(self.db.raw.execute("SELECT COUNT(*) FROM v7_jobs WHERE status IN ('READY', 'PUBLISHED')").fetchone()[0], 0)
+        self.assertEqual(
+            self.db.raw.execute("SELECT COUNT(*) FROM v7_jobs WHERE status IN ('READY', 'PUBLISHED')").fetchone()[0], 0
+        )
 
     def test_a_repeated_run_recovers_nothing_twice_and_a_failed_recovery_alerts_once(self):
         self.db.job(1)
         self.assertEqual(self.go()["recovered"], 1)
-        self.assertEqual(self.go(NOW + timedelta(minutes=5))["recovered"], 0)  # status is NEW now, and recovered_at is set
+        self.assertEqual(
+            self.go(NOW + timedelta(minutes=5))["recovered"], 0
+        )  # status is NEW now, and recovered_at is set
         self.db.raw.execute("UPDATE v7_jobs SET status='HOLD', updated_at=? WHERE id=1", (NOW + timedelta(hours=1),))
         later = NOW + timedelta(hours=2)
         self.assertEqual(self.go(later)["recovered"], 0)
@@ -175,13 +243,27 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(counts["unresolved_terminal"], 1)
         active = jobs_alerts.detect(counts, later)
         first = alerts.reconcile(active, jobs_alerts.load_state(self.db), later)
-        self.assertEqual([(kind, item.key) for kind, item in first.notify if item.key == "unresolved_terminal"], [("open", "unresolved_terminal")])
-        self.assertEqual([a.detail[:19] for a in first.opened if a.key == "unresolved_terminal"], ["1 worthwhile job(s)"])  # a count, never a title, company, link or id
-        self.db.raw.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES ('unresolved_terminal', 'info', 'OPEN', ?, ?, ?)", (later, later, later))
+        self.assertEqual(
+            [(kind, item.key) for kind, item in first.notify if item.key == "unresolved_terminal"],
+            [("open", "unresolved_terminal")],
+        )
+        self.assertEqual(
+            [a.detail[:19] for a in first.opened if a.key == "unresolved_terminal"], ["1 worthwhile job(s)"]
+        )  # a count, never a title, company, link or id
+        self.db.raw.execute(
+            "INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES ('unresolved_terminal', 'info', 'OPEN', ?, ?, ?)",
+            (later, later, later),
+        )
         repeat_at = later + timedelta(minutes=30)
         self.go(repeat_at)
-        again = alerts.reconcile(jobs_alerts.detect(jobs_alerts.gather(self.db, repeat_at), repeat_at), jobs_alerts.load_state(self.db), repeat_at)
-        self.assertEqual([item.key for _, item in again.notify if hasattr(item, 'key') and item.key == 'unresolved_terminal'], [])
+        again = alerts.reconcile(
+            jobs_alerts.detect(jobs_alerts.gather(self.db, repeat_at), repeat_at),
+            jobs_alerts.load_state(self.db),
+            repeat_at,
+        )
+        self.assertEqual(
+            [item.key for _, item in again.notify if hasattr(item, 'key') and item.key == 'unresolved_terminal'], []
+        )
 
     def test_closed_stale_early_and_late_holds_are_not_recovered_and_the_seven_day_rule_is_unchanged(self):
         self.db.job(1, reason="closed_by_employer")  # an explicit closed outcome
@@ -192,7 +274,10 @@ class RecoveryTests(unittest.TestCase):
         self.db.job(7, source="web:su-example")
         out = self.go()
         self.assertEqual(out["recovered"], 0)
-        self.assertEqual([self.db.row(i)[0] for i in (1, 2, 3, 4, 5, 7)], ["HOLD", "HOLD", "HOLD", "EXCLUDED_UNRESOLVED", "HOLD", "HOLD"])
+        self.assertEqual(
+            [self.db.row(i)[0] for i in (1, 2, 3, 4, 5, 7)],
+            ["HOLD", "HOLD", "HOLD", "EXCLUDED_UNRESOLVED", "HOLD", "HOLD"],
+        )
         self.assertEqual(self.db.row(4)[1], "hold_expired")
         self.assertIsNone(self.db.row(1)[5])
 
@@ -203,11 +288,16 @@ class RecoveryTests(unittest.TestCase):
         self.db.job(3, days_held=1, source="discover", reason="no_match_no_board+no_fit")
         self.db.job(4, days_held=1, reason="closed_by_employer")  # closed: never worthwhile
         self.db.job(5, days_held=0.01)
-        with mock.patch.object(hold, "RELEASE_AT", NOW - timedelta(hours=1)), mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)):
+        with (
+            mock.patch.object(hold, "RELEASE_AT", NOW - timedelta(hours=1)),
+            mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)),
+        ):
             before = self.go(NOW - timedelta(hours=2))  # before the release time nothing is released
             out = self.go()
             again = self.go(NOW + timedelta(minutes=20))
-        self.assertEqual((before["released"], out["release_candidates"], out["released"], again["released"]), (0, 2, 2, 0))
+        self.assertEqual(
+            (before["released"], out["release_candidates"], out["released"], again["released"]), (0, 2, 2, 0)
+        )
         self.assertEqual(self.db.row(1)[:3], ("NEW", "recovery_retry", None))
         self.assertEqual(self.db.row(2)[:3], ("RESOLVED", "recovery_retry", "https://aggregator.example.com/j/2"))
         self.assertEqual(self.db.row(2)[4], limits.RESOLVE_MAX_ATTEMPTS - 1)
@@ -217,15 +307,26 @@ class RecoveryTests(unittest.TestCase):
         """a LinkedIn row goes to RESOLVED on its LinkedIn posting."""
         view = "https://www.linkedin.com/jobs/view/4300000001"
         self.db.job(1, days_held=1, reason="link_mismatch", source="linkedin-alerts")
-        self.db.raw.execute("UPDATE v7_jobs SET source_url=? WHERE id=1", ("https://www.linkedin.com/comm/jobs/view/4300000001/?trackingId=x",))
+        self.db.raw.execute(
+            "UPDATE v7_jobs SET source_url=? WHERE id=1",
+            ("https://www.linkedin.com/comm/jobs/view/4300000001/?trackingId=x",),
+        )
         self.db.job(2, days_held=1, reason="link_mismatch")
         self.db.job(3, days_held=1, reason="link_mismatch", source="linkedin-alerts")
-        self.db.raw.execute("UPDATE v7_jobs SET source_url=? WHERE id=3", ("https://www.linkedin.com/jobs/view/4300000003",))
-        self.db.job(9, status="PUBLISHED", days_held=1, reason=None, link="https://www.linkedin.com/jobs/view/4300000003")
-        self.db.job(4, days_held=1, reason="link_mismatch", source="discover")  # nothing can retry it: left for the seven-day rule
+        self.db.raw.execute(
+            "UPDATE v7_jobs SET source_url=? WHERE id=3", ("https://www.linkedin.com/jobs/view/4300000003",)
+        )
+        self.db.job(
+            9, status="PUBLISHED", days_held=1, reason=None, link="https://www.linkedin.com/jobs/view/4300000003"
+        )
+        self.db.job(
+            4, days_held=1, reason="link_mismatch", source="discover"
+        )  # nothing can retry it: left for the seven-day rule
         self.db.job(5, days_held=1, reason="jd_thin")  # another reason: untouched
         self.db.job(6, days_held=0.01, reason="link_mismatch")  # held after the release time: the normal rules
-        self.db.job(7, days_held=1, reason="link_mismatch", recovered=NOW - timedelta(days=2))  # already had its retry: untouched
+        self.db.job(
+            7, days_held=1, reason="link_mismatch", recovered=NOW - timedelta(days=2)
+        )  # already had its retry: untouched
         with mock.patch.object(hold, "MISMATCH_AT", NOW - timedelta(hours=1)):
             dry = self.go(live=False)
             out = self.go()
@@ -237,13 +338,19 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.db.row(2)[:3], ("NEW", "recovery_retry", None))
         self.assertEqual([self.db.row(i)[4] for i in (1, 2)], [limits.RESOLVE_MAX_ATTEMPTS - 1] * 2)
         self.assertTrue(all(self.db.row(i)[5] for i in (1, 2)))
-        self.assertEqual([self.db.row(i)[:2] for i in (3, 4, 5, 6)], [("HOLD", "link_mismatch"), ("HOLD", "link_mismatch"), ("HOLD", "jd_thin"), ("HOLD", "link_mismatch")])
+        self.assertEqual(
+            [self.db.row(i)[:2] for i in (3, 4, 5, 6)],
+            [("HOLD", "link_mismatch"), ("HOLD", "link_mismatch"), ("HOLD", "jd_thin"), ("HOLD", "link_mismatch")],
+        )
         self.assertEqual(self.db.row(7)[0], "EXCLUDED_UNRESOLVED")  # its earlier retry failed: the usual rule ends it
 
     def test_a_hold_that_needs_the_reader_waits_for_the_reset_and_any_other_goes_early(self):
         self.db.job(1, days_held=1, reason="jd_thin", link=LINK)
         self.db.job(2, days_held=1, reason="link_mismatch")  # a wrong link: no reader helps, released early
-        with mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)), mock.patch.object(hold, "RELEASE_AT", NOW + timedelta(hours=1)):
+        with (
+            mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)),
+            mock.patch.object(hold, "RELEASE_AT", NOW + timedelta(hours=1)),
+        ):
             early = self.go()
             late = self.go(NOW + timedelta(hours=1, minutes=1))
         self.assertEqual((early["released"], late["released"]), (1, 1))
@@ -256,6 +363,7 @@ class RecoveryTests(unittest.TestCase):
         import inspect
         from lifeos import run
         from lifeos.jobs.resolve.aggregators import dice
+
         stages = inspect.getsource(run) + inspect.getsource(dice)
         for source in hold.RESOLVED_BY:
             self.assertTrue(f'"{source}"' in stages or source in run.STAGES, source)
@@ -270,12 +378,16 @@ class RecoveryTests(unittest.TestCase):
         latest = NOW + timedelta(hours=12)
         self.assertLessEqual(latest - (NOW - timedelta(days=6.4)), timedelta(days=7))
 
-    def test_a_recovered_job_that_its_queue_never_reaches_is_excluded_at_the_deadline_never_left_indefinitely_NEW_or_RESOLVED(self):
+    def test_a_recovered_job_that_its_queue_never_reaches_is_excluded_at_the_deadline_never_left_indefinitely_NEW_or_RESOLVED(
+        self,
+    ):
         """The resolver picks NEW jobs by attempts used, and a recovered job has the most, so a saturated queue (more NEW
         jobs than the stage limit) never.
         """
         self.db.job(1, days_held=6.4)  # recovered to NEW (no link)
-        self.db.job(2, days_held=6.4, link=LINK, reason="jd_thin", source="web:su-example")  # recovered to RESOLVED (link, unread page)
+        self.db.job(
+            2, days_held=6.4, link=LINK, reason="jd_thin", source="web:su-example"
+        )  # recovered to RESOLVED (link, unread page)
         self.assertEqual(self.go()["recovered"], 2)
         for job_id in range(100, 600):
             self.db.job(job_id, status="NEW", days_held=0.1, reason=None, age_days=1)
@@ -288,10 +400,20 @@ class RecoveryTests(unittest.TestCase):
         deadline = NOW + timedelta(hours=hold.RECOVERY_HOURS, minutes=1)
         out = self.go(deadline)
         self.assertEqual((out["due"], out["excluded"]), (2, 2))
-        self.assertEqual([self.db.row(i)[:4] for i in (1, 2)], [("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", None, None), ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", LINK, None)])
+        self.assertEqual(
+            [self.db.row(i)[:4] for i in (1, 2)],
+            [
+                ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", None, None),
+                ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", LINK, None),
+            ],
+        )
         self.assertEqual(self.db.row(1)[6], "k1")  # identity untouched
-        self.assertEqual(jobs_alerts.gather(self.db, deadline)["unresolved_terminal"], 2)  # surfaced by the existing alert
-        self.assertEqual(self.go(NOW + timedelta(hours=13))["excluded"], 0)  # replay: nothing is excluded or counted twice
+        self.assertEqual(
+            jobs_alerts.gather(self.db, deadline)["unresolved_terminal"], 2
+        )  # surfaced by the existing alert
+        self.assertEqual(
+            self.go(NOW + timedelta(hours=13))["excluded"], 0
+        )  # replay: nothing is excluded or counted twice
 
     def test_a_recovered_job_that_moved_on_is_not_touched_by_the_deadline(self):
         self.db.job(1, days_held=6.4)
@@ -313,7 +435,9 @@ class RecoveryTests(unittest.TestCase):
             self.db.job(job_id, days_held=6.2)  # 60 worthwhile holds behind them
         got = [self.go(NOW + timedelta(minutes=5 * tick))["recovered"] for tick in range(4)]
         self.assertEqual(got, [25, 25, 10, 0])
-        recovered = self.db.raw.execute("SELECT COUNT(*), MIN(id) FROM v7_jobs WHERE recovered_at IS NOT NULL").fetchone()
+        recovered = self.db.raw.execute(
+            "SELECT COUNT(*), MIN(id) FROM v7_jobs WHERE recovered_at IS NOT NULL"
+        ).fetchone()
         self.assertEqual(recovered, (60, 301))
 
     def test_the_production_entry_points_recover_exclude_and_alert_over_the_real_store(self):
@@ -325,31 +449,42 @@ class RecoveryTests(unittest.TestCase):
         import json
         from lifeos import run
         from lifeos.jobs import retention
+
         self.db.job(1)
 
         def stage(now):
             out = io.StringIO()
-            with mock.patch.object(hold.store, "connect", return_value=self.db), mock.patch.object(hold.store, "ensure_schema"), \
-                    mock.patch.object(retention, "_now", return_value=now), contextlib.redirect_stdout(out):
+            with (
+                mock.patch.object(hold.store, "connect", return_value=self.db),
+                mock.patch.object(hold.store, "ensure_schema"),
+                mock.patch.object(retention, "_now", return_value=now),
+                contextlib.redirect_stdout(out),
+            ):
                 self.assertEqual(run.main(["expire-holds", "--live"]), 0)
-            self.assertFalse([word for word in ("Acme", "Product Manager", "example.com") if word in out.getvalue()])  # counts only: no company, title or link in the log
+            self.assertFalse(
+                [word for word in ("Acme", "Product Manager", "example.com") if word in out.getvalue()]
+            )  # counts only: no company, title or link in the log
             return json.loads(out.getvalue().split(":", 1)[1])
 
         self.assertEqual(stage(NOW)["recovered"], 1)
         self.assertEqual(self.db.row(1)[0], "NEW")
-        self.db.raw.execute("UPDATE v7_jobs SET status='HOLD', updated_at=? WHERE id=1", (NOW + timedelta(hours=1),))  # the failed attempt, as the resolver leaves it
+        self.db.raw.execute(
+            "UPDATE v7_jobs SET status='HOLD', updated_at=? WHERE id=1", (NOW + timedelta(hours=1),)
+        )  # the failed attempt, as the resolver leaves it
         later = NOW + timedelta(hours=2)
         counts = stage(later)
         self.assertEqual((counts["recovered"], counts["excluded"]), (0, 1))
-        with mock.patch.object(hold.store, "connect", return_value=self.db), mock.patch.object(hold.store, "ensure_schema"):
+        with (
+            mock.patch.object(hold.store, "connect", return_value=self.db),
+            mock.patch.object(hold.store, "ensure_schema"),
+        ):
             report = jobs_alerts.run(0, False, now=later)
         self.assertEqual(report["active"], 2)
 
 
-
 class RetiredSourceTests(unittest.TestCase):
-    """no resolver reads Lensa, so its NEW and HOLD jobs end EXCLUDED_UNRESOLVED with a reason that names the retirement
-    """
+    """no resolver reads Lensa, so its NEW and HOLD jobs end EXCLUDED_UNRESOLVED with a reason that names the retirement"""
+
     def setUp(self):
         self.db = JobsDB()
         self.db.raw.executescript("""
@@ -364,11 +499,18 @@ class RetiredSourceTests(unittest.TestCase):
         """)
 
     def run_hold(self, live):
-        with mock.patch.object(hold.store, "connect", return_value=self.db), mock.patch.object(hold.store, "ensure_schema"):
+        with (
+            mock.patch.object(hold.store, "connect", return_value=self.db),
+            mock.patch.object(hold.store, "ensure_schema"),
+        ):
             return hold.run(0, live, now=NOW)
 
     def states(self):
-        return dict(self.db.raw.execute("SELECT id, status || ':' || COALESCE(unresolved_reason, '') FROM v7_jobs ORDER BY id").fetchall())
+        return dict(
+            self.db.raw.execute(
+                "SELECT id, status || ':' || COALESCE(unresolved_reason, '') FROM v7_jobs ORDER BY id"
+            ).fetchall()
+        )
 
     def test_a_dry_run_counts_the_open_retired_jobs_and_writes_nothing(self):
         before = self.states()
@@ -377,6 +519,18 @@ class RetiredSourceTests(unittest.TestCase):
 
     def test_live_ends_only_the_retired_sources_open_jobs_with_the_specific_reason(self):
         self.assertEqual(self.run_hold(True)["retired"], {"source_retired_lensa": 2, "source_retired_openjobs": 2})
-        self.assertEqual(self.states(), {1: "EXCLUDED_UNRESOLVED:source_retired_lensa", 2: "EXCLUDED_UNRESOLVED:source_retired_lensa", 3: "RESOLVED:", 4: "NEW:",
-                                         5: "EXCLUDED_UNRESOLVED:source_retired_openjobs", 6: "EXCLUDED_UNRESOLVED:source_retired_openjobs", 7: "RESOLVED:"})  # Open Jobs' NEW rows too
-        self.assertEqual(self.run_hold(True)["retired"], {"source_retired_lensa": 0, "source_retired_openjobs": 0})  # nothing left to close
+        self.assertEqual(
+            self.states(),
+            {
+                1: "EXCLUDED_UNRESOLVED:source_retired_lensa",
+                2: "EXCLUDED_UNRESOLVED:source_retired_lensa",
+                3: "RESOLVED:",
+                4: "NEW:",
+                5: "EXCLUDED_UNRESOLVED:source_retired_openjobs",
+                6: "EXCLUDED_UNRESOLVED:source_retired_openjobs",
+                7: "RESOLVED:",
+            },
+        )  # Open Jobs' NEW rows too
+        self.assertEqual(
+            self.run_hold(True)["retired"], {"source_retired_lensa": 0, "source_retired_openjobs": 0}
+        )  # nothing left to close

@@ -1,4 +1,5 @@
 """§2, synthetic only: the outreach table on a Job Ledger job page, fed by Mark as Sent."""
+
 import unittest
 from datetime import timedelta
 from unittest import mock
@@ -40,7 +41,10 @@ def region(t, job_id=JOB_A):
 
 class JobPageOutreach(unittest.TestCase):
     def setUp(self):
-        self.ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), ledger_page(JOB_B, "Northwind Labs", "Technical Program Manager"))
+        self.ledger = Ledger(
+            ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"),
+            ledger_page(JOB_B, "Northwind Labs", "Technical Program Manager"),
+        )
         self.rec = FakeRecruiters(schema=SCHEMA)
         self.svc = Service(self.ledger, self.rec)
 
@@ -52,23 +56,44 @@ class JobPageOutreach(unittest.TestCase):
         for live, env in ((False, ON), (True, {}), (True, {"JOB_PAGE_OUTREACH": "off"})):
             t = job_page()
             done = self.run_it(t, live, env)
-            self.assertEqual((done["job_page_outreach"], done["codes"], writes(t)), ("dry_run", {"would_create": 1}, []))
+            self.assertEqual(
+                (done["job_page_outreach"], done["codes"], writes(t)), ("dry_run", {"would_create": 1}, [])
+            )
 
     def test_live_creates_the_region_after_network_leads_styled_and_leaves_the_rest_alone(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
         t = job_page()
         before = {k: v for k, v in t.snapshot().items()}
         done = self.run_it(t)
-        self.assertEqual((done["job_page_outreach"], done["jobs"], done["conversations"], done["codes"], done["failed"]), ("live", 1, 1, {"created": 1}, 0))
+        self.assertEqual(
+            (done["job_page_outreach"], done["jobs"], done["conversations"], done["codes"], done["failed"]),
+            ("live", 1, 1, {"created": 1}, 0),
+        )
         heading, table, rows = region(t)
-        self.assertEqual(t.kids[JOB_A], ["jd-mark", "jd", "net", heading, table, "notes"])  # right after the Network Leads block
+        self.assertEqual(
+            t.kids[JOB_A], ["jd-mark", "jd", "net", heading, table, "notes"]
+        )  # right after the Network Leads block
         self.assertEqual(R.plain(t.blocks[heading]), "🤝 Outreach (Updated 10/15 @ 10:00 AM CT)")
         self.assertEqual(R.cells_of(t.blocks[t.kids[table][0]]), list(P.HEADERS))
         bold, gray, br = (lambda x: (x, None, "bold")), (lambda x: (x, None, "gray")), ("\n", None, None)
-        self.assertEqual(rows, [[[bold("Avery Synthetic")], [bold("LinkedIn"), br, gray("Senior Technical Program Manager")],
-                                 [bold("Initial outreach: Oct 15"), br, gray("Waiting · reply unknown (LinkedIn inbox not connected)")],
-                                 [bold("Follow up"), br, gray("Due Oct 19")]]])
-        self.assertEqual({k: v for k, v in t.snapshot().items() if k in before}, before)  # every existing block untouched
+        self.assertEqual(
+            rows,
+            [
+                [
+                    [bold("Avery Synthetic")],
+                    [bold("LinkedIn"), br, gray("Senior Technical Program Manager")],
+                    [
+                        bold("Initial outreach: Oct 15"),
+                        br,
+                        gray("Waiting · reply unknown (LinkedIn inbox not connected)"),
+                    ],
+                    [bold("Follow up"), br, gray("Due Oct 19")],
+                ]
+            ],
+        )
+        self.assertEqual(
+            {k: v for k, v in t.snapshot().items() if k in before}, before
+        )  # every existing block untouched
         count = len(writes(t))
         self.assertEqual(self.run_it(t)["codes"], {"unchanged": 1})  # replay: nothing to change
         self.assertEqual(len(writes(t)), count)
@@ -94,15 +119,47 @@ class JobPageOutreach(unittest.TestCase):
         self.assertEqual(R.plain(t.blocks[heading]), "🤝 Outreach (Updated 10/15 @ 12:00 PM CT)")
 
     def test_needs_action_comes_first_and_closed_conversations_last(self):
-        rows = [{"person": "Casey", "company": "", "medium": "LinkedIn", "role": "TPM", "last_contact": "2026-10-13", "action": "Needs Action", "follow_up": "2026-10-14",
-                 "done": False, "active": True},
-                {"person": "Avery", "company": "Northwind Labs", "medium": "LinkedIn", "role": "TPM", "last_contact": "2026-10-15", "action": "Completed", "follow_up": "",
-                 "done": True, "active": False},
-                {"person": "Blake", "company": "", "medium": "LinkedIn", "role": "TPM", "last_contact": "2026-10-16", "action": "Waiting", "follow_up": "2026-10-20",
-                 "done": False, "active": True}]
+        rows = [
+            {
+                "person": "Casey",
+                "company": "",
+                "medium": "LinkedIn",
+                "role": "TPM",
+                "last_contact": "2026-10-13",
+                "action": "Needs Action",
+                "follow_up": "2026-10-14",
+                "done": False,
+                "active": True,
+            },
+            {
+                "person": "Avery",
+                "company": "Northwind Labs",
+                "medium": "LinkedIn",
+                "role": "TPM",
+                "last_contact": "2026-10-15",
+                "action": "Completed",
+                "follow_up": "",
+                "done": True,
+                "active": False,
+            },
+            {
+                "person": "Blake",
+                "company": "",
+                "medium": "LinkedIn",
+                "role": "TPM",
+                "last_contact": "2026-10-16",
+                "action": "Waiting",
+                "follow_up": "2026-10-20",
+                "done": False,
+                "active": True,
+            },
+        ]
         out = [R.want_view(r) for r in P.cells(rows, NOW.date())]
         self.assertEqual([r[0][0][0] for r in out], ["Casey", "Blake", "Avery"])
-        self.assertEqual(out[0][3], [("Needs action: follow up", None, "bold"), ("\n", None, None), ("Overdue since Oct 14", None, "gray")])
+        self.assertEqual(
+            out[0][3],
+            [("Needs action: follow up", None, "bold"), ("\n", None, None), ("Overdue since Oct 14", None, "gray")],
+        )
         self.assertEqual(out[2][0], [("Avery", None, "bold"), ("\n", None, None), ("Northwind Labs", None, "gray")])
         self.assertEqual(out[2][3], [("No follow-up", None, "bold"), ("\n", None, None), ("Completed", None, "gray")])
 
@@ -111,39 +168,52 @@ class JobPageOutreach(unittest.TestCase):
         self.ledger.pages[JOB_A]["parent"]["data_source_id"] = "9" * 32
         t = job_page()
         done = self.run_it(t)
-        self.assertEqual((done["failed"], done["codes"], writes(t)), (1, {"JOB_PAGE_OUTREACH_NOT_A_LEDGER_PAGE": 1}, []))
+        self.assertEqual(
+            (done["failed"], done["codes"], writes(t)), (1, {"JOB_PAGE_OUTREACH_NOT_A_LEDGER_PAGE": 1}, [])
+        )
         self.ledger.pages[JOB_A]["parent"]["data_source_id"] = LEDGER
         t.add("h1", "heading_3", JOB_A, text="🤝 Outreach (Updated 10/14 @ 9:00 AM CT)")
         t.add("h2", "heading_3", JOB_A, text="🤝 Outreach")
         done = self.run_it(t)
-        self.assertEqual((done["failed"], done["codes"], writes(t)), (1, {"JOB_PAGE_OUTREACH_REGION_NOT_UNIQUE": 1}, []))
+        self.assertEqual(
+            (done["failed"], done["codes"], writes(t)), (1, {"JOB_PAGE_OUTREACH_REGION_NOT_UNIQUE": 1}, [])
+        )
 
     def test_a_neighbour_edited_during_the_write_fails_the_proof(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
         t = job_page()
-        t.trip = ("/children", lambda tree: tree.blocks["notes"]["paragraph"]["rich_text"][0].update(plain_text="edited by Jim mid-write"))
+        t.trip = (
+            "/children",
+            lambda tree: tree.blocks["notes"]["paragraph"]["rich_text"][0].update(plain_text="edited by Jim mid-write"),
+        )
         done = self.run_it(t)
         self.assertEqual((done["failed"], done["codes"]), (1, {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1}))
 
     def test_top_level_blocks_reordered_during_a_write_fail_the_proof(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
         t = job_page()
+
         def swap(tree):
             kids = tree.kids[JOB_A]
             kids.remove("notes")
             kids.insert(1, "notes")
+
         t.trip = ("/children", swap)
         self.assertEqual(self.run_it(t)["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1})
         t = job_page()
         self.run_it(t)
         mark(self.svc, JOB_A, "Blake Synthetic")
         heading, table, _ = region(t)
+
         def move(tree):
             kids = tree.kids[JOB_A]
             kids.remove("net")
             kids.append("net")
+
         t.trip = (f"/blocks/{table}/children", move)  # fires on the row append inside the update
-        self.assertEqual(self.run_it(t, now=NOW + timedelta(hours=1))["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1})
+        self.assertEqual(
+            self.run_it(t, now=NOW + timedelta(hours=1))["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1}
+        )
 
     def test_a_job_with_no_conversation_gets_nothing(self):
         t = job_page()
@@ -159,6 +229,7 @@ class JobPageOutreach(unittest.TestCase):
 
         def stage(limit, live):
             return P.run(limit, live, environ=ON, recruiters=self.rec, ledger=self.ledger, client=t, now=NOW)
+
         code, err, out = main_exit(stage, "job-page-outreach", "JOB_PAGE_OUTREACH_PAGES_FAILED")
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(len(region(t, JOB_A)[2]), 1)  # the good page was written
@@ -176,6 +247,7 @@ class JobPageOutreach(unittest.TestCase):
             if jid == JOB_B:
                 raise ValueError("boom")
             return real(client, ledger, source, jid, *rest)
+
         with mock.patch.object(P, "sync_page", flaky):
             done = self.run_it(job_page())
         self.assertEqual((done["failed"], done["item_failed"], done["items"]), (1, 1, 2))
@@ -189,7 +261,15 @@ class JobPageOutreach(unittest.TestCase):
     def test_an_unreadable_recruiters_source_fails_the_whole_run(self):
         mark(self.svc, JOB_A, "Avery Synthetic")
         with self.assertRaises(NotionError):
-            P.run(0, True, environ=ON, recruiters=FakeRecruiters(schema=SCHEMA, fail_query=True), ledger=self.ledger, client=job_page(), now=NOW)
+            P.run(
+                0,
+                True,
+                environ=ON,
+                recruiters=FakeRecruiters(schema=SCHEMA, fail_query=True),
+                ledger=self.ledger,
+                client=job_page(),
+                now=NOW,
+            )
 
 
 if __name__ == "__main__":

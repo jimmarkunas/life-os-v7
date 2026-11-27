@@ -44,7 +44,9 @@ class SnapshotStoreTests(unittest.TestCase):
             def handler(self, sql, args, cursor):
                 super().handler(sql, args, cursor)
                 if sql.startswith("INSERT INTO"):
-                    self.rows[args[0]] = json.dumps({"schema": 1, "taken_at": "x"})  # what the database "stored" differs
+                    self.rows[args[0]] = json.dumps(
+                        {"schema": 1, "taken_at": "x"}
+                    )  # what the database "stored" differs
 
         conn = FakeConn(handler=Lossy().handler)
         with self.assertRaises(RuntimeError) as error:

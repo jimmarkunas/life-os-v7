@@ -1,4 +1,5 @@
 """our own tailnet join."""
+
 import hashlib
 import io
 import os
@@ -26,7 +27,14 @@ def make_tarball(path, payload=b"fixture-binary"):
 def run_install(url, recorded, bin_dir, tmp):
     fingerprint = pathlib.Path(tmp, "recorded.sha256")
     fingerprint.write_text(recorded + "\n")
-    env = {"PATH": os.environ["PATH"], "TS_URL": url, "TS_SHA256_FILE": str(fingerprint), "TS_BIN_DIR": str(bin_dir), "TS_SUDO": "", "TS_TMP": str(pathlib.Path(tmp, "work"))}
+    env = {
+        "PATH": os.environ["PATH"],
+        "TS_URL": url,
+        "TS_SHA256_FILE": str(fingerprint),
+        "TS_BIN_DIR": str(bin_dir),
+        "TS_SUDO": "",
+        "TS_TMP": str(pathlib.Path(tmp, "work")),
+    }
     pathlib.Path(tmp, "work").mkdir()
     return subprocess.run(["bash", str(ACTION / "install.sh")], env=env, capture_output=True, text=True, timeout=60)
 
@@ -89,8 +97,18 @@ def run_join(source, fail_up=False):
         listener = socket.socket(socket.AF_UNIX)
         listener.bind(str(sock_path))
         calls = tmp / "calls"
-        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp), "TS_SUDO": "", "TS_SOCKET": str(sock_path), "TS_CALLS": str(calls), "TS_FAIL_UP": "1" if fail_up else "",
-               "TS_OAUTH_SECRET": SECRET, "TS_TAGS": "tag:v7-runner", "TS_HOSTNAME": "github-fixture", "TS_RETRY_PAUSE": "0"}
+        env = {
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "HOME": str(tmp),
+            "TS_SUDO": "",
+            "TS_SOCKET": str(sock_path),
+            "TS_CALLS": str(calls),
+            "TS_FAIL_UP": "1" if fail_up else "",
+            "TS_OAUTH_SECRET": SECRET,
+            "TS_TAGS": "tag:v7-runner",
+            "TS_HOSTNAME": "github-fixture",
+            "TS_RETRY_PAUSE": "0",
+        }
         try:
             done = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True, timeout=60)
         finally:
@@ -107,7 +125,9 @@ class JoinTests(unittest.TestCase):
         lines = done.stdout.splitlines()
         self.assertEqual(lines[0], f"::add-mask::{SECRET}")
         self.assertNotIn(SECRET, "\n".join(lines[1:]) + done.stderr)
-        self.assertIn("--advertise-tags=tag:v7-runner --hostname=github-fixture --accept-routes", calls)  # same arguments the action used
+        self.assertIn(
+            "--advertise-tags=tag:v7-runner --hostname=github-fixture --accept-routes", calls
+        )  # same arguments the action used
         self.assertIn("?preauthorized=true&ephemeral=true", calls)  # an ephemeral, pre-authorized node
         mutated, _ = run_join(self.source.replace('echo "::add-mask::$secret"', ":"))
         self.assertNotIn("::add-mask::", mutated.stdout)
@@ -122,7 +142,9 @@ class JoinTests(unittest.TestCase):
         for path in sorted((ROOT / ".github").rglob("*.yml")):
             text = path.read_text()
             if path.parent.name != "tailscale":
-                self.assertNotIn("tailscale/github-action", text.replace("replacing tailscale/github-action", ""), path.name)
+                self.assertNotIn(
+                    "tailscale/github-action", text.replace("replacing tailscale/github-action", ""), path.name
+                )
             count = text.count("uses: ./.github/actions/tailscale")
             if count:
                 self.assertEqual(text.count("oauth-client-id:"), count, path.name)

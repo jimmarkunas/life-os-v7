@@ -1,6 +1,7 @@
 """deploy/buzz-mcp/selfhost-probe against an in-process fake relay that follows the verified Buzz semantics (NIP-43
 membership kinds 9030, NIP-29 kinds.
 """
+
 import base64
 import json
 import os
@@ -93,9 +94,31 @@ class SelfhostProbe(unittest.TestCase):
         (tmp / "bin/bws").write_text(FAKE_BWS)
         (tmp / "bin/bws").chmod(0o755)
         (tmp / "env").write_text("export BWS_ACCESS_TOKEN='synthetic'\n")
-        (tmp / "secrets.json").write_text(json.dumps([{"key": "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "value": OWNER_HEX}, {"key": "lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE", "value": AGENT_HEX}] if secrets is None else secrets))
-        env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "FAKE_SECRETS": str(tmp / "secrets.json"), "STORE_CREDENTIALS_ENV": str(tmp / "env"), "STORE_CREDENTIALS_USER": "nobody-not-used"}
-        done = subprocess.run([sys.executable, str(SCRIPT), *mode, f"http://127.0.0.1:{relay.server_address[1]}"], capture_output=True, text=True, env=env, cwd=tmp, input=stdin)
+        (tmp / "secrets.json").write_text(
+            json.dumps(
+                [
+                    {"key": "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "value": OWNER_HEX},
+                    {"key": "lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE", "value": AGENT_HEX},
+                ]
+                if secrets is None
+                else secrets
+            )
+        )
+        env = {
+            **os.environ,
+            "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}",
+            "FAKE_SECRETS": str(tmp / "secrets.json"),
+            "STORE_CREDENTIALS_ENV": str(tmp / "env"),
+            "STORE_CREDENTIALS_USER": "nobody-not-used",
+        }
+        done = subprocess.run(
+            [sys.executable, str(SCRIPT), *mode, f"http://127.0.0.1:{relay.server_address[1]}"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=tmp,
+            input=stdin,
+        )
         self.addCleanup(relay.server_close)
         self.addCleanup(relay.shutdown)
         return done, tmp
@@ -104,24 +127,57 @@ class SelfhostProbe(unittest.TestCase):
         relay = FakeRelay()
         done, tmp = self.run_probe(relay)
         steps = [line.split(" ")[:2] for line in done.stdout.splitlines()]
-        self.assertEqual(steps, [["keys", "ok"], ["health", "ok"], ["unauth_refused", "ok"], ["non_member_refused", "ok"], ["member_add", "ok"], ["member_query_ok", "ok"], ["channel_create", "ok"], ["post_ok", "ok"],
-                                 ["read_back", "ok"], ["repeat_idempotent", "ok"]], done.stdout + done.stderr)
+        self.assertEqual(
+            steps,
+            [
+                ["keys", "ok"],
+                ["health", "ok"],
+                ["unauth_refused", "ok"],
+                ["non_member_refused", "ok"],
+                ["member_add", "ok"],
+                ["member_query_ok", "ok"],
+                ["channel_create", "ok"],
+                ["post_ok", "ok"],
+                ["read_back", "ok"],
+                ["repeat_idempotent", "ok"],
+            ],
+            done.stdout + done.stderr,
+        )
         self.assertEqual(done.returncode, 0)
         self.assertIn(AGENT_PUB, relay.members)
         posted = [e for e in relay.events if e["kind"] == 9]
-        self.assertEqual((len(posted), posted[0]["pubkey"], posted[0]["content"].startswith("SYNTHETIC")), (1, AGENT_PUB, True))  # one post, by the agent, synthetic
+        self.assertEqual(
+            (len(posted), posted[0]["pubkey"], posted[0]["content"].startswith("SYNTHETIC")), (1, AGENT_PUB, True)
+        )  # one post, by the agent, synthetic
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
-            self.assertNotIn(secret, "".join(p.read_text(errors="replace") for p in tmp.rglob("*") if p.is_file() and p.name != "secrets.json"))
+            self.assertNotIn(
+                secret,
+                "".join(
+                    p.read_text(errors="replace") for p in tmp.rglob("*") if p.is_file() and p.name != "secrets.json"
+                ),
+            )
 
     def test_channel_mode_adds_the_member_creates_one_channel_and_prints_only_its_public_id(self):
         relay = FakeRelay()
         done, tmp = self.run_probe(relay, mode=("channel",))
         lines = done.stdout.splitlines()
-        self.assertEqual([line.split(" ")[:2] for line in lines[:4]], [["keys", "ok"], ["member_add", "ok"], ["member_query_ok", "ok"], ["channel_create", "ok"]], done.stdout + done.stderr)
+        self.assertEqual(
+            [line.split(" ")[:2] for line in lines[:4]],
+            [["keys", "ok"], ["member_add", "ok"], ["member_query_ok", "ok"], ["channel_create", "ok"]],
+            done.stdout + done.stderr,
+        )
         self.assertRegex(lines[-1], r"^pilot_channel [0-9a-f-]{36}$")
         channel = lines[-1].split(" ")[1]
-        self.assertEqual((done.returncode, AGENT_PUB in relay.members, relay.channels[channel] == {OWNER_PUB, AGENT_PUB}, [e for e in relay.events if e["kind"] == 9]), (0, True, True, []))
+        self.assertEqual(
+            (
+                done.returncode,
+                AGENT_PUB in relay.members,
+                relay.channels[channel] == {OWNER_PUB, AGENT_PUB},
+                [e for e in relay.events if e["kind"] == 9],
+            ),
+            (0, True, True, []),
+        )
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
 
@@ -130,19 +186,36 @@ class SelfhostProbe(unittest.TestCase):
         relay = FakeRelay()
         other = nip98.pubkey(bytes.fromhex("44" * 32))
         relay.members |= {AGENT_PUB, other}
-        relay.events.append({"id": "r" * 64, "kind": 39002, "pubkey": OWNER_PUB, "tags": [["d", "src"], ["p", OWNER_PUB], ["p", AGENT_PUB], ["p", other]], "content": ""})
+        relay.events.append(
+            {
+                "id": "r" * 64,
+                "kind": 39002,
+                "pubkey": OWNER_PUB,
+                "tags": [["d", "src"], ["p", OWNER_PUB], ["p", AGENT_PUB], ["p", other]],
+                "content": "",
+            }
+        )
         before = set(relay.channels)
         done, tmp = self.run_probe(relay, mode=("channels", "src", "life-os-main", "life-os-test"))
         lines = done.stdout.splitlines()
-        self.assertEqual([line.split(" ")[:2] for line in lines], [["keys", "ok"], ["roster", "ok"], ["channel_life-os-main", "ok"], ["channel_life-os-test", "ok"]], done.stdout + done.stderr)
+        self.assertEqual(
+            [line.split(" ")[:2] for line in lines],
+            [["keys", "ok"], ["roster", "ok"], ["channel_life-os-main", "ok"], ["channel_life-os-test", "ok"]],
+            done.stdout + done.stderr,
+        )
         made = [c for c in relay.channels if c not in before]
-        self.assertEqual((done.returncode, len(made), [relay.channels[c] for c in made]), (0, 2, [{OWNER_PUB, AGENT_PUB, other}] * 2))
+        self.assertEqual(
+            (done.returncode, len(made), [relay.channels[c] for c in made]), (0, 2, [{OWNER_PUB, AGENT_PUB, other}] * 2)
+        )
         names = [t[1] for e in relay.events if e["kind"] == 9007 for t in e["tags"] if t[0] == "name"]
         self.assertEqual(sorted(names), ["life-os-main", "life-os-test"])
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
         refused, _ = self.run_probe(FakeRelay(), mode=("channels",))
-        self.assertEqual((refused.stdout.splitlines()[-1], refused.returncode), ("channels fail (a source channel and at least one name are required)", 1))
+        self.assertEqual(
+            (refused.stdout.splitlines()[-1], refused.returncode),
+            ("channels fail (a source channel and at least one name are required)", 1),
+        )
 
     def test_members_mode_adds_exactly_the_given_public_keys_to_the_relay_and_the_channel_and_nothing_else(self):
         """the owner adds public keys only"""
@@ -152,34 +225,56 @@ class SelfhostProbe(unittest.TestCase):
         other = nip98.pubkey(bytes.fromhex("33" * 32))
         done, tmp = self.run_probe(relay, mode=("members", channel), stdin=f"{AGENT_PUB}\n{other}\nnot-a-key\n")
         lines = done.stdout.splitlines()
-        self.assertEqual([line.split(" ")[:2] for line in lines], [["keys", "ok"], ["member_" + AGENT_PUB[:8], "ok"], ["member_" + other[:8], "ok"]], done.stdout + done.stderr)
-        self.assertEqual((done.returncode, relay.members, relay.channels[channel]), (0, {OWNER_PUB, AGENT_PUB, other}, {OWNER_PUB, AGENT_PUB, other}))
+        self.assertEqual(
+            [line.split(" ")[:2] for line in lines],
+            [["keys", "ok"], ["member_" + AGENT_PUB[:8], "ok"], ["member_" + other[:8], "ok"]],
+            done.stdout + done.stderr,
+        )
+        self.assertEqual(
+            (done.returncode, relay.members, relay.channels[channel]),
+            (0, {OWNER_PUB, AGENT_PUB, other}, {OWNER_PUB, AGENT_PUB, other}),
+        )
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
         empty, _ = self.run_probe(FakeRelay(), mode=("members", channel), stdin="")
-        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("members fail (a channel id and at least one public key are required)", 1))
+        self.assertEqual(
+            (empty.stdout.splitlines()[-1], empty.returncode),
+            ("members fail (a channel id and at least one public key are required)", 1),
+        )
 
     def test_role_mode_signs_one_member_event_per_public_key_with_the_role_and_refuses_anything_else(self):
         """the owner key signs the role change"""
         relay = FakeRelay()
         done, _ = self.run_probe(relay, mode=("role", "admin"), stdin=f"{AGENT_PUB}\nnot-a-key\n")
-        self.assertEqual([line.split(" ")[:2] for line in done.stdout.splitlines()], [["keys", "ok"], ["role_" + AGENT_PUB[:8], "ok"]], done.stdout + done.stderr)
+        self.assertEqual(
+            [line.split(" ")[:2] for line in done.stdout.splitlines()],
+            [["keys", "ok"], ["role_" + AGENT_PUB[:8], "ok"]],
+            done.stdout + done.stderr,
+        )
         self.assertEqual((done.returncode, relay.members), (0, {OWNER_PUB, AGENT_PUB}))
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
         empty, _ = self.run_probe(FakeRelay(), mode=("role", "member"), stdin="")
-        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("role fail (at least one public key is required)", 1))
+        self.assertEqual(
+            (empty.stdout.splitlines()[-1], empty.returncode), ("role fail (at least one public key is required)", 1)
+        )
         owner, _ = self.run_probe(FakeRelay(), mode=("role", "owner"), stdin=f"{AGENT_PUB}\n")
         self.assertNotIn("role_", owner.stdout)  # "owner" is not a role this mode accepts
 
-    def test_readd_mode_removes_then_adds_each_given_key_with_the_role_and_the_synthetic_mode_prints_only_a_public_key(self):
+    def test_readd_mode_removes_then_adds_each_given_key_with_the_role_and_the_synthetic_mode_prints_only_a_public_key(
+        self,
+    ):
         """remove (9031) then add with the role tag"""
         relay = FakeRelay()
         done, _ = self.run_probe(relay, mode=("readd", "admin"), stdin=f"{AGENT_PUB}\n")
-        self.assertEqual([line.split(" ")[:2] for line in done.stdout.splitlines()][:1], [["keys", "ok"]], done.stdout + done.stderr)
+        self.assertEqual(
+            [line.split(" ")[:2] for line in done.stdout.splitlines()][:1], [["keys", "ok"]], done.stdout + done.stderr
+        )
         self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
         empty, _ = self.run_probe(FakeRelay(), mode=("readd", "member"), stdin="")
-        self.assertEqual((empty.stdout.splitlines()[-1], empty.returncode), ("readd fail (at least one public key is required)", 1))
+        self.assertEqual(
+            (empty.stdout.splitlines()[-1], empty.returncode), ("readd fail (at least one public key is required)", 1)
+        )
 
     def test_remove_mode_removes_only_the_given_public_keys_and_refuses_the_owners_own(self):
         """kind 9031 for each given key"""
@@ -196,7 +291,14 @@ class SelfhostProbe(unittest.TestCase):
         secrets = [{"key": "lifeos/edge/BUZZ_OLD_OWNER_NSEC_TEMP", "value": OWNER_HEX}]
         done, _ = self.run_probe(relay, secrets=secrets, mode=("hosted", "admin"), stdin=f"{AGENT_PUB}\n")
         self.assertIn("admin_" + AGENT_PUB[:8] + " ok", done.stdout)
-        self.assertEqual((AGENT_PUB in relay.members, any(e["kind"] == 9030 and ["role", "admin"] in e["tags"] for e in relay.events)), (True, True), done.stdout)
+        self.assertEqual(
+            (
+                AGENT_PUB in relay.members,
+                any(e["kind"] == 9030 and ["role", "admin"] in e["tags"] for e in relay.events),
+            ),
+            (True, True),
+            done.stdout,
+        )
         self.assertNotIn(OWNER_HEX, done.stdout + done.stderr)
         gone, _ = self.run_probe(FakeRelay(), secrets=[], mode=("hosted", "admin"), stdin=f"{AGENT_PUB}\n")
         self.assertEqual((gone.stdout.splitlines()[-1], gone.returncode), ("old_owner_key fail (not in the vault)", 1))
@@ -208,7 +310,9 @@ class SelfhostProbe(unittest.TestCase):
         for secret in (OWNER_HEX, AGENT_HEX):
             self.assertNotIn(secret, done.stdout + done.stderr)
 
-    def test_duet_profile_signs_with_the_vault_key_inside_the_buzz_cli_only_and_reads_the_profile_back_without_printing_a_key(self):
+    def test_duet_profile_signs_with_the_vault_key_inside_the_buzz_cli_only_and_reads_the_profile_back_without_printing_a_key(
+        self,
+    ):
         """Duet's own key (from the vault, in memory) reaches only the Buzz CLI subprocess's environment"""
         DUET_HEX = "33" * 32
         tmp = Path(tempfile.mkdtemp())
@@ -236,7 +340,11 @@ elif a[:2] == ["users", "get"]:
         os.environ.update(extra)
         self.addCleanup(lambda: [os.environ.pop(k, None) for k in extra])
         done, _ = self.run_probe(relay, secrets=secrets, mode=("duet-profile", "life-os", str(image)))
-        self.assertEqual(done.stdout.splitlines()[-1], "duet_life-os ok (name Duet, picture ..." + ("ab" * 32 + ".png")[-12:] + ")", done.stdout + done.stderr)
+        self.assertEqual(
+            done.stdout.splitlines()[-1],
+            "duet_life-os ok (name Duet, picture ..." + ("ab" * 32 + ".png")[-12:] + ")",
+            done.stdout + done.stderr,
+        )
         self.assertNotIn(DUET_HEX, done.stdout + done.stderr)
         missing, _ = self.run_probe(FakeRelay(), secrets=[], mode=("duet-profile", "bytalos", str(image)))
         self.assertEqual((missing.stdout.splitlines()[-1].split(" (")[0], missing.returncode), ("duet_bytalos fail", 1))
@@ -254,11 +362,23 @@ elif a[:2] == ["users", "get"]:
     def test_a_key_missing_from_the_vault_stops_before_any_request(self):
         relay = FakeRelay()
         done, _ = self.run_probe(relay, secrets=[{"key": "lifeos/edge/BUZZ_SELFHOST_OWNER_KEY", "value": OWNER_HEX}])
-        self.assertEqual((done.stdout.strip(), done.returncode, relay.events), ("keys fail (a pilot key is not in the vault)", 1, []))
+        self.assertEqual(
+            (done.stdout.strip(), done.returncode, relay.events), ("keys fail (a pilot key is not in the vault)", 1, [])
+        )
 
     def test_the_source_prints_no_key_and_asks_only_for_the_pilot_names_and_duets_three(self):
         text = SCRIPT.read_text()
-        self.assertEqual(sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))), ["BUZZ_KEY_DUET_BYTALOS", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_OLD_OWNER_NSEC_TEMP", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_OWNER_KEY"])
+        self.assertEqual(
+            sorted(set(__import__("re").findall(r'"lifeos/edge/(\w+)"', text))),
+            [
+                "BUZZ_KEY_DUET_BYTALOS",
+                "BUZZ_KEY_DUET_LIFE_OS",
+                "BUZZ_OLD_OWNER_NSEC_TEMP",
+                "BUZZ_SELFHOST_AGENT_CLAUDE",
+                "BUZZ_SELFHOST_AGENT_DUET",
+                "BUZZ_SELFHOST_OWNER_KEY",
+            ],
+        )
         self.assertEqual(os.stat(SCRIPT).st_mode & 0o111, 0o111)
 
 

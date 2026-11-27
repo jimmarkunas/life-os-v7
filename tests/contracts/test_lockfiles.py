@@ -1,11 +1,17 @@
 """every dependency CI installs comes from a lockfile (exact versions and sha256 hashes)"""
+
 import json
 import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PAIRS = (("requirements.txt", "requirements.lock"), ("requirements-browser.txt", "requirements-browser.lock"), ("requirements-fit.txt", "requirements-fit.lock"), ("requirements-test.txt", "requirements-test.lock"))
+PAIRS = (
+    ("requirements.txt", "requirements.lock"),
+    ("requirements-browser.txt", "requirements-browser.lock"),
+    ("requirements-fit.txt", "requirements-fit.lock"),
+    ("requirements-test.txt", "requirements-test.lock"),
+)
 
 
 def lock_entries(name):
@@ -15,7 +21,10 @@ def lock_entries(name):
     for block in re.split(r"\n(?=[A-Za-z0-9_.-]+==)", "\n" + re.sub(r"^#.*\n", "", text, flags=re.M)):
         m = re.match(r"\s*([A-Za-z0-9_.-]+)==(\S+)", block)
         if m:
-            out[m.group(1).lower().replace("_", "-")] = (m.group(2), len(re.findall(r"--hash=sha256:[0-9a-f]{64}", block)))
+            out[m.group(1).lower().replace("_", "-")] = (
+                m.group(2),
+                len(re.findall(r"--hash=sha256:[0-9a-f]{64}", block)),
+            )
     return out
 
 
@@ -37,11 +46,17 @@ class Locks(unittest.TestCase):
         found = []
         for path in list((ROOT / ".github").rglob("*.yml")):
             for number, line in enumerate(path.read_text().splitlines(), 1):
-                if re.search(r"\b(pip3? install|npm (install|i)\b|pnpm install|yarn install)", line) and not line.lstrip().startswith("#"):
+                if re.search(
+                    r"\b(pip3? install|npm (install|i)\b|pnpm install|yarn install)", line
+                ) and not line.lstrip().startswith("#"):
                     found.append((path.relative_to(ROOT).as_posix(), number, line.strip()))
         self.assertTrue(found)
         for path, number, line in found:
-            self.assertRegex(line, r"pip install --require-hashes -r requirements[\w-]*\.lock", "%s:%d is not installed from a lock" % (path, number))
+            self.assertRegex(
+                line,
+                r"pip install --require-hashes -r requirements[\w-]*\.lock",
+                "%s:%d is not installed from a lock" % (path, number),
+            )
 
     def test_the_composite_actions_are_valid_yaml_and_the_python_action_installs_the_runtime_lock(self):
         try:
@@ -58,7 +73,9 @@ class Locks(unittest.TestCase):
         for package in ROOT.rglob("package.json"):
             if "node_modules" in package.parts:
                 continue
-            self.assertTrue((package.parent / "package-lock.json").is_file(), package.parent.relative_to(ROOT).as_posix())
+            self.assertTrue(
+                (package.parent / "package-lock.json").is_file(), package.parent.relative_to(ROOT).as_posix()
+            )
             json.loads((package.parent / "package-lock.json").read_text())
 
 

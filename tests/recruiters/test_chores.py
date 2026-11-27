@@ -1,4 +1,5 @@
 """synthetic only: Action Status is the only source of truth for Done / Active / Needs review"""
+
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -22,17 +23,29 @@ class StatusSync(unittest.TestCase):
             notion = FakeRecruiters([page("A B", pid="r1", action=status, done=False, active=True, review=True)])
             counts = self.go(notion)
             r = row(notion, "r1")
-            self.assertEqual((r["done"], r["active"], r["needs_review"], counts["status_synced"], counts["failed"]), (True, False, False, 1, 0), status)
+            self.assertEqual(
+                (r["done"], r["active"], r["needs_review"], counts["status_synced"], counts["failed"]),
+                (True, False, False, 1, 0),
+                status,
+            )
 
     def test_needs_action_reopens_done_and_inactive_rows_and_leaves_review_alone(self):
-        notion = FakeRecruiters([page("A B", pid="r1", action="Needs Action", done=True, active=False, review=True, follow_up="2026-11-30")])
+        notion = FakeRecruiters(
+            [page("A B", pid="r1", action="Needs Action", done=True, active=False, review=True, follow_up="2026-11-30")]
+        )
         self.go(notion)
         r = row(notion, "r1")
         self.assertEqual((r["done"], r["active"], r["needs_review"]), (False, True, True))
 
     def test_waiting_and_blank_rows_and_agreeing_rows_are_not_written(self):
-        notion = FakeRecruiters([page("A B", pid="r1", action="Waiting", done=True), page("C D", pid="r2", done=True, active=False), page("E F", pid="r3", action="Completed", done=True, active=False),
-                                 page("G H", pid="r4", action="Needs Action", follow_up="2026-11-30")])
+        notion = FakeRecruiters(
+            [
+                page("A B", pid="r1", action="Waiting", done=True),
+                page("C D", pid="r2", done=True, active=False),
+                page("E F", pid="r3", action="Completed", done=True, active=False),
+                page("G H", pid="r4", action="Needs Action", follow_up="2026-11-30"),
+            ]
+        )
         counts = self.go(notion)
         self.assertEqual((notion.writes, counts["status_synced"]), ([], 0))
 
@@ -48,16 +61,28 @@ class StatusSync(unittest.TestCase):
 
 
 class FollowUpDate(unittest.TestCase):
-    def test_a_needs_action_row_without_a_date_gets_one_business_day_after_its_first_contact_else_its_last_contact(self):
-        a = page("A B", pid="r1", action="Needs Action", last="2026-11-20T15:00:00+00:00")  # a Friday: the next business day is Monday
+    def test_a_needs_action_row_without_a_date_gets_one_business_day_after_its_first_contact_else_its_last_contact(
+        self,
+    ):
+        a = page(
+            "A B", pid="r1", action="Needs Action", last="2026-11-20T15:00:00+00:00"
+        )  # a Friday: the next business day is Monday
         b = page("C D", pid="r2", action="Needs Action", last="2026-11-24T15:00:00+00:00")
         b["properties"]["First Contact"] = {"type": "date", "date": {"start": "2026-11-18T15:00:00+00:00"}}
         notion = FakeRecruiters([a, b])
         counts = stage._chores({}, True, NOW, notion)
-        self.assertEqual((row(notion, "r1")["follow_up"], row(notion, "r2")["follow_up"], counts["dates_set"]), ("2026-11-23", "2026-11-19", 2))
+        self.assertEqual(
+            (row(notion, "r1")["follow_up"], row(notion, "r2")["follow_up"], counts["dates_set"]),
+            ("2026-11-23", "2026-11-19", 2),
+        )
 
     def test_a_date_that_is_set_is_never_replaced_and_waiting_rows_get_none(self):
-        notion = FakeRecruiters([page("A B", pid="r1", action="Needs Action", follow_up="2026-12-01"), page("C D", pid="r2", action="Waiting")])
+        notion = FakeRecruiters(
+            [
+                page("A B", pid="r1", action="Needs Action", follow_up="2026-12-01"),
+                page("C D", pid="r2", action="Waiting"),
+            ]
+        )
         counts = stage._chores({}, True, NOW, notion)
         self.assertEqual((notion.writes, counts["dates_set"], row(notion, "r1")["follow_up"]), ([], 0, "2026-12-01"))
 
@@ -67,10 +92,22 @@ class FollowUpDate(unittest.TestCase):
         from lifeos.platform import mail_seen as seen
         from lifeos.recruiters import scan
         from tests.recruiters.test_incremental import AFTERNOON, MORNING, ROW, FakeLedger
-        ledger = FakeLedger({seen.key("gmail", "a")}, last_read=AFTERNOON - timedelta(hours=1), kind=seen.NEW_MAIL, last_full=MORNING)
+
+        ledger = FakeLedger(
+            {seen.key("gmail", "a")}, last_read=AFTERNOON - timedelta(hours=1), kind=seen.NEW_MAIL, last_full=MORNING
+        )
         notion = FakeRecruiters([page("A B", pid="r1", action="Dismissed", active=True)])
         with unittest.mock.patch.object(scan, "step_row", lambda: ROW):
-            counts = stage.run(0, True, environ={"GITHUB_EVENT_NAME": "workflow_run"}, gmail=ReadOnlyGmail([]), outlook_accounts=[], notion=notion, now=AFTERNOON, ledger=ledger)
+            counts = stage.run(
+                0,
+                True,
+                environ={"GITHUB_EVENT_NAME": "workflow_run"},
+                gmail=ReadOnlyGmail([]),
+                outlook_accounts=[],
+                notion=notion,
+                now=AFTERNOON,
+                ledger=ledger,
+            )
         self.assertEqual((counts["scan"], counts["status_synced"]), ("skipped", 1))
 
 

@@ -1,6 +1,7 @@
 """cleanup pack, run on a fixture (fake systemctl for both managers, a real Unix socket answering like Attention, fake
 old and new folders under a temp.
 """
+
 import json
 import os
 import socket
@@ -18,8 +19,18 @@ ROOT = Path(__file__).resolve().parents[3]
 PACK = ROOT / "lifeos" / "edge" / "whatsapp" / "pack_cleanup"
 SCRIPT = PACK / "pack" / "files" / "cleanup.sh"
 SECRET = "NOT-A-REAL-SESSION-SECRET"
-SNAPSHOT = {"channel": "whatsapp", "health": "CURRENT", "observed_at": "2026-11-13T15:00:00Z", "chats_known": 80, "unread_messages": 12, "unread_messages_unmuted": 9,
-            "unread_chats": 5, "unread_chats_unmuted": 4, "latest_state": "NONE", "latest_name": None}
+SNAPSHOT = {
+    "channel": "whatsapp",
+    "health": "CURRENT",
+    "observed_at": "2026-11-13T15:00:00Z",
+    "chats_known": 80,
+    "unread_messages": 12,
+    "unread_messages_unmuted": 9,
+    "unread_chats": 5,
+    "unread_chats_unmuted": 4,
+    "latest_state": "NONE",
+    "latest_name": None,
+}
 FAKE_SYSTEMCTL = """#!/bin/bash
 S="$CL_FAKE/$CL_WHO"; mkdir -p "$S"; echo "$CL_WHO $*" >> "$CL_FAKE/calls.log"
 case "$1" in
@@ -46,24 +57,41 @@ class Fixture:
         (self.tmp / "node").chmod(0o755)
         (self.tmp / "as-ubuntu").write_text('#!/bin/sh\nexec "$@"\n')
         (self.tmp / "as-ubuntu").chmod(0o755)
-        self.env = dict(os.environ, CL_ROOT=str(self.root), CL_SYSTEMCTL=str(self.tmp / "systemctl-system"), CL_USER_SYSTEMCTL=str(self.tmp / "systemctl-user"), CL_FAKE=str(self.fake),
-                        CL_NODE=str(self.tmp / "node"), CL_AS_UBUNTU=str(self.tmp / "as-ubuntu"), CL_FILES=str(self.files), CL_PY=sys.executable)
+        self.env = dict(
+            os.environ,
+            CL_ROOT=str(self.root),
+            CL_SYSTEMCTL=str(self.tmp / "systemctl-system"),
+            CL_USER_SYSTEMCTL=str(self.tmp / "systemctl-user"),
+            CL_FAKE=str(self.fake),
+            CL_NODE=str(self.tmp / "node"),
+            CL_AS_UBUNTU=str(self.tmp / "as-ubuntu"),
+            CL_FILES=str(self.files),
+            CL_PY=sys.executable,
+        )
         self.reset()
 
     def reset(self, good_files=True):
         import shutil
+
         self.stop_server()
         for path in (self.root, self.fake, self.files):
             shutil.rmtree(path, ignore_errors=True)
         uh = self.root / "home/ubuntu"
-        for rel in (".local/state/lifeos-whatsapp/auth", ".config/lifeos-whatsapp", ".local/lib/lifeos-whatsapp/node_modules"):
+        for rel in (
+            ".local/state/lifeos-whatsapp/auth",
+            ".config/lifeos-whatsapp",
+            ".local/lib/lifeos-whatsapp/node_modules",
+        ):
             (uh / rel).mkdir(parents=True)
         (uh / ".local/state/lifeos-whatsapp/auth/creds.json").write_text(SECRET)
         (uh / ".config/lifeos-whatsapp/hash-key").write_text(SECRET)
         (uh / ".local/lib/lifeos-whatsapp/node_modules/x.js").write_text("x")
         (uh / ".config/systemd/user").mkdir(parents=True)
         (uh / ".config/systemd/user/lifeos-whatsapp-attention.service").write_text("[Unit]\n")
-        for rel, text in ((".local/lib/lifeos-imessage/alerts_endpoint.py", "OLD ENDPOINT\n"), (".local/lib/lifeos-oracle/stats.mjs", "OLD STATS\n")):
+        for rel, text in (
+            (".local/lib/lifeos-imessage/alerts_endpoint.py", "OLD ENDPOINT\n"),
+            (".local/lib/lifeos-oracle/stats.mjs", "OLD STATS\n"),
+        ):
             (uh / rel).parent.mkdir(parents=True, exist_ok=True)
             (uh / rel).write_text(text)
         (self.root / "opt/lifeos-wa/app/node_modules.pre-slim").mkdir(parents=True)
@@ -80,7 +108,10 @@ class Fixture:
         (self.fake / "system" / ("enabled-" + svc)).touch()
         (self.fake / "system" / ("user-" + svc)).write_text("lifeos-wa\n")
         self.files.mkdir(parents=True)
-        for name, src in (("alerts_endpoint.py", ROOT / "lifeos/imessage/alerts_endpoint.py"), ("stats.mjs", ROOT / "lifeos/oraclecloud/oracle/stats.mjs")):
+        for name, src in (
+            ("alerts_endpoint.py", ROOT / "lifeos/imessage/alerts_endpoint.py"),
+            ("stats.mjs", ROOT / "lifeos/oraclecloud/oracle/stats.mjs"),
+        ):
             (self.files / name).write_text(src.read_text())
         self.start_server()
 
@@ -98,6 +129,7 @@ class Fixture:
                     return
                 conn.sendall((json.dumps(SNAPSHOT) + "\n").encode())
                 conn.close()
+
         threading.Thread(target=loop, args=(self.server,), daemon=True).start()
 
     def stop_server(self):
@@ -134,14 +166,26 @@ class CleanupTests(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout)
         for label in LABELS:
             self.assertRegex(done.stdout, r"READBACK %s=removed_entries_\d+" % label)
-        self.assertIn("READBACK gates=new_service=active_enabled_lifeos-wa health=CURRENT old_unit=not_running", done.stdout)
+        self.assertIn(
+            "READBACK gates=new_service=active_enabled_lifeos-wa health=CURRENT old_unit=not_running", done.stdout
+        )
         self.assertIn("READBACK consumers=installed endpoint_health=CURRENT", done.stdout)
         self.assertIn("READBACK result=removed_6 failed_0 dry_run=no", done.stdout)
-        for rel in (".local/state/lifeos-whatsapp", ".config/lifeos-whatsapp", ".local/lib/lifeos-whatsapp", ".config/systemd/user/lifeos-whatsapp-attention.service"):
+        for rel in (
+            ".local/state/lifeos-whatsapp",
+            ".config/lifeos-whatsapp",
+            ".local/lib/lifeos-whatsapp",
+            ".config/systemd/user/lifeos-whatsapp-attention.service",
+        ):
             self.assertFalse(self.fx.home(rel).exists(), rel)
         self.assertFalse((self.fx.root / "opt/lifeos-wa/app/node_modules.pre-slim").exists())
-        self.assertEqual((self.fx.root / "var/lib/lifeos-wa/.local/state/lifeos-whatsapp/auth/creds.json").read_text(), SECRET)
-        for name, rel in (("alerts_endpoint.py", ".local/lib/lifeos-imessage/alerts_endpoint.py"), ("stats.mjs", ".local/lib/lifeos-oracle/stats.mjs")):
+        self.assertEqual(
+            (self.fx.root / "var/lib/lifeos-wa/.local/state/lifeos-whatsapp/auth/creds.json").read_text(), SECRET
+        )
+        for name, rel in (
+            ("alerts_endpoint.py", ".local/lib/lifeos-imessage/alerts_endpoint.py"),
+            ("stats.mjs", ".local/lib/lifeos-oracle/stats.mjs"),
+        ):
             self.assertEqual(self.fx.home(rel).read_text(), (self.fx.files / name).read_text())
             self.assertEqual(stat.S_IMODE(self.fx.home(rel).stat().st_mode), 0o600)
         self.assertNotIn(SECRET, done.stdout + done.stderr)
@@ -169,9 +213,13 @@ class CleanupTests(unittest.TestCase):
         cases = {
             "new_service_not_active": lambda fx: (fx.fake / "system/active-lifeos-wa-attention.service").unlink(),
             "new_service_not_enabled": lambda fx: (fx.fake / "system/enabled-lifeos-wa-attention.service").unlink(),
-            "new_service_wrong_user": lambda fx: (fx.fake / "system/user-lifeos-wa-attention.service").write_text("ubuntu\\n"),
+            "new_service_wrong_user": lambda fx: (fx.fake / "system/user-lifeos-wa-attention.service").write_text(
+                "ubuntu\\n"
+            ),
             "new_service_health_none": lambda fx: fx.stop_server(),
-            "new_session_missing": lambda fx: __import__("shutil").rmtree(fx.root / "var/lib/lifeos-wa/.local/state/lifeos-whatsapp/auth"),
+            "new_session_missing": lambda fx: __import__("shutil").rmtree(
+                fx.root / "var/lib/lifeos-wa/.local/state/lifeos-whatsapp/auth"
+            ),
             "old_unit_running": lambda fx: (fx.fake / "user/active-lifeos-whatsapp-attention.service").touch(),
         }
         for word, change in cases.items():
@@ -183,7 +231,9 @@ class CleanupTests(unittest.TestCase):
                 self.assertEqual(done.returncode, 1, done.stdout)
                 self.assertIn("READBACK failed=" + word, done.stdout)
                 self.assertEqual(self.fx.listing(), before)
-                self.assertEqual(self.fx.home(".local/lib/lifeos-imessage/alerts_endpoint.py").read_text(), "OLD ENDPOINT\n")
+                self.assertEqual(
+                    self.fx.home(".local/lib/lifeos-imessage/alerts_endpoint.py").read_text(), "OLD ENDPOINT\n"
+                )
 
     def test_a_consumer_file_that_does_not_parse_is_put_back_and_nothing_old_is_deleted(self):
         (self.fx.files / "alerts_endpoint.py").write_text("def broken(:\n")
@@ -199,6 +249,7 @@ class CleanupTests(unittest.TestCase):
         target.mkdir()
         (target / "keep.txt").write_text("keep")
         import shutil
+
         shutil.rmtree(self.fx.home(".local/lib/lifeos-whatsapp"))
         self.fx.home(".local/lib/lifeos-whatsapp").symlink_to(target)
         done = run(SCRIPT, self.fx)
@@ -219,11 +270,23 @@ class CleanupTests(unittest.TestCase):
 
     def test_the_pack_builds_and_passes_the_runners_own_check_and_restores_only_the_two_consumer_files(self):
         out = self.fx.tmp / "pack"
-        subprocess.run([sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(
+            [sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True
+        )
         manifest = runner.load_manifest(str(out))
         self.assertEqual((manifest["steps"], manifest["services"]), (["steps/10-cleanup.sh"], []))
-        self.assertEqual(manifest["files"], ["/home/ubuntu/.local/lib/lifeos-imessage/alerts_endpoint.py", "/home/ubuntu/.local/lib/lifeos-oracle/stats.mjs"])
-        done = subprocess.run([sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)], capture_output=True, text=True)
+        self.assertEqual(
+            manifest["files"],
+            [
+                "/home/ubuntu/.local/lib/lifeos-imessage/alerts_endpoint.py",
+                "/home/ubuntu/.local/lib/lifeos-oracle/stats.mjs",
+            ],
+        )
+        done = subprocess.run(
+            [sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)],
+            capture_output=True,
+            text=True,
+        )
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertIn("PACK ok LIFE-643 steps=1 restore_files=2 restore_services=0", done.stdout)
 

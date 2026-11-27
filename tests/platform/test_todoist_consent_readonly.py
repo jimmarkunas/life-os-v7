@@ -1,4 +1,5 @@
 """the read-only Todoist sign-in helper."""
+
 import io
 import json
 import unittest
@@ -16,6 +17,7 @@ def endpoint(reply, seen=None):
         if seen is not None:
             seen.append((request.full_url, request.data))
         return Reply(reply)
+
     return opener
 
 
@@ -27,15 +29,27 @@ class Pipe(io.StringIO):
 class Helper(unittest.TestCase):
     def go(self, reply, code="the-code"):
         out, tty, seen = Pipe(), io.StringIO(), []
-        result = T.run("cid", "fake-secret", out, tty, opener=endpoint(reply, seen), server=object(), catcher=lambda server, state: code)
+        result = T.run(
+            "cid",
+            "fake-secret",
+            out,
+            tty,
+            opener=endpoint(reply, seen),
+            server=object(),
+            catcher=lambda server, state: code,
+        )
         return result, out.getvalue(), tty.getvalue(), seen
 
     def test_the_link_asks_for_read_access_only_and_a_long_lived_token_goes_to_the_pipe(self):
         result, out, tty, seen = self.go({"access_token": FAKE_TOKEN, "token_type": "Bearer"})
-        self.assertEqual((result["outcome"], result["scopes_granted"], result["stored"]), ("stored", ["data:read"], "pipe"))
+        self.assertEqual(
+            (result["outcome"], result["scopes_granted"], result["stored"]), ("stored", ["data:read"], "pipe")
+        )
         self.assertEqual(out, FAKE_TOKEN + "\n")
         query = urllib.parse.parse_qs(urllib.parse.urlparse(tty.splitlines()[1]).query)
-        self.assertEqual((query["scope"], query["redirect_uri"], query["response_type"]), (["data:read"], [T.REDIRECT], ["code"]))
+        self.assertEqual(
+            (query["scope"], query["redirect_uri"], query["response_type"]), (["data:read"], [T.REDIRECT], ["code"])
+        )
         self.assertEqual(seen[0][0], T.TOKEN_URL)
         self.assertNotIn(FAKE_TOKEN, tty)  # the screen never shows the token
 
@@ -55,7 +69,9 @@ class Helper(unittest.TestCase):
         tty = io.StringIO()
         screen = io.StringIO()
         screen.isatty = lambda: True
-        self.assertEqual(T.run("cid", "s", screen, tty, server=object(), catcher=lambda *a: "c")["code"], "DENY_SECRET_EXPOSURE")
+        self.assertEqual(
+            T.run("cid", "s", screen, tty, server=object(), catcher=lambda *a: "c")["code"], "DENY_SECRET_EXPOSURE"
+        )
         self.assertEqual(screen.getvalue(), "")
 
     def test_the_receipt_never_holds_a_secret(self):

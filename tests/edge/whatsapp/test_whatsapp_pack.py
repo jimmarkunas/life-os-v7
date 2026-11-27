@@ -1,6 +1,7 @@
 """and 4: the WhatsApp session-modes and unit-hardening pack, built from the repo and run through the REAL runner on a
 temp tree with a fake `systemctl.
 """
+
 import hashlib
 import json
 import os
@@ -86,6 +87,7 @@ class Server(threading.Thread):
     """Stands in for the attention process: answers one line (counts only) per connection unless the `silent` flag
     exists.
     """
+
     def __init__(self, path, silent):
         super().__init__(daemon=True)
         self.sock, self.silent = socket.socket(socket.AF_UNIX), silent
@@ -128,7 +130,10 @@ class PackTests(unittest.TestCase):
         self.cred_dir.mkdir(parents=True)
         self.unit_path.parent.mkdir(parents=True)
         self.unit_path.write_text(OLD_UNIT)
-        for tree, names in ((self.state_dir / "auth", ("creds-a.json", "creds-b.json", "pre-key-1.json")), (self.cred_dir, ("creds.json", "app-state-1.json"))):
+        for tree, names in (
+            (self.state_dir / "auth", ("creds-a.json", "creds-b.json", "pre-key-1.json")),
+            (self.cred_dir, ("creds.json", "app-state-1.json")),
+        ):
             for name in names:
                 (tree / name).write_text("NOT-A-REAL-SESSION-SECRET-%s" % name)
                 (tree / name).chmod(0o664)
@@ -150,11 +155,18 @@ class PackTests(unittest.TestCase):
         self.build(self.pack)
         self.state, self.inbox = str(self.tmp / "state"), str(self.tmp / "lifeos-pack-{key}")
         shutil.copytree(self.pack, self.inbox.format(key="LIFE-643"))
-        self.host = runner.Host(state=self.state, inbox=self.inbox, require_root=False, systemctl=FakeSystemd(str(self.tmp)))
+        self.host = runner.Host(
+            state=self.state, inbox=self.inbox, require_root=False, systemctl=FakeSystemd(str(self.tmp))
+        )
         self.sha8 = runner.pack_hash(self.inbox.format(key="LIFE-643"))[:8]
 
     def build(self, out):
-        subprocess.run([sys.executable, str(BUILDER), str(out), "--root-prefix", str(self.prefix)], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(
+            [sys.executable, str(BUILDER), str(out), "--root-prefix", str(self.prefix)],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
 
     def flag(self, name):
         (self.prefix / name).touch()
@@ -177,15 +189,26 @@ class PackTests(unittest.TestCase):
 
     def test_the_pack_is_valid_and_declares_the_installed_unit_and_the_service(self):
         manifest = runner.load_manifest(str(self.pack))
-        self.assertEqual((manifest["ticket"], manifest["services"]), ("LIFE-643", ["lifeos-whatsapp-attention.service"]))
+        self.assertEqual(
+            (manifest["ticket"], manifest["services"]), ("LIFE-643", ["lifeos-whatsapp-attention.service"])
+        )
         self.assertEqual(manifest["files"], [str(self.unit_path)])
         built = (self.pack / "files" / "lifeos-whatsapp-attention.service").read_text()
         self.assertEqual(built, (ROOT / "lifeos/whatsapp/oracle/lifeos-whatsapp-attention.service").read_text())
 
     def test_the_hardened_unit_keeps_what_was_there_and_adds_the_sandbox_lines(self):
         lines = (ROOT / "lifeos/whatsapp/oracle/lifeos-whatsapp-attention.service").read_text().splitlines()
-        for want in ("NoNewPrivileges=yes", "MemoryMax=400M", "UMask=0077", "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX", "RestrictNamespaces=yes",
-                     "LockPersonality=yes", "SystemCallFilter=@system-service", "SystemCallErrorNumber=EPERM", "RestrictSUIDSGID=yes"):
+        for want in (
+            "NoNewPrivileges=yes",
+            "MemoryMax=400M",
+            "UMask=0077",
+            "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
+            "RestrictNamespaces=yes",
+            "LockPersonality=yes",
+            "SystemCallFilter=@system-service",
+            "SystemCallErrorNumber=EPERM",
+            "RestrictSUIDSGID=yes",
+        ):
             self.assertIn(want, lines)
         for name in ("ProtectSystem", "PrivateTmp", "ProtectKernelTunables", "ProtectControlGroups"):
             self.assertFalse([line for line in lines if line.startswith(name)], name)
@@ -196,11 +219,25 @@ class PackTests(unittest.TestCase):
         result = self.run_pack()
         self.assertEqual((result["outcome"], result["code"]), ("ok", None), result)
         self.assertEqual(self.both(), ({("d", 0o700): 2, ("f", 0o600): 4}, {("d", 0o700): 1, ("f", 0o600): 2}))
-        self.assertEqual(self.unit_path.read_text(), (ROOT / "lifeos/whatsapp/oracle/lifeos-whatsapp-attention.service").read_text())
+        self.assertEqual(
+            self.unit_path.read_text(), (ROOT / "lifeos/whatsapp/oracle/lifeos-whatsapp-attention.service").read_text()
+        )
         self.assertEqual(self.running_unit(), self.unit_path.read_text())
         readback = " | ".join(result["readback"])
-        for want in ("before_state d775=2 f600=1 f664=3", "before_credentials d775=1 f664=2", "after_state d700=2 f600=4", "after_credentials d700=1 f600=2", "other_user_holders=0", "applied=yes", "attention_active=active", "gateway_active=active",
-                     "socket_mode=600", "attention_whatsapp_connections=1", "NRestarts=0", "RestrictNamespaces=value"):
+        for want in (
+            "before_state d775=2 f600=1 f664=3",
+            "before_credentials d775=1 f664=2",
+            "after_state d700=2 f600=4",
+            "after_credentials d700=1 f600=2",
+            "other_user_holders=0",
+            "applied=yes",
+            "attention_active=active",
+            "gateway_active=active",
+            "socket_mode=600",
+            "attention_whatsapp_connections=1",
+            "NRestarts=0",
+            "RestrictNamespaces=value",
+        ):
             self.assertIn(want, readback)
         listing = self.prefix / "var" / "lib" / "lifeos-runner" / "whatsapp-modes-LIFE-643.list"
         self.assertEqual(stat.S_IMODE(listing.stat().st_mode), 0o600)
@@ -220,7 +257,9 @@ class PackTests(unittest.TestCase):
         self.assertEqual((result["outcome"], result["code"]), ("fail", code), result)
         self.assertEqual(self.unit_path.read_text(), OLD_UNIT)
         self.assertEqual(self.running_unit(), OLD_UNIT)  # the service was restarted on the old unit
-        self.assertEqual(self.both(), ({("d", 0o775): 2, ("f", 0o664): 3, ("f", 0o600): 1}, {("d", 0o775): 1, ("f", 0o664): 2}))
+        self.assertEqual(
+            self.both(), ({("d", 0o775): 2, ("f", 0o664): 3, ("f", 0o600): 1}, {("d", 0o775): 1, ("f", 0o664): 2})
+        )
         self.assertEqual(stat.S_IMODE((self.state_dir / "attention.sock").stat().st_mode), 0o600)
 
     def failure(self, flag):
@@ -273,10 +312,18 @@ class PackTests(unittest.TestCase):
     def test_an_interrupted_run_restores_the_unit_file_and_leaves_the_safe_tight_modes(self):
         """The runner kills a step's process group with SIGKILL, so a step cannot undo its own chmod on Ctrl-C"""
         self.flag("interrupt")
-        driver = ("import sys; from lifeos.edge.runner import runner; "
-                  "h = runner.Host(state=sys.argv[1], inbox=sys.argv[2], require_root=False, systemctl=lambda *a: (0, 'active')); "
-                  "sys.exit(runner.main(sys.argv[3:], h))")
-        done = subprocess.run([sys.executable, "-c", driver, self.state, self.inbox, "LIFE-643", self.sha8], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        driver = (
+            "import sys; from lifeos.edge.runner import runner; "
+            "h = runner.Host(state=sys.argv[1], inbox=sys.argv[2], require_root=False, systemctl=lambda *a: (0, 'active')); "
+            "sys.exit(runner.main(sys.argv[3:], h))"
+        )
+        done = subprocess.run(
+            [sys.executable, "-c", driver, self.state, self.inbox, "LIFE-643", self.sha8],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         self.assertEqual((done.returncode, done.stdout, done.stderr), (1, "RESULT fail E_INTERRUPTED\n", ""))
         self.assertEqual(self.unit_path.read_text(), OLD_UNIT)
         self.assertEqual(modes(self.cred_dir), {("d", 0o700): 1, ("f", 0o600): 2})
@@ -285,6 +332,7 @@ class PackTests(unittest.TestCase):
 
 class HelperTests(unittest.TestCase):
     """wa_host.py checks that a pack-level test cannot stage (a second user needs root)."""
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(dir="/tmp"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -304,7 +352,9 @@ class HelperTests(unittest.TestCase):
         proc.mkdir(parents=True)
         (proc / "3").symlink_to(self.tmp / "tree" / "a")
         self.assertEqual(self.wa("holders", str(self.tmp / "proc"), str(os.getuid()), str(self.tmp / "tree")), (0, "0"))
-        self.assertEqual(self.wa("holders", str(self.tmp / "proc"), str(os.getuid() + 1), str(self.tmp / "tree")), (0, "1"))
+        self.assertEqual(
+            self.wa("holders", str(self.tmp / "proc"), str(os.getuid() + 1), str(self.tmp / "tree")), (0, "1")
+        )
 
     def test_the_socket_is_counted_never_printed(self):
         path = str(self.tmp / "s")

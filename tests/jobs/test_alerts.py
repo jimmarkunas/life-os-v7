@@ -56,12 +56,22 @@ class Detect(unittest.TestCase):
                     return [("braze",)]
                 if "v7_feed" in self.last:
                     return feed_rows
-                return [("dice", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400), ("web:examplefeed", 0, 3400),
-                        ("lensa", 0, 700), ("web:openjobs", 0, 3400)]  # retired sources, busy before and silent now
+                return [
+                    ("dice", 0, 700),
+                    ("jobright", 5, 300),
+                    ("quiet-board", 0, 6),
+                    ("brand-new", 0, None),
+                    ("web:braze", 0, 400),
+                    ("web:figma", 0, 400),
+                    ("web:examplefeed", 0, 3400),
+                    ("lensa", 0, 700),
+                    ("web:openjobs", 0, 3400),
+                ]  # retired sources, busy before and silent now
 
         class Conn:
             def cursor(self):
                 return Cur()
+
         return jobs_alerts.gather(Conn(), NOW)["stopped_sources"]
 
     def test_gather_flags_only_a_busy_source_that_went_quiet(self):
@@ -73,9 +83,10 @@ class Detect(unittest.TestCase):
 
     def test_a_retired_source_never_pages_even_with_no_feed_row(self):
         stopped = [name for name, _ in self.gather_stopped([])]
-        self.assertFalse({"lensa", "web:openjobs"} & set(stopped), stopped)  # Lensa retired, Open Jobs ended 10 Oct 2026
+        self.assertFalse(
+            {"lensa", "web:openjobs"} & set(stopped), stopped
+        )  # Lensa retired, Open Jobs ended 10 Oct 2026
         self.assertTrue(all(reason for reason in jobs_alerts.RETIRED_SOURCES.values()))  # each says why, specifically
-
 
     def test_stuck_breakdown_groups_by_state_and_keeps_only_counts_and_codes(self):
         class Cur:
@@ -85,20 +96,45 @@ class Detect(unittest.TestCase):
 
             def fetchall(self):
                 old = NOW - dt.timedelta(hours=50)
-                return [("READY", 1, 0, "none", None, 3, old), ("READY", 1, 0, "none", None, 2, NOW - dt.timedelta(hours=30)),
-                        ("RESOLVED", 0, 0, "none", "no_job_id 12", 4, old)]
+                return [
+                    ("READY", 1, 0, "none", None, 3, old),
+                    ("READY", 1, 0, "none", None, 2, NOW - dt.timedelta(hours=30)),
+                    ("RESOLVED", 0, 0, "none", "no_job_id 12", 4, old),
+                ]
+
         got = alertstate.stuck(Cur(), NOW)
-        self.assertEqual(got, {"READY|link=1|page=0|fit=none|none": [5, 50], "RESOLVED|link=0|page=0|fit=none|no_job_id N": [4, 50]})
+        self.assertEqual(
+            got, {"READY|link=1|page=0|fit=none|none": [5, 50], "RESOLVED|link=0|page=0|fit=none|no_job_id N": [4, 50]}
+        )
 
     def test_body_shape_counts_what_notion_can_refuse_and_never_returns_text(self):
         def block(kind, text):
             return {"object": "block", "type": kind, kind: {"rich_text": [{"type": "text", "text": {"content": text}}]}}
-        too_long = "a" * 1996 + "\U0001F600" * 4
-        blocks = [block("paragraph", "marker"), block("heading_2", "Summary"), block("paragraph", too_long), block("paragraph", "bad\x01char and nul\x00 here")]
+
+        too_long = "a" * 1996 + "\U0001f600" * 4
+        blocks = [
+            block("paragraph", "marker"),
+            block("heading_2", "Summary"),
+            block("paragraph", too_long),
+            block("paragraph", "bad\x01char and nul\x00 here"),
+        ]
         got = alertstate.body_shape(blocks)
         self.assertEqual((got["over_2000_chars"], got["over_2000_units"]), (0, 1))
         self.assertEqual((got["control"], got["nul"], got["surrogate"]), (1, 1, 0))
-        self.assertEqual(got["child2"], {"type": "paragraph", "items": 1, "chars": 2000, "units": 2004, "empty": False, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0})
+        self.assertEqual(
+            got["child2"],
+            {
+                "type": "paragraph",
+                "items": 1,
+                "chars": 2000,
+                "units": 2004,
+                "empty": False,
+                "control": 0,
+                "nul": 0,
+                "surrogate": 0,
+                "private_use": 0,
+            },
+        )
         self.assertNotIn("bad", json.dumps(got))  # counts only
 
     def test_publish_bodies_reads_only_and_falls_back_to_the_full_text(self):
@@ -110,7 +146,11 @@ class Detect(unittest.TestCase):
                 Cur.sql = sql
 
             def fetchall(self):
-                return [(None, None, None, None, "A plain description line"), ("Short summary", None, None, None, "ignored")]
+                return [
+                    (None, None, None, None, "A plain description line"),
+                    ("Short summary", None, None, None, "ignored"),
+                ]
+
         got = alertstate.publish_bodies(Cur())
         self.assertEqual([g["blocks"] for g in got], [3, 3])  # marker, heading, one paragraph each
         self.assertTrue(Cur.sql.startswith("SELECT") and "UPDATE" not in Cur.sql and "DELETE" not in Cur.sql)
@@ -125,6 +165,7 @@ class Detect(unittest.TestCase):
     def test_the_credential_list_is_the_only_source_of_expiry_dates(self):
         """item 6: the older lifeos/jobs/expiries.json overrode the credential list with a different date"""
         import pathlib
+
         self.assertFalse(pathlib.Path(jobs_alerts.__file__).with_name("expiries.json").exists())
         self.assertFalse(hasattr(jobs_alerts, "EXPIRIES"))
         self.assertTrue(jobs_alerts.credentials.expiries())
@@ -135,34 +176,111 @@ REF_A, REF_B = (hashlib.sha256(m.encode()).hexdigest() for m in (MSG_A, MSG_B))
 SEEN = dt.datetime(2026, 10, 13, 15, 30)
 
 
-MEASURED_7D = {'dice': {'CLOSED': 1, 'EXCLUDED_FIT': 4, 'PUBLISHED': 15}, 'discover': {'DUPLICATE': 18, 'EXCLUDED_FIT': 5, 'HOLD': 25, 'PUBLISHED': 1},
-               'jobright': {'CLOSED': 6, 'DUPLICATE': 9, 'EXCLUDED_FIT': 24, 'EXCLUDED_STALE': 19, 'HOLD': 15, 'NEW': 1, 'PUBLISHED': 39, 'RESOLVED': 11},
-               'linkedin-alerts': {'CLOSED': 2, 'DUPLICATE': 12, 'EXCLUDED_FIT': 29, 'EXCLUDED_STALE': 4, 'NEW': 2, 'PUBLISHED': 32, 'RESOLVED': 3},
-               'linkedin-search': {'DUPLICATE': 60, 'EXCLUDED_FIT': 65, 'EXCLUDED_STALE': 6, 'HOLD': 19, 'NEW': 9, 'PUBLISHED': 106, 'READY': 1, 'RESOLVED': 1},
-               'web:ab': {'CLOSED': 2, 'DUPLICATE': 3, 'EXCLUDED_FIT': 1160, 'PUBLISHED': 355, 'PURGED': 9, 'READY': 9, 'RESOLVED': 3},
-               'web:gh': {'CLOSED': 2, 'DUPLICATE': 9, 'EXCLUDED_FIT': 2977, 'HOLD': 14, 'NEW': 13, 'PUBLISHED': 989, 'RESOLVED': 202},
-               'web:lv': {'CLOSED': 2, 'DUPLICATE': 1, 'EXCLUDED_FIT': 653, 'HOLD': 5, 'PUBLISHED': 557, 'RESOLVED': 241},
-               'web:other': {'CLOSED': 1, 'DUPLICATE': 7, 'EXCLUDED_FIT': 269, 'PUBLISHED': 20, 'PURGED': 1}, 'web:su': {'EXCLUDED_FIT': 47, 'HOLD': 1}}
-MEASURED_24H = {'discover': {'DUPLICATE': 3, 'EXCLUDED_FIT': 1, 'HOLD': 2}, 'jobright': {'DUPLICATE': 1, 'EXCLUDED_STALE': 5, 'HOLD': 1, 'NEW': 1, 'PUBLISHED': 4, 'RESOLVED': 5},
-                'linkedin-alerts': {'EXCLUDED_FIT': 2, 'NEW': 1, 'PUBLISHED': 4, 'RESOLVED': 2},
-                'linkedin-search': {'DUPLICATE': 6, 'EXCLUDED_FIT': 9, 'EXCLUDED_STALE': 1, 'HOLD': 5, 'NEW': 1, 'PUBLISHED': 8}, 'web:ab': {'PUBLISHED': 2},
-                'web:gh': {'CLOSED': 2, 'DUPLICATE': 7, 'EXCLUDED_FIT': 2418, 'HOLD': 14, 'NEW': 4, 'PUBLISHED': 848, 'RESOLVED': 148},
-                'web:lv': {'CLOSED': 2, 'DUPLICATE': 1, 'EXCLUDED_FIT': 653, 'HOLD': 5, 'PUBLISHED': 557, 'RESOLVED': 241}}
+MEASURED_7D = {
+    'dice': {'CLOSED': 1, 'EXCLUDED_FIT': 4, 'PUBLISHED': 15},
+    'discover': {'DUPLICATE': 18, 'EXCLUDED_FIT': 5, 'HOLD': 25, 'PUBLISHED': 1},
+    'jobright': {
+        'CLOSED': 6,
+        'DUPLICATE': 9,
+        'EXCLUDED_FIT': 24,
+        'EXCLUDED_STALE': 19,
+        'HOLD': 15,
+        'NEW': 1,
+        'PUBLISHED': 39,
+        'RESOLVED': 11,
+    },
+    'linkedin-alerts': {
+        'CLOSED': 2,
+        'DUPLICATE': 12,
+        'EXCLUDED_FIT': 29,
+        'EXCLUDED_STALE': 4,
+        'NEW': 2,
+        'PUBLISHED': 32,
+        'RESOLVED': 3,
+    },
+    'linkedin-search': {
+        'DUPLICATE': 60,
+        'EXCLUDED_FIT': 65,
+        'EXCLUDED_STALE': 6,
+        'HOLD': 19,
+        'NEW': 9,
+        'PUBLISHED': 106,
+        'READY': 1,
+        'RESOLVED': 1,
+    },
+    'web:ab': {
+        'CLOSED': 2,
+        'DUPLICATE': 3,
+        'EXCLUDED_FIT': 1160,
+        'PUBLISHED': 355,
+        'PURGED': 9,
+        'READY': 9,
+        'RESOLVED': 3,
+    },
+    'web:gh': {
+        'CLOSED': 2,
+        'DUPLICATE': 9,
+        'EXCLUDED_FIT': 2977,
+        'HOLD': 14,
+        'NEW': 13,
+        'PUBLISHED': 989,
+        'RESOLVED': 202,
+    },
+    'web:lv': {'CLOSED': 2, 'DUPLICATE': 1, 'EXCLUDED_FIT': 653, 'HOLD': 5, 'PUBLISHED': 557, 'RESOLVED': 241},
+    'web:other': {'CLOSED': 1, 'DUPLICATE': 7, 'EXCLUDED_FIT': 269, 'PUBLISHED': 20, 'PURGED': 1},
+    'web:su': {'EXCLUDED_FIT': 47, 'HOLD': 1},
+}
+MEASURED_24H = {
+    'discover': {'DUPLICATE': 3, 'EXCLUDED_FIT': 1, 'HOLD': 2},
+    'jobright': {'DUPLICATE': 1, 'EXCLUDED_STALE': 5, 'HOLD': 1, 'NEW': 1, 'PUBLISHED': 4, 'RESOLVED': 5},
+    'linkedin-alerts': {'EXCLUDED_FIT': 2, 'NEW': 1, 'PUBLISHED': 4, 'RESOLVED': 2},
+    'linkedin-search': {'DUPLICATE': 6, 'EXCLUDED_FIT': 9, 'EXCLUDED_STALE': 1, 'HOLD': 5, 'NEW': 1, 'PUBLISHED': 8},
+    'web:ab': {'PUBLISHED': 2},
+    'web:gh': {
+        'CLOSED': 2,
+        'DUPLICATE': 7,
+        'EXCLUDED_FIT': 2418,
+        'HOLD': 14,
+        'NEW': 4,
+        'PUBLISHED': 848,
+        'RESOLVED': 148,
+    },
+    'web:lv': {'CLOSED': 2, 'DUPLICATE': 1, 'EXCLUDED_FIT': 653, 'HOLD': 5, 'PUBLISHED': 557, 'RESOLVED': 241},
+}
 
 
 class YieldMonitors(unittest.TestCase):
-    """M1 (stuck early) and M2 (low yield): pure functions of status counts per source, boards grouped by ATS family.
-    """
+    """M1 (stuck early) and M2 (low yield): pure functions of status counts per source, boards grouped by ATS family."""
 
     def test_sources_are_grouped_boards_by_family_and_retired_sources_are_skipped(self):
-        rows = [("web:gh-zoox", "PUBLISHED", 2), ("web:gh-wachter", "PUBLISHED", 3), ("web:lv-way", "HOLD", 1), ("web:servicenow", "NEW", 4), ("web:okta", "NEW", 1),
-                ("web:su-acme", "HOLD", 1), ("lensa", "HOLD", 99), ("web:openjobs", "HOLD", 99), ("dice", "PUBLISHED", 7), ("jobright", "NEW", None)]
-        self.assertEqual(jobs_alerts.group_status_counts(rows), {"web:gh": {"PUBLISHED": 5}, "web:lv": {"HOLD": 1}, "web:other": {"NEW": 5}, "web:su": {"HOLD": 1},
-                                                                 "dice": {"PUBLISHED": 7}, "jobright": {"NEW": 0}})
+        rows = [
+            ("web:gh-zoox", "PUBLISHED", 2),
+            ("web:gh-wachter", "PUBLISHED", 3),
+            ("web:lv-way", "HOLD", 1),
+            ("web:servicenow", "NEW", 4),
+            ("web:okta", "NEW", 1),
+            ("web:su-acme", "HOLD", 1),
+            ("lensa", "HOLD", 99),
+            ("web:openjobs", "HOLD", 99),
+            ("dice", "PUBLISHED", 7),
+            ("jobright", "NEW", None),
+        ]
+        self.assertEqual(
+            jobs_alerts.group_status_counts(rows),
+            {
+                "web:gh": {"PUBLISHED": 5},
+                "web:lv": {"HOLD": 1},
+                "web:other": {"NEW": 5},
+                "web:su": {"HOLD": 1},
+                "dice": {"PUBLISHED": 7},
+                "jobright": {"NEW": 0},
+            },
+        )
 
     def test_stuck_needs_20_jobs_and_half_still_new_or_hold(self):
         def stuck(total, stuck_n):
             return jobs_alerts.yield_monitors({"s": {"HOLD": stuck_n, "PUBLISHED": total - stuck_n}}, {})["stuck"]
+
         self.assertEqual(stuck(19, 19), {})  # too few jobs
         self.assertEqual(stuck(20, 9), {})
         self.assertEqual(stuck(20, 10), {"s": 0.5})
@@ -170,7 +288,10 @@ class YieldMonitors(unittest.TestCase):
 
     def test_low_yield_needs_30_jobs_in_7_days_and_under_5_percent_published(self):
         def low(total, published):
-            return jobs_alerts.yield_monitors({}, {"s": {"PUBLISHED": published, "EXCLUDED_FIT": total - published}})["low_yield"]
+            return jobs_alerts.yield_monitors({}, {"s": {"PUBLISHED": published, "EXCLUDED_FIT": total - published}})[
+                "low_yield"
+            ]
+
         self.assertEqual(low(29, 0), {})
         self.assertEqual(low(30, 1), {"s": 0.033})
         self.assertEqual(low(100, 5), {})  # exactly 5% is not under 5%
@@ -182,7 +303,11 @@ class YieldMonitors(unittest.TestCase):
         self.assertEqual(found["low_yield"], {"discover": 0.02, "web:su": 0.0})
 
     def test_detect_raises_info_alerts_with_stable_keys(self):
-        counts = {**QUIET, "yield_72h": {"web:gh": {"HOLD": 30}}, "yield_7d": {"discover": {"HOLD": 40, "PUBLISHED": 1}}}
+        counts = {
+            **QUIET,
+            "yield_72h": {"web:gh": {"HOLD": 30}},
+            "yield_7d": {"discover": {"HOLD": 40, "PUBLISHED": 1}},
+        }
         got = {a.key: a for a in jobs_alerts.detect(counts, NOW)}
         self.assertEqual(sorted(got), ["source_stuck_web_gh", "source_yield_discover"])
         self.assertTrue(all(a.severity == alerts.INFO for a in got.values()))
@@ -197,7 +322,11 @@ class YieldMonitors(unittest.TestCase):
         window = []  # (resolved, stuck) per day
         for day, resolved in enumerate(resolved_per_day):
             window = (window + [(resolved, 9 - resolved)])[-3:]
-            counts = {**QUIET, "yield_72h": {"lensa": {"RESOLVED": sum(r for r, _ in window), "HOLD": sum(s for _, s in window)}}, "yield_7d": {}}
+            counts = {
+                **QUIET,
+                "yield_72h": {"lensa": {"RESOLVED": sum(r for r, _ in window), "HOLD": sum(s for _, s in window)}},
+                "yield_7d": {},
+            }
             now = dt.datetime(2026, 10, 6, 12, 0) + dt.timedelta(days=day)
             plan = alerts.reconcile(jobs_alerts.detect(counts, now), state, now)
             kinds.extend(kind for kind, _ in plan.notify)
@@ -224,15 +353,22 @@ class YieldMonitors(unittest.TestCase):
         listed = {"only_one": {"label": "Only one", "expires": "2026-11-12", "renew": "renew it"}}
         db = JobsDB()
         self.addCleanup(db.raw.close)
-        with mock.patch.object(jobs_alerts.store, "connect", return_value=db), mock.patch.object(jobs_alerts.store, "ensure_schema"), \
-                mock.patch.object(jobs_alerts.credentials, "expiries", return_value=listed), mock.patch.object(jobs_alerts, "detect", wraps=jobs_alerts.detect) as spy:
+        with (
+            mock.patch.object(jobs_alerts.store, "connect", return_value=db),
+            mock.patch.object(jobs_alerts.store, "ensure_schema"),
+            mock.patch.object(jobs_alerts.credentials, "expiries", return_value=listed),
+            mock.patch.object(jobs_alerts, "detect", wraps=jobs_alerts.detect) as spy,
+        ):
             jobs_alerts.run(0, False, now=NOW)
         self.assertEqual(spy.call_args.args[2], listed)  # the real detect ran
 
     def test_the_stage_log_line_carries_the_monitor_values(self):
         db = JobsDB()
         self.addCleanup(db.raw.close)
-        with mock.patch.object(jobs_alerts.store, "connect", return_value=db), mock.patch.object(jobs_alerts.store, "ensure_schema"):
+        with (
+            mock.patch.object(jobs_alerts.store, "connect", return_value=db),
+            mock.patch.object(jobs_alerts.store, "ensure_schema"),
+        ):
             out = jobs_alerts.run(0, False, now=NOW)
         self.assertEqual(out["monitors"], {"stuck": {}, "low_yield": {}})
 
@@ -242,13 +378,25 @@ class Delivered(unittest.TestCase):
 
     def run_live(self, accepted):
         pushes, saved = [], []
-        found = [alerts.Alert("k1", alerts.PAGE, "One", "b", ""), alerts.Alert("k2", alerts.INFO, "Two", "b", ""), alerts.Alert("k3", alerts.PAGE, "Three", "b", "")]
+        found = [
+            alerts.Alert("k1", alerts.PAGE, "One", "b", ""),
+            alerts.Alert("k2", alerts.INFO, "Two", "b", ""),
+            alerts.Alert("k3", alerts.PAGE, "Three", "b", ""),
+        ]
+
         def send(topic, title, body, severity):
             pushes.append((topic, title))
             return accepted(title)
-        with mock.patch.object(jobs_alerts.store, "connect"), mock.patch.object(jobs_alerts.store, "ensure_schema"), mock.patch.object(jobs_alerts, "snapshot_hold"), \
-                mock.patch.object(jobs_alerts, "gather", return_value={"yield_72h": {}, "yield_7d": {}, "daily": {}}), mock.patch.object(jobs_alerts, "detect", return_value=found), \
-                mock.patch.object(jobs_alerts, "load_state", return_value={}), mock.patch.object(jobs_alerts, "save", side_effect=lambda c, plan, delivered, now: saved.append(delivered)):
+
+        with (
+            mock.patch.object(jobs_alerts.store, "connect"),
+            mock.patch.object(jobs_alerts.store, "ensure_schema"),
+            mock.patch.object(jobs_alerts, "snapshot_hold"),
+            mock.patch.object(jobs_alerts, "gather", return_value={"yield_72h": {}, "yield_7d": {}, "daily": {}}),
+            mock.patch.object(jobs_alerts, "detect", return_value=found),
+            mock.patch.object(jobs_alerts, "load_state", return_value={}),
+            mock.patch.object(jobs_alerts, "save", side_effect=lambda c, plan, delivered, now: saved.append(delivered)),
+        ):
             out = jobs_alerts.run(0, True, environ={"NTFY_TOPIC": "t"}, now=NOW, send=send)
         return out, pushes, saved[0]
 
@@ -283,17 +431,44 @@ class MessageTraceTests(unittest.TestCase):
 
     def vacancy(self, message, status, reason=None, page=None, verified=None, source="jobright", title="Secret Title"):
         self.n += 1
-        self.db.insert("v7_jobs", id=self.n, dedupe_key=f"secretkey{self.n}", status=status, title=title, company="Secret Co", source_url=f"https://secret.example/{self.n}", unresolved_reason=reason,
-                       notion_page_id=page, verified_at=verified, first_seen=SEEN, last_seen=SEEN, updated_at=SEEN)
+        self.db.insert(
+            "v7_jobs",
+            id=self.n,
+            dedupe_key=f"secretkey{self.n}",
+            status=status,
+            title=title,
+            company="Secret Co",
+            source_url=f"https://secret.example/{self.n}",
+            unresolved_reason=reason,
+            notion_page_id=page,
+            verified_at=verified,
+            first_seen=SEEN,
+            last_seen=SEEN,
+            updated_at=SEEN,
+        )
         self.association(message, self.n, source)
 
     def association(self, message, job_id, source="jobright"):
         self.n += 1
-        self.db.insert("v7_job_sources", job_id=job_id, source=source, source_url_hash=f"hash{self.n}", gmail_message_id=message, seen_at=SEEN)
+        self.db.insert(
+            "v7_job_sources",
+            job_id=job_id,
+            source=source,
+            source_url_hash=f"hash{self.n}",
+            gmail_message_id=message,
+            seen_at=SEEN,
+        )
 
     def seed(self):
-        for status, reason, page, verified in (("PUBLISHED", None, "page-1", SEEN), ("PUBLISHED", None, "page-2", None), ("HOLD", "http_503", None, None), ("EXCLUDED_FIT", "Fit 67 below 68", None, None),
-                                               ("NEW", None, None, None), ("DUPLICATE", "dup_of_final_url", None, None), ("WEIRD", None, None, None)):
+        for status, reason, page, verified in (
+            ("PUBLISHED", None, "page-1", SEEN),
+            ("PUBLISHED", None, "page-2", None),
+            ("HOLD", "http_503", None, None),
+            ("EXCLUDED_FIT", "Fit 67 below 68", None, None),
+            ("NEW", None, None, None),
+            ("DUPLICATE", "dup_of_final_url", None, None),
+            ("WEIRD", None, None, None),
+        ):
             self.vacancy(MSG_A, status, reason, page, verified)
         self.association(MSG_A, 999)  # a source row whose job row is missing
         self.vacancy(MSG_B, "PUBLISHED", None, "page-9", SEEN)
@@ -308,11 +483,26 @@ class MessageTraceTests(unittest.TestCase):
         got = self.trace(REF_A, dt.datetime(2026, 10, 17, 7, 30, 5, tzinfo=dt.timezone.utc))
         self.assertEqual(got["observed_at"], "2026-10-17T07:30:05Z")
         body = got["message_trace"]
-        self.assertEqual([(v["n"], v["status"], v["reason"], v["outcome"], v["ledger_page"], v["verified"]) for v in body["vacancies"]], [
-            (1, "PUBLISHED", "none", "terminal", True, True), (2, "PUBLISHED", "none", "unverified", True, False), (3, "HOLD", "http_N", "hold", False, False),
-            (4, "EXCLUDED_FIT", "Fit_N_below_N", "terminal", False, False), (5, "NEW", "none", "in_flight", False, False), (6, "DUPLICATE", "dup_of_final_url", "terminal", False, False),
-            (7, "other", "none", "other", False, False), (8, "none", "none", "unlinked", False, False)])
-        self.assertEqual((body["associations"], body["terminal"], body["blockers"]), (8, 3, {"hold": 1, "in_flight": 1, "other": 1, "unlinked": 1, "unverified": 1}))
+        self.assertEqual(
+            [
+                (v["n"], v["status"], v["reason"], v["outcome"], v["ledger_page"], v["verified"])
+                for v in body["vacancies"]
+            ],
+            [
+                (1, "PUBLISHED", "none", "terminal", True, True),
+                (2, "PUBLISHED", "none", "unverified", True, False),
+                (3, "HOLD", "http_N", "hold", False, False),
+                (4, "EXCLUDED_FIT", "Fit_N_below_N", "terminal", False, False),
+                (5, "NEW", "none", "in_flight", False, False),
+                (6, "DUPLICATE", "dup_of_final_url", "terminal", False, False),
+                (7, "other", "none", "other", False, False),
+                (8, "none", "none", "unlinked", False, False),
+            ],
+        )
+        self.assertEqual(
+            (body["associations"], body["terminal"], body["blockers"]),
+            (8, 3, {"hold": 1, "in_flight": 1, "other": 1, "unlinked": 1, "unverified": 1}),
+        )
         self.assertEqual({v["source"] for v in body["vacancies"]}, {"jobright"})
 
     def test_only_the_exact_message_is_traced_and_a_near_miss_finds_nothing(self):
@@ -320,32 +510,59 @@ class MessageTraceTests(unittest.TestCase):
         b = self.trace(REF_B)["message_trace"]
         self.assertEqual((b["associations"], b["terminal"], b["blockers"]), (2, 1, {"hold": 1}))
         for near in (MSG_A[:-1], "a" + MSG_A, "aaaaaaaa", MSG_A[:-1] + "b"):
-            self.assertEqual(self.trace(hashlib.sha256(near.encode()).hexdigest())["message_trace"], {"associations": 0, "vacancies": [], "terminal": 0, "blockers": {}})
+            self.assertEqual(
+                self.trace(hashlib.sha256(near.encode()).hexdigest())["message_trace"],
+                {"associations": 0, "vacancies": [], "terminal": 0, "blockers": {}},
+            )
 
     def test_every_job_status_gets_the_outcome_finalize_gives_its_mail(self):
         self.assertEqual((alertstate.IN_FLIGHT, alertstate.TERMINAL), (finalize.IN_FLIGHT, finalize.TERMINAL))
-        for status, reason, page, verified in (("NEW", None, None, None), ("RESOLVED", None, None, None), ("READY", None, None, None), ("HOLD", "x", None, None), ("PUBLISHED", None, "p", SEEN),
-                                               ("PUBLISHED", None, "p", None), ("CLOSED", None, None, None), ("DUPLICATE", None, None, None), ("PURGED", None, None, None),
-                                               ("EXCLUDED_FIT", None, None, None), ("EXCLUDED_UNRESOLVED", None, None, None), ("MYSTERY", None, None, None)):
+        for status, reason, page, verified in (
+            ("NEW", None, None, None),
+            ("RESOLVED", None, None, None),
+            ("READY", None, None, None),
+            ("HOLD", "x", None, None),
+            ("PUBLISHED", None, "p", SEEN),
+            ("PUBLISHED", None, "p", None),
+            ("CLOSED", None, None, None),
+            ("DUPLICATE", None, None, None),
+            ("PURGED", None, None, None),
+            ("EXCLUDED_FIT", None, None, None),
+            ("EXCLUDED_UNRESOLVED", None, None, None),
+            ("MYSTERY", None, None, None),
+        ):
             message = f"{self.n + 1:016x}"
             self.vacancy(message, status, reason, page, verified)
-            outcome = self.trace(hashlib.sha256(message.encode()).hexdigest())["message_trace"]["vacancies"][0]["outcome"]
-            self.assertEqual(outcome, finalize.blockers(self.db, [message]).get(message, "terminal"), (status, verified))
+            outcome = self.trace(hashlib.sha256(message.encode()).hexdigest())["message_trace"]["vacancies"][0][
+                "outcome"
+            ]
+            self.assertEqual(
+                outcome, finalize.blockers(self.db, [message]).get(message, "terminal"), (status, verified)
+            )
 
     def test_an_unlisted_source_status_or_reason_prints_as_other_and_never_as_its_own_text(self):
-        self.vacancy(MSG_A, "SECRET_STATUS", "Secret free text 99 about Secret Co", None, None, source="secret-provider")
+        self.vacancy(
+            MSG_A, "SECRET_STATUS", "Secret free text 99 about Secret Co", None, None, source="secret-provider"
+        )
         self.vacancy(MSG_A, "HOLD", "closed: Secret Co said so", None, None, source="jobright")
         self.vacancy(MSG_A, "HOLD", "no_match_Secret+no_result", None, None, source="lensa")
         self.vacancy(MSG_A, "HOLD", "no_match_no_board+no_result", None, None, source="linkedin-alerts")
         got = self.trace(REF_A)["message_trace"]["vacancies"]
-        self.assertEqual([(v["source"], v["status"], v["reason"]) for v in got], [("other", "other", "other"), ("jobright", "HOLD", "other"), ("lensa", "HOLD", "other"),
-                                                                                  ("linkedin-alerts", "HOLD", "no_match_no_board+no_result")])
+        self.assertEqual(
+            [(v["source"], v["status"], v["reason"]) for v in got],
+            [
+                ("other", "other", "other"),
+                ("jobright", "HOLD", "other"),
+                ("lensa", "HOLD", "other"),
+                ("linkedin-alerts", "HOLD", "no_match_no_board+no_result"),
+            ],
+        )
         for private in ("secret", "Secret"):
             self.assertNotIn(private, json.dumps(got))
 
     def test_it_cannot_write_and_leaves_every_table_as_it_was(self):
         self.seed()
-        dump = lambda: {t: self.db.raw.execute(f"SELECT * FROM {t}").fetchall() for t in store.TABLES}      # noqa: E731
+        dump = lambda: {t: self.db.raw.execute(f"SELECT * FROM {t}").fetchall() for t in store.TABLES}  # noqa: E731
         before = dump()
         self.db.raw.execute("PRAGMA query_only = ON")  # the engine itself refuses a write from here on
         self.trace(REF_A)
@@ -359,7 +576,15 @@ class MessageTraceTests(unittest.TestCase):
 
             def fetchall(self):
                 return []
-        for sql in ("UPDATE v7_jobs SET status='x'", "  delete FROM v7_jobs", "INSERT INTO v7_jobs VALUES (1)", "REPLACE INTO v7_jobs VALUES (1)", "SET SESSION x=1", "DROP TABLE v7_jobs"):
+
+        for sql in (
+            "UPDATE v7_jobs SET status='x'",
+            "  delete FROM v7_jobs",
+            "INSERT INTO v7_jobs VALUES (1)",
+            "REPLACE INTO v7_jobs VALUES (1)",
+            "SET SESSION x=1",
+            "DROP TABLE v7_jobs",
+        ):
             with self.assertRaises(store.StoreError) as ctx:
                 alertstate._select(Cur(), sql, ())
             self.assertEqual(str(ctx.exception), "ALERT_STATE_NOT_READ_ONLY")
@@ -374,7 +599,18 @@ class MessageTraceTests(unittest.TestCase):
 
     def test_a_raw_gmail_id_or_any_malformed_selector_is_refused_before_the_database_is_touched(self):
         with mock.patch.object(store, "connect", side_effect=AssertionError("must not connect")):
-            for bad in ("", MSG_A, "1a135d44a5da038f", REF_A.upper(), REF_A[:-1], REF_A + "0", REF_A[:-1] + "%", "a" * 63 + "'", REF_A[:32] + " " + REF_A[33:], REF_A + "\n"):
+            for bad in (
+                "",
+                MSG_A,
+                "1a135d44a5da038f",
+                REF_A.upper(),
+                REF_A[:-1],
+                REF_A + "0",
+                REF_A[:-1] + "%",
+                "a" * 63 + "'",
+                REF_A[:32] + " " + REF_A[33:],
+                REF_A + "\n",
+            ):
                 with self.assertRaises(store.StoreError) as ctx:
                     alertstate.trace(bad)
                 self.assertEqual(str(ctx.exception), "ALERT_STATE_MESSAGE_REF_INVALID", bad)
@@ -412,6 +648,7 @@ class MessageTraceTests(unittest.TestCase):
 
             def fetchall(self):
                 return rows
+
         with mock.patch.object(store, "connect", Conn):
             body = alertstate.trace(REF_A)["message_trace"]
         self.assertEqual([v["outcome"] for v in body["vacancies"]], ["malformed", "malformed", "unlinked"])
@@ -420,11 +657,17 @@ class MessageTraceTests(unittest.TestCase):
 
     def test_the_stage_returns_only_the_trace_when_the_selector_is_set_and_the_old_report_otherwise(self):
         self.seed()
-        with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": f" {REF_B} "}), mock.patch.object(store, "connect", lambda: self.db):
+        with (
+            mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": f" {REF_B} "}),
+            mock.patch.object(store, "connect", lambda: self.db),
+        ):
             got = alertstate.run(0, False)
         self.assertEqual(sorted(got), ["message_trace", "observed_at"])
         self.assertEqual(got["message_trace"]["associations"], 2)
-        with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": ""}), mock.patch.object(store, "connect", side_effect=store.StoreError("STORE_CONFIG_MISSING:X")):
+        with (
+            mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": ""}),
+            mock.patch.object(store, "connect", side_effect=store.StoreError("STORE_CONFIG_MISSING:X")),
+        ):
             with self.assertRaises(store.StoreError):
                 alertstate.run(0, False)
 

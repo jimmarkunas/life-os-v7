@@ -8,13 +8,20 @@ from tests.kit.db import FakeConn
 class BatchTests(unittest.TestCase):
     def _run(self, rows, clock, **kw):
         saved = []
-        with mock.patch.object(stage.store, "connect", FakeConn), \
-                mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(stage, "pick_rows", lambda c, s, l: rows), \
-                mock.patch.object(stage, "apply_result", lambda c, i, r: saved.append(i) or "resolved"):
-            counts = stage.run_rows("lensa", 999, True,
-                                            lambda part: [{"outcome": "landed", "kind": "ats", "url": "u"} for _ in part],
-                                            clock=clock, **kw)
+        with (
+            mock.patch.object(stage.store, "connect", FakeConn),
+            mock.patch.object(stage.store, "ensure_schema", lambda c: None),
+            mock.patch.object(stage, "pick_rows", lambda c, s, l: rows),
+            mock.patch.object(stage, "apply_result", lambda c, i, r: saved.append(i) or "resolved"),
+        ):
+            counts = stage.run_rows(
+                "lensa",
+                999,
+                True,
+                lambda part: [{"outcome": "landed", "kind": "ats", "url": "u"} for _ in part],
+                clock=clock,
+                **kw,
+            )
         return counts, saved
 
     def test_every_batch_is_saved_as_it_finishes(self):

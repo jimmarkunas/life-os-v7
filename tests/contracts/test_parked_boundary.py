@@ -1,6 +1,7 @@
 """the parked packages (job search and Interview OS) are only reachable through lifeos/sources and the top-level entry
 points.
 """
+
 import ast
 import pathlib
 import unittest
@@ -27,7 +28,7 @@ def _targets(node, path):
         base = node.module or ""
         if node.level:
             here = list(path.relative_to(ROOT).with_suffix("").parts)[:-1]
-            here = here[:len(here) - (node.level - 1)] if node.level > 1 else here
+            here = here[: len(here) - (node.level - 1)] if node.level > 1 else here
             base = ".".join(here + ([node.module] if node.module else []))
         names = [base] + [base + "." + alias.name for alias in node.names]
     found = set()
@@ -57,12 +58,20 @@ def importers():
 class ParkedBoundary(unittest.TestCase):
     def test_every_parked_package_exists(self):
         for package in PARKED:
-            self.assertTrue((LIFEOS / package).is_dir(), "%s is declared parked but lifeos/%s is gone: update PARKED" % (package, package))
+            self.assertTrue(
+                (LIFEOS / package).is_dir(),
+                "%s is declared parked but lifeos/%s is gone: update PARKED" % (package, package),
+            )
 
     def test_parked_packages_are_imported_only_from_sources_and_the_entry_points(self):
         for package, found in importers().items():
             outside = [p for p in found if p not in ALLOWED_IMPORTERS and p not in PARKED]
-            self.assertEqual([], outside, "lifeos/%s is imported from %s: its tests must run when those change, so it is no longer parked (LIFE-772)" % (package, outside))
+            self.assertEqual(
+                [],
+                outside,
+                "lifeos/%s is imported from %s: its tests must run when those change, so it is no longer parked (LIFE-772)"
+                % (package, outside),
+            )
 
     def test_a_change_outside_the_boundary_selects_no_parked_test(self):
         """Selector behaviour with an index that maps each production file to its own mirror tests, which is what
@@ -76,7 +85,16 @@ class ParkedBoundary(unittest.TestCase):
             if package in PARKED or package == "platform":
                 continue
             covers[path] = [i for i, t in enumerate(ids) if package and t.startswith("tests.%s." % package)]
-        index = {"schema": testindex.SCHEMA, "generated_at": "2026-11-16T00:00:00Z", "commit": "x", "tests": ids, "modules": {}, "skipped": [], "covers": covers, "uncovered": []}
+        index = {
+            "schema": testindex.SCHEMA,
+            "generated_at": "2026-11-16T00:00:00Z",
+            "commit": "x",
+            "tests": ids,
+            "modules": {},
+            "skipped": [],
+            "covers": covers,
+            "uncovered": [],
+        }
         checked = 0
         for path in sorted(covers):
             if "/" not in path:
@@ -90,7 +108,23 @@ class ParkedBoundary(unittest.TestCase):
 
     def test_a_shared_path_change_still_runs_everything(self):
         for path in ("lifeos/platform/due.py", ".github/workflows/domains.yml"):
-            self.assertEqual(testindex.FULL, testindex.select([path], {"schema": testindex.SCHEMA, "generated_at": "2026-11-16T00:00:00Z", "tests": [], "modules": {}, "skipped": [], "covers": {}, "uncovered": []}, ROOT), path)
+            self.assertEqual(
+                testindex.FULL,
+                testindex.select(
+                    [path],
+                    {
+                        "schema": testindex.SCHEMA,
+                        "generated_at": "2026-11-16T00:00:00Z",
+                        "tests": [],
+                        "modules": {},
+                        "skipped": [],
+                        "covers": {},
+                        "uncovered": [],
+                    },
+                    ROOT,
+                ),
+                path,
+            )
 
 
 if __name__ == "__main__":

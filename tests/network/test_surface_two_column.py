@@ -1,4 +1,5 @@
 """The two-column Ledger page (lifeos.platform.ledger_body) with the Network Leads block in its right column."""
+
 import unittest
 
 from lifeos.network import surface
@@ -7,7 +8,12 @@ from lifeos.platform.notion_client import NotionError
 from tests.jobs.fakes_ledger import FakeLedger
 from tests.network.test_surface import KEY1, build, go
 
-DESC = {"summary": "About the role\n• lead the program", "responsibilities": "Own the roadmap", "requirements": "", "qualifications": "Ten years"}
+DESC = {
+    "summary": "About the role\n• lead the program",
+    "responsibilities": "Own the roadmap",
+    "requirements": "",
+    "qualifications": "Ten years",
+}
 PROPS = {"Stable Job Key": {"rich_text": [{"text": {"content": KEY1}}]}}
 
 
@@ -19,7 +25,10 @@ def page():
 
 
 def texts(ledger, block_id):
-    return ["".join(r["plain_text"] for r in ledger.blocks[k][ledger.blocks[k]["type"]]["rich_text"]) for k in ledger.kids[block_id]]
+    return [
+        "".join(r["plain_text"] for r in ledger.blocks[k][ledger.blocks[k]["type"]]["rich_text"])
+        for k in ledger.kids[block_id]
+    ]
 
 
 class Layout(unittest.TestCase):
@@ -30,10 +39,15 @@ class Layout(unittest.TestCase):
         self.assertEqual(body.marker_text(top[0]), f"v7-jd:2 | key={KEY1}")
         self.assertEqual("".join(ledger.texts(pid)[:1]), "\u2060")  # nothing readable on the first line
         left, right = ledger.kids[top[1]["id"]]
-        self.assertEqual([ledger.blocks[k]["type"] for k in ledger.kids[left]], ["heading_2", "paragraph", "bulleted_list_item", "toggle"])
+        self.assertEqual(
+            [ledger.blocks[k]["type"] for k in ledger.kids[left]],
+            ["heading_2", "paragraph", "bulleted_list_item", "toggle"],
+        )
         self.assertEqual(texts(ledger, left)[0], "Overview")
         toggle = ledger.kids[left][-1]
-        self.assertEqual(texts(ledger, toggle), ["Responsibilities", "Own the roadmap", "Qualifications", "Ten years"])  # Summary is the Overview
+        self.assertEqual(
+            texts(ledger, toggle), ["Responsibilities", "Own the roadmap", "Qualifications", "Ten years"]
+        )  # Summary is the Overview
         self.assertEqual(len(ledger.kids[right]), 1)
 
     def test_fill_writes_once_and_a_replay_writes_nothing(self):
@@ -51,7 +65,10 @@ class Layout(unittest.TestCase):
 
     def test_either_layout_reads_back_as_the_same_description_text(self):
         ledger, pid = page()
-        self.assertEqual(body.text_of(ledger, pid), "About the role\n- lead the program\nResponsibilities\nOwn the roadmap\nQualifications\nTen years")
+        self.assertEqual(
+            body.text_of(ledger, pid),
+            "About the role\n- lead the program\nResponsibilities\nOwn the roadmap\nQualifications\nTen years",
+        )
         flat = FakeLedger()
         flat.add_page("old", KEY1)
         self.assertEqual(body.text_of(flat, "old"), "Description\nInvented job description.")
@@ -76,8 +93,12 @@ class Leads(unittest.TestCase):
         counts = go(conn, ledger, live=True)
         self.assertEqual(counts["blocks"], {"created": 1})
         right = ledger.right(pid)
-        self.assertEqual([ledger.blocks[k]["type"] for k in ledger.kids[right]], ["callout"])  # the placeholder blank paragraph is gone
-        self.assertEqual([b["type"] for b in ledger.top(pid)], ["paragraph", "column_list"])  # nothing else on the page moved
+        self.assertEqual(
+            [ledger.blocks[k]["type"] for k in ledger.kids[right]], ["callout"]
+        )  # the placeholder blank paragraph is gone
+        self.assertEqual(
+            [b["type"] for b in ledger.top(pid)], ["paragraph", "column_list"]
+        )  # nothing else on the page moved
         self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True)["blocks"], ledger.writes), ({"unchanged": 1}, []))
@@ -97,15 +118,21 @@ class Leads(unittest.TestCase):
         conn.raw.execute("UPDATE v7_job_fit SET admission='EXCLUDE'")
         self.assertEqual(go(conn, ledger, live=True)["blocks"], {"removed": 1})
         kids = [ledger.blocks[k] for k in ledger.kids[ledger.right(pid)]]
-        self.assertEqual(([k["type"] for k in kids], "".join(r["plain_text"] for r in kids[0]["paragraph"]["rich_text"])), (["paragraph"], ""))
+        self.assertEqual(
+            ([k["type"] for k in kids], "".join(r["plain_text"] for r in kids[0]["paragraph"]["rich_text"])),
+            (["paragraph"], ""),
+        )
 
 
 class Migration(unittest.TestCase):
     def test_a_page_with_leads_on_the_flat_layout_gets_them_moved_into_the_right_column_after_the_migration(self):
         from lifeos.sources.network import ledger_layout as layout
+
         ledger = FakeLedger()
         ledger.add_page("page-1", KEY1, description=False)
-        ledger.kids["page-1"] = [ledger._new(b["type"], b[b["type"]]["rich_text"]) for b in body.legacy_blocks(KEY1, DESC)]
+        ledger.kids["page-1"] = [
+            ledger._new(b["type"], b[b["type"]]["rich_text"]) for b in body.legacy_blocks(KEY1, DESC)
+        ]
         conn = build(jobs=[(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT")])
         go(conn, ledger, live=True)  # the block lands at the top level of the flat page
         self.assertEqual([b["type"] for b in ledger.top("page-1")][-1], "callout")
@@ -123,7 +150,6 @@ if __name__ == "__main__":
 
 
 class FewerCalls(unittest.TestCase):
-
     def test_the_appended_block_id_comes_from_notions_reply_without_a_read(self):
         from lifeos.network import surface
 
@@ -144,6 +170,7 @@ class FewerCalls(unittest.TestCase):
     def test_only_a_429_refusal_is_retried(self):
         from lifeos.network import surface
         from lifeos.platform.notion_client import NotionError
+
         answers = [NotionError("NOTION_HTTP_429"), {"results": []}]
 
         class Busy:
@@ -178,10 +205,23 @@ class InterviewRow(unittest.TestCase):
     """a Ledger row that is also an interview opportunity has the opportunity's sections first (the machine fold, then
     its own two-column layout) and the.
     """
+
     def row(self):
         ledger, pid = page()
-        col = lambda text: {"type": "column", "column": {"rich_text": [], "children": [{"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": text}}]}}]}}
-        fold = ledger._new("toggle", "\u2699\ufe0f LIFE OS", children=[{"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "v7-interview-opportunity:1"}}]}}])
+        col = lambda text: {
+            "type": "column",
+            "column": {
+                "rich_text": [],
+                "children": [{"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": text}}]}}],
+            },
+        }
+        fold = ledger._new(
+            "toggle",
+            "\u2699\ufe0f LIFE OS",
+            children=[
+                {"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "v7-interview-opportunity:1"}}]}}
+            ],
+        )
         opportunity = ledger._new("column_list", "", children=[col("Interviews"), col("Recruiters")])
         ledger.kids[pid][0:0] = [fold, opportunity]
         return ledger, pid, opportunity
@@ -194,8 +234,12 @@ class InterviewRow(unittest.TestCase):
         self.assertEqual(counts["blocks"], {"created": 1})
         self.assertEqual(ledger.right(pid), ledger.kids[body.description_list(ledger.top(pid))["id"]][1])
         self.assertEqual([ledger.blocks[k]["type"] for k in ledger.kids[ledger.right(pid)]], ["callout"])
-        self.assertEqual([list(ledger.kids[c]) for c in ledger.kids[opportunity]], before)  # the opportunity's columns are untouched
-        self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")  # read back as the real leads, never "none"
+        self.assertEqual(
+            [list(ledger.kids[c]) for c in ledger.kids[opportunity]], before
+        )  # the opportunity's columns are untouched
+        self.assertEqual(
+            surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1"
+        )  # read back as the real leads, never "none"
         self.assertEqual(body.find(ledger, pid)["list"], ledger.kids[pid][3])
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True)["blocks"], ledger.writes), ({"unchanged": 1}, []))
@@ -215,7 +259,10 @@ class InterviewRow(unittest.TestCase):
         others = [b["id"] for b in ledger.top(pid)][:-2]
         conn = build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")])
         counts = go(conn, ledger, live=True)
-        self.assertEqual((counts.get("description_duplicate"), counts.get("description_duplicate_removed"), counts["blocks"]), (1, 1, {"created": 1}))
+        self.assertEqual(
+            (counts.get("description_duplicate"), counts.get("description_duplicate_removed"), counts["blocks"]),
+            (1, 1, {"created": 1}),
+        )
         self.assertEqual([b["id"] for b in ledger.top(pid)], others)  # exactly the copy's marker and columns are gone
         self.assertEqual(body.description_duplicates(ledger.top(pid), KEY1), 0)
         self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")
@@ -240,12 +287,16 @@ class InterviewRow(unittest.TestCase):
                     ledger.kids[left].append(ledger._new("paragraph", "an edited line"))
                 before = [b["id"] for b in ledger.top(pid)]
                 counts = go(build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")]), ledger, live=True)
-                self.assertEqual((counts.get("description_duplicate_left"), counts["blocks"]), (1, {"created": 1}))  # left for Jim, and the leads still go on
+                self.assertEqual(
+                    (counts.get("description_duplicate_left"), counts["blocks"]), (1, {"created": 1})
+                )  # left for Jim, and the leads still go on
                 self.assertEqual([b["id"] for b in ledger.top(pid)], before)
 
     def test_a_description_copied_in_from_another_job_is_never_used(self):
         ledger, pid, _ = self.row()
-        other = ledger.create({"Stable Job Key": {"rich_text": [{"text": {"content": "f" * 64}}]}}, body.build("f" * 64, DESC))
+        other = ledger.create(
+            {"Stable Job Key": {"rich_text": [{"text": {"content": "f" * 64}}]}}, body.build("f" * 64, DESC)
+        )
         ledger.kids[pid][2:2] = ledger.kids.pop(other)
         own = body.description_list(ledger.top(pid), KEY1)
         self.assertIsNotNone(own)

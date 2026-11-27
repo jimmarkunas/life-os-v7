@@ -1,6 +1,7 @@
 """the read-only live cause check (diag.yml job `trace`, stage newsletter-trace): each parsed card of ONE message
 classified against the Jobs store.
 """
+
 import ast
 import hashlib
 import json
@@ -30,7 +31,12 @@ class FailingGmail:
 
 class CardTraceTests(unittest.TestCase):
     def setUp(self):
-        self.box = Mailbox({MID: ("Jobright <alerts@jobright.ai>", alert("v1", "v2", "v3", "v4", "v5", "v6"), time.time() - 60), "other-mail": ("Jobright <alerts@jobright.ai>", alert("v2"), time.time() - 60)})
+        self.box = Mailbox(
+            {
+                MID: ("Jobright <alerts@jobright.ai>", alert("v1", "v2", "v3", "v4", "v5", "v6"), time.time() - 60),
+                "other-mail": ("Jobright <alerts@jobright.ai>", alert("v2"), time.time() - 60),
+            }
+        )
         for labels in self.box.labels.values():
             labels.add("j-newsletters")
         self.db = JobsDB()
@@ -39,14 +45,39 @@ class CardTraceTests(unittest.TestCase):
 
     def job(self, card, status="NEW"):
         n = self.db.raw.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM v7_jobs").fetchone()[0]
-        self.db.insert("v7_jobs", id=n, dedupe_key=identity.url_hash(card.url), status=status, title=card.title, company=card.company, source_url=card.url, first_seen=NOW, last_seen=NOW, updated_at=NOW)
+        self.db.insert(
+            "v7_jobs",
+            id=n,
+            dedupe_key=identity.url_hash(card.url),
+            status=status,
+            title=card.title,
+            company=card.company,
+            source_url=card.url,
+            first_seen=NOW,
+            last_seen=NOW,
+            updated_at=NOW,
+        )
         return n
 
     def source_row(self, job_id, message, hash_):
-        self.db.insert("v7_job_sources", job_id=job_id, source="jobright", source_url_hash=hash_, gmail_message_id=message, seen_at=NOW)
+        self.db.insert(
+            "v7_job_sources",
+            job_id=job_id,
+            source="jobright",
+            source_url_hash=hash_,
+            gmail_message_id=message,
+            seen_at=NOW,
+        )
 
     def tombstone(self, key, fuzzy, retired_days):
-        self.db.insert("v7_tombstones", dedupe_key=key, fuzzy_key=fuzzy, retired_at=NOW - timedelta(days=retired_days), expires_at=NOW + timedelta(days=30), hits=0)
+        self.db.insert(
+            "v7_tombstones",
+            dedupe_key=key,
+            fuzzy_key=fuzzy,
+            retired_at=NOW - timedelta(days=retired_days),
+            expires_at=NOW + timedelta(days=30),
+            hits=0,
+        )
 
     def seed(self):
         c = self.cards
@@ -54,7 +85,9 @@ class CardTraceTests(unittest.TestCase):
         self.source_row(self.job(c[1]), "other-mail", "h2")
         self.job(c[2])  # v3 a job nobody owns
         self.tombstone(identity.url_hash(c[3].url), "a" * 64, 0)
-        self.tombstone("b" * 64, identity.fuzzy_key(c[4].company, c[4].title, c[4].location_text), 10)  # v5 the same opening retired 10 days ago
+        self.tombstone(
+            "b" * 64, identity.fuzzy_key(c[4].company, c[4].title, c[4].location_text), 10
+        )  # v5 the same opening retired 10 days ago
         # v6: no job, no tombstone
 
     def trace(self, ref=REF, gmail=None):
@@ -63,9 +96,15 @@ class CardTraceTests(unittest.TestCase):
     def test_each_card_gets_its_class_and_the_reason_a_tombstoned_one_was_suppressed(self):
         self.seed()
         body = self.trace()["card_trace"]
-        self.assertEqual([c["class"] for c in body["cards"]], ["owned", "collision", "orphan", "suppressed_url", "suppressed_opening", "missing"])
+        self.assertEqual(
+            [c["class"] for c in body["cards"]],
+            ["owned", "collision", "orphan", "suppressed_url", "suppressed_opening", "missing"],
+        )
         self.assertEqual((body["parsed"], body["source_rows"], body["job_less_rows"]), (6, 1, 0))
-        self.assertEqual(body["by_class"], {"collision": 1, "missing": 1, "orphan": 1, "owned": 1, "suppressed_opening": 1, "suppressed_url": 1})
+        self.assertEqual(
+            body["by_class"],
+            {"collision": 1, "missing": 1, "orphan": 1, "owned": 1, "suppressed_opening": 1, "suppressed_url": 1},
+        )
         by_n = {c["n"]: c for c in body["cards"]}
         self.assertEqual((by_n[1]["own_row"], by_n[1]["status"], by_n[1]["other_mails"]), (True, "PUBLISHED", 0))
         self.assertEqual((by_n[2]["own_row"], by_n[2]["other_mails"]), (False, 1))
@@ -89,13 +128,32 @@ class CardTraceTests(unittest.TestCase):
         self.assertEqual({key for c in json.loads(text)["card_trace"]["cards"] for key in c}, allowed)
 
     def test_gmail_is_reachable_only_to_list_ids_and_read_one_message(self):
-        self.assertEqual({n for n in vars(cardtrace._ReadOnly(self.box)) if not n.startswith("_")}, {"list_ids", "message"})
+        self.assertEqual(
+            {n for n in vars(cardtrace._ReadOnly(self.box)) if not n.startswith("_")}, {"list_ids", "message"}
+        )
         self.assertFalse(hasattr(cardtrace._ReadOnly(self.box), "relabel"))
         tree = ast.parse(Path(cardtrace.__file__).read_text())
-        used = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-        self.assertFalse(used & {"relabel", "label_id", "send_message", "trash", "delete", "commit", "executemany"})  # no Gmail write and no store write is even named
-        statements = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.lstrip().split(" ")[0].isupper()]
-        self.assertTrue(statements and all(text.lstrip().startswith("SELECT") for text in statements if re.match(r"\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE)", text)))
+        used = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+        }
+        self.assertFalse(
+            used & {"relabel", "label_id", "send_message", "trash", "delete", "commit", "executemany"}
+        )  # no Gmail write and no store write is even named
+        statements = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.lstrip().split(" ")[0].isupper()
+        ]
+        self.assertTrue(
+            statements
+            and all(
+                text.lstrip().startswith("SELECT")
+                for text in statements
+                if re.match(r"\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE)", text)
+            )
+        )
 
     def test_it_fails_closed_with_fixed_codes(self):
         for ref in ("", "not-a-hash", MID, REF.upper(), REF[:63]):
@@ -137,6 +195,7 @@ class CardTraceTests(unittest.TestCase):
 
             def __exit__(self, *exc):
                 return False
+
         with mock.patch.object(self.db, "cursor", lambda: Spy(real())):
             self.trace()
         self.assertTrue(seen and all(re.match(r"\s*SELECT", sql) for sql in seen))

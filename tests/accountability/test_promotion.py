@@ -1,4 +1,5 @@
 """AC6, AC11, AC12: the promotion check is pure and injected"""
+
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -13,9 +14,15 @@ EXPLAINED = {"by": "MC", "what": "moved before the freeze", "source": "LIFE-918 
 
 
 def board(**over):
-    data = {"frozen": ["MEJ-1", "MEJ-2"], "counted": ["MEJ-1", "MEJ-2", "MEJ-3"], "goals": {"MEJ-1": ["MEJ-9"], "MEJ-2": ["MEJ-9"]},
-            "completions": {"MEJ-1": {"date": "2027-01-04", "source": "changelog"}}, "history": {"before": {"q3": 4}, "after": {"q3": 4}},
-            "recurring": {"manual": 2, "auto": 3, "total": 5, "manual_keys": ["MEJ-70"], "auto_keys": ["MEJ-71"]}, "discrepancies": []}
+    data = {
+        "frozen": ["MEJ-1", "MEJ-2"],
+        "counted": ["MEJ-1", "MEJ-2", "MEJ-3"],
+        "goals": {"MEJ-1": ["MEJ-9"], "MEJ-2": ["MEJ-9"]},
+        "completions": {"MEJ-1": {"date": "2027-01-04", "source": "changelog"}},
+        "history": {"before": {"q3": 4}, "after": {"q3": 4}},
+        "recurring": {"manual": 2, "auto": 3, "total": 5, "manual_keys": ["MEJ-70"], "auto_keys": ["MEJ-71"]},
+        "discrepancies": [],
+    }
     data.update(over)
     return data
 
@@ -60,9 +67,13 @@ class Evaluate(unittest.TestCase):
             self.assertEqual((verdict["verdict"], verdict["reasons"]), ("FAIL", [p.MEMBERSHIP_MISSING]))
 
     def test_the_shipped_manifest_is_empty_so_it_fails_closed(self):
-        manifest = json.loads((Path(__file__).resolve().parents[2] / "lifeos/accountability/mej_quarter_membership.json").read_text())
+        manifest = json.loads(
+            (Path(__file__).resolve().parents[2] / "lifeos/accountability/mej_quarter_membership.json").read_text()
+        )
         self.assertEqual(manifest["quarters"], {})
-        self.assertIn(p.MEMBERSHIP_MISSING, p.evaluate(good(frozen=(manifest["quarters"].get("2027Q1") or None)))["reasons"])
+        self.assertIn(
+            p.MEMBERSHIP_MISSING, p.evaluate(good(frozen=(manifest["quarters"].get("2027Q1") or None)))["reasons"]
+        )
 
     def test_membership_must_be_one_hundred_percent(self):
         verdict = p.evaluate(good(counted=["MEJ-1"]))
@@ -73,15 +84,23 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(p.evaluate(good(goals={"MEJ-1": ["MEJ-9", "MEJ-8"]}))["reasons"], [p.DUPLICATE_ATTRIBUTION])
 
     def test_completion_dates_must_come_from_the_changelog(self):
-        for completions in ({"MEJ-1": {"date": "2027-01-04", "source": "resolutiondate"}}, {"MEJ-1": {"date": None, "source": "changelog"}},
-                            {"MEJ-1": {"date": "2027-01-04", "source": "changelog", "ambiguous": True}}, None):
+        for completions in (
+            {"MEJ-1": {"date": "2027-01-04", "source": "resolutiondate"}},
+            {"MEJ-1": {"date": None, "source": "changelog"}},
+            {"MEJ-1": {"date": "2027-01-04", "source": "changelog", "ambiguous": True}},
+            None,
+        ):
             self.assertEqual(p.evaluate(good(completions=completions))["reasons"], [p.COMPLETION_DATE_UNVERIFIED])
 
     def test_historical_figures_must_not_move(self):
-        self.assertEqual(p.evaluate(good(history={"before": {"q3": 4}, "after": {"q3": 5}}))["reasons"], [p.HISTORY_DRIFT])
+        self.assertEqual(
+            p.evaluate(good(history={"before": {"q3": 4}, "after": {"q3": 5}}))["reasons"], [p.HISTORY_DRIFT]
+        )
 
     def test_manual_and_automatic_recurring_closures_stay_distinct(self):
-        self.assertEqual(p.evaluate(good(recurring={"manual": 2, "auto": 3, "total": 6}))["reasons"], [p.RECURRING_NOT_DISTINCT])
+        self.assertEqual(
+            p.evaluate(good(recurring={"manual": 2, "auto": 3, "total": 6}))["reasons"], [p.RECURRING_NOT_DISTINCT]
+        )
         overlap = {"manual": 1, "auto": 1, "total": 2, "manual_keys": ["MEJ-70"], "auto_keys": ["MEJ-70"]}
         self.assertEqual(p.evaluate(good(recurring=overlap))["reasons"], [p.RECURRING_NOT_DISTINCT])
 
@@ -93,28 +112,50 @@ class Evaluate(unittest.TestCase):
 
 class Tolerance(unittest.TestCase):
     def test_reconcile_separates_explained_from_unexplained(self):
-        out = p.reconcile([{"key": "MEJ-5", "explanation": EXPLAINED}, {"key": "MEJ-6", "explanation": None}, {"key": "MEJ-7", "explanation": {"by": "MC", "what": " ", "source": "x"}},
-                           {"key": "MEJ-6", "explanation": None}, {"key": "", "explanation": EXPLAINED}])
+        out = p.reconcile(
+            [
+                {"key": "MEJ-5", "explanation": EXPLAINED},
+                {"key": "MEJ-6", "explanation": None},
+                {"key": "MEJ-7", "explanation": {"by": "MC", "what": " ", "source": "x"}},
+                {"key": "MEJ-6", "explanation": None},
+                {"key": "", "explanation": EXPLAINED},
+            ]
+        )
         self.assertEqual(out, {"explained": ["MEJ-5"], "unexplained": ["MEJ-6", "MEJ-7"]})
 
     def test_one_unexplained_discrepancy_per_board_is_tolerated(self):
-        verdict = p.evaluate(good(discrepancies=[{"key": "MEJ-5", "explanation": None}, {"key": "MEJ-6", "explanation": EXPLAINED}]))
-        self.assertEqual((verdict["verdict"], verdict["boards"]["MEJ"]["unexplained"], verdict["boards"]["MEJ"]["explained"]), ("PASS", 1, 1))
+        verdict = p.evaluate(
+            good(discrepancies=[{"key": "MEJ-5", "explanation": None}, {"key": "MEJ-6", "explanation": EXPLAINED}])
+        )
+        self.assertEqual(
+            (verdict["verdict"], verdict["boards"]["MEJ"]["unexplained"], verdict["boards"]["MEJ"]["explained"]),
+            ("PASS", 1, 1),
+        )
 
     def test_two_unexplained_discrepancies_block_promotion(self):
-        verdict = p.evaluate(good(discrepancies=[{"key": "MEJ-5", "explanation": None}, {"key": "MEJ-6", "explanation": None}]))
+        verdict = p.evaluate(
+            good(discrepancies=[{"key": "MEJ-5", "explanation": None}, {"key": "MEJ-6", "explanation": None}])
+        )
         self.assertEqual((verdict["verdict"], verdict["reasons"]), ("FAIL", [p.TOLERANCE_EXCEEDED]))
 
     def test_the_tolerance_is_per_board(self):
         inputs = good(discrepancies=[{"key": "MEJ-5", "explanation": None}])
-        inputs["boards"]["JFM"]["discrepancies"] = [{"key": "JFM-5", "explanation": None}, {"key": "JFM-6", "explanation": None}]
+        inputs["boards"]["JFM"]["discrepancies"] = [
+            {"key": "JFM-5", "explanation": None},
+            {"key": "JFM-6", "explanation": None},
+        ]
         verdict = p.evaluate(inputs)
-        self.assertEqual((verdict["verdict"], verdict["boards"]["JFM"]["unexplained"], verdict["boards"]["MEJ"]["unexplained"]), ("FAIL", 2, 1))
+        self.assertEqual(
+            (verdict["verdict"], verdict["boards"]["JFM"]["unexplained"], verdict["boards"]["MEJ"]["unexplained"]),
+            ("FAIL", 2, 1),
+        )
 
     def test_the_tolerance_never_excuses_an_ac11_failure(self):
         verdict = p.evaluate(good(counted=["MEJ-1"], discrepancies=[]))
         self.assertEqual(verdict["verdict"], "FAIL")
-        verdict = p.evaluate(good(history={"before": 1, "after": 2}, discrepancies=[{"key": "MEJ-5", "explanation": None}]))
+        verdict = p.evaluate(
+            good(history={"before": 1, "after": 2}, discrepancies=[{"key": "MEJ-5", "explanation": None}])
+        )
         self.assertEqual((verdict["verdict"], verdict["reasons"]), ("FAIL", [p.HISTORY_DRIFT]))
 
 
@@ -133,7 +174,9 @@ class Boundary(unittest.TestCase):
     def test_eight_central_follows_daylight_time_not_a_fixed_offset(self):
         self.assertEqual(p.boundary(2027, 1, 1).astimezone(timezone.utc).hour, 14)
         self.assertEqual(p.boundary(2027, 7, 1).astimezone(timezone.utc).hour, 13)
-        self.assertEqual(p.boundary(2027, 3, 13).astimezone(timezone.utc).hour, 14)  # Saturday before daylight time starts: CST
+        self.assertEqual(
+            p.boundary(2027, 3, 13).astimezone(timezone.utc).hour, 14
+        )  # Saturday before daylight time starts: CST
         self.assertEqual(p.boundary(2027, 3, 14).astimezone(timezone.utc).hour, 13)
         self.assertEqual(p.boundary(2027, 3, 14).utcoffset(), timedelta(hours=-5))
 
@@ -168,11 +211,15 @@ class RunIfDue(unittest.TestCase):
     def test_a_fail_keeps_legacy_and_sends_one_alert_with_a_stable_key(self):
         calls = Calls(good(frozen=None))
         out = calls.run()
-        self.assertEqual((out["status"], out["alerted"], out["verdict"]["reasons"]), ("kept_legacy", True, [p.MEMBERSHIP_MISSING]))
+        self.assertEqual(
+            (out["status"], out["alerted"], out["verdict"]["reasons"]), ("kept_legacy", True, [p.MEMBERSHIP_MISSING])
+        )
         self.assertEqual((calls.sets, len(calls.alerts)), (0, 1))
         later = Calls(good(frozen=None))
         later.run(now=AFTER + timedelta(days=3))
-        self.assertEqual(calls.alerts[0]["key"], later.alerts[0]["key"])  # the same row every day: the inbox send updates it
+        self.assertEqual(
+            calls.alerts[0]["key"], later.alerts[0]["key"]
+        )  # the same row every day: the inbox send updates it
         self.assertEqual(calls.alerts[0]["key"], "v2-promotion-2027Q1")
         self.assertNotIn("MEJ-", json.dumps(calls.alerts[0]))  # codes and counts only, never a Task key or summary
 
@@ -189,7 +236,9 @@ class RunIfDue(unittest.TestCase):
 
     def test_a_pass_with_no_safe_setter_keeps_legacy_and_alerts(self):
         calls = Calls(good())
-        out = p.run_if_due(AFTER, {"V2_PROMOTION": True, "V2_OFFICIAL": False}, calls.read, p.refusing_setter, calls.alert)
+        out = p.run_if_due(
+            AFTER, {"V2_PROMOTION": True, "V2_OFFICIAL": False}, calls.read, p.refusing_setter, calls.alert
+        )
         self.assertEqual((out["status"], out["verdict"]["reasons"]), ("kept_legacy", [p.SETTER_UNAVAILABLE]))
         self.assertEqual(len(calls.alerts), 1)
 
@@ -208,7 +257,9 @@ class InboxAlerter(unittest.TestCase):
         seen = []
         send = p.inbox_alerter(lambda item: seen.append(item) or {"ok": True, "updated": 1})
         send(p.alert_item({"quarter": "2027Q1", "reasons": [p.HISTORY_DRIFT]}))
-        self.assertEqual((seen[0]["key"], seen[0]["from"], seen[0]["urgency"]), ("v2-promotion-2027Q1", "v7-promotion", "Today"))
+        self.assertEqual(
+            (seen[0]["key"], seen[0]["from"], seen[0]["urgency"]), ("v2-promotion-2027Q1", "v7-promotion", "Today")
+        )
 
     def test_a_delivery_that_is_not_ok_raises(self):
         send = p.inbox_alerter(lambda item: {"ok": False, "reason": "inbox_failed"})
@@ -261,7 +312,13 @@ class OneUnit(unittest.TestCase):
 class NotWired(unittest.TestCase):
     def test_only_the_one_call_site_calls_the_promotion(self):
         root = Path(__file__).resolve().parents[2]
-        callers = [str(path.relative_to(root)) for path in (root / "lifeos").rglob("*.py") if path.name not in ("promotion.py", "promotion_call.py") and "promotion" in path.read_text() and "run_if_due" in path.read_text()]
+        callers = [
+            str(path.relative_to(root))
+            for path in (root / "lifeos").rglob("*.py")
+            if path.name not in ("promotion.py", "promotion_call.py")
+            and "promotion" in path.read_text()
+            and "run_if_due" in path.read_text()
+        ]
         self.assertEqual(callers, [])
 
 

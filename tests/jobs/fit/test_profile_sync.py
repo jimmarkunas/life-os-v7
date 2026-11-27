@@ -1,22 +1,35 @@
 """The Fit profile sync: only an approved block is stored, the loader merges only a block that matches its own hash, and
 any failure leaves the stored.
 """
+
 import json
 import unittest
 
 from lifeos.jobs.fit import profile_sync as ps
 from lifeos.jobs.fit.profile import ProfileError, load
 
-CAP = {"id": "nsync_example", "label": "an invented strength", "class": "direct", "committed": True, "bucket": "skill", "terms": ["invented skill"]}
+CAP = {
+    "id": "nsync_example",
+    "label": "an invented strength",
+    "class": "direct",
+    "committed": True,
+    "bucket": "skill",
+    "terms": ["invented skill"],
+}
 BLOCK = {"capabilities": [CAP], "functions": []}
 BASE = {"years": 5, "capabilities": [{"id": "kept", "label": "kept", "class": "adjacent", "terms": ["kept term"]}]}
 
 
 class Page:
     def __init__(self, text, approved=None, more=False, language="json"):
-        self.children = {"results": [{"type": "code", "code": {"language": language, "rich_text": [{"plain_text": text}]}}], "has_more": more}
+        self.children = {
+            "results": [{"type": "code", "code": {"language": language, "rich_text": [{"plain_text": text}]}}],
+            "has_more": more,
+        }
         if approved:
-            self.children["results"].append({"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": f"APPROVED HASH: {approved}"}]}})
+            self.children["results"].append(
+                {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": f"APPROVED HASH: {approved}"}]}}
+            )
 
     def call(self, method, path, body=None):
         return self.children
@@ -64,13 +77,21 @@ class AdoptionTests(unittest.TestCase):
             self.assertEqual((out["code"], vault.writes), ("SYNC_NOT_APPROVED", 0))
         edited = {"capabilities": [{**CAP, "terms": ["invented skill", "extra"]}], "functions": []}
         vault = Vault()
-        self.assertEqual(go(Page(json.dumps(edited), approved_for(BLOCK)), vault)["code"], "SYNC_NOT_APPROVED")  # approval is of the exact content
+        self.assertEqual(
+            go(Page(json.dumps(edited), approved_for(BLOCK)), vault)["code"], "SYNC_NOT_APPROVED"
+        )  # approval is of the exact content
 
     def test_prose_that_merely_quotes_the_approval_line_is_not_an_approval(self):
         page = Page(json.dumps(BLOCK))
         digest = approved_for(BLOCK)
-        for prose in (f"To approve, write APPROVED HASH: {digest}", f"approved hash: {digest} (pending)", f"note APPROVED HASH: {digest}"):
-            page.children["results"] = page.children["results"][:1] + [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": prose}]}}]
+        for prose in (
+            f"To approve, write APPROVED HASH: {digest}",
+            f"approved hash: {digest} (pending)",
+            f"note APPROVED HASH: {digest}",
+        ):
+            page.children["results"] = page.children["results"][:1] + [
+                {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": prose}]}}
+            ]
             vault = Vault()
             self.assertEqual((go(page, vault)["code"], vault.writes), ("SYNC_NOT_APPROVED", 0), prose)
         page.children["results"][1]["paragraph"]["rich_text"][0]["plain_text"] = f"APPROVED HASH: {digest}"
@@ -107,8 +128,12 @@ class RefusalTests(unittest.TestCase):
 
     def test_bad_blocks_are_refused_with_a_fixed_code_and_the_stored_row_is_untouched(self):
         self.refused("not json", "SYNC_BLOCK_NOT_JSON")
-        self.refused(json.dumps({"capabilities": [CAP], "exclusions": []}), "SYNC_BLOCK_KEYS")  # the sync may not add exclusions
-        self.refused(json.dumps({"capabilities": [{**CAP, "id": "other"}]}), "SYNC_CAPABILITY_ID")  # it may not claim an id it does not own
+        self.refused(
+            json.dumps({"capabilities": [CAP], "exclusions": []}), "SYNC_BLOCK_KEYS"
+        )  # the sync may not add exclusions
+        self.refused(
+            json.dumps({"capabilities": [{**CAP, "id": "other"}]}), "SYNC_CAPABILITY_ID"
+        )  # it may not claim an id it does not own
         self.refused(json.dumps({"capabilities": [{**CAP, "class": "nope", "committed": False}]}), "SYNC_BLOCK_INVALID")
         self.refused(json.dumps({"capabilities": []}), "SYNC_BLOCK_SIZE")
         self.refused(json.dumps({"capabilities": [{**CAP, "terms": ["x" * 30000]}]}), "SYNC_BLOCK_TOO_LARGE")
@@ -116,7 +141,9 @@ class RefusalTests(unittest.TestCase):
     def test_page_problems_are_fixed_codes(self):
         self.assertEqual(go(Page(json.dumps(BLOCK), more=True), Vault())["code"], "SYNC_PAGE_TOO_LARGE")
         self.assertEqual(go(Page(json.dumps(BLOCK), language="plain text"), Vault())["code"], "SYNC_NO_BLOCK")
-        self.assertEqual(ps.run(10, True, environ={}, notion=Page("{}"), vault=Vault())["code"], "SYNC_PAGE_UNCONFIGURED")
+        self.assertEqual(
+            ps.run(10, True, environ={}, notion=Page("{}"), vault=Vault())["code"], "SYNC_PAGE_UNCONFIGURED"
+        )
 
     def test_the_log_line_never_carries_page_content(self):
         out = go(Page(json.dumps(BLOCK), approved_for(BLOCK)), Vault())

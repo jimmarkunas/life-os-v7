@@ -1,4 +1,5 @@
 """a board that fails, times out on its read or times out on its save is that board's red entry"""
+
 import datetime as dt
 import json
 import os
@@ -38,6 +39,7 @@ class SlowSave(MemRepo):
 
 class LostSession(MemRepo):
     """A repo on a held connection whose session drops during one board's save (MySQL 2013, as the tunnel does)."""
+
     _holding = True
 
     def __init__(self, drops):
@@ -50,6 +52,7 @@ class LostSession(MemRepo):
     def commit(self, o, failures, lane="US Remote"):
         if o.source["id"] == self.drops:
             import pymysql
+
             raise pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query")
         super().commit(o, failures, lane)
 
@@ -62,7 +65,9 @@ class SaveLost(unittest.TestCase):
     def test_a_lost_session_fails_that_board_drops_the_connection_and_the_pass_goes_on(self):
         repo = LostSession("s2")
         got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"))
-        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_lost"]), (2, 1, {"save_lost": 1}, 1))
+        self.assertEqual(
+            (got["complete"], got["failed"], got["failed_why"], got["save_lost"]), (2, 1, {"save_lost": 1}, 1)
+        )
         self.assertEqual(repo.released, 1)
         self.assertEqual(sorted(o.source["id"] for o, _ in repo.commits), ["s1", "s3"])
 
@@ -70,6 +75,7 @@ class SaveLost(unittest.TestCase):
         class Broken(LostSession):
             def commit(self, o, failures, lane="US Remote"):
                 raise RuntimeError("syntax")
+
         with self.assertRaises(RuntimeError):
             run.run(10, True, NOW, fixed({"s1": GOOD}), Broken("none"), boards("s1"))
 
@@ -77,6 +83,7 @@ class SaveLost(unittest.TestCase):
         repo = LostSession("s1")
         repo._holding = False
         import pymysql
+
         with self.assertRaises(pymysql.err.OperationalError):
             run.run(10, True, NOW, fixed({"s1": GOOD}), repo, boards("s1"))
 
@@ -84,7 +91,9 @@ class SaveLost(unittest.TestCase):
 REAL_PORT = os.environ.get("LIFEOS_TEST_MARIADB_PORT")
 
 
-@unittest.skipUnless(REAL_PORT, "no throwaway local MariaDB (set LIFEOS_TEST_MARIADB_PORT and LIFEOS_TEST_MARIADB_PASSWORD_FILE)")
+@unittest.skipUnless(
+    REAL_PORT, "no throwaway local MariaDB (set LIFEOS_TEST_MARIADB_PORT and LIFEOS_TEST_MARIADB_PASSWORD_FILE)"
+)
 class RealDriverSessionLoss(unittest.TestCase):
     """the held connection of PR #1365 and the `save_lost` rule of PR #1368 on a REAL MariaDB through the real pymysql
     driver and the repository's own.
@@ -93,6 +102,7 @@ class RealDriverSessionLoss(unittest.TestCase):
     def setUp(self):
         import pymysql
         from lifeos.platform import db as platform_db
+
         self.pymysql, self.platform_db = pymysql, platform_db
         self.password = Path(os.environ["LIFEOS_TEST_MARIADB_PASSWORD_FILE"]).read_text().strip()
         self.name = f"t_{os.getpid()}_{id(self) % 100000}"
@@ -105,8 +115,18 @@ class RealDriverSessionLoss(unittest.TestCase):
         self.admin.close()
 
     def connect(self, database):
-        return self.pymysql.connect(host="127.0.0.1", port=int(REAL_PORT), user="root", password=self.password, database=database, charset="utf8mb4", autocommit=True,
-                                    connect_timeout=5, read_timeout=10, write_timeout=10)
+        return self.pymysql.connect(
+            host="127.0.0.1",
+            port=int(REAL_PORT),
+            user="root",
+            password=self.password,
+            database=database,
+            charset="utf8mb4",
+            autocommit=True,
+            connect_timeout=5,
+            read_timeout=10,
+            write_timeout=10,
+        )
 
     def store(self):
         @contextmanager
@@ -116,6 +136,7 @@ class RealDriverSessionLoss(unittest.TestCase):
                 yield self.platform_db._Connection(raw)
             finally:
                 raw.close()
+
         return connect
 
     def repo(self, kill_after=None, pause=0.0):
@@ -132,21 +153,25 @@ class RealDriverSessionLoss(unittest.TestCase):
                     outer.admin.cursor().execute(f"KILL {victim}")
                     if pause:
                         time.sleep(pause)
+
         return Repo()
 
     def seed(self, skip=False):
-        """Three boards already read once and now due (a board never read belongs to the backfill, not to this pass).
-        """
+        """Three boards already read once and now due (a board never read belongs to the backfill, not to this pass)."""
         from lifeos.jobs import store
+
         with self.store()() as connection:
             store.ensure_schema(connection)
             for name in ("s1", "s2", "s3"):
-                connection.cursor().execute("INSERT INTO v7_sources (source_id, kind, due_at, last_status, unchanged_runs, etag) VALUES (%s,'greenhouse','2026-09-30 00:00:00','SEED',%s,%s)",
-                                            (name, 1 if skip else 0, "e1" if skip else None))
+                connection.cursor().execute(
+                    "INSERT INTO v7_sources (source_id, kind, due_at, last_status, unchanged_runs, etag) VALUES (%s,'greenhouse','2026-09-30 00:00:00','SEED',%s,%s)",
+                    (name, 1 if skip else 0, "e1" if skip else None),
+                )
 
     def run_pass(self, repo, skip=False):
         from unittest import mock
         from lifeos.sources.web import boards as board_pass
+
         self.seed(skip)
         listing = lister.Listing(lister.UNCHANGED) if skip else GOOD
         seen = []
@@ -155,8 +180,11 @@ class RealDriverSessionLoss(unittest.TestCase):
         def spy(error):
             seen.append(f"{type(error).__name__}{error.args[:1]}")
             return real_lost(error)
+
         with mock.patch.object(run.store, "connect", self.store()), mock.patch.object(run, "db_lost", spy):
-            counts = board_pass.run(600, True, NOW, fixed({n: listing for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), {})
+            counts = board_pass.run(
+                600, True, NOW, fixed({n: listing for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), {}
+            )
         return counts, seen
 
     def rows(self):
@@ -174,8 +202,13 @@ class RealDriverSessionLoss(unittest.TestCase):
 
     def test_a_session_killed_between_boards_fails_only_the_next_board_and_the_pass_goes_on(self):
         counts, seen = self.run_pass(self.repo(kill_after="s1"), skip=True)
-        print(f"\nreal-driver evidence: server-side KILL of the held session after board s1; driver error {seen}; sessions used {self.live_ids}")
-        self.assertEqual((counts["complete"], counts["failed"], counts["failed_why"], counts["save_lost"]), (2, 1, {"save_lost": 1}, 1))
+        print(
+            f"\nreal-driver evidence: server-side KILL of the held session after board s1; driver error {seen}; sessions used {self.live_ids}"
+        )
+        self.assertEqual(
+            (counts["complete"], counts["failed"], counts["failed_why"], counts["save_lost"]),
+            (2, 1, {"save_lost": 1}, 1),
+        )
         self.assertEqual(len(seen), 1)
         self.assertTrue(seen[0].startswith("OperationalError"))
         self.assertEqual(self.rows(), {"s1": "COMPLETE", "s2": "SEED", "s3": "COMPLETE"})
@@ -195,16 +228,35 @@ class SaveLimit(unittest.TestCase):
     def test_a_save_that_stalls_fails_that_board_and_is_never_run_beside_the_next_save(self):
         repo = SlowSave("s2")
         try:
-            got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), save_seconds=0.2)
+            got = run.run(
+                10,
+                True,
+                NOW,
+                fixed({n: GOOD for n in ("s1", "s2", "s3")}),
+                repo,
+                boards("s1", "s2", "s3"),
+                save_seconds=0.2,
+            )
         finally:
             repo.release.set()
-        self.assertEqual((got["complete"], got["failed"], got["failed_why"], got["save_timeout"], got["save_blocked"]), (1, 2, {"save_timeout": 1, "save_blocked": 1}, 1, 1))
+        self.assertEqual(
+            (got["complete"], got["failed"], got["failed_why"], got["save_timeout"], got["save_blocked"]),
+            (1, 2, {"save_timeout": 1, "save_blocked": 1}, 1, 1),
+        )
         self.assertEqual([o.source["id"] for o, _ in repo.commits if o.source["id"] != "s2"], ["s1"])
 
     def test_one_stuck_save_does_not_fail_the_stage_through_the_boards_queued_behind_it(self):
         repo = SlowSave("s1")
         try:
-            got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3", "s4", "s5", "s6")}), repo, boards("s1", "s2", "s3", "s4", "s5", "s6"), save_seconds=0.1)
+            got = run.run(
+                10,
+                True,
+                NOW,
+                fixed({n: GOOD for n in ("s1", "s2", "s3", "s4", "s5", "s6")}),
+                repo,
+                boards("s1", "s2", "s3", "s4", "s5", "s6"),
+                save_seconds=0.1,
+            )
         finally:
             repo.release.set()
         self.assertEqual((got["failed_why"].get("save_timeout"), got["save_blocked"]), (1, 5))
@@ -212,13 +264,22 @@ class SaveLimit(unittest.TestCase):
     def test_once_the_stalled_save_finishes_the_next_board_commits_normally(self):
         repo = SlowSave("s2")
         threading.Timer(0.1, repo.release.set).start()
-        got = run.run(10, True, NOW, fixed({n: GOOD for n in ("s1", "s2", "s3")}), repo, boards("s1", "s2", "s3"), save_seconds=0.3)
+        got = run.run(
+            10,
+            True,
+            NOW,
+            fixed({n: GOOD for n in ("s1", "s2", "s3")}),
+            repo,
+            boards("s1", "s2", "s3"),
+            save_seconds=0.3,
+        )
         self.assertEqual((got["complete"], got["failed"]), (3, 0))
 
     def test_an_error_inside_a_save_still_surfaces(self):
         class Broken(MemRepo):
             def commit(self, o, failures, lane="US Remote"):
                 raise RuntimeError("boom")
+
         with self.assertRaises(RuntimeError):
             run.run(10, True, NOW, fixed({"s1": GOOD}), Broken(), boards("s1"), save_seconds=1)
 
@@ -233,8 +294,11 @@ class SaveLimit(unittest.TestCase):
 class StageRule(unittest.TestCase):
     def fails(self, ok, bad, reason="rate_limited", dead=0):
         names = [f"g{i}" for i in range(ok)] + [f"b{i}" for i in range(bad)] + [f"d{i}" for i in range(dead)]
-        lookup = {n: GOOD for n in names if n.startswith("g")} | {n: lister.Listing(lister.FAILED, reason=reason) for n in names if n.startswith("b")} \
+        lookup = (
+            {n: GOOD for n in names if n.startswith("g")}
+            | {n: lister.Listing(lister.FAILED, reason=reason) for n in names if n.startswith("b")}
             | {n: lister.Listing(lister.FAILED, reason="not_found") for n in names if n.startswith("d")}
+        )
         return run.run(50, True, NOW, fixed(lookup), MemRepo(), boards(*names)), ""
 
     def test_one_bad_board_among_many_does_not_fail_the_stage(self):
@@ -268,11 +332,14 @@ class StageRule(unittest.TestCase):
                 if o.source["id"] in stalled:
                     time.sleep(0.15)
                 super().commit(o, failures, lane)
+
         return run.run(50, True, NOW, fixed(lookup), Stalls(), boards(*names), save_seconds=0.1)
 
     def test_slow_saves_alone_never_fail_the_stage_but_are_counted_and_named(self):
         got = self.saves({"s0", "s2", "s4"})
-        self.assertEqual((got["failed"], got["save_timeout"], got["failed_ids"], got["complete"]), (3, 3, ["s0", "s2", "s4"], 3))
+        self.assertEqual(
+            (got["failed"], got["save_timeout"], got["failed_ids"], got["complete"]), (3, 3, ["s0", "s2", "s4"], 3)
+        )
 
     def test_slow_saves_and_real_board_failures_together_never_fail_the_stage(self):
         self.assertEqual(self.saves({"s0", "s2"}, bad={"s1", "s3"})["failed"], 4)
@@ -310,7 +377,14 @@ class Records(unittest.TestCase):
 
 class Idempotent(unittest.TestCase):
     def test_a_board_run_twice_in_a_row_writes_no_duplicates_and_a_failed_board_stays_one_failure(self):
-        job = {"id": "1", "title": "Program Manager", "url": "https://example.test/1", "location": "Remote - US", "posted": None, "content": ""}
+        job = {
+            "id": "1",
+            "title": "Program Manager",
+            "url": "https://example.test/1",
+            "location": "Remote - US",
+            "posted": None,
+            "content": "",
+        }
         board = lister.Listing(lister.COMPLETE, [job])
         repo = MemRepo()
         lookup = {"s1": board, "s2": lister.Listing(lister.FAILED, reason="rate_limited"), "s3": board}
@@ -325,7 +399,10 @@ class Idempotent(unittest.TestCase):
 class Alert(unittest.TestCase):
     def daily(self):
         today = dt.date(2026, 11, 12)
-        return {"board_reads": {today.isoformat(): 60, (today - dt.timedelta(days=1)).isoformat(): 60}, "board_failed": {today.isoformat(): 20, (today - dt.timedelta(days=1)).isoformat(): 20}}
+        return {
+            "board_reads": {today.isoformat(): 60, (today - dt.timedelta(days=1)).isoformat(): 60},
+            "board_failed": {today.isoformat(): 20, (today - dt.timedelta(days=1)).isoformat(): 20},
+        }
 
     def alert(self, **extra):
         found = jobs_alerts.detect({"daily": self.daily(), **extra}, dt.datetime(2026, 11, 12, 18, 0))
@@ -339,7 +416,12 @@ class Alert(unittest.TestCase):
     def test_without_names_the_alert_text_is_unchanged_and_no_new_key_exists(self):
         alert = self.alert()
         self.assertNotIn("Failing now", alert.detail)
-        keys = {a.key for a in jobs_alerts.detect({"daily": self.daily(), "failing_boards": ["x"]}, dt.datetime(2026, 11, 12, 18, 0))}
+        keys = {
+            a.key
+            for a in jobs_alerts.detect(
+                {"daily": self.daily(), "failing_boards": ["x"]}, dt.datetime(2026, 11, 12, 18, 0)
+            )
+        }
         self.assertIn("board_reads_failing", keys)
 
     def test_gather_reads_the_failing_boards_excluding_not_found(self):

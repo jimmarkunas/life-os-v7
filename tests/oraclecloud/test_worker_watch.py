@@ -1,4 +1,5 @@
 """more Codex workers than agents on Oracle raises one quiet phone alert, through the gateway"""
+
 import contextlib
 import datetime as dt
 import io
@@ -16,7 +17,7 @@ LEAK = {"count": 6, "agents": 5}
 class Decide(unittest.TestCase):
     def test_six_workers_for_five_agents_opens_one_quiet_alert(self):
         state, plan = ww.decide(None, LEAK, NOW)
-        (kind, alert), = plan.notify
+        ((kind, alert),) = plan.notify
         self.assertEqual((kind, alert.key, alert.severity, state["alert_open"]), ("open", ww.KEY, alerts.INFO, True))
         self.assertEqual(alert.title, "OpenClaw has 6 Codex workers for 5 agents")
 
@@ -27,7 +28,9 @@ class Decide(unittest.TestCase):
 
     def test_an_unreadable_reading_is_unknown_and_changes_nothing(self):
         self.assertIsNone(ww.healthy(None))
-        self.assertIsNone(ww.decide({"alert_open": True, "last_notified": NOW}, None, NOW))  # neither opens nor resolves
+        self.assertIsNone(
+            ww.decide({"alert_open": True, "last_notified": NOW}, None, NOW)
+        )  # neither opens nor resolves
 
     def test_negative_control_the_threshold_is_the_agent_count_not_a_fixed_number(self):
         self.assertTrue(ww.healthy({"count": 9, "agents": 9}))

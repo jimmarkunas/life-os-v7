@@ -1,4 +1,5 @@
 """the Mac-only Hermes and OpenClaw data is archived, encrypted to the PUBLIC key and pushed to one Oracle inbox."""
+
 import atexit
 import io
 import os
@@ -29,9 +30,32 @@ def make_keys(base):
         root = tempfile.mkdtemp(prefix="mpk-", dir="/tmp")
         home = Path(root) / "priv"
         home.mkdir(mode=0o700)
-        subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--passphrase", "", "--quick-generate-key", "mac-push-test-key", "default", "default", "never"], check=True, capture_output=True)
+        subprocess.run(
+            [
+                "gpg",
+                "--homedir",
+                str(home),
+                "--batch",
+                "--quiet",
+                "--passphrase",
+                "",
+                "--quick-generate-key",
+                "mac-push-test-key",
+                "default",
+                "default",
+                "never",
+            ],
+            check=True,
+            capture_output=True,
+        )
         pub = Path(root) / "recipient.asc"
-        pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", "mac-push-test-key"], check=True, capture_output=True).stdout)
+        pub.write_bytes(
+            subprocess.run(
+                ["gpg", "--homedir", str(home), "--armor", "--export", "mac-push-test-key"],
+                check=True,
+                capture_output=True,
+            ).stdout
+        )
         _KEYS["k"] = (str(pub), str(home), root)
         atexit.register(_cleanup_keys)
     return _KEYS["k"][0], _KEYS["k"][1]
@@ -39,9 +63,24 @@ def make_keys(base):
 
 def make_home(root):
     home = Path(root) / "home"
-    for rel in (".hermes/memories", ".hermes/plugins", ".hermes/cron", ".hermes/hermes-agent", ".hermes/cache", ".openclaw/state", ".openclaw/agents/main/agent", ".openclaw/credentials", ".openclaw/workspace/node_modules", ".config/life-os"):
+    for rel in (
+        ".hermes/memories",
+        ".hermes/plugins",
+        ".hermes/cron",
+        ".hermes/hermes-agent",
+        ".hermes/cache",
+        ".openclaw/state",
+        ".openclaw/agents/main/agent",
+        ".openclaw/credentials",
+        ".openclaw/workspace/node_modules",
+        ".config/life-os",
+    ):
         (home / rel).mkdir(parents=True)
-    for rel in (".hermes/state.db", ".openclaw/state/openclaw.sqlite", ".openclaw/agents/main/agent/openclaw-agent.sqlite"):
+    for rel in (
+        ".hermes/state.db",
+        ".openclaw/state/openclaw.sqlite",
+        ".openclaw/agents/main/agent/openclaw-agent.sqlite",
+    ):
         db = sqlite3.connect(home / rel)
         db.execute("create table t(x)")
         db.executemany("insert into t values (?)", [(1,), (2,), (3,)])
@@ -93,9 +132,19 @@ class Collect(unittest.TestCase):
             self.assertIn("openclaw/credentials/cred.json", names)
             self.assertIn("hermes/memories/m.md", names)
             self.assertNotIn("hermes/memories/link.md", names)  # a symlink is not a regular file
-            self.assertFalse([n for n in names if "hermes-agent" in n or "cache" in n or "node_modules" in n or n.endswith(("-wal", ".lock"))])
-            self.assertNotEqual(entries["hermes/state.db"], str(home / ".hermes/state.db"))  # a copy, never the live file
-            self.assertEqual(sqlite3.connect(entries["hermes/state.db"]).execute("select count(*) from t").fetchone(), (3,))
+            self.assertFalse(
+                [
+                    n
+                    for n in names
+                    if "hermes-agent" in n or "cache" in n or "node_modules" in n or n.endswith(("-wal", ".lock"))
+                ]
+            )
+            self.assertNotEqual(
+                entries["hermes/state.db"], str(home / ".hermes/state.db")
+            )  # a copy, never the live file
+            self.assertEqual(
+                sqlite3.connect(entries["hermes/state.db"]).execute("select count(*) from t").fetchone(), (3,)
+            )
             self.assertGreater(extra["missing"], 0)
 
     def test_nothing_to_save_is_a_fixed_code(self):
@@ -132,16 +181,20 @@ class Snapshot(unittest.TestCase):
             source, dest = os.path.join(tmp, "idle.db"), os.path.join(tmp, "copy.sqlite")
             self.make_idle_wal(source)
             real, seen = mp._copy_database, []
+
             def copy(uri, target):
                 seen.append(uri.split("?")[1])
                 if uri.endswith("mode=ro"):
                     Path(target).write_bytes(b"partial")
                     raise sqlite3.OperationalError("unable to open database file")
                 return real(uri, target)
+
             with mock.patch.object(mp, "_copy_database", side_effect=copy):
                 mp.snapshot(source, dest)
             self.assertEqual(seen, ["mode=ro", "immutable=1"])
-            self.assertFalse(os.path.exists(source + "-wal") or os.path.exists(source + "-shm"))  # the immutable open leaves the source untouched
+            self.assertFalse(
+                os.path.exists(source + "-wal") or os.path.exists(source + "-shm")
+            )  # the immutable open leaves the source untouched
             self.assertEqual(sqlite3.connect(dest).execute("select count(*) from t").fetchone(), (3,))
 
     def test_a_live_database_with_a_wal_file_does_not_get_the_immutable_retry(self):
@@ -149,7 +202,9 @@ class Snapshot(unittest.TestCase):
             source, dest = os.path.join(tmp, "live.db"), os.path.join(tmp, "copy.sqlite")
             Path(source).write_bytes(b"")
             Path(source + "-wal").write_bytes(b"")
-            with mock.patch.object(mp, "_copy_database", side_effect=sqlite3.OperationalError("unable to open database file")) as copy:
+            with mock.patch.object(
+                mp, "_copy_database", side_effect=sqlite3.OperationalError("unable to open database file")
+            ) as copy:
                 with self.assertRaises(mp.PushError) as ctx:
                     mp.snapshot(source, dest)
             self.assertEqual(str(ctx.exception), "mac_backup_db_unreadable")
@@ -181,6 +236,7 @@ class EndToEnd(unittest.TestCase):
                     kept["sealed"] = Path(tmp) / "kept.gpg"
                     kept["sealed"].write_bytes(Path(dest).read_bytes())
                     return result
+
                 with mock.patch.object(mp, "encrypt", spy):
                     code = mp.main([], home=str(home), key_file=pub, out=out, tmp_root=str(scratch))
             text = out.getvalue()
@@ -191,14 +247,32 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(list(scratch.iterdir()), [])  # plain archive, snapshots and key ring are all gone
             # restore into a scratch folder with the throwaway PRIVATE key, then compare names and open the databases
             plain = Path(tmp) / "restored.tar.gz"
-            subprocess.run(["gpg", "--homedir", priv, "--batch", "--quiet", "--output", str(plain), "--decrypt", str(kept["sealed"])], check=True, capture_output=True)
+            subprocess.run(
+                [
+                    "gpg",
+                    "--homedir",
+                    priv,
+                    "--batch",
+                    "--quiet",
+                    "--output",
+                    str(plain),
+                    "--decrypt",
+                    str(kept["sealed"]),
+                ],
+                check=True,
+                capture_output=True,
+            )
             restore = Path(tmp) / "restore"
             restore.mkdir()
             with tarfile.open(plain) as tar:
                 tar.extractall(restore, filter="data")
             self.assertTrue((restore / "hermes/auth.json").is_file())
             self.assertEqual((restore / "hermes/auth.json").read_text(), "fake-not-a-secret")
-            for rel in ("hermes/state.db", "openclaw/state/openclaw.sqlite", "openclaw/agents/main/openclaw-agent.sqlite"):
+            for rel in (
+                "hermes/state.db",
+                "openclaw/state/openclaw.sqlite",
+                "openclaw/agents/main/openclaw-agent.sqlite",
+            ):
                 db = sqlite3.connect(restore / rel)
                 self.assertEqual(db.execute("pragma integrity_check").fetchone()[0], "ok")
                 self.assertEqual(db.execute("select count(*) from t").fetchone(), (3,))
@@ -209,7 +283,13 @@ class EndToEnd(unittest.TestCase):
             home = make_home(tmp)
             _, priv = make_keys(tmp)
             both = Path(tmp) / "both.asc"
-            both.write_bytes(subprocess.run(["gpg", "--homedir", priv, "--armor", "--export-secret-keys", "mac-push-test-key"], check=True, capture_output=True).stdout)
+            both.write_bytes(
+                subprocess.run(
+                    ["gpg", "--homedir", priv, "--armor", "--export-secret-keys", "mac-push-test-key"],
+                    check=True,
+                    capture_output=True,
+                ).stdout
+            )
             out = io.StringIO()
             self.assertEqual(mp.main([], home=str(home), key_file=str(both), out=out), 2)
             self.assertIn("mac_backup_key_has_secret", out.getvalue())
@@ -232,10 +312,16 @@ class Push(unittest.TestCase):
             if "ls -1" in batch:
                 out = "".join("in/%s\n" % n for n in sorted(existing))
             return subprocess.CompletedProcess(command, 0, stdout=out, stderr="")
+
         return run, calls
 
     def test_it_uploads_under_a_part_name_renames_and_keeps_the_newest_three(self):
-        names = ["mac-20261101-0100.tar.gz.gpg", "mac-20261102-0100.tar.gz.gpg", "mac-20261103-0100.tar.gz.gpg", "mac-20261109-0100.tar.gz.gpg"]
+        names = [
+            "mac-20261101-0100.tar.gz.gpg",
+            "mac-20261102-0100.tar.gz.gpg",
+            "mac-20261103-0100.tar.gz.gpg",
+            "mac-20261109-0100.tar.gz.gpg",
+        ]
         run, calls = self.runner(names)
         result = mp.push("/x/mac-20261109-0100.tar.gz.gpg", run=run)
         self.assertEqual(result, {"remote_kept": 3, "remote_removed": 1})
@@ -259,6 +345,7 @@ class Push(unittest.TestCase):
     def test_a_failed_transfer_is_a_fixed_code(self):
         def run(command, **kwargs):
             return subprocess.CompletedProcess(command, 1, stdout="", stderr="secret detail that must not surface")
+
         with self.assertRaises(mp.PushError) as ctx:
             mp.push("/x/mac-20261109-0100.tar.gz.gpg", run=run)
         self.assertEqual(str(ctx.exception), "mac_backup_push_failed")
@@ -269,6 +356,7 @@ class Push(unittest.TestCase):
         def run(command, **kwargs):
             seen["c"] = command
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
         mp.sftp("ls\n", run)
         self.assertIn("IdentitiesOnly=yes", seen["c"])
         self.assertIn("BatchMode=yes", seen["c"])

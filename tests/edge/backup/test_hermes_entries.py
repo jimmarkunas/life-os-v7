@@ -1,4 +1,5 @@
 """the Hermes files in the nightly off-site backup."""
+
 import os
 import shutil
 import sqlite3
@@ -9,7 +10,22 @@ from lifeos.edge.backup import offsite_backup as ob
 from tests.edge.backup import safe_tmp
 from tests.edge.backup.test_offsite_backup import local_run, make_db
 
-NEVER = (".env", "auth", "mcp-tokens", "cred", "token", "secret", "installs", "tools", "cache", "logs", "sessions", "hold.py", "last_seen", "key")
+NEVER = (
+    ".env",
+    "auth",
+    "mcp-tokens",
+    "cred",
+    "token",
+    "secret",
+    "installs",
+    "tools",
+    "cache",
+    "logs",
+    "sessions",
+    "hold.py",
+    "last_seen",
+    "key",
+)
 
 
 class Lists(unittest.TestCase):
@@ -17,7 +33,11 @@ class Lists(unittest.TestCase):
         for name, source, *rest in [e for e in ob.SQLITE + ob.FILES if e[0].startswith("hermes/")]:
             self.assertFalse(rest[-1], name)  # the required flag is last in both lists
             for word in NEVER:
-                self.assertNotIn(word, name.lower() + " " + source.lower().replace("/var/lib/hermeseval/home/.hermes", ""), (name, word))
+                self.assertNotIn(
+                    word,
+                    name.lower() + " " + source.lower().replace("/var/lib/hermeseval/home/.hermes", ""),
+                    (name, word),
+                )
 
 
 class Collect(unittest.TestCase):
@@ -63,12 +83,29 @@ class Collect(unittest.TestCase):
         return tuple(out)
 
     def collect(self):
-        return ob.collect(str(self.work), local_run, sqlite=self.remap(ob.SQLITE), files=self.remap(ob.FILES), trees=self.remap(ob.TREES), secret_trees=(), chown=lambda *a, **k: None)
+        return ob.collect(
+            str(self.work),
+            local_run,
+            sqlite=self.remap(ob.SQLITE),
+            files=self.remap(ob.FILES),
+            trees=self.remap(ob.TREES),
+            secret_trees=(),
+            chown=lambda *a, **k: None,
+        )
 
     def test_only_the_listed_hermes_files_are_collected_and_nothing_secret_or_bulky(self):
         entries, extra = self.collect()
-        self.assertEqual(sorted(entries), ["hermes/SOUL.md", "hermes/config.yaml", "hermes/profiles/librarian/SOUL.md", "hermes/profiles/librarian/memories/USER.md",
-                                           "hermes/profiles/librarian/state.db", "hermes/state.db"])
+        self.assertEqual(
+            sorted(entries),
+            [
+                "hermes/SOUL.md",
+                "hermes/config.yaml",
+                "hermes/profiles/librarian/SOUL.md",
+                "hermes/profiles/librarian/memories/USER.md",
+                "hermes/profiles/librarian/state.db",
+                "hermes/state.db",
+            ],
+        )
         self.assertEqual(extra["skipped"], 1)  # the secret-shaped file inside a listed folder
         for banned in (".env", "auth", "mcp-tokens", "installs", "logs", "sessions", "token"):
             self.assertFalse([n for n in entries if banned in n], banned)

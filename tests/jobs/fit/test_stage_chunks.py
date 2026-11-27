@@ -24,9 +24,14 @@ class ChunkedStage(Base):
 
     def run_stage(self, limit, live=True, real_score=stage.score_rows):
         out = io.StringIO()
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
-                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), \
-                mock.patch.object(stage, "score_rows", side_effect=real_score), contextlib.redirect_stdout(out):
+        with (
+            mock.patch.object(stage.store, "connect", return_value=self.db),
+            mock.patch.object(stage.store, "ensure_schema"),
+            mock.patch.object(stage.fit_profile, "load", return_value=PROFILE),
+            mock.patch.object(stage.sponsors, "load", return_value=None),
+            mock.patch.object(stage, "score_rows", side_effect=real_score),
+            contextlib.redirect_stdout(out),
+        ):
             counts = stage.run(limit, live, ENV)
         return counts, out.getvalue()
 
@@ -52,6 +57,7 @@ class ChunkedStage(Base):
             if len(calls) == 3:
                 raise StageTimeout()
             return stage_score(rows, *a, **kw)
+
         stage_score = stage.score_rows
         with self.assertRaises(StageTimeout):
             self.run_stage(25, real_score=slow)
@@ -67,6 +73,7 @@ class ChunkedStage(Base):
             if len(calls) == 2:
                 raise StageTimeout()
             return stage_score(rows, *a, **kw)
+
         stage_score = stage.score_rows
         with self.assertRaises(StageTimeout):
             self.run_stage(25, real_score=slow)

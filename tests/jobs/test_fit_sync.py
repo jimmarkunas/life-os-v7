@@ -10,14 +10,26 @@ class Client:
     source = "ledger"
 
     def __init__(self, fail=False, empty=(), roles=None, endless=False):
-        self.patches, self.fail, self.empty, self.roles, self.reads, self.endless = [], fail, list(empty), dict(roles or {}), [], endless
+        self.patches, self.fail, self.empty, self.roles, self.reads, self.endless = (
+            [],
+            fail,
+            list(empty),
+            dict(roles or {}),
+            [],
+            endless,
+        )
 
     def call(self, method, path, body=None):
         if self.fail:
             raise NotionError("NOTION_HTTP_500")
         if method == "POST" and path.endswith("/query"):
             self.reads.append(body)
-            pages = [{"id": p[0], "properties": {"Stable Job Key": {"rich_text": [{"plain_text": p[1]}]}}} if isinstance(p, tuple) else {"id": p} for p in self.empty]
+            pages = [
+                {"id": p[0], "properties": {"Stable Job Key": {"rich_text": [{"plain_text": p[1]}]}}}
+                if isinstance(p, tuple)
+                else {"id": p}
+                for p in self.empty
+            ]
             return {"results": pages, "has_more": self.endless, "next_cursor": "more" if self.endless else None}
         if method == "GET":
             return {"properties": {"Role": {"rich_text": [{"plain_text": self.roles.get(path.rsplit("/", 1)[1], "")}]}}}
@@ -29,8 +41,23 @@ class Client:
     call_once = call
 
 
-ROW = (1, "page1", 81, "[81%] Go | Strengths: a", "REVIEW", "work mode unresolved", "unknown", "Scale-Up", "Scale-Up,Skilled Worker",
-       "Scale-Up", "London, UK", None, "Scale-up:POSITIVE", "Salary range $90,000 - $120,000 per year.", "Product Owner (UX)")
+ROW = (
+    1,
+    "page1",
+    81,
+    "[81%] Go | Strengths: a",
+    "REVIEW",
+    "work mode unresolved",
+    "unknown",
+    "Scale-Up",
+    "Scale-Up,Skilled Worker",
+    "Scale-Up",
+    "London, UK",
+    None,
+    "Scale-up:POSITIVE",
+    "Salary range $90,000 - $120,000 per year.",
+    "Product Owner (UX)",
+)
 
 
 def conn(rows):
@@ -44,8 +71,14 @@ class FitSync(unittest.TestCase):
         props = fit_sync.properties(81, "line", "REVIEW", "why", "remote", "Scale-Up", "Scale-Up,Skilled Worker", True)
         for human in ("Applied", "Applied On", "Saturn Decision", "Job", "Apply URL"):
             self.assertNotIn(human, props)
-        self.assertEqual((props["LIFE OS Fit"]["number"], props["Visible Lane"]["select"]["name"], props["Admission Status"]["select"]["name"]),
-                         (81, "Scale-up", "Passed / Review"))
+        self.assertEqual(
+            (
+                props["LIFE OS Fit"]["number"],
+                props["Visible Lane"]["select"]["name"],
+                props["Admission Status"]["select"]["name"],
+            ),
+            (81, "Scale-up", "Passed / Review"),
+        )
         self.assertEqual(props["Eligible Lanes"]["multi_select"], [{"name": "Scale-Up"}, {"name": "Skilled Worker"}])
 
     def test_shadow_mode_writes_the_fit_but_not_the_lane_fields(self):
@@ -58,7 +91,10 @@ class FitSync(unittest.TestCase):
             counts = fit_sync.run(client, True, gated=True)
         self.assertEqual((counts["due"], counts["synced"], counts["failed"]), (1, 1, 0))
         self.assertEqual((client.patches[0][0], client.patches[0][1]), ("PATCH", "/pages/page1"))
-        self.assertEqual(client.patches[0][2]["properties"]["Role"], {"rich_text": [{"type": "text", "text": {"content": "Product Owner (UX)"}}]})  # the Role column is the job title
+        self.assertEqual(
+            client.patches[0][2]["properties"]["Role"],
+            {"rich_text": [{"type": "text", "text": {"content": "Product Owner (UX)"}}]},
+        )  # the Role column is the job title
 
     def test_dry_run_counts_and_writes_nothing(self):
         client = Client()
@@ -75,8 +111,7 @@ class FitSync(unittest.TestCase):
 
 
 class PageGone(unittest.TestCase):
-    """The two pages that failed every tick with a bare validation_error: a page in Notion's trash refuses every write.
-    """
+    """The two pages that failed every tick with a bare validation_error: a page in Notion's trash refuses every write."""
 
     class Refusing(Client):
         def __init__(self, page):
@@ -97,7 +132,10 @@ class PageGone(unittest.TestCase):
     def run_with(self, page):
         marked = []
         c = conn([ROW])
-        with mock.patch.object(fit_sync.store, "connect", side_effect=lambda: c), mock.patch.object(fit_sync, "_mark_synced", side_effect=marked.append):
+        with (
+            mock.patch.object(fit_sync.store, "connect", side_effect=lambda: c),
+            mock.patch.object(fit_sync, "_mark_synced", side_effect=marked.append),
+        ):
             counts = fit_sync.run(self.Refusing(page), True, gated=True)
         return counts, marked
 
@@ -108,7 +146,9 @@ class PageGone(unittest.TestCase):
 
     def test_an_open_page_that_refuses_is_still_a_failure_and_says_the_page_is_open(self):
         counts, marked = self.run_with({"in_trash": False, "archived": False, "properties": {}})
-        self.assertEqual((counts["failed"], counts["failed_page"], counts["failed_why"], marked), (1, "open", "NOTION_HTTP_400", []))
+        self.assertEqual(
+            (counts["failed"], counts["failed_page"], counts["failed_why"], marked), (1, "open", "NOTION_HTTP_400", [])
+        )
         self.assertNotIn("page_gone", counts)
 
     def test_an_unreadable_page_is_a_failure_never_a_gone_page(self):
@@ -134,6 +174,7 @@ class RoleBackfill(unittest.TestCase):
             conn = jobs(rows)
             (conns if conns is not None else []).append(conn)
             return conn
+
         with mock.patch.object(fit_sync.store, "connect", side_effect=connect):
             return fit_sync.backfill_roles(client, live)
 
@@ -152,8 +193,13 @@ class RoleBackfill(unittest.TestCase):
 
     def test_a_row_whose_page_id_was_cleared_is_found_by_the_pages_stable_job_key(self):
         client = Client(empty=[("page3", "k3")])
-        counts = self.run_backfill(client, [(None, "k3", "Head of Product (Wealth & Trading)")])  # the audit clears notion_page_id
-        self.assertEqual((counts["role_due"], counts["role_filled"], client.roles["page3"]), (1, 1, "Head of Product (Wealth & Trading)"))
+        counts = self.run_backfill(
+            client, [(None, "k3", "Head of Product (Wealth & Trading)")]
+        )  # the audit clears notion_page_id
+        self.assertEqual(
+            (counts["role_due"], counts["role_filled"], client.roles["page3"]),
+            (1, 1, "Head of Product (Wealth & Trading)"),
+        )
 
     def test_the_job_query_does_not_require_a_published_status_or_a_stored_page_id(self):
         sent = []
@@ -167,14 +213,21 @@ class RoleBackfill(unittest.TestCase):
         self.assertNotIn("status", sent[0].lower())
 
     def test_a_page_that_already_has_a_role_is_never_selected_or_written(self):
-        client = Client(empty=[], roles={"page5": "Head of Product (Wealth & Trading)"})  # Notion's own filter returned nothing empty
+        client = Client(
+            empty=[], roles={"page5": "Head of Product (Wealth & Trading)"}
+        )  # Notion's own filter returned nothing empty
         counts = self.run_backfill(client, [("page5", "k5", "A different title")])
-        self.assertEqual((counts["role_empty"], counts["role_due"], counts["role_filled"], client.patches), (0, 0, 0, []))
+        self.assertEqual(
+            (counts["role_empty"], counts["role_due"], counts["role_filled"], client.patches), (0, 0, 0, [])
+        )
 
     def test_an_empty_page_with_no_job_row_is_left_alone_and_counted(self):
         client = Client(empty=[("human-made", "k-unknown"), "no-key-page"])
         counts = self.run_backfill(client, [("page6", "k6", "Some job")])
-        self.assertEqual((counts["role_empty"], counts["role_due"], counts["role_no_row"], counts["role_not_job"], client.patches), (2, 0, 1, 1, []))
+        self.assertEqual(
+            (counts["role_empty"], counts["role_due"], counts["role_no_row"], counts["role_not_job"], client.patches),
+            (2, 0, 1, 1, []),
+        )
 
     def test_a_job_row_without_a_title_is_not_guessed_and_is_counted(self):
         client = Client(empty=[("page7", "k7")])
@@ -197,7 +250,9 @@ class RoleBackfill(unittest.TestCase):
         pages = [(f"p{i}", f"k{i}") for i in range(6)]
         client = Client(empty=pages)
         real = client.call_once
-        client.call_once = lambda method, path, body=None: {} if path.endswith(("p1", "p2", "p3")) else real(method, path, body)
+        client.call_once = lambda method, path, body=None: (
+            {} if path.endswith(("p1", "p2", "p3")) else real(method, path, body)
+        )
         counts = self.run_backfill(client, [(p, k, f"Title {p}") for p, k in pages])
         self.assertEqual((counts["role_filled"], counts["role_failed"]), (1, 3))
 
@@ -235,15 +290,42 @@ class NewestScoreFirst(unittest.TestCase):
         import datetime
         from lifeos.jobs import meta
         from tests.jobs.fakes_jobsdb import JobsDB
+
         db = JobsDB()
         self.addCleanup(db.raw.close)
         t0 = datetime.datetime(2026, 10, 31, 1, 0)
         for job_id in range(1, 6):
             at = t0 + datetime.timedelta(minutes=job_id)
-            db.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status="PUBLISHED", title="Product Manager", company="Acme", final_apply_url=f"https://boards.example.com/a/{job_id}",
-                      first_seen=t0, last_seen=t0, updated_at=t0, source="web", lane="US Remote", notion_page_id=f"page-{job_id}", fit_synced_at=t0, meta_v=meta.META_VERSION)
-            db.insert("v7_job_fit", job_id=job_id, score=80, decision="Go", line="fits", confidence="high", model_version="v3", profile_hash="p", jd_fingerprint="f",
-                      scored_at=at, admission="ADMIT")
+            db.insert(
+                "v7_jobs",
+                id=job_id,
+                dedupe_key=f"k{job_id}",
+                status="PUBLISHED",
+                title="Product Manager",
+                company="Acme",
+                final_apply_url=f"https://boards.example.com/a/{job_id}",
+                first_seen=t0,
+                last_seen=t0,
+                updated_at=t0,
+                source="web",
+                lane="US Remote",
+                notion_page_id=f"page-{job_id}",
+                fit_synced_at=t0,
+                meta_v=meta.META_VERSION,
+            )
+            db.insert(
+                "v7_job_fit",
+                job_id=job_id,
+                score=80,
+                decision="Go",
+                line="fits",
+                confidence="high",
+                model_version="v3",
+                profile_hash="p",
+                jd_fingerprint="f",
+                scored_at=at,
+                admission="ADMIT",
+            )
         with db.cursor() as cursor:
             cursor.execute(fit_sync.PICK, (meta.META_VERSION, 2))
             self.assertEqual([row[0] for row in cursor.fetchall()], [5, 4])

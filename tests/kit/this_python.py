@@ -1,5 +1,5 @@
-"""a script under test that runs a bare `python3` must get the SAME interpreter the tests run with (CI has one Python)
-"""
+"""a script under test that runs a bare `python3` must get the SAME interpreter the tests run with (CI has one Python)"""
+
 import os
 import sys
 

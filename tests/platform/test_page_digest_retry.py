@@ -1,6 +1,7 @@
 """page_digest walks again once when a block it listed is gone (another card writer rewrote the page mid-read) and fails
 as before when the second walk.
 """
+
 import unittest
 from unittest import mock
 from urllib.parse import unquote
@@ -21,7 +22,10 @@ class Page:
     """A page with one toggle (id `toggle`) that holds one bullet."""
 
     def __init__(self, errors=None):
-        self.tree = {"page": [block("toggle", "toggle", True), block("tail", "paragraph")], "toggle": [block("bullet", "bulleted_list_item")]}
+        self.tree = {
+            "page": [block("toggle", "toggle", True), block("tail", "paragraph")],
+            "toggle": [block("bullet", "bulleted_list_item")],
+        }
         self.errors = {k: list(v) for k, v in (errors or {}).items()}
         self.listed = []
 

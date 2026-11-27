@@ -1,4 +1,5 @@
 """the tile writer on the merged Daily Report + Agent Inbox page."""
+
 import itertools
 import unittest
 
@@ -9,11 +10,19 @@ SOURCE, MERGED, OLD = "a1" * 16, "d4" * 16, "b2" * 16
 
 
 def rich(text, href=None):
-    return [{"type": "text", "plain_text": text, "href": href, "text": {"content": text, "link": {"url": href} if href else None}}]
+    return [
+        {
+            "type": "text",
+            "plain_text": text,
+            "href": href,
+            "text": {"content": text, "link": {"url": href} if href else None},
+        }
+    ]
 
 
 class Notion:
     """Pages, a block tree and inbox rows."""
+
     def __init__(self):
         self.blocks, self.kids, self.pages, self.rows, self.writes, self.ids = {}, {}, {}, [], [], itertools.count(1)
 
@@ -47,16 +56,44 @@ class Notion:
                 self.tile(column, "9", "old")
 
     def row(self, urgency, subject, link=None, status="New"):
-        self.rows.append({"id": f"row{len(self.rows)}", "status": status, "urgency": urgency, "properties": {"Subject": {"title": [{"plain_text": subject}]}, **({"Link": {"url": link}} if link else {})}})
+        self.rows.append(
+            {
+                "id": f"row{len(self.rows)}",
+                "status": status,
+                "urgency": urgency,
+                "properties": {
+                    "Subject": {"title": [{"plain_text": subject}]},
+                    **({"Link": {"url": link}} if link else {}),
+                },
+            }
+        )
 
     def texts(self, bid):
-        return [(self.blocks[k]["type"], "".join(p["plain_text"] for p in self.blocks[k][self.blocks[k]["type"]]["rich_text"])) for k in self.kids.get(bid, [])]
+        return [
+            (
+                self.blocks[k]["type"],
+                "".join(p["plain_text"] for p in self.blocks[k][self.blocks[k]["type"]]["rich_text"]),
+            )
+            for k in self.kids.get(bid, [])
+        ]
 
     def call(self, method, path, body=None):
         if path == "/search":
             if body["filter"]["value"] == "data_source":
-                return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}], "has_more": False}
-            return {"results": [p for p in self.pages.values() if body["query"] == "".join(t["plain_text"] for t in p["properties"]["title"]["title"])], "has_more": False}
+                return {
+                    "results": [
+                        {"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}
+                    ],
+                    "has_more": False,
+                }
+            return {
+                "results": [
+                    p
+                    for p in self.pages.values()
+                    if body["query"] == "".join(t["plain_text"] for t in p["properties"]["title"]["title"])
+                ],
+                "has_more": False,
+            }
         if method == "GET" and path.startswith("/blocks/"):
             bid = path.split("/")[2].split("?")[0]
             return {"results": [self.blocks[k] for k in self.kids.get(bid, [])], "has_more": False}
@@ -71,7 +108,16 @@ class Notion:
             for child in body["children"]:
                 kind = child["type"]
                 bid = f"blk{next(self.ids)}"
-                self.blocks[bid] = {"id": bid, "type": kind, kind: {"rich_text": [{**p, "plain_text": p["text"]["content"], "href": (p["text"].get("link") or {}).get("url")} for p in child[kind]["rich_text"]]}}
+                self.blocks[bid] = {
+                    "id": bid,
+                    "type": kind,
+                    kind: {
+                        "rich_text": [
+                            {**p, "plain_text": p["text"]["content"], "href": (p["text"].get("link") or {}).get("url")}
+                            for p in child[kind]["rich_text"]
+                        ]
+                    },
+                }
                 self.kids.setdefault(parts[2], []).append(bid)
         elif method == "PATCH" and len(parts) == 3 and "callout" in (body or {}):
             self.blocks[parts[2]]["callout"] = {**self.blocks[parts[2]]["callout"], **body["callout"]}
@@ -83,13 +129,25 @@ class Notion:
 
     def update_block(self, bid, kind, rich_text):
         self.writes.append(("PATCH", f"/blocks/{bid}"))
-        self.blocks[bid][kind] = {"rich_text": [{**p, "plain_text": p["text"]["content"], "href": (p["text"].get("link") or {}).get("url")} for p in rich_text]}
+        self.blocks[bid][kind] = {
+            "rich_text": [
+                {**p, "plain_text": p["text"]["content"], "href": (p["text"].get("link") or {}).get("url")}
+                for p in rich_text
+            ]
+        }
 
     def query_data_source(self, source, body):
         assert source == SOURCE
         flt = body["filter"]
         wanted = {part["property"]: part["select"]["equals"] for part in flt.get("and", [flt])}
-        return {"results": [r for r in self.rows if r["status"] == wanted["Status"] and ("Urgency" not in wanted or r["urgency"] == wanted["Urgency"])], "has_more": False}
+        return {
+            "results": [
+                r
+                for r in self.rows
+                if r["status"] == wanted["Status"] and ("Urgency" not in wanted or r["urgency"] == wanted["Urgency"])
+            ],
+            "has_more": False,
+        }
 
 
 def build(wrapped=True, old_page=True):
@@ -115,7 +173,9 @@ class MergedTiles(unittest.TestCase):
         self.assertFalse([w for w in n.writes if OLD in w[1] or w[1].split("/")[2] in n.kids.get(OLD, [])])
         box, heading, tiles = self.box(n)
         self.assertEqual(n.texts(box["id"]), [("heading_3", "2"), ("paragraph", "Now 1 · Today 1")])
-        self.assertEqual([agent_inbox._words(number) for _, number, _ in tiles], ["0", "0", "0"])  # This week, FYI, Snoozed counts
+        self.assertEqual(
+            [agent_inbox._words(number) for _, number, _ in tiles], ["0", "0", "0"]
+        )  # This week, FYI, Snoozed counts
 
     def test_a_list_an_earlier_version_left_in_the_box_is_removed_and_the_same_heading_block_is_kept(self):
         n = build()
@@ -129,7 +189,9 @@ class MergedTiles(unittest.TestCase):
         box2, heading2, _ = self.box(n)
         self.assertEqual((box2["id"], heading2["id"]), (box["id"], heading["id"]))
         self.assertEqual({w[0] for w in n.writes}, {"PATCH", "DELETE"})
-        self.assertEqual(len([w for w in n.writes if w[0] == "PATCH" and w[1].endswith("/children")]), 1)  # the one gray line is appended
+        self.assertEqual(
+            len([w for w in n.writes if w[0] == "PATCH" and w[1].endswith("/children")]), 1
+        )  # the one gray line is appended
 
     def test_a_second_run_with_nothing_new_writes_nothing_and_a_change_touches_only_the_heading(self):
         n = build()
@@ -158,8 +220,12 @@ class MergedTiles(unittest.TestCase):
         self.assertEqual(agent_inbox.locate_page(n, SOURCE), MERGED)
         broken = build()
         broken.pages[MERGED]
-        for column in list(broken.kids[[k for k in broken.kids if broken.blocks.get(k, {}).get("type") == "column_list"][0]])[-1:]:
-            broken.kids[[k for k in broken.kids if broken.blocks.get(k, {}).get("type") == "column_list"][0]].remove(column)
+        for column in list(
+            broken.kids[[k for k in broken.kids if broken.blocks.get(k, {}).get("type") == "column_list"][0]]
+        )[-1:]:
+            broken.kids[[k for k in broken.kids if broken.blocks.get(k, {}).get("type") == "column_list"][0]].remove(
+                column
+            )
         self.assertEqual(agent_inbox.locate_page(broken, SOURCE), OLD)
 
     def test_two_merged_pages_or_none_at_all_are_fixed_refusals(self):
@@ -187,9 +253,14 @@ if __name__ == "__main__":
 
 class JimsRearrangedLayout(unittest.TestCase):
     """the three tiles sit in a row inside the Command Center callout with an empty first column."""
+
     def make(self):
         n = Notion()
-        n.pages[MERGED] = {"object": "page", "id": MERGED, "properties": {"title": {"title": [{"plain_text": "Daily LIFE OS Report (Hourly)"}]}}}
+        n.pages[MERGED] = {
+            "object": "page",
+            "id": MERGED,
+            "properties": {"title": {"title": [{"plain_text": "Daily LIFE OS Report (Hourly)"}]}},
+        }
         n.kids[MERGED] = []
         dcc = n.new(MERGED, "callout")
         n.new(dcc, "heading_3", "ChatGPT · Daily Command Center")
@@ -207,7 +278,9 @@ class JimsRearrangedLayout(unittest.TestCase):
     def test_the_box_and_tiles_are_found_by_what_they_say_wherever_they_are(self):
         n, box = self.make()
         found = agent_inbox._merged_row(n, MERGED)
-        self.assertEqual((found[0]["id"], [agent_inbox._words(t[2]) for t in found[3]]), (box, ["This week", "FYI", "Snoozed"]))
+        self.assertEqual(
+            (found[0]["id"], [agent_inbox._words(t[2]) for t in found[3]]), (box, ["This week", "FYI", "Snoozed"])
+        )
 
     def test_a_run_writes_the_counter_into_the_standalone_box_and_the_three_tiles_and_nothing_else(self):
         n, box = self.make()
@@ -241,7 +314,9 @@ class TileShapedBox(unittest.TestCase):
         self.assertEqual(n.blocks[box]["callout"]["color"], "default")  # no red background, like its neighbours
         self.assertEqual(n.texts(box), [("heading_3", "3"), ("paragraph", "Now 1 · Today 2")])
         line = n.kids[box][1]
-        self.assertEqual(n.blocks[line]["paragraph"]["rich_text"][0]["annotations"], {"color": "gray"})  # plain gray, not bold
+        self.assertEqual(
+            n.blocks[line]["paragraph"]["rich_text"][0]["annotations"], {"color": "gray"}
+        )  # plain gray, not bold
         n.writes.clear()
         self.assertEqual(agent_inbox.recount_page(n, source=SOURCE)["tiles_changed"], 0)
         self.assertEqual(n.writes, [])
@@ -251,6 +326,6 @@ class TileShapedBox(unittest.TestCase):
         agent_inbox.recount_page(n, source=SOURCE)
         found = agent_inbox._merged_row(n, MERGED)
         self.assertIsNotNone(found[2])  # the gray line block is the box's second block
-        kinds = lambda bid: [n.blocks[k]["type"] for k in n.kids[bid]]                               # noqa: E731
+        kinds = lambda bid: [n.blocks[k]["type"] for k in n.kids[bid]]  # noqa: E731
         self.assertEqual(kinds(found[0]["id"]), kinds(found[3][0][0]))  # box and a tile: heading_3 then paragraph
         self.assertEqual(kinds(found[0]["id"]), ["heading_3", "paragraph"])

@@ -1,4 +1,5 @@
 """code and workflow source say what and why now"""
+
 import ast
 import io
 import json
@@ -31,7 +32,11 @@ def prose_refs(path):
     for node in ast.walk(ast.parse(text)):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
             first = node.body[0]
-            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
                 found += [("docstring", ref) for ref in TICKET.findall(first.value.value)]
     return sorted(found)
 
@@ -49,7 +54,11 @@ def comment_refs(text):
         else:
             trailing = re.search(r"\s+#\s.*$", line)
             before = line[: trailing.start()] if trailing else ""
-            comment = trailing.group(0).strip() if trailing and before.count('"') % 2 == 0 and before.count("'") % 2 == 0 else ""
+            comment = (
+                trailing.group(0).strip()
+                if trailing and before.count('"') % 2 == 0 and before.count("'") % 2 == 0
+                else ""
+            )
         if comment and TICKET.search(comment):
             found.append((number, comment[:100]))
     return found
@@ -93,8 +102,25 @@ class LifeosCode(unittest.TestCase):
                 seen.add((rel, ref))
                 if (rel, ref) not in allowed:
                     found.append(f"{rel}: {ref} in a {kind}")
-        self.assertEqual(found, [], "ticket history belongs in Jira and git: say what and why now, or list the id in the allowlist with a reason")
-        self.assertEqual(sorted(allowed - seen), [], "allowlist entries that match no comment or docstring any more: remove them")
+        self.assertEqual(
+            found,
+            [],
+            "ticket history belongs in Jira and git: say what and why now, or list the id in the allowlist with a reason",
+        )
+        self.assertEqual(
+            sorted(allowed - seen), [], "allowlist entries that match no comment or docstring any more: remove them"
+        )
+
+
+class TestsCode(unittest.TestCase):
+    """No comment or docstring in tests/ names a ticket (test data strings are not prose and may)."""
+
+    def test_no_comment_or_docstring_in_tests_names_a_ticket(self):
+        found = []
+        for path in sorted((ROOT / "tests").rglob("*.py")):
+            rel = path.relative_to(ROOT).as_posix()
+            found += [f"{rel}: {ref} in a {kind}" for kind, ref in prose_refs(path)]
+        self.assertEqual(found, [], "say what the test checks and why; ticket history belongs in Jira and git")
 
 
 if __name__ == "__main__":

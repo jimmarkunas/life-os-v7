@@ -19,6 +19,7 @@ def database(rows, lanes=("US Remote",), boards=None, markers=None, log=None):
     """store.connect stand-in: the lane query returns the given lanes, the per-page lookup returns the stored job row
     (id, keys, company, title, source).
     """
+
     def handler(sql, args, cursor):
         if sql.startswith("SELECT DISTINCT lane"):
             cursor.fetchall = lambda: [(lane,) for lane in lanes]
@@ -30,6 +31,7 @@ def database(rows, lanes=("US Remote",), boards=None, markers=None, log=None):
             log.append(args[0])
         elif sql.startswith("SELECT SUM(state"):
             cursor.row = (boards or {}).get(args[0], (None, None))
+
     return mock.patch.object(retention.store, "connect", lambda: FakeConn(handler=handler))
 
 
@@ -46,24 +48,46 @@ class FilterShape(unittest.TestCase):
 
     def test_the_filter_still_asks_for_every_protection(self):
         text = str(retention.query_filter(NOW - dt.timedelta(days=retention.RETIRE_DAYS), "US Remote"))
-        for part in ("'Applied'", "'Applied On'", "'Saturn Decision'", "'Visible Lane'", "'US Remote'", "'Posting Date'", "'First Surfaced'", "2026-09-11"):
+        for part in (
+            "'Applied'",
+            "'Applied On'",
+            "'Saturn Decision'",
+            "'Visible Lane'",
+            "'US Remote'",
+            "'Posting Date'",
+            "'First Surfaced'",
+            "2026-09-11",
+        ):
             self.assertIn(part, text)
 
 
 class Purge(unittest.TestCase):
     def run_purge(self, pages, rows, live, lanes=("US Remote",), client=None, boards=None):
         client = client or LedgerWithFilterLimit(pages)
-        with database(rows, lanes, boards), mock.patch.object(retention.notion_client, "Client", lambda environ=None: client):
+        with (
+            database(rows, lanes, boards),
+            mock.patch.object(retention.notion_client, "Client", lambda environ=None: client),
+        ):
             return client, retention.purge_notion(live, NOW, environ={"HIRING_PIPELINE_PAGE_ID": ""})
 
     def test_a_dry_run_reaches_the_candidates_instead_of_failing_with_http_400(self):
-        client, counts = self.run_purge([page("p1", "2026-08-01")], {"p1": (7, "k", "f", "Acme", "Role", "newsletter")}, live=False)
+        client, counts = self.run_purge(
+            [page("p1", "2026-08-01")], {"p1": (7, "k", "f", "Acme", "Role", "newsletter")}, live=False
+        )
         self.assertEqual((counts["target"], counts["candidates"], counts["ours"], counts["retired"]), ("ok", 1, 1, 0))
         self.assertEqual(len(client.queries), 1)
 
     def test_only_a_stale_job_is_retired_even_when_the_query_over_returns(self):
-        pages = [page("old", "2026-08-01"), page("repost", "2026-10-05", "2026-07-01"), page("undated-old", None, "2026-08-01"), page("undated-new", None, "2026-10-01")]
-        rows = {pid: (i, f"k{i}", f"f{i}", "Acme", "Role", "newsletter") for i, pid in enumerate(("old", "repost", "undated-old", "undated-new"), 1)}
+        pages = [
+            page("old", "2026-08-01"),
+            page("repost", "2026-10-05", "2026-07-01"),
+            page("undated-old", None, "2026-08-01"),
+            page("undated-new", None, "2026-10-01"),
+        ]
+        rows = {
+            pid: (i, f"k{i}", f"f{i}", "Acme", "Role", "newsletter")
+            for i, pid in enumerate(("old", "repost", "undated-old", "undated-new"), 1)
+        }
         with mock.patch.object(retention.tombstone, "write"):
             client, counts = self.run_purge(pages, rows, live=True)
         trashed = [path for method, path in client.log if method == "PATCH"]
@@ -74,9 +98,21 @@ class Purge(unittest.TestCase):
         """> counts and the pages trashed, for one unapplied job of `lane` read from `source`, whose board record is
         `board` = (CURRENT, REMOVED).
         """
-        with mock.patch.object(retention.tombstone, "write"), mock.patch.object(retention.hiring_pipeline, "handoff_for",
-                                                                               lambda company, title, opportunities: mock.Mock(protected=(company, title) in pipeline)):
-            client, counts = self.run_purge([page("p1", posted)], {"p1": (7, "k", "f", "Acme", "Role", source)}, True, lanes=(lane,), boards={7: board})
+        with (
+            mock.patch.object(retention.tombstone, "write"),
+            mock.patch.object(
+                retention.hiring_pipeline,
+                "handoff_for",
+                lambda company, title, opportunities: mock.Mock(protected=(company, title) in pipeline),
+            ),
+        ):
+            client, counts = self.run_purge(
+                [page("p1", posted)],
+                {"p1": (7, "k", "f", "Acme", "Role", source)},
+                True,
+                lanes=(lane,),
+                boards={7: board},
+            )
         return counts, [path for method, path in client.log if method == "PATCH"]
 
     def test_a_role_still_listed_on_its_employers_board_is_kept_however_old(self):
@@ -97,7 +133,13 @@ class Purge(unittest.TestCase):
             self.assertEqual((source, trashed, counts["kept_open"]), (source, ["/pages/p1"], 0))
 
     def test_a_dry_run_counts_the_roles_it_would_keep_open(self):
-        client, counts = self.run_purge([page("p1", "2026-08-01")], {"p1": (7, "k", "f", "Acme", "Role", "web:acme")}, False, lanes=("Skilled Worker",), boards={7: (1, 0)})
+        client, counts = self.run_purge(
+            [page("p1", "2026-08-01")],
+            {"p1": (7, "k", "f", "Acme", "Role", "web:acme")},
+            False,
+            lanes=("Skilled Worker",),
+            boards={7: (1, 0)},
+        )
         self.assertEqual((counts["ours"], counts["kept_open"], counts["retired"]), (1, 1, 0))
 
     def test_a_us_remote_employer_board_role_over_14_days_is_retired_though_still_listed(self):
@@ -116,18 +158,32 @@ class Purge(unittest.TestCase):
     def test_the_query_asks_each_lane_for_its_own_age(self):
         client, _ = self.run_purge([], {}, False, lanes=("US Remote", "Scale-Up", "Skilled Worker", "Newsletter"))
         cutoff = {f["and"][3]["select"]["equals"]: f["and"][4]["or"][0]["date"]["before"] for f in client.queries}
-        self.assertEqual(cutoff, {"US Remote": "2026-09-27", "Scale-up": "2026-09-11", "Skilled Worker": "2026-09-11", "Newsletter": "2026-09-11"})
+        self.assertEqual(
+            cutoff,
+            {
+                "US Remote": "2026-09-27",
+                "Scale-up": "2026-09-11",
+                "Skilled Worker": "2026-09-11",
+                "Newsletter": "2026-09-11",
+            },
+        )
 
     def test_a_pipeline_protected_us_remote_employer_board_role_is_kept(self):
-        counts, trashed = self.retire("web:acme", (1, 0), lane="US Remote", posted="2026-09-26", pipeline={("Acme", "Role")})
+        counts, trashed = self.retire(
+            "web:acme", (1, 0), lane="US Remote", posted="2026-09-26", pipeline={("Acme", "Role")}
+        )
         self.assertEqual((trashed, counts["protected"], counts["retired"]), ([], 1, 0))
 
     def test_applied_and_saturn_decided_rows_are_still_asked_out_by_the_us_remote_query(self):
         text = str(retention.query_filter(NOW - dt.timedelta(days=retention.retire_days("US Remote")[0]), "US Remote"))
         for part in ("'Applied'", "'Applied On'", "'Saturn Decision'", "2026-09-27"):
             self.assertIn(part, text)
-        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, True, None, NOW.date(), 15), None)  # applied: kept (UNKNOWN until the handoff)
-        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, "Go", NOW.date(), 15), None)  # a Saturn Decision: kept
+        self.assertEqual(
+            retention.action(dt.date(2026, 9, 1), None, True, None, NOW.date(), 15), None
+        )  # applied: kept (UNKNOWN until the handoff)
+        self.assertEqual(
+            retention.action(dt.date(2026, 9, 1), None, False, "Go", NOW.date(), 15), None
+        )  # a Saturn Decision: kept
         self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, None, NOW.date(), 15), "retire")
 
     def test_the_ledgers_own_spelling_of_a_lane_is_asked_for_not_the_databases(self):
@@ -152,6 +208,7 @@ class Purge(unittest.TestCase):
                     error.detail = "validation_error body.filter.and[3]"
                     raise error
                 return super().call(method, path, body)
+
         client = Refuses()
         with database({}), mock.patch.object(retention.notion_client, "Client", lambda environ=None: client):
             with self.assertRaises(retention.notion_client.NotionError) as caught:
@@ -163,8 +220,7 @@ HOURS = lambda n: dt.timedelta(hours=n)
 
 
 class CatchUp(unittest.TestCase):
-    """the purge is about weekly, catches up after a missed or failed run, and a quiet fail-closed run is a failure.
-    """
+    """the purge is about weekly, catches up after a missed or failed run, and a quiet fail-closed run is a failure."""
 
     def test_due_only_when_no_recent_success_and_no_recent_attempt(self):
         d = retention.due
@@ -178,9 +234,14 @@ class CatchUp(unittest.TestCase):
     def run_stage(self, markers, live=True, force=False, notion=None):
         log, calls = [], []
         notion = notion or {"target": "ok", "handoff": "ok", "retired": 0}
-        with database({}, markers=markers, log=log), mock.patch.object(retention.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(retention, "purge_database", lambda live, now: calls.append("db") or {}), \
-                mock.patch.object(retention, "purge_notion", lambda live, now, environ=None: calls.append("notion") or notion):
+        with (
+            database({}, markers=markers, log=log),
+            mock.patch.object(retention.store, "ensure_schema", lambda c: None),
+            mock.patch.object(retention, "purge_database", lambda live, now: calls.append("db") or {}),
+            mock.patch.object(
+                retention, "purge_notion", lambda live, now, environ=None: calls.append("notion") or notion
+            ),
+        ):
             try:
                 result = retention.run(live, now=NOW, force=force)
             except retention.notion_client.NotionError as error:
@@ -197,9 +258,18 @@ class CatchUp(unittest.TestCase):
 
     def test_a_failed_purge_leaves_only_the_attempt_marker_so_it_retries_after_six_hours(self):
         log, calls = [], []
-        with database({}, log=log), mock.patch.object(retention.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(retention, "purge_database", lambda live, now: {}), \
-                mock.patch.object(retention, "purge_notion", lambda live, now, environ=None: (_ for _ in ()).throw(retention.notion_client.NotionError("NOTION_HTTP_400"))):
+        with (
+            database({}, log=log),
+            mock.patch.object(retention.store, "ensure_schema", lambda c: None),
+            mock.patch.object(retention, "purge_database", lambda live, now: {}),
+            mock.patch.object(
+                retention,
+                "purge_notion",
+                lambda live, now, environ=None: (_ for _ in ()).throw(
+                    retention.notion_client.NotionError("NOTION_HTTP_400")
+                ),
+            ),
+        ):
             with self.assertRaises(retention.notion_client.NotionError):
                 retention.run(True, now=NOW, force=False)
         self.assertEqual(log, [retention.TRY_KEY])
@@ -209,7 +279,11 @@ class CatchUp(unittest.TestCase):
         self.assertEqual(calls, ["db", "notion"])  # after it, the catch-up runs
 
     def test_a_fail_closed_purge_is_a_failure_with_a_fixed_code_and_no_success_marker(self):
-        for notion in ({"target": "target_mismatch", "handoff": "ok"}, {"target": "ok", "handoff": "unreadable"}, {"target": "lane_options_unreadable", "handoff": "ok"}):
+        for notion in (
+            {"target": "target_mismatch", "handoff": "ok"},
+            {"target": "ok", "handoff": "unreadable"},
+            {"target": "lane_options_unreadable", "handoff": "ok"},
+        ):
             result, calls, log = self.run_stage({}, notion=notion)
             self.assertTrue(str(result).startswith("PURGE_INCOMPLETE target="), result)
             self.assertEqual(log, [retention.TRY_KEY])

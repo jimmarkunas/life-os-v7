@@ -19,6 +19,7 @@ class RacingCursor:
     """Every column starts missing, each ALTER is refused with `error`, and a check made after a refused ALTER answers
     `landed` (did the other lane's column.
     """
+
     def __init__(self, error, landed):
         self.error, self.landed, self.altered, self.last = error, landed, [], ""
 

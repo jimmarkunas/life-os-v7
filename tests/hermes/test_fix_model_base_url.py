@@ -1,4 +1,5 @@
 """model.base_url points at OpenRouter while the provider is openai-codex."""
+
 import hashlib
 import os
 import stat
@@ -38,7 +39,12 @@ class Fix(HermesHome, unittest.TestCase):
     CONFIG = CONFIG
 
     def run_script(self, *args):
-        done = subprocess.run(["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args], capture_output=True, text=True, env=this_python.env())
+        done = subprocess.run(
+            ["bash", SCRIPT, "--home", self.home, "--backup", self.backup, *args],
+            capture_output=True,
+            text=True,
+            env=this_python.env(),
+        )
         return done.returncode, done.stdout + done.stderr
 
     def test_dry_run_names_the_change_and_writes_nothing(self):
@@ -59,7 +65,9 @@ class Fix(HermesHome, unittest.TestCase):
         self.assertIn("  base_url: " + NEW, now)
         self.assertEqual(now.count(OLD), 1)  # the unrelated 'other.base_url' keeps its value
         self.assertIn("other:\n  base_url: " + OLD, now)
-        self.assertEqual(now.replace("  base_url: " + NEW, "  base_url: " + OLD + "   # set during an earlier switch"), original)
+        self.assertEqual(
+            now.replace("  base_url: " + NEW, "  base_url: " + OLD + "   # set during an earlier switch"), original
+        )
         self.assertEqual(open(os.path.join(self.backup, "config.yaml")).read(), original)
         self.assertEqual(stat.S_IMODE(os.stat(self.conf).st_mode), 0o640)
         self.assertIn("read-back OK", out)
@@ -81,11 +89,18 @@ class Fix(HermesHome, unittest.TestCase):
         self.write(CONFIG.replace("  api_key: SECRET-SHOULD-NEVER-PRINT\n", "  base_url: " + OLD + "\n"))
         self.assertEqual(self.run_script("--apply")[0], 1)
         self.assertEqual(self.run_script("--to", "http://plain.example")[0], 1)
-        self.assertEqual(subprocess.run(["bash", SCRIPT, "--home", os.path.join(self.tmp, "none")], capture_output=True, text=True).returncode, 1)
+        self.assertEqual(
+            subprocess.run(
+                ["bash", SCRIPT, "--home", os.path.join(self.tmp, "none")], capture_output=True, text=True
+            ).returncode,
+            1,
+        )
         self.assertEqual(self.run_script("--nonsense")[0], 2)
 
     def test_no_restart_command_in_the_code(self):
-        code = "\n".join(l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#") and "echo" not in l)
+        code = "\n".join(
+            l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#") and "echo" not in l
+        )
         self.assertNotIn("systemctl", code)
 
 

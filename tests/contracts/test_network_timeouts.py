@@ -1,6 +1,7 @@
 """no network call in lifeos/ waits forever: every call that leaves the process carries an explicit timeout, and a new
 one without it fails CI.
 """
+
 import ast
 import pathlib
 import unittest
@@ -42,10 +43,28 @@ def findings():
                 out.append((where, f"{base}.{name}"))
             elif base == "pymysql" and name == "connect" and not {"connect_timeout", "read_timeout"} <= kw:
                 out.append((where, "pymysql.connect needs connect_timeout and read_timeout"))
-            elif base == "subprocess" and name in SUBPROCESS and any(p in ast.unparse(node) for p in NETWORK_PROGRAMS) and "timeout" not in kw:
+            elif (
+                base == "subprocess"
+                and name in SUBPROCESS
+                and any(p in ast.unparse(node) for p in NETWORK_PROGRAMS)
+                and "timeout" not in kw
+            ):
                 out.append((where, f"subprocess.{name} to a network program"))
-            elif name == "connect" and isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in ("s", "sock", "sk") and node.args:
-                owner = next((fn for fn in functions if fn.lineno <= node.lineno <= max(getattr(n, "lineno", fn.lineno) for n in ast.walk(fn))), None)
+            elif (
+                name == "connect"
+                and isinstance(f, ast.Attribute)
+                and isinstance(f.value, ast.Name)
+                and f.value.id in ("s", "sock", "sk")
+                and node.args
+            ):
+                owner = next(
+                    (
+                        fn
+                        for fn in functions
+                        if fn.lineno <= node.lineno <= max(getattr(n, "lineno", fn.lineno) for n in ast.walk(fn))
+                    ),
+                    None,
+                )
                 if owner is None or "settimeout" not in ast.unparse(owner):
                     out.append((where, "socket connect with no settimeout in its function"))
     return [(w, what) for w, what in out if w not in EXEMPT]
@@ -53,15 +72,30 @@ def findings():
 
 class EveryNetworkCallHasATimeout(unittest.TestCase):
     def test_no_network_call_in_lifeos_is_without_a_timeout(self):
-        self.assertEqual(findings(), [], "add an explicit timeout to each call (docs/platform/timeouts.md lists them all)")
+        self.assertEqual(
+            findings(), [], "add an explicit timeout to each call (docs/platform/timeouts.md lists them all)"
+        )
 
     def test_the_scan_really_sees_calls_and_catches_a_missing_timeout(self):
-        sample = ast.parse("import urllib.request\nurllib.request.urlopen(request)\nsubprocess.run(['ssh', 'host', 'ls'])\nsubprocess.run(['ssh', 'host'], timeout=5)\n")
+        sample = ast.parse(
+            "import urllib.request\nurllib.request.urlopen(request)\nsubprocess.run(['ssh', 'host', 'ls'])\nsubprocess.run(['ssh', 'host'], timeout=5)\n"
+        )
         calls = [n for n in ast.walk(sample) if isinstance(n, ast.Call)]
-        missing = [n for n in calls if ((n.func.attr if isinstance(n.func, ast.Attribute) else "") == "urlopen" or "ssh" in ast.unparse(n)) and "timeout" not in _keywords(n)]
+        missing = [
+            n
+            for n in calls
+            if ((n.func.attr if isinstance(n.func, ast.Attribute) else "") == "urlopen" or "ssh" in ast.unparse(n))
+            and "timeout" not in _keywords(n)
+        ]
         self.assertEqual(len(missing), 2)
-        total = sum(1 for p in (ROOT / "lifeos").rglob("*.py") for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.Call)
-                    and (n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")) in ("urlopen", "create_connection"))
+        total = sum(
+            1
+            for p in (ROOT / "lifeos").rglob("*.py")
+            for n in ast.walk(ast.parse(p.read_text()))
+            if isinstance(n, ast.Call)
+            and (n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", ""))
+            in ("urlopen", "create_connection")
+        )
         self.assertGreaterEqual(total, 10)
 
 

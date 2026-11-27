@@ -1,6 +1,7 @@
 """rejection and offer mail for the companies in the Hiring Pipeline is found by fixed wording, matched to one
 opportunity or not at all, and shown as a.
 """
+
 import json
 import unittest
 from datetime import datetime, timedelta
@@ -16,14 +17,31 @@ CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=CT)
 
 
-def msg(subject="Your application", body="", sender="Recruiting Team", address="jobs@example.com", days_ago=3, mid="m1"):
-    return {"provider": "gmail", "id": mid, "received": (NOW - timedelta(days=days_ago)).isoformat(), "sender_name": sender, "sender_address": address,
-            "subject": subject, "body": body, "folder": "INBOX", "markers": {}, "url": ""}
+def msg(
+    subject="Your application", body="", sender="Recruiting Team", address="jobs@example.com", days_ago=3, mid="m1"
+):
+    return {
+        "provider": "gmail",
+        "id": mid,
+        "received": (NOW - timedelta(days=days_ago)).isoformat(),
+        "sender_name": sender,
+        "sender_address": address,
+        "subject": subject,
+        "body": body,
+        "folder": "INBOX",
+        "markers": {},
+        "url": "",
+    }
 
 
 def row(company, role, event_days_ago=None, applied="2026-09-01"):
-    return {"key": "|".join(names.tokens(company)) + "|" + "|".join(sorted(names.tokens(role))), "company": company, "role": role,
-            "event_start": (NOW - timedelta(days=event_days_ago)).isoformat() if event_days_ago is not None else None, "applied_on": applied}
+    return {
+        "key": "|".join(names.tokens(company)) + "|" + "|".join(sorted(names.tokens(role))),
+        "company": company,
+        "role": role,
+        "event_start": (NOW - timedelta(days=event_days_ago)).isoformat() if event_days_ago is not None else None,
+        "applied_on": applied,
+    }
 
 
 WALMART = row("Walmart", "Senior Manager, Operations and Implementation", 35)
@@ -35,26 +53,52 @@ REJECTION = "Thank you for interviewing. Unfortunately we will not be moving for
 
 class WordingTests(unittest.TestCase):
     def test_rejection_and_offer_wording_is_recognised_and_ordinary_mail_is_not(self):
-        for text in ("We will not be moving forward with your application.", "We have decided to move forward with other candidates.", "We regret to inform you that the position has been filled.",
-                     "You were not selected for this role.", "We are pursuing other candidates at this time."):
+        for text in (
+            "We will not be moving forward with your application.",
+            "We have decided to move forward with other candidates.",
+            "We regret to inform you that the position has been filled.",
+            "You were not selected for this role.",
+            "We are pursuing other candidates at this time.",
+        ):
             self.assertEqual(outcomes.kind_of(text), outcomes.REJECTED, text)
-        for text in ("We are pleased to offer you the role.", "Please find your offer letter attached.", "We would like to extend an offer of employment."):
+        for text in (
+            "We are pleased to offer you the role.",
+            "Please find your offer letter attached.",
+            "We would like to extend an offer of employment.",
+        ):
             self.assertEqual(outcomes.kind_of(text), outcomes.OFFER, text)
-        for text in ("Thanks for applying - we will be in touch.", "Your interview is confirmed for Thursday.", "Move forward with your application by completing the assessment.", "Jobs like this one"):
+        for text in (
+            "Thanks for applying - we will be in touch.",
+            "Your interview is confirmed for Thursday.",
+            "Move forward with your application by completing the assessment.",
+            "Jobs like this one",
+        ):
             self.assertIsNone(outcomes.kind_of(text), text)
 
     def test_decided_not_to_move_forward_with_your_application_is_a_rejection_and_the_positive_forms_are_not(self):
-        for text in ("After careful review, we have decided not to move forward with your application.", "We've decided not to proceed forward at this time.", "We have decided not to go forward with your candidacy."):
+        for text in (
+            "After careful review, we have decided not to move forward with your application.",
+            "We've decided not to proceed forward at this time.",
+            "We have decided not to go forward with your candidacy.",
+        ):
             self.assertEqual(outcomes.kind_of(text), outcomes.REJECTED, text)
-        for text in ("We have decided to move forward with your application.", "We have decided to move forward with your candidacy and would like to schedule an interview.",
-                     "Please decide whether to move forward with the assessment.", "We have received your application and decided nothing yet."):
+        for text in (
+            "We have decided to move forward with your application.",
+            "We have decided to move forward with your candidacy and would like to schedule an interview.",
+            "Please decide whether to move forward with the assessment.",
+            "We have received your application and decided nothing yet.",
+        ):
             self.assertIsNone(outcomes.kind_of(text), text)
 
     def test_the_company_must_appear_in_order_in_the_sender_subject_domain_or_opening_of_the_body(self):
         self.assertTrue(outcomes.mentions(msg(subject="Update from Walmart Global Tech"), "Walmart"))
         self.assertTrue(outcomes.mentions(msg(sender="Walmart Talent"), "Walmart Inc."))
         self.assertTrue(outcomes.mentions(msg(address="jobs@linkedin.com"), "LinkedIn"))
-        self.assertTrue(outcomes.mentions(msg(body="Dear Jim, thank you for your interest in Smith Consulting."), "Smith Consulting"))
+        self.assertTrue(
+            outcomes.mentions(
+                msg(body="Dear Jim, thank you for your interest in Smith Consulting."), "Smith Consulting"
+            )
+        )
         self.assertFalse(outcomes.mentions(msg(subject="Update", body="Consulting at Smith"), "Smith Consulting"))
         self.assertFalse(outcomes.mentions(msg(subject="Unrelated"), "Walmart"))
         self.assertFalse(outcomes.mentions(msg(subject="Hello"), "ab"))  # too short to mean anything
@@ -62,7 +106,16 @@ class WordingTests(unittest.TestCase):
 
 class FindTests(unittest.TestCase):
     def test_a_rejection_after_the_interview_is_matched_to_that_row_and_marks_a_role_match(self):
-        found, stats = outcomes.find([msg(subject="Your application to Walmart", body=REJECTION + " Senior Manager, Operations and Implementation role.", days_ago=3)], [WALMART, SMITH, UBER])
+        found, stats = outcomes.find(
+            [
+                msg(
+                    subject="Your application to Walmart",
+                    body=REJECTION + " Senior Manager, Operations and Implementation role.",
+                    days_ago=3,
+                )
+            ],
+            [WALMART, SMITH, UBER],
+        )
         self.assertEqual(list(found), [WALMART["key"]])
         self.assertEqual((found[WALMART["key"]]["kind"], found[WALMART["key"]]["match"]), (outcomes.REJECTED, "role"))
         self.assertEqual((stats["outcome_messages"], stats["ambiguous"], stats["unmatched"]), (1, 0, 0))
@@ -70,9 +123,20 @@ class FindTests(unittest.TestCase):
     def test_a_decided_not_to_move_forward_rejection_is_matched_to_its_opportunity_and_routine_mail_is_not(self):
         letter = "Dear Candidate, thank you for applying to Walmart. After careful review, we have decided not to move forward with your application. Senior Manager, Operations and Implementation."
         routine = "Dear Candidate, thank you for applying to Walmart. We have decided to move forward with your application and will be in touch."
-        found, stats = outcomes.find([msg(subject="Your application update", sender="Walmart Talent", body=letter, days_ago=3, mid="a"),
-                                      msg(subject="Application received", sender="Walmart Talent", body=routine, days_ago=1, mid="b"),
-                                      msg(subject="Application received", sender="Uber Talent", body="Thanks for applying to Uber.", days_ago=1, mid="c")], [WALMART, UBER])
+        found, stats = outcomes.find(
+            [
+                msg(subject="Your application update", sender="Walmart Talent", body=letter, days_ago=3, mid="a"),
+                msg(subject="Application received", sender="Walmart Talent", body=routine, days_ago=1, mid="b"),
+                msg(
+                    subject="Application received",
+                    sender="Uber Talent",
+                    body="Thanks for applying to Uber.",
+                    days_ago=1,
+                    mid="c",
+                ),
+            ],
+            [WALMART, UBER],
+        )
         self.assertEqual(list(found), [WALMART["key"]])
         self.assertEqual((found[WALMART["key"]]["kind"], found[WALMART["key"]]["match"]), (outcomes.REJECTED, "role"))
         self.assertEqual((stats["outcome_messages"], stats["ambiguous"], stats["unmatched"]), (1, 0, 0))
@@ -82,7 +146,9 @@ class FindTests(unittest.TestCase):
         self.assertEqual(found[WALMART["key"]]["match"], "company")
 
     def test_mail_older_than_the_rows_last_evidence_is_not_an_outcome_for_it(self):
-        found, stats = outcomes.find([msg(subject="Walmart", body=REJECTION, days_ago=40)], [WALMART])  # the interview was 35 days ago
+        found, stats = outcomes.find(
+            [msg(subject="Walmart", body=REJECTION, days_ago=40)], [WALMART]
+        )  # the interview was 35 days ago
         self.assertEqual((found, stats["unmatched"]), ({}, 1))
 
     def test_a_message_naming_two_pipeline_companies_or_two_unreadable_roles_is_never_guessed(self):
@@ -91,13 +157,26 @@ class FindTests(unittest.TestCase):
         twin = row("Uber", "Senior Program Manager", 14)
         none_named, stats = outcomes.find([msg(subject="Uber application", body=REJECTION)], [UBER, twin])
         self.assertEqual((none_named, stats["ambiguous"]), ({}, 1))
-        named, _ = outcomes.find([msg(subject="Uber application", body=REJECTION + " Technical Project Manager.")], [UBER, twin])
+        named, _ = outcomes.find(
+            [msg(subject="Uber application", body=REJECTION + " Technical Project Manager.")], [UBER, twin]
+        )
         self.assertEqual(list(named), [UBER["key"]])
 
     def test_the_newest_outcome_mail_wins_and_an_offer_beats_a_rejection_in_one_message(self):
-        found, _ = outcomes.find([msg(subject="Uber", body="We are pleased to offer you the role.", days_ago=5, mid="a"), msg(subject="Uber", body=REJECTION, days_ago=2, mid="b")], [UBER])
+        found, _ = outcomes.find(
+            [
+                msg(subject="Uber", body="We are pleased to offer you the role.", days_ago=5, mid="a"),
+                msg(subject="Uber", body=REJECTION, days_ago=2, mid="b"),
+            ],
+            [UBER],
+        )
         self.assertEqual(found[UBER["key"]]["kind"], outcomes.REJECTED)
-        self.assertEqual(outcomes.kind_of("We are pleased to offer you the role. We will not be moving forward with other candidates."), outcomes.OFFER)
+        self.assertEqual(
+            outcomes.kind_of(
+                "We are pleased to offer you the role. We will not be moving forward with other candidates."
+            ),
+            outcomes.OFFER,
+        )
 
     def test_the_window_reaches_back_to_the_oldest_evidence_within_bounds(self):
         self.assertEqual(outcomes.window_days([UBER], NOW), 16)
@@ -109,23 +188,37 @@ class FindTests(unittest.TestCase):
 
 class ShownTests(unittest.TestCase):
     """The pipeline says what to do"""
+
     def compiled(self, outcome, parent=True, role="Senior Manager, Operations and Implementation"):
         parents = [{"id": "p1", "company": "Walmart", "role": role, "rounds": 1}] if parent else []
         applied = [{"company": "Walmart", "role": role, "applied_on": "2026-09-01"}]
         events = [{"id": "e1", "title": "Interview Walmart", "start": (NOW - timedelta(days=35)).isoformat()}]
-        return C.compile_rows(applied, parents, events, None, {"ledger": True, "parents": True, "calendar": True}, NOW, outcomes={WALMART["key"]: outcome} if outcome else None)
+        return C.compile_rows(
+            applied,
+            parents,
+            events,
+            None,
+            {"ledger": True, "parents": True, "calendar": True},
+            NOW,
+            outcomes={WALMART["key"]: outcome} if outcome else None,
+        )
 
     def action(self, result):
         return [t for t, _ in render.row_cells(result["rows"][0], NOW)][2]
 
     def test_a_rejection_after_the_interview_says_to_confirm_and_retire_and_the_stage_is_untouched(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "role"})
-        self.assertEqual(self.action(result), f"Rejection email received {(NOW - timedelta(days=3)).strftime('%b %-d')} · confirm, then move the Notes page to Retired")
+        self.assertEqual(
+            self.action(result),
+            f"Rejection email received {(NOW - timedelta(days=3)).strftime('%b %-d')} · confirm, then move the Notes page to Retired",
+        )
         self.assertEqual(result["rows"][0]["stage"], "Interviewing")
         self.assertEqual(len(result["rows"]), 1)  # still listed: V7 closes nothing
 
     def test_a_company_only_rejection_is_possible_and_a_row_without_a_notes_page_keeps_applied_as_history(self):
-        result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "company"}, parent=False)
+        result = self.compiled(
+            {"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "company"}, parent=False
+        )
         self.assertTrue(self.action(result).startswith("Possible rejection email"))
         self.assertTrue(self.action(result).endswith("· confirm (Applied stays as history)"))
 
@@ -133,8 +226,17 @@ class ShownTests(unittest.TestCase):
         for kind in ("REJECTED", "OFFER"):
             for match in ("role", "company"):
                 for parent in (True, False):
-                    text = self.action(self.compiled({"kind": kind, "received": (NOW - timedelta(days=2)).isoformat(), "match": match}, parent=parent))
-                    self.assertNotRegex(text.lower(), r"untick|uncheck|clear applied|remove applied|applied in the ledger", (kind, match, parent))
+                    text = self.action(
+                        self.compiled(
+                            {"kind": kind, "received": (NOW - timedelta(days=2)).isoformat(), "match": match},
+                            parent=parent,
+                        )
+                    )
+                    self.assertNotRegex(
+                        text.lower(),
+                        r"untick|uncheck|clear applied|remove applied|applied in the ledger",
+                        (kind, match, parent),
+                    )
 
     def test_an_offer_says_to_review_and_respond(self):
         result = self.compiled({"kind": "OFFER", "received": (NOW - timedelta(days=1)).isoformat(), "match": "role"})
@@ -142,14 +244,36 @@ class ShownTests(unittest.TestCase):
         self.assertTrue(self.action(result).startswith("Offer email received"))
 
     def test_an_outcome_older_than_the_rows_last_evidence_is_ignored_and_the_row_ages_as_before(self):
-        result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=60)).isoformat(), "match": "role"})
+        result = self.compiled(
+            {"kind": "REJECTED", "received": (NOW - timedelta(days=60)).isoformat(), "match": "role"}
+        )
         self.assertNotIn("outcome", result["rows"][0])
         self.assertEqual(self.action(result), "Stale · no news in 35 days · follow up (due Sep 15)")
 
     def test_a_retired_page_still_closes_the_pursuit_whatever_the_mail_says(self):
-        result = C.compile_rows([{"company": "Walmart", "role": "Senior Manager, Operations and Implementation", "applied_on": "2026-09-01"}],
-                                [{"id": "p1", "company": "Walmart", "role": "Senior Manager, Operations and Implementation", "rounds": 1, "retired": True}], [], None,
-                                {"ledger": True, "parents": True, "calendar": True}, NOW, outcomes={WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}})
+        result = C.compile_rows(
+            [
+                {
+                    "company": "Walmart",
+                    "role": "Senior Manager, Operations and Implementation",
+                    "applied_on": "2026-09-01",
+                }
+            ],
+            [
+                {
+                    "id": "p1",
+                    "company": "Walmart",
+                    "role": "Senior Manager, Operations and Implementation",
+                    "rounds": 1,
+                    "retired": True,
+                }
+            ],
+            [],
+            None,
+            {"ledger": True, "parents": True, "calendar": True},
+            NOW,
+            outcomes={WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}},
+        )
         self.assertEqual((result["rows"], result["closed"]), ([], 1))
 
 
@@ -167,22 +291,64 @@ class FakeGmail:
         if message_id in self.unreadable:
             raise GmailError("GMAIL_MESSAGE_UNREADABLE")
         r = next(x for x in self.records if x["id"] == message_id)
-        return {"id": r["id"], "received_at": r["received"], "headers": {"from": f"{r['sender_name']} <{r['sender_address']}>", "subject": r["subject"]}, "body_text": r["body"], "label_ids": [], "thread": r["id"]}
+        return {
+            "id": r["id"],
+            "received_at": r["received"],
+            "headers": {"from": f"{r['sender_name']} <{r['sender_address']}>", "subject": r["subject"]},
+            "body_text": r["body"],
+            "label_ids": [],
+            "thread": r["id"],
+        }
 
 
 class RunTests(unittest.TestCase):
-    PRIOR = {"rows": [{"key": WALMART["key"], "company": "Walmart", "role": WALMART["role"], "event_start": WALMART["event_start"], "applied_on": "2026-09-01"},
-                      {"key": UBER["key"], "company": "Uber", "role": UBER["role"], "event_start": UBER["event_start"], "applied_on": "2026-09-01"}]}
+    PRIOR = {
+        "rows": [
+            {
+                "key": WALMART["key"],
+                "company": "Walmart",
+                "role": WALMART["role"],
+                "event_start": WALMART["event_start"],
+                "applied_on": "2026-09-01",
+            },
+            {
+                "key": UBER["key"],
+                "company": "Uber",
+                "role": UBER["role"],
+                "event_start": UBER["event_start"],
+                "applied_on": "2026-09-01",
+            },
+        ]
+    }
 
     def go(self, records=(), live=True, store=None, prior=PRIOR, broken=False, accounts=None):
         store = store or FakeStore()
         gmail = FakeGmail(list(records), broken)
-        with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True), mock.patch.object(outcomes.hiring_snapshot, "load", lambda c: prior):
-            return outcomes.run(0, live, environ={}, gmail=gmail, outlook_accounts=[] if accounts is None else accounts, connection=object(), now=NOW), store, gmail
+        with (
+            mock.patch.object(outcomes, "STORE", store),
+            mock.patch.object(outcomes, "_exists", lambda c: True),
+            mock.patch.object(outcomes.hiring_snapshot, "load", lambda c: prior),
+        ):
+            return (
+                outcomes.run(
+                    0,
+                    live,
+                    environ={},
+                    gmail=gmail,
+                    outlook_accounts=[] if accounts is None else accounts,
+                    connection=object(),
+                    now=NOW,
+                ),
+                store,
+                gmail,
+            )
 
     def test_a_scan_finds_the_rejection_saves_it_and_reports_counts_only(self):
         counts, store, gmail = self.go([msg(subject="Your Walmart application", body=REJECTION, days_ago=3)])
-        self.assertEqual((counts["status"], counts["matched"], counts["rejected"], counts["saved"], counts["roster"]), ("fresh", 1, 1, 1, 2))
+        self.assertEqual(
+            (counts["status"], counts["matched"], counts["rejected"], counts["saved"], counts["roster"]),
+            ("fresh", 1, 1, 1, 2),
+        )
         self.assertEqual(list(store.row["outcomes"]), [WALMART["key"]])
         self.assertIn('"Walmart"', gmail.queries[0])  # Gmail is asked only about the pipeline's companies
         self.assertIn("newer_than:37d", gmail.queries[0])
@@ -195,14 +361,35 @@ class RunTests(unittest.TestCase):
         self.assertEqual((counts["matched"], counts["saved"], store.saves), (1, 0, 0))
 
     def test_a_scan_that_is_not_due_reads_no_mail(self):
-        store = FakeStore({"schema": 1, "scanned_at": (NOW - timedelta(hours=3)).isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
+        store = FakeStore(
+            {
+                "schema": 1,
+                "scanned_at": (NOW - timedelta(hours=3)).isoformat(),
+                "taken_at": NOW.isoformat(),
+                "outcomes": {},
+            }
+        )
         counts, _, gmail = self.go([msg(subject="Walmart", body=REJECTION)], store=store)
         self.assertEqual((counts["status"], gmail.queries, store.saves), ("not_due", [], 0))
-        old = FakeStore({"schema": 1, "scanned_at": (NOW - timedelta(hours=13)).isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
+        old = FakeStore(
+            {
+                "schema": 1,
+                "scanned_at": (NOW - timedelta(hours=13)).isoformat(),
+                "taken_at": NOW.isoformat(),
+                "outcomes": {},
+            }
+        )
         self.assertEqual(self.go([], store=old)[0]["status"], "fresh")
 
     def test_a_source_that_cannot_be_read_in_full_saves_nothing_and_fails_with_a_fixed_code(self):
-        store = FakeStore({"schema": 1, "scanned_at": (NOW - timedelta(hours=30)).isoformat(), "taken_at": NOW.isoformat(), "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}}})
+        store = FakeStore(
+            {
+                "schema": 1,
+                "scanned_at": (NOW - timedelta(hours=30)).isoformat(),
+                "taken_at": NOW.isoformat(),
+                "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}},
+            }
+        )
         with self.assertRaises(outcomes.OutcomeError) as error:
             self.go([], store=store, broken=True)
         self.assertEqual(str(error.exception), "OUTCOMES_DEGRADED_SOURCE_INCOMPLETE")
@@ -214,6 +401,7 @@ class RunTests(unittest.TestCase):
 
     def test_the_stage_is_registered_and_the_hiring_stage_reads_what_it_found(self):
         from lifeos import run as entry
+
         self.assertEqual(entry.STAGES["hiring-outcomes"].target, ("lifeos.hiring.outcomes", "run"))
         self.assertEqual(mail.WINDOW_DAYS, 14)  # the Recruiters scan's own window is unchanged
 
@@ -222,33 +410,86 @@ class ContactTests(unittest.TestCase):
     """only positive evidence of the hiring team writing resets the Stale clock: an inbox message from a person on the
     employer's own domain.
     """
+
     def test_a_person_at_the_employer_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
-        found = outcomes.contacts([msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=9, mid="a"),
-                                   msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=2, mid="b")], [EXAMPLE])
-        self.assertEqual(found, {EXAMPLE["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()})
+        found = outcomes.contacts(
+            [
+                msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=9, mid="a"),
+                msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=2, mid="b"),
+            ],
+            [EXAMPLE],
+        )
+        self.assertEqual(
+            found, {EXAMPLE["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()}
+        )
 
     def test_mailboxes_other_domains_junk_and_unattributable_mail_are_never_contact(self):
-        for address in ("no-reply@example.com", "digest-noreply@example.com", "auto-confirm@example.com", "shipment-tracking@example.com",
-                        "store-news@example.com", "jobs@example.com", "careers@example.com", "talent.team@example.com",
-                        "pat" + chr(64) + "gmail.com", "recruiter@linkedin.com", "broken-address"):
-            self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
+        for address in (
+            "no-reply@example.com",
+            "digest-noreply@example.com",
+            "auto-confirm@example.com",
+            "shipment-tracking@example.com",
+            "store-news@example.com",
+            "jobs@example.com",
+            "careers@example.com",
+            "talent.team@example.com",
+            "pat" + chr(64) + "gmail.com",
+            "recruiter@linkedin.com",
+            "broken-address",
+        ):
+            self.assertEqual(
+                outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address
+            )
         for marker in ("bulk", "auto", "noreply"):  # list, newsletter or auto-submitted mail
-            marked = dict(msg(subject="Example weekly update", sender="Maria Lopez", address="maria@example.com"), markers={marker: True})
+            marked = dict(
+                msg(subject="Example weekly update", sender="Maria Lopez", address="maria@example.com"),
+                markers={marker: True},
+            )
             self.assertEqual(outcomes.contacts([marked], [EXAMPLE]), {}, marker)
-        for sender, address in (("Example.com", "payments-messages@example.com"), ("Example Customer Service", "cs-reply@example.com"),
-                                ("Example Events", "events@example.com"), ("Uber Receipts", "uber@example.com"), ("Delivery Notice", "delivery-notice@example.com")):  # brand or team senders
-            self.assertEqual(outcomes.contacts([msg(subject="Your Example refund", sender=sender, address=address)], [EXAMPLE]), {}, address)
-        for domain, own in (("example.com", True), ("example.co.uk", True), ("mail.example.com", False), ("example.myworkday.com", False),
-                            ("example.zendesk.com", False), ("examples.com", False)):  # the registered domain only, never a tenant
+        for sender, address in (
+            ("Example.com", "payments-messages@example.com"),
+            ("Example Customer Service", "cs-reply@example.com"),
+            ("Example Events", "events@example.com"),
+            ("Uber Receipts", "uber@example.com"),
+            ("Delivery Notice", "delivery-notice@example.com"),
+        ):  # brand or team senders
+            self.assertEqual(
+                outcomes.contacts([msg(subject="Your Example refund", sender=sender, address=address)], [EXAMPLE]),
+                {},
+                address,
+            )
+        for domain, own in (
+            ("example.com", True),
+            ("example.co.uk", True),
+            ("mail.example.com", False),
+            ("example.myworkday.com", False),
+            ("example.zendesk.com", False),
+            ("examples.com", False),
+        ):  # the registered domain only, never a tenant
             self.assertEqual(outcomes._own_domain(domain, "Example"), own, domain)
         junk = dict(msg(subject="Example update", sender="Maria Lopez", address="maria@example.com"), folder="JUNK")
         self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})  # spam never resets the clock
-        self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", sender="Maria Lopez", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed
-        self.assertEqual(outcomes.contacts([msg(subject="Example update", sender="Maria Lopez", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})  # before the interview
+        self.assertEqual(
+            outcomes.contacts(
+                [msg(subject="Example and Walmart roles", sender="Maria Lopez", address="maria@example.com")],
+                [EXAMPLE, WALMART],
+            ),
+            {},
+        )  # two companies: never guessed
+        self.assertEqual(
+            outcomes.contacts(
+                [msg(subject="Example update", sender="Maria Lopez", address="maria@example.com", days_ago=20)],
+                [EXAMPLE],
+            ),
+            {},
+        )  # before the interview
 
     def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
         prior = {"rows": [dict(EXAMPLE)]}
-        counts, store, _ = RunTests().go([msg(subject="Example next steps", sender="Maria Lopez", address="maria@example.com", days_ago=2)], prior=prior)
+        counts, store, _ = RunTests().go(
+            [msg(subject="Example next steps", sender="Maria Lopez", address="maria@example.com", days_ago=2)],
+            prior=prior,
+        )
         self.assertEqual((counts["contacts"], list(store.row["contacts"])), (1, [EXAMPLE["key"]]))
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object())[2], store.row["contacts"])
@@ -258,8 +499,15 @@ class ContactTests(unittest.TestCase):
         self.assertNotIn("maria", json.dumps(counts))
 
     def test_the_compiler_carries_the_contact_onto_its_row(self):
-        got = C.compile_rows([{"company": "Uber", "role": UBER["role"], "applied_on": "2026-09-01"}], [], [], None,
-                             {"ledger": True, "parents": True, "calendar": True}, NOW, contacts={UBER["key"]: NOW.isoformat()})
+        got = C.compile_rows(
+            [{"company": "Uber", "role": UBER["role"], "applied_on": "2026-09-01"}],
+            [],
+            [],
+            None,
+            {"ledger": True, "parents": True, "calendar": True},
+            NOW,
+            contacts={UBER["key"]: NOW.isoformat()},
+        )
         self.assertEqual(got["rows"][0]["contact"], NOW.isoformat())
 
 
@@ -268,7 +516,12 @@ class EntryPointTests(unittest.TestCase):
     shared snapshot store (real SQL.
     """
 
-    PIPELINE = {"schema": 1, "taken_at": NOW.isoformat(), "accepted_at": NOW.isoformat(), "rows": RunTests.PRIOR["rows"]}
+    PIPELINE = {
+        "schema": 1,
+        "taken_at": NOW.isoformat(),
+        "accepted_at": NOW.isoformat(),
+        "rows": RunTests.PRIOR["rows"],
+    }
 
     class Tables:
         def __init__(self, mismatch=False):
@@ -283,7 +536,11 @@ class EntryPointTests(unittest.TestCase):
             elif sql.startswith("SELECT payload"):
                 table = sql.split("FROM")[1].split()[0]
                 got = self.rows.get((table, args[0]))
-                cur.row = ((got.replace("REJECTED", "OFFER") if self.mismatch and table == "v7_hiring_outcomes" else got),) if got else None
+                cur.row = (
+                    ((got.replace("REJECTED", "OFFER") if self.mismatch and table == "v7_hiring_outcomes" else got),)
+                    if got
+                    else None
+                )
 
     def go(self, records=(), live=True, broken=False, tables=None, accounts=None, prior=True, unreadable=()):
         import contextlib
@@ -291,20 +548,37 @@ class EntryPointTests(unittest.TestCase):
         from lifeos import run as entry
         from lifeos.platform import db
         from tests.kit.db import FakeConn
+
         tables = tables or self.Tables()
         if prior:
             tables.rows.setdefault(("v7_hiring_pipeline", 1), json.dumps(self.PIPELINE))
-        conn, fake, out, err = FakeConn(handler=tables.handler), FakeGmail(list(records), broken, unreadable), io.StringIO(), io.StringIO()
+        conn, fake, out, err = (
+            FakeConn(handler=tables.handler),
+            FakeGmail(list(records), broken, unreadable),
+            io.StringIO(),
+            io.StringIO(),
+        )
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(db, "connect", lambda: conn))
             stack.enter_context(mock.patch.object(outcomes.Gmail, "from_env", classmethod(lambda cls, *a, **k: fake)))
             stack.enter_context(mock.patch.object(mail, "outlook_accounts", lambda environ: accounts or []))
-            stack.enter_context(mock.patch.object(outcomes, "datetime", mock.Mock(now=lambda tz=None: NOW, fromisoformat=datetime.fromisoformat)))
+            stack.enter_context(
+                mock.patch.object(
+                    outcomes, "datetime", mock.Mock(now=lambda tz=None: NOW, fromisoformat=datetime.fromisoformat)
+                )
+            )
             stack.enter_context(contextlib.redirect_stdout(out))
             stack.enter_context(contextlib.redirect_stderr(err))
             code = entry.main(["hiring-outcomes", "--limit", "0"] + (["--live"] if live else []))
         line = [l for l in out.getvalue().splitlines() if l.startswith("hiring-outcomes:")]
-        return code, (json.loads(line[0].split(":", 1)[1]) if line else None), err.getvalue().strip(), fake, tables, conn
+        return (
+            code,
+            (json.loads(line[0].split(":", 1)[1]) if line else None),
+            err.getvalue().strip(),
+            fake,
+            tables,
+            conn,
+        )
 
     REC = [msg(subject="Your Walmart application", body=REJECTION, days_ago=3)]
 
@@ -316,13 +590,26 @@ class EntryPointTests(unittest.TestCase):
         code, counts, err, fake, tables, _ = self.go(self.REC, tables=tables)
         self.assertEqual((code, counts["status"], counts["saved"], fake.queries), (0, "not_due", 0, []))
 
-    def test_a_decided_not_to_move_forward_rejection_is_stored_through_the_entry_point_and_a_routine_message_stores_nothing(self):
+    def test_a_decided_not_to_move_forward_rejection_is_stored_through_the_entry_point_and_a_routine_message_stores_nothing(
+        self,
+    ):
         letter = "Dear Candidate, thank you for applying to Walmart. After careful review, we have decided not to move forward with your application."
-        code, counts, err, _, tables, _ = self.go([msg(subject="Your application update", sender="Walmart Talent", body=letter, days_ago=3)])
-        self.assertEqual((code, err, counts["status"], counts["saved"], counts["rejected"], counts["matched"]), (0, "", "fresh", 1, 1, 1))
-        self.assertEqual(next(iter(json.loads(tables.rows[("v7_hiring_outcomes", 1)])["outcomes"].values()))["kind"], "REJECTED")
-        routine = "Dear Candidate, thank you for applying to Walmart. We have decided to move forward with your application."
-        code, counts, _, _, tables, _ = self.go([msg(subject="Your application update", sender="Walmart Talent", body=routine, days_ago=3)])
+        code, counts, err, _, tables, _ = self.go(
+            [msg(subject="Your application update", sender="Walmart Talent", body=letter, days_ago=3)]
+        )
+        self.assertEqual(
+            (code, err, counts["status"], counts["saved"], counts["rejected"], counts["matched"]),
+            (0, "", "fresh", 1, 1, 1),
+        )
+        self.assertEqual(
+            next(iter(json.loads(tables.rows[("v7_hiring_outcomes", 1)])["outcomes"].values()))["kind"], "REJECTED"
+        )
+        routine = (
+            "Dear Candidate, thank you for applying to Walmart. We have decided to move forward with your application."
+        )
+        code, counts, _, _, tables, _ = self.go(
+            [msg(subject="Your application update", sender="Walmart Talent", body=routine, days_ago=3)]
+        )
         self.assertEqual((code, counts["status"], counts["matched"], counts["rejected"]), (0, "fresh", 0, 0))
         self.assertEqual(json.loads(tables.rows[("v7_hiring_outcomes", 1)])["outcomes"], {})
 
@@ -335,21 +622,46 @@ class EntryPointTests(unittest.TestCase):
 
     def seeded(self):
         tables = self.Tables()
-        tables.rows[("v7_hiring_outcomes", 1)] = json.dumps({"schema": 1, "taken_at": NOW.isoformat(), "scanned_at": (NOW - timedelta(hours=30)).isoformat(),
-                                                              "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}}})
+        tables.rows[("v7_hiring_outcomes", 1)] = json.dumps(
+            {
+                "schema": 1,
+                "taken_at": NOW.isoformat(),
+                "scanned_at": (NOW - timedelta(hours=30)).isoformat(),
+                "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}},
+            }
+        )
         return tables, tables.rows[("v7_hiring_outcomes", 1)]
 
-    def test_when_no_source_could_be_listed_the_scan_fails_closed_saves_nothing_and_keeps_the_last_accepted_outcomes(self):
+    def test_when_no_source_could_be_listed_the_scan_fails_closed_saves_nothing_and_keeps_the_last_accepted_outcomes(
+        self,
+    ):
         tables, before = self.seeded()
-        for kwargs in ({"broken": True}, {"broken": True, "accounts": [("work", None)]}, {"broken": True, "accounts": [("work", BrokenOutlook())]}):
+        for kwargs in (
+            {"broken": True},
+            {"broken": True, "accounts": [("work", None)]},
+            {"broken": True, "accounts": [("work", BrokenOutlook())]},
+        ):
             code, counts, err, _, tables, _ = self.go(self.REC, tables=tables, **kwargs)
-            self.assertEqual((code, counts["status"], counts["saved"], err), (1, "degraded", 0, "HIRING-OUTCOMES FAILED: OUTCOMES_DEGRADED_SOURCE_INCOMPLETE"), kwargs)
+            self.assertEqual(
+                (code, counts["status"], counts["saved"], err),
+                (1, "degraded", 0, "HIRING-OUTCOMES FAILED: OUTCOMES_DEGRADED_SOURCE_INCOMPLETE"),
+                kwargs,
+            )
             self.assertEqual(tables.rows[("v7_hiring_outcomes", 1)], before)
-            self.assertEqual([s for s in tables.statements if s in ("INSERT", "CREATE", "UPDATE", "DELETE", "REPLACE")], [])
+            self.assertEqual(
+                [s for s in tables.statements if s in ("INSERT", "CREATE", "UPDATE", "DELETE", "REPLACE")], []
+            )
 
     def test_a_clean_listing_with_nothing_unreadable_is_still_fresh_and_saved(self):
         from tests.recruiters.fakes import ReadOnlyOutlook
-        good = {"id": "g1", "receivedDateTime": (NOW - timedelta(days=2)).isoformat(), "subject": "Hello", "from": {"emailAddress": {"name": "Recruiting", "address": "jobs@example.com"}}, "body": {"content": ""}}
+
+        good = {
+            "id": "g1",
+            "receivedDateTime": (NOW - timedelta(days=2)).isoformat(),
+            "subject": "Hello",
+            "from": {"emailAddress": {"name": "Recruiting", "address": "jobs@example.com"}},
+            "body": {"content": ""},
+        }
         code, counts, err, _, tables, _ = self.go(self.REC, accounts=[("work", ReadOnlyOutlook(inbox=[good]))])
         self.assertEqual((code, counts["status"], counts["unreadable"], counts["saved"], err), (0, "fresh", 0, 1, ""))
 
@@ -361,6 +673,7 @@ class EntryPointTests(unittest.TestCase):
 
     def test_the_stage_has_no_notion_or_ledger_write_path_and_never_names_the_applied_property(self):
         import pathlib
+
         text = (pathlib.Path(outcomes.__file__)).read_text()
         for banned in ("Client(", "query_data_source", "update_page", ".call(", "PATCH", "\"Applied\"", "'Applied'"):
             self.assertNotIn(banned, text, banned)

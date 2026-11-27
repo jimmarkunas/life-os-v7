@@ -1,4 +1,5 @@
 """Gmail message and thread reads may run a few at a time."""
+
 import threading
 import time
 import unittest
@@ -36,8 +37,14 @@ class FakeGmail:
         self._enter(message_id)
         if message_id in BAD:
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
-        return {"id": message_id, "received_at": "2026-11-17T10:00:00+00:00", "headers": {"from": f"Person <{message_id}@example.test>", "subject": f"Subject {message_id}"},
-                "body_text": f"body {message_id}", "label_ids": ["INBOX"], "thread": "t" + message_id}
+        return {
+            "id": message_id,
+            "received_at": "2026-11-17T10:00:00+00:00",
+            "headers": {"from": f"Person <{message_id}@example.test>", "subject": f"Subject {message_id}"},
+            "body_text": f"body {message_id}",
+            "label_ids": ["INBOX"],
+            "thread": "t" + message_id,
+        }
 
     def thread_sent(self, thread):
         self._enter(thread)
@@ -61,7 +68,10 @@ class ParallelReads(unittest.TestCase):
 
     def test_sent_mail_reads_each_thread_once_with_the_same_results_and_failure_flags(self):
         threads = ["1" * 8 + c for c in "abcdef"]
-        evidence = [(ParentQuery("Co" + t[-1], "Role"), RoundQuery(True, source=f"https://mail.google.com/mail/u/0/#all/{t}")) for t in threads]
+        evidence = [
+            (ParentQuery("Co" + t[-1], "Role"), RoundQuery(True, source=f"https://mail.google.com/mail/u/0/#all/{t}"))
+            for t in threads
+        ]
         one_report, many_report = {}, {}
         old = interview_evidence.MAIL_WORKERS
         try:
@@ -87,6 +97,7 @@ if __name__ == "__main__":
 
 class SourcesOneByOne(unittest.TestCase):
     """the sources are read one after another (the side-by-side read of PR 1318 is withdrawn)"""
+
     def test_records_order_and_count_and_the_fixed_second_names(self):
         from unittest import mock
 
@@ -99,9 +110,20 @@ class SourcesOneByOne(unittest.TestCase):
             if timing is not None:
                 timing.update(listed=12, list_s=1.5, read=12, read_s=3.0)
             return [{"id": "g"}], 1
+
         seconds, detail = {}, {}
-        with mock.patch.object(mail, "outlook_records", outlook), mock.patch.object(mail, "gmail_records", gmail_records):
-            got = interview_evidence.read_mail({}, NOW, gmail=object(), outlook_accounts=[("one", object()), ("bad", object())], seconds=seconds, detail=detail)
+        with (
+            mock.patch.object(mail, "outlook_records", outlook),
+            mock.patch.object(mail, "gmail_records", gmail_records),
+        ):
+            got = interview_evidence.read_mail(
+                {},
+                NOW,
+                gmail=object(),
+                outlook_accounts=[("one", object()), ("bad", object())],
+                seconds=seconds,
+                detail=detail,
+            )
         self.assertEqual(got, ([{"id": "g"}, {"id": "one"}], 2))  # Gmail first, then the accounts in order
         self.assertEqual(set(seconds), {"gmail", "outlook_1", "outlook_2"})  # fixed names, never a label
         self.assertTrue(all(isinstance(v, float) and v >= 0 for v in seconds.values()))
@@ -117,8 +139,8 @@ class SourcesOneByOne(unittest.TestCase):
 
 
 class HealingGmail(FakeGmail):
-    """m3 is gone since the listing (404), m5 fails once then reads, m8 never parses, m10 is rate limited every time.
-    """
+    """m3 is gone since the listing (404), m5 fails once then reads, m8 never parses, m10 is rate limited every time."""
+
     def __init__(self):
         super().__init__()
         self.calls, self.retries = {}, 7
@@ -132,8 +154,17 @@ class HealingGmail(FakeGmail):
         if message_id == "m8":
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
         if message_id == "m10":
-            raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/messages -> HTTP 429 rateLimitExceeded")
-        return {"id": message_id, "received_at": "2026-11-17T10:00:00+00:00", "headers": {"from": f"P <{message_id}@example.test>", "subject": "s"}, "body_text": "b", "label_ids": ["INBOX"], "thread": "t"}
+            raise GmailError(
+                "GET https://gmail.googleapis.com/gmail/v1/users/me/messages -> HTTP 429 rateLimitExceeded"
+            )
+        return {
+            "id": message_id,
+            "received_at": "2026-11-17T10:00:00+00:00",
+            "headers": {"from": f"P <{message_id}@example.test>", "subject": "s"},
+            "body_text": "b",
+            "label_ids": ["INBOX"],
+            "thread": "t",
+        }
 
 
 class HealingReads(unittest.TestCase):
@@ -148,7 +179,9 @@ class HealingReads(unittest.TestCase):
         self.assertNotIn("m3", ids)
         self.assertEqual(unreadable, 2)  # m8 and m10 stay unreadable
         self.assertEqual(timing["gone"], 1)
-        self.assertEqual(timing["unreadable"], {"m8": "GMAIL_MESSAGE_INCOMPLETE", "m10": "HTTP_429_RATELIMITEXCEEDED"})  # fixed codes, never text
+        self.assertEqual(
+            timing["unreadable"], {"m8": "GMAIL_MESSAGE_INCOMPLETE", "m10": "HTTP_429_RATELIMITEXCEEDED"}
+        )  # fixed codes, never text
         self.assertEqual(timing["retries"], 7)
         self.assertEqual(gm.calls["m5"], 2)  # tried once more, no more
         self.assertEqual([i for i in ids], [i for i in IDS if i not in ("m3", "m8", "m10")])  # order kept
@@ -158,6 +191,7 @@ class InterviewMailMessages(unittest.TestCase):
     """a Gmail message that stays unreadable follows the same streak as an unreadable sent thread, and a message that can
     never parse is permanent at once.
     """
+
     def run_stage(self, unreadable, before):
         from unittest import mock
         from tests.sources.support import LIVE, JourneyFixture
@@ -166,20 +200,43 @@ class InterviewMailMessages(unittest.TestCase):
         class Case(JourneyFixture, unittest.TestCase):
             def runTest(self):
                 pass
+
         case = Case()
         case.setUp()
 
         def fake_read(environ, now, gmail=None, outlook_accounts=None, days=14, seconds=None, detail=None):
             detail["gmail"] = {"listed": 3, "unreadable": dict(unreadable)}
             return [], 0
-        calendar = type("Calendar", (), {"list_events": lambda s, a, b: [], "request": lambda s, m, p, params=None: {"items": []}})()
-        with mock.patch.object(interview_evidence, "read_mail", fake_read), mock.patch.object(interview_evidence.pipeline, "read_applied", return_value=[]), \
-                mock.patch.object(interview_evidence.streaks, "previous", return_value=before), mock.patch.object(interview_evidence.streaks, "save", return_value=True):
-            return interview_evidence.run(20, True, environ=LIVE, client=case.notion, calendar=calendar, now=NOW, ledger=object(), records=None, ledger_rows=case.ledger.for_company, writer=case.ledger, recruiters=case.recruiters)
+
+        calendar = type(
+            "Calendar", (), {"list_events": lambda s, a, b: [], "request": lambda s, m, p, params=None: {"items": []}}
+        )()
+        with (
+            mock.patch.object(interview_evidence, "read_mail", fake_read),
+            mock.patch.object(interview_evidence.pipeline, "read_applied", return_value=[]),
+            mock.patch.object(interview_evidence.streaks, "previous", return_value=before),
+            mock.patch.object(interview_evidence.streaks, "save", return_value=True),
+        ):
+            return interview_evidence.run(
+                20,
+                True,
+                environ=LIVE,
+                client=case.notion,
+                calendar=calendar,
+                now=NOW,
+                ledger=object(),
+                records=None,
+                ledger_rows=case.ledger.for_company,
+                writer=case.ledger,
+                recruiters=case.recruiters,
+            )
 
     def test_a_message_gmail_cannot_parse_is_permanent_at_once_and_a_transient_one_fails_then_turns_permanent(self):
         permanent = self.run_stage({"m8": "GMAIL_MESSAGE_INCOMPLETE"}, {})
-        self.assertEqual((permanent["failed"], permanent["permanent"].get("mail_message_unreadable"), permanent["mail_causes"]), (0, 1, {"gmail_message_incomplete": 1}))
+        self.assertEqual(
+            (permanent["failed"], permanent["permanent"].get("mail_message_unreadable"), permanent["mail_causes"]),
+            (0, 1, {"gmail_message_incomplete": 1}),
+        )
         self.assertNotIn("mail_unavailable", permanent["why"])
         first = self.run_stage({"m10": "HTTP_429_RATELIMITEXCEEDED"}, {})
         self.assertGreater(first["failed"], 0)

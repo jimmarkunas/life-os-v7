@@ -1,4 +1,5 @@
 """the net-size helper counts lines added and removed per area, from a real git diff, and flags growth in lifeos/."""
+
 import contextlib
 import io
 import os
@@ -10,8 +11,13 @@ from lifeos.platform import net_size
 
 
 def git(cwd, *args):
-    subprocess.run(["git", "-c", "user.name=Example", "-c", "user.email=example@example.com", *args], cwd=cwd, check=True, capture_output=True,
-                   env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull})
+    subprocess.run(
+        ["git", "-c", "user.name=Example", "-c", "user.email=example@example.com", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull},
+    )
 
 
 def write(cwd, name, lines):
@@ -38,7 +44,9 @@ class Parse(unittest.TestCase):
         self.assertEqual(rows, [(3, 1, "lifeos/a.py"), (0, 0, "docs/logo.png"), (0, 5, "tests/t.py")])
 
     def test_totals_add_up_per_area(self):
-        found = net_size.totals([(3, 1, "lifeos/a.py"), (4, 0, "lifeos/b.py"), (0, 5, "tests/t.py"), (2, 2, "AGENTS.md")])
+        found = net_size.totals(
+            [(3, 1, "lifeos/a.py"), (4, 0, "lifeos/b.py"), (0, 5, "tests/t.py"), (2, 2, "AGENTS.md")]
+        )
         self.assertEqual(found["lifeos/"], [7, 1])
         self.assertEqual(found["tests/"], [0, 5])
         self.assertEqual(found["other"], [2, 2])
@@ -65,8 +73,7 @@ class Render(unittest.TestCase):
 
 
 class RealRepository(unittest.TestCase):
-    """A scratch repository: a base commit on main, then a branch that edits, adds and deletes files in three areas.
-    """
+    """A scratch repository: a base commit on main, then a branch that edits, adds and deletes files in three areas."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -114,6 +121,7 @@ class RealRepository(unittest.TestCase):
 
 class CeilingWarnings(unittest.TestCase):
     """(advisory): a package over its ceiling that this change makes bigger gets a warning line"""
+
     def tree(self, lines):
         folder = tempfile.mkdtemp()
         write(folder, "lifeos/sources/m.py", ["x"] * lines)
@@ -129,10 +137,15 @@ class CeilingWarnings(unittest.TestCase):
         root = self.tree(10)
         self.assertEqual(net_size.ceiling_warnings([(0, 4, "lifeos/sources/m.py")], root, {"sources": 8}), [])
         self.assertEqual(net_size.ceiling_warnings([(5, 0, "lifeos/sources/m.py")], root, {"sources": 99}), [])
-        self.assertEqual(net_size.ceiling_warnings([(5, 0, "lifeos/jobs/x.py"), (5, 0, "tests/a.py")], root, {"sources": 8}), [])
+        self.assertEqual(
+            net_size.ceiling_warnings([(5, 0, "lifeos/jobs/x.py"), (5, 0, "tests/a.py")], root, {"sources": 8}), []
+        )
 
     def test_the_approved_ceilings_are_the_ones_jim_approved(self):
-        self.assertEqual(net_size.CEILINGS, {"sources": 9400, "jobs": 8250, "platform": 7050, "interview": 4900, "edge": 3200, "jira": 1550})
+        self.assertEqual(
+            net_size.CEILINGS,
+            {"sources": 9400, "jobs": 8250, "platform": 7050, "interview": 4900, "edge": 3200, "jira": 1550},
+        )
 
 
 if __name__ == "__main__":

@@ -8,7 +8,10 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERMES = os.path.join(ROOT, "hermes")
 ROLES = ("main", "claude-hermes", "developer", "librarian", "research", "writer")
-SECRET = re.compile(r"sk-[A-Za-z0-9]{10,}|nsec1[a-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|password|token|secret)\s*[:=]\s*\S{6,}", re.I)
+SECRET = re.compile(
+    r"sk-[A-Za-z0-9]{10,}|nsec1[a-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|password|token|secret)\s*[:=]\s*\S{6,}",
+    re.I,
+)
 
 
 def read(*parts):
@@ -33,7 +36,18 @@ class RoleFiles(unittest.TestCase):
 
     def test_the_librarian_points_at_the_notion_wiki_and_not_a_local_folder(self):
         text = read("roles", "librarian", "SOUL.md")
-        for needle in ("Notion", "Hermes Wiki", "write it yourself", "tool_search", "create pages", "Index", "Change log", "source: Jim", "source: outside", "asked before any new entry"):
+        for needle in (
+            "Notion",
+            "Hermes Wiki",
+            "write it yourself",
+            "tool_search",
+            "create pages",
+            "Index",
+            "Change log",
+            "source: Jim",
+            "source: outside",
+            "asked before any new entry",
+        ):
             self.assertIn(needle.lower(), text.lower(), needle)
         for banned in ("~/wiki", "/var/lib", "wiki folder", "index.md", "cannot write"):
             self.assertNotIn(banned, text, banned)
@@ -54,7 +68,9 @@ class RoleFiles(unittest.TestCase):
             self.assertNotIn("connections", read("roles", name, "SOUL.md").lower().replace("hub connections", ""))
 
     def test_the_skills_manifest_lists_names_only(self):
-        names = [line.strip() for line in read("skills.manifest").splitlines() if line.strip() and not line.startswith("#")]
+        names = [
+            line.strip() for line in read("skills.manifest").splitlines() if line.strip() and not line.startswith("#")
+        ]
         self.assertEqual(names, ["atlassian-mcp", "hostinger-mcp"])
 
 
@@ -65,16 +81,33 @@ class Deploy(unittest.TestCase):
         self.pack = os.path.join(self.tmp, "pack")
         shutil.copytree(HERMES, self.pack, ignore=shutil.ignore_patterns("__pycache__"))
         self.home = os.path.join(self.tmp, "home")
-        for sub in ("profiles/claude-hermes", "profiles/developer", "profiles/librarian", "profiles/research", "profiles/writer"):
+        for sub in (
+            "profiles/claude-hermes",
+            "profiles/developer",
+            "profiles/librarian",
+            "profiles/research",
+            "profiles/writer",
+        ):
             os.makedirs(os.path.join(self.home, sub))
         self.old = "OLD ROLE TEXT\n"
-        for rel in ("SOUL.md", "profiles/claude-hermes/SOUL.md", "profiles/developer/SOUL.md", "profiles/librarian/SOUL.md", "profiles/research/SOUL.md", "profiles/writer/SOUL.md"):
+        for rel in (
+            "SOUL.md",
+            "profiles/claude-hermes/SOUL.md",
+            "profiles/developer/SOUL.md",
+            "profiles/librarian/SOUL.md",
+            "profiles/research/SOUL.md",
+            "profiles/writer/SOUL.md",
+        ):
             with open(os.path.join(self.home, rel), "w") as handle:
                 handle.write(self.old)
         self.backup = os.path.join(self.tmp, "backup")
 
     def run_script(self, *args):
-        done = subprocess.run(["bash", os.path.join(self.pack, "deploy_roles.sh"), "--home", self.home, *args], capture_output=True, text=True)
+        done = subprocess.run(
+            ["bash", os.path.join(self.pack, "deploy_roles.sh"), "--home", self.home, *args],
+            capture_output=True,
+            text=True,
+        )
         return done.returncode, done.stdout + done.stderr
 
     def test_the_script_has_valid_syntax(self):
@@ -93,8 +126,15 @@ class Deploy(unittest.TestCase):
         status, out = self.run_script("--apply", "--backup", self.backup)
         self.assertEqual(status, 0, out)
         self.assertIn("read-back OK", out)
-        for name, rel in (("main", "SOUL.md"), ("librarian", "profiles/librarian/SOUL.md"), ("writer", "profiles/writer/SOUL.md")):
-            with open(os.path.join(self.home, rel)) as got, open(os.path.join(HERMES, "roles", name, "SOUL.md")) as want:
+        for name, rel in (
+            ("main", "SOUL.md"),
+            ("librarian", "profiles/librarian/SOUL.md"),
+            ("writer", "profiles/writer/SOUL.md"),
+        ):
+            with (
+                open(os.path.join(self.home, rel)) as got,
+                open(os.path.join(HERMES, "roles", name, "SOUL.md")) as want,
+            ):
                 self.assertEqual(got.read(), want.read(), name)
             self.assertEqual(os.stat(os.path.join(self.home, rel)).st_mode & 0o777, 0o600, name)
             with open(os.path.join(self.backup, name + ".SOUL.md")) as old:
@@ -136,7 +176,16 @@ class Canon(unittest.TestCase):
     def test_the_canon_document_states_the_homes_and_the_rules(self):
         with open(os.path.join(ROOT, "docs", "hermes-files.md")) as handle:
             text = handle.read()
-        for needle in ("hermes/roles/", "Hermes Wiki", "never in this repo", "remote client only", "connections", "hold.py", "deploy_roles.sh", "Drive"):
+        for needle in (
+            "hermes/roles/",
+            "Hermes Wiki",
+            "never in this repo",
+            "remote client only",
+            "connections",
+            "hold.py",
+            "deploy_roles.sh",
+            "Drive",
+        ):
             self.assertIn(needle.lower(), text.lower(), needle)
 
 

@@ -1,6 +1,7 @@
 """(synthetic): the Followup tables' check and one-time apply: flags only, refuses unless ready, creates only the planned
 DDL and reads it back.
 """
+
 import json
 import pathlib
 import unittest
@@ -16,7 +17,15 @@ class Cursor:
     """Answers the five statements the check runs, from a canned server."""
 
     def __init__(self, version="8.0.36", row_format="dynamic", tables=(), grants=(READY_GRANT,), refuse=()):
-        self.version, self.row_format, self.tables, self.grants, self.refuse, self.sql, self.rows = version, row_format, tables, grants, refuse, [], []
+        self.version, self.row_format, self.tables, self.grants, self.refuse, self.sql, self.rows = (
+            version,
+            row_format,
+            tables,
+            grants,
+            refuse,
+            [],
+            [],
+        )
 
     def execute(self, sql):
         self.sql.append(sql)
@@ -39,8 +48,7 @@ class Cursor:
 
 
 class Server(Cursor):
-    """A canned server that also takes the CREATE statements and answers SHOW COLUMNS and COUNT for the tables it holds.
-    """
+    """A canned server that also takes the CREATE statements and answers SHOW COLUMNS and COUNT for the tables it holds."""
 
     def __init__(self, columns=None, count=0, **kw):
         super().__init__(**kw)
@@ -76,15 +84,36 @@ class Plan(unittest.TestCase):
         self.assertTrue(all(t.startswith("v7_followup_") for t in fs.TABLES))
 
     def test_column_counts_and_key_sizes_come_from_the_ddl(self):
-        self.assertEqual(fs.column_counts(), {"v7_followup_threads": 16, "v7_followup_checkpoints": 5, "v7_followup_overrides": 4, "v7_followup_suppressions": 4, "v7_followup_payload": 4})
+        self.assertEqual(
+            fs.column_counts(),
+            {
+                "v7_followup_threads": 16,
+                "v7_followup_checkpoints": 5,
+                "v7_followup_overrides": 4,
+                "v7_followup_suppressions": 4,
+                "v7_followup_payload": 4,
+            },
+        )
         self.assertEqual(fs.column_counts()["v7_followup_threads"], len(followup_store.THREAD_COLUMNS))
-        self.assertEqual(fs.key_bytes(), {"v7_followup_threads": 444, "v7_followup_checkpoints": 468, "v7_followup_overrides": 256, "v7_followup_suppressions": 512, "v7_followup_payload": 762})
+        self.assertEqual(
+            fs.key_bytes(),
+            {
+                "v7_followup_threads": 444,
+                "v7_followup_checkpoints": 468,
+                "v7_followup_overrides": 256,
+                "v7_followup_suppressions": 512,
+                "v7_followup_payload": 762,
+            },
+        )
         self.assertLessEqual(max(fs.key_bytes().values()), fs.KEY_LIMITS["compact"])
 
     def test_the_stages_and_the_fixed_codes_are_registered(self):
         self.assertIn("followup-schema-check", run.STAGES)
         self.assertIn("followup-schema-apply", run.STAGES)
-        self.assertEqual((run.STAGES["followup-schema-check"].target[0], run.STAGES["followup-schema-apply"].target[0]), ("lifeos.inbox.followup_schema", "lifeos.inbox.followup_apply"))
+        self.assertEqual(
+            (run.STAGES["followup-schema-check"].target[0], run.STAGES["followup-schema-apply"].target[0]),
+            ("lifeos.inbox.followup_schema", "lifeos.inbox.followup_apply"),
+        )
         codes = json.loads((pathlib.Path(fs.__file__).parent / "codes.json").read_text())
         for code in ("FOLLOWUP_SCHEMA_NOT_READY", "FOLLOWUP_SCHEMA_TABLES_EXIST", "FOLLOWUP_SCHEMA_VERIFY_FAILED"):
             self.assertIn(code, codes)
@@ -93,8 +122,13 @@ class Plan(unittest.TestCase):
 class Check(unittest.TestCase):
     def test_a_ready_server_reports_true_flags_and_nothing_else(self):
         result = fs.check(Cursor())
-        self.assertEqual((result["server"], result["version"], result["row_format"], result["tables_present"], result["ready"]), ("mysql", "8.0", "dynamic", [], True))
-        self.assertEqual((result["largest_key_bytes"], result["key_limit_bytes"], result["keys_fit"]), (762, 3072, True))
+        self.assertEqual(
+            (result["server"], result["version"], result["row_format"], result["tables_present"], result["ready"]),
+            ("mysql", "8.0", "dynamic", [], True),
+        )
+        self.assertEqual(
+            (result["largest_key_bytes"], result["key_limit_bytes"], result["keys_fit"]), (762, 3072, True)
+        )
         self.assertEqual(result["grants"], {"CREATE": True, "SELECT": True, "INSERT": True, "UPDATE": True})
         self.assertNotIn("`x`", repr(result))
 
@@ -108,7 +142,9 @@ class Check(unittest.TestCase):
         no_create = fs.check(Cursor(grants=("GRANT SELECT, INSERT, UPDATE ON `x`.* TO `u`@`%`",)))
         self.assertEqual((no_create["grants"]["CREATE"], no_create["ready"]), (False, False))
         present = fs.check(Cursor(tables=("v7_followup_threads", "v7_other")))
-        self.assertEqual(present["tables_present"], ["v7_followup_threads"])  # only this schema's own table names are reported
+        self.assertEqual(
+            present["tables_present"], ["v7_followup_threads"]
+        )  # only this schema's own table names are reported
         self.assertTrue(fs.check(Cursor(grants=("GRANT ALL PRIVILEGES ON `x`.* TO `u`@`%`",)))["ready"])
 
     def test_a_refused_statement_is_a_none_never_an_error_text(self):
@@ -133,11 +169,18 @@ class Apply(unittest.TestCase):
     def test_apply_creates_the_five_tables_and_reads_them_back(self):
         server = Server()
         result = fa.apply(server)
-        self.assertEqual((result["created"], result["verified"], result["rows"]), (sorted(fs.TABLES), True, {t: 0 for t in fs.TABLES}))
+        self.assertEqual(
+            (result["created"], result["verified"], result["rows"]),
+            (sorted(fs.TABLES), True, {t: 0 for t in fs.TABLES}),
+        )
         self.assertEqual(len(result["created"]), 5)
         self.assertEqual(result["columns"], fs.column_counts())
-        self.assertEqual([s for s in server.sql if s.startswith("CREATE")], fs.plan())  # exactly the planned DDL, nothing else is changed
-        self.assertFalse([s for s in server.sql if s.split()[0] in ("DROP", "ALTER", "DELETE", "UPDATE", "INSERT", "TRUNCATE")])
+        self.assertEqual(
+            [s for s in server.sql if s.startswith("CREATE")], fs.plan()
+        )  # exactly the planned DDL, nothing else is changed
+        self.assertFalse(
+            [s for s in server.sql if s.split()[0] in ("DROP", "ALTER", "DELETE", "UPDATE", "INSERT", "TRUNCATE")]
+        )
 
     def test_apply_refuses_a_server_that_is_not_ready(self):
         server = Server(grants=("GRANT SELECT ON `x`.* TO `u`@`%`",))
@@ -166,12 +209,18 @@ class Apply(unittest.TestCase):
     def test_the_apply_stage_only_checks_without_the_exact_confirmation_word(self):
         for word in ("", "apply", "APPLY ", "yes"):
             server = Server()
-            with mock.patch.object(fa.db, "connect", return_value=stage_cursor(server)), mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": word}):
+            with (
+                mock.patch.object(fa.db, "connect", return_value=stage_cursor(server)),
+                mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": word}),
+            ):
                 result = fa.apply_stage(0, True)
             self.assertEqual((result["dry_run"], result["check"]["ready"]), (True, True), word)
             self.assertFalse([s for s in server.sql if s.startswith("CREATE")], word)
         server = Server()
-        with mock.patch.object(fa.db, "connect", return_value=stage_cursor(server)), mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": "APPLY"}):
+        with (
+            mock.patch.object(fa.db, "connect", return_value=stage_cursor(server)),
+            mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": "APPLY"}),
+        ):
             applied = fa.apply_stage(0, False)
         self.assertTrue(applied["verified"])
         self.assertEqual([s for s in server.sql if s.startswith("CREATE")], fs.plan())
@@ -179,7 +228,9 @@ class Apply(unittest.TestCase):
     def test_every_error_the_module_raises_is_a_fixed_code(self):
         source = pathlib.Path(fa.__file__).read_text()
         raised = {part.split('"')[1] for part in source.split("SchemaError(")[1:] if part.startswith('"')}
-        self.assertEqual(raised, {"FOLLOWUP_SCHEMA_NOT_READY", "FOLLOWUP_SCHEMA_TABLES_EXIST", "FOLLOWUP_SCHEMA_VERIFY_FAILED"})
+        self.assertEqual(
+            raised, {"FOLLOWUP_SCHEMA_NOT_READY", "FOLLOWUP_SCHEMA_TABLES_EXIST", "FOLLOWUP_SCHEMA_VERIFY_FAILED"}
+        )
 
 
 if __name__ == "__main__":

@@ -23,47 +23,73 @@ class ApplyResultTests(unittest.TestCase):
         self.assertEqual(conn.cur.sql[-1][1][0], "apply_unavailable")
 
     def test_landed_without_url_is_not_resolved(self):
-        self.assertEqual(stage.apply_result(FakeConn(), 1, {"outcome": "landed", "url": None, "kind": "internal"}),
-                         "pending")
+        self.assertEqual(
+            stage.apply_result(FakeConn(), 1, {"outcome": "landed", "url": None, "kind": "internal"}), "pending"
+        )
 
 
 class LinkProofTests(unittest.TestCase):
-    """A landed link that cannot be one vacancy is never RESOLVED: Enrich would reject it and send the job round again.
-    """
+    """A landed link that cannot be one vacancy is never RESOLVED: Enrich would reject it and send the job round again."""
 
     def test_a_listing_or_root_link_is_pending_not_resolved(self):
-        for url in ("https://careers.acme.example/", "https://careers.acme.example/jobs/search", "https://apply.workable.com/j/ABCDEF/"):
+        for url in (
+            "https://careers.acme.example/",
+            "https://careers.acme.example/jobs/search",
+            "https://apply.workable.com/j/ABCDEF/",
+        ):
             out = stage.apply_result(FakeConn(), 1, {"outcome": "landed", "url": url, "kind": "employer"})
             self.assertEqual(out, "pending", url)
 
     def test_a_single_vacancy_link_still_resolves(self):
-        out = stage.apply_result(FakeConn(), 1, {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"})
+        out = stage.apply_result(
+            FakeConn(), 1, {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}
+        )
         self.assertEqual(out, "resolved")
 
 
 class WhyTests(unittest.TestCase):
     def test_reasons_are_fixed_codes_without_detail(self):
         self.assertEqual(stage.why({"outcome": "target_timeout:apply:dialog=False:pages=1"}), "target_timeout")
-        self.assertEqual(stage.why({"outcome": "landed", "url": "https://careers.acme.example/", "kind": "employer"}), "bad_link_root")
-        self.assertEqual(stage.why({"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}), "landed:ats")
+        self.assertEqual(
+            stage.why({"outcome": "landed", "url": "https://careers.acme.example/", "kind": "employer"}),
+            "bad_link_root",
+        )
+        self.assertEqual(
+            stage.why({"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}),
+            "landed:ats",
+        )
         self.assertEqual(stage.why({}), "unknown")
 
     def test_a_live_run_counts_why_each_job_was_not_resolved(self):
         from unittest import mock
-        results = [{"outcome": "apply_unavailable"}, {"outcome": "apply_unavailable"},
-                   {"outcome": "landed", "url": "https://careers.acme.example/", "kind": "employer"},
-                   {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}]
-        with mock.patch.object(stage.store, "connect", FakeConn), mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
-                mock.patch.object(stage, "pick_rows", lambda c, s, l: [(i, "https://x.example/%d" % i, "Acme", "PM", "Remote") for i in range(4)]):
+
+        results = [
+            {"outcome": "apply_unavailable"},
+            {"outcome": "apply_unavailable"},
+            {"outcome": "landed", "url": "https://careers.acme.example/", "kind": "employer"},
+            {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"},
+        ]
+        with (
+            mock.patch.object(stage.store, "connect", FakeConn),
+            mock.patch.object(stage.store, "ensure_schema", lambda c: None),
+            mock.patch.object(
+                stage,
+                "pick_rows",
+                lambda c, s, l: [(i, "https://x.example/%d" % i, "Acme", "PM", "Remote") for i in range(4)],
+            ),
+        ):
             counts = stage.run_rows("jobright", 10, True, lambda rows: results)
             dry = stage.run_rows("jobright", 10, False, lambda rows: results)
         self.assertEqual(counts["why"], {"apply_unavailable": 2, "bad_link_root": 1, "landed:ats": 1})
         self.assertEqual(counts["resolved"], 1)
-        self.assertEqual((dry["why"], dry["resolved"], dry["dry_run"]), (counts["why"], 0, True))  # a dry run applies the same test and writes nothing
+        self.assertEqual(
+            (dry["why"], dry["resolved"], dry["dry_run"]), (counts["why"], 0, True)
+        )  # a dry run applies the same test and writes nothing
 
 
 class ProvenanceTests(unittest.TestCase):
     """An ambiguous link shape is accepted only when it was read off the job's own page"""
+
     URL = "https://careers-acme.icims.com/jobs/intro"
 
     def _apply(self, **extra):
@@ -82,14 +108,30 @@ class ProvenanceTests(unittest.TestCase):
 
     def test_a_bare_root_is_refused_whatever_its_provenance(self):
         conn = FakeConn()
-        out = stage.apply_result(conn, 1, {"outcome": "landed", "url": "https://careers-acme.icims.com/", "kind": "employer", "via": "original_post"})
+        out = stage.apply_result(
+            conn,
+            1,
+            {"outcome": "landed", "url": "https://careers-acme.icims.com/", "kind": "employer", "via": "original_post"},
+        )
         self.assertEqual(out, "pending")
 
     def test_a_sound_link_carries_no_proof_mark(self):
         conn = FakeConn()
-        stage.apply_result(conn, 1, {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats", "via": "original_post"})
+        stage.apply_result(
+            conn,
+            1,
+            {
+                "outcome": "landed",
+                "url": "https://job-boards.greenhouse.io/x/jobs/12345",
+                "kind": "ats",
+                "via": "original_post",
+            },
+        )
         update = [a for sql, a in conn.cur.sql if sql == "UPDATE v7_jobs"][-1]
         self.assertNotIn("unproven", update)
 
     def test_why_names_it(self):
-        self.assertEqual(stage.why({"outcome": "landed", "url": self.URL, "kind": "employer", "via": "original_post"}), "landed_unproven")
+        self.assertEqual(
+            stage.why({"outcome": "landed", "url": self.URL, "kind": "employer", "via": "original_post"}),
+            "landed_unproven",
+        )

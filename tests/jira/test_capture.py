@@ -1,4 +1,5 @@
 """Jira decisions into the shared memory."""
+
 import unittest
 import urllib.error
 import urllib.request
@@ -10,7 +11,10 @@ NOW = datetime(2026, 11, 26, 15, 0, tzinfo=timezone.utc)
 
 
 def adf(*paragraphs):
-    return {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": p}]} for p in paragraphs]}
+    return {
+        "type": "doc",
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": p}]} for p in paragraphs],
+    }
 
 
 class FakeJira:
@@ -69,21 +73,46 @@ def comment(cid, *paragraphs):
 
 class CaptureTests(unittest.TestCase):
     def run_once(self, jira, memory, state, live=True):
-        total = {"issues": 0, "decisions": 0, "stored": 0, "corrected": 0, "revoked": 0, "unchanged": 0, "filtered": 0, "failed": 0, "deferred": 0, "would_write": 0, "writes": 0, "why": {}}
+        total = {
+            "issues": 0,
+            "decisions": 0,
+            "stored": 0,
+            "corrected": 0,
+            "revoked": 0,
+            "unchanged": 0,
+            "filtered": 0,
+            "failed": 0,
+            "deferred": 0,
+            "would_write": 0,
+            "writes": 0,
+            "why": {},
+        }
         C.capture_issue(jira, "LIFE-1", memory, state, live, NOW, total)
         return total
 
     def test_what_counts_as_a_decision(self):
-        yes = ["[approvals] Jim chat Nov 22 8:09 PM CT: 867 nightly backup timer (B1)", "Jim's decision, Nov 21: keep the retained Honcho.", "Jim, Nov 25 2026, 5:45 PM CT: \"Yes to all three.\" More words."]
+        yes = [
+            "[approvals] Jim chat Nov 22 8:09 PM CT: 867 nightly backup timer (B1)",
+            "Jim's decision, Nov 21: keep the retained Honcho.",
+            "Jim, Nov 25 2026, 5:45 PM CT: \"Yes to all three.\" More words.",
+        ]
         for text in yes:
             self.assertTrue(C.decision_text(adf(text)), text)
-        for text in ("Claimed by MC02. Working the targets in this order.", "Merged PR 1565. Tests green.", "Everything else is done and live. Jim's decision is not here."):
+        for text in (
+            "Claimed by MC02. Working the targets in this order.",
+            "Merged PR 1565. Tests green.",
+            "Everything else is done and live. Jim's decision is not here.",
+        ):
             self.assertEqual(C.decision_text(adf(text)), "", text)
         self.assertLessEqual(len(C.decision_text(adf("[approvals] " + "x" * 900))), C.TEXT_MAX)
         self.assertEqual(C.decision_text(adf("Intro", "[approvals] the line", "more")), "[approvals] the line")
 
     def test_a_decision_is_stored_once_with_its_ticket_and_comment_and_a_repeat_does_nothing(self):
-        jira, memory, state = FakeJira({"LIFE-1": [comment(11, "[approvals] Jim chat: 988 wireframe ok")]}), FakeMemory(), FakeState()
+        jira, memory, state = (
+            FakeJira({"LIFE-1": [comment(11, "[approvals] Jim chat: 988 wireframe ok")]}),
+            FakeMemory(),
+            FakeState(),
+        )
         total = self.run_once(jira, memory, state)
         self.assertEqual((total["decisions"], total["stored"]), (1, 1))
         kind, text, source = memory.log[0]
@@ -106,10 +135,15 @@ class CaptureTests(unittest.TestCase):
         memory, state = FakeMemory(refuse=("SECRETWORD",)), FakeState()
         jira = FakeJira({"LIFE-1": [comment(11, "[approvals] the card is SECRETWORD")]})
         total = self.run_once(jira, memory, state)
-        self.assertEqual((total["filtered"], total["stored"], state.comment(11)["state"], state.comment(11)["memory_id"]), (1, 0, "filtered", ""))
+        self.assertEqual(
+            (total["filtered"], total["stored"], state.comment(11)["state"], state.comment(11)["memory_id"]),
+            (1, 0, "filtered", ""),
+        )
         self.assertNotIn("SECRETWORD", repr(total))
         again = self.run_once(jira, memory, state)
-        self.assertEqual((again["unchanged"], again["filtered"], len(memory.log)), (1, 0, 1))  # not tried again every hour
+        self.assertEqual(
+            (again["unchanged"], again["filtered"], len(memory.log)), (1, 0, 1)
+        )  # not tried again every hour
         jira.comments["LIFE-1"] = [comment(11, "[approvals] the card was removed")]
         fixed = self.run_once(jira, memory, state)
         self.assertEqual((fixed["stored"], len(memory.log)), (1, 2))  # an edited comment is judged again
@@ -119,9 +153,14 @@ class CaptureTests(unittest.TestCase):
         decisions = [comment(100 + n, f"[approvals] Jim chat: item {n}") for n in range(C.WRITE_CAP + 5)]
         memory, state = FakeMemory(), FakeState()
         total = self.run_once(FakeJira({"LIFE-1": notes + decisions}), memory, state)
-        self.assertEqual((total["decisions"], total["stored"], total["deferred"], len(memory.log)), (C.WRITE_CAP + 5, C.WRITE_CAP, 5, C.WRITE_CAP))
+        self.assertEqual(
+            (total["decisions"], total["stored"], total["deferred"], len(memory.log)),
+            (C.WRITE_CAP + 5, C.WRITE_CAP, 5, C.WRITE_CAP),
+        )
         second = self.run_once(FakeJira({"LIFE-1": notes + decisions}), memory, state)
-        self.assertEqual((second["stored"], second["unchanged"]), (5, C.WRITE_CAP))  # the deferred five land on the next hour
+        self.assertEqual(
+            (second["stored"], second["unchanged"]), (5, C.WRITE_CAP)
+        )  # the deferred five land on the next hour
 
     def test_a_dry_run_writes_nothing_anywhere(self):
         memory = FakeMemory()
@@ -150,8 +189,9 @@ class CaptureTests(unittest.TestCase):
         jira = FakeJira({"LIFE-1": [comment(11, "[approvals] first"), comment(12, "[approvals] second")]})
         memory = FakeMemory()
         with patch.object(C, "State", lambda connection: FailedState()):
-            out = C.run(5, True, environ={"LIFEOS_MCP_JIRA_CAPTURE": "configured"}, jira=jira,
-                        memory=memory, connect=Connection)
+            out = C.run(
+                5, True, environ={"LIFEOS_MCP_JIRA_CAPTURE": "configured"}, jira=jira, memory=memory, connect=Connection
+            )
         self.assertEqual((out["warnings"], out["failed"], out["why"]), (1, 0, {"capture_state_unavailable": 1}))
         self.assertEqual((out["stored"], len(memory.log)), (1, 1))
 
@@ -165,6 +205,7 @@ class CaptureTests(unittest.TestCase):
 class MemoryClient(unittest.TestCase):
     def test_the_client_sends_the_governed_operations_as_the_bearer_and_maps_failures_to_a_fixed_word(self):
         import json
+
         sent = []
 
         class Reply:
@@ -181,25 +222,38 @@ class MemoryClient(unittest.TestCase):
                 return json.dumps({"result": {"content": [{"text": json.dumps(self.doc)}]}}).encode()
 
         def opener(request, timeout=0):
-            sent.append((request.full_url, request.headers["Authorization"], json.loads(request.data)["params"]["arguments"]))
+            sent.append(
+                (request.full_url, request.headers["Authorization"], json.loads(request.data)["params"]["arguments"])
+            )
             return Reply({"ok": True, "data": {"id": "m1"}})
 
         memory = C.Memory("https://example.invalid/mcp", "lm1.jira-capture.TESTSECRET", opener)
         self.assertTrue(memory.store("a decision", "jira-decision:LIFE-1#1")["ok"])
-        self.assertEqual(sent[0][2], {"operation": "memory_store", "arguments": {"workspace": "Personal", "text": "a decision", "source": "jira-decision:LIFE-1#1"}})
+        self.assertEqual(
+            sent[0][2],
+            {
+                "operation": "memory_store",
+                "arguments": {"workspace": "Personal", "text": "a decision", "source": "jira-decision:LIFE-1#1"},
+            },
+        )
         self.assertEqual(sent[0][1], "Bearer lm1.jira-capture.TESTSECRET")
         memory.revoke("m1")
         self.assertEqual(sent[1][2]["operation"], "memory_revoke")
 
         def broken(request, timeout=0):
             raise OSError("down")
-        self.assertEqual(C.Memory("https://example.invalid/mcp", "t", broken).store("x", "s"), {"ok": False, "error": "capture_unreachable"})
+
+        self.assertEqual(
+            C.Memory("https://example.invalid/mcp", "t", broken).store("x", "s"),
+            {"ok": False, "error": "capture_unreachable"},
+        )
 
         calls = []
 
         def counting(request, timeout=0):
             calls.append(1)
             raise OSError("down")
+
         down = C.Memory("https://example.invalid/mcp", "t", counting)
         down.store("x", "s"), down.store("y", "s")
         self.assertEqual((len(calls), down.down), (1, "OSError"))  # the second call fails at once
@@ -217,6 +271,7 @@ class MemoryClient(unittest.TestCase):
 
             def read(self):
                 return json.dumps({"result": {"content": [{"text": json.dumps(doc)}]}} if wrapped else doc).encode()
+
         return R()
 
     def test_a_timeout_retries_once_through_the_public_address(self):
@@ -224,10 +279,20 @@ class MemoryClient(unittest.TestCase):
 
         def timing_out(request, timeout=0):
             raise urllib.error.URLError(TimeoutError("timed out"))
+
         seen = []
-        with mock.patch.object(urllib.request, "urlopen", timing_out), \
-                mock.patch.object(C, "public_address", lambda host: "203.0.113.9"), \
-                mock.patch.object(C, "pinned_open", lambda address: (seen.append(address), lambda request, timeout=0: self._reply({"ok": True, "data": {"id": "m9"}}, True))[1]):
+        with (
+            mock.patch.object(urllib.request, "urlopen", timing_out),
+            mock.patch.object(C, "public_address", lambda host: "203.0.113.9"),
+            mock.patch.object(
+                C,
+                "pinned_open",
+                lambda address: (
+                    seen.append(address),
+                    lambda request, timeout=0: self._reply({"ok": True, "data": {"id": "m9"}}, True),
+                )[1],
+            ),
+        ):
             memory = C.Memory("https://example.invalid/mcp", "t", urllib.request.urlopen)
             self.assertTrue(memory.store("x", "s")["ok"])
             self.assertTrue(memory.store("y", "s")["ok"])

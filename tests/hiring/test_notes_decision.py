@@ -1,4 +1,5 @@
 """(REQ-5): hiring decisions live on the Job Ledger row only."""
+
 import copy
 import json
 import unittest
@@ -15,7 +16,9 @@ OP, OP2 = "op-0123456789", "op-9876543210"
 NOW = T.NOW
 
 
-_OUTCOME_SCAN = mock.patch.object(T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat()))
+_OUTCOME_SCAN = mock.patch.object(
+    T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat())
+)
 
 
 def setUpModule():
@@ -75,15 +78,27 @@ class Workspace:
 
     def parent_page(self, bid):
         parent = self.parent_of[bid]
-        return {"type": "page_id", "page_id": parent} if self.blocks[parent]["type"] == "child_page" else {"type": "block_id", "block_id": parent}
+        return (
+            {"type": "page_id", "page_id": parent}
+            if self.blocks[parent]["type"] == "child_page"
+            else {"type": "block_id", "block_id": parent}
+        )
 
     def call(self, method, path, body=None):
         assert method == "GET", (method, path)
         if path.startswith("/pages/"):
             bid = self.canon(path.split("/")[2])
             self.log.append(("GET", "page"))
-            return {"id": bid, "archived": False, "in_trash": False, "last_edited_time": self.times[bid], "parent": self.parent_page(bid),
-                    "properties": {"title": {"type": "title", "title": [{"plain_text": self.blocks[bid]["child_page"]["title"]}]}}}
+            return {
+                "id": bid,
+                "archived": False,
+                "in_trash": False,
+                "last_edited_time": self.times[bid],
+                "parent": self.parent_page(bid),
+                "properties": {
+                    "title": {"type": "title", "title": [{"plain_text": self.blocks[bid]["child_page"]["title"]}]}
+                },
+            }
         bid = self.canon(path.split("/")[2].split("?")[0])
         self.log.append(("GET", "children"))
         return {"results": [copy.deepcopy(self.blocks[k]) for k in self.kids[bid]], "has_more": False}
@@ -95,7 +110,9 @@ class Workspace:
             if "label" in self.fail:
                 raise NotionError("NOTION_HTTP_500")
             kind = self.blocks[bid]["type"]
-            self.blocks[bid][kind] = {"rich_text": [{"plain_text": "".join(r["text"]["content"] for r in body[kind]["rich_text"])}]}
+            self.blocks[bid][kind] = {
+                "rich_text": [{"plain_text": "".join(r["text"]["content"] for r in body[kind]["rich_text"])}]
+            }
             self.edits += 1
             return {}
         assert method == "PATCH", (method, path)
@@ -118,18 +135,42 @@ class World:
     """The whole path for one fictional workspace: Ledger stand-in, page tree, Daily Report page, projection row."""
 
     def __init__(self, ledger_rows=(), **kw):
-        self.ws, self.source, self.tree, self.store = Workspace(**kw), TD.Source(rows=list(ledger_rows)), T.page(extra_rows=0), T.FakeStore()
+        self.ws, self.source, self.tree, self.store = (
+            Workspace(**kw),
+            TD.Source(rows=list(ledger_rows)),
+            T.page(extra_rows=0),
+            T.FakeStore(),
+        )
         self.env = {**T.RUN_ENV, "HIRING_PIPELINE_PAGE_ID": self.ws.root}
 
     def project(self):
         with mock.patch.object(T.snapshot, "STORE", self.store):
-            return T.stage.run(0, True, self.env, ledger_client=self.source, pipeline_client=self.ws, calendar=T.FakeCalendar([]), connection=object(), client=self.tree, now=NOW)
+            return T.stage.run(
+                0,
+                True,
+                self.env,
+                ledger_client=self.source,
+                pipeline_client=self.ws,
+                calendar=T.FakeCalendar([]),
+                connection=object(),
+                client=self.tree,
+                now=NOW,
+            )
 
     def decide(self, req, live=True):
         return TD.Chain(self.source).confirm(req, live, NOW)
 
     def request(self, **changes):
-        return {"action": "CONFIRM_REJECTED", "confirmed": True, "id": self.ws.target, "company": COMPANY, "role": ROLE, "reason": "Employer rejection email confirmed", "op": OP, **changes}
+        return {
+            "action": "CONFIRM_REJECTED",
+            "confirmed": True,
+            "id": self.ws.target,
+            "company": COMPANY,
+            "role": ROLE,
+            "reason": "Employer rejection email confirmed",
+            "op": OP,
+            **changes,
+        }
 
     def reopen(self, **changes):
         return self.request(action="REOPEN", reason="Rejection was a mistake", op=OP2, **changes)
@@ -148,7 +189,16 @@ def ledger_world(**kw):
 
 
 def req(**changes):
-    return {"action": "CONFIRM_REJECTED", "confirmed": True, "id": TD.TARGET, "company": COMPANY, "role": ROLE, "reason": "Employer rejection email confirmed", "op": OP, **changes}
+    return {
+        "action": "CONFIRM_REJECTED",
+        "confirmed": True,
+        "id": TD.TARGET,
+        "company": COMPANY,
+        "role": ROLE,
+        "reason": "Employer rejection email confirmed",
+        "op": OP,
+        **changes,
+    }
 
 
 def reopen(**changes):
@@ -169,19 +219,28 @@ class RoutingTests(unittest.TestCase):
     def test_the_row_named_by_page_id_is_the_one_and_its_names_must_still_agree(self):
         a, b = self.row("a1" * 16), self.row("b2" * 16)
         self.assertEqual(D.route([a, b], {**self.WANT, "id": "b2" * 16}), b)
-        self.assertEqual(D.route([a], {"action": "CONFIRM_REJECTED", "id": "a1" * 16}), a)  # an id alone (the Close screen's link) is enough
+        self.assertEqual(
+            D.route([a], {"action": "CONFIRM_REJECTED", "id": "a1" * 16}), a
+        )  # an id alone (the Close screen's link) is enough
         self.refused([a], {**self.WANT, "id": "a1" * 16, "role": SIBLING_ROLE}, "DECISION_STALE_IDENTITY")
 
     def test_an_id_that_is_no_row_resolves_by_company_and_role_and_company_alone_never_does(self):
         tree_page = "c3" * 16
-        self.assertEqual(D.route([self.row("a1" * 16), self.row("b2" * 16, role=SIBLING_ROLE)], {**self.WANT, "id": tree_page})["id"], "a1" * 16)
+        self.assertEqual(
+            D.route([self.row("a1" * 16), self.row("b2" * 16, role=SIBLING_ROLE)], {**self.WANT, "id": tree_page})[
+                "id"
+            ],
+            "a1" * 16,
+        )
         self.refused([self.row("a1" * 16, role=SIBLING_ROLE)], {**self.WANT, "id": tree_page}, "DECISION_NO_MATCH")
         self.refused([self.row("a1" * 16), self.row("b2" * 16)], self.WANT, "DECISION_AMBIGUOUS")
         self.refused([], {"action": "CONFIRM_REJECTED", "id": tree_page}, "DECISION_NO_MATCH")
 
     def test_open_or_closed_is_the_writers_check_not_the_routers(self):
         for decision in (None, "Rejected", "Hired"):
-            self.assertEqual(D.route([self.row("a1" * 16, decision)], {**self.WANT, "action": "REOPEN"})["decision"], decision)
+            self.assertEqual(
+                D.route([self.row("a1" * 16, decision)], {**self.WANT, "action": "REOPEN"})["decision"], decision
+            )
 
 
 class LedgerDecisionTests(unittest.TestCase):
@@ -189,11 +248,16 @@ class LedgerDecisionTests(unittest.TestCase):
         world = ledger_world()
         world.project()
         done = world.decide(req())
-        self.assertEqual((done["status"], done["verified"], world.source.decision(), len(world.source.history().splitlines())), ("recorded", True, {"name": "Rejected"}, 1))
+        self.assertEqual(
+            (done["status"], done["verified"], world.source.decision(), len(world.source.history().splitlines())),
+            ("recorded", True, {"name": "Rejected"}, 1),
+        )
         self.assertEqual(world.ws.writes(), [])  # no page moved, no record block appended
         self.assertEqual(world.ws.where(world.ws.target), world.ws.col_active)
         patches = len(world.source.patches())
-        self.assertEqual(world.decide(req())["status"], "already_recorded")  # the same operation id: nothing written twice
+        self.assertEqual(
+            world.decide(req())["status"], "already_recorded"
+        )  # the same operation id: nothing written twice
         self.assertEqual((len(world.source.patches()), len(world.source.history().splitlines())), (patches, 1))
 
     def test_an_interview_pursuit_row_with_stage_set_closes_on_its_row_and_keeps_its_stage(self):
@@ -209,7 +273,10 @@ class LedgerDecisionTests(unittest.TestCase):
         world.decide(req())
         done = world.decide(reopen())
         self.assertEqual((done["status"], done["verified"], world.source.decision()), ("recorded", True, None))
-        self.assertEqual([(e["action"], e["outcome"]) for e in D.entries(world.source.history())], [("CONFIRM_REJECTED", "Rejected"), ("REOPEN", "Rejected")])
+        self.assertEqual(
+            [(e["action"], e["outcome"]) for e in D.entries(world.source.history())],
+            [("CONFIRM_REJECTED", "Rejected"), ("REOPEN", "Rejected")],
+        )
         self.assertEqual(world.decide(reopen())["status"], "already_recorded")
         self.assertEqual(len(world.source.history().splitlines()), 2)
         self.assertEqual(world.ws.writes(), [])
@@ -221,7 +288,10 @@ class LedgerDecisionTests(unittest.TestCase):
         patches = len(world.source.patches())
         with self.assertRaises(D.DecisionError) as error:
             world.decide(reopen())
-        self.assertEqual((str(error.exception), len(world.source.patches()), world.source.decision()), ("DECISION_HIRED_REOPEN_UNCONFIRMED", patches, {"name": "Hired"}))
+        self.assertEqual(
+            (str(error.exception), len(world.source.patches()), world.source.decision()),
+            ("DECISION_HIRED_REOPEN_UNCONFIRMED", patches, {"name": "Hired"}),
+        )
         self.assertEqual(world.decide(reopen(reopen_hired=True))["status"], "recorded")
         self.assertIsNone(world.source.decision())
 
@@ -231,14 +301,30 @@ class LedgerDecisionTests(unittest.TestCase):
             if action == "REOPEN":
                 world.decide(req())
             want = req() if action == "CONFIRM_REJECTED" else reopen()
-            line = json.dumps({"op": want["op"], "action": action, "at": NOW.isoformat(timespec="seconds"), "reason": want["reason"], "outcome": "Rejected"}, separators=(",", ":"), sort_keys=True)
+            line = json.dumps(
+                {
+                    "op": want["op"],
+                    "action": action,
+                    "at": NOW.isoformat(timespec="seconds"),
+                    "reason": want["reason"],
+                    "outcome": "Rejected",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
             history = world.source.history()
-            world.source.pages[TD.TARGET]["properties"]["Hiring Decision History"] = {"rich_text": [{"plain_text": f"{history}\n{line}" if history else line}]}  # the line landed, the decision did not
+            world.source.pages[TD.TARGET]["properties"]["Hiring Decision History"] = {
+                "rich_text": [{"plain_text": f"{history}\n{line}" if history else line}]
+            }  # the line landed, the decision did not
             before = world.source.history()
             done = world.decide(want)
             self.assertEqual((done["status"], world.source.history()), ("recorded", before), action)  # no second line
-            self.assertEqual(world.source.patches()[-1][2], ("Hiring Decision",), action)  # only the missing decision was written
-            self.assertEqual(world.source.decision(), {"name": "Rejected"} if action == "CONFIRM_REJECTED" else None, action)
+            self.assertEqual(
+                world.source.patches()[-1][2], ("Hiring Decision",), action
+            )  # only the missing decision was written
+            self.assertEqual(
+                world.source.decision(), {"name": "Rejected"} if action == "CONFIRM_REJECTED" else None, action
+            )
             self.assertEqual(world.decide(want)["status"], "already_recorded", action)
 
     def test_a_line_for_this_operation_followed_by_another_decision_is_never_overwritten(self):
@@ -253,7 +339,10 @@ class LedgerDecisionTests(unittest.TestCase):
         world = ledger_world()
         world.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE, decision="Passed")
         self.assertEqual(world.decide(reopen())["status"], "recorded")
-        self.assertEqual((world.source.decision(), [(e["action"], e["outcome"]) for e in D.entries(world.source.history())]), (None, [("REOPEN", "Passed")]))
+        self.assertEqual(
+            (world.source.decision(), [(e["action"], e["outcome"]) for e in D.entries(world.source.history())]),
+            (None, [("REOPEN", "Passed")]),
+        )
 
     def test_an_open_row_is_not_reopened_and_a_closed_row_is_not_closed_again(self):
         world = ledger_world()
@@ -276,7 +365,9 @@ class LedgerDecisionTests(unittest.TestCase):
 
     def test_the_decision_needs_no_pipeline_page_or_page_tree(self):
         world = ledger_world()
-        with mock.patch.object(hiring_pipeline, "read", side_effect=AssertionError("the page tree was read for a decision")):
+        with mock.patch.object(
+            hiring_pipeline, "read", side_effect=AssertionError("the page tree was read for a decision")
+        ):
             done = world.decide(req())
         self.assertEqual((done["status"], world.source.decision()), ("recorded", {"name": "Rejected"}))
 
@@ -289,7 +380,16 @@ class BoundaryTests(unittest.TestCase):
                 self.assertNotIn(name, text, path.name)
 
     def test_the_page_move_writer_is_gone(self):
-        for name in ("move_page", "listing", "unapplied_matches", "Unapplied", "MOVE_VERSION", "ACTIVE_TITLE", "RETIRED_TITLE", "applied_pages"):
+        for name in (
+            "move_page",
+            "listing",
+            "unapplied_matches",
+            "Unapplied",
+            "MOVE_VERSION",
+            "ACTIVE_TITLE",
+            "RETIRED_TITLE",
+            "applied_pages",
+        ):
             self.assertFalse(hasattr(D, name), name)
 
 
@@ -305,6 +405,7 @@ def options(source, names):
         if "Hiring Decision" in (out.get("properties") or {}):
             out["properties"]["Hiring Decision"]["select"]["options"] += [{"name": n} for n in names]
         return out
+
     source.call = call
 
 
@@ -314,7 +415,11 @@ class LedgerOutcomes(unittest.TestCase):
             chain = TD.Chain()
             options(chain.source, NEW)
             done = chain.confirm(TD.request(outcome=outcome))
-            self.assertEqual((done["status"], done["verified"], chain.source.decision()), ("recorded", True, {"name": outcome}), outcome)
+            self.assertEqual(
+                (done["status"], done["verified"], chain.source.decision()),
+                ("recorded", True, {"name": outcome}),
+                outcome,
+            )
             self.assertEqual(chain.confirm(TD.request(outcome=outcome))["status"], "already_recorded")
             with self.assertRaises(D.DecisionError):  # a different operation never replaces the decision
                 chain.confirm(TD.request(outcome="Other", op="op-9876543210"))
@@ -322,13 +427,17 @@ class LedgerOutcomes(unittest.TestCase):
             if outcome == "Hired":
                 with self.assertRaises(D.DecisionError) as error:
                     chain.confirm(reopen)
-                self.assertEqual((str(error.exception), len(chain.source.patches())), ("DECISION_HIRED_REOPEN_UNCONFIRMED", 1))
+                self.assertEqual(
+                    (str(error.exception), len(chain.source.patches())), ("DECISION_HIRED_REOPEN_UNCONFIRMED", 1)
+                )
                 reopen["reopen_hired"] = True
             self.assertEqual(chain.confirm(reopen)["status"], "recorded")
             self.assertEqual(chain.source.decision(), None)
             self.assertEqual([e["action"] for e in D.entries(chain.source.history())], ["CONFIRM_REJECTED", "REOPEN"])
             self.assertEqual(chain.confirm(reopen)["status"], "already_recorded")
-            self.assertEqual(chain.confirm(TD.request(outcome="Hired", op="op-7777777777"))["status"], "recorded")  # and it can be closed again
+            self.assertEqual(
+                chain.confirm(TD.request(outcome="Hired", op="op-7777777777"))["status"], "recorded"
+            )  # and it can be closed again
 
     def test_an_outcome_without_its_select_option_fails_closed(self):
         chain = TD.Chain()

@@ -1,6 +1,7 @@
 """The per-board Scale-Up diagnostic: counts only, one entry per registry board, no title, link or text, and nothing
 written.
 """
+
 import json
 import unittest
 from unittest import mock
@@ -43,24 +44,36 @@ class Diagnostic(unittest.TestCase):
         out, _ = self.run_it()
         ids = [s["id"] for s in registry.load(registry.PATHS["Scale-Up"])]
         self.assertEqual(sorted(out["boards"]), sorted(ids))
-        self.assertEqual((out["totals"]["sources"], out["totals"]["never_read"], out["totals"]["no_jobs"]), (len(ids), len(ids), len(ids)))
+        self.assertEqual(
+            (out["totals"]["sources"], out["totals"]["never_read"], out["totals"]["no_jobs"]),
+            (len(ids), len(ids), len(ids)),
+        )
 
     def test_a_board_reports_its_read_its_listing_and_what_became_of_it(self):
         revolut = "su-revolut-ltd"
         out, _ = self.run_it(
             sources=[(revolut, "COMPLETE", "", 3600, 0, 0)],
             items=[(revolut, "ADMITTED", "", 3), (revolut, "SUPPRESSED", "off_target_title", 300)],
-            jobs=[(f"web:{revolut}", "PUBLISHED", 7), (f"web:{revolut}", "EXCLUDED_FIT", 400)])
+            jobs=[(f"web:{revolut}", "PUBLISHED", 7), (f"web:{revolut}", "EXCLUDED_FIT", 400)],
+        )
         board = out["boards"][revolut]
-        self.assertEqual((board["read"], board["last_complete"], board["failures"], board["due_now"]), ("COMPLETE", "under_1d", 0, False))
+        self.assertEqual(
+            (board["read"], board["last_complete"], board["failures"], board["due_now"]),
+            ("COMPLETE", "under_1d", 0, False),
+        )
         self.assertEqual((board["listing"], board["items"]), (303, {"ADMITTED": 3, "SUPPRESSED/off_target_title": 300}))
         self.assertEqual(board["jobs"], {"PUBLISHED": 7, "EXCLUDED_FIT": 400})
-        self.assertEqual((out["totals"]["with_jobs"], out["totals"]["published"], out["totals"]["listing_jobs"]), (1, 7, 303))
+        self.assertEqual(
+            (out["totals"]["with_jobs"], out["totals"]["published"], out["totals"]["listing_jobs"]), (1, 7, 303)
+        )
 
     def test_a_failing_board_is_counted_as_failing(self):
         out, _ = self.run_it(sources=[("su-futuristic-technologies-ltd", "FAILED", "network", 90000, 2, 1)])
         board = out["boards"]["su-futuristic-technologies-ltd"]
-        self.assertEqual((board["read"], board["reason"], board["failures"], board["due_now"], board["last_complete"]), ("FAILED", "network", 2, True, "1_to_3d"))
+        self.assertEqual(
+            (board["read"], board["reason"], board["failures"], board["due_now"], board["last_complete"]),
+            ("FAILED", "network", 2, True, "1_to_3d"),
+        )
         self.assertEqual(out["totals"]["failing"], 1)
 
     def test_it_only_reads_and_prints_only_ids_counts_and_fixed_codes(self):

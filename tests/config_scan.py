@@ -1,4 +1,5 @@
 """find every environment-variable NAME the code reads and every name the workflows set."""
+
 import ast
 import re
 from pathlib import Path
@@ -30,11 +31,26 @@ def reads_in(source):
             if not isinstance(node.ctx, ast.Load):
                 continue  # a write (`env[k] = v`) is not a read
             key = node.slice
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in METHODS and node.args:
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in METHODS
+            and node.args
+        ):
             owner = node.func.value
-            if node.func.attr == "getenv" and isinstance(owner, ast.Name) and owner.id == "os" or (node.func.attr != "getenv" and _is_env_object(owner)):
+            if (
+                node.func.attr == "getenv"
+                and isinstance(owner, ast.Name)
+                and owner.id == "os"
+                or (node.func.attr != "getenv" and _is_env_object(owner))
+            ):
                 key = node.args[0]
-        elif isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(node.ops[0], (ast.In, ast.NotIn)) and _is_env_object(node.comparators[0]):
+        elif (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], (ast.In, ast.NotIn))
+            and _is_env_object(node.comparators[0])
+        ):
             key = node.left
         if key is None:
             continue
@@ -75,6 +91,7 @@ def _env_keys(node, out):
 def workflow_sets(root=ROOT):
     """> {name: sorted workflow files that set it in an env: block}."""
     import yaml
+
     found = {}
     for path in sorted((root / ".github" / "workflows").glob("*.yml")):
         keys = set()
@@ -94,12 +111,14 @@ def workflow_sets(root=ROOT):
 def problems(config, root=ROOT):
     """> list of plain-words problems between the registry (`config`) and the code and workflows under `root`."""
     import fnmatch
+
     out = []
     listed = {row["name"]: row for row in config["names"]}
     prefixes, extra = tuple(config["provided"]["prefixes"]), set(config["provided"]["names"])
 
     def provided(name):
         return name.startswith(prefixes) or name in extra
+
     declared = {entry["file"]: entry["match"] for entry in config["patterns"]}
     reads, dynamic = code_reads(root, skip=tuple(config["not_environment"]))
     sets = workflow_sets(root)
@@ -111,7 +130,9 @@ def problems(config, root=ROOT):
             out.append(f"workflow {files[0]} sets {name} but the registry does not list it")
     for file in sorted(dynamic):
         if file not in declared:
-            out.append(f"{file} reads an environment name built at run time and the registry declares no pattern for it")
+            out.append(
+                f"{file} reads an environment name built at run time and the registry declares no pattern for it"
+            )
     for file in sorted(declared):
         if file not in dynamic:
             out.append(f"the registry declares a run-time pattern for {file}, which has no run-time read any more")

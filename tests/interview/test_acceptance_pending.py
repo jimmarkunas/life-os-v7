@@ -1,6 +1,7 @@
 """the manual acceptance stage's Scheduling Pending case reads the exact Job Ledger rows with the Interview token, then
 hands the same progression to.
 """
+
 import json
 import unittest
 from pathlib import Path
@@ -11,8 +12,17 @@ from tests.interview.test_notion import ENV
 from tests.interview.test_scheduling_pending import COMPANY, ROLE, SOURCE, opportunity
 
 KEY = "exampleco-stpm-ex1234"
-CASE = {"company": COMPANY, "role": ROLE, "confirmed_round": True, "interview_date": None, "interviewer": None, "ordinal": 1,
-        "source": SOURCE, "requisition": None, "stable_job_key": KEY}
+CASE = {
+    "company": COMPANY,
+    "role": ROLE,
+    "confirmed_round": True,
+    "interview_date": None,
+    "interviewer": None,
+    "ordinal": 1,
+    "source": SOURCE,
+    "requisition": None,
+    "stable_job_key": KEY,
+}
 ROWS = [{"page_id": "L1", "company": COMPANY, "role": ROLE, "stable_job_key": KEY, "requisition": None}]
 
 
@@ -21,9 +31,16 @@ def environ(case=CASE):
 
 
 def ledger_page(company, job, key, page_id="p1", **extra):
-    rich = lambda t: [{"plain_text": t}]   # noqa: E731
-    return {"id": page_id, "properties": {"Company": {"rich_text": rich(company)}, "Job": {"title": rich(job)},
-                                          "Stable Job Key": {"rich_text": rich(key)}}, **extra}
+    rich = lambda t: [{"plain_text": t}]  # noqa: E731
+    return {
+        "id": page_id,
+        "properties": {
+            "Company": {"rich_text": rich(company)},
+            "Job": {"title": rich(job)},
+            "Stable Job Key": {"rich_text": rich(key)},
+        },
+        **extra,
+    }
 
 
 class LedgerClient:
@@ -39,7 +56,9 @@ class PendingCase(unittest.TestCase):
     def test_the_case_creates_one_interview_1_through_the_existing_writer_and_replays_to_nothing(self):
         client = opportunity()
         first = acceptance.run(1, True, environ=environ(), read_rows=lambda company: ROWS, client=client)
-        self.assertEqual((first["rounds_created"], first["writes"], first["readback_ok"], first["ledger"]), (1, 1, 1, "linked"))
+        self.assertEqual(
+            (first["rounds_created"], first["writes"], first["readback_ok"], first["ledger"]), (1, 1, 1, "linked")
+        )
         self.assertEqual(client.posts[0]["properties"]["title"]["title"][0]["text"]["content"], "Interview 1")
         again = acceptance.run(1, True, environ=environ(), read_rows=lambda company: ROWS, client=client)
         self.assertEqual((again["writes"], again["why"].get("child_match")), (0, 1))
@@ -53,12 +72,14 @@ class PendingCase(unittest.TestCase):
         self.assertEqual(client.posts, [])
 
     def test_refusals_carry_the_fixed_progression_code_and_never_reach_the_writer(self):
-        cases = (({**CASE, "stable_job_key": "other-key"}, ROWS, "ledger_unverified"),
-                 ({**CASE, "stable_job_key": None}, ROWS, "ledger_unverified"),
-                 (CASE, [dict(ROWS[0], stable_job_key="")], "ledger_unverified"),
-                 (CASE, ROWS + [dict(ROWS[0], page_id="L2")], "requisition_ambiguous"),
-                 ({**CASE, "source": None}, ROWS, "request_source_missing"),
-                 ({**CASE, "source": "http://mail.example/1"}, ROWS, "request_source_missing"))
+        cases = (
+            ({**CASE, "stable_job_key": "other-key"}, ROWS, "ledger_unverified"),
+            ({**CASE, "stable_job_key": None}, ROWS, "ledger_unverified"),
+            (CASE, [dict(ROWS[0], stable_job_key="")], "ledger_unverified"),
+            (CASE, ROWS + [dict(ROWS[0], page_id="L2")], "requisition_ambiguous"),
+            ({**CASE, "source": None}, ROWS, "request_source_missing"),
+            ({**CASE, "source": "http://mail.example/1"}, ROWS, "request_source_missing"),
+        )
         for case, rows, code in cases:
             with self.subTest(code=code, case=case):
                 with patch.object(acceptance.stage, "run", side_effect=AssertionError("must not delegate")):
@@ -66,9 +87,17 @@ class PendingCase(unittest.TestCase):
                 self.assertEqual((result["writes"], result["why"]), (0, {code: 1}))
 
     def test_wrong_shapes_are_invalid(self):
-        for case in ({**CASE, "interview_date": "2026-10-22"}, {**CASE, "ordinal": 2}, {**CASE, "ordinal": True}, {**CASE, "source": "  "},
-                     {**CASE, "stable_job_key": 7}, {**CASE, "confirmed_round": False}, {**CASE, "company": " "},
-                     {k: v for k, v in CASE.items() if k != "source"}, {**CASE, "extra": 1}):
+        for case in (
+            {**CASE, "interview_date": "2026-10-22"},
+            {**CASE, "ordinal": 2},
+            {**CASE, "ordinal": True},
+            {**CASE, "source": "  "},
+            {**CASE, "stable_job_key": 7},
+            {**CASE, "confirmed_round": False},
+            {**CASE, "company": " "},
+            {k: v for k, v in CASE.items() if k != "source"},
+            {**CASE, "extra": 1},
+        ):
             with self.subTest(case=case):
                 with patch.object(acceptance.stage, "run", side_effect=AssertionError("must not delegate")):
                     result = acceptance.run(1, True, environ=environ(case), read_rows=lambda company: ROWS)
@@ -77,6 +106,7 @@ class PendingCase(unittest.TestCase):
     def test_an_unreadable_ledger_writes_nothing(self):
         def broken(company):
             raise NotionError("NOTION_HTTP_404")
+
         with patch.object(acceptance.stage, "run", side_effect=AssertionError("must not delegate")):
             result = acceptance.run(1, True, environ=environ(), read_rows=broken)
             missing = acceptance.run(1, True, environ=environ())  # no Ledger id configured: the real reader refuses
@@ -87,49 +117,81 @@ class PendingCase(unittest.TestCase):
 class LedgerRead(unittest.TestCase):
     def read(self, pages):
         made = []
+
         def factory(environ, token_name, source_name):
             made.append(LedgerClient(pages, environ, token_name, source_name))
             return made[-1]
+
         with patch.object(acceptance, "Client", side_effect=factory):
-            return acceptance.ledger_rows("ExampleCo, Inc.", {"NOTION_INTERVIEW_TOKEN": "t", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "s"}), made[0]
+            return acceptance.ledger_rows(
+                "ExampleCo, Inc.", {"NOTION_INTERVIEW_TOKEN": "t", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "s"}
+            ), made[0]
 
     def test_reads_every_page_with_the_interview_token_and_skips_trashed_rows(self):
-        pages = [{"results": [ledger_page(COMPANY, ROLE, KEY)], "has_more": True, "next_cursor": "c1"},
-                 {"results": [ledger_page(COMPANY, "Data Engineer", "k2", "p2"), ledger_page(COMPANY, ROLE, "k3", "p3", in_trash=True)], "has_more": False}]
+        pages = [
+            {"results": [ledger_page(COMPANY, ROLE, KEY)], "has_more": True, "next_cursor": "c1"},
+            {
+                "results": [
+                    ledger_page(COMPANY, "Data Engineer", "k2", "p2"),
+                    ledger_page(COMPANY, ROLE, "k3", "p3", in_trash=True),
+                ],
+                "has_more": False,
+            },
+        ]
         rows, client = self.read(pages)
         self.assertEqual(client.made, ("NOTION_INTERVIEW_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"))
-        self.assertEqual(rows, [{"page_id": "p1", "company": COMPANY, "role": ROLE, "stable_job_key": KEY, "requisition": None},
-                                {"page_id": "p2", "company": COMPANY, "role": "Data Engineer", "stable_job_key": "k2", "requisition": None}])
+        self.assertEqual(
+            rows,
+            [
+                {"page_id": "p1", "company": COMPANY, "role": ROLE, "stable_job_key": KEY, "requisition": None},
+                {
+                    "page_id": "p2",
+                    "company": COMPANY,
+                    "role": "Data Engineer",
+                    "stable_job_key": "k2",
+                    "requisition": None,
+                },
+            ],
+        )
         self.assertEqual(client.bodies[0]["filter"], {"property": "Company", "rich_text": {"contains": "exampleco"}})
         self.assertEqual(client.bodies[1]["start_cursor"], "c1")
 
     def test_an_incomplete_read_is_refused_never_partial(self):
-        for pages in ([{"results": [], "has_more": True, "next_cursor": None}],
-                      [{"results": [], "has_more": True, "next_cursor": "c"}, {"results": [], "has_more": True, "next_cursor": "c"}],
-                      [{"results": "x", "has_more": False}],
-                      [{"results": [], "has_more": True, "next_cursor": f"c{n}"} for n in range(acceptance.LEDGER_PAGES)]):
+        for pages in (
+            [{"results": [], "has_more": True, "next_cursor": None}],
+            [
+                {"results": [], "has_more": True, "next_cursor": "c"},
+                {"results": [], "has_more": True, "next_cursor": "c"},
+            ],
+            [{"results": "x", "has_more": False}],
+            [{"results": [], "has_more": True, "next_cursor": f"c{n}"} for n in range(acceptance.LEDGER_PAGES)],
+        ):
             with self.subTest(pages=len(pages)), self.assertRaises(NotionError):
                 self.read(pages)
 
 
 class WorkflowStep(unittest.TestCase):
-    def test_the_stage_and_acceptance_steps_declare_the_ledger_id_for_the_page_to_fill_and_the_negative_case_never_runs_live(self):
+    def test_the_stage_and_acceptance_steps_declare_the_ledger_id_for_the_page_to_fill_and_the_negative_case_never_runs_live(
+        self,
+    ):
         """The job blanks it, the three steps that read Ledger rows declare it empty, and the V7 settings page fills it
         with the step's own read-only Interview.
         """
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
-        job = text[text.index("\n  interview:\n"):text.index("\n  report:\n")]
+        job = text[text.index("\n  interview:\n") : text.index("\n  report:\n")]
         self.assertNotIn("secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID", job)
         self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)  # blank for the whole job
         self.assertEqual(job.count('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""'), 4)
-        stage = job[job.index("id: irun\n"):job.index("id: iacc\n")]
+        stage = job[job.index("id: irun\n") : job.index("id: iacc\n")]
         self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', stage)
-        main = job[job.index("id: iacc\n"):job.index("id: iaccneg")]
-        negative = job[job.index("id: iaccneg"):job.index("Interview warning")]
+        main = job[job.index("id: iacc\n") : job.index("id: iaccneg")]
+        negative = job[job.index("id: iaccneg") : job.index("Interview warning")]
         for step in (main, negative):
             self.assertIn('NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', step)
             self.assertNotIn("NOTION_API_TOKEN", step)
-        self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
+        self.assertIn(
+            "INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative
+        )
         self.assertNotIn("--live", negative)  # the negative case can never write
         self.assertNotIn("$LIVE", negative)
 

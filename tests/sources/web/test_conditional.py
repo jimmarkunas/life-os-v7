@@ -1,4 +1,5 @@
 """conditional GET and the whole-board fingerprint skip."""
+
 from datetime import datetime, timedelta
 import json
 import unittest
@@ -9,8 +10,18 @@ from lifeos.sources.web import lister, run
 
 NOW = datetime(2026, 10, 19, 6, 0)
 BOARD = {"id": "gh-acme", "kind": "greenhouse", "slug": "acme", "company": "Acme"}
-GH = {"jobs": [{"id": 1, "title": "Technical Program Manager", "location": {"name": "Remote - US"}, "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
-                "first_published": "2026-10-18", "content": "Lead delivery"}]}
+GH = {
+    "jobs": [
+        {
+            "id": 1,
+            "title": "Technical Program Manager",
+            "location": {"name": "Remote - US"},
+            "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
+            "first_published": "2026-10-18",
+            "content": "Lead delivery",
+        }
+    ]
+}
 
 
 class Page:
@@ -20,6 +31,7 @@ class Page:
 
 class Provider:
     """A fake ATS API: answers 304 only to the validators it handed out, records the headers it received."""
+
     def __init__(self, body=GH, etag='"v1"', honours=True, status=200):
         self.body, self.etag, self.honours, self.status, self.seen = body, etag, honours, status, []
 
@@ -30,7 +42,11 @@ class Provider:
             return Page(self.status)
         if self.honours and headers.get("If-None-Match") == self.etag:
             return Page(304, validators={"etag": self.etag})
-        return Page(200, json.dumps(self.body), {"etag": self.etag, "last_modified": "Sun, 19 Oct 2026 05:00:00 GMT"} if self.etag else {})
+        return Page(
+            200,
+            json.dumps(self.body),
+            {"etag": self.etag, "last_modified": "Sun, 19 Oct 2026 05:00:00 GMT"} if self.etag else {},
+        )
 
 
 class Lister(unittest.TestCase):
@@ -38,12 +54,18 @@ class Lister(unittest.TestCase):
         provider = Provider()
         first = lister.list_source(BOARD, provider)
         self.assertEqual((first.status, first.validators["etag"], provider.seen[-1]), (lister.COMPLETE, '"v1"', {}))
-        again = lister.list_source({**BOARD, "if_etag": '"v1"', "if_modified": first.validators["last_modified"]}, provider)
+        again = lister.list_source(
+            {**BOARD, "if_etag": '"v1"', "if_modified": first.validators["last_modified"]}, provider
+        )
         self.assertEqual(again.status, lister.UNCHANGED)
-        self.assertEqual(provider.seen[-1], {"If-None-Match": '"v1"', "If-Modified-Since": "Sun, 19 Oct 2026 05:00:00 GMT"})
+        self.assertEqual(
+            provider.seen[-1], {"If-None-Match": '"v1"', "If-Modified-Since": "Sun, 19 Oct 2026 05:00:00 GMT"}
+        )
 
     def test_an_unsupported_host_answers_a_full_body_and_a_304_nobody_asked_for_fails(self):
-        self.assertEqual(lister.list_source({**BOARD, "if_etag": '"v1"'}, Provider(honours=False)).status, lister.COMPLETE)  # no validator support: 200 full body, read as usual
+        self.assertEqual(
+            lister.list_source({**BOARD, "if_etag": '"v1"'}, Provider(honours=False)).status, lister.COMPLETE
+        )  # no validator support: 200 full body, read as usual
         self.assertEqual(lister.list_source(BOARD, Provider(etag=None)).validators, {})
         stray = lister.list_source(BOARD, lambda url, **kw: Page(304))
         self.assertEqual((stray.status, stray.reason), (lister.FAILED, "ambiguous_304"))
@@ -53,12 +75,17 @@ class Lister(unittest.TestCase):
             got = lister.list_source({**BOARD, "if_etag": '"v1"'}, Provider(status=status))
             self.assertEqual((got.status, got.reason), (lister.FAILED, why), status)
         seen = []
-        lister.list_source({"id": "sr", "kind": "smartrecruiters", "slug": "acme", "if_etag": '"v1"'}, lambda url, **kw: seen.append(kw.get("headers")) or Page(500))
+        lister.list_source(
+            {"id": "sr", "kind": "smartrecruiters", "slug": "acme", "if_etag": '"v1"'},
+            lambda url, **kw: seen.append(kw.get("headers")) or Page(500),
+        )
         self.assertTrue(all("If-None-Match" not in (h or {}) for h in seen))  # a paged board is never conditional
 
     def test_http_reads_the_validators_of_an_answer(self):
-        self.assertEqual(http._validators({"ETag": ' "abc" ', "Last-Modified": "Sun, 19 Oct 2026 05:00:00 GMT"}),
-                         {"etag": '"abc"', "last_modified": "Sun, 19 Oct 2026 05:00:00 GMT"})
+        self.assertEqual(
+            http._validators({"ETag": ' "abc" ', "Last-Modified": "Sun, 19 Oct 2026 05:00:00 GMT"}),
+            {"etag": '"abc"', "last_modified": "Sun, 19 Oct 2026 05:00:00 GMT"},
+        )
         self.assertEqual(http._validators({"ETag": "x" * 300}), {})
         self.assertEqual(http._validators(None), {})
 
@@ -68,6 +95,7 @@ class Skip(unittest.TestCase):
 
     def setUp(self):
         from tests.jobs.fakes_jobsdb import JobsDB
+
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 
@@ -76,9 +104,16 @@ class Skip(unittest.TestCase):
         repo = run.SqlRepo()
         original = repo.items
         repo.items = lambda sid: reads.append(sid) or original(sid)
-        with mock.patch.object(run.store, "connect", return_value=self.db), mock.patch.object(run.store, "ensure_schema"):
-            counts = run.run(40, True, NOW + timedelta(days=2 * day), lambda s: lister.list_source(s, provider), repo, [BOARD])  # 2 days apart: always due, whatever the backoff
-        row = self.db.raw.execute("SELECT unchanged_runs, etag, due_at, last_complete_at FROM v7_sources WHERE source_id='gh-acme'").fetchone()
+        with (
+            mock.patch.object(run.store, "connect", return_value=self.db),
+            mock.patch.object(run.store, "ensure_schema"),
+        ):
+            counts = run.run(
+                40, True, NOW + timedelta(days=2 * day), lambda s: lister.list_source(s, provider), repo, [BOARD]
+            )  # 2 days apart: always due, whatever the backoff
+        row = self.db.raw.execute(
+            "SELECT unchanged_runs, etag, due_at, last_complete_at FROM v7_sources WHERE source_id='gh-acme'"
+        ).fetchone()
         return counts, bool(reads), row
 
     def test_quiet_reads_skip_and_every_fourth_read_is_full(self):
@@ -88,40 +123,89 @@ class Skip(unittest.TestCase):
             counts, read_items, (runs, etag, due, last) = self.tick(provider, day)
             seen.append((counts["added"], counts["not_modified"], read_items, runs, bool(provider.seen[-1])))
             self.assertEqual((etag, last), ('"v1"', NOW + timedelta(days=2 * day)))
-        self.assertEqual(seen, [
-            (1, 0, True, 0, False),  # first read: a job added, not quiet
-            (0, 0, True, 1, False),  # a quiet full read earns the first skip
-            (0, 1, False, 2, True),  # 304 to our validator: no item read
-            (0, 1, False, 3, True),
-            (0, 1, False, 4, True),
-            (0, 0, True, 5, False)])
+        self.assertEqual(
+            seen,
+            [
+                (1, 0, True, 0, False),  # first read: a job added, not quiet
+                (0, 0, True, 1, False),  # a quiet full read earns the first skip
+                (0, 1, False, 2, True),  # 304 to our validator: no item read
+                (0, 1, False, 3, True),
+                (0, 1, False, 4, True),
+                (0, 0, True, 5, False),
+            ],
+        )
 
     def test_an_identical_listing_skips_without_validator_support_and_a_change_resets(self):
         provider = Provider(honours=False)
         for day in range(3):
-            counts, read_items, (runs, *_ ) = self.tick(provider, day)
+            counts, read_items, (runs, *_) = self.tick(provider, day)
         self.assertEqual((counts["same_frontier"], read_items, runs), (1, False, 2))
-        provider.body = {"jobs": GH["jobs"] + [{**GH["jobs"][0], "id": 2, "absolute_url": "https://boards.greenhouse.io/acme/jobs/2"}]}
-        counts, read_items, (runs, *_ ) = self.tick(provider, 3)
-        self.assertEqual((counts["added"], read_items, runs), (1, True, 0))  # a different board: full diff, streak reset
+        provider.body = {
+            "jobs": GH["jobs"]
+            + [{**GH["jobs"][0], "id": 2, "absolute_url": "https://boards.greenhouse.io/acme/jobs/2"}]
+        }
+        counts, read_items, (runs, *_) = self.tick(provider, 3)
+        self.assertEqual(
+            (counts["added"], read_items, runs), (1, True, 0)
+        )  # a different board: full diff, streak reset
 
     def test_the_employer_board_pass_keeps_the_validators_through_its_screen(self):
         """TL gate on d2754d7: boards.run always screens"""
         from lifeos.sources.web import boards
-        source = {**BOARD, "tier": "employer", "status": "ready", "enabled": True, "refresh_hours": 24, "hot_hours": 6, "quiet": True}
-        provider = Provider(body={"jobs": GH["jobs"] + [{**GH["jobs"][0], "id": 2, "title": "Staff Software Engineer",
-                                                          "absolute_url": "https://boards.greenhouse.io/acme/jobs/2"}]})
+
+        source = {
+            **BOARD,
+            "tier": "employer",
+            "status": "ready",
+            "enabled": True,
+            "refresh_hours": 24,
+            "hot_hours": 6,
+            "quiet": True,
+        }
+        provider = Provider(
+            body={
+                "jobs": GH["jobs"]
+                + [
+                    {
+                        **GH["jobs"][0],
+                        "id": 2,
+                        "title": "Staff Software Engineer",
+                        "absolute_url": "https://boards.greenhouse.io/acme/jobs/2",
+                    }
+                ]
+            }
+        )
         got = []
         for day in range(3):
-            with mock.patch.object(run.store, "connect", return_value=self.db), mock.patch.object(run.store, "ensure_schema"):
-                read = boards.run if day else lambda *a: boards.backfill(*a, environ={"BOARDS_BACKFILL": "on"})  # a first read is the backfill's
-                counts = read(40, True, NOW + timedelta(days=2 * day), lambda s: lister.list_source(s, provider), run.SqlRepo(), [source])
-            row = self.db.raw.execute("SELECT unchanged_runs, etag, last_modified FROM v7_sources WHERE source_id='gh-acme'").fetchone()
-            got.append((counts["added"], counts["admit"], counts["not_modified"], provider.seen[-1].get("If-None-Match"), *row))
-        self.assertEqual(got, [
-            (1, 1, 0, None, 0, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),
-            (0, 0, 0, None, 1, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),  # a quiet full read earns the skip
-            (0, 0, 1, '"v1"', 2, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT")])
+            with (
+                mock.patch.object(run.store, "connect", return_value=self.db),
+                mock.patch.object(run.store, "ensure_schema"),
+            ):
+                read = (
+                    boards.run if day else lambda *a: boards.backfill(*a, environ={"BOARDS_BACKFILL": "on"})
+                )  # a first read is the backfill's
+                counts = read(
+                    40,
+                    True,
+                    NOW + timedelta(days=2 * day),
+                    lambda s: lister.list_source(s, provider),
+                    run.SqlRepo(),
+                    [source],
+                )
+            row = self.db.raw.execute(
+                "SELECT unchanged_runs, etag, last_modified FROM v7_sources WHERE source_id='gh-acme'"
+            ).fetchone()
+            got.append(
+                (counts["added"], counts["admit"], counts["not_modified"], provider.seen[-1].get("If-None-Match"), *row)
+            )
+        self.assertEqual(
+            got,
+            [
+                (1, 1, 0, None, 0, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),
+                (0, 0, 0, None, 1, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),  # a quiet full read earns the skip
+                (0, 0, 1, '"v1"', 2, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),
+            ],
+        )
         self.assertEqual(counts["screen"], {})  # the 304 read listed nothing to screen
 
     def test_a_quiet_board_backs_off_up_to_three_times_and_a_change_returns_to_normal(self):
@@ -135,6 +219,9 @@ class Skip(unittest.TestCase):
 
     def test_boards_keep_a_fixed_phase_spread_over_the_day(self):
         due = [run.next_due(f"gh-{i}", NOW, True, 0, 0, 24) for i in range(240)]
-        self.assertEqual({d.time() for d in due}, {run.next_due(f"gh-{i}", NOW + timedelta(minutes=7), True, 0, 0, 24).time() for i in range(240)})
+        self.assertEqual(
+            {d.time() for d in due},
+            {run.next_due(f"gh-{i}", NOW + timedelta(minutes=7), True, 0, 0, 24).time() for i in range(240)},
+        )
         hours = [sum(1 for d in due if d.hour == h) for h in range(24)]
         self.assertLess(max(hours), 25)

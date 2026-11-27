@@ -1,6 +1,7 @@
 """the generated domains.yml and hourly.yml write repeated values and repeated env/with blocks once, as YAML anchors and
 aliases (GitHub Actions reads.
 """
+
 import pathlib
 import sys
 import unittest

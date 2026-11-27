@@ -28,16 +28,39 @@ def oracle(meetings, caps=("purge_all", "notes"), sink=None, scope="all", notes=
         if body["op"] == "show" and body.get("id") in bad:
             out = json.dumps({"ok": False, "code": bad[body["id"]], "nonce": body["nonce"]}).encode()
             return b"" if bad[body["id"]] == "" else b"gran1 %d\n" % len(out) + out
-        shown = {"json": json.dumps({"transcript": [{"id": "s0", "document_id": body.get("id") or UUID, "text": "hello", "start_timestamp": "2026-10-13T17:30:00Z",
-                                                     "end_timestamp": "2026-10-13T17:30:05Z", "source": "microphone", "is_final": True}]}), **(notes or {})}
-        extra = {"sync": {"documents": 7, "transcripts": 7}, "list": {"meetings": meetings, "caps": list(caps)}, "show": shown, "purge": {"purged": 1, "scope": scope}}[body["op"]]
+        shown = {
+            "json": json.dumps(
+                {
+                    "transcript": [
+                        {
+                            "id": "s0",
+                            "document_id": body.get("id") or UUID,
+                            "text": "hello",
+                            "start_timestamp": "2026-10-13T17:30:00Z",
+                            "end_timestamp": "2026-10-13T17:30:05Z",
+                            "source": "microphone",
+                            "is_final": True,
+                        }
+                    ]
+                }
+            ),
+            **(notes or {}),
+        }
+        extra = {
+            "sync": {"documents": 7, "transcripts": 7},
+            "list": {"meetings": meetings, "caps": list(caps)},
+            "show": shown,
+            "purge": {"purged": 1, "scope": scope},
+        }[body["op"]]
         out = json.dumps({"ok": True, "nonce": body["nonce"], **extra}).encode()
         return b"gran1 %d\n" % len(out) + out
+
     return send
 
 
 class Catalog:
     """An in-memory v7_meeting_catalog behind the three helpers."""
+
     def __init__(self, done=()):
         self.rows = {k: "carried" for k in done}
         self.saved = []
@@ -63,8 +86,15 @@ def nothing():
 
 def go(send, client, catalog, live=True, rounds=(ROW,), limit=3, patch_meetings=True):
     """`patch_meetings`: the Meetings database is stubbed to an empty, reachable table"""
-    stub = [mock.patch.object(ga.granola_clients, "check", lambda c: "target_ok"), mock.patch.object(ga.granola_clients, "rows_where", lambda *a: []),
-            mock.patch.object(ga.granola_clients, "unfiled_row", lambda *a: "created")] if patch_meetings else []
+    stub = (
+        [
+            mock.patch.object(ga.granola_clients, "check", lambda c: "target_ok"),
+            mock.patch.object(ga.granola_clients, "rows_where", lambda *a: []),
+            mock.patch.object(ga.granola_clients, "unfiled_row", lambda *a: "created"),
+        ]
+        if patch_meetings
+        else []
+    )
     for patcher in stub:
         patcher.start()
     try:
@@ -75,11 +105,26 @@ def go(send, client, catalog, live=True, rounds=(ROW,), limit=3, patch_meetings=
 
 
 def _go(send, client, catalog, live, rounds, limit):
-    with mock.patch.object(ga, "rounds_with_parents", lambda *a: (list(rounds), {ROUND: "parent-page"})), mock.patch.object(ga.notion, "target_check", lambda *a: "target_ok"), \
-            mock.patch.object(ga.notion, "ownership", lambda *a: Ownership.MACHINE), mock.patch.object(ga.create, "link_transcript", lambda *a: "transcript_linked"), \
-            mock.patch.object(ga.interview_evidence, "facts", lambda *a: ("job-key-1", None)), mock.patch.object(ga, "catalog_done", catalog.done), mock.patch.object(ga, "catalog_failed", catalog.failed), \
-            mock.patch.object(ga, "catalog_save", catalog.save), mock.patch.object(ga, "catalog_has", catalog.has), mock.patch.object(ga.store, "ensure_schema", lambda c: None):
-        return ga.run(limit, live, environ=ENV, send=send, client=client, connect=lambda: nothing().__enter__() if False else _conn())
+    with (
+        mock.patch.object(ga, "rounds_with_parents", lambda *a: (list(rounds), {ROUND: "parent-page"})),
+        mock.patch.object(ga.notion, "target_check", lambda *a: "target_ok"),
+        mock.patch.object(ga.notion, "ownership", lambda *a: Ownership.MACHINE),
+        mock.patch.object(ga.create, "link_transcript", lambda *a: "transcript_linked"),
+        mock.patch.object(ga.interview_evidence, "facts", lambda *a: ("job-key-1", None)),
+        mock.patch.object(ga, "catalog_done", catalog.done),
+        mock.patch.object(ga, "catalog_failed", catalog.failed),
+        mock.patch.object(ga, "catalog_save", catalog.save),
+        mock.patch.object(ga, "catalog_has", catalog.has),
+        mock.patch.object(ga.store, "ensure_schema", lambda c: None),
+    ):
+        return ga.run(
+            limit,
+            live,
+            environ=ENV,
+            send=send,
+            client=client,
+            connect=lambda: nothing().__enter__() if False else _conn(),
+        )
 
 
 class _conn:
@@ -98,15 +143,23 @@ class Auto(unittest.TestCase):
         seen, notion, catalog = [], FakeNotion(), Catalog()
         out = go(oracle([MEETING], sink=seen), notion, catalog)
         c = out["counts"]
-        self.assertEqual((out["code"], c["carried"], c["purged"], c["left_on_oracle"], c["failed"]), ("GRAN_AUTO_DONE", 1, 1, 0, 0))
+        self.assertEqual(
+            (out["code"], c["carried"], c["purged"], c["left_on_oracle"], c["failed"]), ("GRAN_AUTO_DONE", 1, 1, 0, 0)
+        )
         self.assertEqual([op for op, _ in seen], ["sync", "list", "show", "purge"])
         self.assertEqual(seen[-1][1], "all")  # the whole meeting, not only the utterances
-        self.assertEqual([(s[2], s[4], s[5]) for s in catalog.saved], [("carried", False, "job-key-1"), ("carried_purged", True, "job-key-1")])  # saved BEFORE the purge, updated after
+        self.assertEqual(
+            [(s[2], s[4], s[5]) for s in catalog.saved],
+            [("carried", False, "job-key-1"), ("carried_purged", True, "job-key-1")],
+        )  # saved BEFORE the purge, updated after
 
     def test_a_carried_meeting_is_never_read_or_written_again(self):
         seen, catalog = [], Catalog(done=[ga.key_of(UUID)])
         out = go(oracle([MEETING], sink=seen), FakeNotion(), catalog)
-        self.assertEqual((out["code"], out["counts"]["already"], [op for op, _ in seen]), ("GRAN_AUTO_NOTHING_NEW", 1, ["sync", "list"]))
+        self.assertEqual(
+            (out["code"], out["counts"]["already"], [op for op, _ in seen]),
+            ("GRAN_AUTO_NOTHING_NEW", 1, ["sync", "list"]),
+        )
 
     def test_a_meeting_with_no_round_is_left_on_oracle_untouched_and_counted(self):
         seen, catalog = [], Catalog()
@@ -121,7 +174,9 @@ class Auto(unittest.TestCase):
         seen, catalog = [], Catalog()
         out = go(oracle([MEETING], caps=("notes",), sink=seen), FakeNotion(), catalog)
         c = out["counts"]
-        self.assertEqual((c["carried"], c["purged"], c["left_on_oracle"], c["why"]), (1, 0, 1, {"GRAN_PURGE_ALL_UNSUPPORTED": 1}))
+        self.assertEqual(
+            (c["carried"], c["purged"], c["left_on_oracle"], c["why"]), (1, 0, 1, {"GRAN_PURGE_ALL_UNSUPPORTED": 1})
+        )
         self.assertNotIn("purge", [op for op, _ in seen])
         self.assertEqual(catalog.rows[ga.key_of(UUID)], "carried")
 
@@ -133,18 +188,25 @@ class Auto(unittest.TestCase):
 
     def test_notes_and_summary_become_a_header_above_the_transcript_and_the_page_reads_back(self):
         notion, catalog = FakeNotion(), Catalog()
-        out = go(oracle([MEETING], notes={"summary": "We agreed next steps.", "notes": "Line one\n\nLine two"}), notion, catalog)
+        out = go(
+            oracle([MEETING], notes={"summary": "We agreed next steps.", "notes": "Line one\n\nLine two"}),
+            notion,
+            catalog,
+        )
         self.assertEqual((out["counts"]["header"], out["counts"]["failed"]), (1, 0))
         page = next(v for k, v in notion.pages.items() if k != ROUND)
         kinds = [b["type"] for b in page]
         self.assertEqual(kinds[:3], ["paragraph", "paragraph", "heading_2"])
-        self.assertIn("heading_2", kinds[kinds.index("heading_2") + 1:])
+        self.assertIn("heading_2", kinds[kinds.index("heading_2") + 1 :])
         self.assertTrue(catalog.saved[0][3])
 
     def test_a_dry_run_writes_nothing_catalogs_nothing_and_purges_nothing(self):
         seen, notion, catalog = [], FakeNotion(), Catalog()
         out = go(oracle([MEETING], sink=seen), notion, catalog, live=False)
-        self.assertEqual((out["counts"]["carried"], out["counts"]["failed"], out["counts"]["why"], catalog.saved), (0, 0, {"TRANSCRIPT_PLANNED": 1}, []))
+        self.assertEqual(
+            (out["counts"]["carried"], out["counts"]["failed"], out["counts"]["why"], catalog.saved),
+            (0, 0, {"TRANSCRIPT_PLANNED": 1}, []),
+        )
         self.assertNotIn("purge", [op for op, _ in seen])
         self.assertEqual([c for c in notion.calls if c[0] != "GET"], [])
 
@@ -152,12 +214,20 @@ class Auto(unittest.TestCase):
         seen, catalog = [], Catalog()
         catalog.has = lambda *a: False
         out = go(oracle([MEETING], sink=seen), FakeNotion(), catalog)
-        self.assertEqual((out["counts"]["failed"], out["counts"]["purged"], out["counts"]["why"]), (1, 0, {"GRAN_CATALOG_FAILED": 1}))
+        self.assertEqual(
+            (out["counts"]["failed"], out["counts"]["purged"], out["counts"]["why"]), (1, 0, {"GRAN_CATALOG_FAILED": 1})
+        )
         self.assertNotIn("purge", [op for op, _ in seen])
 
     def test_only_a_few_meetings_are_carried_per_run_and_the_rest_wait(self):
-        extra = [dict(MEETING, id=f"00000000-0000-4000-8000-00000000000{i}", start=f"2026-10-13T1{i}:00:00Z") for i in range(4)]
-        rows = [granola_match.Round(f"r{i}", DAY, "Becton Dickinson", "Senior Technical Program Manager", "") for i in range(4)]
+        extra = [
+            dict(MEETING, id=f"00000000-0000-4000-8000-00000000000{i}", start=f"2026-10-13T1{i}:00:00Z")
+            for i in range(4)
+        ]
+        rows = [
+            granola_match.Round(f"r{i}", DAY, "Becton Dickinson", "Senior Technical Program Manager", "")
+            for i in range(4)
+        ]
         out = go(oracle(extra), FakeNotion(), Catalog(), rounds=rows, limit=1)
         self.assertLessEqual(out["counts"]["carried"], 1)
 
@@ -165,7 +235,15 @@ class Auto(unittest.TestCase):
 def four(bad_days=()):
     """Four meetings on four days, each with its own round"""
     names = ("Alpha", "Bravo", "Charlie", "Delta")
-    meetings = [dict(MEETING, id=f"00000000-0000-4000-8000-00000000000{i}", start=f"2026-10-{10 + i}T17:30:00Z", title=f"{names[i]} Corp call") for i in range(4)]
+    meetings = [
+        dict(
+            MEETING,
+            id=f"00000000-0000-4000-8000-00000000000{i}",
+            start=f"2026-10-{10 + i}T17:30:00Z",
+            title=f"{names[i]} Corp call",
+        )
+        for i in range(4)
+    ]
     rounds = [granola_match.Round(f"r{i}", f"2026-10-{10 + i}", f"{names[i]} Corp", "", "") for i in range(4)]
     return meetings, rounds, [m["id"] for m in reversed(meetings)]
 
@@ -182,9 +260,17 @@ class OneBadMeeting(unittest.TestCase):
     def test_one_failing_meeting_is_counted_and_the_older_ones_are_still_filed(self):
         meetings, rounds, newest_first = four()
         seen, catalog = [], Catalog()
-        out = go(oracle(meetings, sink=seen, bad={newest_first[0]: "GRAN_NOT_FOUND"}), notion4(), catalog, rounds=rounds, limit=5)
+        out = go(
+            oracle(meetings, sink=seen, bad={newest_first[0]: "GRAN_NOT_FOUND"}),
+            notion4(),
+            catalog,
+            rounds=rounds,
+            limit=5,
+        )
         c = out["counts"]
-        self.assertEqual((out["code"], c["carried"], c["failed"], c["why"]), ("GRAN_AUTO_DONE", 3, 1, {"GRAN_NOT_FOUND": 1}))
+        self.assertEqual(
+            (out["code"], c["carried"], c["failed"], c["why"]), ("GRAN_AUTO_DONE", 3, 1, {"GRAN_NOT_FOUND": 1})
+        )
         self.assertEqual(catalog.rows[ga.key_of(newest_first[0])], "read_failed_1")
         self.assertEqual(sum(1 for op, _ in seen if op == "purge"), 3)
 
@@ -194,7 +280,13 @@ class OneBadMeeting(unittest.TestCase):
         seen = []
         catalog = Catalog(done=[ga.key_of(i) for i in newest_first[2:]])
         catalog.rows[key] = "read_failed_1"
-        out = go(oracle(meetings, sink=seen, bad={newest_first[0]: "GRAN_TIMEOUT"}), notion4(), catalog, rounds=rounds, limit=1)
+        out = go(
+            oracle(meetings, sink=seen, bad={newest_first[0]: "GRAN_TIMEOUT"}),
+            notion4(),
+            catalog,
+            rounds=rounds,
+            limit=1,
+        )
         self.assertEqual(out["counts"]["carried"], 1)  # the older one that reads fine goes first
         self.assertEqual([op for op, _ in seen].count("show"), 1)
         catalog = Catalog(done=[ga.key_of(i) for i in newest_first[1:]])
@@ -213,24 +305,46 @@ class OneBadMeeting(unittest.TestCase):
     def test_meetings_that_keep_failing_in_a_row_stop_the_run_as_a_helper_problem(self):
         meetings, rounds, newest_first = four()
         seen = []
-        out = go(oracle(meetings, sink=seen, bad={i: "GRAN_TIMEOUT" for i in newest_first[:3]}), notion4(), Catalog(), rounds=rounds, limit=5)
-        self.assertEqual((out["code"], out["counts"]["carried"], [op for op, _ in seen].count("show")), ("GRAN_TIMEOUT", 0, ga.STREAK))
+        out = go(
+            oracle(meetings, sink=seen, bad={i: "GRAN_TIMEOUT" for i in newest_first[:3]}),
+            notion4(),
+            Catalog(),
+            rounds=rounds,
+            limit=5,
+        )
+        self.assertEqual(
+            (out["code"], out["counts"]["carried"], [op for op, _ in seen].count("show")),
+            ("GRAN_TIMEOUT", 0, ga.STREAK),
+        )
 
     def test_a_helper_that_does_not_answer_stops_the_run_at_the_first_meeting(self):
         meetings, rounds, newest_first = four()
         seen = []
-        out = go(oracle(meetings, sink=seen, bad={i: "" for i in newest_first}), notion4(), Catalog(), rounds=rounds, limit=5)
-        self.assertEqual((out["code"], out["counts"]["carried"], [op for op, _ in seen].count("show")), ("GRAN_NO_REPLY", 0, 1))
+        out = go(
+            oracle(meetings, sink=seen, bad={i: "" for i in newest_first}), notion4(), Catalog(), rounds=rounds, limit=5
+        )
+        self.assertEqual(
+            (out["code"], out["counts"]["carried"], [op for op, _ in seen].count("show")), ("GRAN_NO_REPLY", 0, 1)
+        )
 
     def test_an_oracle_that_is_signed_out_is_not_one_meetings_problem(self):
         meetings, rounds, newest_first = four()
-        out = go(oracle(meetings, bad={newest_first[0]: "GRAN_AUTH_EXPIRED"}), notion4(), Catalog(), rounds=rounds, limit=5)
+        out = go(
+            oracle(meetings, bad={newest_first[0]: "GRAN_AUTH_EXPIRED"}), notion4(), Catalog(), rounds=rounds, limit=5
+        )
         self.assertEqual((out["code"], out["counts"]["carried"]), ("GRAN_AUTH_EXPIRED", 0))
 
     def test_a_dry_run_records_no_failure(self):
         meetings, rounds, newest_first = four()
         catalog = Catalog()
-        out = go(oracle(meetings, bad={newest_first[0]: "GRAN_OVERSIZE"}), notion4(), catalog, live=False, rounds=rounds, limit=5)
+        out = go(
+            oracle(meetings, bad={newest_first[0]: "GRAN_OVERSIZE"}),
+            notion4(),
+            catalog,
+            live=False,
+            rounds=rounds,
+            limit=5,
+        )
         self.assertEqual((out["counts"]["why"].get("GRAN_OVERSIZE"), catalog.saved), (1, []))
 
 

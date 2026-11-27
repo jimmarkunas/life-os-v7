@@ -1,6 +1,7 @@
 """(synthetic): the private endpoint's `concord1` request, the Concord helper behind it, and the reader on the runner
 side.
 """
+
 import io
 import json
 import os
@@ -36,8 +37,14 @@ class Endpoint(unittest.TestCase):
         self.assertEqual(self.call(v2(RUNNER) + b"concord1\n"), (0, REPLY, [b"concord1\n"]))
 
     def test_refusals_never_reach_the_helper(self):
-        for payload, uid in ((v2(OTHER) + b"concord1\n", 0), (b"concord1\n", 0), (v2(RUNNER) + b"concord1\n", 1001), (v2(RUNNER) + b"concord1 7\n", 0), (v2(RUNNER) + b"concord2\n", 0),
-                             (v2(RUNNER) + b"concord1x\n", 0)):
+        for payload, uid in (
+            (v2(OTHER) + b"concord1\n", 0),
+            (b"concord1\n", 0),
+            (v2(RUNNER) + b"concord1\n", 1001),
+            (v2(RUNNER) + b"concord1 7\n", 0),
+            (v2(RUNNER) + b"concord2\n", 0),
+            (v2(RUNNER) + b"concord1x\n", 0),
+        ):
             code, out, seen = self.call(payload, uid=uid)
             self.assertEqual((code, out, seen), (1, b"", []), payload[-14:])
 
@@ -75,10 +82,18 @@ def cli(stdout="", code=0, error=None):
         if error:
             raise error
         return subprocess.CompletedProcess(cmd, code, stdout, "")
+
     return run
 
 
-MESSAGE = {"messageId": "m-1", "senderAgentId": "agent:SECRET-SENDER", "recipientAgentId": "agent:b", "content": "PRIVATE MESSAGE TEXT /home/secret/path", "createdAt": "2026-11-25T10:00:00Z", "status": "delivered"}
+MESSAGE = {
+    "messageId": "m-1",
+    "senderAgentId": "agent:SECRET-SENDER",
+    "recipientAgentId": "agent:b",
+    "content": "PRIVATE MESSAGE TEXT /home/secret/path",
+    "createdAt": "2026-11-25T10:00:00Z",
+    "status": "delivered",
+}
 NOTICE = "Concord sends product and coordination telemetry (no code, paths, messages, or task content).\n"
 
 
@@ -117,10 +132,24 @@ class Helper(unittest.TestCase):
 class Reader(unittest.TestCase):
     def test_only_a_well_formed_reply_is_believed(self):
         self.assertEqual(concord_reader.health("h", lambda h, r: REPLY)["messages"], 2)
-        for raw in (b"", b"{}", b'{"ok":true,"code":"X","messages":1,"at":1}', b'{"ok":false,"code":"","messages":0,"at":1}', b'{"ok":true,"code":"","messages":true,"at":1}',
-                    b'{"ok":false,"code":"CONCORD_ANYTHING","messages":0,"at":1}', b"not json"):
-            self.assertEqual(concord_reader.health("h", lambda h, r, raw=raw: raw), {"ok": False, "code": "CONCORD_UNREACHABLE", "messages": 0, "at": 0}, raw)
-        self.assertEqual(concord_reader.health("h", lambda h, r: (_ for _ in ()).throw(OSError("down")))["code"], "CONCORD_UNREACHABLE")
+        for raw in (
+            b"",
+            b"{}",
+            b'{"ok":true,"code":"X","messages":1,"at":1}',
+            b'{"ok":false,"code":"","messages":0,"at":1}',
+            b'{"ok":true,"code":"","messages":true,"at":1}',
+            b'{"ok":false,"code":"CONCORD_ANYTHING","messages":0,"at":1}',
+            b"not json",
+        ):
+            self.assertEqual(
+                concord_reader.health("h", lambda h, r, raw=raw: raw),
+                {"ok": False, "code": "CONCORD_UNREACHABLE", "messages": 0, "at": 0},
+                raw,
+            )
+        self.assertEqual(
+            concord_reader.health("h", lambda h, r: (_ for _ in ()).throw(OSError("down")))["code"],
+            "CONCORD_UNREACHABLE",
+        )
 
     def test_the_request_is_the_one_fixed_line(self):
         seen = []
@@ -136,7 +165,9 @@ class Reader(unittest.TestCase):
         for path in sorted(root.glob("*.py")):
             if path.name in ("sources.py", "concord_reader.py"):
                 continue
-            self.assertNotIn("LIVE_READ_SOURCES", path.read_text(), path.name)  # no other module widens or reads the allow-list
+            self.assertNotIn(
+                "LIVE_READ_SOURCES", path.read_text(), path.name
+            )  # no other module widens or reads the allow-list
         self.assertIn("refuse_live", (root / "followup.py").read_text())
         with self.assertRaises(sources.InboxError) as caught:
             sources.refuse_live("cred:x")

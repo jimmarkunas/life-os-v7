@@ -1,6 +1,7 @@
 """the private relay pilot is one more community of the governed MCP service, only behind BUZZ_RELAY=pilot, with the
 production Relay client and a.
 """
+
 import json
 import unittest
 
@@ -16,13 +17,21 @@ def relays(calls):
     def transport(method, url, headers, body, timeout=15):
         calls.append((url, headers["Authorization"]))
         return 200, json.dumps([]).encode()
+
     hosted = {"life-os": "https://x.communities.buzz.xyz"}
-    return {i: Relay(dict(hosted), {"life-os": nip98.secret_from(HOSTED_KEY)}, transport=transport) for i in ("claude", "chatgpt")}
+    return {
+        i: Relay(dict(hosted), {"life-os": nip98.secret_from(HOSTED_KEY)}, transport=transport)
+        for i in ("claude", "chatgpt")
+    }
 
 
 class PilotCommunity(unittest.TestCase):
     def test_hosted_is_the_default_and_the_pilot_community_is_refused(self):
-        for env in ({}, {"BUZZ_RELAY": ""}, {"BUZZ_RELAY": "hosted", "BUZZ_PILOT_CHANNEL": CHANNEL, "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY}):
+        for env in (
+            {},
+            {"BUZZ_RELAY": ""},
+            {"BUZZ_RELAY": "hosted", "BUZZ_PILOT_CHANNEL": CHANNEL, "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY},
+        ):
             calls, rs = [], None
             rs = relays(calls)
             self.assertEqual(pilot_community.wire(env, rs, nip98.secret_from), ())
@@ -47,7 +56,14 @@ class PilotCommunity(unittest.TestCase):
         self.assertEqual(calls[0][0], "https://x.communities.buzz.xyz/query")
 
     def test_a_bad_mode_or_channel_stops_the_service_naming_only_the_setting(self):
-        for env, name in (({"BUZZ_RELAY": "Pilot2"}, "BUZZ_RELAY"), ({"BUZZ_RELAY": "pilot"}, "BUZZ_PILOT_CHANNEL"), ({"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": "not-a-uuid", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY}, "BUZZ_PILOT_CHANNEL")):
+        for env, name in (
+            ({"BUZZ_RELAY": "Pilot2"}, "BUZZ_RELAY"),
+            ({"BUZZ_RELAY": "pilot"}, "BUZZ_PILOT_CHANNEL"),
+            (
+                {"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": "not-a-uuid", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY},
+                "BUZZ_PILOT_CHANNEL",
+            ),
+        ):
             with self.assertRaises(ValueError) as caught:
                 pilot_community.wire(env, relays([]), nip98.secret_from)
             self.assertEqual(str(caught.exception), name)
@@ -58,17 +74,30 @@ class PilotCommunity(unittest.TestCase):
         self.assertFalse(relay_choice.pilot_url_ok("https://life-os-dev.communities.buzz.xyz"))
         self.assertFalse(relay_choice.pilot_url_ok("http://127.0.0.1:3100"))
 
+
 class SeveralChannels(unittest.TestCase):
     """the four channels that match the hosted names are writable beside the pilot channel"""
+
     def test_a_comma_list_wires_every_channel_and_one_bad_entry_refuses_the_whole_setting(self):
         second = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
         relay = type("R", (), {"urls": {}, "keys": {}, "writes": set()})()
-        wired = pilot_community.wire({"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": f"{CHANNEL}, {second.upper()}", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY}, {"claude": relay}, lambda v: v)
+        wired = pilot_community.wire(
+            {
+                "BUZZ_RELAY": "pilot",
+                "BUZZ_PILOT_CHANNEL": f"{CHANNEL}, {second.upper()}",
+                "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY,
+            },
+            {"claude": relay},
+            lambda v: v,
+        )
         self.assertEqual((wired, relay.writes), (("claude",), {("pilot", CHANNEL), ("pilot", second)}))
         with self.assertRaises(ValueError) as caught:
-            pilot_community.wire({"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": f"{CHANNEL},nope", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY}, {"claude": relay}, lambda v: v)
+            pilot_community.wire(
+                {"BUZZ_RELAY": "pilot", "BUZZ_PILOT_CHANNEL": f"{CHANNEL},nope", "BUZZ_KEY_CLAUDE_PILOT": CLAUDE_KEY},
+                {"claude": relay},
+                lambda v: v,
+            )
         self.assertEqual(str(caught.exception), "BUZZ_PILOT_CHANNEL")
-
 
 
 if __name__ == "__main__":

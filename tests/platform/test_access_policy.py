@@ -5,10 +5,15 @@ from datetime import datetime, timedelta, timezone
 from lifeos.platform import access_policy as A
 
 AUD, CHAL, STRANGER = "73b7" + "0" * 60, "b1ad" + "0" * 60, "ee" * 32
-DOC = {"version": 1, "bulk_limit": 10,
-       "default": {"jira": "off", "notion": "off", "github": "off"},
-       "agents": {AUD: {"name": "Council Auditor", "jira": "read", "notion": "write", "github": "read"},
-                  CHAL: {"name": "Council Challenger", "jira": "read", "notion": "read", "github": "off"}}}
+DOC = {
+    "version": 1,
+    "bulk_limit": 10,
+    "default": {"jira": "off", "notion": "off", "github": "off"},
+    "agents": {
+        AUD: {"name": "Council Auditor", "jira": "read", "notion": "write", "github": "read"},
+        CHAL: {"name": "Council Challenger", "jira": "read", "notion": "read", "github": "off"},
+    },
+}
 
 
 def policy(**patch):
@@ -37,7 +42,9 @@ class Decide(unittest.TestCase):
         self.assertEqual(A.decide(p, AUD, "notion", "bulk"), ("pending", "bulk_needs_approval"))
         self.assertEqual(A.decide(p, AUD, "notion", "write", count=10)[0], "allow")
         self.assertEqual(A.decide(p, AUD, "notion", "write", count=11), ("pending", "bulk_needs_approval"))
-        self.assertEqual(A.decide(p, CHAL, "notion", "delete"), ("deny", "write_not_granted"))  # no write level, no approval path
+        self.assertEqual(
+            A.decide(p, CHAL, "notion", "delete"), ("deny", "write_not_granted")
+        )  # no write level, no approval path
 
     def test_unknown_agents_get_the_default_and_the_default_is_off(self):
         p = policy()
@@ -48,12 +55,18 @@ class Decide(unittest.TestCase):
     def test_everything_malformed_is_a_deny(self):
         p = policy()
         self.assertEqual(A.decide(None, AUD, "notion", "read"), ("deny", "policy_unreadable"))
-        for args in ((AUD, "hostinger", "read"), (AUD, "notion", "erase"), ("not-a-key", "notion", "read"), (None, "notion", "read"), (AUD, "notion", "write", 0), (AUD, "notion", "write", True)):
+        for args in (
+            (AUD, "hostinger", "read"),
+            (AUD, "notion", "erase"),
+            ("not-a-key", "notion", "read"),
+            (None, "notion", "read"),
+            (AUD, "notion", "write", 0),
+            (AUD, "notion", "write", True),
+        ):
             self.assertEqual(A.decide(p, *args)[0], "deny", args)
 
 
 class MailDriveCalendar(unittest.TestCase):
-
     def test_they_are_known_services_and_a_missing_row_means_off(self):
         p = policy()
         for service in ("gmail", "drive", "calendar"):
@@ -77,9 +90,18 @@ class MailDriveCalendar(unittest.TestCase):
 
 class Load(unittest.TestCase):
     def test_bad_documents_raise(self):
-        bad = ["", "[]", "{", json.dumps({**DOC, "version": 2}), json.dumps({**DOC, "bulk_limit": 0}), json.dumps({**DOC, "bulk_limit": "10"}),
-               json.dumps({**DOC, "agents": {"short": {}}}), json.dumps({**DOC, "agents": {AUD: {"notion": "admin"}}}),
-               json.dumps({**DOC, "agents": {AUD: {"hostinger": "write"}}}), json.dumps({**DOC, "default": []})]
+        bad = [
+            "",
+            "[]",
+            "{",
+            json.dumps({**DOC, "version": 2}),
+            json.dumps({**DOC, "bulk_limit": 0}),
+            json.dumps({**DOC, "bulk_limit": "10"}),
+            json.dumps({**DOC, "agents": {"short": {}}}),
+            json.dumps({**DOC, "agents": {AUD: {"notion": "admin"}}}),
+            json.dumps({**DOC, "agents": {AUD: {"hostinger": "write"}}}),
+            json.dumps({**DOC, "default": []}),
+        ]
         for text in bad:
             with self.assertRaises(A.PolicyError, msg=text):
                 A.load(text)
@@ -93,11 +115,23 @@ class Load(unittest.TestCase):
 class Audit(unittest.TestCase):
     def test_a_line_has_central_time_and_no_free_text(self):
         now = datetime(2026, 11, 8, 16, 30, tzinfo=timezone.utc)
-        line = A.audit_line(AUD, "notion", "notion-update-page", "pending", "bulk_needs_approval", approver="jim", now=now)
+        line = A.audit_line(
+            AUD, "notion", "notion-update-page", "pending", "bulk_needs_approval", approver="jim", now=now
+        )
         self.assertEqual(line["t"], "2026-11-08T10:30:00-06:00")
-        summer = A.audit_line(AUD, "notion", "notion-update-page", "allow", "write_allowed", now=datetime(2026, 7, 8, 16, 30, tzinfo=timezone.utc))
+        summer = A.audit_line(
+            AUD,
+            "notion",
+            "notion-update-page",
+            "allow",
+            "write_allowed",
+            now=datetime(2026, 7, 8, 16, 30, tzinfo=timezone.utc),
+        )
         self.assertEqual(summer["t"], "2026-07-08T11:30:00-05:00")
-        self.assertEqual((line["service"], line["op"], line["decision"], line["approver"]), ("notion", "notion-update-page", "pending", "jim"))
+        self.assertEqual(
+            (line["service"], line["op"], line["decision"], line["approver"]),
+            ("notion", "notion-update-page", "pending", "jim"),
+        )
         dirty = A.audit_line(AUD, "notion", "page: secret text\nwith breaks", "deny", "x" * 200)
         self.assertNotIn("\n", json.dumps(dirty).replace("\\n", ""))
         self.assertLessEqual(len(dirty["reason"]), 40)

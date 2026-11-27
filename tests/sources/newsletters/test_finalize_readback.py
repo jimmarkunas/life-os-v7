@@ -1,6 +1,7 @@
 """Newsletter acceptance: mail -> cards -> lane decision -> Ledger payload -> read-back -> finalize (no network, no
 database).
 """
+
 from datetime import date, datetime
 import unittest
 
@@ -10,8 +11,10 @@ from lifeos.sources.newsletters import config, finalize, ingest
 from lifeos.sources.newsletters.parsers import jobright
 from tests.kit.gmail import FakeGmail
 
-MAIL = ('<a href="https://jobright.ai/jobs/info/J1"><span>Acme</span><span>Software</span><span>89</span><span>%</span>'
-        '<span>Program Manager</span><span>Remote, US</span><span>3 days ago</span></a>')
+MAIL = (
+    '<a href="https://jobright.ai/jobs/info/J1"><span>Acme</span><span>Software</span><span>89</span><span>%</span>'
+    '<span>Program Manager</span><span>Remote, US</span><span>3 days ago</span></a>'
+)
 
 
 class FakeNotion:
@@ -23,14 +26,34 @@ class FakeNotion:
     def call(self, method, path, body=None):
         self.calls.append(path)
         if path.startswith("/pages/"):
+
             def plain(p):
                 out = {}
                 for k, v in p.items():
-                    out[k] = {**v, **{kind: [{"plain_text": t["text"]["content"]} for t in v[kind]] for kind in ("title", "rich_text") if kind in v}}
+                    out[k] = {
+                        **v,
+                        **{
+                            kind: [{"plain_text": t["text"]["content"]} for t in v[kind]]
+                            for kind in ("title", "rich_text")
+                            if kind in v
+                        },
+                    }
                 return out
+
             return {"properties": plain(self.props)}
-        return {"results": [{"paragraph": {"rich_text": b[b["type"]]["rich_text"] and [{"plain_text": b[b["type"]]["rich_text"][0]["text"]["content"]}]}}
-                            if b["type"] == "paragraph" else {"heading_2": {}} for b in self.blocks[:3]]}
+        return {
+            "results": [
+                {
+                    "paragraph": {
+                        "rich_text": b[b["type"]]["rich_text"]
+                        and [{"plain_text": b[b["type"]]["rich_text"][0]["text"]["content"]}]
+                    }
+                }
+                if b["type"] == "paragraph"
+                else {"heading_2": {}}
+                for b in self.blocks[:3]
+            ]
+        }
 
 
 def check(client, key, url, fit):
@@ -42,13 +65,27 @@ class AcceptanceTests(unittest.TestCase):
     def test_a_newsletter_job_reaches_the_ledger_and_reads_back(self):
         card = jobright.parse(MAIL)[0]
         self.assertEqual(ingest.status_for(card, 0), "NEW")
-        facts = lanes.facts_for(81, card.title, card.location_text, "Remote role", None, date(2026, 10, 1), date(2026, 10, 1))
+        facts = lanes.facts_for(
+            81, card.title, card.location_text, "Remote role", None, date(2026, 10, 1), date(2026, 10, 1)
+        )
         decision, lane = lanes.decide("Newsletter", facts, date(2026, 10, 1))
         self.assertEqual((decision.status, lane), (lanes.ADMIT, "US Remote"))
         key, url = "k1", "https://acme.example/jobs/1"
-        row = {"title": card.title, "company": card.company, "url": url, "source": "jobright", "provider": "Jobright", "lane": "Newsletter",
-               "key": key, "first_seen": date(2026, 10, 1), "posted": date(2026, 10, 1), "fit": 81, "fit_line": "[81%] Go",
-               "admission": decision.status, "work_mode": facts.work_mode}
+        row = {
+            "title": card.title,
+            "company": card.company,
+            "url": url,
+            "source": "jobright",
+            "provider": "Jobright",
+            "lane": "Newsletter",
+            "key": key,
+            "first_seen": date(2026, 10, 1),
+            "posted": date(2026, 10, 1),
+            "fit": 81,
+            "fit_line": "[81%] Go",
+            "admission": decision.status,
+            "work_mode": facts.work_mode,
+        }
         props = publish.properties(row)
         blocks = publish.body_blocks(key, {"summary": "About", "responsibilities": "Lead delivery"})
         self.assertIsNone(check(FakeNotion(props, blocks), key, url, 81))
@@ -58,7 +95,9 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(url_key(url), url_key(url + "/"))
 
     def test_a_uk_newsletter_job_is_excluded_by_market(self):
-        facts = lanes.facts_for(85, "Program Manager", "London, UK", "Remote", None, date(2026, 10, 1), date(2026, 10, 1))
+        facts = lanes.facts_for(
+            85, "Program Manager", "London, UK", "Remote", None, date(2026, 10, 1), date(2026, 10, 1)
+        )
         self.assertEqual(lanes.decide("Newsletter", facts, date(2026, 10, 1))[0].status, lanes.EXCLUDE)
 
 
@@ -76,7 +115,9 @@ class Cursor:
         self.args = args
 
     def fetchall(self):
-        return [tuple(r) + (None,) * (4 - len(r)) for r in self.rows if r[0] in self.args]  # (message, status, unverified[, repost_of])
+        return [
+            tuple(r) + (None,) * (4 - len(r)) for r in self.rows if r[0] in self.args
+        ]  # (message, status, unverified[, repost_of])
 
 
 class Conn:
@@ -100,14 +141,26 @@ class FinalizeTests(unittest.TestCase):
         return counts, gmail.calls
 
     def test_only_complete_mail_closes(self):
-        rows = [("done", "PUBLISHED", 0), ("done", "EXCLUDED_STALE", 1), ("open", "READY", 1), ("open", "PUBLISHED", 0),
-                ("unread", "PUBLISHED", 1)]
+        rows = [
+            ("done", "PUBLISHED", 0),
+            ("done", "EXCLUDED_STALE", 1),
+            ("open", "READY", 1),
+            ("open", "PUBLISHED", 0),
+            ("unread", "PUBLISHED", 1),
+        ]
         counts, calls = self.run_finalize(rows, ["done", "open", "unread", "empty"])
         self.assertEqual(calls, [(["done", "empty"], ["LBL"], [])])  # no saved jobs = nothing in flight
         self.assertEqual((counts["closed"], counts["in_flight"], counts["unverified"]), (2, 1, 1))
 
     def test_hold_and_unknown_statuses_keep_the_mail_open_and_terminal_ones_close_it(self):
-        rows = [("a", "HOLD", 1), ("b", "EXCLUDED_FIT", 1), ("b", "DUPLICATE", 1), ("b", "CLOSED", 1), ("c", "WEIRD", 1), ("d", "PURGED", 1)]
+        rows = [
+            ("a", "HOLD", 1),
+            ("b", "EXCLUDED_FIT", 1),
+            ("b", "DUPLICATE", 1),
+            ("b", "CLOSED", 1),
+            ("c", "WEIRD", 1),
+            ("d", "PURGED", 1),
+        ]
         counts, calls = self.run_finalize(rows, ["a", "b", "c", "d"])
         self.assertEqual(calls, [(["b", "d"], ["LBL"], [])])
         self.assertEqual((counts["hold"], counts["other"], counts["closed"]), (1, 1, 2))
@@ -120,13 +173,16 @@ class FinalizeTests(unittest.TestCase):
                 if not create:
                     raise GmailError(f"label not found: {name}")
                 return "LBL"
+
         gmail = NoLabel(results={config.FINALIZE_QUERY: ["a"]})
         counts = finalize.finalize(gmail, False, 50, lambda: Conn([("a", "PUBLISHED", 0)]))
         self.assertEqual((counts["would_close"], gmail.calls), (1, []))
         with self.assertRaises(GmailError):
+
             class Broken(FakeGmail):
                 def label_id(self, name, create=False):
                     raise GmailError("boom")
+
             finalize.finalize(Broken(results={}), True, 50, lambda: Conn([]))
 
     def test_dry_run_changes_nothing(self):

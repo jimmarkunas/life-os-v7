@@ -1,6 +1,7 @@
 """(REQ-85 T2): the budget model and the guard, played against a deterministic simulator of the meter and of Honcho's
 single-worker queue.
 """
+
 import importlib.util
 import pathlib
 import random
@@ -41,7 +42,14 @@ class World:
         self.flag_fail = False
         self.dream_attempt_cost = None
         self.reads, self.refusing_from, self.expire_from, self.queue_at_arm = 0, None, None, []
-        self.scope_id, self.scope_state, self.scope_cap, self.blocked, self.scope_gone, self.bad_doc = "t2", "open", budget.SCOPE_CAP, None, False, False
+        self.scope_id, self.scope_state, self.scope_cap, self.blocked, self.scope_gone, self.bad_doc = (
+            "t2",
+            "open",
+            budget.SCOPE_CAP,
+            None,
+            False,
+            False,
+        )
         self.dream_in_queue = False
         self.armed_posts = 0
 
@@ -75,7 +83,9 @@ class World:
                     self.dream_in_queue = False
 
     def drain(self):
-        while self.queue and not (self.refusing_from is not None and self.t >= self.refusing_from):  # a refusing meter never drains
+        while self.queue and not (
+            self.refusing_from is not None and self.t >= self.refusing_from
+        ):  # a refusing meter never drains
             self.step(1)
 
     def ours(self):
@@ -101,7 +111,9 @@ class Meter:
             if w.frozen_value is None:
                 w.frozen_value = w.spent
             spent = w.frozen_value
-        blocked = w.blocked or ("scope expired and not closed" if w.expire_from is not None and w.t >= w.expire_from else None)
+        blocked = w.blocked or (
+            "scope expired and not closed" if w.expire_from is not None and w.t >= w.expire_from else None
+        )
         doc = {"ok": True, "spent_usd": spent, "cap_usd": 25.0, "stopped": False, "blocked": blocked}
         if not w.scope_gone:
             doc["scope"] = {"id": w.scope_id, "cap_usd": w.scope_cap, "spent_usd": spent - BASE, "state": w.scope_state}
@@ -156,14 +168,25 @@ class Honcho:
             if armed or self.w.flags[0]:
                 self.w.armed_posts += 1
                 worst = budget.call_worst(budget.DERIVER_IN, budget.DERIVER_OUT)
-                self.w.queue.append({"kind": "unit", "costs": [self.w.call_cost(worst) for _ in range(self.w.rep_attempts)]})
+                self.w.queue.append(
+                    {"kind": "unit", "costs": [self.w.call_cost(worst) for _ in range(self.w.rep_attempts)]}
+                )
 
     def schedule_dream(self):
         self._live()
         self.w.queue_at_arm.append(len(self.w.queue))
         worst = budget.dream_attempt_worst() / sum(budget.DREAM_ITER)
         for _ in range(self.w.dream_attempts):
-            self.w.queue.append({"kind": "attempt", "started": False, "costs": [worst if self.w.dream_at_worst else self.w.call_cost(worst) for _ in range(sum(budget.DREAM_ITER))]})
+            self.w.queue.append(
+                {
+                    "kind": "attempt",
+                    "started": False,
+                    "costs": [
+                        worst if self.w.dream_at_worst else self.w.call_cost(worst)
+                        for _ in range(sum(budget.DREAM_ITER))
+                    ],
+                }
+            )
         self.w.dream_in_queue = True
 
     def dream_finished(self):
@@ -204,10 +227,14 @@ class Model(unittest.TestCase):
         self.assertEqual((budget.PRICE_IN, budget.PRICE_OUT), (0.10, 0.50))
 
     def test_the_modeled_exposures_fit_the_ceiling_in_the_only_orders_the_guard_allows(self):
-        self.assertLess(budget.tranche_worst() + budget.dream_worst(), budget.CEILING)  # one tranche then the dream (one attempt)
+        self.assertLess(
+            budget.tranche_worst() + budget.dream_worst(), budget.CEILING
+        )  # one tranche then the dream (one attempt)
         self.assertLess(budget.dream_worst(), budget.CEILING)
         n = budget.numbers()
-        self.assertAlmostEqual(n["message_worst_modeled_usd"], 9 * budget.call_worst(budget.DERIVER_IN, budget.DERIVER_OUT), places=3)
+        self.assertAlmostEqual(
+            n["message_worst_modeled_usd"], 9 * budget.call_worst(budget.DERIVER_IN, budget.DERIVER_OUT), places=3
+        )
         self.assertAlmostEqual(n["dream_attempt_worst_usd"], 0.1654, places=3)
 
     def test_the_code_limits_the_model_rests_on_are_not_the_earlier_guess(self):
@@ -221,7 +248,9 @@ class Model(unittest.TestCase):
         self.assertLess(budget.TRIP, budget.SCOPE_CAP - budget.RESERVATION_MAX)
 
     def test_the_reservation_is_the_meters_documented_maximum(self):
-        spec = importlib.util.spec_from_file_location("meter_proxy_under_test", ROOT / "lifeos" / "edge" / "honcho" / "meter_proxy.py")
+        spec = importlib.util.spec_from_file_location(
+            "meter_proxy_under_test", ROOT / "lifeos" / "edge" / "honcho" / "meter_proxy.py"
+        )
         meter = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(meter)
         self.assertAlmostEqual(budget.RESERVATION_MAX, meter.reservation_nano(budget.DREAM_OUT) / 1e9, places=9)
@@ -450,6 +479,7 @@ class Failures(unittest.TestCase):
             if reasoning and dream:
                 raise guard.HonchoError("config_refused")
             return orig(self, reasoning, dream)
+
         Honcho.set_flags = flaky
         try:
             g, report = run(w)

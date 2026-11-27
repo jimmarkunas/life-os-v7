@@ -1,4 +1,5 @@
 """(synthetic, no network): one call stamps, comments, moves to Done and reads both back"""
+
 import io
 import unittest
 from datetime import datetime
@@ -34,7 +35,12 @@ class FakeJira:
 
 def run(jira, *extra, keys=("LIFE-1",)):
     out = io.StringIO()
-    code = closeout.main([*keys, "--pr", "9", "--sha", SHA, "--run", "55", "--proof", "LIFE-1=ran the suite", *extra], jira=jira, now=NOW, out=out)
+    code = closeout.main(
+        [*keys, "--pr", "9", "--sha", SHA, "--run", "55", "--proof", "LIFE-1=ran the suite", *extra],
+        jira=jira,
+        now=NOW,
+        out=out,
+    )
     return code, out.getvalue()
 
 

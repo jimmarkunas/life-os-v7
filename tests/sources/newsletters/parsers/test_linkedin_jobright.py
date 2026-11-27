@@ -1,4 +1,5 @@
 """Synthetic LinkedIn / Jobright shapes (invented data only)."""
+
 import unittest
 
 from lifeos.sources.newsletters.parsers import jobright, linkedin
@@ -11,23 +12,28 @@ LINKEDIN = (
     f'<a href="https://www.linkedin.com/comm/jobs/view/1111111111/{TRACK}">Acme · Austin, TX (Remote)</a>'
     f'<a href="https://www.linkedin.com/comm/jobs/view/2222222222/{TRACK}">Program Lead</a>'
     f'<a href="https://www.linkedin.com/comm/jobs/view/2222222222/{TRACK}">Globex · United States (Remote)</a>'
-    f'<a href="https://www.linkedin.com/help/x">Help</a>')
+    f'<a href="https://www.linkedin.com/help/x">Help</a>'
+)
 
-JOBRIGHT = ('<a href="https://jobright.ai/jobs/info/abc123def456?utm_source=1&imp_id=SYNTH">'
-            '<span>Acme</span><span>Software &amp; Services</span><span>· Mid Level</span><span>89</span><span>%</span>'
-            '<span>Senior Program Manager</span><span>$120K/yr - $150K/yr</span><span>Austin, TX</span>'
-            '<span>5+ referrals</span><span>34 minutes ago</span><span>·</span><span>Be among the first applicants</span>'
-            '<span>Apply Now</span></a>'
-            '<a href="https://jobright.ai/jobs/info/abc123def456?x=2"><span>Acme</span></a>'
-            '<a href="https://jobright.ai/jobs/info/zzz999"><span>Globex</span><span>Consulting</span><span>· Senior</span>'
-            '<span>95</span><span>%</span><span>Delivery Manager</span><span>Remote, US</span><span>3 days ago</span></a>')
+JOBRIGHT = (
+    '<a href="https://jobright.ai/jobs/info/abc123def456?utm_source=1&imp_id=SYNTH">'
+    '<span>Acme</span><span>Software &amp; Services</span><span>· Mid Level</span><span>89</span><span>%</span>'
+    '<span>Senior Program Manager</span><span>$120K/yr - $150K/yr</span><span>Austin, TX</span>'
+    '<span>5+ referrals</span><span>34 minutes ago</span><span>·</span><span>Be among the first applicants</span>'
+    '<span>Apply Now</span></a>'
+    '<a href="https://jobright.ai/jobs/info/abc123def456?x=2"><span>Acme</span></a>'
+    '<a href="https://jobright.ai/jobs/info/zzz999"><span>Globex</span><span>Consulting</span><span>· Senior</span>'
+    '<span>95</span><span>%</span><span>Delivery Manager</span><span>Remote, US</span><span>3 days ago</span></a>'
+)
 
 
 class LinkedInTests(unittest.TestCase):
     def test_two_links_per_job_merge_and_url_is_clean(self):
         cards = linkedin.parse(LINKEDIN)
-        self.assertEqual([(c.company, c.title, c.location_text) for c in cards],
-                         [("Acme", "Project Manager", "Austin, TX (Remote)"), ("Globex", "Program Lead", "United States (Remote)")])
+        self.assertEqual(
+            [(c.company, c.title, c.location_text) for c in cards],
+            [("Acme", "Project Manager", "Austin, TX (Remote)"), ("Globex", "Program Lead", "United States (Remote)")],
+        )
         self.assertEqual(cards[0].url, "https://www.linkedin.com/jobs/view/1111111111")
         self.assertTrue(all("SYNTH" not in c.url and "?" not in c.url for c in cards))  # no personal tokens kept
 
@@ -35,7 +41,9 @@ class LinkedInTests(unittest.TestCase):
 class JobrightTests(unittest.TestCase):
     def test_fields_age_and_clean_url(self):
         first, second = jobright.parse(JOBRIGHT)
-        self.assertEqual((first.company, first.title, first.salary_text), ("Acme", "Senior Program Manager", "$120K/yr - $150K/yr"))
+        self.assertEqual(
+            (first.company, first.title, first.salary_text), ("Acme", "Senior Program Manager", "$120K/yr - $150K/yr")
+        )
         self.assertEqual((first.age_days, first.url), (0, "https://jobright.ai/jobs/info/abc123def456"))
         self.assertIn("Austin, TX", first.location_text)
         self.assertEqual((second.title, second.age_days, second.salary_text), ("Delivery Manager", 3, None))
@@ -51,13 +59,18 @@ if __name__ == "__main__":
 
 
 class JobrightDigestTests(unittest.TestCase):
-    DIGEST = ('<a href="https://jobright.ai/jobs/info/dig001?u=1"><span>Initech</span><span>Consulting · Late Stage</span>'
-              '<span>80%</span><span>Senior Project Manager</span><span>$88K/yr - $132K/yr</span><span>Remote</span>'
-              '<span>9+ referrals</span><span>1 hour ago ·</span><span>Be among the first applicants</span><span>Apply Now</span></a>')
+    DIGEST = (
+        '<a href="https://jobright.ai/jobs/info/dig001?u=1"><span>Initech</span><span>Consulting · Late Stage</span>'
+        '<span>80%</span><span>Senior Project Manager</span><span>$88K/yr - $132K/yr</span><span>Remote</span>'
+        '<span>9+ referrals</span><span>1 hour ago ·</span><span>Be among the first applicants</span><span>Apply Now</span></a>'
+    )
 
     def test_single_node_match_score_layout(self):
         (card,) = jobright.parse(self.DIGEST)
-        self.assertEqual((card.company, card.title, card.salary_text, card.age_days), ("Initech", "Senior Project Manager", "$88K/yr - $132K/yr", 0))
+        self.assertEqual(
+            (card.company, card.title, card.salary_text, card.age_days),
+            ("Initech", "Senior Project Manager", "$88K/yr - $132K/yr", 0),
+        )
         self.assertIn("Remote", card.location_text)
         self.assertIn("Consulting", card.location_text)
 

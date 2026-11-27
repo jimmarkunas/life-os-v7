@@ -1,4 +1,5 @@
 """the write-scope guard."""
+
 import unittest
 
 from lifeos.platform.report_region import ScopedClient

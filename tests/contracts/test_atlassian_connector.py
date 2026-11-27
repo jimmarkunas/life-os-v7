@@ -1,4 +1,5 @@
 """the Atlassian MCP connector (v2) is the only Jira connector an agent may use"""
+
 import json
 import unittest
 from pathlib import Path
@@ -10,7 +11,11 @@ AGENT_FOLDERS = (".agents", ".claude", ".codex", ".cursor", ".gemini", ".github"
 def tracked_agent_files():
     for folder in AGENT_FOLDERS:
         for path in (ROOT / folder).rglob("*"):
-            if path.is_file() and "worktrees" not in path.parts and path.suffix in (".json", ".md", ".mdc", ".toml", ".yml", ".yaml"):
+            if (
+                path.is_file()
+                and "worktrees" not in path.parts
+                and path.suffix in (".json", ".md", ".mdc", ".toml", ".yml", ".yaml")
+            ):
                 yield path
     for name in (".mcp.json", "AGENTS.md", "CLAUDE.md"):
         if (ROOT / name).is_file():
@@ -23,7 +28,11 @@ class OnlyTheSupportedAtlassianConnector(unittest.TestCase):
         for path in tracked_agent_files():
             if path.suffix == ".json" and "rovo" in path.read_text().lower():
                 allowed.append(str(path.relative_to(ROOT)))
-        self.assertEqual(allowed, [], "a settings or allowlist file names a Rovo connector tool: use mcp__claude_ai_Atlassian_MCP__* instead")
+        self.assertEqual(
+            allowed,
+            [],
+            "a settings or allowlist file names a Rovo connector tool: use mcp__claude_ai_Atlassian_MCP__* instead",
+        )
 
     def test_no_agent_instruction_tells_an_agent_to_call_a_rovo_tool(self):
         for path in tracked_agent_files():

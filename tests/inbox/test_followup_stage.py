@@ -1,4 +1,5 @@
 """(synthetic): the `followup` stage and the Inbox's read of its payload."""
+
 import unittest
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,7 @@ def make_store():
     @contextmanager
     def connect():
         yield shared
+
     store = FollowupStore(connect)
     store.ensure_schema()
     return store, shared
@@ -35,8 +37,15 @@ def mail(row_id, at, subject="quote"):
 def promise(item):
     if item["source"] != "gmail":
         return None
-    return {"kind": "promise", "outcome_key": "Send the signed quote", "owner": "jim", "who": "vendor", "title": item["title"], "checkpoint": "2026-11-20T15:00:00Z",
-            "checkpoint_source": "source"}
+    return {
+        "kind": "promise",
+        "outcome_key": "Send the signed quote",
+        "owner": "jim",
+        "who": "vendor",
+        "title": item["title"],
+        "checkpoint": "2026-11-20T15:00:00Z",
+        "checkpoint_source": "source",
+    }
 
 
 class Rig:
@@ -48,9 +57,23 @@ class Rig:
         self.calls, self.published, self.receipts = [], [], []
         self.now = T0
         scopes = scopes or (S.Scope("personal", ACCOUNT, sources_),)
-        grants = tuple(R.Grant(s, sc.workspace, sc.account, f"cred-{s}", T0 + timedelta(days=30)) for sc in scopes for s in sc.sources)
-        self.wiring = S.Wiring(self.store, scopes, grants, {s: self._fetch(s) for s in ("gmail", "jira", "calendar", "todoist", "asana")}, self._audit, self.published.append,
-                               clock=lambda: self.now, classify=classify, captures=captures or (lambda w, a: []), jira_base=BASE)
+        grants = tuple(
+            R.Grant(s, sc.workspace, sc.account, f"cred-{s}", T0 + timedelta(days=30))
+            for sc in scopes
+            for s in sc.sources
+        )
+        self.wiring = S.Wiring(
+            self.store,
+            scopes,
+            grants,
+            {s: self._fetch(s) for s in ("gmail", "jira", "calendar", "todoist", "asana")},
+            self._audit,
+            self.published.append,
+            clock=lambda: self.now,
+            classify=classify,
+            captures=captures or (lambda w, a: []),
+            jira_base=BASE,
+        )
 
     def _fetch(self, source):
         def fetch(credential_ref, since):
@@ -59,6 +82,7 @@ class Rig:
             if isinstance(rows, Exception):
                 raise rows
             return list(rows or [])
+
         return fetch
 
     def _audit(self, receipt):
@@ -79,7 +103,14 @@ class Stage(unittest.TestCase):
         self.assertEqual((counts["unwired"], counts["scopes"], counts["published"], counts["written"]), (1, 0, 0, 0))
 
     def test_the_source_log_lines_are_fixed_words_only(self):
-        lines = S.source_lines("personal", [{"source": "gmail", "status": "degraded", "reason": "DENY_EXPIRED"}, {"source": "jira", "status": "ok", "reason": "jim@example.com at 10 Main St"}, {"source": "todoist"}])
+        lines = S.source_lines(
+            "personal",
+            [
+                {"source": "gmail", "status": "degraded", "reason": "DENY_EXPIRED"},
+                {"source": "jira", "status": "ok", "reason": "jim@example.com at 10 Main St"},
+                {"source": "todoist"},
+            ],
+        )
         self.assertEqual(lines[0], "followup-source personal gmail degraded DENY_EXPIRED")
         self.assertEqual(lines[2], "followup-source personal todoist - -")
         for line in lines:
@@ -89,21 +120,34 @@ class Stage(unittest.TestCase):
         rig = Rig()
         counts = rig.run(live=False)
         self.assertEqual((counts["threads"], counts["written"], counts["published"]), (1, 0, 0))
-        self.assertEqual((rig.published, rig.db.count("v7_followup_threads"), rig.store.cursor_for("personal", ACCOUNT, "gmail")), ([], 0, None))
+        self.assertEqual(
+            (rig.published, rig.db.count("v7_followup_threads"), rig.store.cursor_for("personal", ACCOUNT, "gmail")),
+            ([], 0, None),
+        )
 
     def test_a_live_run_stores_the_thread_publishes_one_payload_and_advances_the_cursor_after_the_write(self):
         rig = Rig()
         counts = rig.run()
         self.assertEqual((counts["written"], counts["published"], counts["sources_ok"]), (1, 1, 2))
         (payload,) = rig.published
-        self.assertEqual((payload["component"], payload["state"], payload["workspace"], payload["account"]), ("followup", "PASS", "personal", ACCOUNT))
+        self.assertEqual(
+            (payload["component"], payload["state"], payload["workspace"], payload["account"]),
+            ("followup", "PASS", "personal", ACCOUNT),
+        )
         self.assertEqual(payload["counts"], {"needs_action_today": 0, "waiting_aging": 0, "upcoming": 1})
-        self.assertEqual([(t["title"], t["state"]) for t in payload["threads"]], [("Send the signed quote", "upcoming")])
-        self.assertEqual(payload["threads"][0]["id"], rig.store.threads("personal", ACCOUNT)[0]["thread_id"])  # a safe store id, never the label
+        self.assertEqual(
+            [(t["title"], t["state"]) for t in payload["threads"]], [("Send the signed quote", "upcoming")]
+        )
+        self.assertEqual(
+            payload["threads"][0]["id"], rig.store.threads("personal", ACCOUNT)[0]["thread_id"]
+        )  # a safe store id, never the label
         self.assertEqual(payload["review"], [])
         self.assertEqual(rig.store.cursor_for("personal", ACCOUNT, "gmail")["cursor"], "2026-11-16T18:00:00+00:00")
         (thread,) = rig.store.threads("personal", ACCOUNT)
-        self.assertEqual((thread["klass"], thread["owner"], thread["state"], thread["checkpoint_basis"]), ("owed", "jim", "upcoming", "source"))
+        self.assertEqual(
+            (thread["klass"], thread["owner"], thread["state"], thread["checkpoint_basis"]),
+            ("owed", "jim", "upcoming", "source"),
+        )
 
     def test_a_second_run_creates_no_duplicate_thread(self):
         rig = Rig()
@@ -133,7 +177,9 @@ class Stage(unittest.TestCase):
         gmail = next(s for s in payload["sources"] if s["source"] == "gmail")
         self.assertEqual((gmail["status"], gmail["reason"]), ("degraded", "fetch_failed"))
         self.assertEqual([t["title"] for t in payload["threads"]], ["Send the signed quote"])
-        self.assertEqual(rig.store.cursor_for("personal", ACCOUNT, "gmail"), cursor)  # the failed source's cursor did not move
+        self.assertEqual(
+            rig.store.cursor_for("personal", ACCOUNT, "gmail"), cursor
+        )  # the failed source's cursor did not move
         self.assertNotIn("canary", repr(payload))  # an exception text never leaves
 
     def test_every_source_failing_still_publishes_a_degraded_payload_and_keeps_the_threads(self):
@@ -154,12 +200,15 @@ class Stage(unittest.TestCase):
         self.assertEqual({r["tenant"] for r in rig.receipts}, {"personal"})
 
     def test_personal_and_bytalos_stay_separate_and_one_failing_scope_does_not_stop_the_other(self):
-        rig = Rig(scopes=(S.Scope("personal", ACCOUNT, ("gmail",)), S.Scope("bytalos", "bytalos@example.com", ("gmail",))))
+        rig = Rig(
+            scopes=(S.Scope("personal", ACCOUNT, ("gmail",)), S.Scope("bytalos", "bytalos@example.com", ("gmail",)))
+        )
 
         def audit(receipt):
             if receipt["tenant"] == "bytalos":
                 raise OSError("audit log unavailable")
             rig.receipts.append(receipt)
+
         rig.wiring = S.Wiring(**{**rig.wiring.__dict__, "audit": audit})
         counts = rig.run()
         self.assertEqual((counts["scopes"], counts["published"], counts.get("item_failed")), (1, 1, 1))
@@ -172,7 +221,14 @@ class Stage(unittest.TestCase):
         rig.rows["gmail"] = [mail("m2", "2026-11-17T09:00:00+00:00", "done")]
 
         def ended(item):
-            return {"kind": "outcome_ended", "outcome_key": "Send the signed quote", "owner": "jim", "who": "vendor", "title": "done"}
+            return {
+                "kind": "outcome_ended",
+                "outcome_key": "Send the signed quote",
+                "owner": "jim",
+                "who": "vendor",
+                "title": "done",
+            }
+
         rig.wiring = S.Wiring(**{**rig.wiring.__dict__, "classify": ended})
         counts = rig.run(at=T0 + timedelta(days=1))
         self.assertEqual(counts["closed"], 1)
@@ -200,13 +256,17 @@ class Stage(unittest.TestCase):
 
             def __getattr__(self, name):
                 return getattr(self.inner, name)
+
         rig.wiring = S.Wiring(**{**rig.wiring.__dict__, "store": Broken(rig.store)})
         rig.run()
         (payload,) = rig.published
-        self.assertEqual((payload["state"], payload["provenance"]["write_error"]), ("DEGRADED", "FOLLOWUP_STORE_UNAVAILABLE"))
+        self.assertEqual(
+            (payload["state"], payload["provenance"]["write_error"]), ("DEGRADED", "FOLLOWUP_STORE_UNAVAILABLE")
+        )
 
     def test_the_stage_is_registered_and_nothing_here_can_write_to_a_source(self):
         from lifeos import run
+
         self.assertEqual(run.STAGES["followup"].target, ("lifeos.inbox.followup_stage", "run"))
         with open(S.__file__) as one, open(followup.__file__) as two:
             text = one.read() + two.read()
@@ -215,22 +275,46 @@ class Stage(unittest.TestCase):
 
 
 def payload_for(**kw):
-    base = {"component": "followup", "state": "PASS", "workspace": "personal", "account": ACCOUNT, "generated_at": T0.isoformat(), "last_accepted": T0.isoformat(),
-            "counts": {}, "threads": [], "review": [], "sources": [], "provenance": {}}
+    base = {
+        "component": "followup",
+        "state": "PASS",
+        "workspace": "personal",
+        "account": ACCOUNT,
+        "generated_at": T0.isoformat(),
+        "last_accepted": T0.isoformat(),
+        "counts": {},
+        "threads": [],
+        "review": [],
+        "sources": [],
+        "provenance": {},
+    }
     base.update(kw)
     return base
 
 
 def thread(key="Send the signed quote", **kw):
-    base = {"id": key, "url": f"{BASE}/mail/m1", "title": key, "notes": "checkpoint source-backed; evidence 1", "owner": "vendor", "status": "open", "next_checkpoint": "2026-11-20T15:00:00Z",
-            "tz": "America/Chicago", "updated": "2026-11-16T18:00:00+00:00", "correlation_id": None, "state": "upcoming"}
+    base = {
+        "id": key,
+        "url": f"{BASE}/mail/m1",
+        "title": key,
+        "notes": "checkpoint source-backed; evidence 1",
+        "owner": "vendor",
+        "status": "open",
+        "next_checkpoint": "2026-11-20T15:00:00Z",
+        "tz": "America/Chicago",
+        "updated": "2026-11-16T18:00:00+00:00",
+        "correlation_id": None,
+        "state": "upcoming",
+    }
     base.update(kw)
     return base
 
 
 def read(payload, now=T0, workspace="personal", account=ACCOUNT):
     with mock.patch.object(sources, "LIVE_READS_ENABLED", True):
-        return followup.FollowupSource(workspace, account, "jim", open_reader=followup.payload_reader(lambda ref: payload), now=now).fetch("cred")
+        return followup.FollowupSource(
+            workspace, account, "jim", open_reader=followup.payload_reader(lambda ref: payload), now=now
+        ).fetch("cred")
 
 
 class PayloadReader(unittest.TestCase):
@@ -240,10 +324,16 @@ class PayloadReader(unittest.TestCase):
         self.assertNotIn("state", out[0])
 
     def test_a_missing_stale_future_mismatched_or_malformed_payload_is_unavailable(self):
-        cases = [(None, "followup_projection_missing"), (payload_for(generated_at=(T0 - timedelta(hours=3)).isoformat()), "evidence_stale"),
-                 (payload_for(generated_at=(T0 + timedelta(hours=1)).isoformat()), "evidence_stale"), (payload_for(generated_at=None), "evidence_stale"),
-                 (payload_for(workspace="bytalos"), "payload_scope_mismatch"), (payload_for(account="other@example.com"), "payload_scope_mismatch"),
-                 (payload_for(state="WEIRD"), "listing_incomplete"), ({"component": "followup"}, "listing_incomplete")]
+        cases = [
+            (None, "followup_projection_missing"),
+            (payload_for(generated_at=(T0 - timedelta(hours=3)).isoformat()), "evidence_stale"),
+            (payload_for(generated_at=(T0 + timedelta(hours=1)).isoformat()), "evidence_stale"),
+            (payload_for(generated_at=None), "evidence_stale"),
+            (payload_for(workspace="bytalos"), "payload_scope_mismatch"),
+            (payload_for(account="other@example.com"), "payload_scope_mismatch"),
+            (payload_for(state="WEIRD"), "listing_incomplete"),
+            ({"component": "followup"}, "listing_incomplete"),
+        ]
         for payload, reason in cases:
             with self.subTest(reason=reason), self.assertRaises(InboxError) as caught:
                 read(payload)
@@ -264,10 +354,18 @@ class PayloadReader(unittest.TestCase):
 
     def test_an_unrelated_component_keeps_rendering_when_followup_is_degraded(self):
         def source(payload):
-            return followup.FollowupSource("personal", "jim-personal", "jim", open_reader=lambda ref: (lambda: payload), now=F.NOW)
+            return followup.FollowupSource(
+                "personal", "jim-personal", "jim", open_reader=lambda ref: lambda: payload, now=F.NOW
+            )
+
         degraded = payload_for(state="DEGRADED", account="jim-personal", generated_at=F.NOW.isoformat())
-        result = inbox.build_inbox([source(degraded), F.FakeSource("jira", "personal")], F.principal(sources=("followup", "jira")), F.NOW)
-        self.assertEqual({h.source: (h.state, h.reason) for h in result.health}, {"followup": ("unavailable", "evidence_degraded"), "jira": ("ok", "ok")})
+        result = inbox.build_inbox(
+            [source(degraded), F.FakeSource("jira", "personal")], F.principal(sources=("followup", "jira")), F.NOW
+        )
+        self.assertEqual(
+            {h.source: (h.state, h.reason) for h in result.health},
+            {"followup": ("unavailable", "evidence_degraded"), "jira": ("ok", "ok")},
+        )
         self.assertEqual(len(result.records), 1)
 
     def test_the_inbox_shows_a_stage_payload_end_to_end(self):
@@ -276,7 +374,9 @@ class PayloadReader(unittest.TestCase):
         rig.now = F.NOW.astimezone(UTC)
         rig.run()
         payload = rig.published[-1]
-        src = followup.FollowupSource("personal", "jim-personal", "jim", open_reader=lambda ref: (lambda: payload), now=F.NOW)
+        src = followup.FollowupSource(
+            "personal", "jim-personal", "jim", open_reader=lambda ref: lambda: payload, now=F.NOW
+        )
         result = inbox.build_inbox([src], F.principal(sources=("followup",)), F.NOW)
         self.assertEqual([(h.state, h.reason) for h in result.health], [("ok", "ok")])
         self.assertEqual(len(result.records), 1)
@@ -284,10 +384,32 @@ class PayloadReader(unittest.TestCase):
 
 class Projection(unittest.TestCase):
     def test_the_projection_reports_each_threads_state_for_the_payload(self):
-        evidence = [{"kind": "promise", "outcome_key": "a", "workspace": "personal", "owner": "jim", "who": "v", "title": "A", "link": f"{BASE}/a", "checkpoint": "2026-11-20T15:00:00Z",
-                     "checkpoint_source": "source", "observed_at": "2026-11-16T12:00:00+00:00"},
-                    {"kind": "waiting_on", "outcome_key": "b", "workspace": "personal", "owner": "external", "who": "v", "title": "B", "link": f"{BASE}/b", "checkpoint": "2026-11-20T15:00:00Z",
-                     "checkpoint_source": "source", "observed_at": "2026-11-16T12:00:00+00:00"}]
+        evidence = [
+            {
+                "kind": "promise",
+                "outcome_key": "a",
+                "workspace": "personal",
+                "owner": "jim",
+                "who": "v",
+                "title": "A",
+                "link": f"{BASE}/a",
+                "checkpoint": "2026-11-20T15:00:00Z",
+                "checkpoint_source": "source",
+                "observed_at": "2026-11-16T12:00:00+00:00",
+            },
+            {
+                "kind": "waiting_on",
+                "outcome_key": "b",
+                "workspace": "personal",
+                "owner": "external",
+                "who": "v",
+                "title": "B",
+                "link": f"{BASE}/b",
+                "checkpoint": "2026-11-20T15:00:00Z",
+                "checkpoint_source": "source",
+                "observed_at": "2026-11-16T12:00:00+00:00",
+            },
+        ]
         result = followup.project(evidence, T0)
         self.assertEqual(result.states, {"a": "upcoming", "b": "waiting_aging"})
 

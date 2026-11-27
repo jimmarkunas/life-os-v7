@@ -1,6 +1,7 @@
 """Ownership boundaries: platform knows nothing about jobs, jobs knows nothing about any one source, and the same opening
 is the same row whichever.
 """
+
 import ast
 from pathlib import Path
 import unittest
@@ -22,8 +23,13 @@ def allowed(layer):
 def layer_imports(layer):
     for path in (ROOT / layer).rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text())):
-            names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
-                [node.module or ""] if isinstance(node, ast.ImportFrom) else []
+            names = (
+                [a.name for a in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
             for name in names:
                 if name.startswith("lifeos."):
                     yield path.name, name.split(".")[1]
@@ -33,15 +39,14 @@ APPS = {"lifeos.sources.apps"}
 
 
 def sources_targets(source, module):
-    """Every dotted lifeos.sources module `source` imports, relative imports resolved from its own dotted name `module`.
-    """
+    """Every dotted lifeos.sources module `source` imports, relative imports resolved from its own dotted name `module`."""
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             bases = [(a.name, ()) for a in node.names]
         elif isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
-                base = ".".join(filter(None, [*module.split(".")[:-node.level], base]))
+                base = ".".join(filter(None, [*module.split(".")[: -node.level], base]))
             bases = [(base, [a.name for a in node.names])]
         else:
             continue
@@ -71,11 +76,25 @@ class BoundaryTests(unittest.TestCase):
 
     def test_the_app_rule_names_the_import_that_breaks_it(self):
         fake = ROOT / "sources" / "apps" / "fake_app.py"
-        with mock.patch.object(Path, "read_text", return_value="from lifeos.sources.pipeline import hiring\nfrom lifeos.sources import web\nimport lifeos.sources.apps.signed\nfrom .signed import mac\n"):
-            self.assertEqual(list(app_boundary_breaks(fake)), [("fake_app.py", "lifeos.sources.pipeline"), ("fake_app.py", "lifeos.sources.pipeline.hiring"), ("fake_app.py", "lifeos.sources.web")])
+        with mock.patch.object(
+            Path,
+            "read_text",
+            return_value="from lifeos.sources.pipeline import hiring\nfrom lifeos.sources import web\nimport lifeos.sources.apps.signed\nfrom .signed import mac\n",
+        ):
+            self.assertEqual(
+                list(app_boundary_breaks(fake)),
+                [
+                    ("fake_app.py", "lifeos.sources.pipeline"),
+                    ("fake_app.py", "lifeos.sources.pipeline.hiring"),
+                    ("fake_app.py", "lifeos.sources.web"),
+                ],
+            )
         stage = ROOT / "sources" / "web" / "fake_stage.py"
         with mock.patch.object(Path, "read_text", return_value="from lifeos.sources.apps import signed\n"):
-            self.assertEqual(list(app_boundary_breaks(stage)), [("fake_stage.py", "lifeos.sources.apps"), ("fake_stage.py", "lifeos.sources.apps.signed")])
+            self.assertEqual(
+                list(app_boundary_breaks(stage)),
+                [("fake_stage.py", "lifeos.sources.apps"), ("fake_stage.py", "lifeos.sources.apps.signed")],
+            )
 
     def test_imports_only_point_downward(self):
         for layer in LAYERS:
@@ -83,8 +102,10 @@ class BoundaryTests(unittest.TestCase):
             self.assertEqual(bad, [], f"{layer} must not import {sorted({t for _, t in bad})}")
 
     def test_the_same_opening_has_one_identity(self):
-        self.assertEqual(identity.fuzzy_key("Acme, Inc.", "Project  Manager", "Remote"),
-                         identity.fuzzy_key("ACME INC", "project manager", "remote"))
+        self.assertEqual(
+            identity.fuzzy_key("Acme, Inc.", "Project  Manager", "Remote"),
+            identity.fuzzy_key("ACME INC", "project manager", "remote"),
+        )
 
 
 if __name__ == "__main__":

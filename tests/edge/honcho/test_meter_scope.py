@@ -1,4 +1,5 @@
 """the optional scope budget in the Honcho meter."""
+
 import http.client
 import json
 import os
@@ -36,11 +37,26 @@ class ScopeCase(Case):
 
     def scope(self, cap, wipe=True, **over):
         if wipe:
-            for name in ("ledger.json", "audit.jsonl", "scopes.jsonl", "windows.jsonl", mp.SCOPE_CLOSE, "EXHAUSTED", "STOP"):
+            for name in (
+                "ledger.json",
+                "audit.jsonl",
+                "scopes.jsonl",
+                "windows.jsonl",
+                mp.SCOPE_CLOSE,
+                "EXHAUSTED",
+                "STOP",
+            ):
                 path = os.path.join(self.tmp, name)
                 if os.path.lexists(path):
                     os.remove(path)
-        doc = {"id": "t2-test", "cap_usd": cap, "expires": self.now + 3600, "models": [MODEL], "max_tokens": LIMIT, **over}
+        doc = {
+            "id": "t2-test",
+            "cap_usd": cap,
+            "expires": self.now + 3600,
+            "models": [MODEL],
+            "max_tokens": LIMIT,
+            **over,
+        }
         with open(os.path.join(self.tmp, mp.SCOPE_FILE), "w") as handle:
             json.dump(doc, handle)
         self.start(25)
@@ -51,7 +67,12 @@ class ScopeCase(Case):
 
     def raw_post(self, raw, headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
-        conn.request("POST", "/v1/messages", raw, {"Content-Type": "application/json", "x-api-key": "dummy-local", **(headers or {})})
+        conn.request(
+            "POST",
+            "/v1/messages",
+            raw,
+            {"Content-Type": "application/json", "x-api-key": "dummy-local", **(headers or {})},
+        )
         answer = conn.getresponse()
         return answer.status, answer.read()
 
@@ -115,7 +136,10 @@ class Bound(ScopeCase):
 
     def test_the_monthly_cap_applies_with_a_scope_standing_and_one_unit_over_is_refused(self):
         self.scope(5.0, id="t2-month")
-        self.ledger.cap, self.ledger.spent = 25, 25 - R / 1e9 + 0.0001  # a hundred-thousandth of a dollar too little room
+        self.ledger.cap, self.ledger.spent = (
+            25,
+            25 - R / 1e9 + 0.0001,
+        )  # a hundred-thousandth of a dollar too little room
         self.assertFalse(self.ledger.admit(body())[0])
         self.ledger.spent = 25 - R / 1e9 - 0.0001
         self.assertTrue(self.ledger.admit(body())[0])
@@ -160,7 +184,9 @@ class Bound(ScopeCase):
                 "system": [{"type": "text", "text": "s", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
                 "thinking": {"type": "enabled", "budget_tokens": 20},
                 "tools": [{"name": "t", "input_schema": {"type": "object"}}],
-                "messages": [{"role": "user", "content": [{"type": "image", "source": {}}, {"type": "text", "text": "q"}]}],
+                "messages": [
+                    {"role": "user", "content": [{"type": "image", "source": {}}, {"type": "text", "text": "q"}]}
+                ],
             }
         ).encode()
         self.assertEqual(mp.admission(ok), (mp.reservation_nano(50), ""))
@@ -170,7 +196,9 @@ class Bound(ScopeCase):
         self.assertEqual(self.ledger.inflight, {})
 
     def test_the_legacy_estimate_is_gone(self):
-        self.assertFalse(hasattr(mp, "estimate") or hasattr(mp, "BYTES_PER_TOKEN") or hasattr(mp, "SCOPE_OVERHEAD_TOKENS"))
+        self.assertFalse(
+            hasattr(mp, "estimate") or hasattr(mp, "BYTES_PER_TOKEN") or hasattr(mp, "SCOPE_OVERHEAD_TOKENS")
+        )
 
 
 class Counts(ScopeCase):
@@ -198,8 +226,17 @@ class Counts(ScopeCase):
         def slow(_):
             raise TimeoutError("count timed out")
 
-        bad = {"error": boom, "timeout": slow, "none": lambda b: None, "zero": lambda b: 0, "negative": lambda b: -4, "string": lambda b: "5",
-               "bool": lambda b: True, "float": lambda b: 12.5, "over the window": lambda b: mp.CONTEXT_TOKENS + 1}
+        bad = {
+            "error": boom,
+            "timeout": slow,
+            "none": lambda b: None,
+            "zero": lambda b: 0,
+            "negative": lambda b: -4,
+            "string": lambda b: "5",
+            "bool": lambda b: True,
+            "float": lambda b: 12.5,
+            "over the window": lambda b: mp.CONTEXT_TOKENS + 1,
+        }
         for name, counter in bad.items():
             with self.subTest(name):
                 rid, _, why = self.admit(counter)
@@ -216,7 +253,9 @@ class Crashes(ScopeCase):
     def test_a_crash_after_the_reservation_and_before_the_forward_charges_it_in_full_on_restart(self):
         rid, worst, _ = self.ledger.admit(body())
         self.assertTrue(rid)
-        self.assertEqual(json.load(open(self.ledger.path))["inflight"][str(rid)]["nano"], R)  # saved before anything was forwarded
+        self.assertEqual(
+            json.load(open(self.ledger.path))["inflight"][str(rid)]["nano"], R
+        )  # saved before anything was forwarded
         again = self.restart()
         self.assertEqual((again.inflight, again.reserved, again.scope["spent_nano"]), ({}, 0.0, R))
         self.assertAlmostEqual(again.spent, worst)
@@ -356,7 +395,9 @@ class Lifecycle(ScopeCase):
         doc["expires"] = self.now + 3600
         json.dump(doc, open(os.path.join(self.tmp, mp.SCOPE_FILE), "w"))
         self.assertEqual(self.ledger.why_blocked(), "")
-        self.assertEqual((self.ledger.spent, self.ledger.scope["spent_nano"]), (0.0, spent))  # the month restarted, the scope did not
+        self.assertEqual(
+            (self.ledger.spent, self.ledger.scope["spent_nano"]), (0.0, spent)
+        )  # the month restarted, the scope did not
         again = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.now)
         self.assertEqual(again.scope["spent_nano"], spent)
 
@@ -398,7 +439,10 @@ class Lifecycle(ScopeCase):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
         conn.request("GET", "/health")
         doc = json.loads(conn.getresponse().read())
-        self.assertEqual(doc["scope"], {"id": "t2-test", "cap_usd": CAP, "spent_usd": (2000 * 100 + 100 * 500) / 1e9, "state": "open"})
+        self.assertEqual(
+            doc["scope"],
+            {"id": "t2-test", "cap_usd": CAP, "spent_usd": (2000 * 100 + 100 * 500) / 1e9, "state": "open"},
+        )
 
 
 class NoScope(ScopeCase):

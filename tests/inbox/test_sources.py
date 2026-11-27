@@ -1,6 +1,7 @@
 """(synthetic): Jira and Calendar sources are read-only, scoped per workspace, fail alone, and never reach a live
 provider.
 """
+
 import ast
 import unittest
 from datetime import timedelta
@@ -18,20 +19,45 @@ WRITES = ("post", "request", "insert", "update", "delete", "create_sprint", "set
 
 
 def issue(key="LIFE-1", status="Human UAT", assignee="acct-1", due=None):
-    return {"key": key, "fields": {"summary": f"{F.SAME_TITLE} {F.CANARY}", "status": {"name": status}, "assignee": {"accountId": assignee}, "duedate": due, "updated": "2026-11-14T13:30:00.000-0600"}}
+    return {
+        "key": key,
+        "fields": {
+            "summary": f"{F.SAME_TITLE} {F.CANARY}",
+            "status": {"name": status},
+            "assignee": {"accountId": assignee},
+            "duedate": due,
+            "updated": "2026-11-14T13:30:00.000-0600",
+        },
+    }
 
 
 def event(id="e1", status="confirmed"):
-    return {"id": id, "htmlLink": f"https://cal.example.test/{id}", "summary": F.SAME_TITLE, "status": status, "updated": "2026-11-14T19:30:00.000Z",
-            "start": {"dateTime": "2026-11-14T16:00:00-06:00", "timeZone": "America/Chicago"}}
+    return {
+        "id": id,
+        "htmlLink": f"https://cal.example.test/{id}",
+        "summary": F.SAME_TITLE,
+        "status": status,
+        "updated": "2026-11-14T19:30:00.000Z",
+        "start": {"dateTime": "2026-11-14T16:00:00-06:00", "timeZone": "America/Chicago"},
+    }
 
 
 def jira_src(workspace, rows=None, error=None, **kw):
-    return sources.JiraSource(workspace, f"jim-{workspace}", "jim", 7, BASE, open_reader=opener([issue()] if rows is None else rows, error), **kw)
+    return sources.JiraSource(
+        workspace,
+        f"jim-{workspace}",
+        "jim",
+        7,
+        BASE,
+        open_reader=opener([issue()] if rows is None else rows, error),
+        **kw,
+    )
 
 
 def cal_src(workspace, rows=None, error=None):
-    return sources.CalendarSource(workspace, f"jim-{workspace}", "jim", F.NOW, open_reader=opener([event()] if rows is None else rows, error))
+    return sources.CalendarSource(
+        workspace, f"jim-{workspace}", "jim", F.NOW, open_reader=opener([event()] if rows is None else rows, error)
+    )
 
 
 def run(srcs, **kw):
@@ -43,11 +69,25 @@ class Reads(unittest.TestCase):
         result = run([jira_src("personal"), jira_src("bytalos"), cal_src("personal"), cal_src("bytalos")])
         self.assertEqual([h.state for h in result.health], ["ok"] * 4)
         ids = sorted(r.record_id for r in result.records)
-        self.assertEqual(ids, ["calendar:bytalos:jim-bytalos:e1", "calendar:personal:jim-personal:e1", "jira:bytalos:jim-bytalos:LIFE-1", "jira:personal:jim-personal:LIFE-1"])
+        self.assertEqual(
+            ids,
+            [
+                "calendar:bytalos:jim-bytalos:e1",
+                "calendar:personal:jim-personal:e1",
+                "jira:bytalos:jim-bytalos:LIFE-1",
+                "jira:personal:jim-personal:LIFE-1",
+            ],
+        )
         jira = F.record_for(result, "jira", "personal")
-        self.assertEqual((jira.url, jira.assignee, jira.source_status, jira.kind), (f"{BASE}/browse/LIFE-1", "acct-1", "Human UAT", "human_uat"))
+        self.assertEqual(
+            (jira.url, jira.assignee, jira.source_status, jira.kind),
+            (f"{BASE}/browse/LIFE-1", "acct-1", "Human UAT", "human_uat"),
+        )
         calendar = F.record_for(result, "calendar", "bytalos")
-        self.assertEqual((calendar.url, calendar.assignee, calendar.due_tz, calendar.presentation), ("https://cal.example.test/e1", "jim", "America/Chicago", "upcoming"))
+        self.assertEqual(
+            (calendar.url, calendar.assignee, calendar.due_tz, calendar.presentation),
+            ("https://cal.example.test/e1", "jim", "America/Chicago", "upcoming"),
+        )
         self.assertEqual(result.records[0].retrieved_at, F.NOW)  # fresh: retrieved now
 
     def test_the_revision_follows_the_source_status(self):
@@ -68,13 +108,19 @@ class Reads(unittest.TestCase):
         tgp._open = lambda ref: calls.append(ref)
         result = run([tgp, jira_src("personal")])
         self.assertEqual(calls, [])
-        self.assertIn(("tgp", "refused", "workspace_not_released"), [(h.workspace, h.state, h.reason) for h in result.health])
+        self.assertIn(
+            ("tgp", "refused", "workspace_not_released"), [(h.workspace, h.state, h.reason) for h in result.health]
+        )
         self.assertEqual([r.workspace for r in result.records], ["personal"])
 
 
 class FailClosed(unittest.TestCase):
     def test_a_missing_revoked_or_expired_grant_reads_nothing_and_the_others_still_show(self):
-        for name, kw in (("missing", {"workspaces": ("personal",)}), ("revoked", {"revoked": (("jira", "bytalos"),)}), ("expired", {"expires": F.NOW - timedelta(minutes=1)})):
+        for name, kw in (
+            ("missing", {"workspaces": ("personal",)}),
+            ("revoked", {"revoked": (("jira", "bytalos"),)}),
+            ("expired", {"expires": F.NOW - timedelta(minutes=1)}),
+        ):
             with self.subTest(name):
                 bytalos = jira_src("bytalos")
                 calls = []
@@ -107,11 +153,25 @@ class ReadOnly(unittest.TestCase):
     def test_the_real_clients_are_only_ever_called_with_get(self):
         calls = []
         jira = Jira(BASE, "agent@example.com", "synthetic-token")
-        jira.request = lambda method, path, params=None, payload=None, retry=None: (calls.append(method), {"issues": [issue()], "total": 1})[1]
+        jira.request = lambda method, path, params=None, payload=None, retry=None: (
+            calls.append(method),
+            {"issues": [issue()], "total": 1},
+        )[1]
         calendar = GoogleCalendar.__new__(GoogleCalendar)
-        calendar.request = lambda method, path, params=None, body=None, ok=(200,): (calls.append(method), {"items": [event()]})[1]
-        result = run([sources.JiraSource("personal", "jim-personal", "jim", 7, BASE, open_reader=lambda ref: jira.board_issues),
-                      sources.CalendarSource("personal", "jim-personal", "jim", F.NOW, open_reader=lambda ref: calendar.list_events)])
+        calendar.request = lambda method, path, params=None, body=None, ok=(200,): (
+            calls.append(method),
+            {"items": [event()]},
+        )[1]
+        result = run(
+            [
+                sources.JiraSource(
+                    "personal", "jim-personal", "jim", 7, BASE, open_reader=lambda ref: jira.board_issues
+                ),
+                sources.CalendarSource(
+                    "personal", "jim-personal", "jim", F.NOW, open_reader=lambda ref: calendar.list_events
+                ),
+            ]
+        )
         self.assertEqual(len(result.records), 2)
         self.assertEqual(set(calls), {"GET"})
 
@@ -122,15 +182,27 @@ class ReadOnly(unittest.TestCase):
 
     def test_the_module_names_no_write_or_client_construction(self):
         tree = ast.parse(Path(sources.__file__).read_text())
-        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {
+            n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
+        }
         self.assertEqual(names & set(WRITES + ("Jira", "GoogleCalendar", "from_env")), set())
 
 
 class NoLiveRead(unittest.TestCase):
     def test_without_an_injected_reader_nothing_is_fetched_and_no_client_is_built(self):
-        with mock.patch.object(Jira, "from_env", side_effect=AssertionError), mock.patch.object(GoogleCalendar, "from_env", side_effect=AssertionError):
-            result = run([sources.JiraSource("personal", "jim-personal", "jim", 7, BASE), sources.CalendarSource("personal", "jim-personal", "jim", F.NOW)])
-        self.assertEqual([(h.state, h.reason) for h in result.health], [("unavailable", "live_reads_not_authorized")] * 2)
+        with (
+            mock.patch.object(Jira, "from_env", side_effect=AssertionError),
+            mock.patch.object(GoogleCalendar, "from_env", side_effect=AssertionError),
+        ):
+            result = run(
+                [
+                    sources.JiraSource("personal", "jim-personal", "jim", 7, BASE),
+                    sources.CalendarSource("personal", "jim-personal", "jim", F.NOW),
+                ]
+            )
+        self.assertEqual(
+            [(h.state, h.reason) for h in result.health], [("unavailable", "live_reads_not_authorized")] * 2
+        )
         self.assertEqual(result.records, ())
         self.assertFalse(sources.LIVE_READS_ENABLED)
 

@@ -1,4 +1,5 @@
 """the accepted UI 3b opportunity parent and the one-time `LIFE OS: adopt` of Jim's own page."""
+
 import copy
 import json
 import unittest
@@ -10,16 +11,28 @@ from tests.interview.test_create import PARENT, ROUND, WritableFake, machine_par
 from tests.interview.test_notion import ENV, block, page
 
 LEGACY = ParentQuery("Legacy", "Manager")
-PENDING = RoundQuery(True, None, None, 1, source="https://mail.google.com/mail/u/0/#all/synthetic", stable_job_key="legacy-key",
-                     ledger_page_id="ledger-row")
+PENDING = RoundQuery(
+    True,
+    None,
+    None,
+    1,
+    source="https://mail.google.com/mail/u/0/#all/synthetic",
+    stable_job_key="legacy-key",
+    ledger_page_id="ledger-row",
+)
 
 
 class AdoptFake(WritableFake):
     """Adds the two calls adoption makes: insert after a block (PATCH), and remove the adopt line (DELETE)."""
+
     def __init__(self, first="LIFE OS: adopt"):
         super().__init__()
-        self.blocks["human"] = [block(first, id="h0"), block("Current stage", "heading_3", "h1"),
-                                block("Waiting on recruiter.", id="h2", has_children=True), block("ERP notes", id="h3")]
+        self.blocks["human"] = [
+            block(first, id="h0"),
+            block("Current stage", "heading_3", "h1"),
+            block("Waiting on recruiter.", id="h2", has_children=True),
+            block("ERP notes", id="h3"),
+        ]
         self.blocks["h2"] = [block("nested human detail", id="h2a")]
         self.patches = []
         self.append_error = self.marker_error = self.touch_human = False
@@ -53,11 +66,12 @@ def depth(items, level=0):
 
 
 class OpportunityTemplateTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_jim_notes_region_runs_to_the_end_and_rounds_never_touch_it(self):
         client = WritableFake()
         parent_id = machine_parent(client)
@@ -65,7 +79,9 @@ class OpportunityTemplateTests(unittest.TestCase):
         blocks += [block("My own heading", "heading_2", "mine-h"), block("my private note", id="mine")]
         before = notion.protected_snapshot(client, parent_id, "opportunity")
         self.assertIsNotNone(before)
-        self.assertIsNone(notion.protected_snapshot(client, parent_id))  # a round page still needs Live Notes + Raw Notes
+        self.assertIsNone(
+            notion.protected_snapshot(client, parent_id)
+        )  # a round page still needs Live Notes + Raw Notes
         result = run(client, parent=PARENT, query=ROUND)
         self.assertEqual((result["rounds_created"], result["readback_ok"]), (1, 1))
         self.assertEqual(client.blocks[parent_id][-1]["type"], "child_page")
@@ -92,16 +108,19 @@ class OpportunityTemplateTests(unittest.TestCase):
 
 
 class LegacyRoundTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def client(self):
         client = AdoptFake()
         client.pages["kid1"] = page("Interview 1: Pat Example (9/10/26)", parent="human")
         client.blocks["kid1"] = [block("Jim's interview notes", id="k1")]
-        client.blocks["human"].append({"id": "kid1", "type": "child_page", "child_page": {"title": "Interview 1: Pat Example (9/10/26)"}})
+        client.blocks["human"].append(
+            {"id": "kid1", "type": "child_page", "child_page": {"title": "Interview 1: Pat Example (9/10/26)"}}
+        )
         return client
 
     def texts(self, client):
@@ -109,7 +128,9 @@ class LegacyRoundTests(unittest.TestCase):
 
     def test_a_named_pursuit_is_adopted_with_its_real_rounds_and_the_round_page_is_not_touched(self):
         client = self.client()
-        result = stage.run(10, True, environ={**ENV, "INTERVIEW_TEST_COMPANIES": "Legacy"}, client=client, evidence=[(LEGACY, PENDING)])
+        result = stage.run(
+            10, True, environ={**ENV, "INTERVIEW_TEST_COMPANIES": "Legacy"}, client=client, evidence=[(LEGACY, PENDING)]
+        )
         self.assertEqual((result["parents_adopted"], result["readback_ok"], result["blocked"]), (1, 1, 0))
         self.assertTrue([t for t in self.texts(client) if "Interview 1 date passed" in t])
         self.assertEqual(client.blocks["kid1"], [block("Jim's interview notes", id="k1")])
@@ -124,11 +145,12 @@ class LegacyRoundTests(unittest.TestCase):
 
 
 class AdoptTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_dry_run_reports_and_never_writes(self):
         client = AdoptFake()
         self.assertEqual(notion.ownership(client, "human", "opportunity"), Ownership.ADOPT)
@@ -140,29 +162,36 @@ class AdoptTests(unittest.TestCase):
         client = AdoptFake()
         original = copy.deepcopy(client.blocks["human"][1:])
         result = run(client)
-        self.assertEqual((result["writes"], result["parents_adopted"], result["readback_ok"], result["blocked"]), (1, 1, 1, 0))
+        self.assertEqual(
+            (result["writes"], result["parents_adopted"], result["readback_ok"], result["blocked"]), (1, 1, 1, 0)
+        )
         self.assertEqual(result["why"], {"parent_adopted": 1})
         self.assertEqual(client.posts, [])  # no round in the adoption run
         writes = [c for c in client.calls if c[0] != "GET"]
         self.assertEqual((writes[0], client.patches[0][1]["after"]), (("PATCH", "/blocks/human/children"), "h0"))
         self.assertIn(("DELETE", "/blocks/h0"), writes)
-        self.assertFalse([w for w in writes if w[1].split("/")[2] in ("h1", "h2", "h2a", "h3")])  # Jim's blocks never written
+        self.assertFalse(
+            [w for w in writes if w[1].split("/")[2] in ("h1", "h2", "h2a", "h3")]
+        )  # Jim's blocks never written
         page = client.blocks["human"]
         self.assertNotIn("h0", [b["id"] for b in page])  # the adopt line is gone
         self.assertEqual(notion.text(page[0]), notion.FOLD)
-        self.assertRegex(notion.text(client.blocks[page[0]["id"]][0]), r"^v7-interview:1;owner=machine;kind=opportunity;adopted=\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(
+            notion.text(client.blocks[page[0]["id"]][0]),
+            r"^v7-interview:1;owner=machine;kind=opportunity;adopted=\d{4}-\d{2}-\d{2}$",
+        )
         self.assertEqual(notion.ownership(client, "human", "opportunity"), Ownership.MACHINE)
         notes = [notion.text(b) for b in page].index(notion.JIM_NOTES)
         self.assertEqual(page[notes + 1]["type"], "callout")
-        self.assertEqual(page[notes + 2:], original)  # Jim's blocks: same ids, order and content
+        self.assertEqual(page[notes + 2 :], original)  # Jim's blocks: same ids, order and content
         self.assertNotEqual(notion.text(page[-1]), "Write here.")
         replay = run(client)
         self.assertEqual((replay["rounds_created"], replay["readback_ok"]), (1, 1))
-        self.assertEqual(client.blocks["human"][notes + 2:-1], original)
+        self.assertEqual(client.blocks["human"][notes + 2 : -1], original)
         again = run(client)  # the page's Interviews table lists the round
         self.assertEqual((again["writes"], again["why"]), (1, {"parent_refreshed": 1}))
         notes = [notion.text(b) for b in client.blocks["human"]].index(notion.JIM_NOTES)
-        self.assertEqual(client.blocks["human"][notes + 2:-1], original)
+        self.assertEqual(client.blocks["human"][notes + 2 : -1], original)
         self.assertFalse([p for p, _ in client.patches if p.split("/")[2] in ("h1", "h2", "h2a", "h3")])
         again = run(client)
         self.assertEqual((again["writes"], again["why"]), (0, {"child_match": 1}))
@@ -178,8 +207,12 @@ class AdoptTests(unittest.TestCase):
         for mode in ("second", "notes", "machine", "later"):
             with self.subTest(mode=mode):
                 client = AdoptFake("human first line" if mode == "later" else "LIFE OS: adopt")
-                extra = {"second": block("LIFE OS: adopt", id="x"), "notes": block(notion.JIM_NOTES, "heading_2", "x"),
-                         "machine": block(notion.FOLD, "toggle", "x"), "later": block("LIFE OS: adopt", id="x")}[mode]
+                extra = {
+                    "second": block("LIFE OS: adopt", id="x"),
+                    "notes": block(notion.JIM_NOTES, "heading_2", "x"),
+                    "machine": block(notion.FOLD, "toggle", "x"),
+                    "later": block("LIFE OS: adopt", id="x"),
+                }[mode]
                 client.blocks["human"].append(extra)
                 result = run(client)
                 self.assertIn("human_page" if mode == "later" else "adopt_conflict", result["why"])
@@ -196,7 +229,9 @@ class AdoptTests(unittest.TestCase):
     def test_undo_by_deleting_the_ownership_line(self):
         client = AdoptFake()
         run(client)
-        self.assertEqual(notion.text(client.blocks["human"].pop(0)), notion.FOLD)  # undo = delete the folded LIFE OS toggle
+        self.assertEqual(
+            notion.text(client.blocks["human"].pop(0)), notion.FOLD
+        )  # undo = delete the folded LIFE OS toggle
         patches = len(client.patches)
         result = run(client)
         self.assertIn("human_page", result["why"])
@@ -208,7 +243,12 @@ class AdoptTests(unittest.TestCase):
     def test_adopted_marker_shape(self):
         base = notion.MARKERS["opportunity"]
         self.assertTrue(notion.is_marker(base + ";adopted=2026-10-20", "opportunity"))
-        for value in (base + ";adopted=2026-13-01", base + ";adopted=2026-10-20;x", base + ";adopted=", base + "adopted=2026-10-20"):
+        for value in (
+            base + ";adopted=2026-13-01",
+            base + ";adopted=2026-10-20;x",
+            base + ";adopted=",
+            base + "adopted=2026-10-20",
+        ):
             self.assertFalse(notion.is_marker(value, "opportunity"))
         self.assertFalse(notion.is_marker(notion.MARKERS["round"] + ";adopted=2026-10-20", "round"))
 
@@ -229,7 +269,9 @@ class AdoptTests(unittest.TestCase):
         client = AdoptFake()
         client.touch_human = True
         result = run(client)
-        self.assertEqual((result["why"], result["readback_ok"], result["readback_failed"]), ({"readback_protected_changed": 1}, 0, 1))
+        self.assertEqual(
+            (result["why"], result["readback_ok"], result["readback_failed"]), ({"readback_protected_changed": 1}, 0, 1)
+        )
 
     def test_counts_privacy(self):
         client = AdoptFake()
@@ -238,13 +280,22 @@ class AdoptTests(unittest.TestCase):
             self.assertNotIn(private, json.dumps(result))
 
 
-
 def legacy(client):
     """A LIFE OS opportunity page written before, folded like the real Walmart page, with Interview 1 under it."""
-    fold = lambda bid, *lines: {"id": bid, "type": "toggle", "toggle": {"rich_text": [{"plain_text": notion.FOLD}]}, "has_children": True}
-    client.blocks["human"] = [fold("f"), block("Live Notes", "heading_2", "lv"), block("my live note", id="n1"),
-                              block("Raw Notes", "heading_2", "rw"), block("Interview Rounds", "heading_2", "ir"),
-                              {"id": "r1", "type": "child_page", "child_page": {"title": "Interview 1"}}]
+    fold = lambda bid, *lines: {
+        "id": bid,
+        "type": "toggle",
+        "toggle": {"rich_text": [{"plain_text": notion.FOLD}]},
+        "has_children": True,
+    }
+    client.blocks["human"] = [
+        fold("f"),
+        block("Live Notes", "heading_2", "lv"),
+        block("my live note", id="n1"),
+        block("Raw Notes", "heading_2", "rw"),
+        block("Interview Rounds", "heading_2", "ir"),
+        {"id": "r1", "type": "child_page", "child_page": {"title": "Interview 1"}},
+    ]
     client.blocks["f"] = [block(notion.MARKERS["opportunity"], id="fm")]
     client.pages["r1"] = page("Interview 1", "human")
     client.blocks["r1"] = [fold("rf"), block("Live Notes", "heading_2", "rl"), block("Raw Notes", "heading_2", "rr")]
@@ -253,18 +304,25 @@ def legacy(client):
 
 
 class UpgradeTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_dry_run_then_one_upgrade_then_the_existing_round_matches(self):
         client = AdoptFake()
         original = legacy(client)
         result = run(client, live=False)
-        self.assertEqual((result["why"], result["writes_planned"], result["writes"], client.patches), ({"upgrade_allowed": 1}, 1, 0, []))
+        self.assertEqual(
+            (result["why"], result["writes_planned"], result["writes"], client.patches),
+            ({"upgrade_allowed": 1}, 1, 0, []),
+        )
         result = run(client)
-        self.assertEqual((result["why"], result["writes"], result["parents_upgraded"], result["readback_ok"]), ({"parent_upgraded": 1}, 1, 1, 1))
+        self.assertEqual(
+            (result["why"], result["writes"], result["parents_upgraded"], result["readback_ok"]),
+            ({"parent_upgraded": 1}, 1, 1, 1),
+        )
         writes = [c for c in client.calls if c[0] != "GET"]
         self.assertEqual((writes[0], client.patches[0][1]["after"]), (("PATCH", "/blocks/human/children"), "f"))
         self.assertFalse([w for w in writes if w[0] == "DELETE" or w[1] == "/blocks/f"])
@@ -274,9 +332,11 @@ class UpgradeTests(unittest.TestCase):
         self.assertEqual([notion.text(b) for b in page_blocks].count(notion.FOLD), 1)
         notes = [notion.text(b) for b in page_blocks].index(notion.JIM_NOTES)
         self.assertEqual(page_blocks[notes + 1]["type"], "callout")
-        self.assertEqual(page_blocks[notes + 2:], original)  # old headings, notes and Interview 1: untouched
+        self.assertEqual(page_blocks[notes + 2 :], original)  # old headings, notes and Interview 1: untouched
         self.assertTrue(notion.text(page_blocks[1]).startswith("Stage: "))
-        self.assertEqual((page_blocks[2]["type"], page_blocks[3]["type"]), ("paragraph", "callout"))  # the machine-written note, then the Action Center
+        self.assertEqual(
+            (page_blocks[2]["type"], page_blocks[3]["type"]), ("paragraph", "callout")
+        )  # the machine-written note, then the Action Center
         self.assertIsNotNone(notion.protected_snapshot(client, "human", "opportunity"))
         replay = run(client)
         self.assertEqual((replay["why"], replay["writes"]), ({"child_match": 1}, 0))
@@ -287,10 +347,14 @@ class UpgradeTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 client = AdoptFake()
                 legacy(client)
-                if mode == "raw": client.blocks["human"].pop(3)
-                if mode == "second": client.blocks["human"].insert(2, block(notion.MARKERS["opportunity"], id="x"))
+                if mode == "raw":
+                    client.blocks["human"].pop(3)
+                if mode == "second":
+                    client.blocks["human"].insert(2, block(notion.MARKERS["opportunity"], id="x"))
                 result = run(client, query=RoundQuery(False) if mode == "unconfirmed" else PENDING)
-                self.assertEqual(result["why"], {"pursuit_unconfirmed" if mode == "unconfirmed" else "upgrade_unrecognized": 1})
+                self.assertEqual(
+                    result["why"], {"pursuit_unconfirmed" if mode == "unconfirmed" else "upgrade_unrecognized": 1}
+                )
                 self.assertEqual((client.patches, result["writes"]), ([], 0))
 
     def test_write_and_readback_failures_fail_closed(self):

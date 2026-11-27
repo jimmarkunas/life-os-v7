@@ -103,13 +103,16 @@ class Verify(unittest.TestCase):
             if path.endswith("role.db"):
                 raise vr.RestoreError("RESTORE_DB_CORRUPT", "database disk image is malformed")
             return real(path)
+
         vr.tables = fake
         self.addCleanup(setattr, vr, "tables", real)
         archive = self.archive()
         with self.assertRaises(vr.RestoreError) as raised:
             vr.verify(archive)
         self.assertIn("hermes/state.db: RESTORE_DB_UNCHECKED (no such module: vec0)", raised.exception.detail)
-        self.assertIn("hermes/profiles/role.db: RESTORE_DB_CORRUPT (database disk image is malformed)", raised.exception.detail)
+        self.assertIn(
+            "hermes/profiles/role.db: RESTORE_DB_CORRUPT (database disk image is malformed)", raised.exception.detail
+        )
         self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")  # mixed causes: the worse code leads
         vr.tables = lambda path: (_ for _ in ()).throw(vr.RestoreError("RESTORE_DB_UNCHECKED", "no such module: vec0"))
         with self.assertRaises(vr.RestoreError) as only:
@@ -150,6 +153,7 @@ class Verify(unittest.TestCase):
             info = tarfile.TarInfo("hermes/../../evil.txt")
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
+
         with self.assertRaises(vr.RestoreError) as raised:
             vr.verify(self.archive(extra=evil))
         self.assertEqual(str(raised.exception), "RESTORE_UNSAFE_PATH")
@@ -160,6 +164,7 @@ class Verify(unittest.TestCase):
             info.type = tarfile.SYMTYPE
             info.linkname = "/etc/passwd"
             tar.addfile(info)
+
         with self.assertRaises(vr.RestoreError) as raised:
             vr.verify(self.archive(extra=link))
         self.assertEqual(str(raised.exception), "RESTORE_UNSAFE_PATH")

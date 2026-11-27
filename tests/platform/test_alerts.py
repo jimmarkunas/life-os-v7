@@ -56,6 +56,7 @@ class Delivery(unittest.TestCase):
 
         def boom(request, timeout):
             raise OSError("down")
+
         self.assertFalse(alerts.ntfy("topic", "t", "b", alerts.PAGE, post=boom))
 
     def test_ntfy_posts_priority_and_body(self):
@@ -73,6 +74,7 @@ class Delivery(unittest.TestCase):
         def post(request, timeout):
             seen.update(url=request.full_url, data=request.data, priority=request.get_header("Priority"))
             return Resp()
+
         self.assertTrue(alerts.ntfy("topic", "Title", "Body", alerts.PAGE, post=post))
         self.assertEqual((seen["url"], seen["data"], seen["priority"]), ("https://ntfy.sh/topic", b"Body", "high"))
 
@@ -99,10 +101,16 @@ class Delivery(unittest.TestCase):
 
                 def __exit__(self, *a):
                     return False
+
             return lambda request, timeout: Resp()
+
         for status, want in ((500, 1), (200, 0)):  # the real main and the real ntfy run
-            with self.subTest(status=status), mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "NTFY_TOPIC": "topic"}, clear=True), \
-                    mock.patch.object(alerts.urllib.request, "urlopen", answer(status)), contextlib.redirect_stdout(io.StringIO()):
+            with (
+                self.subTest(status=status),
+                mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "NTFY_TOPIC": "topic"}, clear=True),
+                mock.patch.object(alerts.urllib.request, "urlopen", answer(status)),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
                 alerts.reset_flood()
                 self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), want)
 
@@ -111,10 +119,12 @@ class CommandLineCopies(unittest.TestCase):
     """item 2: the command line (`alerts.main`) used by the workflows must carry the same Telegram and WhatsApp copy tags
     as `push` does.
     """
+
     WORKFLOW_KEYS = ("run_failed", "domain_jobs_failed", "purge_done", "purge_failed", "safety_failed", "test_push")
 
     def run_main(self, *argv, settings=None):
         import contextlib, io
+
         sent = []
 
         class Resp:
@@ -129,8 +139,13 @@ class CommandLineCopies(unittest.TestCase):
         def urlopen(request, timeout):
             sent.append({"tags": request.get_header("Tags"), "priority": request.get_header("Priority")})
             return Resp()
+
         env = {"ALERTS_ENABLED": "on", "NTFY_TOPIC": "topic", **({"ALERT_SETTINGS": settings} if settings else {})}
-        with mock.patch.dict("os.environ", env, clear=True), mock.patch.object(alerts.urllib.request, "urlopen", urlopen), contextlib.redirect_stdout(io.StringIO()):
+        with (
+            mock.patch.dict("os.environ", env, clear=True),
+            mock.patch.object(alerts.urllib.request, "urlopen", urlopen),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             alerts.reset_flood()
             code = alerts.main(["push", *argv])
         return code, sent
@@ -146,6 +161,7 @@ class CommandLineCopies(unittest.TestCase):
 
     def test_every_workflow_key_gets_exactly_the_copies_the_registry_gives_it(self):
         from lifeos.platform import alert_registry
+
         for key in self.WORKFLOW_KEYS:
             with self.subTest(key=key):
                 _, sent = self.run_main("--key", key, "--title", "T")
@@ -178,12 +194,14 @@ class Hibernated(unittest.TestCase):
     def test_nothing_is_posted_and_the_push_counts_as_not_sent(self):
         def post(request, timeout):
             raise AssertionError("no push may leave while alerts are off")
+
         with mock.patch.dict("os.environ", {}, clear=True):
             self.assertFalse(alerts.ntfy("topic", "Title", "Body", alerts.PAGE, post=post))
             self.assertEqual(alerts.deliver(alerts.reconcile([A, I], {}, NOW), "topic"), {"sent": 0, "failed": 2})
 
     def test_the_push_cli_sends_nothing_and_keeps_the_step_green(self):
         import contextlib, io
+
         out, old = io.StringIO(), alerts.ntfy
         try:
             alerts.ntfy = lambda *a, **k: (_ for _ in ()).throw(AssertionError("ntfy called"))
@@ -192,6 +210,7 @@ class Hibernated(unittest.TestCase):
         finally:
             alerts.ntfy = old
         self.assertEqual(out.getvalue().strip(), '{"push": "hibernated"}')
+
 
 if __name__ == "__main__":
     unittest.main()

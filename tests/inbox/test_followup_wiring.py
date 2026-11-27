@@ -1,4 +1,5 @@
 """(synthetic): the production wiring of the `followup` stage."""
+
 import unittest
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from lifeos.inbox.ledger import Ledger
 from lifeos.platform import followup_fetchers as F, followup_readers as R
 from tests.kit.mysqlite import MySQLite
 import sys as _sys
+
 _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
 import wfsets  # noqa: E402
 
@@ -32,6 +34,7 @@ def shim(ensure=True):
     @contextmanager
     def connect():
         yield shared
+
     return connect
 
 
@@ -50,7 +53,10 @@ class Switch(unittest.TestCase):
     def test_on_with_only_the_fixed_jira_scopes_wires_just_those_and_off_still_wins(self):
         with mock.patch.object(F, "build_fetchers", fake_build), mock.patch.object(W.db, "connect", shim()):
             wiring = W.build({"FOLLOWUP_WIRING": "on"})
-            self.assertEqual({(s.workspace, s.account) for s in wiring.scopes}, {("personal", "jira-personal"), ("bytalos", "jira-bytalos")})
+            self.assertEqual(
+                {(s.workspace, s.account) for s in wiring.scopes},
+                {("personal", "jira-personal"), ("bytalos", "jira-bytalos")},
+            )
             self.assertIsNone(W.build({**ON, "FOLLOWUP_WIRING": "off"}))  # the kill switch wins
 
     def test_without_the_fetchers_module_nothing_is_configured_and_nothing_crashes(self):
@@ -63,14 +69,27 @@ class Switch(unittest.TestCase):
 class Build(unittest.TestCase):
     def test_builds_from_a_fake_environment(self):
         env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp"}
-        with mock.patch.object(F, "build_fetchers", fake_build), mock.patch.object(W, "EXPIRES", EXPIRES), mock.patch.object(W.db, "connect", shim()):
+        with (
+            mock.patch.object(F, "build_fetchers", fake_build),
+            mock.patch.object(W, "EXPIRES", EXPIRES),
+            mock.patch.object(W.db, "connect", shim()),
+        ):
             dry = W.build(env, live=False, clock=lambda: T0)
             live = W.build(env, live=True, clock=lambda: T0)
-        self.assertEqual({(s.workspace, s.account) for s in dry.scopes}, {("personal", "jira-personal"), ("personal", "gm"), ("personal", "cp"), ("bytalos", "jira-bytalos")})
+        self.assertEqual(
+            {(s.workspace, s.account) for s in dry.scopes},
+            {("personal", "jira-personal"), ("personal", "gm"), ("personal", "cp"), ("bytalos", "jira-bytalos")},
+        )
         self.assertTrue(all("asana" not in s.sources for s in dry.scopes))
-        self.assertEqual({(g.source, g.tenant, g.account, g.credential_ref) for g in dry.grants},
-                         {("jira", "personal", "jira-personal", REFS[("jira", "personal", 1)]), ("jira", "bytalos", "jira-bytalos", REFS[("jira", "bytalos", 1)]),
-                          ("gmail", "personal", "gm", REFS[("gmail", "personal", 1)]), ("calendar", "personal", "cp", REFS[("calendar", "personal", 1)])})
+        self.assertEqual(
+            {(g.source, g.tenant, g.account, g.credential_ref) for g in dry.grants},
+            {
+                ("jira", "personal", "jira-personal", REFS[("jira", "personal", 1)]),
+                ("jira", "bytalos", "jira-bytalos", REFS[("jira", "bytalos", 1)]),
+                ("gmail", "personal", "gm", REFS[("gmail", "personal", 1)]),
+                ("calendar", "personal", "cp", REFS[("calendar", "personal", 1)]),
+            },
+        )
         self.assertIsInstance(dry.store, W.DryStore)
         self.assertIsInstance(live.store, FollowupStore)
         self.assertEqual(dry.jira_base, W.JIRA_SITE)
@@ -79,11 +98,21 @@ class Build(unittest.TestCase):
         grants = W.grants_for(ON, REFS, {("jira", "personal", 1): "2027-11-15"})
         self.assertEqual([(g.source, g.tenant) for g in grants], [("jira", "personal")])
         env = {**ON, "FOLLOWUP_ACCOUNT_ASANA_PERSONAL": "x", "FOLLOWUP_ACCOUNT_JIRA_TGP": "x"}
-        self.assertEqual(W.grants_for(env, {("asana", "personal", 1): "X", ("jira", "tgp", 1): "X"}, {("asana", "personal", 1): "2027-11-15", ("jira", "tgp", 1): "2027-11-15"}), ())
+        self.assertEqual(
+            W.grants_for(
+                env,
+                {("asana", "personal", 1): "X", ("jira", "tgp", 1): "X"},
+                {("asana", "personal", 1): "2027-11-15", ("jira", "tgp", 1): "2027-11-15"},
+            ),
+            (),
+        )
 
     def test_jira_is_two_scopes_of_one_account_with_one_credential_item_and_separate_grants(self):
         scopes = W.configured({"FOLLOWUP_WIRING": "on"})
-        self.assertEqual({k for k, members in scopes.items() if ("jira", 1) in members}, {("personal", "jira-personal"), ("bytalos", "jira-bytalos")})
+        self.assertEqual(
+            {k for k, members in scopes.items() if ("jira", 1) in members},
+            {("personal", "jira-personal"), ("bytalos", "jira-bytalos")},
+        )
         grants = [g for g in W.grants_for(ON, REFS, EXPIRES) if g.source == "jira"]
         self.assertEqual(len(grants), 2)  # two Grant objects...
         self.assertEqual({F.CREDENTIAL_NAMES[JIRA[0]], F.CREDENTIAL_NAMES[JIRA[1]]}, {"JIRA_API_TOKEN"})  # ...
@@ -96,7 +125,10 @@ class Build(unittest.TestCase):
         self.assertFalse(set(F.JIRA_PROJECTS["personal"]) & set(F.JIRA_PROJECTS["bytalos"]))
         grants = {g.tenant: g for g in W.grants_for(ON, REFS, EXPIRES) if g.source == "jira"}
         seen = []
-        fetch = F.build_fetchers({"JIRA_API_TOKEN": "x", "JIRA_EMAIL": "a@example.com"}, factories={"jira": lambda env, ws, secret, projects=None: seen.append((ws, projects)) or None})["jira"]
+        fetch = F.build_fetchers(
+            {"JIRA_API_TOKEN": "x", "JIRA_EMAIL": "a@example.com"},
+            factories={"jira": lambda env, ws, secret, projects=None: seen.append((ws, projects)) or None},
+        )["jira"]
         self.assertEqual(grants["bytalos"].credential_ref, F.GRANT_REFS[("jira", "bytalos", 1)])
         with self.assertRaises(F.FetchError):
             fetch("JIRA_API_TOKEN:calendar.bytalos", None)
@@ -105,42 +137,88 @@ class Build(unittest.TestCase):
         grants = W.grants_for(ON, REFS, EXPIRES)
         receipts, seen = [], []
         for tenant in ("personal", "bytalos"):
+
             def fetcher(ref, since, tenant=tenant):
                 seen.append((tenant, ref))
                 return []
+
             R.read_delta("jira", tenant, f"jira-{tenant}", None, grants, fetcher, receipts.append, T0, "batch-0")
         self.assertEqual(seen, [("personal", REFS[("jira", "personal", 1)]), ("bytalos", REFS[("jira", "bytalos", 1)])])
         self.assertEqual({r["tenant"] for r in receipts}, {"personal", "bytalos"})  # separate receipts per scope
-        wrong = R.read_delta("jira", "bytalos", "jira-bytalos", None, [g for g in grants if g.tenant == "personal"], lambda ref, since: [], lambda r: None, T0, "x")
+        wrong = R.read_delta(
+            "jira",
+            "bytalos",
+            "jira-bytalos",
+            None,
+            [g for g in grants if g.tenant == "personal"],
+            lambda ref, since: [],
+            lambda r: None,
+            T0,
+            "x",
+        )
         self.assertEqual((wrong.status, wrong.reason), ("refused", "no_grant"))
-        stranger = R.read_delta("jira", "personal", "stranger", None, grants, lambda ref, since: [], lambda r: None, T0, "y")
+        stranger = R.read_delta(
+            "jira", "personal", "stranger", None, grants, lambda ref, since: [], lambda r: None, T0, "y"
+        )
         self.assertEqual((stranger.status, stranger.reason), ("refused", "no_grant"))
 
     def test_existing_credentials_are_reused_and_only_two_secret_names_are_new(self):
         raw = F.CREDENTIAL_NAMES
         self.assertEqual({raw[("notion", "personal", 1)], raw[("interview_os", "personal", 1)]}, {"NOTION_API_TOKEN"})
-        self.assertEqual({raw[("calendar", "personal", 1)], raw[("calendar", "bytalos", 1)]}, {"GCAL_SERVICE_ACCOUNT_JSON"})
+        self.assertEqual(
+            {raw[("calendar", "personal", 1)], raw[("calendar", "bytalos", 1)]}, {"GCAL_SERVICE_ACCOUNT_JSON"}
+        )
         self.assertEqual(raw[("gmail", "personal", 1)], "GMAIL_OAUTH_REFRESH_TOKEN")
-        used = {raw[k] for k in raw if k[1] in ("personal", "bytalos") and k[0] in W.SOURCE_WORKSPACES and k[1] in W.SOURCE_WORKSPACES[k[0]]}
-        self.assertEqual({v for v in used if v.startswith("FOLLOWUP_")}, {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"})
+        used = {
+            raw[k]
+            for k in raw
+            if k[1] in ("personal", "bytalos") and k[0] in W.SOURCE_WORKSPACES and k[1] in W.SOURCE_WORKSPACES[k[0]]
+        }
+        self.assertEqual(
+            {v for v in used if v.startswith("FOLLOWUP_")},
+            {"FOLLOWUP_GMAIL_BYTALOS_READONLY_REFRESH", "FOLLOWUP_TODOIST_PERSONAL_TOKEN"},
+        )
         table = W.expiry_table()
         for key, name in raw.items():
             self.assertEqual(key in table, key[0] in F.STORED_TOKENS or name in W.INVENTORY, key)
-        env = {**ON, "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp", "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb", "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
-               "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb", "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp"}
+        env = {
+            **ON,
+            "FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL": "cp",
+            "FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS": "cb",
+            "FOLLOWUP_ACCOUNT_NOTION_PERSONAL": "np",
+            "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": "gb",
+            "FOLLOWUP_ACCOUNT_TODOIST_PERSONAL": "tp",
+        }
         grants = W.grants_for(env, W.credential_names())
         calendars = {g.tenant: g for g in grants if g.source == "calendar"}
-        self.assertEqual({t: g.account for t, g in calendars.items()}, {"personal": "cp", "bytalos": "cb"})  # one item, two Grants, two scopes
+        self.assertEqual(
+            {t: g.account for t, g in calendars.items()}, {"personal": "cp", "bytalos": "cb"}
+        )  # one item, two Grants, two scopes
         self.assertNotEqual(calendars["personal"].credential_ref, calendars["bytalos"].credential_ref)
-        self.assertEqual({(g.source, g.tenant) for g in grants if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")}, {("todoist", "personal"), ("gmail", "bytalos")})  # both have a loader line and an inventory row now
+        self.assertEqual(
+            {
+                (g.source, g.tenant)
+                for g in grants
+                if g.source == "todoist" or (g.source == "gmail" and g.tenant == "bytalos")
+            },
+            {("todoist", "personal"), ("gmail", "bytalos")},
+        )  # both have a loader line and an inventory row now
 
     def test_outlook_reuses_the_existing_sign_in_labels_and_never_bytalos(self):
         extra = len(OUTLOOKS) + 1  # one slot past the connected accounts is ignored
-        env = {**ON, **OUTLOOKS, f"FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_{extra}": "more", "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no"}
+        env = {
+            **ON,
+            **OUTLOOKS,
+            f"FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_{extra}": "more",
+            "FOLLOWUP_ACCOUNT_OUTLOOK_BYTALOS": "no",
+        }
         self.assertEqual(W.accounts(env, "outlook", "personal"), [(n, f"ol{n}") for n in OUTLOOK_SLOTS])
         self.assertEqual(W.accounts(env, "outlook", "bytalos"), [])
         grants = [g for g in W.grants_for(env, W.credential_names()) if g.source == "outlook"]
-        self.assertEqual(sorted((g.account, g.credential_ref) for g in grants), sorted((f"ol{n}", F.OUTLOOK_LABELS[n]) for n in OUTLOOK_SLOTS))
+        self.assertEqual(
+            sorted((g.account, g.credential_ref) for g in grants),
+            sorted((f"ol{n}", F.OUTLOOK_LABELS[n]) for n in OUTLOOK_SLOTS),
+        )
         self.assertTrue({g.credential_ref for g in grants} <= set(outlook_stage.LABELS))
 
     def test_the_school_mailbox_is_tracked_not_connected(self):
@@ -163,7 +241,12 @@ class Build(unittest.TestCase):
 
     def test_tgp_is_refused_as_a_workspace_and_as_an_account_label(self):
         label = "someone@tgp" + "international.com"
-        env = {**ON, "FOLLOWUP_ACCOUNT_GMAIL_TGP": "x", "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": label, "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2": label}
+        env = {
+            **ON,
+            "FOLLOWUP_ACCOUNT_GMAIL_TGP": "x",
+            "FOLLOWUP_ACCOUNT_GMAIL_BYTALOS": label,
+            "FOLLOWUP_ACCOUNT_OUTLOOK_PERSONAL_2": label,
+        }
         self.assertEqual(W.accounts(env, "gmail", "tgp"), [])
         self.assertEqual(W.accounts(env, "gmail", "bytalos"), [])
         self.assertEqual(W.accounts(env, "outlook", "personal"), [])
@@ -171,8 +254,15 @@ class Build(unittest.TestCase):
         self.assertTrue(S.tgp_account(label))
         self.assertFalse(S.tgp_account("main"))
         calls = []
-        wiring = S.Wiring(FollowupStore(shim()), (S.Scope("personal", label, ("jira",)),), W.grants_for(ON, REFS, EXPIRES), {"jira": lambda ref, since: calls.append(ref) or []}, lambda r: None, lambda p: None,
-                          clock=lambda: T0)
+        wiring = S.Wiring(
+            FollowupStore(shim()),
+            (S.Scope("personal", label, ("jira",)),),
+            W.grants_for(ON, REFS, EXPIRES),
+            {"jira": lambda ref, since: calls.append(ref) or []},
+            lambda r: None,
+            lambda p: None,
+            clock=lambda: T0,
+        )
         counts = S.run(0, False, wiring)
         self.assertEqual(calls, [])
         self.assertEqual(counts.get("refused"), 1)
@@ -192,8 +282,15 @@ class Degraded(unittest.TestCase):
         ledger = Ledger(connect)
         ledger.ensure_schema()
         calls = []
-        wiring = S.Wiring(store, (S.Scope("personal", "jira-personal", ("jira", "gmail")),), (), {"jira": lambda ref, since: calls.append(ref) or []}, W.make_audit(ledger), lambda payload: None,
-                          clock=lambda: T0)
+        wiring = S.Wiring(
+            store,
+            (S.Scope("personal", "jira-personal", ("jira", "gmail")),),
+            (),
+            {"jira": lambda ref, since: calls.append(ref) or []},
+            W.make_audit(ledger),
+            lambda payload: None,
+            clock=lambda: T0,
+        )
         counts = S.run(0, False, wiring)
         self.assertEqual(calls, [])  # no grant, no read
         self.assertEqual(counts["sources_degraded"], 2)
@@ -205,6 +302,7 @@ class Degraded(unittest.TestCase):
         def broken():
             raise RuntimeError("driver text that must never leave")
             yield
+
         store_connect = shim()
         store = FollowupStore(store_connect)
         store.ensure_schema()
@@ -212,9 +310,27 @@ class Degraded(unittest.TestCase):
         grants = W.grants_for(ON, REFS, EXPIRES)
         audit = W.make_audit(Ledger(broken))
         with self.assertRaises(W.WiringError) as caught:
-            audit({"t": T0.isoformat(), "source": "jira", "tenant": "personal", "account": "jira-personal", "request_id": "batch-0", "outcome": "allow", "reason": "ok"})
+            audit(
+                {
+                    "t": T0.isoformat(),
+                    "source": "jira",
+                    "tenant": "personal",
+                    "account": "jira-personal",
+                    "request_id": "batch-0",
+                    "outcome": "allow",
+                    "reason": "ok",
+                }
+            )
         self.assertEqual(str(caught.exception), "FOLLOWUP_AUDIT_UNAVAILABLE")
-        wiring = S.Wiring(store, (S.Scope("personal", "jira-personal", ("jira",)),), grants, {"jira": lambda ref, since: calls.append(ref) or []}, audit, lambda payload: None, clock=lambda: T0)
+        wiring = S.Wiring(
+            store,
+            (S.Scope("personal", "jira-personal", ("jira",)),),
+            grants,
+            {"jira": lambda ref, since: calls.append(ref) or []},
+            audit,
+            lambda payload: None,
+            clock=lambda: T0,
+        )
         counts = S.run(0, False, wiring)
         self.assertEqual(calls, [])  # no receipt, no read
         self.assertEqual(counts.get("item_failed"), 1)
@@ -228,10 +344,14 @@ class Receipts(unittest.TestCase):
         ledger.ensure_schema()
         audit = W.make_audit(ledger)
         grants = W.grants_for(ON, REFS, EXPIRES)
-        fetch = lambda ref, since: []                                                     # noqa: E731
+        fetch = lambda ref, since: []  # noqa: E731
         R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0, "batch-0")
-        R.read_delta("jira", "personal", "jira-personal", None, grants, fetch, audit, T0 + timedelta(hours=1), "batch-0")  # the same reader id one hour later: a new receipt
-        R.read_delta("jira", "bytalos", "jira-bytalos", None, (), fetch, audit, T0, "batch-1")  # a refusal still leaves a deny receipt
+        R.read_delta(
+            "jira", "personal", "jira-personal", None, grants, fetch, audit, T0 + timedelta(hours=1), "batch-0"
+        )  # the same reader id one hour later: a new receipt
+        R.read_delta(
+            "jira", "bytalos", "jira-bytalos", None, (), fetch, audit, T0, "batch-1"
+        )  # a refusal still leaves a deny receipt
         rows = ledger.access_receipts(W.PRINCIPAL)
         self.assertEqual(len(rows), 3)
         self.assertEqual(sorted(r["decision"] for r in rows), ["allow", "allow", "deny"])
@@ -265,6 +385,7 @@ class Payload(unittest.TestCase):
 
             def load_payload(self, workspace, account):
                 return self.saved.get((workspace, account))
+
         store = Fake()
         payload = {"component": "followup", "workspace": "personal", "account": "jira-personal"}
         W.make_sink(store, lambda: T0)(payload)
@@ -272,18 +393,26 @@ class Payload(unittest.TestCase):
         self.assertIsNone(W.payload_loader(store, "bytalos", "jira-bytalos")("ignored"))
         self.assertIsNone(W.payload_loader(object(), "personal", "jira-personal")("ignored"))
 
-
     def test_the_sink_calls_the_real_store_with_arguments_that_bind_to_save_payload(self):
         """the first live run failed every scope because the sink passed one argument more than
         FollowupStore.save_payload takes
         """
         import inspect
+
         seen = []
 
         class Spy:
             def save_payload(self, *args, **kwargs):
                 seen.append((args, kwargs))
-        W.make_sink(Spy(), lambda: T0)({"workspace": "personal", "account": "jira-personal", "state": "PASS", "generated_at": "2026-11-17T01:00:00+00:00"})
+
+        W.make_sink(Spy(), lambda: T0)(
+            {
+                "workspace": "personal",
+                "account": "jira-personal",
+                "state": "PASS",
+                "generated_at": "2026-11-17T01:00:00+00:00",
+            }
+        )
         args, kwargs = seen[0]
         inspect.signature(FollowupStore.save_payload).bind(object(), *args, **kwargs)
 
@@ -293,6 +422,7 @@ class Job(unittest.TestCase):
 
     def test_the_followup_job_goes_live_only_through_the_live_guard_and_loads_only_committed_names(self):
         import json
+
         try:
             import yaml
         except ImportError:
@@ -309,14 +439,24 @@ class Job(unittest.TestCase):
         self.assertEqual(len(stage), 1)
         self.assertIn('$([ "$LIVE" = "true" ] && echo --live)', stage[0])
         self.assertNotIn("--live", stage[0].replace('echo --live)', ""))
-        loaded = next(step for step in job["steps"] if str(step.get("uses", "")).endswith("bws-load") and step.get("id") == "bws_followup")
-        self.assertTrue({"JIRA_API_TOKEN", "JIRA_EMAIL"} <= {line.split()[-1] for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()})
+        loaded = next(
+            step
+            for step in job["steps"]
+            if str(step.get("uses", "")).endswith("bws-load") and step.get("id") == "bws_followup"
+        )
+        self.assertTrue(
+            {"JIRA_API_TOKEN", "JIRA_EMAIL"}
+            <= {line.split()[-1] for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()}
+        )
         self.assertNotIn("FOLLOWUP_JIRA_", str(loaded["with"]))
         names = {line.split()[-1] for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()}
         for name in names:
             self.assertRegex(name, r"^[A-Z0-9_]+$")
         self.assertFalse(any(marker in text for marker in W.stage.TGP_DOMAINS))
-        self.assertEqual(json.loads((self.ROOT / "lifeos/platform/due_table.json").read_text())["jobs"]["followup"], {"every_hours": 1})
+        self.assertEqual(
+            json.loads((self.ROOT / "lifeos/platform/due_table.json").read_text())["jobs"]["followup"],
+            {"every_hours": 1},
+        )
         switch = json.loads((self.ROOT / "lifeos/platform/switches.json").read_text())["FOLLOWUP_WIRING"]
         self.assertIn(switch["state"], ("off", "on"))
         if switch["state"] == "on":
@@ -332,7 +472,10 @@ class Job(unittest.TestCase):
         except ImportError:
             self.skipTest("PyYAML not installed")
         from lifeos.platform.credential_list import CREDENTIALS
-        job = yaml.safe_load(wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text()))["jobs"]["followup"]
+
+        job = yaml.safe_load(wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text()))["jobs"][
+            "followup"
+        ]
         loaded = next(step for step in job["steps"] if step.get("id") == "bws_followup")
         lines = [line.split() for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()]
         loaded_names = {parts[-1] for parts in lines}
@@ -350,8 +493,7 @@ class Job(unittest.TestCase):
 
 
 class DefaultLabels(unittest.TestCase):
-    """Jim creates no label item: each account has a committed label, used only where its credential is there to read.
-    """
+    """Jim creates no label item: each account has a committed label, used only where its credential is there to read."""
 
     def test_every_default_names_a_real_scope_and_is_never_an_address_or_tgp(self):
         self.assertEqual(set(W.DEFAULT_LABELS) - set(F.CREDENTIAL_NAMES), set())
@@ -362,12 +504,18 @@ class DefaultLabels(unittest.TestCase):
         gmail, name = ("gmail", "bytalos", 1), F.CREDENTIAL_NAMES[("gmail", "bytalos", 1)]
         self.assertEqual(W.accounts({}, "gmail", "bytalos"), [])  # no credential, no scope
         self.assertEqual(W.accounts({name: "x"}, "gmail", "bytalos"), [(1, W.DEFAULT_LABELS[gmail])])
-        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "mine"}, "gmail", "bytalos"), [(1, "mine")])  # an environment label still wins
-        self.assertEqual(W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "a@" + "tgp" + "international.com"}, "gmail", "bytalos"), [])
+        self.assertEqual(
+            W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "mine"}, "gmail", "bytalos"), [(1, "mine")]
+        )  # an environment label still wins
+        self.assertEqual(
+            W.accounts({name: "x", F.ACCOUNT_NAMES[gmail]: "a@" + "tgp" + "international.com"}, "gmail", "bytalos"), []
+        )
 
     def test_outlook_is_judged_by_the_reader_so_its_client_id_is_enough(self):
         self.assertEqual(W.accounts({}, "outlook", "personal"), [])
-        self.assertEqual([slot for slot, _ in W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "personal")], list(OUTLOOK_SLOTS))
+        self.assertEqual(
+            [slot for slot, _ in W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "personal")], list(OUTLOOK_SLOTS)
+        )
         self.assertEqual(W.accounts({"OUTLOOK_CLIENT_ID": "x"}, "outlook", "bytalos"), [])
 
 

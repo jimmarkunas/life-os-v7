@@ -1,5 +1,5 @@
-"""Observers for the clients family: the real Gmail and Google Calendar clients (signatures only) and their kit fakes.
-"""
+"""Observers for the clients family: the real Gmail and Google Calendar clients (signatures only) and their kit fakes."""
+
 import inspect
 
 from lifeos.platform.gcal import GoogleCalendar
@@ -13,9 +13,20 @@ def observe(target):
         method = getattr(target, case["method"], None)
         if method is None:
             return {"params": None}
-        return {"params": [name if p.default is inspect.Parameter.empty else f"{name}={p.default!r}"
-                           for name, p in inspect.signature(method).parameters.items() if name != "self"]}
+        return {
+            "params": [
+                name if p.default is inspect.Parameter.empty else f"{name}={p.default!r}"
+                for name, p in inspect.signature(method).parameters.items()
+                if name != "self"
+            ]
+        }
+
     return run
 
 
-SUBJECTS = {"real_gmail": observe(Gmail), "fake_gmail": observe(FakeGmail), "real_calendar": observe(GoogleCalendar), "fake_calendar": observe(CalendarEvents)}
+SUBJECTS = {
+    "real_gmail": observe(Gmail),
+    "fake_gmail": observe(FakeGmail),
+    "real_calendar": observe(GoogleCalendar),
+    "fake_calendar": observe(CalendarEvents),
+}

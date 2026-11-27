@@ -1,6 +1,7 @@
 """The flat-to-two-column Ledger page migration: a Notion that behaves like Notion's (nested blocks, `after`, in-place
 update), and the stored.
 """
+
 import json
 import unittest
 from unittest import mock
@@ -10,13 +11,17 @@ from lifeos.sources.network import ledger_layout as layout
 from tests.jobs.fakes_ledger import FakeLedger
 
 KEY = "a" * 64
-DESC = {"summary": "About the role\n• lead the program", "responsibilities": "Own the roadmap", "requirements": "", "qualifications": "Ten years"}
+DESC = {
+    "summary": "About the role\n• lead the program",
+    "responsibilities": "Own the roadmap",
+    "requirements": "",
+    "qualifications": "Ten years",
+}
 NOTE = "Jim's own note below the description"
 
 
 def flat(note=True, leads=False):
-    """A page as publish wrote it before: the visible marker, the description sections at the top level, then Jim's note.
-    """
+    """A page as publish wrote it before: the visible marker, the description sections at the top level, then Jim's note."""
     ledger = FakeLedger()
     ledger.add_page("page-1", KEY, description=False)
     ledger.kids["page-1"] = []
@@ -39,9 +44,14 @@ class Migrate(unittest.TestCase):
         self.assertEqual(layout.migrate(ledger, "page-1", KEY, DESC, True), "migrated")
         top = ledger.top("page-1")
         self.assertEqual([b["type"] for b in top], ["paragraph", "column_list", "paragraph"])
-        self.assertEqual((top[2]["id"], ledger.texts("page-1")[0], ledger.texts("page-1")[2]), (note_id, "\u2060", NOTE))  # Jim's note is the same block, still last
+        self.assertEqual(
+            (top[2]["id"], ledger.texts("page-1")[0], ledger.texts("page-1")[2]), (note_id, "\u2060", NOTE)
+        )  # Jim's note is the same block, still last
         self.assertEqual(body.marker_text(top[0]), f"v7-jd:2 | key={KEY}")
-        self.assertEqual(body.text_of(ledger, "page-1"), "About the role\n- lead the program\nResponsibilities\nOwn the roadmap\nQualifications\nTen years")
+        self.assertEqual(
+            body.text_of(ledger, "page-1"),
+            "About the role\n- lead the program\nResponsibilities\nOwn the roadmap\nQualifications\nTen years",
+        )
         self.assertIn("Own the roadmap", before_text)
         self.assertEqual(layout.migrate(ledger, "page-1", KEY, DESC, True), "done")
 
@@ -54,7 +64,9 @@ class Migrate(unittest.TestCase):
     def test_an_interrupted_page_is_finished_without_a_second_column_list(self):
         ledger = flat()
         top = ledger.top("page-1")
-        ledger.call("PATCH", "/blocks/page-1/children", {"children": [body.column_list(DESC)], "after": top[0]["id"]})  # step 1 only, then the run died
+        ledger.call(
+            "PATCH", "/blocks/page-1/children", {"children": [body.column_list(DESC)], "after": top[0]["id"]}
+        )  # step 1 only, then the run died
         self.assertEqual(layout.migrate(ledger, "page-1", KEY, DESC, True), "migrated")
         self.assertEqual([b["type"] for b in ledger.top("page-1")], ["paragraph", "column_list", "paragraph"])
         self.assertEqual(body.text_of(ledger, "page-1").count("Own the roadmap"), 1)
@@ -68,9 +80,12 @@ class Migrate(unittest.TestCase):
             if method == "PATCH" and path.endswith("/children") and not seen:
                 seen.append(1)
                 out = real(method, path, body)
-                ledger.blocks[ledger.kids["page-1"][3]]["paragraph"]["rich_text"][0]["plain_text"] = "changed meanwhile"  # an old block (after the column_list) edited
+                ledger.blocks[ledger.kids["page-1"][3]]["paragraph"]["rich_text"][0]["plain_text"] = (
+                    "changed meanwhile"  # an old block (after the column_list) edited
+                )
                 return out
             return real(method, path, body)
+
         with mock.patch.object(ledger, "call", call):
             with self.assertRaises(layout.LayoutError):
                 layout.migrate(ledger, "page-1", KEY, DESC, True)
@@ -83,6 +98,7 @@ if __name__ == "__main__":
 
 class StateSave(unittest.TestCase):
     """A page's Notion work takes a while"""
+
     class Cursor:
         def __enter__(self):
             return self
@@ -108,7 +124,10 @@ class StateSave(unittest.TestCase):
     def test_a_dropped_store_connection_is_reconnected_and_a_failed_save_is_counted_not_fatal(self):
         ledger = flat()
         conn = self.Connection()
-        with mock.patch.object(layout, "read", return_value=[(KEY, "page-1", DESC)]), mock.patch.object(layout, "SCHEMA", "SELECT 1"):
+        with (
+            mock.patch.object(layout, "read", return_value=[(KEY, "page-1", DESC)]),
+            mock.patch.object(layout, "SCHEMA", "SELECT 1"),
+        ):
             counts = layout._run(1, False, {}, conn, ledger)
         self.assertEqual(counts["would_migrate"], 1)  # dry run: nothing saved, nothing failed
         counts = {"state_not_saved": 0}
@@ -129,13 +148,21 @@ class Shards(unittest.TestCase):
         seen = []
 
         class Cursor:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def execute(self, sql, args=()): seen.append((sql, args))
-            def fetchall(self): return []
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def execute(self, sql, args=()):
+                seen.append((sql, args))
+
+            def fetchall(self):
+                return []
 
         class Connection:
-            def cursor(self): return Cursor()
+            def cursor(self):
+                return Cursor()
 
         layout.read(Connection(), 15, (2, 4))
         self.assertIn("MOD(j.id, %s) = %s", seen[0][0])

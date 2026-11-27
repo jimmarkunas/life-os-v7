@@ -1,6 +1,7 @@
 """the shared read-back wait and the shared Oracle socket exchange, with the retry-negative cases: a request that was
 sent is never sent again, and.
 """
+
 import socket
 import unittest
 from unittest import mock
@@ -26,7 +27,9 @@ class ReadBack(unittest.TestCase):
 
     def test_it_gives_up_after_the_attempts_and_hands_back_the_last_read(self):
         reads, pauses = [], []
-        got = readback.confirmed(lambda: reads.append(1) or len(reads), lambda v: False, attempts=4, pause=3, sleep=pauses.append)
+        got = readback.confirmed(
+            lambda: reads.append(1) or len(reads), lambda v: False, attempts=4, pause=3, sleep=pauses.append
+        )
         self.assertEqual((got, len(reads), pauses), ((False, 4), 4, [3, 3, 3]))  # exactly 4 reads, never more
 
     def test_it_only_calls_what_it_is_given_so_it_cannot_repeat_a_write(self):
@@ -44,10 +47,17 @@ class FakeSock:
     def __init__(self, chunks=(), recv_error=None):
         self.chunks, self.sent, self.timeout, self.recv_error, self.sizes = list(chunks), [], None, recv_error, []
 
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
-    def settimeout(self, t): self.timeout = t
-    def sendall(self, data): self.sent.append(data)
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def settimeout(self, t):
+        self.timeout = t
+
+    def sendall(self, data):
+        self.sent.append(data)
 
     def recv(self, n):
         self.sizes.append(n)
@@ -66,8 +76,17 @@ def run(sock_or_errors, **kw):
         if isinstance(item, Exception):
             raise item
         return item
-    args = dict(host="oracle.example", data=b"FRAME", port=47341, wait=5, max_reply=100,
-                connect_failed=lambda: Boom("CONNECT_FAILED"), timed_out=lambda: Boom("TIMEOUT"), sleep=pauses.append)
+
+    args = dict(
+        host="oracle.example",
+        data=b"FRAME",
+        port=47341,
+        wait=5,
+        max_reply=100,
+        connect_failed=lambda: Boom("CONNECT_FAILED"),
+        timed_out=lambda: Boom("TIMEOUT"),
+        sleep=pauses.append,
+    )
     args.update(kw)
     with mock.patch("socket.create_connection", connect):
         try:
@@ -125,6 +144,7 @@ class Exchange(unittest.TestCase):
             with conn:
                 conn.recv(100)
                 conn.sendall(b'{"ok":1}')
+
         t = threading.Thread(target=serve, daemon=True)
         t.start()
         try:

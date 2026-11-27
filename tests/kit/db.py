@@ -142,9 +142,9 @@ class SingleRowDb:
 
 
 class BillsSnapshotDB:
-
     def __init__(self, payload=None):
         import json
+
         self.payload = json.dumps(payload) if payload is not None else None
         self.sql = []
 
@@ -171,6 +171,7 @@ class AgendaSnapshotDB:
 
     def __init__(self, snapshot=None):
         import json
+
         self.payload = json.dumps(snapshot) if snapshot is not None else None
         self.sql = []
 
@@ -197,6 +198,7 @@ class BillsPaidDB:
 
     def __init__(self, event_log=None, fail_step=None):
         import json
+
         self.json = json
         self.rows = {}
         self.event_log = event_log if event_log is not None else []

@@ -1,10 +1,11 @@
 """The workflow facts that keep them safe."""
+
 import pathlib
 import unittest
 
 try:
     import yaml
-except ImportError:                                                    # pragma: no cover
+except ImportError:  # pragma: no cover
     yaml = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
@@ -20,7 +21,13 @@ class MovedJobs(unittest.TestCase):
     def test_each_runs_only_after_a_tick_that_ran_its_pipeline_and_never_on_the_early_run(self):
         for name in ("network_surface", "fit_cloud_backlog"):
             condition = self.domains["jobs"][name]["if"]
-            for needed in ("needs.gate.outputs.late == 'true'", "needs.gate.outputs.tick == 'true'", "needs.gate.outputs.pipeline == 'true'", f"needs.gate.outputs.due_{name} == 'true'", "needs.gate.result != 'failure'"):
+            for needed in (
+                "needs.gate.outputs.late == 'true'",
+                "needs.gate.outputs.tick == 'true'",
+                "needs.gate.outputs.pipeline == 'true'",
+                f"needs.gate.outputs.due_{name} == 'true'",
+                "needs.gate.result != 'failure'",
+            ):
                 self.assertIn(needed, condition, name)
             self.assertNotIn("inputs.", condition, name)
 
@@ -65,32 +72,167 @@ class MovedJobs(unittest.TestCase):
 
 class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
     """both jobs failed with CONFIG_MISSING at once (run 45726238990)."""
-    WORKFLOW_LEVEL = {"HIRING_PIPELINE_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_FIT_GATE"}  # hourly.yml's own `env:` before change 4
+
+    WORKFLOW_LEVEL = {
+        "HIRING_PIPELINE_PAGE_ID",
+        "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+        "V7_FIT_GATE",
+    }  # hourly.yml's own `env:` before change 4
     OLD = {
-        "network_surface": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
-                            "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-                            "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NETWORK_SURFACE_SKIP", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "V7_CLOSE_BASE_URL", "V7_RUNTIME_CONFIG_SOURCE_ID"},
-        "fit_cloud_backlog": {"CLOUD_BACKLOG", "FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "IMESSAGE_ALERTS_HOST", "LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST",
-                              "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN",
-                              "V7_CLOUD_FIT_BACKLOG_BUDGET", "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_BACKLOG_PAGE", "V7_CLOUD_FIT_PARALLEL", "V7_CLOUD_FIT_PROFILE_REF", "V7_RUNTIME_CONFIG_SOURCE_ID"},
-        "sync_seen": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
-                      "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-                      "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "V7_RUNTIME_CONFIG_SOURCE_ID"},
-        "purge": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
-                  "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-                  "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN", "NTFY_TOPIC", "OPEN_JOBS_CONTACT", "PURGE_FORCE", "TINYFISH_API_KEY", "V7_RUNTIME_CONFIG_SOURCE_ID"},
+        "network_surface": {
+            "FIT_PROFILE_EXTRA_JSON",
+            "FIT_PROFILE_JSON",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "JOBRIGHT_EMAIL",
+            "JOBRIGHT_PASSWORD",
+            "LIFEOS_ACQ_DB_NAME",
+            "LIFEOS_ACQ_DB_PASSWORD",
+            "LIFEOS_ACQ_DB_USER",
+            "LIFEOS_ACQ_SSH_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_KEY",
+            "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+            "LIFEOS_ACQ_SSH_USER",
+            "NETWORK_SURFACE_SKIP",
+            "NOTION_API_TOKEN",
+            "OPEN_JOBS_CONTACT",
+            "TINYFISH_API_KEY",
+            "V7_CLOSE_BASE_URL",
+            "V7_RUNTIME_CONFIG_SOURCE_ID",
+        },
+        "fit_cloud_backlog": {
+            "CLOUD_BACKLOG",
+            "FIT_PROFILE_EXTRA_JSON",
+            "FIT_PROFILE_JSON",
+            "IMESSAGE_ALERTS_HOST",
+            "LIFEOS_ACQ_DB_NAME",
+            "LIFEOS_ACQ_DB_PASSWORD",
+            "LIFEOS_ACQ_DB_USER",
+            "LIFEOS_ACQ_SSH_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_KEY",
+            "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+            "LIFEOS_ACQ_SSH_USER",
+            "NOTION_API_TOKEN",
+            "V7_CLOUD_FIT_BACKLOG_BUDGET",
+            "V7_CLOUD_FIT_BACKLOG_MAX",
+            "V7_CLOUD_FIT_BACKLOG_PAGE",
+            "V7_CLOUD_FIT_PARALLEL",
+            "V7_CLOUD_FIT_PROFILE_REF",
+            "V7_RUNTIME_CONFIG_SOURCE_ID",
+        },
+        "sync_seen": {
+            "FIT_PROFILE_EXTRA_JSON",
+            "FIT_PROFILE_JSON",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "JOBRIGHT_EMAIL",
+            "JOBRIGHT_PASSWORD",
+            "LIFEOS_ACQ_DB_NAME",
+            "LIFEOS_ACQ_DB_PASSWORD",
+            "LIFEOS_ACQ_DB_USER",
+            "LIFEOS_ACQ_SSH_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_KEY",
+            "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+            "LIFEOS_ACQ_SSH_USER",
+            "NOTION_API_TOKEN",
+            "OPEN_JOBS_CONTACT",
+            "TINYFISH_API_KEY",
+            "V7_RUNTIME_CONFIG_SOURCE_ID",
+        },
+        "purge": {
+            "FIT_PROFILE_EXTRA_JSON",
+            "FIT_PROFILE_JSON",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "JOBRIGHT_EMAIL",
+            "JOBRIGHT_PASSWORD",
+            "LIFEOS_ACQ_DB_NAME",
+            "LIFEOS_ACQ_DB_PASSWORD",
+            "LIFEOS_ACQ_DB_USER",
+            "LIFEOS_ACQ_SSH_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_HOST",
+            "LIFEOS_ACQ_SSH_JUMP_KEY",
+            "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+            "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+            "LIFEOS_ACQ_SSH_USER",
+            "NOTION_API_TOKEN",
+            "NTFY_TOPIC",
+            "OPEN_JOBS_CONTACT",
+            "PURGE_FORCE",
+            "TINYFISH_API_KEY",
+            "V7_RUNTIME_CONFIG_SOURCE_ID",
+        },
     }
-    JOB = {"network_surface": "network_surface", "fit_cloud_backlog": "fit_cloud_backlog", "sync_seen": "last_seen_purge", "purge": "last_seen_purge"}
+    JOB = {
+        "network_surface": "network_surface",
+        "fit_cloud_backlog": "fit_cloud_backlog",
+        "sync_seen": "last_seen_purge",
+        "purge": "last_seen_purge",
+    }
     DROPPED = {
-        "network_surface": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"},
+        "network_surface": {
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "OPEN_JOBS_CONTACT",
+        },
         "fit_cloud_backlog": set(),
-        "sync_seen": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"},
-        "purge": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"},
+        "sync_seen": {
+            "FIT_PROFILE_EXTRA_JSON",
+            "FIT_PROFILE_JSON",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "JOBRIGHT_EMAIL",
+            "JOBRIGHT_PASSWORD",
+            "OPEN_JOBS_CONTACT",
+            "TINYFISH_API_KEY",
+        },
+        "purge": {
+            "FIT_PROFILE_EXTRA_JSON",
+            "FIT_PROFILE_JSON",
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "JOBRIGHT_EMAIL",
+            "JOBRIGHT_PASSWORD",
+            "OPEN_JOBS_CONTACT",
+            "TINYFISH_API_KEY",
+        },
     }
     MODULES = {
         "network_surface": ["lifeos/sources/network/network_surface.py"],
-        "sync_seen": ["lifeos/jobs/repost.py", "lifeos/jobs/store.py", "lifeos/jobs/ledger.py", "lifeos/platform/notion_client.py", "lifeos/platform/db.py"],
-        "purge": ["lifeos/jobs/retention.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/jobs/lanes.py", "lifeos/jobs/progression.py", "lifeos/jobs/tombstone.py", "lifeos/jobs/ledger.py", "lifeos/jobs/store.py", "lifeos/platform/alerts.py", "lifeos/platform/db.py"],
+        "sync_seen": [
+            "lifeos/jobs/repost.py",
+            "lifeos/jobs/store.py",
+            "lifeos/jobs/ledger.py",
+            "lifeos/platform/notion_client.py",
+            "lifeos/platform/db.py",
+        ],
+        "purge": [
+            "lifeos/jobs/retention.py",
+            "lifeos/jobs/hiring_pipeline.py",
+            "lifeos/jobs/lanes.py",
+            "lifeos/jobs/progression.py",
+            "lifeos/jobs/tombstone.py",
+            "lifeos/jobs/ledger.py",
+            "lifeos/jobs/store.py",
+            "lifeos/platform/alerts.py",
+            "lifeos/platform/db.py",
+        ],
     }
 
     @classmethod
@@ -104,16 +246,26 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
         for stage in self.OLD:
             declared = set(self.step(stage).get("env") or {})
             self.assertEqual(sorted((self.OLD[stage] - self.DROPPED[stage]) - declared), [], stage)
-            self.assertEqual(sorted(self.WORKFLOW_LEVEL - declared), [], stage)  # the omission that failed run 45726238990
+            self.assertEqual(
+                sorted(self.WORKFLOW_LEVEL - declared), [], stage
+            )  # the omission that failed run 45726238990
 
     def test_a_dropped_name_is_never_read_by_the_stage(self):
         for stage, names in self.DROPPED.items():
             text = " ".join((ROOT.parents[1] / path).read_text() for path in self.MODULES.get(stage, []))
             self.assertEqual(sorted(n for n in names if n in text), [], stage)
 
-    def test_the_last_seen_and_purge_job_runs_after_a_tick_that_ran_its_pipeline_only_and_keeps_both_steps_red_on_failure(self):
+    def test_the_last_seen_and_purge_job_runs_after_a_tick_that_ran_its_pipeline_only_and_keeps_both_steps_red_on_failure(
+        self,
+    ):
         job = self.domains["jobs"]["last_seen_purge"]
-        for needed in ("needs.gate.outputs.late == 'true'", "needs.gate.outputs.tick == 'true'", "needs.gate.outputs.pipeline == 'true'", "needs.gate.outputs.due_last_seen_purge == 'true'", "needs.gate.result != 'failure'"):
+        for needed in (
+            "needs.gate.outputs.late == 'true'",
+            "needs.gate.outputs.tick == 'true'",
+            "needs.gate.outputs.pipeline == 'true'",
+            "needs.gate.outputs.due_last_seen_purge == 'true'",
+            "needs.gate.result != 'failure'",
+        ):
             self.assertIn(needed, job["if"])
         self.assertNotIn("inputs.", job["if"])
         ids = [s.get("id") for s in job["steps"] if s.get("id") in ("sync_seen", "purge")]
@@ -126,7 +278,10 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
             self.assertIn(line, purge)  # the purge keeps its own pushes and exit code
         for name in ("report", "chain"):
             self.assertIn("last_seen_purge", self.domains["jobs"][name]["needs"])
-        self.assertIn("last_seen_purge=${{ needs.last_seen_purge.result }}", " ".join(str(s.get("run", "")) for s in self.domains["jobs"]["report"]["steps"]))
+        self.assertIn(
+            "last_seen_purge=${{ needs.last_seen_purge.result }}",
+            " ".join(str(s.get("run", "")) for s in self.domains["jobs"]["report"]["steps"]),
+        )
 
     def test_hourly_keeps_the_two_steps_for_a_manual_maintenance_dispatch_only(self):
         hourly = yaml.safe_load((ROOT / "hourly.yml").read_text())
@@ -139,4 +294,3 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
         for ident in ("alerts", "lanes"):
             self.assertIn(ident, steps)  # they report the finish lanes and stay
         self.assertIn("sync_seen=${{ steps.sync_seen.outcome }}", steps["lanes"]["run"])
-

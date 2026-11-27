@@ -20,14 +20,16 @@ from tests.kit import shared
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = ROOT / "lifeos" / "edge" / "backup"
-CRED = json.dumps({"client_id": "id.example", "client_secret": "not-a-real-secret", "refresh_token": "not-a-real-refresh"})
+CRED = json.dumps(
+    {"client_id": "id.example", "client_secret": "not-a-real-secret", "refresh_token": "not-a-real-refresh"}
+)
 HAVE_GPG = shutil.which("gpg") is not None
 
 
 def local_run(command, **kwargs):
     """Stand-in for `runuser -u OWNER -- python3...`: the same snapshot code, run as the test's own user."""
     if command[0] == "runuser":
-        command = [sys.executable] + command[command.index("python3") + 1:]
+        command = [sys.executable] + command[command.index("python3") + 1 :]
     return subprocess.run(command, **kwargs)
 
 
@@ -64,9 +66,13 @@ class Tmp(unittest.TestCase):
         (vault / "token-a.json").write_text("v1")
         (vault / "auth-b.json").write_text("v2")
         os.symlink(self.src / "conf.json", vault / "link.json")
-        return dict(secret_trees=(("v", str(vault)),), sqlite=(("db/a.sqlite", str(self.src / "a.sqlite"), "me", required),),
-                    files=(("conf/conf.json", str(self.src / "conf.json"), required),),
-                    trees=(("t", str(tree)),), chown=lambda *a, **k: None)
+        return dict(
+            secret_trees=(("v", str(vault)),),
+            sqlite=(("db/a.sqlite", str(self.src / "a.sqlite"), "me", required),),
+            files=(("conf/conf.json", str(self.src / "conf.json"), required),),
+            trees=(("t", str(tree)),),
+            chown=lambda *a, **k: None,
+        )
 
 
 class Manifest(unittest.TestCase):
@@ -78,12 +84,33 @@ class Manifest(unittest.TestCase):
 
     def test_credential_material_comes_only_from_the_one_chosen_folder(self):
         listed = " ".join(s for _, s, *_ in ob.SQLITE + ob.FILES) + " " + " ".join(r for _, r in ob.TREES)
-        for word in ("credentials", "/.config/bws", "/.config/gh", "/.config/notion", "auth.toml", "db-key", "hash-key", "event-key", "credstore"):
+        for word in (
+            "credentials",
+            "/.config/bws",
+            "/.config/gh",
+            "/.config/notion",
+            "auth.toml",
+            "db-key",
+            "hash-key",
+            "event-key",
+            "credstore",
+        ):
             self.assertNotIn(word, listed)
         self.assertEqual([root for _, root in ob.SECRET_TREES], ["/home/ubuntu/.openclaw/credentials"])
 
     def test_the_deny_pattern_catches_what_it_is_for(self):
-        for name in ("a/credentials/x", "x/my-token.txt", "auth.toml", "db-key", ".env", "x/secret.json", "bws/openclaw.env", "f.bak-1", "p.pem", "/home/u/.config/gh/hosts.yml"):
+        for name in (
+            "a/credentials/x",
+            "x/my-token.txt",
+            "auth.toml",
+            "db-key",
+            ".env",
+            "x/secret.json",
+            "bws/openclaw.env",
+            "f.bak-1",
+            "p.pem",
+            "/home/u/.config/gh/hosts.yml",
+        ):
             self.assertTrue(ob.denied(name), name)
         for name in ("openclaw/openclaw.json", "config/lifeos-resume/rules.md", "grans/grans.db"):
             self.assertFalse(ob.denied(name), name)
@@ -100,8 +127,13 @@ class Manifest(unittest.TestCase):
 class Collect(Tmp):
     def test_collects_snapshots_files_and_clean_trees_only(self):
         entries, extra = ob.collect(str(self.work), local_run, **self.lists())
-        self.assertEqual(sorted(entries), ["conf/conf.json", "db/a.sqlite", "t/keep.md", "t/sub/also.txt", "v/auth-b.json", "v/token-a.json"])
-        self.assertEqual(extra, {"missing": 0, "skipped": 2, "credentials": 2})  # the token-named file and the leftover copy
+        self.assertEqual(
+            sorted(entries),
+            ["conf/conf.json", "db/a.sqlite", "t/keep.md", "t/sub/also.txt", "v/auth-b.json", "v/token-a.json"],
+        )
+        self.assertEqual(
+            extra, {"missing": 0, "skipped": 2, "credentials": 2}
+        )  # the token-named file and the leftover copy
         copy = sqlite3.connect(entries["db/a.sqlite"])
         self.assertEqual(copy.execute("select count(*) from t").fetchone(), (3,))
         copy.close()
@@ -151,12 +183,16 @@ class Collect(Tmp):
             (self.src / "a.sqlite").write_bytes(b"not a database" * 100)
             return local_run
         if how == "hung":
+
             def hung(command, **kwargs):
                 raise subprocess.TimeoutExpired(command, 300)
+
             return hung
         return lambda command, **kwargs: subprocess.CompletedProcess(command, 1)
 
-    def test_an_optional_database_that_is_corrupt_locked_or_hung_is_counted_and_skipped_while_the_rest_is_still_collected(self):
+    def test_an_optional_database_that_is_corrupt_locked_or_hung_is_counted_and_skipped_while_the_rest_is_still_collected(
+        self,
+    ):
         for how in ("corrupt", "locked", "hung"):
             with self.subTest(how):
                 self.fresh()
@@ -168,7 +204,10 @@ class Collect(Tmp):
                 self.assertFalse(list(self.work.rglob("*.sqlite")))  # no half-made copy is left to be archived
 
     def test_a_required_database_that_fails_still_stops_the_run_with_the_same_codes(self):
-        for how, expect in (("corrupt", ("backup_db_corrupt", "backup_db_snapshot")), ("locked", ("backup_db_snapshot",))):
+        for how, expect in (
+            ("corrupt", ("backup_db_corrupt", "backup_db_snapshot")),
+            ("locked", ("backup_db_snapshot",)),
+        ):
             with self.subTest(how):
                 self.fresh()
                 lists = self.lists(required=True)
@@ -221,13 +260,44 @@ class Encrypt(Tmp):
         home = Path(self.tmp) / "owner"
         home.mkdir(mode=0o700)
         base = ["gpg", "--batch", "--no-tty", "--homedir", str(home)]
-        subprocess.run(base + ["--pinentry-mode", "loopback", "--passphrase", "", "--quick-generate-key", "backup@example.com", "default", "default", "never"],
-                       check=True, capture_output=True, timeout=120)
+        subprocess.run(
+            base
+            + [
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--quick-generate-key",
+                "backup@example.com",
+                "default",
+                "default",
+                "never",
+            ],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
         public = Path(self.tmp) / "public.asc"
         secret = Path(self.tmp) / "secret.asc"
-        public.write_bytes(subprocess.run(base + ["--armor", "--export", "backup@example.com"], check=True, capture_output=True).stdout)
-        secret.write_bytes(subprocess.run(base + ["--pinentry-mode", "loopback", "--passphrase", "", "--armor", "--export-secret-keys", "backup@example.com"],
-                                          check=True, capture_output=True).stdout)
+        public.write_bytes(
+            subprocess.run(base + ["--armor", "--export", "backup@example.com"], check=True, capture_output=True).stdout
+        )
+        secret.write_bytes(
+            subprocess.run(
+                base
+                + [
+                    "--pinentry-mode",
+                    "loopback",
+                    "--passphrase",
+                    "",
+                    "--armor",
+                    "--export-secret-keys",
+                    "backup@example.com",
+                ],
+                check=True,
+                capture_output=True,
+            ).stdout
+        )
         return base, public, secret
 
     def test_what_is_encrypted_opens_only_with_the_private_key(self):
@@ -236,11 +306,21 @@ class Encrypt(Tmp):
         plain.write_bytes(b"state" * 1000)
         ob.encrypt(str(plain), str(sealed), str(self.work), str(public))
         self.assertNotIn(b"state", sealed.read_bytes())
-        opened = subprocess.run(base + ["--pinentry-mode", "loopback", "--passphrase", "", "--decrypt", str(sealed)], capture_output=True, check=True).stdout
+        opened = subprocess.run(
+            base + ["--pinentry-mode", "loopback", "--passphrase", "", "--decrypt", str(sealed)],
+            capture_output=True,
+            check=True,
+        ).stdout
         self.assertEqual(opened, b"state" * 1000)
         elsewhere = Path(self.tmp) / "stranger"
         elsewhere.mkdir(mode=0o700)
-        self.assertNotEqual(subprocess.run(["gpg", "--batch", "--no-tty", "--homedir", str(elsewhere), "--decrypt", str(sealed)], capture_output=True).returncode, 0)
+        self.assertNotEqual(
+            subprocess.run(
+                ["gpg", "--batch", "--no-tty", "--homedir", str(elsewhere), "--decrypt", str(sealed)],
+                capture_output=True,
+            ).returncode,
+            0,
+        )
 
     def test_a_key_file_that_carries_a_secret_key_is_refused(self):
         _, _, secret = self.keys()
@@ -279,7 +359,9 @@ class FakeDrive:
     def __init__(self, files=0, scope=ob.SCOPE, md5=None, status=None, folders=0):
         self.requests, self.scope, self.md5, self.status = [], scope, md5, status
         self.folders = [{"id": "folder-1"}] * folders
-        self.files = [{"id": f"f{i}", "name": f"n{i}"} for i in range(files)]  # newest first, as the real orderBy returns them
+        self.files = [
+            {"id": f"f{i}", "name": f"n{i}"} for i in range(files)
+        ]  # newest first, as the real orderBy returns them
         self.sent, self.fields = b"", ""
 
     def __call__(self, request, timeout=None):
@@ -294,14 +376,21 @@ class FakeDrive:
         if method == "GET":
             return Response(json.dumps({"files": self.files}).encode())
         if method == "POST" and "uploadType=resumable" in url:
-            self.fields = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("fields", [""])[0].split(",")  # Drive answers the final PUT with only these
+            self.fields = (
+                urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("fields", [""])[0].split(",")
+            )  # Drive answers the final PUT with only these
             return Response(b"{}", {"Location": "https://www.googleapis.com/upload/drive/v3/files?upload_id=u1"})
         if method == "POST":
             return Response(json.dumps({"id": "folder-1"}).encode())
         if method == "PUT":
             import hashlib
+
             self.sent = request.data
-            full = {"id": "new", "md5Checksum": self.md5 or hashlib.md5(request.data).hexdigest(), "size": str(len(request.data))}
+            full = {
+                "id": "new",
+                "md5Checksum": self.md5 or hashlib.md5(request.data).hexdigest(),
+                "size": str(len(request.data)),
+            }
             return Response(json.dumps({k: v for k, v in full.items() if k in self.fields}).encode())
         if method == "DELETE":
             return Response(b"")
@@ -335,7 +424,11 @@ class DriveClient(Tmp):
         self.assertEqual(str(raised.exception), "backup_drive_upload_unverified")
 
     def test_a_wider_or_missing_scope_is_refused(self):
-        for scope in ("https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive", ""):
+        for scope in (
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive",
+            "",
+        ):
             with self.assertRaises(ob.BackupError) as raised:
                 ob.Drive(CRED, opener=FakeDrive(scope=scope)).folder()
             self.assertEqual(str(raised.exception), "backup_drive_scope")
@@ -358,6 +451,7 @@ class DriveClient(Tmp):
                 if request.get_method() == "POST" and "uploadType=resumable" in request.full_url:
                     return Response(b"{}", {"Location": "https://evil.example/steal"})
                 return super().__call__(request, timeout)
+
         with self.assertRaises(ob.BackupError) as raised:
             ob.Drive(CRED, opener=Evil()).upload("folder-1", "n.gpg", self.payload())
         self.assertEqual(str(raised.exception), "backup_drive_off_contract")
@@ -388,6 +482,7 @@ class Retention(unittest.TestCase):
         def spy(request, timeout=None):
             seen.append(request.full_url)
             return original(request, timeout)
+
         ob.prune(ob.Drive(CRED, opener=spy), "folder-1")
         listing = [u for u in seen if "files?" in u and "q=" in u][0]
         self.assertIn("in+parents", listing)
@@ -400,9 +495,16 @@ class Run(Tmp):
         if corrupt_db:
             (self.src / "a.sqlite").write_bytes(b"not a database" * 100)
         state = str(Path(self.tmp) / "state")
-        patches = [mock.patch.object(ob, "SQLITE", lists["sqlite"]), mock.patch.object(ob, "FILES", lists["files"]), mock.patch.object(ob, "TREES", lists["trees"]), mock.patch.object(ob, "SECRET_TREES", lists["secret_trees"]),
-                   mock.patch.object(ob.shutil, "chown", lambda *a, **k: None),
-                   mock.patch.object(ob, "encrypt", lambda plain, dest, work, key_file=None, run=None: shutil.copy(plain, dest))]
+        patches = [
+            mock.patch.object(ob, "SQLITE", lists["sqlite"]),
+            mock.patch.object(ob, "FILES", lists["files"]),
+            mock.patch.object(ob, "TREES", lists["trees"]),
+            mock.patch.object(ob, "SECRET_TREES", lists["secret_trees"]),
+            mock.patch.object(ob.shutil, "chown", lambda *a, **k: None),
+            mock.patch.object(
+                ob, "encrypt", lambda plain, dest, work, key_file=None, run=None: shutil.copy(plain, dest)
+            ),
+        ]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
@@ -412,7 +514,9 @@ class Run(Tmp):
     def test_a_good_night_writes_an_ok_status_with_counts_only(self):
         fake = FakeDrive(files=15, folders=1)
         record, state = self.go(ob.Drive(CRED, opener=fake))
-        self.assertEqual((record["ok"], record["code"], record["files"], record["kept"], record["removed"]), (True, "ok", 6, 14, 1))
+        self.assertEqual(
+            (record["ok"], record["code"], record["files"], record["kept"], record["removed"]), (True, "ok", 6, 14, 1)
+        )
         text = (Path(state) / "status.json").read_text()
         self.assertEqual(json.loads(text), record)
         for private in (self.tmp, "keep.md", "a.sqlite", "not-a-real"):
@@ -442,6 +546,7 @@ class Run(Tmp):
                 if request.get_method() == "PUT":
                     order.append(sorted(f for _, _, fs in os.walk(os.path.join(self.tmp, "state")) for f in fs))
                 return super().__call__(request, timeout)
+
         self.go(ob.Drive(CRED, opener=Watching(folders=1)))
         self.assertNotIn("state.tar.gz", order[0])
         self.assertIn("state.tar.gz.gpg", order[0])
@@ -471,6 +576,7 @@ class Run(Tmp):
 
 class MacCheck(unittest.TestCase):
     """the stale-Mac-backup warning in `verify`: 9 days, warning only."""
+
     def setUp(self):
         self.inbox = safe_tmp.mkdtemp()
         self.addCleanup(shutil.rmtree, self.inbox, True)
@@ -499,15 +605,18 @@ class MacCheck(unittest.TestCase):
 
     def test_verify_warns_but_never_fails_on_it(self):
         text = (HERE / "oracle" / "install-offsite.sh").read_text()
-        verify = text[text.index("  verify)"):text.index("  disable)")]
+        verify = text[text.index("  verify)") : text.index("  disable)")]
         self.assertIn("[WARN] Mac backup", verify)
         self.assertIn('mac-check', verify)
-        self.assertNotIn("ok=1", verify[verify.index("mac-check"):])  # the warning branch cannot flip the exit code
+        self.assertNotIn("ok=1", verify[verify.index("mac-check") :])  # the warning branch cannot flip the exit code
         self.assertTrue(verify.rstrip().endswith("exit $ok ;;"))
 
     def test_the_command_prints_a_code_and_days_only(self):
         out = io.StringIO()
-        with mock.patch.object(ob, "mac_check", return_value=(False, "mac_backup_stale", 12)), contextlib.redirect_stdout(out):
+        with (
+            mock.patch.object(ob, "mac_check", return_value=(False, "mac_backup_stale", 12)),
+            contextlib.redirect_stdout(out),
+        ):
             self.assertEqual(ob.main(["mac-check"]), 1)
         self.assertEqual(out.getvalue().strip(), "mac_backup_stale days=12")
 
@@ -520,10 +629,17 @@ class Consent(unittest.TestCase):
 
     def test_a_wider_grant_or_a_missing_refresh_token_stores_nothing(self):
         def opener(scope, refresh="r"):
-            return lambda request, timeout=None: Response(json.dumps({"scope": scope, "refresh_token": refresh}).encode())
+            return lambda request, timeout=None: Response(
+                json.dumps({"scope": scope, "refresh_token": refresh}).encode()
+            )
+
         good = consent.exchange("id.example", "s", "c", "http://127.0.0.1:1", "v", opener(consent.SCOPE))
         self.assertEqual(json.loads(good), {"client_id": "id.example", "client_secret": "s", "refresh_token": "r"})
-        for scope in ("https://www.googleapis.com/auth/drive", consent.SCOPE + " https://www.googleapis.com/auth/drive", ""):
+        for scope in (
+            "https://www.googleapis.com/auth/drive",
+            consent.SCOPE + " https://www.googleapis.com/auth/drive",
+            "",
+        ):
             with self.assertRaises(SystemExit):
                 consent.exchange("id.example", "s", "c", "http://127.0.0.1:1", "v", opener(scope))
         with self.assertRaises(SystemExit):
@@ -538,16 +654,28 @@ class Consent(unittest.TestCase):
 
 class Installer(unittest.TestCase):
     def test_the_shell_script_parses(self):
-        self.assertEqual(subprocess.run(["bash", "-n", str(HERE / "oracle" / "install-offsite.sh")], capture_output=True).returncode, 0)
+        self.assertEqual(
+            subprocess.run(["bash", "-n", str(HERE / "oracle" / "install-offsite.sh")], capture_output=True).returncode,
+            0,
+        )
 
     def test_the_installer_touches_only_its_own_things(self):
-        code = "\n".join(l for l in (HERE / "oracle" / "install-offsite.sh").read_text().splitlines() if not l.lstrip().startswith("#"))
+        code = "\n".join(
+            l
+            for l in (HERE / "oracle" / "install-offsite.sh").read_text().splitlines()
+            if not l.lstrip().startswith("#")
+        )
         for word in ("tailscale", "47443", "lifeos-close", "openclaw-gateway", "systemctl restart", "systemctl stop"):
             self.assertNotIn(word, code)
 
     def test_the_service_is_a_hardened_oneshot_with_an_encrypted_credential_and_no_listener(self):
         text = (HERE / "oracle" / "lifeos-offsite-backup.service").read_text()
-        for line in ("Type=oneshot", "LoadCredentialEncrypted=drive:/etc/credstore.encrypted/lifeos-offsite.drive", "NoNewPrivileges=yes", "PrivateTmp=yes"):
+        for line in (
+            "Type=oneshot",
+            "LoadCredentialEncrypted=drive:/etc/credstore.encrypted/lifeos-offsite.drive",
+            "NoNewPrivileges=yes",
+            "PrivateTmp=yes",
+        ):
             self.assertIn(line, text)
         self.assertNotIn("Listen", text)
 
