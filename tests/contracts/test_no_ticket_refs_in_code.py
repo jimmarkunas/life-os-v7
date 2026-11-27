@@ -1,7 +1,11 @@
-"""LIFE-1016: code and workflow source say what and why now; ticket history lives in Jira and git. A YAML comment in `.github/workflows-src/` (the parts agents edit) may not name a ticket; `.github/workflows-src/why.yml`, which builds docs/workflows.md, is the one home for ticket numbers there."""
+"""LIFE-1016: code and workflow source say what and why now; ticket history lives in Jira and git. A comment or docstring in `lifeos/**/*.py` may not name a ticket unless `ticket_ref_allowlist.json` (at most 25 entries, each with a reason) lists it. A YAML comment in `.github/workflows-src/` (the parts agents edit) may not name a ticket; `.github/workflows-src/why.yml`, which builds docs/workflows.md, is the one home for ticket numbers there."""
+import ast
+import io
+import json
 import pathlib
 import re
 import sys
+import tokenize
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -30,6 +34,48 @@ def comment_refs(text):
         if comment and TICKET.search(comment):
             found.append((number, comment[:100]))
     return found
+
+
+ALLOW = ROOT / "tests/contracts/ticket_ref_allowlist.json"
+
+
+def python_refs(text):
+    """-> {ticket refs} named in the comments and docstrings of one Python file (string literals that are not docstrings are data and stay)."""
+    found = set()
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                found.update(TICKET.findall(first.value.value))
+    for token in tokenize.generate_tokens(io.StringIO(text).readline):
+        if token.type == tokenize.COMMENT:
+            found.update(TICKET.findall(token.string))
+    return found
+
+
+class PythonCode(unittest.TestCase):
+    def test_no_comment_or_docstring_in_lifeos_names_a_ticket_beyond_the_allowlist(self):
+        allow = json.loads(ALLOW.read_text())["entries"]
+        allowed = {(e["file"], e["ref"]) for e in allow}
+        found = set()
+        for path in sorted((ROOT / "lifeos").rglob("*.py")):
+            try:
+                refs = python_refs(path.read_text(errors="ignore"))
+            except (SyntaxError, tokenize.TokenError):
+                continue
+            found.update((str(path.relative_to(ROOT)), ref) for ref in refs)
+        self.assertEqual(sorted(found - allowed), [], "say what and why, not which ticket: ticket history lives in Jira and git")
+        self.assertEqual(sorted(allowed - found), [], "an allowlist entry that is no longer needed: delete it")
+
+    def test_the_allowlist_is_short_and_every_entry_says_why(self):
+        entries = json.loads(ALLOW.read_text())["entries"]
+        self.assertLessEqual(len(entries), 25)
+        self.assertTrue(all(e["reason"].strip() and TICKET.fullmatch(e["ref"]) for e in entries))
+
+    def test_the_checker_reads_comments_and_docstrings_only(self):
+        text = '"""LIFE-1 module."""\nx = "LIFE-2 is data"  # LIFE-3\ndef f():\n    """LIFE-4"""\n    return "LIFE-5"\n'
+        self.assertEqual(python_refs(text), {"LIFE-1", "LIFE-3", "LIFE-4"})
 
 
 class WorkflowParts(unittest.TestCase):

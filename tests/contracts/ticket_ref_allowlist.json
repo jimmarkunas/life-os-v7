@@ -1,0 +1,55 @@
+{
+ "note": "LIFE-1016: the only LIFE-nnn left in lifeos comments and docstrings; at most 25 entries, each with a reason",
+ "entries": [
+  {
+   "file": "lifeos/edge/backup/pack_652/build_pack.py",
+   "ref": "LIFE-652",
+   "reason": "the script-pack is named for the ticket whose fix it carries (OLD_COMMIT is the file before that fix)"
+  },
+  {
+   "file": "lifeos/edge/buzz/oracle/build_pack.py",
+   "ref": "LIFE-590",
+   "reason": "the script-pack is named for its ticket"
+  },
+  {
+   "file": "lifeos/edge/buzz/oracle/build_pack.py",
+   "ref": "LIFE-631",
+   "reason": "names the ticket whose shim removal this pack's file list depends on"
+  },
+  {
+   "file": "lifeos/edge/whatsapp/build_pack.py",
+   "ref": "LIFE-643",
+   "reason": "the script-pack is named for its ticket and rows"
+  },
+  {
+   "file": "lifeos/edge/whatsapp/pack_cleanup/build_pack.py",
+   "ref": "LIFE-643",
+   "reason": "the script-pack is named for its ticket and rows"
+  },
+  {
+   "file": "lifeos/edge/whatsapp/pack_row1/build_pack.py",
+   "ref": "LIFE-643",
+   "reason": "the script-pack is named for its ticket and rows"
+  },
+  {
+   "file": "lifeos/edge/whatsapp/pack_row5/build_pack.py",
+   "ref": "LIFE-643",
+   "reason": "the script-pack is named for its ticket and rows"
+  },
+  {
+   "file": "lifeos/edge/whatsapp/pack_row8/build_pack.py",
+   "ref": "LIFE-643",
+   "reason": "the script-pack is named for its ticket and rows"
+  },
+  {
+   "file": "lifeos/jira/closeout.py",
+   "ref": "LIFE-761",
+   "reason": "the close-out contract is defined by this ticket"
+  },
+  {
+   "file": "lifeos/jobs/tick.py",
+   "ref": "LIFE-76",
+   "reason": "the tick's design record; the docstring points at it for the stage order"
+  }
+ ]
+}

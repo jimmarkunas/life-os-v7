@@ -155,10 +155,11 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 - **Full width (D16.1):** a page V7 creates under a page uses `template=notion.FULL_WIDTH`; a repo test enforces it.
 - **Net size:** `python -m lifeos.platform.net_size` in every PR.
 - **Decision numbers:** only from `python -m lifeos.sources.devtools.decisions claim`.
+- **Code comments say what and why now;** ticket history lives in Jira and git, not in code.
 
 ## 10. Exceptions in force
 
-- **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied; old open tickets were cancelled and replaced by Epics LIFE-846, LIFE-847 and LIFE-848, history untouched. Further reparenting or Epic cancellation needs Jim's yes on the exact list.
+- **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied (Epics LIFE-846, LIFE-847 and LIFE-848 replace the old tickets). Further reparenting or Epic cancellation needs Jim's yes on the exact list.
 - **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
 
 ## 11. Read only when needed
