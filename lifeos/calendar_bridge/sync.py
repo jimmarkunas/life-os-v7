@@ -3,6 +3,7 @@
 Written events carry a private marker and an id derived from iCalUId plus occurrence start, so re-runs never
 duplicate. An event already on Google by another route is left alone; a cancelled or declined one removes only V7's
 copy. Output is counts and fixed codes only."""
+
 import hashlib
 import json
 import os
@@ -46,12 +47,15 @@ def to_google(label, event):
     else:
         when = {"start": {"dateTime": start, "timeZone": "UTC"}, "end": {"dateTime": end, "timeZone": "UTC"}}
     shown = event.get("showAs") or "busy"
-    body = {"summary": event.get("subject") or "(no title)", **when,
-            "location": (event.get("location") or {}).get("displayName") or "",
-            "description": f"From Outlook ({label})" + (f"\n{event['webLink']}" if event.get("webLink") else ""),
-            "transparency": "transparent" if shown == "free" else "opaque",
-            "status": "tentative" if shown == "tentative" else "confirmed",
-            "reminders": {"useDefault": True}}
+    body = {
+        "summary": event.get("subject") or "(no title)",
+        **when,
+        "location": (event.get("location") or {}).get("displayName") or "",
+        "description": f"From Outlook ({label})" + (f"\n{event['webLink']}" if event.get("webLink") else ""),
+        "transparency": "transparent" if shown == "free" else "opaque",
+        "status": "tentative" if shown == "tentative" else "confirmed",
+        "reminders": {"useDefault": True},
+    }
     digest = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:32]
     body["extendedProperties"] = {"private": {SRC: "outlook", HASH: digest}}
     return google_id(label, event["iCalUId"], start), body
@@ -62,7 +66,11 @@ def _utc(when):
         return None
     if "date" in when and "dateTime" not in when:
         return when["date"]
-    return datetime.fromisoformat(when["dateTime"].replace("Z", "+00:00")).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    return (
+        datetime.fromisoformat(when["dateTime"].replace("Z", "+00:00"))
+        .astimezone(timezone.utc)
+        .strftime("%Y-%m-%dT%H:%M:%S")
+    )
 
 
 def already_there(event):
@@ -73,14 +81,19 @@ def already_there(event):
 def plan(wanted, existing):
     """Returns (create, update, delete) id lists for wanted {id: body} against existing {id: event}."""
     create = [i for i in wanted if i not in existing]
-    update = [i for i in wanted if i in existing and
-              ((existing[i].get("extendedProperties") or {}).get("private") or {}).get(HASH) !=
-              wanted[i]["extendedProperties"]["private"][HASH]]
+    update = [
+        i
+        for i in wanted
+        if i in existing
+        and ((existing[i].get("extendedProperties") or {}).get("private") or {}).get(HASH)
+        != wanted[i]["extendedProperties"]["private"][HASH]
+    ]
     return create, update, [i for i in existing if i not in wanted]
 
 
 def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gcal=None, now=None):
     from lifeos.platform import db
+
     connect = connect or db.connect
     now = now or datetime.now(timezone.utc)
     start, end = _z(now - timedelta(days=PAST_DAYS)), _z(now + timedelta(days=AHEAD_DAYS))
@@ -96,7 +109,9 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
             token = outlook_tokens.load(connection, label)
             if not token:
                 raise BridgeError("CALENDAR_ACCOUNT_NOT_SIGNED_IN")
-            client = (outlook_factory or Outlook)(client_id, token, lambda new, label=label: outlook_tokens.save(connection, label, new))
+            client = (outlook_factory or Outlook)(
+                client_id, token, lambda new, label=label: outlook_tokens.save(connection, label, new)
+            )
             for event in client.events(start, end):
                 seen += 1
                 if not mirrors(event):
@@ -106,14 +121,26 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
                 wanted[gid] = body
                 ident[gid] = (event["iCalUId"], body["start"].get("date") or body["start"]["dateTime"])
     listed = gcal.list_events(start, end)
-    existing = {e["id"]: e for e in listed if ((e.get("extendedProperties") or {}).get("private") or {}).get(SRC) == "outlook"}
+    existing = {
+        e["id"]: e for e in listed if ((e.get("extendedProperties") or {}).get("private") or {}).get(SRC) == "outlook"
+    }
     elsewhere = {already_there(e) for e in listed if e["id"] not in existing}
     covered = [g for g in wanted if g not in existing and ident[g] in elsewhere]
     for gid in covered:
         del wanted[gid]
     create, update, delete = plan(wanted, existing)
-    out = {"outlook": seen, "skipped": skipped, "google": len(existing), "create": len(create), "update": len(update),
-           "already_in_google": len(covered), "delete": len(delete), "same": len(wanted) - len(create) - len(update), "applied": 0, "failed": 0}
+    out = {
+        "outlook": seen,
+        "skipped": skipped,
+        "google": len(existing),
+        "create": len(create),
+        "update": len(update),
+        "already_in_google": len(covered),
+        "delete": len(delete),
+        "same": len(wanted) - len(create) - len(update),
+        "applied": 0,
+        "failed": 0,
+    }
     floor = max(MASS_DELETE_FLOOR, len(existing) // 2)
     answered = len(wanted) + len(covered)  # events belonging in the mirror
     if len(delete) > floor and answered <= floor and not environ.get("CALENDAR_ALLOW_MASS_DELETE"):
@@ -122,6 +149,7 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
         raise BridgeError("CALENDAR_MASS_DELETE_GUARD")
     if not live:
         return out
+
     def attempt(call, *args):
         try:
             call(*args)

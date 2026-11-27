@@ -2,6 +2,7 @@
 
 A live failure pages only after STUCK_HOURS without success, then reminds every 6 hours and reports recovery. State is
 one private row; alerting never changes the sync's result or error."""
+
 import json
 import os
 from datetime import datetime, timezone
@@ -26,8 +27,19 @@ def decide(state, ok, now, code=""):
         state.update(last_ok=now, alert_open=False, last_notified=None)
         return state, alerts.reconcile([], known, now)
     hours = int((now - state["last_ok"]).total_seconds() // 3600)
-    active = [alerts.Alert(KEY, alerts.PAGE, f"Calendar sync has not worked for {hours} hours", f"Last error {code}.",
-                           "open the domains run (outlook job, Calendar sync step)")] if hours >= STUCK_HOURS else []
+    active = (
+        [
+            alerts.Alert(
+                KEY,
+                alerts.PAGE,
+                f"Calendar sync has not worked for {hours} hours",
+                f"Last error {code}.",
+                "open the domains run (outlook job, Calendar sync step)",
+            )
+        ]
+        if hours >= STUCK_HOURS
+        else []
+    )
     state["alert_open"] = bool(active)
     return state, alerts.reconcile(active, known, now)
 
@@ -41,9 +53,11 @@ def _load(connection):
 
 def _save(connection, state):
     with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO v7_calendar_sync (k, last_ok, alert_open, last_notified) VALUES (%s,%s,%s,%s) "
-                       "ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok), alert_open=VALUES(alert_open), last_notified=VALUES(last_notified)",
-                       ("sync", state["last_ok"], 1 if state["alert_open"] else 0, state["last_notified"]))
+        cursor.execute(
+            "INSERT INTO v7_calendar_sync (k, last_ok, alert_open, last_notified) VALUES (%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE last_ok=VALUES(last_ok), alert_open=VALUES(alert_open), last_notified=VALUES(last_notified)",
+            ("sync", state["last_ok"], 1 if state["alert_open"] else 0, state["last_notified"]),
+        )
 
 
 def _record(connect, environ, now, ok, code, send):
@@ -58,7 +72,7 @@ def _record(connect, environ, now, ok, code, send):
                 state["last_notified"] = now  # an unaccepted push is retried next run
             _save(connection, state)
         print("calendar-watch:", json.dumps({"alert_open": state["alert_open"], **sent}))
-    except Exception:                                           # noqa: BLE001 - alerting must never change the sync's result
+    except Exception:  # noqa: BLE001 - alerting must never change the sync's result
         print("calendar-watch: state_unavailable")
 
 
@@ -69,7 +83,14 @@ def run(limit, live, environ=os.environ, now=None, send=None, connect=None, **kw
         result = sync.run(limit, live, environ=environ, connect=connect, now=now, **kwargs)
     except Exception as error:
         if live:
-            _record(connect, environ, clock, False, str(error) if isinstance(error, sync.BridgeError) else type(error).__name__, send)
+            _record(
+                connect,
+                environ,
+                clock,
+                False,
+                str(error) if isinstance(error, sync.BridgeError) else type(error).__name__,
+                send,
+            )
         raise
     if live:
         _record(connect, environ, clock, True, "", send)
