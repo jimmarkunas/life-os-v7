@@ -1,4 +1,6 @@
-"""LIFE-906: an incremental Gmail read: mail an earlier COMPLETE read holds is not read again, the result equals a full read, and anything uncertain falls back to the full window."""
+"""an incremental Gmail read: mail an earlier COMPLETE read holds is not read again, the result equals a full read, and
+anything uncertain falls back to.
+"""
 import json
 import unittest
 import zlib
@@ -13,7 +15,7 @@ NOW = datetime(2026, 11, 23, 3, 0, tzinfo=UTC)
 
 
 class Gmail:
-    """Ids newest first; `received` per id; records how many reads each id got."""
+    """Ids newest first"""
     def __init__(self, listing, received, bad=()):
         self.listing, self.received, self.bad, self.reads, self.retries = list(listing), received, set(bad), [], 0
 
@@ -44,15 +46,15 @@ class Incremental(unittest.TestCase):
         listing = ["new1", "new2", "old1", "old2", "old3"]
         gmail, timing = Gmail(listing, RECEIVED), {}
         got = mail.gmail_records(gmail, NOW, reuse=held, timing=timing)
-        self.assertEqual(sorted(gmail.reads), ["new1", "new2"])                                        # new mail is read once, nothing else
-        self.assertEqual(got, self.full(listing))                                                      # same records, same order, same unreadable count
+        self.assertEqual(sorted(gmail.reads), ["new1", "new2"])  # new mail is read once, nothing else
+        self.assertEqual(got, self.full(listing))  # same records, same order, same unreadable count
         self.assertEqual((timing["read"], timing["reused"]), (2, 3))
 
     def test_mail_that_arrived_in_the_last_two_hours_is_read_again_and_an_unlisted_id_is_dropped(self):
         held = {r["id"]: r for r in self.full(["new1", "old1", "old3"])[0]}
-        gmail = Gmail(["new1", "old1"], RECEIVED)                                                       # old3 aged out of the listing
+        gmail = Gmail(["new1", "old1"], RECEIVED)  # old3 aged out of the listing
         got, _ = mail.gmail_records(gmail, NOW, reuse=held)
-        self.assertEqual(gmail.reads, ["new1"])                                                        # fresh: its folder can still change
+        self.assertEqual(gmail.reads, ["new1"])  # fresh: its folder can still change
         self.assertEqual([r["id"] for r in got], ["new1", "old1"])
 
     def test_no_checkpoint_reads_the_full_window_and_a_held_record_without_a_usable_time_is_read(self):
@@ -69,11 +71,11 @@ class Incremental(unittest.TestCase):
         got, unreadable = mail.gmail_records(Gmail(["new2", "old1"], RECEIVED, bad={"new2"}), NOW, reuse=held)
         self.assertEqual((unreadable, [r["id"] for r in got]), (1, ["old1"]))
         got[0]["subject"] = "changed"
-        self.assertNotEqual(held["old1"]["subject"], "changed")                                         # the checkpoint is never edited through a result
+        self.assertNotEqual(held["old1"]["subject"], "changed")  # the checkpoint is never edited through a result
 
 
 class Db:
-    """Only the checkpoint query: rows are (taken_at, days, complete, fingerprint, payload); it answers the newest COMPLETE row, like the real WHERE clause."""
+    """Only the checkpoint query: rows are (taken_at, days, complete, fingerprint, payload)"""
     def __init__(self, rows, down=False):
         self.rows, self.down = rows, down
 

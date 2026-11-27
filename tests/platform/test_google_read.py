@@ -1,4 +1,4 @@
-"""LIFE-875 (synthetic): read-only Gmail and Drive for two named accounts, with a fake Google. No network, no real token."""
+"""(synthetic): read-only Gmail and Drive for two named accounts, with a fake Google."""
 import base64
 import hashlib
 import io
@@ -14,12 +14,12 @@ from lifeos.platform import google_read as G
 
 ROOT = Path(__file__).resolve().parents[2]
 CREDS = {"client_id": "cid", "client_secret": "csecret-xxxxxxxx", "refresh_token": "rtoken-xxxxxxxx"}
-OWNERS = {"at-personal": "alice@example.com", "at-bytalos": "bob@example.com"}                              # the synthetic token of each account reports that account's (invented) address
+OWNERS = {"at-personal": "alice@example.com", "at-bytalos": "bob@example.com"}
 SYNTHETIC_OWNER_SHA256 = {"personal": hashlib.sha256(b"alice@example.com").hexdigest(), "bytalos": hashlib.sha256(b"bob@example.com").hexdigest()}
 
 
 def setUpModule():
-    patcher = mock.patch.dict(G.OWNER_SHA256, SYNTHETIC_OWNER_SHA256)                                 # the shipped hashes are the real accounts'; tests use invented addresses
+    patcher = mock.patch.dict(G.OWNER_SHA256, SYNTHETIC_OWNER_SHA256)  # the shipped hashes are the real accounts'
     patcher.start()
     unittest.addModuleCleanup(patcher.stop)
 
@@ -37,7 +37,7 @@ class FakeGoogle:
                 raise urllib.error.HTTPError(url, 400, "bad", {}, io.BytesIO(b'{"error":"invalid_grant"}'))
             refresh = urllib.parse.parse_qs(request.data.decode())["refresh_token"][0]
             return self._reply({"access_token": "at-" + refresh, "scope": self.scope})
-        if url in G.WHO.values():                                                                  # who owns this token: the address of the account it was made for
+        if url in G.WHO.values():
             email = OWNERS.get(request.get_header("Authorization", "").split(" ")[-1], "stranger@example.com")
             return self._reply({"emailAddress": email} if "gmail" in url else {"user": {"emailAddress": email}})
         if "/messages?" in url:
@@ -71,7 +71,7 @@ class FakeGoogle:
 
 
 def creds_for(account, service):
-    return {**CREDS, "refresh_token": account}                                                  # the synthetic refresh token is the account name, so its access token reports that account
+    return {**CREDS, "refresh_token": account}
 
 
 def google(**kw):
@@ -85,12 +85,12 @@ class Reads(unittest.TestCase):
         out = client.gmail_search("personal", "from:x")
         self.assertEqual((out["account"], out["results"]), ("personal", [{"account": "personal", "id": "msg111111", "thread_id": "thr222222"}]))
         mail = client.gmail_read("bytalos", "msg111111")
-        self.assertEqual((mail["account"], mail["id"], mail["headers"], mail["text"]), ("bytalos", "msg111111", {"subject": "S"}, "hello body"))      # plain text, not the html part; no header beyond the four
+        self.assertEqual((mail["account"], mail["id"], mail["headers"], mail["text"]), ("bytalos", "msg111111", {"subject": "S"}, "hello body"))  # plain text, not the html part
         found = client.drive_search("personal", "it's a test")
         self.assertEqual((found["results"][0]["id"], found["results"][0]["account"]), ("file111111", "personal"))
-        self.assertIn("it%5C%27s", fake.requests[-1][1])                                                                                            # a quote in the query is escaped, not injected
+        self.assertIn("it%5C%27s", fake.requests[-1][1])  # a quote in the query is escaped, not injected
         self.assertEqual(client.drive_read("bytalos", "file111111")["text"], "plain file")
-        self.assertEqual(client.drive_read("bytalos", "docfile111")["text"], "doc text")                                                           # a Google Doc is exported as plain text
+        self.assertEqual(client.drive_read("bytalos", "docfile111")["text"], "doc text")  # a Google Doc is exported as plain text
         big = G.Google(creds_for, FakeGoogle()).drive_read("personal", "file111111")
         self.assertFalse(big["truncated"])
 
@@ -110,11 +110,11 @@ class Reads(unittest.TestCase):
         for word in ("/send", "/modify", "/trash", "/delete", "batchModify", "labels", "/upload", "permissions", "method=\"PUT\"", "method=\"DELETE\"", "method=\"PATCH\""):
             self.assertNotIn(word, code, word)
         self.assertEqual(sorted(set(re.findall(r"method=\"([A-Z]+)\"", code))), ["GET", "POST"])
-        self.assertEqual(set(G.SCOPE.values()), {"https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/drive.readonly"})     # what is ASKED for is read-only; a wider scope already held by a token is only ever tolerated (READ_SCOPES), never requested
+        self.assertEqual(set(G.SCOPE.values()), {"https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/drive.readonly"})  # what is ASKED for is read-only
 
     def test_an_omitted_or_unknown_account_is_refused_before_google_is_called(self):
         client, fake = google()
-        for account, reason in ((None, "account_required"), ("", "account_required"), ("work", "unknown_account"), ("PERSONAL", "unknown_account"), (["personal"], "account_required")):   # a list is not an account name
+        for account, reason in ((None, "account_required"), ("", "account_required"), ("work", "unknown_account"), ("PERSONAL", "unknown_account"), (["personal"], "account_required")):  # a list is not an account name
             for call in (lambda a=account: client.gmail_search(a, "q"), lambda a=account: client.drive_read(a, "file111111")):
                 with self.assertRaises(G.GoogleError) as raised:
                     call()
@@ -125,7 +125,7 @@ class Reads(unittest.TestCase):
         for scope in ("https://www.googleapis.com/auth/gmail.modify", "https://mail.google.com/", "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"):
             client, fake = google(scope=scope)
             self.assertEqual(client.gmail_search("personal", "q")["account"], "personal")
-            self.assertEqual({m for m, u, h in fake.requests if u != G.TOKEN_URL}, {"GET"})                         # a wider scope is never exercised: nothing but GET is sent
+            self.assertEqual({m for m, u, h in fake.requests if u != G.TOKEN_URL}, {"GET"})
         client, _ = google(scope="https://www.googleapis.com/auth/drive")
         self.assertEqual(client.drive_search("personal", "q")["account"], "personal")
 
@@ -142,7 +142,7 @@ class Reads(unittest.TestCase):
             with self.assertRaises(G.GoogleError) as raised:
                 call()
             self.assertEqual(raised.exception.reason, "wrong_account")
-        self.assertFalse([u for m, u, h in fake.requests if "/messages" in u or "/files" in u])                    # refused after the who-am-i check, before any data call
+        self.assertFalse([u for m, u, h in fake.requests if "/messages" in u or "/files" in u])
         stranger = G.Google(lambda a, s: {**CREDS, "refresh_token": "nobody"}, FakeGoogle())
         with self.assertRaises(G.GoogleError) as raised:
             stranger.drive_search("personal", "q")
@@ -155,8 +155,8 @@ class Reads(unittest.TestCase):
         self.assertEqual(raised.exception.reason, "bad_id")
         self.assertEqual(G._clean({"text": "short"})["truncated"], False)
         out = G._clean({"text": "see https://x.example/a?token=abcdef123456 and password = hunter2hunter2", "snippet": "api_key: 0123456789abcdef", "headers": {"subject": "ok"}})
-        self.assertEqual((out["redacted"], out["headers"]), (3, {"subject": "ok"}))                                   # a secret-looking value is replaced, the rest is still returned
-        self.assertFalse(G.SECRET.search(json.dumps(out)))                                                            # so the gate's own output check finds nothing to refuse
+        self.assertEqual((out["redacted"], out["headers"]), (3, {"subject": "ok"}))
+        self.assertFalse(G.SECRET.search(json.dumps(out)))
         self.assertNotIn("hunter2", json.dumps(out))
 
     def test_the_token_never_appears_in_an_error_or_a_result(self):

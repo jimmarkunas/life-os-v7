@@ -1,4 +1,4 @@
-"""LIFE-589: the stage contract type (lifeos/platform/stage_contract.py)."""
+"""the stage contract type (lifeos/platform/stage_contract.py)."""
 import unittest
 
 from lifeos.platform import codes, stage_contract as sc

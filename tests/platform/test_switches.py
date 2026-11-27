@@ -1,4 +1,6 @@
-"""Production switches in the repository (Jim, Oct 24 2026): the file decides, a repository variable "off" is Jim's kill switch, "on" turns one on by hand."""
+"""Production switches in the repository: the file decides, a repository variable 'off' is Jim's kill switch, 'on' turns
+one on by hand.
+"""
 import json
 import unittest
 from unittest import mock
@@ -11,7 +13,7 @@ class Switches(unittest.TestCase):
         with mock.patch.object(switches, "FILE", mock.Mock(read_text=lambda: json.dumps({"A": {"state": "on"}, "B": {"state": "off"}}))):
             self.assertEqual([switches.state("A", e) for e in ({}, {"A": ""}, {"A": "typo"}, {"A": "off"}, {"A": " OFF "}, {"A": "on"})], [True, True, True, False, False, True])
             self.assertEqual([switches.state("B", e) for e in ({}, {"B": "on"})], [False, True])
-            self.assertFalse(switches.state("C", {}))                                      # a switch the file does not name is off
+            self.assertFalse(switches.state("C", {}))  # a switch the file does not name is off
 
     def test_an_unreadable_file_is_off(self):
         for broken in (OSError("gone"), ValueError("not json")):
@@ -23,4 +25,4 @@ class Switches(unittest.TestCase):
         self.assertEqual(sorted(doc), ["ACTION_INBOX_VIEW", "BOARDS_BACKFILL", "BOARDS_IN_TICK", "FOLLOWUP_WIRING", "HIRING_AUTO_CLOSE"])
         for name, entry in doc.items():
             self.assertIn(entry["state"], ("on", "off"), name)
-            self.assertGreater(len(entry["bounds"]), 40, name)                              # a switch is never on without its written bounds
+            self.assertGreater(len(entry["bounds"]), 40, name)  # a switch is never on without its written bounds

@@ -1,5 +1,4 @@
-"""LIFE-693: the proof run after every deploy: pass is recorded with its commit and says nothing; fail raises ONE page with both commits and the failing code and pauses releases until a proof passes;
-two deploys close together each get an entry (the first is superseded when unfinished); nothing rolls back by itself."""
+"""the proof run after every deploy: pass is recorded with its commit and says nothing"""
 import datetime as dt
 import io
 import unittest
@@ -45,7 +44,7 @@ class Pass(unittest.TestCase):
         self.assertEqual((d.dispatch.commit, d.dispatch.status, d.dispatch.previous), (B, rp.PENDING, A))
         self.assertIsNone(d.failed)
         self.assertIsNone(d.flag)
-        self.assertEqual(rp.decide(NOW, B, A, list(d.entries), [], False).dispatch, None)        # the next watch starts nothing more
+        self.assertEqual(rp.decide(NOW, B, A, list(d.entries), [], False).dispatch, None)  # the next watch starts nothing more
 
     def test_a_passing_proof_is_recorded_with_its_commit_and_raises_nothing(self):
         pending = rp.Entry(B, rp.PENDING, at(10), previous=A)
@@ -78,7 +77,7 @@ class Fail(unittest.TestCase):
     def test_the_alert_is_raised_once_while_the_pause_stays(self):
         failed = rp.Entry(B, rp.FAIL, at(30), at(28), 11, A, rp.CODE_FAILED)
         d = rp.decide(NOW, B, A, [failed], [run(11, 29, conclusion="failure")], True)
-        self.assertEqual((d.failed, d.flag, d.dispatch), (None, True, None))                    # no second page, no new run yet (under an hour)
+        self.assertEqual((d.failed, d.flag, d.dispatch), (None, True, None))  # no second page, no new run yet (under an hour)
 
     def test_a_failed_proof_without_a_log_falls_back_to_the_fixed_code(self):
         pending = rp.Entry(B, rp.PENDING, at(10))
@@ -99,18 +98,20 @@ class Pause(unittest.TestCase):
     def test_while_paused_a_new_proof_starts_at_most_hourly_so_the_pause_cannot_deadlock(self):
         failed = rp.Entry(B, rp.FAIL, at(61), at(59), 11, A, rp.CODE_FAILED)
         d = rp.decide(NOW, B, A, [failed], [], True)
-        self.assertEqual((d.dispatch.commit, d.flag), (B, None))                                # the flag stays open untouched until this run finishes
-        self.assertEqual(rp.decide(NOW, B, A, [failed], [], False).dispatch, None)             # not paused: a failed commit is not retried
+        self.assertEqual((d.dispatch.commit, d.flag), (B, None))
+        self.assertEqual(rp.decide(NOW, B, A, [failed], [], False).dispatch, None)  # not paused: a failed commit is not retried
 
     def test_a_paused_release_needs_no_new_deploy_to_re_proof_and_a_pass_lifts_the_flag(self):
-        """Jim, Nov 15 2026: no deadlock. Same deployed commit throughout (nothing is deployed while paused): after 60 minutes a proof is dispatched, and its pass lifts the flag."""
+        """Same deployed commit throughout (nothing is deployed while paused): after 60 minutes a proof is dispatched,
+        and its pass lifts the flag.
+        """
         failed = rp.Entry(B, rp.FAIL, at(61), at(59), 11, A, rp.CODE_FAILED)
         early = rp.Entry(B, rp.FAIL, at(59), at(57), 11, A, rp.CODE_FAILED)
-        self.assertIsNone(rp.decide(NOW, B, A, [early], [], True).dispatch)                        # 59 minutes: not yet
+        self.assertIsNone(rp.decide(NOW, B, A, [early], [], True).dispatch)  # 59 minutes: not yet
         d = rp.decide(NOW, B, A, [failed], [], True)
         self.assertEqual((d.dispatch.commit, d.dispatch.status, d.flag, d.failed), (B, rp.PENDING, None, None))
         later = NOW + dt.timedelta(minutes=10)
-        d2 = rp.decide(later, B, A, [d.dispatch, failed], [run(12, -2)], True)                     # the run it dispatched has passed; still the same deployed commit
+        d2 = rp.decide(later, B, A, [d.dispatch, failed], [run(12, -2)], True)  # the run it dispatched has passed
         self.assertEqual((d2.flag, d2.recovered.commit, d2.dispatch, d2.failed), (False, B, None, None))
 
     def test_the_failure_text_says_the_proof_runs_on_mains_current_head_and_how_the_pause_ends(self):

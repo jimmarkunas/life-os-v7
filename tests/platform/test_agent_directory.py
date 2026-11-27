@@ -61,13 +61,13 @@ class Catalog(unittest.TestCase):
         self.assertEqual({s for a, s in status.items() if a.startswith("surface_")}, {"manual-only"})
         self.assertEqual({s for a, s in status.items() if a.startswith("bot_hermes_") or a.startswith("orca_")}, {"configured-untested"})
         self.assertEqual({s for a, s in status.items() if a.startswith("buzz_lifeos_")}, {"not-reachable"})
-        self.assertEqual(status["buzz_persona_council-auditor"], "manual-only")      # a persona is never an addressable agent
+        self.assertEqual(status["buzz_persona_council-auditor"], "manual-only")  # a persona is never an addressable agent
 
     def test_one_hermes_runtime_six_profiles_match_the_repo_table(self):
         text = (ROOT / "hermes" / "connector-allowlists.txt").read_text()
         self.assertEqual(sorted(D.hermes_profiles(text)), ["claude-hermes", "developer", "librarian", "main", "research", "writer"])
         self.assertEqual(D.check_hermes(build(), text), [])
-        self.assertEqual({e.host for e in build().entries if e.platform == "Hermes"}, {"Oracle"})            # a Mac Hermes Desktop is a client, never a second server row
+        self.assertEqual({e.host for e in build().entries if e.platform == "Hermes"}, {"Oracle"})
         rows = [r for r in F.rows() if r["Agent ID"] != "bot_hermes_writer"] + [row("bot_hermes_main", **{"Agent ID": "bot_hermes_ghost", "Identity Alias": "ghost"})]
         self.assertEqual(D.check_hermes(build(rows), text), ["bot_hermes_ghost", ("missing", "writer")])
 
@@ -75,7 +75,7 @@ class Catalog(unittest.TestCase):
         d = build()
         self.assertEqual(resolve(d, agent_id="buzz_lifeos_hermes").entry.platform, "Buzz")
         self.assertEqual(resolve(d, agent_id="bot_hermes_main").entry.platform, "Hermes")
-        self.assertEqual(resolve(d, alias="Hermes").reason, "unknown_agent")                                  # a display word is not an alias of either identity
+        self.assertEqual(resolve(d, alias="Hermes").reason, "unknown_agent")  # a display word is not an alias of either identity
 
 
 class FailClosed(unittest.TestCase):
@@ -115,7 +115,7 @@ class FailClosed(unittest.TestCase):
             with self.assertRaises(D.DirectoryError):
                 D.build(rows, "fixture", NOW)
 
-    def test_one_bad_row_is_skipped_with_its_number_and_reason_and_the_rest_still_resolve(self):       # LIFE-985
+    def test_one_bad_row_is_skipped_with_its_number_and_reason_and_the_rest_still_resolve(self):
         bad = [row("bot_hermes_main", **{"Agent ID": ""}), row("buzz_lifeos_codex", Notes="key " + "nsec1" + "q" * 58), row("bot_hermes_writer", **{"date:Last Checked:start": "yesterday"})]
         with self.assertLogs("lifeos.agent_directory", "WARNING") as logged:
             d = build(F.rows() + bad[:1])
@@ -126,10 +126,10 @@ class FailClosed(unittest.TestCase):
         with self.assertLogs("lifeos.agent_directory", "WARNING") as logged:
             d = build(F.rows() + bad[1:])
         self.assertEqual([r for _, r in d.skipped], ["secret_material", "bad_last_checked"])
-        self.assertNotIn("nsec1", " ".join(r.getMessage() for r in logged.records))                      # the reason word only, never a row's text
+        self.assertNotIn("nsec1", " ".join(r.getMessage() for r in logged.records))  # the reason word only, never a row's text
         self.assertEqual(build().skipped, ())
 
-    def test_a_duplicate_among_good_rows_and_a_directory_with_no_good_row_are_still_refused(self):     # LIFE-985
+    def test_a_duplicate_among_good_rows_and_a_directory_with_no_good_row_are_still_refused(self):
         with self.assertRaises(D.DirectoryError) as c:
             build(F.rows() + [row("bot_hermes_main"), row("bot_hermes_main", **{"Agent ID": ""})])
         self.assertEqual(c.exception.reason, "duplicate_agent_id")
@@ -137,7 +137,7 @@ class FailClosed(unittest.TestCase):
             build([row("bot_hermes_main", **{"Agent ID": ""}), row("bot_hermes_main", **{"Agent ID": "Bad!"})])
         self.assertEqual(c.exception.reason, "bad_agent_id")
 
-    def test_meta_is_a_platform_so_the_muse_row_resolves_and_an_unknown_platform_is_still_refused(self):     # LIFE-985 (Jim, comment 14347)
+    def test_meta_is_a_platform_so_the_muse_row_resolves_and_an_unknown_platform_is_still_refused(self):
         d = build([row("surface_chatgpt_chat_web", **{"Agent ID": "muse", "Platform": "Meta", "Space": '["Personal"]'})])
         self.assertEqual((d.skipped, resolve(d, agent_id="muse").decision, resolve(d, agent_id="muse").entry.platform), ((), "allow", "Meta"))
         with self.assertRaises(D.DirectoryError):
@@ -151,7 +151,7 @@ class FailClosed(unittest.TestCase):
         self.assertEqual(c.exception.reason, "directory_unavailable")
         self.assertNotIn("503", str(c.exception))
         with self.assertRaises(D.DirectoryError):
-            D.load(D.fetch_unavailable, POLICY, READER, NOW)                                              # the default reader: no live read until it is approved
+            D.load(D.fetch_unavailable, POLICY, READER, NOW)
 
     def test_grant_is_checked_before_any_read_and_again_on_every_resolve(self):
         calls = []
@@ -171,7 +171,7 @@ class FailClosed(unittest.TestCase):
         self.assertEqual((e.decision, e.status, e.reason), ("allow", "not-reachable", "stale_data"))
         self.assertEqual(resolve(agent_id="bot_hermes_main").status, "configured-untested")
         future = build([row("bot_hermes_main", **{"date:Last Checked:start": "2026-12-30"})])
-        self.assertEqual(resolve(future, agent_id="bot_hermes_main").reason, "stale_data")                # a future check time is not trusted
+        self.assertEqual(resolve(future, agent_id="bot_hermes_main").reason, "stale_data")  # a future check time is not trusted
 
     def test_retired_is_never_reachable(self):
         d = build([row("bot_hermes_main", **{"Discovery State": "Retired"})])
@@ -200,7 +200,7 @@ class Routing(unittest.TestCase):
             d = build([claimed(aid, **{"Space": '["Personal"]'})])
             r = resolve(d, agent_id=aid, proofs=[proof(aid, host)])
             self.assertNotEqual(r.status, "routable-verified", aid)
-        d = build([claimed("buzz_lifeos_codex")])                                                           # a truncated npub is not an identity
+        d = build([claimed("buzz_lifeos_codex")])  # a truncated npub is not an identity
         self.assertEqual(resolve(d, agent_id="buzz_lifeos_codex", proofs=[proof("buzz_lifeos_codex", "Cloud")]).reason, "identity_partial")
 
     def test_a_proof_for_an_unlisted_agent_creates_nothing(self):
@@ -220,16 +220,16 @@ class Routing(unittest.TestCase):
         self.assertEqual(resolve(d, alias="lib").reason, "unknown_agent")
         clash = build(F.rows() + [row("bot_hermes_main", **{"Agent ID": "bot_hermes_main2", "Identity Alias": "Librarian"})])
         self.assertEqual(resolve(clash, alias="librarian").reason, "ambiguous_alias")
-        self.assertEqual(resolve(clash, agent_id="bot_hermes_librarian").decision, "allow")                 # the stable id still works
+        self.assertEqual(resolve(clash, agent_id="bot_hermes_librarian").decision, "allow")  # the stable id still works
 
     def test_workspaces_cross_space_tgp_and_unknown_are_denied(self):
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace="Bytalos").reason, "cross_space_denied")
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace=None).reason, "missing_workspace")
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace="TGP").reason, "workspace_not_granted")
         self.assertEqual(resolve(agent_id="bot_hermes_main", workspace="Unknown").reason, "workspace_not_granted")
-        self.assertEqual(resolve(agent_id="surface_claude_code_web", workspace="Personal").reason, "cross_space_denied")      # a surface whose space is Unknown is nobody's
+        self.assertEqual(resolve(agent_id="surface_claude_code_web", workspace="Personal").reason, "cross_space_denied")  # a surface whose space is Unknown is nobody's
         tgp = build([row("bot_hermes_main", Space='["TGP"]')])
-        self.assertEqual(resolve(tgp, agent_id="bot_hermes_main", workspace="TGP").reason, "workspace_not_granted")      # a TGP label is not a TGP grant
+        self.assertEqual(resolve(tgp, agent_id="bot_hermes_main", workspace="TGP").reason, "workspace_not_granted")  # a TGP label is not a TGP grant
         self.assertEqual(resolve(tgp, agent_id="bot_hermes_main", workspace="Personal").reason, "cross_space_denied")
 
     def test_resolving_authorizes_nothing(self):

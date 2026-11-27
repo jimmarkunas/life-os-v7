@@ -1,4 +1,4 @@
-"""LIFE-844 (synthetic): the stable-ID Runtime Configuration reader. Fixtures only: no Notion, no database, no workflow, no live write."""
+"""(synthetic): the stable-ID Runtime Configuration reader."""
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -9,7 +9,7 @@ from tests.platform.settings_fixture import ENV, SECRET, SOURCE, Source, row
 from tests.platform.test_settings import FakeStore, connect
 
 ROOT = Path(__file__).resolve().parents[2]
-OTHER = "2ba672dd-026e-4d75-9f57-1ade91bcc7be"           # the Product Requirements database: the reader must never touch it
+OTHER = "2ba672dd-026e-4d75-9f57-1ade91bcc7be"
 ID = "4183c5a0-5926-81be-9e19-e85714dc256f"
 ID2 = "4183c5a0-5926-8115-b53c-c45f6efd8ec2"
 
@@ -22,7 +22,7 @@ SENTINEL_TOKENS = {name: f"synthetic-token-{i}-{SECRET}" for i, name in enumerat
 
 
 def clients(broken=(), empty=()):
-    """make_client(token) -> a source client per token; a token in `broken` cannot read it (Notion refuses), a token in `empty` reads nothing usable."""
+    """make_client(token) -> a source client per token"""
     def make(token):
         if token in broken:
             return Source([], broken=True)
@@ -35,7 +35,7 @@ class ReadByStableId(unittest.TestCase):
         client = Source(NEW_ROWS)
         found, counts = rc.read(client, ENV)
         self.assertEqual(found, {"JIRA_CARD_BLOCK_ID": ID, "MEGIBOW_BLOCK_ID": ID2, "GRANOLA_AUTO": "on", "INTERVIEW_TEST_COMPANIES": "Smartsheet, Walmart"})
-        self.assertEqual(client.calls, [("POST", f"/data_sources/{SOURCE}/query")])          # only the configured source; never /search; never OTHER
+        self.assertEqual(client.calls, [("POST", f"/data_sources/{SOURCE}/query")])  # only the configured source
         self.assertNotIn(OTHER, repr(client.calls))
         self.assertEqual((counts["refused"], counts["unknown"], counts["invalid"], counts["repeated"], counts["inactive"]), ([], 0, [], [], 0))
 
@@ -62,12 +62,12 @@ class ReadByStableId(unittest.TestCase):
 class RefusedNeverApplied(unittest.TestCase):
     def test_each_bad_row_is_counted_by_name_and_none_is_applied(self):
         rows = [
-            row("V7_LIVE", "on"), row("V7_CLOUD_FIT", "on"), row("NOTION_JIRA_TOKEN", SECRET), row("ALERT_SETTINGS", SECRET),          # safety and credential-shaped
-            row("NOT_A_SETTING", SECRET),                                                                                      # unknown
+            row("V7_LIVE", "on"), row("V7_CLOUD_FIT", "on"), row("NOTION_JIRA_TOKEN", SECRET), row("ALERT_SETTINGS", SECRET),  # safety and credential-shaped
+            row("NOT_A_SETTING", SECRET),  # unknown
             row("JIRA_CARD_BLOCK_ID", "not-an-address"), row("GRANOLA_AUTO", "on", kind="address"), row("HIRING_AUTO_CLOSE", "on", revision=-1),
-            row("RECRUITER_OUTREACH", "a\nb"), row("JOB_PAGE_OUTREACH", ""),                                                  # bad address, wrong kind, bad revision, line break, empty
-            row("MAIL_PORTAL_URL", "x", Revision=None),                                                                       # a property missing
-            row("INTERVIEW_LEADS", "on", active=False),                                                                       # inactive: skipped, counted
+            row("RECRUITER_OUTREACH", "a\nb"), row("JOB_PAGE_OUTREACH", ""),
+            row("MAIL_PORTAL_URL", "x", Revision=None),  # a property missing
+            row("INTERVIEW_LEADS", "on", active=False),  # inactive: skipped, counted
             row("TICK_MAX_PARALLEL", "2"),
         ]
         found, counts = rc.parse(rows)
@@ -75,7 +75,7 @@ class RefusedNeverApplied(unittest.TestCase):
         self.assertEqual(sorted(counts["refused"]), ["ALERT_SETTINGS", "NOTION_JIRA_TOKEN", "V7_CLOUD_FIT", "V7_LIVE"])
         self.assertEqual(sorted(counts["invalid"]), ["GRANOLA_AUTO", "HIRING_AUTO_CLOSE", "JIRA_CARD_BLOCK_ID", "JOB_PAGE_OUTREACH", "RECRUITER_OUTREACH"])
         self.assertEqual((counts["unknown"], counts["inactive"]), (2, 1))
-        self.assertNotIn(SECRET, repr((found, counts)))                                                                       # names and counts only
+        self.assertNotIn(SECRET, repr((found, counts)))  # names and counts only
 
     def test_a_duplicate_active_name_is_applied_from_neither_row_but_an_inactive_copy_is_fine(self):
         found, counts = rc.parse([row("GRANOLA_AUTO", "on"), row("GRANOLA_AUTO", "off"), row("HIRING_AUTO_CLOSE", "on"), row("HIRING_AUTO_CLOSE", "off", active=False)])
@@ -87,7 +87,7 @@ class RefusedNeverApplied(unittest.TestCase):
 
 
 class Phase1TokenProof(unittest.TestCase):
-    """LIFE-858 Phase 1: each of the seven token identities is probed by name; PASS or FAIL only, never a token or a value."""
+    """Phase 1: each of the seven token identities is probed by name"""
 
     def test_the_seven_identities_are_exactly_the_ones_the_ticket_names(self):
         self.assertEqual(TOKENS7, ["NOTION_JIRA_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_BILLS_TOKEN", "NOTION_FIT_SYNC_TOKEN"])
@@ -163,13 +163,13 @@ class Phase1CompareReceipt(unittest.TestCase):
         self.assertEqual(env, before)
 
     def test_missing_credentials_or_an_unreadable_source_are_off_or_a_fixed_code(self):
-        self.assertEqual(rc.shadow(dict(ENV)), {"status": "off"})                                    # the ID but no Notion token: nothing was read
+        self.assertEqual(rc.shadow(dict(ENV)), {"status": "off"})  # the ID but no Notion token: nothing was read
         self.assertEqual(rc.shadow({rc.SOURCE_NAME: "not-an-id"}), {"status": "unreadable:RUNTIME_CONFIG_SOURCE_ID_INVALID"})
         self.assertEqual(rc.shadow(dict(ENV), Source([], broken=True)), {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
 
 
 class ShadowOncePerProcess(unittest.TestCase):
-    """LIFE-858: the tick runs about 23 stages in one process; each used to repeat the whole compare (about 2.6 s each). `once=True` reads once and the rest are cached."""
+    """the tick runs about 23 stages in one process"""
     def setUp(self):
         rc.reset_once()
         self.addCleanup(rc.reset_once)
@@ -187,7 +187,7 @@ class ShadowOncePerProcess(unittest.TestCase):
         reads = len(calls)
         self.assertGreater(reads, 0)
         again = rc.shadow(dict(ENV), client, once=True)
-        self.assertEqual(len(calls), reads)                                          # zero more Notion reads
+        self.assertEqual(len(calls), reads)  # zero more Notion reads
         self.assertEqual(again, {"status": "ok", "rows": first["rows"], "cached": True})
         self.assertNotIn("names", again)
         self.assertNotIn("tokens", again)
@@ -196,18 +196,18 @@ class ShadowOncePerProcess(unittest.TestCase):
         client, calls = self.counting()
         rc.shadow(dict(ENV), client, once=True)
         before = len(calls)
-        rc.shadow(dict(ENV), client)                                                 # no once: always reads
+        rc.shadow(dict(ENV), client)  # no once: always reads
         self.assertGreater(len(calls), before)
         after = len(calls)
         rc.shadow({**ENV, "NOTION_JIRA_TOKEN": "t"}, client, once=True, make_client=lambda token: Source(NEW_ROWS))
-        self.assertGreater(len(calls), after)                                        # a different token set is a different key
+        self.assertGreater(len(calls), after)  # a different token set is a different key
 
     def test_off_and_unreadable_are_not_cached_so_a_later_good_read_still_happens(self):
         self.assertEqual(rc.shadow({}, once=True), {"status": "off"})
         broken = Source([], broken=True)
         self.assertEqual(rc.shadow(dict(ENV), broken, once=True), {"status": "unreadable:RUNTIME_CONFIG_UNREADABLE"})
         client, calls = self.counting()
-        self.assertEqual(rc.shadow(dict(ENV), client, once=True)["status"], "ok")   # the failure did not poison the process
+        self.assertEqual(rc.shadow(dict(ENV), client, once=True)["status"], "ok")  # the failure did not poison the process
         self.assertGreater(len(calls), 0)
 
     def test_concurrent_callers_make_one_read(self):

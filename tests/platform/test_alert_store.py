@@ -1,4 +1,6 @@
-"""LIFE-733: the three alert switches in Bitwarden - fixed ids, the token only in the environment, fixed codes, and a read-back guard."""
+"""the three alert switches in Bitwarden - fixed ids, the token only in the environment, fixed codes, and a read-back
+guard.
+"""
 import json
 import subprocess
 import unittest
@@ -35,7 +37,7 @@ class Store(unittest.TestCase):
             self.assertNotIn("0.synthetic.token:key", " ".join(argv))
             self.assertEqual(env["BWS_ACCESS_TOKEN"], "0.synthetic.token:key")
             self.assertNotEqual(env["HOME"], "")
-            self.assertEqual(sorted(env), ["BWS_ACCESS_TOKEN", "HOME", "PATH"])           # bws stops on a BWS_CONFIG_FILE that names a missing file (found on Oracle)
+            self.assertEqual(sorted(env), ["BWS_ACCESS_TOKEN", "HOME", "PATH"])
 
     def test_the_program_path_comes_from_the_environment(self):
         seen = []

@@ -1,4 +1,6 @@
-"""report_region.replace_text rewrites a card's text lines in place (Jim, Oct 15 2026): the page never shows the old and the new card at once."""
+"""report_region.replace_text rewrites a card's text lines in place: the page never shows the old and the new card at
+once.
+"""
 import unittest
 from unittest import mock
 
@@ -54,7 +56,7 @@ class InPlace(unittest.TestCase):
         self.assertEqual([k["id"] for k in self.kids(notion)], ["heading-mail-callout", "mail-old-0", "mail-old-1", "mail-table-old"])
         self.assertEqual([report_region.plain(k) for k in self.kids(notion)[1:3]], ["new status", "new detail"])
         self.assertEqual((removed, [m for m, _ in notion.log if m in ("DELETE", "APPEND")]), (0, []))
-        self.assertEqual(max(notion.peaks), 2)                                                  # never more lines than either version
+        self.assertEqual(max(notion.peaks), 2)  # never more lines than either version
 
     def test_more_lines_go_right_under_the_rewritten_ones_above_the_kept_block(self):
         notion = Watched(["old status"])
@@ -80,7 +82,9 @@ class InPlace(unittest.TestCase):
 
 
 class StampedHeading(unittest.TestCase):
-    """LIFE-609: a card may show its update time in its heading (`Mail Alerts (Updated 2:30 PM CT)`), the way Calendar, Jira and Hiring do."""
+    """a card may show its update time in its heading (`Mail Alerts (Updated 2:30 PM CT)`), the way Calendar, Jira and
+    Hiring do.
+    """
     STAMPED = "Mail Alerts (Updated 2:30 PM CT)"
 
     def heading(self, notion):
@@ -103,7 +107,7 @@ class StampedHeading(unittest.TestCase):
         write(notion, ["new status"], heading="Mail Alerts (Updated 3:30 PM CT)")
         self.assertEqual(self.heading(notion), "Mail Alerts (Updated 3:30 PM CT)")
         self.assertEqual({p.split("/")[2] for m, p in notion.log[mark:] if m == "PATCH"}, {"heading-mail-callout", "mail-old-0"})
-        write(notion, ["new status"], heading="Mail Alerts (Updated 3:30 PM CT)")                      # nothing to change in the heading: it is not written again
+        write(notion, ["new status"], heading="Mail Alerts (Updated 3:30 PM CT)")
         self.assertEqual(self.heading(notion), "Mail Alerts (Updated 3:30 PM CT)")
 
     def test_without_a_heading_the_heading_must_still_be_exactly_the_title_and_a_wrong_title_is_refused(self):
@@ -112,12 +116,12 @@ class StampedHeading(unittest.TestCase):
         self.assertEqual(self.heading(notion), "Mail Alerts")
         notion.children["mail-callout"][0] = notion._text_block("heading-mail-callout", "heading_3", self.STAMPED)
         with self.assertRaises(Fail):
-            write(notion, ["new status"])                                                               # a stamped heading is not accepted unless the caller states it
+            write(notion, ["new status"])
         for bad in ("Amazon Orders (Updated 2:30 PM CT)", "Mail Alerts Updated 2:30 PM CT", "Mail Alerts"[:-1] + " (Updated 2:30 PM CT)"):
             fresh = Watched(["old status"])
             with self.assertRaises(Fail):
                 write(fresh, ["new status"], heading=bad)
-            self.assertEqual(self.heading(fresh), "Mail Alerts")                                        # refused before any write
+            self.assertEqual(self.heading(fresh), "Mail Alerts")  # refused before any write
 
 
 if __name__ == "__main__":

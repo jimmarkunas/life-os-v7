@@ -1,4 +1,4 @@
-"""LIFE-609: the due-time logic. The real functions run; only the Actions API (a fake that answers from a small run history) is replaced."""
+"""the due-time logic."""
 import datetime as dt
 import json
 import pathlib
@@ -13,7 +13,7 @@ except ImportError:
 from lifeos.platform import due
 
 UTC = dt.timezone.utc
-NOW = dt.datetime(2026, 11, 12, 20, 17, tzinfo=UTC)                  # 2:17 PM CT
+NOW = dt.datetime(2026, 11, 12, 20, 17, tzinfo=UTC)  # 2:17 PM CT
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 
@@ -22,7 +22,7 @@ def ago(hours):
 
 
 class History:
-    """A fake Actions API: runs newest first, each with job conclusions. Records the paths it was asked for."""
+    """A fake Actions API: runs newest first, each with job conclusions."""
     def __init__(self, runs, fail=False):
         self.runs, self.fail, self.paths = runs, fail, []
 
@@ -60,24 +60,24 @@ class Rules(unittest.TestCase):
         self.assertTrue(due.is_due({"slots_ct": ["09:00"]}, None, NOW)[0])
 
     def test_a_ct_slot_is_due_once_after_it_passes(self):
-        nine_oh_five = dt.datetime(2026, 11, 12, 15, 5, tzinfo=UTC)          # 9:05 AM CT
-        before_slot = dt.datetime(2026, 11, 12, 13, 0, tzinfo=UTC)           # 7:00 AM CT
-        after_slot = dt.datetime(2026, 11, 12, 15, 2, tzinfo=UTC)            # 9:02 AM CT
+        nine_oh_five = dt.datetime(2026, 11, 12, 15, 5, tzinfo=UTC)  # 9:05 AM CT
+        before_slot = dt.datetime(2026, 11, 12, 13, 0, tzinfo=UTC)  # 7:00 AM CT
+        after_slot = dt.datetime(2026, 11, 12, 15, 2, tzinfo=UTC)  # 9:02 AM CT
         self.assertTrue(due.is_due({"slots_ct": ["09:00"]}, before_slot, nine_oh_five)[0])
         self.assertFalse(due.is_due({"slots_ct": ["09:00"]}, after_slot, nine_oh_five)[0])
-        self.assertFalse(due.is_due({"slots_ct": ["09:00"]}, before_slot, dt.datetime(2026, 11, 12, 14, 0, tzinfo=UTC))[0])    # 8:00 AM CT: not yet
+        self.assertFalse(due.is_due({"slots_ct": ["09:00"]}, before_slot, dt.datetime(2026, 11, 12, 14, 0, tzinfo=UTC))[0])  # 8:00 AM CT: not yet
 
     def test_a_job_that_missed_two_slots_is_due_once_and_then_fresh(self):
-        last = ago(13)                                                       # two 6-hour slots missed
+        last = ago(13)  # two 6-hour slots missed
         self.assertTrue(due.is_due({"every_hours": 6}, last, NOW)[0])
-        self.assertFalse(due.is_due({"every_hours": 6}, NOW, NOW + dt.timedelta(hours=1))[0])     # after it ran, the next tick skips it
+        self.assertFalse(due.is_due({"every_hours": 6}, NOW, NOW + dt.timedelta(hours=1))[0])  # after it ran, the next tick skips it
         two_days = due.is_due({"slots_ct": ["09:00"]}, ago(48), NOW)
         self.assertTrue(two_days[0])
 
 
 class BillsEverySixHours(unittest.TestCase):
-    """LIFE-612: the Bills job runs on the first tick after 12:00 AM, 6:00 AM, 12:00 PM and 6:00 PM CT."""
-    ROW = {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]}               # a fixture: LIFE-630 put the real row back to hourly, the slot mechanism stays proven here
+    """the Bills job runs on the first tick after 12:00 AM, 6:00 AM, 12:00 PM and 6:00 PM CT."""
+    ROW = {"slots_ct": ["00:00", "06:00", "12:00", "18:00"]}
 
     def due_ticks(self, start, hours, last, failing=()):
         found, now = [], start
@@ -93,11 +93,11 @@ class BillsEverySixHours(unittest.TestCase):
         self.assertEqual(due.load_table()["bills"], {"every_hours": 1})
 
     def test_a_day_of_hourly_ticks_runs_it_four_times_and_skips_the_other_twenty(self):
-        found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 24, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC))          # 12:17 AM CT on, after the 6:17 PM run
+        found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 24, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC))  # 12:17 AM CT on, after the 6:17 PM run
         self.assertEqual(found, ["Thu 12:17 AM", "Thu 6:17 AM", "Thu 12:17 PM", "Thu 6:17 PM"])
 
     def test_a_dropped_slot_is_caught_up_once_on_the_next_tick(self):
-        found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 14, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC), failing={6})        # the 6:17 AM run fails
+        found = self.due_ticks(dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC), 14, dt.datetime(2026, 11, 11, 23, 17, tzinfo=UTC), failing={6})  # the 6:17 AM run fails
         self.assertEqual(found, ["Thu 12:17 AM", "Thu 6:17 AM", "Thu 7:17 AM", "Thu 12:17 PM"])
 
     def test_a_manual_dispatch_is_not_a_tick_so_bills_runs_as_today(self):
@@ -105,11 +105,11 @@ class BillsEverySixHours(unittest.TestCase):
 
 
 class Retention(unittest.TestCase):
-    """LIFE-611: the Amazon retention job runs once a day, on the first tick after 3:00 AM CT."""
-    ROW = {"slots_ct": ["03:00"]}                                           # a fixture: LIFE-630 put the real row back to hourly, the slot mechanism stays proven here
+    """the Amazon retention job runs once a day, on the first tick after 3:00 AM CT."""
+    ROW = {"slots_ct": ["03:00"]}
 
     def ticks(self, start, hours, last, dropped=()):
-        """Hourly ticks at :17 from `start`; -> (the tick times at which the job was due, its last start). A tick in `dropped` runs the gate but the job fails, so it is not a success."""
+        """Hourly ticks at:17 from `start`"""
         found, now = [], start
         for n in range(hours):
             if due.is_due(self.ROW, last, now)[0]:
@@ -123,18 +123,18 @@ class Retention(unittest.TestCase):
         self.assertEqual(due.load_table()["amazon_retention"], {"every_hours": 1})
 
     def test_over_two_days_of_ticks_it_is_due_exactly_once_every_24_hours(self):
-        start = dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC)               # 12:17 AM CT, after yesterday's run at 3:17 AM CT
+        start = dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC)  # 12:17 AM CT, after yesterday's run at 3:17 AM CT
         found, _ = self.ticks(start, 48, dt.datetime(2026, 11, 11, 9, 17, tzinfo=UTC))
         self.assertEqual([t.astimezone(due.CENTRAL).strftime("%a %-I:%M %p") for t in found], ["Thu 3:17 AM", "Fri 3:17 AM"])
 
     def test_a_failed_daily_run_is_caught_up_on_the_next_tick_once(self):
         start = dt.datetime(2026, 11, 12, 6, 17, tzinfo=UTC)
-        found, last = self.ticks(start, 8, dt.datetime(2026, 11, 11, 9, 17, tzinfo=UTC), dropped={3})        # the 3:17 AM run fails
-        self.assertEqual([t.astimezone(due.CENTRAL).strftime("%-I:%M %p") for t in found], ["3:17 AM", "4:17 AM"])      # retried the next tick, then fresh
+        found, last = self.ticks(start, 8, dt.datetime(2026, 11, 11, 9, 17, tzinfo=UTC), dropped={3})  # the 3:17 AM run fails
+        self.assertEqual([t.astimezone(due.CENTRAL).strftime("%-I:%M %p") for t in found], ["3:17 AM", "4:17 AM"])  # retried the next tick, then fresh
         self.assertEqual(last.astimezone(due.CENTRAL).strftime("%-I:%M %p"), "4:17 AM")
 
     def test_a_dropped_day_runs_once_not_twice(self):
-        found, _ = self.ticks(dt.datetime(2026, 11, 12, 18, 17, tzinfo=UTC), 3, dt.datetime(2026, 11, 9, 9, 17, tzinfo=UTC))      # no success for three days
+        found, _ = self.ticks(dt.datetime(2026, 11, 12, 18, 17, tzinfo=UTC), 3, dt.datetime(2026, 11, 9, 9, 17, tzinfo=UTC))  # no success for three days
         self.assertEqual(len(found), 1)
 
     def test_a_manual_run_is_not_a_tick_so_the_job_is_due(self):
@@ -145,20 +145,20 @@ class History_(unittest.TestCase):
     def test_last_success_takes_the_start_of_the_newest_run_where_the_job_succeeded(self):
         api = History([run(1, mail="skipped", jira="success"), run(7, mail="success", jira="success"), run(13, mail="success")])
         found = due.fetch_last_success({"mail", "jira"}, api)
-        self.assertEqual(found, {"jira": ago(1), "mail": ago(7)})                       # mail was skipped one hour ago: that is not a success
+        self.assertEqual(found, {"jira": ago(1), "mail": ago(7)})
 
     def test_a_failed_job_is_not_a_success_and_reading_stops_when_every_job_is_found(self):
         api = History([run(2, mail="failure"), run(5, mail="success"), run(9, mail="success")])
         self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(5)})
-        self.assertFalse(any("actions/runs/2/jobs" in p for p in api.paths))           # the third run was never read
+        self.assertFalse(any("actions/runs/2/jobs" in p for p in api.paths))  # the third run was never read
 
     def test_only_runs_that_belong_to_a_tick_count_and_a_manual_run_never_makes_a_card_look_fresh(self):
         api = History([run(1, "domains (manual)", mail="success"), run(3, mail="success")])
-        self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(3)})      # the manual run an hour ago is not a success to count
-        self.assertNotIn("event=workflow_run", api.paths[0])                           # LIFE-775: the early run of a tick starts by dispatch, so the title (not the event) tells it from a manual run
+        self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(3)})
+        self.assertNotIn("event=workflow_run", api.paths[0])
 
     def test_the_early_run_of_a_tick_counts_like_the_run_after_it(self):
-        api = History([run(1, mail="success")])                                         # same title as an after-tick run, whichever event started it
+        api = History([run(1, mail="success")])
         self.assertEqual(due.fetch_last_success({"mail"}, api), {"mail": ago(1)})
 
     def test_the_early_run_with_phase_tick_is_a_tick(self):
@@ -166,7 +166,7 @@ class History_(unittest.TestCase):
             out = pathlib.Path(tmp, "out")
             code = due.main({"GITHUB_EVENT_NAME": "workflow_dispatch", "DOMAINS_PHASE": "tick", "GITHUB_OUTPUT": str(out)}, api=History([run(2, mail="success")]), now=NOW, table=ROWS)
             outputs = dict(line.split("=") for line in out.read_text().split())
-        self.assertEqual((code, outputs["due_mail"]), (0, "false"))                    # a six-hour row is skipped two hours after its last success: the rule applies, it is not "not a tick"
+        self.assertEqual((code, outputs["due_mail"]), (0, "false"))
 
 
 class Main(unittest.TestCase):
@@ -223,7 +223,7 @@ class TableMatchesTheWorkflow(unittest.TestCase):
 
     def test_every_job_and_the_recruiters_mail_step_run_every_hour_since_life_630(self):
         table = due.load_table()
-        self.assertEqual({job: row for job, row in table.items() if row != {"every_hours": 1}}, {})                 # Jim, Nov 12 2026: everything hourly until the codebase has shrunk
+        self.assertEqual({job: row for job, row in table.items() if row != {"every_hours": 1}}, {})
         self.assertEqual(json.loads(due.TABLE.read_text())["steps"]["recruiters_mail"]["every_hours"], 1)
 
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
 
 
 class StageRows(unittest.TestCase):
-    """LIFE-617: the Jobs-tick board stages use the same table and the same rules; only the history reader (run logs) is new."""
+    """the Jobs-tick board stages use the same table and the same rules"""
     def test_a_log_names_the_stages_that_finished_ok(self):
         text = "2026-11-13T19:18:03Z stage resolve-linkedin: ok 4.9s\n2026-11-13T19:18:04Z stage boards: failed 3.0s\n2026-11-13T19:18:05Z stage web: ok 34.4s\n"
         self.assertEqual(due.stages_ok(text), {"resolve-linkedin", "web"})
@@ -247,7 +247,7 @@ class StageRows(unittest.TestCase):
                                       {"id": 1, "display_title": "tick", "run_started_at": ago(2).strftime(STAMP), "created_at": ago(2).strftime(STAMP)}]}
         result, ok = due.stage_decisions(table, now=NOW, api=api, log_text=lambda run_id: logs[run_id])
         self.assertTrue(ok)
-        self.assertEqual({k: v[0] for k, v in result.items()}, {"web-titlewatch": False, "boards": True})      # 2 h < 3 h minus slack; hourly always due
+        self.assertEqual({k: v[0] for k, v in result.items()}, {"web-titlewatch": False, "boards": True})  # 2 h < 3 h minus slack
         result, _ = due.stage_decisions(table, now=NOW + dt.timedelta(hours=2), api=api, log_text=lambda run_id: logs[run_id])
         self.assertTrue(result["web-titlewatch"][0])
 

@@ -1,4 +1,6 @@
-"""LIFE-905: one crawler owner of the employer boards, the tick or the four windows, chosen by the BOARDS_IN_TICK switch (lifeos/platform/switches.json). Clock and fixture tests only: no network, no store."""
+"""one crawler owner of the employer boards, the tick or the four windows, chosen by the BOARDS_IN_TICK switch
+(lifeos/platform/switches.json).
+"""
 import datetime as dt
 import json
 import unittest
@@ -14,13 +16,13 @@ ON, OFF = {"BOARDS_IN_TICK": "on"}, {"BOARDS_IN_TICK": "off"}
 
 class Switch(unittest.TestCase):
     def test_the_file_names_the_owner_and_the_owner_follows_it(self):
-        state = json.loads(switches.FILE.read_text())["BOARDS_IN_TICK"]["state"]                          # the flip and the rollback are one-line PRs on this file, so the test follows it
+        state = json.loads(switches.FILE.read_text())["BOARDS_IN_TICK"]["state"]
         self.assertIn(state, ("on", "off"))
         self.assertEqual(bw.owner({}), "tick" if state == "on" else "windows")
 
     def test_a_repository_variable_flips_it_either_way(self):
         self.assertEqual((bw.owner(ON), bw.owner(OFF)), ("tick", "windows"))
-        self.assertEqual(bw.owner({"BOARDS_IN_TICK": "typo"}), bw.owner({}))                              # anything else defers to the file
+        self.assertEqual(bw.owner({"BOARDS_IN_TICK": "typo"}), bw.owner({}))  # anything else defers to the file
 
 
 class WindowsStandDown(unittest.TestCase):
@@ -67,7 +69,7 @@ class TickStage(unittest.TestCase):
             return {"pass": "employer boards", "complete": 3, "failed": 0}
         with mock.patch.object(boards, "run", fake):
             counts = boards.tick(5000, True, environ=ON, running=lambda: False)
-        self.assertEqual((seen["limit"], seen["live"]), (1800, True))                              # never above the window cap
+        self.assertEqual((seen["limit"], seen["live"]), (1800, True))  # never above the window cap
         self.assertEqual((seen["env"]["BOARDS_DEADLINE_MINUTES"], seen["env"]["BOARDS_MODE"]), ("4", "window"))
         self.assertEqual((counts["owner"], counts["complete"]), ("tick", 3))
 
@@ -75,7 +77,7 @@ class TickStage(unittest.TestCase):
         self.assertTrue(bw.window_running(lambda path: {"workflow_runs": [{"status": "completed"}, {"status": "in_progress"}]}))
         self.assertTrue(bw.window_running(lambda path: {"workflow_runs": [{"status": "queued"}]}))
         self.assertFalse(bw.window_running(lambda path: {"workflow_runs": [{"status": "completed"}]}))
-        self.assertTrue(bw.window_running(mock.Mock(side_effect=OSError("down"))))                    # unreadable: a crawler may be running
+        self.assertTrue(bw.window_running(mock.Mock(side_effect=OSError("down"))))  # unreadable: a crawler may be running
 
     def test_the_tick_step_is_registered_hourly_in_the_ats_group_before_publish(self):
         step = next(s for s in source_registry.SOURCES if s.name == "boards-tick")
@@ -83,20 +85,22 @@ class TickStage(unittest.TestCase):
 
 
 class Rollback(unittest.TestCase):
-    """Flipping the switch back: the windows resume from the same state tables (the pass reads the oldest due boards first), so a window the tick era left unrun is a catch-up and nothing is written twice."""
+    """Flipping the switch back: the windows resume from the same state tables (the pass reads the oldest due boards
+    first), so a window the tick era left.
+    """
     def test_after_the_tick_era_the_next_window_is_a_catch_up_when_the_last_one_did_not_complete(self):
         def run(rid, started, outcome):
             stamp = started.strftime("%Y-%m-%dT%H:%M:%SZ")
             return {"id": rid, "event": "schedule", "status": "completed", "display_title": "", "run_started_at": stamp, "created_at": stamp, "_job": outcome}
         slot = bw.current_slot(NOW)
-        runs = [run(1, bw.previous_slot(bw.previous_slot(slot)), "success")]                           # the windows stopped; the previous window never ran
+        runs = [run(1, bw.previous_slot(bw.previous_slot(slot)), "success")]  # the windows stopped
         plan = bw.decide(NOW, runs, lambda item: [{"name": "boards", "conclusion": item["_job"], "status": "completed"}])
         self.assertEqual((plan["run"], plan["mode"]), (True, "catchup"))
         self.assertEqual(plan["limit"], 2900)
 
     def test_the_stage_reads_the_same_state_either_way(self):
         import inspect
-        self.assertIn('select="known"', inspect.getsource(boards.run))                                 # one reader; the tick calls it, never a second implementation
+        self.assertIn('select="known"', inspect.getsource(boards.run))  # one reader
         self.assertIn("run(", inspect.getsource(boards.tick))
 
 

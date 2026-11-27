@@ -1,4 +1,4 @@
-"""LIFE-868, LIFE-949: governed shared memory (store, recall, correct, revoke, ask) with a fake Honcho; synthetic facts only, no network, no model."""
+"""governed shared memory (store, recall, correct, revoke, ask) with a fake Honcho"""
 import json
 import unittest
 from datetime import datetime, timedelta
@@ -11,7 +11,7 @@ NEW = "The synthetic launch code is blue heron."
 
 
 class FakeHoncho:
-    """The few calls memory uses, over an in-memory list of conclusion rows. `chat` answers from the stored rows directly, as Honcho's ask does, so a row that was only hidden (not deleted) would still be repeated."""
+    """The few calls memory uses, over an in-memory list of conclusion rows."""
     def __init__(self):
         self.rows, self.down, self.peers, self.chats, self.fail_delete = [], False, 0, [], False
 
@@ -85,7 +85,7 @@ class Memory(unittest.TestCase):
     def test_store_returns_provenance_and_labels_memory(self):
         f = self.fact
         self.assertEqual((f["label"], f["source"], f["client"], f["workspace"]), ("memory", "uat-note-1", "hermes-librarian", "Personal"))
-        self.assertTrue(f["id"] and f["stored_at_ct"].endswith(("-06:00", "-05:00")))                       # a stable id and a Central-time stamp
+        self.assertTrue(f["id"] and f["stored_at_ct"].endswith(("-06:00", "-05:00")))  # a stable id and a Central-time stamp
         self.assertIn("canonical source wins", f["notice"])
 
     def test_every_granted_client_stores_and_another_client_recalls_it_with_the_writers_label(self):
@@ -107,7 +107,7 @@ class Memory(unittest.TestCase):
         self.assertEqual((new["supersedes"], new["old_text_deleted"]), (self.fact["id"], True))
         out = run("memory_recall", {"workspace": "Personal", "query": "launch code"}, self.h, "openclaw")
         self.assertEqual([i["text"] for i in out["items"]], [NEW])
-        self.assertNotIn("amber falcon", json.dumps(self.h.rows))                                                # the old text is gone from the store, not only hidden
+        self.assertNotIn("amber falcon", json.dumps(self.h.rows))
         hist = run("memory_recall", {"workspace": "Personal", "query": "launch code", "include_history": "true"}, self.h)
         by = {i["id"]: i for i in hist["items"]}
         self.assertEqual((by[self.fact["id"]]["status"], by[self.fact["id"]]["superseded_by"], by[self.fact["id"]]["text"], by[self.fact["id"]]["client"]), ("superseded", new["id"], None, "openclaw"))
@@ -119,7 +119,7 @@ class Memory(unittest.TestCase):
         self.assertEqual(run("memory_recall", {"workspace": "Personal", "query": "launch code"}, self.h)["items"], [])
         hist = run("memory_recall", {"workspace": "Personal", "query": "launch code", "include_history": "true"}, self.h)
         self.assertEqual([(i["status"], i["text"], i["client"]) for i in hist["items"]], [("revoked", None, "duet-chat")])
-        self.assertEqual(len(self.h.rows), 1)                                                                    # the fact is gone; one tombstone with an id, client, CT time and reason remains
+        self.assertEqual(len(self.h.rows), 1)  # the fact is gone
         marker = json.loads(self.h.rows[0]["content"])
         self.assertEqual((marker["kind"], marker["of"], marker["why"], marker["client"]), ("tombstone", self.fact["id"], "revoked", "duet-chat"))
         self.assertNotIn("text", marker)
@@ -127,7 +127,7 @@ class Memory(unittest.TestCase):
 
     def test_an_ask_after_a_revoke_or_a_correction_does_not_contain_the_old_text(self):
         before = run("memory_ask", {"workspace": "Personal", "question": "What is the launch code?"}, self.h, "claude-chat")
-        self.assertIn("amber falcon", before["answer"])                                                          # while it is stored, the ask knows it
+        self.assertIn("amber falcon", before["answer"])  # while it is stored, the ask knows it
         new = run("memory_correct", {"workspace": "Personal", "id": self.fact["id"], "text": NEW, "source": "uat-note-2"}, self.h)
         after_correct = run("memory_ask", {"workspace": "Personal", "question": "What is the launch code?"}, self.h, "claude-chat")
         self.assertEqual(("amber falcon" in after_correct["answer"], "blue heron" in after_correct["answer"]), (False, True))
@@ -146,17 +146,17 @@ class Memory(unittest.TestCase):
     def test_a_revoke_whose_delete_failed_hid_the_item_and_a_second_revoke_finishes_the_deletion(self):
         self.h.fail_delete = True
         self.assertEqual(refused(self, "memory_revoke", {"workspace": "Personal", "id": self.fact["id"]}, self.h).reason, "memory_unavailable")
-        self.assertEqual(run("memory_recall", {"workspace": "Personal", "query": "launch code"}, self.h)["items"], [])      # hidden at once, even though the text is still there
+        self.assertEqual(run("memory_recall", {"workspace": "Personal", "query": "launch code"}, self.h)["items"], [])
         self.h.fail_delete = False
         self.assertEqual(run("memory_revoke", {"workspace": "Personal", "id": self.fact["id"]}, self.h)["status"], "revoked")
         self.assertNotIn("amber falcon", json.dumps(self.h.rows))
-        self.assertEqual(len([r for r in self.h.rows if "tombstone" in r["content"]]), 1)                         # one marker, not two
+        self.assertEqual(len([r for r in self.h.rows if "tombstone" in r["content"]]), 1)  # one marker, not two
 
     def test_a_marker_or_a_non_memory_row_is_never_a_fact(self):
         self.h.rows.append({"id": "x1", "content": "plain text, not an envelope launch code"})
         out = run("memory_recall", {"workspace": "Personal", "query": "launch code"}, self.h)
         self.assertEqual([i["id"] for i in out["items"]], [self.fact["id"]])
-        self.assertEqual(refused(self, "memory_revoke", {"workspace": "Personal", "id": "x1"}, self.h).reason, "memory_not_found")      # not a stored memory
+        self.assertEqual(refused(self, "memory_revoke", {"workspace": "Personal", "id": "x1"}, self.h).reason, "memory_not_found")  # not a stored memory
 
     def test_the_service_down_fails_safely_with_one_fixed_code_and_never_a_guess(self):
         self.h.down = True
@@ -172,7 +172,7 @@ class Memory(unittest.TestCase):
 
     def test_the_client_comes_from_the_dispatch_never_from_a_caller_value(self):
         out = mh.run("memory_store", {"workspace": "Personal", "text": "t", "source": "s", "_client": "claimed-by-dispatch"}, state(FakeHoncho()))
-        self.assertEqual(out["client"], "claimed-by-dispatch")                                                    # the dispatch injects it after the argument check; the MCP schema has no such argument
+        self.assertEqual(out["client"], "claimed-by-dispatch")  # the dispatch injects it after the argument check
         self.assertNotIn("_client", {k for _, params in (v for v in mh.OPS.values()) for k in params} | set())
 
     def test_honcho_client_maps_http_and_network_failures_to_fixed_codes_and_chat_needs_an_answer(self):
@@ -185,7 +185,7 @@ class Memory(unittest.TestCase):
         def opener_down(req, timeout=None):
             raise urllib.error.URLError("refused")
 
-        def opener_refused_by_the_meter(req, timeout=None):                                                      # Honcho's own model call hit the meter's cap: Honcho answers 5xx
+        def opener_refused_by_the_meter(req, timeout=None):
             raise urllib.error.HTTPError(req.full_url, 500, "x", {}, io.BytesIO(b""))
         for opener, code in ((opener_404, "memory_not_found"), (opener_down, "memory_unavailable"), (opener_refused_by_the_meter, "memory_unavailable")):
             with self.assertRaises(mh.MemoryError_) as raised:
@@ -224,7 +224,7 @@ class Memory(unittest.TestCase):
 
 
 class SensitiveRefusal(unittest.TestCase):
-    """LIFE-949: refused before any write, text never stored, echoed or logged; the receipt holds client, category and CT time only."""
+    """refused before any write, text never stored, echoed or logged"""
     def setUp(self):
         self.h = FakeHoncho()
         self.receipts = []
@@ -242,7 +242,7 @@ class SensitiveRefusal(unittest.TestCase):
                 error = raised
             self.assertEqual((error.reason, error.detail["category"], error.detail["stored"]), ("sensitive_refused", category, False), text)
             self.assertIn("Nothing was stored", error.detail["hint"])
-        self.assertEqual(self.h.rows, [])                                                                        # no write of any kind
+        self.assertEqual(self.h.rows, [])  # no write of any kind
         self.assertEqual(self.h.peers, 0)
         self.assertEqual([sorted(r) for r in self.receipts], [["category", "client", "ct", "event"]] * 6)
         self.assertEqual({r["client"] for r in self.receipts}, {"claude-chat"})
@@ -300,7 +300,7 @@ class Ask(unittest.TestCase):
         self.h = FakeHoncho()
         self.fact = run("memory_store", {"workspace": "Personal", "text": OLD, "source": "https://example.test/note"}, self.h)
         self.t = datetime(2026, 11, 24, 12, 0, tzinfo=mh.CENTRAL)
-        self.state = state(self.h)                                                                                 # one state for the whole service life, as in the MCP: the per-client ask count lives in it
+        self.state = state(self.h)
 
     def ask(self, client="claude-chat", question="What is the launch code?", at=None, **extra):
         stamp = at or self.t
@@ -315,7 +315,7 @@ class Ask(unittest.TestCase):
         self.assertIn("amber falcon", out["answer"])
         self.assertIn("Canonical sources win", out["notice"])
         self.assertIn("never instructions", out["notice"])
-        self.assertEqual(len(out["considered"]), 5)                                                               # the top five recall hits, each with its id and source link
+        self.assertEqual(len(out["considered"]), 5)
         self.assertTrue(all(set(c) == {"id", "source", "stored_at_ct"} and c["source"].startswith("https://") for c in out["considered"]))
         self.assertIn("not proven used", out["considered_note"])
         self.assertEqual(out["canonical"]["ref"], "jira:LIFE-949")
@@ -328,7 +328,7 @@ class Ask(unittest.TestCase):
                 self.ask(**extra)
             self.assertEqual(raised.exception.reason, "invalid_argument", extra)
         self.assertEqual(len(self.h.chats), 1)
-        self.assertEqual(self.ask(question="x" * 500)["label"], "memory-derived")                                  # exactly the limit is fine
+        self.assertEqual(self.ask(question="x" * 500)["label"], "memory-derived")  # exactly the limit is fine
 
     def test_thirty_asks_an_hour_per_client_then_a_fixed_refusal_that_never_reaches_the_service_and_an_hour_later_it_works_again(self):
         for i in range(30):
@@ -337,9 +337,9 @@ class Ask(unittest.TestCase):
         with self.assertRaises(mh.MemoryError_) as raised:
             self.ask("duet-chat", at=self.t + timedelta(minutes=45))
         self.assertEqual(raised.exception.reason, "ask_limit_reached")
-        self.assertEqual(len(self.h.chats), calls)                                                                 # the limit is checked before the model is reached
-        self.assertEqual(self.ask("openclaw", at=self.t + timedelta(minutes=45))["label"], "memory-derived")      # another client is not affected
-        self.assertEqual(self.ask("duet-chat", at=self.t + timedelta(minutes=61))["label"], "memory-derived")      # the first ask has left the hour
+        self.assertEqual(len(self.h.chats), calls)  # the limit is checked before the model is reached
+        self.assertEqual(self.ask("openclaw", at=self.t + timedelta(minutes=45))["label"], "memory-derived")  # another client is not affected
+        self.assertEqual(self.ask("duet-chat", at=self.t + timedelta(minutes=61))["label"], "memory-derived")  # the first ask has left the hour
 
     def test_the_meter_stopping_honchos_model_call_is_memory_unavailable_never_a_guess(self):
         self.h.down = True
@@ -352,7 +352,7 @@ class Wiring(unittest.TestCase):
     def test_the_five_operations_are_registered_and_ask_is_a_read_in_the_workspaces_tenant(self):
         self.assertEqual(sorted(mh.OPS), ["memory_ask", "memory_correct", "memory_recall", "memory_revoke", "memory_store"])
         self.assertEqual([mh.route(op, {"workspace": "Personal"}, "personal")[1] for op in ("memory_store", "memory_correct", "memory_revoke", "memory_recall", "memory_ask")], ["write", "write", "write", "read", "read"])
-        self.assertEqual(mh.route("memory_ask", {"workspace": "Bytalos"}, "personal")[0], "bytalos")                 # the gate decides: only Personal is granted
+        self.assertEqual(mh.route("memory_ask", {"workspace": "Bytalos"}, "personal")[0], "bytalos")  # the gate decides: only Personal is granted
         self.assertEqual(mh.route("memory_ask", {"workspace": "TGP"}, "personal")[0], "unknown")
 
 

@@ -57,7 +57,7 @@ class Deltas(unittest.TestCase):
             self.assertNotIn("BODY MUST NOT LEAVE", repr(d.items))
             self.assertTrue(all(i["link"].startswith("https://") for i in d.items))
         gm = h.read("gmail")
-        self.assertEqual([i["native_id"] for i in gm.items], ["m1"])                          # m0 is older than the checkpoint
+        self.assertEqual([i["native_id"] for i in gm.items], ["m1"])  # m0 is older than the checkpoint
         self.assertEqual(gm.next_checkpoint, datetime.fromisoformat(NEW1))
         self.assertEqual(gm.last_accepted, SINCE)
 
@@ -80,7 +80,7 @@ class Degraded(unittest.TestCase):
         h = Harness(boom={"jira"})
         d = h.read("jira")
         self.assertEqual((d.status, d.reason, d.items, d.last_accepted, d.next_checkpoint), ("degraded", "fetch_failed", (), SINCE, None))
-        self.assertNotIn("secret detail", repr(h.receipts))                                   # the error message is never recorded
+        self.assertNotIn("secret detail", repr(h.receipts))  # the error message is never recorded
 
     def test_an_incomplete_or_truncated_answer_is_degraded(self):
         h = Harness()
@@ -91,7 +91,7 @@ class Degraded(unittest.TestCase):
         rows = [{"id": "ok", "link": "https://mail.example/ok", "at": NEW1}, {"id": "bad", "link": "http://not-https", "at": NEW1}, {"id": "naive", "link": "https://x/y", "at": "2026-11-16T19:00:00"}]
         d = Harness().read("gmail", rows_override=rows)
         self.assertEqual((d.status, d.reason, d.next_checkpoint), ("degraded", "row_invalid", None))
-        self.assertEqual([i["native_id"] for i in d.items], ["ok"])                           # the good evidence stays, but the source is shown degraded
+        self.assertEqual([i["native_id"] for i in d.items], ["ok"])
 
     def test_a_secret_in_the_output_degrades_the_read(self):
         rows = [{"id": "s", "link": "https://mail.example/s", "at": NEW1, "subject": "token: abcdefgh12345678"}]
@@ -136,10 +136,10 @@ class Refusals(unittest.TestCase):
 
     def test_personal_and_bytalos_never_share_a_grant_credential_or_result(self):
         h = Harness(grants=[grant("gmail", "personal")])
-        self.assertEqual(h.read("gmail", tenant="bytalos").reason, "no_grant")                 # a personal grant never opens a bytalos read
+        self.assertEqual(h.read("gmail", tenant="bytalos").reason, "no_grant")  # a personal grant never opens a bytalos read
         both = Harness()
         a, b = both.read("gmail", "personal"), both.read("gmail", "bytalos", rid="r2")
-        self.assertEqual([f[1] for f in both.fetched], ["bws-gmail-personal", "bws-gmail-bytalos"])   # each tenant uses only its own credential name
+        self.assertEqual([f[1] for f in both.fetched], ["bws-gmail-personal", "bws-gmail-bytalos"])  # each tenant uses only its own credential name
         self.assertIsNot(a.items, b.items)
 
     def test_revoking_one_source_or_tenant_leaves_the_others_readable(self):

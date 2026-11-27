@@ -1,4 +1,4 @@
-"""LIFE-904: the three end-to-end clocks of one tick, correlated by the tick's run ID; every field, and what a missing, failed or running job does to them."""
+"""the three end-to-end clocks of one tick, correlated by the tick's run ID"""
 import datetime as dt
 import json
 import pathlib
@@ -12,7 +12,7 @@ except ImportError:
 from lifeos.platform import chain_clocks as cc, gate
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-T0 = dt.datetime(2026, 11, 22, 18, 0, 0, tzinfo=dt.timezone.utc)      # 12:00:00 PM CT
+T0 = dt.datetime(2026, 11, 22, 18, 0, 0, tzinfo=dt.timezone.utc)  # 12:00:00 PM CT
 
 
 def at(seconds):
@@ -46,7 +46,7 @@ class Clocks(unittest.TestCase):
         self.assertEqual((c["jobs"]["status"], c["jobs"]["seconds"], c["jobs"]["minutes"], c["jobs"]["stage"]), ("OK", 330, 5.5, "publish-fresh"))
         self.assertEqual((c["career"]["status"], c["career"]["seconds"], c["career"]["minutes"], c["career"]["stage"]), ("OK", 900, 15.0, "interview"))
         self.assertEqual((c["platform"]["status"], c["platform"]["seconds"], c["platform"]["minutes"], c["platform"]["stage"]), ("OK", 1000, 16.7, "granola"))
-        self.assertEqual(c["jobs"]["at"], "Nov 22 2026, 12:05 PM CT")                 # Central Time, never UTC
+        self.assertEqual(c["jobs"]["at"], "Nov 22 2026, 12:05 PM CT")  # Central Time, never UTC
         self.assertEqual(c["platform"]["at"], "Nov 22 2026, 12:16 PM CT")
 
     def test_the_receipt_names_the_tick_the_role_and_the_runs(self):
@@ -59,7 +59,7 @@ class Clocks(unittest.TestCase):
         early_only = self.full(runs=[EARLY])
         self.assertEqual(early_only["platform"]["status"], "UNVERIFIED")
         self.assertIn("AFTER_TICK_RUN_MISSING", early_only["platform"]["why"])
-        self.assertIsNone(early_only["platform"]["seconds"])                         # never a zero
+        self.assertIsNone(early_only["platform"]["seconds"])  # never a zero
         running = self.full(runs=[EARLY, {**LATE, "jobs": LATE_JOBS[:3] + [job("granola", None, None, "in_progress")]}])
         self.assertEqual(running["platform"]["status"], "UNVERIFIED")
         self.assertIn("GRANOLA_PENDING", running["platform"]["why"])
@@ -78,13 +78,13 @@ class Clocks(unittest.TestCase):
         self.assertEqual(c["platform"]["seconds"], 1000)
         self.assertEqual(c["career"]["status"], "DEGRADED")
         self.assertEqual(c["career"]["why"], ["INTERVIEW_FAILURE"])
-        self.assertEqual(c["career"]["stage"], "recruiters")                          # the last career job that succeeded
+        self.assertEqual(c["career"]["stage"], "recruiters")  # the last career job that succeeded
 
     def test_with_no_early_run_the_after_tick_run_that_did_every_job_still_gives_a_platform_time(self):
         late = {**LATE, "jobs": LATE_JOBS[:4] + [job("hiring", 300), job("recruiters", 350)]}
         c = self.full(runs=[late])
         self.assertEqual((c["platform"]["status"], c["platform"]["seconds"]), ("OK", 1000))
-        self.assertEqual(c["platform"]["why"], ["EARLY_RUN_ABSENT"])                  # said, not hidden
+        self.assertEqual(c["platform"]["why"], ["EARLY_RUN_ABSENT"])  # said, not hidden
 
     def test_a_career_job_not_due_is_neither_a_failure_nor_a_write(self):
         c = self.full(runs=[EARLY, {**LATE, "jobs": [job("interview", 5, "skipped"), job("granola", 1000)]}])
@@ -119,8 +119,8 @@ class Finding(unittest.TestCase):
     LISTING = [{"id": 1, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(20)},
                {"id": 2, "display_title": gate.DOMAINS_TITLE, "event": "workflow_run", "created_at": at(702)},
                {"id": 3, "display_title": "domains (manual)", "event": "workflow_dispatch", "created_at": at(30)},
-               {"id": 4, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(-3600 + 20)},      # the previous hour's early run
-               {"id": 5, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(25)}]             # near this tick, but another tick's ID
+               {"id": 4, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(-3600 + 20)},  # the previous hour's early run
+               {"id": 5, "display_title": gate.DOMAINS_TITLE, "event": "workflow_dispatch", "created_at": at(25)}]  # near this tick, but another tick's ID
 
     def test_only_this_ticks_runs_are_correlated_by_the_id_in_the_gate_job_name(self):
         jobs = {1: EARLY_JOBS, 2: LATE_JOBS, 3: EARLY_JOBS, 4: [job("gate (tick 70)", 1)], 5: [job("gate (tick 78)", 1)]}

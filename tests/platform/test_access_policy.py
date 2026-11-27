@@ -37,7 +37,7 @@ class Decide(unittest.TestCase):
         self.assertEqual(A.decide(p, AUD, "notion", "bulk"), ("pending", "bulk_needs_approval"))
         self.assertEqual(A.decide(p, AUD, "notion", "write", count=10)[0], "allow")
         self.assertEqual(A.decide(p, AUD, "notion", "write", count=11), ("pending", "bulk_needs_approval"))
-        self.assertEqual(A.decide(p, CHAL, "notion", "delete"), ("deny", "write_not_granted"))     # no write level, no approval path
+        self.assertEqual(A.decide(p, CHAL, "notion", "delete"), ("deny", "write_not_granted"))  # no write level, no approval path
 
     def test_unknown_agents_get_the_default_and_the_default_is_off(self):
         p = policy()
@@ -53,7 +53,6 @@ class Decide(unittest.TestCase):
 
 
 class MailDriveCalendar(unittest.TestCase):
-    """Nov 9, 2026 (Jim, LIFE-374): gmail, drive and calendar are services of the policy, read only in v1, off unless a row says otherwise."""
 
     def test_they_are_known_services_and_a_missing_row_means_off(self):
         p = policy()
@@ -97,7 +96,7 @@ class Audit(unittest.TestCase):
         line = A.audit_line(AUD, "notion", "notion-update-page", "pending", "bulk_needs_approval", approver="jim", now=now)
         self.assertEqual(line["t"], "2026-11-08T10:30:00-06:00")
         summer = A.audit_line(AUD, "notion", "notion-update-page", "allow", "write_allowed", now=datetime(2026, 7, 8, 16, 30, tzinfo=timezone.utc))
-        self.assertEqual(summer["t"], "2026-07-08T11:30:00-05:00")           # daylight saving: Central is UTC-5 in July, not a fixed UTC-6
+        self.assertEqual(summer["t"], "2026-07-08T11:30:00-05:00")
         self.assertEqual((line["service"], line["op"], line["decision"], line["approver"]), ("notion", "notion-update-page", "pending", "jim"))
         dirty = A.audit_line(AUD, "notion", "page: secret text\nwith breaks", "deny", "x" * 200)
         self.assertNotIn("\n", json.dumps(dirty).replace("\\n", ""))

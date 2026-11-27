@@ -1,4 +1,4 @@
-"""LIFE-757: the read-only Todoist sign-in helper. Fake token endpoint, loopback only; no Todoist, no browser, no real credential."""
+"""the read-only Todoist sign-in helper."""
 import io
 import json
 import unittest
@@ -37,7 +37,7 @@ class Helper(unittest.TestCase):
         query = urllib.parse.parse_qs(urllib.parse.urlparse(tty.splitlines()[1]).query)
         self.assertEqual((query["scope"], query["redirect_uri"], query["response_type"]), (["data:read"], [T.REDIRECT], ["code"]))
         self.assertEqual(seen[0][0], T.TOKEN_URL)
-        self.assertNotIn(FAKE_TOKEN, tty)                                         # the screen never shows the token
+        self.assertNotIn(FAKE_TOKEN, tty)  # the screen never shows the token
 
     def test_a_rotating_token_is_refused_and_nothing_is_written(self):
         result, out, tty, _ = self.go({"access_token": FAKE_TOKEN, "refresh_token": "r", "expires_in": 3600})

@@ -14,7 +14,7 @@ def digest(text):
 
 class RouterTests(unittest.TestCase):
     def test_the_protected_jira_region_is_exactly_the_heading_v7_owns(self):
-        self.assertEqual(router.JIRA_REGION, card.CARD_TITLE)                # the two cannot drift apart
+        self.assertEqual(router.JIRA_REGION, card.CARD_TITLE)  # the two cannot drift apart
         self.assertEqual(router.OWNERS[router.JIRA_REGION], "v7-jira")
 
     def test_calendar_region_has_one_v7_owner(self):
@@ -32,15 +32,15 @@ class RouterTests(unittest.TestCase):
         before = {router.JIRA_REGION: digest("card"), router.DCC_REGION: digest("old")}
         self.assertTrue(router.protected_intact(DCC, before, {router.JIRA_REGION: digest("card"), router.DCC_REGION: digest("new")}))
         self.assertFalse(router.protected_intact(DCC, before, {router.JIRA_REGION: digest("rewritten"), router.DCC_REGION: digest("new")}))
-        self.assertFalse(router.protected_intact(DCC, before, {router.DCC_REGION: digest("new")}))               # deleted
-        self.assertFalse(router.protected_intact(DCC, {router.DCC_REGION: digest("old")}, dict(before)))         # recreated from nothing
+        self.assertFalse(router.protected_intact(DCC, before, {router.DCC_REGION: digest("new")}))  # deleted
+        self.assertFalse(router.protected_intact(DCC, {router.DCC_REGION: digest("old")}, dict(before)))  # recreated from nothing
 
     def test_the_router_imports_nothing_so_it_can_hold_no_scheduler_queue_datastore_or_framework(self):
         import ast
         import inspect
         tree = ast.parse(inspect.getsource(router))
         self.assertEqual([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))], [])
-        self.assertEqual([n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)][0].name, "RouterError")      # its only class
+        self.assertEqual([n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)][0].name, "RouterError")  # its only class
 
 
 if __name__ == "__main__":

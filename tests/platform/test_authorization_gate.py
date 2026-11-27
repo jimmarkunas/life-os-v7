@@ -1,4 +1,4 @@
-"""LIFE-811 (F02, synthetic): the central authorization gate. Fabricated Personal, Bytalos and TGP agents and a fake provider only: no tenant, grant, credential, network or host."""
+"""(F02, synthetic): the central authorization gate."""
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -64,7 +64,9 @@ def approval(agent, action, **kw):
 
 
 class GF02GWT01(unittest.TestCase):
-    """Two fabricated agents with distinct grants: only the exact permitted operation proceeds and every deny precedes the side effect."""
+    """Two fabricated agents with distinct grants: only the exact permitted operation proceeds and every deny precedes
+    the side effect.
+    """
 
     def test_each_agent_runs_only_its_own_granted_operation(self):
         h = Harness()
@@ -119,7 +121,7 @@ class GF02GWT01(unittest.TestCase):
         h = Harness()
         self.assertEqual(h.run("personal-agent", at=NOW + timedelta(hours=1) - timedelta(seconds=1)).reason, "ok")
         self.assertEqual(h.run("personal-agent", at=NOW + timedelta(hours=1)).reason, "grant_expired")
-        self.assertEqual(h.run("personal-agent", at=NOW + timedelta(days=40)).reason, "catalog_source_stale")   # an old catalog row also refuses; expiry alone is covered above
+        self.assertEqual(h.run("personal-agent", at=NOW + timedelta(days=40)).reason, "catalog_source_stale")  # an old catalog row also refuses
         self.assertEqual(len(h.effects), 1)
 
     def test_a_naive_expiry_is_refused(self):
@@ -190,7 +192,9 @@ class GF02GWT01(unittest.TestCase):
 
 
 class GF02GWT02(unittest.TestCase):
-    """A human-protected send, delete, permission or production operation without a current approval is refused, and an attributable redacted result is recorded."""
+    """A human-protected send, delete, permission or production operation without a current approval is refused, and an
+    attributable redacted result is.
+    """
 
     def protected_grants(self):
         return [grant(a, actions=ACTIONS) for a in KEY]
@@ -252,7 +256,7 @@ class GF02GWT02(unittest.TestCase):
         rec = h.receipts[-1]
         self.assertEqual(set(rec), {"t", "mode", "principal_fp", "tenant", "tool", "action", "purpose", "request_id", "grant_fp", "approver_fp", "outcome", "reason"})
         self.assertEqual((rec["principal_fp"], rec["grant_fp"], rec["action"]), (G.fingerprint("personal-agent"), G.fingerprint("grant-personal-agent"), "delete"))
-        self.assertTrue(rec["t"].endswith(("-06:00", "-05:00")))                              # Central time
+        self.assertTrue(rec["t"].endswith(("-06:00", "-05:00")))  # Central time
 
     def test_a_provider_failure_and_a_secret_in_the_result_are_recorded_by_outcome_only(self):
         boom = Harness(boom=True)
@@ -275,7 +279,7 @@ class Honesty(unittest.TestCase):
             row["status"] = "working"
         live = Harness(catalog=C.load(catalog_text(capabilities=working)))
         live.run("personal-agent")
-        self.assertEqual(live.receipts[-1]["mode"], "live")                                   # the receipt follows the catalog row; the gate itself still proves no adapter
+        self.assertEqual(live.receipts[-1]["mode"], "live")  # the receipt follows the catalog row
         self.assertFalse(live.run("personal-agent").live_proven)
 
 

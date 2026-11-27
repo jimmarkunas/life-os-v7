@@ -1,4 +1,6 @@
-"""LIFE-692: the test clock reads LIFEOS_TEST_NOW, is the same moment in every form, and its frozen datetime and date classes answer now() and today() from it."""
+"""the test clock reads LIFEOS_TEST_NOW, is the same moment in every form, and its frozen datetime and date classes
+answer now and today from it.
+"""
 import datetime as dt
 import importlib
 import os
@@ -18,7 +20,7 @@ def reload_with(value):
 
 class TestClock(unittest.TestCase):
     def setUp(self):
-        self.original = os.environ.get("LIFEOS_TEST_NOW")                      # CI sets it for the whole suite: put it back exactly
+        self.original = os.environ.get("LIFEOS_TEST_NOW")
 
     def tearDown(self):
         os.environ.pop("LIFEOS_TEST_NOW", None)
@@ -46,7 +48,7 @@ class TestClock(unittest.TestCase):
         self.assertEqual(c.FrozenDateTime.utcnow(), dt.datetime(2027, 3, 9, 12))
         self.assertEqual(c.FrozenDateTime.now(), dt.datetime(2027, 3, 9, 12))
         self.assertEqual(c.FrozenDate.today(), dt.date(2027, 3, 9))
-        self.assertEqual(c.FrozenDateTime.strptime("2026-01-02", "%Y-%m-%d"), dt.datetime(2026, 1, 2))           # the real methods still work
+        self.assertEqual(c.FrozenDateTime.strptime("2026-01-02", "%Y-%m-%d"), dt.datetime(2026, 1, 2))  # the real methods still work
         self.assertEqual(c.FrozenDateTime(2026, 1, 2) + dt.timedelta(days=1), dt.datetime(2026, 1, 3))
 
 
