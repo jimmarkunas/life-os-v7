@@ -2,6 +2,7 @@
 
 Columns are found by heading, not position. Functions return counts or keys; names, companies and addresses are
 used in memory to compare rows and never returned."""
+
 import csv
 import io
 import re
@@ -12,14 +13,41 @@ from lifeos.platform import names
 
 from lifeos.network.errors import NetworkError
 
-HEADINGS = {"first name": "first", "last name": "last", "url": "url", "email address": "email", "company": "company",
-            "position": "title", "connected on": "connected"}
+HEADINGS = {
+    "first name": "first",
+    "last name": "last",
+    "url": "url",
+    "email address": "email",
+    "company": "company",
+    "position": "title",
+    "connected on": "connected",
+}
 REQUIRED = ("first", "last", "url", "company", "title", "connected")
 # Company values that name no employer. Exact phrases only: "Independent Bank" is an employer, "Independent" is
 # not.
-NO_EMPLOYER = {"freelance", "freelancer", "freelance consultant", "self employed", "self-employed", "independent", "independent consultant",
-               "independent contractor", "consultant", "contractor", "retired", "student", "unemployed", "stealth", "stealth startup",
-               "confidential", "n/a", "na", "none", "seeking opportunities", "open to work"}
+NO_EMPLOYER = {
+    "freelance",
+    "freelancer",
+    "freelance consultant",
+    "self employed",
+    "self-employed",
+    "independent",
+    "independent consultant",
+    "independent contractor",
+    "consultant",
+    "contractor",
+    "retired",
+    "student",
+    "unemployed",
+    "stealth",
+    "stealth startup",
+    "confidential",
+    "n/a",
+    "na",
+    "none",
+    "seeking opportunities",
+    "open to work",
+}
 PROFILE = re.compile(r"linkedin\.com/in/([^/]+)")
 
 
@@ -117,11 +145,22 @@ def analyse(rows, malformed=0):
         if key is None:
             fallback = (_squash(f"{row['first']} {row['last']}"), ckey)
             loose[fallback] = loose.get(fallback, 0) + 1
-    out = {"rows": len(rows), "malformed_rows": malformed, "blank_url": blank_url, "invalid_url": bad_url,
-           "duplicate_url_keys": sum(1 for n in keys.values() if n > 1), "blank_company": blank_company, "blank_title": blank_title,
-           "no_employer_company": no_employer, "email_present": emails, "blank_connected_on": blank_date, "bad_connected_on": bad_date,
-           "distinct_company_keys": len(companies), "matchable_rows": matchable,
-           "ambiguous_no_url_rows": sum(n for n in loose.values() if n > 1)}
+    out = {
+        "rows": len(rows),
+        "malformed_rows": malformed,
+        "blank_url": blank_url,
+        "invalid_url": bad_url,
+        "duplicate_url_keys": sum(1 for n in keys.values() if n > 1),
+        "blank_company": blank_company,
+        "blank_title": blank_title,
+        "no_employer_company": no_employer,
+        "email_present": emails,
+        "blank_connected_on": blank_date,
+        "bad_connected_on": bad_date,
+        "distinct_company_keys": len(companies),
+        "matchable_rows": matchable,
+        "ambiguous_no_url_rows": sum(n for n in loose.values() if n > 1),
+    }
     if dates:
         out["newest_connected_on"], out["oldest_connected_on"] = max(dates).isoformat(), min(dates).isoformat()
     return out

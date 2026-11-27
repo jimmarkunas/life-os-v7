@@ -4,6 +4,7 @@ Flow: tick -> `imessage` job -> Oracle's private endpoint (`oracle1`, and `limit
 lifeos.sources.cards.oracle_card -> this module -> Notion. This module owns the Oracle contract (`fetch`,
 `validate`) and the writing: only the heading text and the table's row cells are written, in place, each read
 back. Rows come from lifeos.oraclecloud.system_table."""
+
 import json
 import os
 import re
@@ -23,17 +24,47 @@ SCHEMA = "lifeos.oracle.stats.v1"
 MAX_REPLY = 4096
 WAIT = 100
 REPLY_TTL_SECONDS = 600
-KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
+KEYS = {
+    "schema",
+    "observed_at",
+    "cost",
+    "cpu_24h_pct",
+    "memory_pct",
+    "disk_pct",
+    "a1_cores",
+    "reclaim",
+    "services",
+    "chatgpt",
+}
 # optional so the card and Oracle's stats.mjs can be updated in either order
 OPTIONAL = {"backup", "workers", "backups", "honcho", "anthropic"}
 CODE = re.compile(r"[a-z0-9_]{1,40}")
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
 # no plan windows under Sign in with ChatGPT: a known state, never counted as missing
 UNREPORTED = "unreported"
-PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
-UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
-               "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None, "workers": None, "backups": None, "honcho": None, "anthropic": None, "honcho_reported": False}
+PROTECTED = (
+    ("JIRA_CARD_BLOCK_ID", router.JIRA_REGION),
+    ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION),
+    ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
+    ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION),
+    ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION),
+)
+UNAVAILABLE = {
+    "cost": None,
+    "cpu_24h_pct": None,
+    "memory_pct": None,
+    "disk_pct": None,
+    "a1_cores": None,
+    "reclaim": None,
+    "services": {k: None for k, _ in SERVICES},
+    "chatgpt": None,
+    "backup": None,
+    "workers": None,
+    "backups": None,
+    "honcho": None,
+    "anthropic": None,
+    "honcho_reported": False,
+}
 
 
 class OracleCardError(Exception):
@@ -64,16 +95,35 @@ def _whole(v):
 
 
 def _backup_ok(b):
-    return b is None or (isinstance(b, dict) and set(b) == {"ok", "code", "age_h"} and type(b["ok"]) is bool and isinstance(b["code"], str)
-                         and CODE.fullmatch(b["code"]) is not None and (b["age_h"] is None or _whole(b["age_h"])))
+    return b is None or (
+        isinstance(b, dict)
+        and set(b) == {"ok", "code", "age_h"}
+        and type(b["ok"]) is bool
+        and isinstance(b["code"], str)
+        and CODE.fullmatch(b["code"]) is not None
+        and (b["age_h"] is None or _whole(b["age_h"]))
+    )
 
 
 def _workers_ok(w):
-    return w is None or (isinstance(w, dict) and set(w) == {"count", "agents"} and _whole(w["count"]) and _whole(w["agents"]) and w["agents"] >= 1 and w["count"] <= 1000)
+    return w is None or (
+        isinstance(w, dict)
+        and set(w) == {"count", "agents"}
+        and _whole(w["count"])
+        and _whole(w["agents"])
+        and w["agents"] >= 1
+        and w["count"] <= 1000
+    )
 
 
 def _backups_ok(b):
-    return b is None or (isinstance(b, dict) and set(b) == {"used", "available"} and _whole(b["used"]) and _whole(b["available"]) and b["used"] + b["available"] <= 1000000)
+    return b is None or (
+        isinstance(b, dict)
+        and set(b) == {"used", "available"}
+        and _whole(b["used"])
+        and _whole(b["available"])
+        and b["used"] + b["available"] <= 1000000
+    )
 
 
 def validate(raw, now):
@@ -83,27 +133,71 @@ def validate(raw, now):
         p = json.loads(raw)
         seen = datetime.fromisoformat(p["observed_at"].replace("Z", "+00:00"))
     cost, a1, svc, plan = p.get("cost"), p.get("a1_cores"), p.get("services"), p.get("chatgpt")
-    if (not KEYS <= set(p) <= KEYS | OPTIONAL or p["schema"] != SCHEMA or not all(_pct(p[k]) for k in ("cpu_24h_pct", "memory_pct", "disk_pct"))
-            or not (cost is None or (isinstance(cost, dict) and set(cost) == {"amount", "currency"} and type(cost["amount"]) in (int, float)
-                                     and cost["amount"] >= 0 and isinstance(cost["currency"], str) and len(cost["currency"]) == 3))
-            or not (a1 is None or (isinstance(a1, dict) and set(a1) == {"used", "available"} and _whole(a1["used"]) and _whole(a1["available"])))
-            or p["reclaim"] not in (None, "NONE", "AT_RISK")
-            or not (isinstance(svc, dict) and set(svc) == {k for k, _ in SERVICES} and all(v in (None, True, False) for v in svc.values()))
-            or not _backup_ok(p.get("backup")) or not _workers_ok(p.get("workers")) or not _backups_ok(p.get("backups"))
-            or not honcho_status.honcho_ok(p.get("honcho")) or not honcho_status.anthropic_ok(p.get("anthropic"))
-            or not (plan in (None, UNREPORTED) or (isinstance(plan, dict) and set(plan) == {"left_5h", "left_week"} and all(_whole(v) and v <= 100 for v in plan.values())))):
+    if (
+        not KEYS <= set(p) <= KEYS | OPTIONAL
+        or p["schema"] != SCHEMA
+        or not all(_pct(p[k]) for k in ("cpu_24h_pct", "memory_pct", "disk_pct"))
+        or not (
+            cost is None
+            or (
+                isinstance(cost, dict)
+                and set(cost) == {"amount", "currency"}
+                and type(cost["amount"]) in (int, float)
+                and cost["amount"] >= 0
+                and isinstance(cost["currency"], str)
+                and len(cost["currency"]) == 3
+            )
+        )
+        or not (
+            a1 is None
+            or (
+                isinstance(a1, dict)
+                and set(a1) == {"used", "available"}
+                and _whole(a1["used"])
+                and _whole(a1["available"])
+            )
+        )
+        or p["reclaim"] not in (None, "NONE", "AT_RISK")
+        or not (
+            isinstance(svc, dict)
+            and set(svc) == {k for k, _ in SERVICES}
+            and all(v in (None, True, False) for v in svc.values())
+        )
+        or not _backup_ok(p.get("backup"))
+        or not _workers_ok(p.get("workers"))
+        or not _backups_ok(p.get("backups"))
+        or not honcho_status.honcho_ok(p.get("honcho"))
+        or not honcho_status.anthropic_ok(p.get("anthropic"))
+        or not (
+            plan in (None, UNREPORTED)
+            or (
+                isinstance(plan, dict)
+                and set(plan) == {"left_5h", "left_week"}
+                and all(_whole(v) and v <= 100 for v in plan.values())
+            )
+        )
+    ):
         raise _fail("ORACLE_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("ORACLE_STALE")
-    return {**{k: p[k] for k in KEYS - {"schema", "observed_at"}}, "backup": p.get("backup"), "workers": p.get("workers"), "backups": p.get("backups"),
-            "honcho": p.get("honcho"), "anthropic": p.get("anthropic"), "honcho_reported": "honcho" in p}
+    return {
+        **{k: p[k] for k in KEYS - {"schema", "observed_at"}},
+        "backup": p.get("backup"),
+        "workers": p.get("workers"),
+        "backups": p.get("backups"),
+        "honcho": p.get("honcho"),
+        "anthropic": p.get("anthropic"),
+        "honcho_reported": "honcho" in p,
+    }
 
 
 def items_of(segments):
     """Segments [(text, colour)] -> Notion rich text; `bold` marks the header, any other colour is an annotation."""
     out = []
     for text, color in segments:
-        extra = {"annotations": {"bold": True}} if color == "bold" else {"annotations": {"color": color}} if color else {}
+        extra = (
+            {"annotations": {"bold": True}} if color == "bold" else {"annotations": {"color": color}} if color else {}
+        )
         out += [{**i, **extra} for i in rich_text(text)]
     return out
 
@@ -144,7 +238,11 @@ def locate(client, anchor):
     for block in report_region.children(client, page, _fail):
         if block.get("type") == "callout":
             kids = report_region.children(client, block["id"], _fail)
-            if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
+            if (
+                kids
+                and kids[0].get("type") in report_region.HEADINGS
+                and report_region.titled(report_region.plain(kids[0]), TITLE)
+            ):
                 found.append(kids)
     if len(found) != 1:
         raise _fail("CARD_NOT_OWNED")
@@ -169,7 +267,9 @@ def write(client, heading, rows, table, heading_text, live):
     if not live or not (changed or heading_changed):
         return result
     for row_id, want in changed:
-        client.call_once("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [items_of(c) for c in want]}})
+        client.call_once(
+            "PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [items_of(c) for c in want]}}
+        )
         result["rows_written"] += 1
     if heading_changed:
         first = ((heading.get(heading["type"]) or {}).get("rich_text") or [{}])[0]
@@ -182,7 +282,10 @@ def write(client, heading, rows, table, heading_text, live):
         after = client.call("GET", f"/blocks/{quote(row_id, safe='')}")
         if cells_of(after) != [_cell(items_of(c)) for c in want]:
             raise _fail("ORACLE_READBACK_MISMATCH")
-    if heading_changed and report_region.plain(client.call("GET", f"/blocks/{quote(heading['id'], safe='')}")) != heading_text:
+    if (
+        heading_changed
+        and report_region.plain(client.call("GET", f"/blocks/{quote(heading['id'], safe='')}")) != heading_text
+    ):
         raise _fail("ORACLE_READBACK_MISMATCH")
     return result
 
@@ -197,7 +300,12 @@ def scoped(environ, client, heading, rows):
 
 
 def _writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def stats_of(host, fetcher, now):

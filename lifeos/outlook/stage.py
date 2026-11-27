@@ -2,6 +2,7 @@
 
 `auth` uses the device code; read-only by default, `write` also asks to move mail. The token goes straight into
 the private database, never a secret or log. Imports only the platform."""
+
 import hashlib
 import os
 import time
@@ -34,7 +35,18 @@ def fingerprint(factory, client_id, refresh_token):
     return hashlib.sha256(inbox.encode()).hexdigest()
 
 
-def auth(limit, live, environ=os.environ, connect=None, client_factory=None, replace=False, write=False, sleep=time.sleep, clock=time.monotonic, say=lambda line: print(line, flush=True)):
+def auth(
+    limit,
+    live,
+    environ=os.environ,
+    connect=None,
+    client_factory=None,
+    replace=False,
+    write=False,
+    sleep=time.sleep,
+    clock=time.monotonic,
+    say=lambda line: print(line, flush=True),
+):
     """Needs `live`: the sign-in must be saved, so a dry run only checks the configuration."""
     label, client_id = _label(environ), _client_id(environ)
     if not live:
@@ -70,7 +82,9 @@ def probe(limit, live, environ=os.environ, connect=None, client_factory=None, no
         for position, label in enumerate(labels, 1):
             token = store.load(connection, label)
             try:
-                client = (client_factory or Outlook)(client_id, token, lambda new, label=label: store.save(connection, label, new))
+                client = (client_factory or Outlook)(
+                    client_id, token, lambda new, label=label: store.save(connection, label, new)
+                )
                 messages = client.messages("inbox", since)
             except OutlookError as error:
                 out["failed"] += 1

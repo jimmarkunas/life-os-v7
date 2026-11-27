@@ -2,6 +2,7 @@
 
 Input: {"used", "available"} in Oracle's `oracle1` answer. Output: pushes `boot_backups_full` (INFO: phone only,
 reminded every 24 h while true) when no slot is free. An unobtainable reading changes nothing. Never raises."""
+
 from lifeos.oraclecloud.backup_watch import make
 from lifeos.platform import alerts
 
@@ -19,8 +20,13 @@ def healthy(reading):
 
 def alert_for(reading):
     used = reading["used"]
-    return alerts.Alert(KEY, alerts.INFO, f"Oracle boot-volume backups are full: {used} of {used + reading['available']} in use",
-                        f"The next weekly backup will be refused until one is deleted ({CODE}).", ACTION)
+    return alerts.Alert(
+        KEY,
+        alerts.INFO,
+        f"Oracle boot-volume backups are full: {used} of {used + reading['available']} in use",
+        f"The next weekly backup will be refused until one is deleted ({CODE}).",
+        ACTION,
+    )
 
 
 decide, record = make("boot-backup-watch", "v7_boot_backups", "bootbackups", KEY, healthy, alert_for)

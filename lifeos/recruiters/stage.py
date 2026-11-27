@@ -2,6 +2,7 @@
 
 Dry run unless live; counts and fixed codes only. Mail is never changed. If every source listing is incomplete
 the run is DEGRADED (nothing written, run fails); if only some are, it is PARTIAL (readable sources written)."""
+
 import json
 import os
 import time
@@ -31,7 +32,9 @@ def _announce(environ, kind, moment, unread=()):
             handle.write(f"scan_kind={shown}\nscan_at={scan.clock(moment)}\n")
 
 
-def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, ledger=AUTO, chores=True):
+def run(
+    limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, ledger=AUTO, chores=True
+):
     now = now or datetime.now(timezone.utc)
     began = time.monotonic()
     ledger = seen.production(environ) if ledger is AUTO else ledger
@@ -54,10 +57,36 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
         return skipped
     incremental = kind == seen.NEW_MAIL
     known = (lambda provider, ident: seen.key(provider, ident) in known_keys) if incremental else None
-    counts = {"messages": 0, "unreadable": 0, "sources_failed": 0, "outlook_accounts": 0, "direct_human": 0, "human_relay": 0, "excluded": 0, "unresolved": 0, "needs_review": 0,
-              "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {},
-              "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok",
-              "scan": kind, "scan_why": why, "ledger": ledger_status}
+    counts = {
+        "messages": 0,
+        "unreadable": 0,
+        "sources_failed": 0,
+        "outlook_accounts": 0,
+        "direct_human": 0,
+        "human_relay": 0,
+        "excluded": 0,
+        "unresolved": 0,
+        "needs_review": 0,
+        "would_create": 0,
+        "would_update": 0,
+        "existing": 0,
+        "done_kept": 0,
+        "ambiguous": 0,
+        "created": 0,
+        "updated": 0,
+        "failed": 0,
+        "excluded_why": {},
+        "unresolved_why": {},
+        "waiting": 0,
+        "would_schedule": 0,
+        "scheduled": 0,
+        "would_reopen_due": 0,
+        "reopened_due": 0,
+        "notion": "ok",
+        "scan": kind,
+        "scan_why": why,
+        "ledger": ledger_status,
+    }
     records, unread = [], []
     gm = None
 
@@ -84,7 +113,9 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
             counts["sources_failed"] += 1
             unread.append(mail.source_name(label))
             continue
-        take(lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), mail.source_name(label))
+        take(
+            lambda c=client, l=label: mail.outlook_records(c, l, now, known=known, stats=stats), mail.source_name(label)
+        )
     counts["messages"] = len(records)
     counts["scanned"], counts["new"] = (stats["scanned"], stats["new"]) if incremental else (len(records), len(records))
     candidates = []
@@ -221,18 +252,40 @@ def _status_and_dates(notion, write, counts, today):
         counts["would_sync"] += 1
         if write:
             try:
-                store.set_props(notion, row, props, {"done": props["Done"]["checkbox"], "active": props["Active"]["checkbox"], **({"needs_review": False} if "Needs review" in props else {})})
+                store.set_props(
+                    notion,
+                    row,
+                    props,
+                    {
+                        "done": props["Done"]["checkbox"],
+                        "active": props["Active"]["checkbox"],
+                        **({"needs_review": False} if "Needs review" in props else {}),
+                    },
+                )
                 counts["status_synced"] += 1
             except NotionError:
                 counts["failed"] += 1
-    for row in store.rows_where(notion, {"and": [{"property": "Action Status", "select": {"equals": store.NEEDS_ACTION}}, {"property": "Follow-up Date", "date": {"is_empty": True}}]}):
+    for row in store.rows_where(
+        notion,
+        {
+            "and": [
+                {"property": "Action Status", "select": {"equals": store.NEEDS_ACTION}},
+                {"property": "Follow-up Date", "date": {"is_empty": True}},
+            ]
+        },
+    ):
         day = store.default_follow_up(row)
         if day is None:
             continue
         counts["would_set_date"] += 1
         if write:
             try:
-                store.set_props(notion, row, {"Follow-up Date": {"date": {"start": day.isoformat()}}}, {"follow_up": day.isoformat()})
+                store.set_props(
+                    notion,
+                    row,
+                    {"Follow-up Date": {"date": {"start": day.isoformat()}}},
+                    {"follow_up": day.isoformat()},
+                )
                 counts["dates_set"] += 1
             except NotionError:
                 counts["failed"] += 1
@@ -286,4 +339,8 @@ def _fill(notion, write, counts, records, gm, accounts):
         if sources:
             counts["would_fill"] += 1
             counts["filled"] += 1 if write else 0
-            print("recruiters-fill:", row["page_id"].replace("-", "")[:8], ", ".join(f"{f}={src}" for f, src in sorted(sources.items())))
+            print(
+                "recruiters-fill:",
+                row["page_id"].replace("-", "")[:8],
+                ", ".join(f"{f}={src}" for f, src in sorted(sources.items())),
+            )

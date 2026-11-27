@@ -2,6 +2,7 @@
 
 Dry (default): counts only, no database connection, no write. Live: create tables if missing, record the batch,
 apply it in read-back chunks, mark it COMPLETE. Replaying the same file changes nothing."""
+
 import os
 from datetime import date
 
@@ -22,8 +23,15 @@ def run(limit, live, environ=os.environ, client=None, opener=None, connection=No
     exported = source.export_date(chosen["name"]) or date.today().isoformat()
     rows, malformed = parse.read_rows(source.download(chosen["url"], *([opener] if opener else [])))
     plan = identity.classify(rows, malformed)
-    counts = {"source_rows": plan["source_rows"], "people_accepted": len(plan["people"]), "positions_accepted": plan["positions"], "ambiguous_held": plan["ambiguous_held"],
-              "rejected": plan["rejected"], "export_date": exported, "live": bool(live)}
+    counts = {
+        "source_rows": plan["source_rows"],
+        "people_accepted": len(plan["people"]),
+        "positions_accepted": plan["positions"],
+        "ambiguous_held": plan["ambiguous_held"],
+        "rejected": plan["rejected"],
+        "export_date": exported,
+        "live": bool(live),
+    }
     if not live:
         return counts
     key = identity.batch_key(plan, exported)
@@ -44,7 +52,10 @@ def _apply(counts, connection, key, plan, exported, chunk):
         store.complete(connection, batch_id, plan)
     after = store.totals(connection)
     counts.update(after)
-    counts["people_new"], counts["positions_new"] = after["people_total"] - before["people_total"], after["positions_total"] - before["positions_total"]
+    counts["people_new"], counts["positions_new"] = (
+        after["people_total"] - before["people_total"],
+        after["positions_total"] - before["positions_total"],
+    )
     counts.update({"events_" + kind.lower(): n for kind, n in events.items()})
     counts["batch_status"] = "COMPLETE"
     return counts

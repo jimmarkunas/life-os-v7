@@ -2,6 +2,7 @@
 
 SHRED and RECYCLE are DONE and absorbing; FORWARD is WAITING_FOR_TRACKING; SCAN is OPEN. Contradictory evidence
 (Shred plus Recycle, Forward with Shred or Recycle, any action after DONE) is REVIEW."""
+
 OPEN, WAITING, DONE, REVIEW = "OPEN", "WAITING_FOR_TRACKING", "DONE", "REVIEW"
 TERMINAL = {"SHRED", "RECYCLE"}
 
