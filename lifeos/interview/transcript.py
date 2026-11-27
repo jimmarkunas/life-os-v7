@@ -2,6 +2,7 @@
 
 Pure: no network or files. Failure codes are TRANSCRIPT_* (lifeos/platform/codes.py). Input is `{"transcript":
 [...]}`."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -20,7 +21,6 @@ CHANNELS = {"microphone", "system", "unknown"}
 
 
 class ContractError(ValueError):
-
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
@@ -94,7 +94,9 @@ def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
     retrieved, not full audio fidelity.
     """
     uid = _source_uuid(document_uuid)
-    _refuse(not isinstance(raw_json, (str, bytes)) or len(raw_json) > MAX_BYTES, "TRANSCRIPT_PAYLOAD_TOO_LARGE_OR_INVALID")
+    _refuse(
+        not isinstance(raw_json, (str, bytes)) or len(raw_json) > MAX_BYTES, "TRANSCRIPT_PAYLOAD_TOO_LARGE_OR_INVALID"
+    )
     try:
         obj = json.loads(raw_json)
     except (ValueError, UnicodeDecodeError, TypeError) as exc:
@@ -110,7 +112,9 @@ def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
     for idx, item in enumerate(rows):
         _refuse(not isinstance(item, dict), "TRANSCRIPT_INVALID_SEGMENT")
         source_document = item.get("document_id")
-        _refuse(source_document is not None and _source_uuid(source_document) != uid, "TRANSCRIPT_SEGMENT_DOCUMENT_MISMATCH")
+        _refuse(
+            source_document is not None and _source_uuid(source_document) != uid, "TRANSCRIPT_SEGMENT_DOCUMENT_MISMATCH"
+        )
         text = item.get("text")
         _refuse(not isinstance(text, str) or not text.strip(), "TRANSCRIPT_EMPTY_SEGMENT_TEXT")
         _refuse(len(text) > MAX_TEXT_CHARS, "TRANSCRIPT_SEGMENT_TEXT_TOO_LONG")
@@ -131,25 +135,32 @@ def normalize_granz(document_uuid: str, raw_json: str | bytes) -> Envelope:
         channel = "unknown" if raw_channel is None else raw_channel
         _refuse(not isinstance(channel, str) or channel not in CHANNELS, "TRANSCRIPT_INVALID_CHANNEL")
         speaker = item.get("detected_speaker_name")
-        _refuse(speaker is not None and (not isinstance(speaker, str) or not speaker.strip() or len(speaker) > 256), "TRANSCRIPT_INVALID_SPEAKER_LABEL")
+        _refuse(
+            speaker is not None and (not isinstance(speaker, str) or not speaker.strip() or len(speaker) > 256),
+            "TRANSCRIPT_INVALID_SPEAKER_LABEL",
+        )
         final = item.get("is_final")
         _refuse(final is not None and not isinstance(final, bool), "TRANSCRIPT_INVALID_IS_FINAL")
         _refuse(final is False, "TRANSCRIPT_UNFINALIZED_SEGMENT")
-        result.append(Segment(
-            ordinal=idx,
-            source_segment_id=raw_id,
-            start_timestamp=item["start_timestamp"],
-            end_timestamp=item.get("end_timestamp"),
-            text=text,
-            channel=channel,
-            detected_speaker_name=speaker,
-            is_final=final,
-        ))
+        result.append(
+            Segment(
+                ordinal=idx,
+                source_segment_id=raw_id,
+                start_timestamp=item["start_timestamp"],
+                end_timestamp=item.get("end_timestamp"),
+                text=text,
+                channel=channel,
+                detected_speaker_name=speaker,
+                is_final=final,
+            )
+        )
 
     # hash only the ordered, normalized source facts, so a replay hashes identically
     canonical = json.dumps(
         [asdict(s) for s in result],
-        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     ).encode("utf-8")
     return Envelope(
         schema_version=SCHEMA_VERSION,

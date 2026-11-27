@@ -1,4 +1,5 @@
 """Counts-only Interview probe and bounded evidence execution."""
+
 import os
 from lifeos.platform import stage_contract
 from lifeos.platform.runtime import RunContext, DeadlineExceeded
@@ -9,11 +10,30 @@ from .models import Ownership, Parent, ParentQuery, State
 from lifeos.platform.names import split_title
 
 
-QUIET = ("parent_created", "round_created", "parent_exists", "parent_adopted", "adopt_allowed", "parent_upgraded",
-         "upgrade_allowed", "parent_refreshed", "refresh_allowed", "transcript_linked", "transcript_link_allowed",
-         "round_confirmed", "confirm_allowed", "round_rescheduled", "reschedule_allowed",
-         "round_cancelled", "cancel_allowed", "round_details", "details_allowed", "round_unchanged",
-         "refresh_not_machine", "refresh_has_rounds")           # evidence outcomes that are not a block
+QUIET = (
+    "parent_created",
+    "round_created",
+    "parent_exists",
+    "parent_adopted",
+    "adopt_allowed",
+    "parent_upgraded",
+    "upgrade_allowed",
+    "parent_refreshed",
+    "refresh_allowed",
+    "transcript_linked",
+    "transcript_link_allowed",
+    "round_confirmed",
+    "confirm_allowed",
+    "round_rescheduled",
+    "reschedule_allowed",
+    "round_cancelled",
+    "cancel_allowed",
+    "round_details",
+    "details_allowed",
+    "round_unchanged",
+    "refresh_not_machine",
+    "refresh_has_rounds",
+)  # evidence outcomes that are not a block
 DERIVED_OK = ("derived_allowed", "derived_created", "derived_match")
 
 
@@ -35,14 +55,24 @@ def _tally(counts, cause):
 def evidence_outcome(result):
     """Pure. -> (the count this result adds one to, or None; whether to stop the loop)."""
     code = result["code"]
-    bump = "matched" if code == "child_match" else "not_found" if code in ("create_allowed", "parent_create_allowed") else None if code in QUIET else "blocked"
+    bump = (
+        "matched"
+        if code == "child_match"
+        else "not_found"
+        if code in ("create_allowed", "parent_create_allowed")
+        else None
+        if code in QUIET
+        else "blocked"
+    )
     return bump, bool(result["readback_failed"] or code == "write_failed")
 
 
 def prep_outcome(result):
     """Pure. -> (blocked, whether to stop the loop)."""
     code = result["code"]
-    return code not in DERIVED_OK, code in ("derived_readback_failed", "readback_protected_changed") or (result["writes"] > 0 and code != "derived_created")
+    return code not in DERIVED_OK, code in ("derived_readback_failed", "readback_protected_changed") or (
+        result["writes"] > 0 and code != "derived_created"
+    )
 
 
 ROSTER_STAGES = ("Interviewing", "Offer", "Working", "Ended")
@@ -67,7 +97,11 @@ def _root_rounds(client, environ, context, rounds):
     if not scan.complete:
         return False
     try:
-        direct = [Parent(b["id"], (b.get("child_page") or {}).get("title", "")) for b in notion.children(client, root, [notion.MAX_CALLS], context) if b.get("type") == "child_page"]
+        direct = [
+            Parent(b["id"], (b.get("child_page") or {}).get("title", ""))
+            for b in notion.children(client, root, [notion.MAX_CALLS], context)
+            if b.get("type") == "child_page"
+        ]
     except NotionError:
         return False
     seen = set()
@@ -76,7 +110,9 @@ def _root_rounds(client, environ, context, rounds):
             continue
         seen.add(parent.page_id)
         context.require_time()
-        if notion.ownership(client, parent.page_id, "opportunity") == Ownership.MACHINE and not _closed_rounds(client, parent, context, rounds):
+        if notion.ownership(client, parent.page_id, "opportunity") == Ownership.MACHINE and not _closed_rounds(
+            client, parent, context, rounds
+        ):
             return False
     return True
 
@@ -93,7 +129,11 @@ def _survey(client, environ, context, counts, rounds=None):
         return False
     for parent in scan.items:
         if not parent.active:
-            if rounds is not None and parent.stage in ROSTER_STAGES and not _closed_rounds(client, parent, context, rounds):
+            if (
+                rounds is not None
+                and parent.stage in ROSTER_STAGES
+                and not _closed_rounds(client, parent, context, rounds)
+            ):
                 rounds.append(None)
             continue
         context.require_time()
@@ -128,12 +168,13 @@ def _survey(client, environ, context, counts, rounds=None):
 
 def _apply_evidence(client, environ, evidence, limit, live, context, probe, counts):
     from .create import apply
+
     deferred = set()
     for index, (parent_query, round_query) in enumerate(evidence):
         if index >= max(0, limit):
             if any(not q.refresh_only for _, q in evidence[index:]):
                 _block(counts, "pipeline_incomplete")
-            else:                                                   # refresh-only items come last; those past the limit are counted, not an alarm
+            else:  # refresh-only items come last; those past the limit are counted, not an alarm
                 counts["why"]["refresh_deferred"] = len(evidence) - index
             break
         if probe:
@@ -156,6 +197,7 @@ def _apply_evidence(client, environ, evidence, limit, live, context, probe, coun
 
 def _apply_prep(client, environ, prep_evidence, limit, live, context, counts):
     from .prep import apply as apply_prep
+
     for index, (parent_query, round_query, prep) in enumerate(prep_evidence):
         if index >= max(0, limit):
             _block(counts, "pipeline_incomplete")
@@ -179,6 +221,7 @@ def _roster(client, environ, rounds, live, context, counts):
     never a block.
     """
     from . import roster
+
     if not _root_rounds(client, environ, context, rounds):
         rounds.append(None)
     unique, seen = [], set()
@@ -193,10 +236,35 @@ def _roster(client, environ, rounds, live, context, counts):
     roster.sync(client, environ, rounds, live, context, counts)
 
 
-def run(limit, live, environ=os.environ, client=None, evidence=(), context=None, _probe=False, prep_evidence=(), roster=False):
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    client=None,
+    evidence=(),
+    context=None,
+    _probe=False,
+    prep_evidence=(),
+    roster=False,
+):
     context = context or RunContext.start(60)
-    counts = {key: 0 for key in ("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked",
-        "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match")}
+    counts = {
+        key: 0
+        for key in (
+            "observed",
+            "valid_parents",
+            "with_rounds",
+            "matched",
+            "not_found",
+            "blocked",
+            "human_pages",
+            "machine_pages",
+            "writes_planned",
+            "writes",
+            "derived_created",
+            "derived_match",
+        )
+    }
     counts["why"], counts["blocked_why"] = {}, {}
     try:
         context.require_time()
@@ -209,7 +277,9 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             _block(counts, target)
             return counts
         if _probe:
-            shape = notion.ledger_shape(client, (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip(), context)
+            shape = notion.ledger_shape(
+                client, (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip(), context
+            )
             _reason(counts, shape.pop("code"))
             counts.update(shape)
         rounds = [] if roster else None
@@ -221,6 +291,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError) as error:
         from .create import cause_of
+
         _block(counts, "pipeline_incomplete")
         _tally(counts, cause_of(error))
         return counts
@@ -230,9 +301,30 @@ def probe(limit, live, **kwargs):
     return run(limit, False, _probe=True, **kwargs)
 
 
-CONTRACT = stage_contract.Contract(      # run() = target check, read (_survey), apply (_apply_evidence, _apply_prep), decide (pure)
-    name="interview-stage", run=run,
-    inputs=("the Hiring Pipeline page and the Job Ledger (parents and rounds)", "page ownership markers", "the evidence items and prep items the caller passes"),
-    outputs=("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked", "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match", "why", "blocked_why"),
+CONTRACT = stage_contract.Contract(  # run() = target check, read (_survey), apply (_apply_evidence, _apply_prep), decide (pure)
+    name="interview-stage",
+    run=run,
+    inputs=(
+        "the Hiring Pipeline page and the Job Ledger (parents and rounds)",
+        "page ownership markers",
+        "the evidence items and prep items the caller passes",
+    ),
+    outputs=(
+        "observed",
+        "valid_parents",
+        "with_rounds",
+        "matched",
+        "not_found",
+        "blocked",
+        "human_pages",
+        "machine_pages",
+        "writes_planned",
+        "writes",
+        "derived_created",
+        "derived_match",
+        "why",
+        "blocked_why",
+    ),
     dry_run="reads the pipeline and counts what each evidence item would create or change (writes_planned); changes nothing",
-    write="creates or updates machine-owned Interview parents and rounds and their derived prep sections, reading each back; human-owned pages are never written")
+    write="creates or updates machine-owned Interview parents and rounds and their derived prep sections, reading each back; human-owned pages are never written",
+)
