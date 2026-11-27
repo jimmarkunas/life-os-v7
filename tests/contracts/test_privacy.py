@@ -36,7 +36,11 @@ NOTION_URL = re.compile(
     re.I,
 )
 ID_LITERAL = re.compile(r"""["']([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})["']""", re.I)
-NOT_NOTION_IDS = {"lifeos/probe.py", "lifeos/platform/alert_store.py"}  # public job ids from vendor sites
+NOT_NOTION_IDS = {
+    "lifeos/probe.py",
+    "lifeos/platform/alert_store.py",
+    "lifeos/platform/todoist_refresh.py",
+}  # public job ids from vendor sites
 
 
 def synthetic(value):
@@ -59,6 +63,7 @@ BITWARDEN_ID_PATHS = (
 RANDOM_ID_FILES = {
     "docs/platform/shared-read-oracle-runbook.md": "the Jira cloud id inside an Atlassian gateway URL",
     "lifeos/platform/alert_store.py": "Bitwarden secret ids for the alert settings",
+    "lifeos/platform/todoist_refresh.py": "Bitwarden secret ids for the Todoist token items",
     "lifeos/probe.py": "public vendor job ids the live probe requests",
     "tests/contracts/test_privacy.py": "this check's own random sample",
     "tests/contracts/test_workflow.py": "the Bitwarden secret ids the workflow loaders are checked against",

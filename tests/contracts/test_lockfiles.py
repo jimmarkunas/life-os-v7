@@ -91,7 +91,9 @@ class Trims(unittest.TestCase):
 
     def test_profile_sync_follows_only_the_hourly_runs_that_started_in_the_11_and_23_utc_hours(self):
         text = (ROOT / ".github/workflows/profile-sync.yml").read_text()
-        self.assertIn("contains('11 23', substring(github.event.workflow_run.run_started_at, 11, 2))", text)
+        self.assertNotIn("substring(", text)  # not an Actions function: a workflow using it is invalid and never runs
+        self.assertIn("contains(github.event.workflow_run.run_started_at, 'T11:')", text)
+        self.assertIn("contains(github.event.workflow_run.run_started_at, 'T23:')", text)
         # the same test in Python: of the 24 hours of a day exactly two pass, and a manual dispatch has no such condition
         started = ["2026-11-27T%02d:00:11Z" % hour for hour in range(24)]
         passing = [stamp for stamp in started if stamp[11:13] in "11 23".split(" ") or stamp[11:13] in "11 23"]
