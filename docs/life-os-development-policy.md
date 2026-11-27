@@ -159,7 +159,7 @@ A request that breaks these rules stops with `ARCHITECTURAL DRIFT DETECTED — N
 
 ## 10. Exceptions in force
 
-- **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied (Epics LIFE-846, LIFE-847 and LIFE-848 replace the old tickets). Further reparenting or Epic cancellation needs Jim's yes on the exact list.
+- **V7 modernization consolidation exception (Jim, Nov 18 and 21, 2026):** applied (Epics LIFE-846, 847 and 848 replace the old tickets). Further reparenting or Epic cancellation needs Jim's yes on the list.
 - **Freezes and STOP gates lifted (Jim, Nov 21, 2026, 12:17 AM CT).** The agent holding LIFE-856 In Progress is the sole writer of `hourly.yml`.
 
 ## 11. Read only when needed
