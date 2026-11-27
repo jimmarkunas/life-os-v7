@@ -11,8 +11,12 @@ Personal memory item. Output: counts and fixed words, never text.
 import hashlib
 import json
 import os
+import http.client
 import re
+import socket
+import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -55,9 +59,35 @@ def decision_text(body):
     return re.sub(r"\s+", " ", first)[:TEXT_MAX] if LEAD.search(text[:160]) else ""
 
 
+def public_address(host, urlopen=urllib.request.urlopen):
+    """The public (Funnel) address of a name, over DNS-over-HTTPS. A runner on the tailnet resolves the name to a tailnet address its policy does not allow; the public address answers."""
+    request = urllib.request.Request(f"https://cloudflare-dns.com/dns-query?name={host}&type=A", headers={"Accept": "application/dns-json", "User-Agent": "life-os-v7"})
+    with urlopen(request, timeout=10) as reply:
+        answers = json.loads(reply.read()).get("Answer") or []
+    return next(a["data"] for a in answers if a.get("type") == 1)
+
+
+class _Pinned(http.client.HTTPSConnection):
+    """HTTPS to a fixed address with the certificate and SNI checked against the real name."""
+
+    address = ""
+
+    def connect(self):
+        sock = socket.create_connection((self.address, self.port or 443), timeout=30)
+        self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=self.host)
+
+
+def pinned_open(address):
+    class Handler(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(lambda host, **kw: type("Pinned", (_Pinned,), {"address": address})(host, **kw), req)
+    return urllib.request.build_opener(Handler).open
+
+
 class Memory:
     def __init__(self, url, token, urlopen=urllib.request.urlopen):
         self.url, self.token, self.urlopen = url, token, urlopen
+        self.public = False
         self.down = ""  # the error class of the first failed call; later calls fail at once instead of waiting out 30 seconds each
 
     def call(self, operation, arguments):
@@ -84,8 +114,17 @@ class Memory:
             },
         )
         try:
-            with self.urlopen(request, timeout=30) as reply:
-                return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
+            try:
+                with self.urlopen(request, timeout=30) as reply:
+                    return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
+            except (urllib.error.URLError, OSError) as error:
+                if self.urlopen is not urllib.request.urlopen or self.public or not isinstance(getattr(error, "reason", error), (TimeoutError, socket.timeout)):
+                    raise
+                self.public = True  # one retry through the public address; the first failure is not the answer
+                host = urllib.parse.urlsplit(self.url).hostname
+                self.urlopen = pinned_open(public_address(host))
+                with self.urlopen(request, timeout=30) as reply:
+                    return json.loads(json.loads(reply.read())["result"]["content"][0]["text"])
         except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError) as error:
             reason = getattr(error, "reason", None)
             self.down = (type(error).__name__ + ("/" + type(reason).__name__ if reason is not None else ""))[:40]

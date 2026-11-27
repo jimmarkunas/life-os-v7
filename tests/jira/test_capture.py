@@ -1,5 +1,7 @@
 """LIFE-994: Jira decisions into the shared memory. Fake Jira, fake memory and in-memory state; no network, no database."""
 import unittest
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 from lifeos.jira import capture as C
@@ -180,6 +182,39 @@ class MemoryClient(unittest.TestCase):
         down = C.Memory("https://example.invalid/mcp", "t", counting)
         down.store("x", "s"), down.store("y", "s")
         self.assertEqual((len(calls), down.down), (1, "OSError"))  # the second call fails at once; the error class is kept for the run's counts
+
+    @staticmethod
+    def _reply(doc, wrapped):
+        import json
+
+        class R:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return json.dumps({"result": {"content": [{"text": json.dumps(doc)}]}} if wrapped else doc).encode()
+        return R()
+
+    def test_a_timeout_retries_once_through_the_public_address(self):
+        import unittest.mock as mock
+
+        def timing_out(request, timeout=0):
+            raise urllib.error.URLError(TimeoutError("timed out"))
+        seen = []
+        with mock.patch.object(urllib.request, "urlopen", timing_out), \
+                mock.patch.object(C, "public_address", lambda host: "203.0.113.9"), \
+                mock.patch.object(C, "pinned_open", lambda address: (seen.append(address), lambda request, timeout=0: self._reply({"ok": True, "data": {"id": "m9"}}, True))[1]):
+            memory = C.Memory("https://example.invalid/mcp", "t", urllib.request.urlopen)
+            self.assertTrue(memory.store("x", "s")["ok"])
+            self.assertTrue(memory.store("y", "s")["ok"])
+        self.assertEqual(seen, ["203.0.113.9"])
+
+    def test_public_address_reads_the_first_a_record(self):
+        reply = self._reply({"Answer": [{"type": 5, "data": "alias."}, {"type": 1, "data": "198.51.100.7"}]}, False)
+        self.assertEqual(C.public_address("h.example", lambda request, timeout=0: reply), "198.51.100.7")
 
 
 if __name__ == "__main__":
