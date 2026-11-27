@@ -1,10 +1,9 @@
-      # why: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work; a failure fails this job and the report job pushes once)
       - id: network_surface
         continue-on-error: true
         name: Step 7c - Network Leads blocks on Ledger pages
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""   # LIFE-856: the old hourly.yml declared these three at workflow level, so the settings source filled them for every step; a domains step must declare them itself
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""  # a domains step must declare them itself
           HIRING_PIPELINE_PAGE_ID: ""
           V7_FIT_GATE: ""
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_network_surface.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -23,13 +22,12 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_network_surface.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_network_surface.outputs.NOTION_API_TOKEN }}
           TINYFISH_API_KEY: ${{ steps.bws_network_surface.outputs.TINYFISH_API_KEY }}
-          V7_CLOSE_BASE_URL: ""          # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
-          NETWORK_SURFACE_SKIP: ""   # LIFE-703: declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
+          V7_CLOSE_BASE_URL: ""  # the private Close origin: the Network Leads block gets a Mark as Sent link for its own job; unset, the block is unchanged
+          NETWORK_SURFACE_SKIP: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
         run: python -m lifeos.run network-surface --limit 82 $([ "$LIVE" = "true" ] && echo --live)
       - name: Network surface warning (a failed step fails this job)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
         run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, the other stages are unaffected. See the step log for the counts."
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
       - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=network_surface::a stage step failed in the network_surface job (see the step marked failed above)"; exit 1

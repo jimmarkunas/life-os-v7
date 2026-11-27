@@ -1,4 +1,3 @@
-      # why: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)
       - name: Gate - skip a run when another tick started recently
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -18,7 +17,6 @@
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
         run: python3 -m lifeos.platform.gate
-      # why: LIFE-775 - start the early domains run now (this tick passed its gate; every domain job that reads nothing the tick writes runs while the tick runs; the run that starts when the tick finishes does megibow, interview and granola, and every job if this dispatch fails, so a failure here costs only the time it saves)
       - name: Start the early domains run now
         if: ${{ (github.event_name == 'schedule' || inputs.tick) && github.run_attempt == 1 && !cancelled() }}
         continue-on-error: true
@@ -36,9 +34,9 @@
           exit $status
       - uses: ./.github/actions/python
       - id: sweep
-        continue-on-error: true      # LIFE-650: the sweep only moves mail between Gmail labels and nothing after it needs it (the extract step reads mail already under the label; unswept mail waits for the next run); a failure turns the report job's `sweep` lane red and pushes, but does not skip the finish job. Credentials, the gate and the unit tests above still fail prep
+        continue-on-error: true  # the sweep only moves mail between Gmail labels and nothing after it needs it (the extract step reads mail already under the label; unswept mail waits for the next run)
         name: Stage 1 - sweep
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch never sweeps newsletters
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}  # a Cloud Fit backlog dispatch never sweeps newsletters
         env:
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}

@@ -1,11 +1,10 @@
-      # why: Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)
       - id: iaccneg
         continue-on-error: true
         name: Interview private acceptance - negative case
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}   # D233: the case that must be refused; always a dry run, so it cannot write
+          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}  # the case that must be refused; always a dry run, so it cannot write
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
         run: |

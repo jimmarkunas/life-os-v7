@@ -1,8 +1,6 @@
   fit_cloud_backlog:
-    # LIFE-856 change 4 (Jim, Nov 25 2026, 4:36 PM CT: "856 move NL CF"): the scheduled Cloud Fit backlog batch (Step 6a2) used to run after the tick inside the hourly `finish` job, so the hourly run and the whole chain waited for it
-    # (p50 58 s, up to 45 minutes when the backlog is large). It asks Oracle's one fit path about published jobs the tick's single canary call never reached and writes the visible Fit through the same promotion; the tick only
-    # reads those answers on its NEXT run, and nothing after it in `finish` reads them, so it runs here, after the tick, beside the other late jobs. The :55 end and the 58-minute arithmetic are unchanged. The manual `cloud_backlog`
-    # dispatch of hourly.yml keeps its own step there.
+    # It asks Oracle's one fit path about published jobs the tick's single canary call never reached and writes the visible Fit through the same
+    # promotion; the tick only reads those answers on its NEXT run, and nothing after.
     needs: [gate]
     if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_fit_cloud_backlog == 'true' }}
     runs-on: ubuntu-24.04
@@ -18,7 +16,6 @@
         uses: ./.github/actions/job-start
         with:
           wait_seconds: "400"
-      # why: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
       - id: bws_fit_cloud_backlog
         name: Load the migrated credentials from Bitwarden
         uses: ./.github/actions/bws-load
@@ -27,14 +24,12 @@
           doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
           set_env: false
           set: fit-cloud-backlog
-      # why: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
       - name: Plain switches from Bitwarden
         uses: ./.github/actions/bws-plain
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
           names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,V7_CLOUD_FIT,V7_CLOUD_FIT_SCHEDULED,V7_CLOUD_FIT_BACKLOG_BUDGET,V7_CLOUD_FIT_BACKLOG_MAX,V7_CLOUD_FIT_PARALLEL,V7_CLOUD_FIT_BACKLOG_PAGE,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
           live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
-      # why: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)
       - name: Join the tailnet as the ephemeral tag:v7-runner node
         continue-on-error: true
         uses: ./.github/actions/tailscale
@@ -42,7 +37,6 @@
           oauth-client-id: ${{ steps.bws_fit_cloud_backlog.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ steps.bws_fit_cloud_backlog.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
-      # why: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden

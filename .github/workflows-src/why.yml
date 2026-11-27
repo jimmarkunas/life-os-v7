@@ -1,0 +1,258 @@
+# Why each step of a workflow-src part is written the way it is (LIFE-1016). tools/regen.py builds docs/workflows.md from this file; the text is the history that used to sit as `# why:` lines in the parts.
+# One list per part file, in step order; each entry is {step id or name: why}. This is the only place in workflows-src where ticket numbers may appear.
+domains/010-gate.yml:
+  - {"due": "Which domain jobs are due (LIFE-609) - one table, each job's last successful run; an unreadable history makes every job due"}
+  - {"cover": "LIFE-775 - is the early run of this tick already started (the after-tick run then leaves the early jobs to it; no early run means it runs every job; unreadable leaves them out)"}
+  - {"ran": "LIFE-856 - did the tick's hourly finish job run (the moved Network Leads and Cloud Fit backlog jobs run only then; unreadable counts as yes)"}
+domains/010b-gate.yml:
+  - {"Bitwarden helper from a saved, fingerprint-checked copy": "Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)"}
+  - {"bws_settings": "Notion token from Bitwarden so the gate can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values decide)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"settings": "V7 settings page for the two switches a job condition needs (LIFE-703; names and counts only; an unreadable page changes nothing)"}
+domains/020-jira.yml:
+  - {"bws_jira": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"settings": "V7 settings page for the Jira base URL, boards and GTV epic (LIFE-699; names and counts only; an unreadable page changes nothing). Only this step holds the Notion token; the Jira steps get the values through the job environment"}
+  - {"jrollauto": "Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)"}
+domains/020b-jira.yml:
+  - {"jrollwatch": "Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)"}
+  - {"jreconcile": "Jira daily reconcile (LIFE-918 / LIFE-998; off unless MEJ_SPRINT_AUTOMATION is on; once a day at or after 8 AM CT; a manual force skips only today's date guard; dry run unless live; counts only)"}
+domains/020c-jira.yml:
+  - {"jrelease": "Auto-release (LIFE-727; moves ready tickets of an epic labelled auto-release to Agent Go, at most 3 an hour; written only when live; counts only)"}
+  - {"jstalled": "Stall check (LIFE-729; read-only; names LIFE tickets idle with no waiting-on note)"}
+  - {"jfill": "Parent, Component and Fix Version fill (LIFE-752; LIFE tickets updated in the last 2 days; one [sweep] comment each; written only when live; counts only)"}
+  - {"jcapture": "Jira decision capture (LIFE-994; LIFE tickets updated in the last two hours, decision comments only, into the shared memory through the governed tools; the server filters sensitive text; counts only; dry run unless live)"}
+domains/020d-jira.yml:
+  - {"jwcheck": "Jira writer contract check (LIFE-918; manual only; GET requests only, nothing is written; booleans and counts only)"}
+  - {"jwverify": "Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; a fourth word keep keeps the test clone because the Jira Free plan cannot delete; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/030-followup.yml:
+  - {"bws_followup": "Load the credentials from Bitwarden (LIFE-757, the store and its jump route, the existing Jira token, email, Outlook client id and Notion, Calendar and Gmail items, plus the two new FOLLOWUP_ items (Bytalos Gmail refresh token, Todoist token; Jim, Nov 16 2026); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/030b-followup.yml:
+  - {"followup": "Followup lane (LIFE-757; LIVE on a scheduled or tick run while V7_LIVE is on, otherwise a dry run that writes nothing; reads only sources that have a credential and an expiry row)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after the stage has run (LIFE-649), so the report job pushes the phone"}
+domains/040-outlook.yml:
+  - {"bws_outlook": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_settings": "Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"calsync": "Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/050-bills.yml:
+  - {"bws_bills": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"bpaid": "Bills Paid processor (before the snapshot; writes Notion only when live; counts only)"}
+domains/050b-bills.yml:
+  - {"bcard": "Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/060-agenda.yml:
+  - {"bws_agenda": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/060b-agenda.yml:
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/070-amazon.yml:
+  - {"bws_amazon": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 4; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"acard": "Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)"}
+domains/070b-amazon.yml:
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/080-amazon_retention.yml:
+  - {"bws_amazon_retention": "Load the migrated credentials from Bitwarden (EDGE-1.3, these 4 plus the 10 store names the interview_mail job already loads (LIFE-906, the checkpoint of what an old mail's read concluded); masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_settings": "Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)"}
+  - {"aretain": "Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/090-mail.yml:
+  - {"bws_mail": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"mfile": "Physical Mail filing (LIFE-149; the vendor's no-reply notices marked read and moved to the Physical Mail label; nothing deleted; read-back; dry run unless live)"}
+domains/090b-mail.yml:
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"mcard": "Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/100-hiring.yml:
+  - {"bws_hiring": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"hiring": "Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)"}
+domains/100b-hiring.yml:
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/110-megibow.yml:
+  - {"bws_megibow": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"megibow": "MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)"}
+domains/110b-megibow.yml:
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/120-dcc.yml:
+  - {"bws_dcc": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the archive step (LIFE-933; read only, an address not a secret; if it fails the archive step finds no page and writes nothing)"}
+  - {"dcccard": "Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)"}
+  - {"archive": "Weekly Reports Archive (LIFE-933; the first run at or after 6 PM CT freezes one static Daily Report snapshot into the week's archive page and reads it back; Sunday also freezes the Notes, Monday resets them only after the snapshot re-verifies; the existing Notion token only)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/125-weekly_review.yml:
+  - {"bws_weekly_review": "Load the Weekly Review credentials from Bitwarden (exactly these 4, all already used by other jobs; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the settings read (LIFE-859; read only, an address not a secret; if it fails the stage finds no settings and writes nothing)"}
+  - {"Join the tailnet as an ephemeral tag:v7-runner node": "Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341; a failed join only means the Drive lane shows Degraded)"}
+  - {"weeklyreview": "Weekly LIFE OS Review (LIFE-945; off unless WEEKLY_REVIEW is on; the first run at or after Friday 10 PM CT makes that week's one Weekly Reviews row from six read-only lanes, sets Status Generated, moves Current and the one pointer line; Reviewed and Applied are never written)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/130-recruiters.yml:
+  - {"bws_recruiters": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/130b-recruiters.yml:
+  - {"routreach": "Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)"}
+  - {"jpoutreach": "Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/135-network_surface.yml:
+  - {"bws_network_surface": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 18; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/135b-network_surface.yml:
+  - {"network_surface": "Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work; a failure fails this job and the report job pushes once)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/136-fit_cloud_backlog.yml:
+  - {"bws_fit_cloud_backlog": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/136b-fit_cloud_backlog.yml:
+  - {"fit_cloud_backlog": "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; after each tick when V7_CLOUD_FIT_SCHEDULED is set; moved from the hourly finish job, LIFE-856; one Oracle request at a time)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/137-last_seen_purge.yml:
+  - {"bws_last_seen_purge": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback and the Cloud Fit request; the policy admits it only to Oracle; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/137b-last_seen_purge.yml:
+  - {"sync_seen": "Step 8 - Last Seen sync (daily; moved from the hourly finish job by LIFE-856, it runs beside the after-tick domains work)"}
+  - {"purge": "Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); moved from the hourly finish job by LIFE-856; pushes its own result to the phone, counts and fixed codes only)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/140-hiring_outcomes.yml:
+  - {"bws_hiring_outcomes": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_settings": "Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"houtcomes": "Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)"}
+domains/140b-hiring_outcomes.yml:
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/145-interview_mail.yml:
+  - {"bws_interview_mail": "Load the migrated credentials from Bitwarden (the same names the interview job loads, only the 16 a mail read needs; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"interview_mail": "Interview OS mail, read early (LIFE-894; read only - Gmail and Outlook into the private store's snapshot table for the late Interview job; counts and fixed codes only)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/150-interview.yml:
+  - {"bws_interview": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/150b-interview.yml:
+  - {"interview": "Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/160-imessage.yml:
+  - {"bws_imessage": "Load the iMessage alert credentials from Bitwarden (exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as an ephemeral tag:v7-runner node": "Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)"}
+  - {"imsg": "iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+domains/160b-imessage.yml:
+  - {"comms": "Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)"}
+  - {"Fail the job if any stage step failed": "A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone"}
+domains/170-granola.yml:
+  - {"bws_granola": "Load the Granola credentials from Bitwarden (exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_settings": "Notion token from Bitwarden so this job can read the V7 settings page (LIFE-703; read only; if it fails the GitHub values stay as they are)"}
+  - {"Join the tailnet as an ephemeral tag:v7-runner node": "Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 22 and 47341)"}
+  - {"gran": "Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)"}
+domains/170b-granola.yml:
+  - {"Granola auto stopped - fail this job": "Granola auto stopped - fail this job (LIFE-312) so the run is red and the report job pushes the phone"}
+domains/180-report.yml:
+  - {"Bitwarden helper from a saved, fingerprint-checked copy": "Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)"}
+  - {"bws_report": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+domains/190-chain.yml:
+  - {"Chain receipt - Jobs, career and platform clocks": "The chain receipt - Jobs, career and full-platform clocks for this tick (counts, times and fixed codes only; never fails the run)"}
+hourly/010-prep.yml:
+  - {"Cloud Fit backlog runs alone": "Cloud Fit backlog runs alone (LIFE-41 D219) - cloud_backlog with any other action input fails here, before any credential or stage"}
+  - {"Bitwarden helper from a saved, fingerprint-checked copy": "Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)"}
+  - {"bws_prep": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 13; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"pipeline": "Pipeline decision (LIFE-699; a live tick only on a scheduled run or a manual tick, and only while the Bitwarden switch V7_PIPELINE is true; an unreadable switch parks the tick, D208)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+hourly/010b-prep.yml:
+  - {"Gate - skip a run when another tick started recently": "Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)"}
+  - {"Start the early domains run now": "LIFE-775 - start the early domains run now (this tick passed its gate; every domain job that reads nothing the tick writes runs while the tick runs; the run that starts when the tick finishes does megibow, interview and granola, and every job if this dispatch fails, so a failure here costs only the time it saves)"}
+hourly/020-unit-tests.yml:
+  - {"testgate": "Unit-test gate (LIFE-570; fail closed - the tests are skipped only when pr-tests is green on this exact commit)"}
+  - {"Test-only dependency": "Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)"}
+hourly/030-jobright.yml:
+  - {"bws_jobright": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"jobright_browser": "Browser install for the Jobright resolver (LIFE-604 item 13; the same shared step the finish job uses)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+hourly/040-linkedin.yml:
+  - {"bws_linkedin": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+hourly/040b-linkedin.yml:
+  - {"linkedin_search": "Step 5a - LinkedIn job search (guest, after the resolver; the same rows as the job alerts, D203)"}
+hourly/050-lensa.yml:
+  - {"bws_lensa": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {"discover": "Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)"}
+hourly/060-finish.yml:
+  - {"Bitwarden helper from a saved, fingerprint-checked copy": "Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)"}
+  - {"bws_finish": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"Join the tailnet (Cloud-Fit shadow only)": "Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)"}
+  - {"browser": "Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)"}
+hourly/060b-finish.yml:
+  - {"tick": "Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)"}
+  - {"Stage timing receipt": "Stage timing receipt (LIFE-855; the tick's stage_timing lines, names and numbers only, kept 14 days; the pinned upload action, no new permission)"}
+hourly/060e-finish.yml:
+  - {"fit_cloud_backlog": "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual dispatch only here (the scheduled batch after each tick runs in domains.yml since LIFE-856); one Oracle request at a time)"}
+hourly/060g-finish.yml:
+  - {"holds": "Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)"}
+hourly/060h-finish.yml:
+  - {"titlewatch": "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)"}
+hourly/060j-finish.yml:
+  - {"explain": "Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)"}
+  - {"boardcheck": "Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)"}
+hourly/060l-finish.yml:
+  - {"sync_seen": "Step 8 - Last Seen sync (daily; manual maintenance dispatch only here, the tick's run is in domains.yml since LIFE-856)"}
+  - {"purge": "Step 8b - retention purge (manual maintenance dispatch only here, the tick's run is in domains.yml since LIFE-856; about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)"}
+hourly/060m-finish.yml:
+  - {"alerts": "Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)"}
+hourly/070-interview.yml:
+  - {"bws_interview": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 3, the Interview token and (LIFE-699) the two private acceptance cases that only the manual acceptance steps use; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
+  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+hourly/070b-interview.yml:
+  - {"iaccneg": "Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)"}
+hourly/080-report.yml:
+  - {"Bitwarden helper from a saved, fingerprint-checked copy": "Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)"}
+  - {"bws_report": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
+  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}

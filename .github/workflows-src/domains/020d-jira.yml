@@ -6,7 +6,6 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-probe
-      # why: Jira writer contract check (LIFE-918; manual only; GET requests only, nothing is written; booleans and counts only)
       - id: jwcheck
         continue-on-error: true
         name: Jira writer contract check
@@ -15,7 +14,6 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.jira.writers contract-check
-      # why: Jira writer verification on a throwaway sprint (LIFE-918 decision E; manual only; a dry run unless the third word of verify is yes; a fourth word keep keeps the test clone because the Jira Free plan cannot delete; only a ZZ-LIFE918-TEST sprint and the one named issue; counts and fixed codes only)
       - id: jwverify
         continue-on-error: true
         name: Jira writer verification on a throwaway sprint
@@ -44,8 +42,7 @@
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
-      # LIFE-793: the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
-      # why: A failed stage step makes this job red after every stage has run (LIFE-649), so the report job pushes the phone
+      # the five V3 accountability stages now run in their own workflow (v3-pages.yml), not in this job.
       - name: Fail the job if any stage step failed
         if: ${{ always() && (steps.bws_jira.outcome == 'failure' || steps.settings.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jreconcile.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrelease.outcome == 'failure' || steps.jstalled.outcome == 'failure' || steps.jfill.outcome == 'failure' || steps.jcapture.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jwcheck.outcome == 'failure' || steps.jwverify.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
         run: echo "::error title=jira::a stage step failed in the jira job (see the step marked failed above)"; exit 1

@@ -1,9 +1,9 @@
 name: hourly
-run-name: ${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # the gate counts only "tick" runs, so a manual run never blocks the next tick
+run-name: ${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}  # the gate counts only "tick" runs, so a manual run never blocks the next tick
 on:
   schedule:
-    - cron: "7 * * * *"          # three triggers an hour: GitHub drops and delays scheduled runs, so the gate (lifeos.platform.gate)
-    - cron: "27 * * * *"         # keeps the effective cadence at about one run per hour and a dropped slot is covered by the next
+    - cron: "7 * * * *"  # three triggers an hour: GitHub drops and delays scheduled runs, so the gate (lifeos.platform.gate)
+    - cron: "27 * * * *"  # keeps the effective cadence at about one run per hour and a dropped slot is covered by the next
     - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
@@ -111,6 +111,6 @@ env:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick-b' || 'manual' }}   # ticks and manual runs never share a slot, so neither can replace the other's queued run; lifeos.platform.gate makes them take turns in creation order (D210)
+  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick-b' || 'manual' }}  # ticks and manual runs never share a slot, so neither can replace the other's queued run; lifeos.platform.gate makes them take turns in creation order
   cancel-in-progress: false
 jobs:
