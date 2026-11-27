@@ -40,15 +40,20 @@ class Tally(unittest.TestCase):
         epic["fields"]["issuetype"] = {"name": "Epic", "subtask": False}
         self.assertEqual(read._counts([epic], FIRST, LAST), {})  # R1.3
 
-    def test_missing_or_contradictory_evidence_degrades_the_calculation(self):
-        missing = child("MEJ-20", "MEJ-1", True, RESOLVED)
-        del missing["fields"]["resolution"]
-        no_resolution = child("MEJ-21", "MEJ-1", True, RESOLVED)
-        no_resolution["fields"]["resolution"] = None
+    def test_unread_or_contradictory_evidence_degrades_the_calculation(self):
+        unread = child("MEJ-20", "MEJ-1", True, RESOLVED)
+        del unread["fields"]["resolution"]
         contradictory = child("MEJ-22", "MEJ-1", True, RESOLVED, labels=["superseded"])  # superseded but resolved Done
-        for bad in (missing, no_resolution, contradictory):
+        auto_cancelled = child("MEJ-23", "MEJ-1", True, RESOLVED, resolution="Won't Do", labels=["auto-closed"])
+        for bad in (unread, contradictory, auto_cancelled):
             with self.assertRaises(JiraError, msg=bad["key"]):
                 read._counts([bad], FIRST, LAST)  # R1.5
+
+    def test_an_older_done_issue_with_no_resolution_still_counts_as_done_and_is_never_cancelled(self):
+        legacy = child("MEJ-222", "MEJ-1", True, RESOLVED)
+        legacy["fields"]["resolution"] = None
+        self.assertEqual(read._counts([legacy], FIRST, LAST), {"MEJ-1": [1, 1]})
+        self.assertEqual(closure.classify(legacy["fields"], AFTER, SINCE), "unknown")
 
 
 class Classes(unittest.TestCase):
