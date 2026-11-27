@@ -1,12 +1,10 @@
-"""LIFE-693: a proof run after every deploy.
+"""A proof run after every deploy (docs/platform/release-proof.md).
 
-See docs/platform/release-proof.md. Pure logic: the clock, the files and GitHub are passed in; stdlib only (the Oracle ticker runs its own copy).
-
-A deploy is a new commit in the Close release tree's MANIFEST on lifeos-edge-01 (LIFE-528). The ticker's watch dispatches ONE dry quick proof run of hourly.yml (`PROOF_INPUTS`) and keeps the result in one
-GitHub issue (`RECORD_LABEL`). A pass is recorded and nothing else happens. A failure raises ONE PAGE alert (deployed commit, previous good commit, the failing stage's fixed code, the one-line revert) and opens
-the pause flag: an open issue labelled `FLAG_LABEL`, which the release timer reads (a protected edit). While it is open a new proof run starts at most every `REPROOF_MINUTES` on main's CURRENT head
-(ref main: what the timer would deploy next), so a fix merged to main passes, lifts the pause and gets deployed with nobody deploying by hand. The first pass closes the flag with one recovered push.
-No automatic rollback: the alert is the action."""
+Pure: the clock, files and GitHub are passed in. Each new deploy commit gets one dry quick run of hourly.yml
+(`PROOF_INPUTS`), recorded in one GitHub issue (`RECORD_LABEL`). A failure raises ONE PAGE alert and opens the pause
+flag (an open issue labelled `FLAG_LABEL`, read by the release timer); while paused, a new proof starts at most every
+`REPROOF_MINUTES` on main's head.
+"""
 import dataclasses
 import datetime as dt
 import io
@@ -14,21 +12,22 @@ import re
 import zipfile
 
 PROOF_WORKFLOW = "hourly.yml"
-PROOF_INPUTS = {"quick": "true", "live": "false"}         # the dispatch inputs of a dry quick proof run (LIFE-76, D208); both already exist, so no workflow file changes
-PROOF_TITLE = "manual"                                    # hourly.yml's run-name for every dispatch that is not a tick
+PROOF_INPUTS = {"quick": "true", "live": "false"}
+PROOF_TITLE = "manual"
 RECORD_LABEL, RECORD_TITLE = "release-proof", "Release proof record: each deployed commit and its proof run"
-FLAG_LABEL = "release-paused"                             # an open issue with this label pauses the release timer; closing it (or a passing proof run) lifts the pause
-FAILED_KEY, RECOVERED_KEY = "release_proof_failed", "release_proof_recovered"      # registry keys (PAGE and INFO)
+FLAG_LABEL = "release-paused"  # an open issue with this label pauses the release timer
+FAILED_KEY, RECOVERED_KEY = "release_proof_failed", "release_proof_recovered"
 PASS, FAIL, PENDING, SUPERSEDED = "pass", "fail", "pending", "superseded"
-WAIT_MINUTES = 90                                         # a proof run unfinished this long after its dispatch has failed its proof
-MATCH_SLACK_SECONDS = 120                                 # a run may be created a little before the dispatch time we noted
-REPROOF_MINUTES = 60                                      # while paused: a new proof run at most this often
-KEEP = 20                                                 # entries kept in the record
+WAIT_MINUTES = 90  # a proof run unfinished this long after its dispatch has failed
+MATCH_SLACK_SECONDS = 120
+REPROOF_MINUTES = 60
+KEEP = 20
 CODE_FAILED, CODE_TIMED_OUT, CODE_NOT_FOUND = "RELEASE_PROOF_FAILED", "RELEASE_PROOF_TIMED_OUT", "RELEASE_PROOF_RUN_NOT_FOUND"
-UNREADABLE = "RELEASE_PROOF_UNREADABLE"                   # the record, the runs or the manifest could not be read: nothing changes and nothing pages
+# the record, runs or manifest could not be read: nothing changes and nothing pages
+UNREADABLE = "RELEASE_PROOF_UNREADABLE"
 SHA = re.compile(r"[0-9a-f]{40}")
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
-STAGE_FAILED = re.compile(r"\b([A-Z][A-Z0-9_-]{1,40}) FAILED: ([A-Za-z0-9_]{3,80})")      # the stages print `<STAGE> FAILED: <fixed code>` (lifeos/run.py); counts and codes only
+STAGE_FAILED = re.compile(r"\b([A-Z][A-Z0-9_-]{1,40}) FAILED: ([A-Za-z0-9_]{3,80})")
 JOB_LOG = re.compile(r"\d+_(.+)\.txt")
 LINE = re.compile(r"v1 ([0-9a-f]{40}) (pass|fail|pending|superseded) (.*)")
 FIELD = re.compile(r"(dispatched|finished|run|previous|code|note)=(\S+)")
@@ -36,23 +35,23 @@ FIELD = re.compile(r"(dispatched|finished|run|previous|code|note)=(\S+)")
 
 @dataclasses.dataclass(frozen=True)
 class Entry:
-    commit: str                  # the deployed commit this proof is for (40 hex)
-    status: str                  # pass | fail | pending | superseded
-    dispatched: str              # when the proof run was started (UTC, STAMP)
+    commit: str
+    status: str
+    dispatched: str
     finished: str = ""
-    run: int = 0                 # the GitHub run id, 0 until it was found
-    previous: str = ""           # the previous good commit (40 hex) when one is known
-    code: str = ""               # a fixed code (CODE_*, or STAGE/CODE from the run's log) for a failure
-    note: str = ""               # "superseded_by_<12 hex>" for a superseded entry
+    run: int = 0
+    previous: str = ""
+    code: str = ""  # a fixed code (CODE_* or STAGE/CODE)
+    note: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
 class Decision:
-    entries: tuple               # the new record, newest first
-    dispatch: Entry | None       # a proof run to start now (already in `entries` as pending)
-    flag: bool | None            # True: the pause flag is (still) open, False: it is lifted, None: unchanged
-    failed: Entry | None         # the proof that just failed (the one alert to raise); None when nothing new failed
-    recovered: Entry | None      # the proof that just passed while paused (the one recovered push)
+    entries: tuple
+    dispatch: Entry | None
+    flag: bool | None
+    failed: Entry | None
+    recovered: Entry | None
 
 
 def _t(text):
@@ -68,7 +67,7 @@ def _field(fields, key):
 
 
 def parse_record(body):
-    """-> the entries of the record issue's body, newest first. A line that is not one of ours is ignored (a person may add notes to the issue)."""
+    """-> the record's entries, newest first."""
     found = []
     for line in str(body or "").splitlines():
         match = LINE.fullmatch(line.strip().strip("`"))
@@ -81,7 +80,7 @@ def parse_record(body):
 
 
 def render_record(entries):
-    """The record issue's body: one line per proof, in the format parse_record reads, plus a plain sentence for a person."""
+    """The record issue's body, in the format parse_record reads."""
     lines = ["Written by the Oracle ticker's watch (LIFE-693). One line per deployed commit; the newest is first. docs/platform/release-proof.md says how to read it.", ""]
     for e in sorted(entries, key=lambda e: e.dispatched, reverse=True)[:KEEP]:
         lines.append("`v1 %s %s dispatched=%s finished=%s run=%s previous=%s code=%s note=%s`" % (
@@ -90,7 +89,7 @@ def render_record(entries):
 
 
 def failing_code_in(archive_bytes):
-    """-> `STAGE/CODE` of the first stage that printed `<STAGE> FAILED: <code>` in a failed run's job logs (a run archive), else ''. Fixed words only: no log line, name or id is kept."""
+    """-> `STAGE/CODE` of the first `<STAGE> FAILED: <code>` line in a failed run's logs, else ''."""
     with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
         for name in sorted(archive.namelist()):
             if not JOB_LOG.fullmatch(name):
@@ -103,7 +102,9 @@ def failing_code_in(archive_bytes):
 
 
 def _match(entry, runs, taken):
-    """The proof run of one pending entry: the run it already names, else the oldest unclaimed manual run created at or after its dispatch."""
+    """The proof run of a pending entry: the run it names, else the oldest unclaimed manual run created at or after its
+    dispatch.
+    """
     if entry.run:
         return next((r for r in runs if r.get("id") == entry.run), None)
     cutoff = (_t(entry.dispatched) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)) - dt.timedelta(seconds=MATCH_SLACK_SECONDS)
@@ -114,7 +115,6 @@ def _match(entry, runs, taken):
 
 
 def _resolve(entry, runs, taken, now, code_of):
-    """-> the entry after looking at its run: still pending, pass or fail."""
     run = _match(entry, runs, taken)
     if run is not None:
         taken.add(run.get("id"))
@@ -131,14 +131,15 @@ def _resolve(entry, runs, taken, now, code_of):
 
 
 def decide(now, deployed, previous, entries, runs, paused, code_of=lambda run_id: ""):
-    """The whole rule, with every read passed in. `deployed`: the deployed commit (40 hex) or None; `previous`: the previous deployed tree's commit or None; `entries`: the record, any order; `runs`: the manual
-    runs of hourly.yml (dicts with id, created_at, updated_at, status, conclusion); `paused`: the pause flag is open; `code_of(run_id)`: the failing STAGE/CODE of a failed run.
-    Pass: recorded, no alert. Fail: one alert (only when the flag was not already open), flag open. Pass while paused: flag lifted, one recovered push. Two deploys close together: the first, if its proof had not
-    finished, is recorded as superseded by the second, and each deployed commit gets its own entry. Nothing is dispatched when the deployed commit is unknown."""
+    """The whole rule, reads passed in: `deployed`/`previous` commits (40 hex or None), `entries`, `runs` (manual
+    hourly.yml runs), `paused`, `code_of(run_id)`. Pass: recorded. Fail: one alert (unless the flag was already open)
+    and the flag opens. Pass while paused: flag lifted, one recovered push. A proof unfinished at the next deploy is
+    superseded.
+    """
     entries = sorted(entries, key=lambda e: e.dispatched, reverse=True)
     taken = {e.run for e in entries if e.run and e.status != PENDING}
     resolved, now_failed, now_passed = [], [], []
-    for entry in reversed(entries):                                                   # oldest first, so the oldest pending entry claims the oldest run
+    for entry in reversed(entries):  # oldest first, so the oldest pending entry claims the oldest run
         if entry.status != PENDING:
             resolved.append(entry)
             continue
@@ -171,14 +172,14 @@ def decide(now, deployed, previous, entries, runs, paused, code_of=lambda run_id
 
 
 def revert_line(entry):
-    """The one-line revert for the failure: the commits after the previous good one, up to the deployed one (a revert PR to main). Without a known previous good commit: the deployed commit alone."""
+    """The one-line revert: commits after the previous good one up to the deployed one, else the deployed commit alone.
+    """
     if entry.previous:
         return f"git revert --no-edit {entry.previous}..{entry.commit}"
     return f"git revert --no-edit {entry.commit}"
 
 
 def failure_text(entry):
-    """-> (title, body) of the PAGE alert and the pause flag issue. Fixed codes, commits and one revert line only."""
     code = entry.code or CODE_FAILED
     good = entry.previous[:12] if entry.previous else "none known"
     title = f"Release proof failed: deployed {entry.commit[:12]}, previous good {good}"

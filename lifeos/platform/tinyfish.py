@@ -1,7 +1,6 @@
-"""TinyFish Fetch API client (real-browser fetch with anti-bot). Key comes from the TINYFISH_API_KEY secret.
+"""TinyFish Fetch API client (real-browser fetch with anti-bot).
 
-Fetch (free on Jim's plan) returns final_url, page text/html and every <a href> when links=true - so the apply button's
-destination is visible without metered Agent steps. Only counts/categories are ever logged (public repo).
+The key comes from the TINYFISH_API_KEY secret. Logs counts and categories only.
 """
 from collections.abc import Sequence
 from typing import Any
@@ -16,8 +15,9 @@ MAX_URLS = 10
 
 
 def clean_key(raw: str) -> tuple[str, list[int]]:
-    """Tolerate a secret pasted with labels/quotes/whitespace: pick the longest key-shaped token.
-    Returns (key, [lengths of the space-separated parts]) - lengths only, never content."""
+    """Pick the longest key-shaped token from a secret pasted with labels, quotes or whitespace. Returns (key, [lengths
+    of the parts]).
+    """
     tokens = [t.strip("\"'`,;") for t in re.split(r"\s+", raw.strip()) if t.strip("\"'`,;")]
     tokens = [t.split("=", 1)[1] if "=" in t and len(t.split("=", 1)[1]) >= 16 else t for t in tokens]
     candidates = [t for t in tokens if re.fullmatch(r"[A-Za-z0-9_\-.]{16,}", t)]
@@ -35,7 +35,7 @@ def fetch_many(urls: Sequence[str], fmt: str = "html", links: bool = True, ttl: 
     key, parts = clean_key(raw)
     if not key:
         raise TinyFishError("TINYFISH_KEY_MISSING")
-    if len(parts) > 2:      # a key is one token (optionally with a one-word label); this is prose - do not send it
+    if len(parts) > 2:
         raise TinyFishError(f"TINYFISH_KEY_NOT_A_KEY(parts={len(parts)},raw_len={len(raw)})")
     if not urls or len(urls) > MAX_URLS:
         raise TinyFishError("TINYFISH_BAD_BATCH")
@@ -47,7 +47,7 @@ def fetch_many(urls: Sequence[str], fmt: str = "html", links: bool = True, ttl: 
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read())
     except urllib.error.HTTPError as error:
-        if error.code in (401, 403):      # shape of the key only (never its value) to tell paste errors from scope errors
+        if error.code in (401, 403):
             shape = f"key_len={len(key)},raw_len={len(raw)},parts={parts}"
             raise TinyFishError(f"TINYFISH_HTTP_{error.code}({shape})") from None
         raise TinyFishError(f"TINYFISH_HTTP_{error.code}") from None

@@ -1,8 +1,9 @@
-"""Read-only Todoist sign-in helper (LIFE-757): one link for Jim, the reply caught on loopback, the token written only to a pipe.
+"""Read-only Todoist sign-in helper: one link, the reply caught on loopback, the token written only to a pipe.
 
-Scope `data:read` only. Todoist apps with refresh tokens (the default for new apps) hand out one-hour tokens that rotate, which a read-only Bitwarden item cannot follow, so such a reply is refused and
-nothing is written; an app with refresh tokens off returns one long-lived token, which is what the Followup reader takes. The token never reaches the screen. No network call is made by itself: tests use a fake endpoint.
-  python3 -m lifeos.platform.todoist_consent_readonly | pbcopy"""
+Scope `data:read` only; a reply with a refresh token is refused and nothing is written (refresh tokens rotate hourly,
+which a read-only Bitwarden item cannot follow).
+  python3 -m lifeos.platform.todoist_consent_readonly | pbcopy
+"""
 import getpass
 import http.server
 import json
@@ -28,25 +29,26 @@ def link(client_id, state, redirect=REDIRECT):
 
 
 def exchange(client_id, client_secret, code, redirect=REDIRECT, opener=urllib.request.urlopen):
-    """-> (token, scope) or a refusal. The reply must grant exactly data:read and carry no refresh token (a rotating token cannot live in a read-only item)."""
+    """-> (token, scope) or a refusal. The reply must grant exactly data:read and carry no refresh token."""
     body = urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect}).encode()
     with opener(urllib.request.Request(TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
     if sorted(str(reply.get("scope", SCOPE)).replace(",", " ").split()) != [SCOPE]:
-        return refuse("DENY_UNSUPPORTED_ACTION")                                  # more than read access
+        return refuse("DENY_UNSUPPORTED_ACTION")
     if reply.get("refresh_token"):
-        return refuse("DENY_ROTATING_TOKEN")                                      # turn refresh tokens off for the app, or use the account's own API token
+        # turn refresh tokens off for the app, or use the account's own API token
+        return refuse("DENY_ROTATING_TOKEN")
     token = reply.get("access_token")
     return (token, SCOPE) if isinstance(token, str) and token.strip() else refuse("DENY_INPUT")
 
 
 def receipt(outcome, code=None, scope=()):
-    """What may be shown: that it went to the pipe and the scope. Never the token."""
     return {"outcome": outcome, "code": code, "scopes_granted": list(scope), "stored": "pipe" if outcome == "stored" else "nothing"}
 
 
 def run(client_id, client_secret, stdout, tty, opener=urllib.request.urlopen, server=None, catcher=base.catch):
-    """One sign-in. The link goes to `tty`, the token only to `stdout` (a pipe), the receipt to `tty`. A refusal writes nothing to `stdout`."""
+    """One sign-in: the link goes to `tty`, the token only to `stdout` (a pipe). A refusal writes nothing to `stdout`.
+    """
     if stdout.isatty():
         tty.write("Refused: pipe this into the clipboard command; the token is never printed on screen.\n")
         return receipt("refused", "DENY_SECRET_EXPOSURE")
@@ -56,7 +58,7 @@ def run(client_id, client_secret, stdout, tty, opener=urllib.request.urlopen, se
     tty.flush()
     code = catcher(server, state)
     if not code:
-        out = receipt("refused", "DENY_PRINCIPAL")                                 # the reply did not carry this sign-in's state
+        out = receipt("refused", "DENY_PRINCIPAL")
     else:
         result = exchange(client_id, client_secret, code, opener=opener)
         if isinstance(result, dict):

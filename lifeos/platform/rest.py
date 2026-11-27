@@ -1,6 +1,8 @@
-"""One retrying JSON call for the API clients (Jira, Google Calendar, Outlook).
+"""One retrying JSON call for the API clients.
 
-The caller builds a fresh Request for every attempt (so a refreshed token is used); transient HTTP codes and network errors back off 2s, 4s, 8s; every failure becomes the client's own fixed code."""
+The caller builds a fresh Request per attempt (so a refreshed token is used); transient HTTP codes and network errors
+back off 2s, 4s, 8s; every failure becomes the client's own fixed code.
+"""
 import json
 import urllib.error
 import urllib.request
@@ -18,7 +20,7 @@ def _wait(error, attempt, honor_retry_after):
 
 
 def call(build, fail, prefix, sleep, timeout=30, attempts=4, bad_json="BAD_JSON", codes=None, honor_retry_after=False):
-    """build() -> urllib Request. fail(code) -> the exception to raise. Returns the parsed JSON body ({} when empty)."""
+    """build() -> urllib Request; fail(code) -> the exception to raise. Returns the parsed JSON body ({} when empty)."""
     for attempt in range(attempts):
         last = attempt == attempts - 1
         try:
