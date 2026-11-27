@@ -1,11 +1,12 @@
-"""The Oracle ticker: two systemd timers on lifeos-edge-01. `tick` POSTs workflow_dispatch for hourly.yml (tick=true)
-and dispatches nothing (TICK_SKIPPED) when another tick started within the workflow gate's gap. `watch` runs the
-watchdog's incident checks (lifeos.platform.gate.watch) plus quiet incidents for the Hermes disk, a stalled Close
-release, install drift and the Close release proof; the alert switches are read each run from Bitwarden via the
-`bwsalerts` credential and an unreadable store stops the run with a fixed code. `dry` checks credentials and variables
-and does nothing else. Credentials come only from systemd: `github` (Actions, Issues, Variables) and `ntfy`. Output is
-one JSON line (command, fixed code, HTTP status); no token, topic or job data. Stdlib only.
-"""
+"""The Oracle ticker: two systemd timers on lifeos-edge-01.
+
+`tick` POSTs workflow_dispatch for hourly.yml (tick=true) and dispatches nothing (TICK_SKIPPED) when another tick
+started within the workflow gate's gap. `watch` runs the watchdog's incident checks (lifeos.platform.gate.watch)
+plus quiet incidents for the Hermes disk, a stalled Close release, install drift and the Close release proof; the
+alert switches are read each run from Bitwarden via the `bwsalerts` credential (an unreadable store stops the run
+with a fixed code). `dry` checks credentials and variables and does nothing else. Credentials come only from
+systemd: `github` and `ntfy`. Output is one JSON line (command, fixed code, HTTP status); no token, topic or job
+data. Stdlib only."""
 import json
 import os
 import shutil
@@ -33,7 +34,7 @@ PROOF_LABEL, PROOF_TITLE = "release-pause-unreadable", "Close release timer cann
 DRIFT_LABEL, DRIFT_TITLE = "deploy-drift", "Installed files on the Oracle VM differ from main"
 # world-readable; the first line is `commit <40 hex>`
 RELEASE_MANIFEST, RELEASE_PREVIOUS = "/opt/lifeos-close/current/MANIFEST", "/opt/lifeos-close/previous/MANIFEST"
-# the token, its permissions, the workflow name or the inputs are wrong: a person must act
+# token, permissions, workflow name or inputs are wrong: a person must act
 REFUSED = (401, 403, 404, 422)
 
 
@@ -63,8 +64,8 @@ def _status(request, opener):
 
 
 def too_soon(token, opener=urllib.request.urlopen, now=None):
-    """True when the workflow gate would cancel this tick (another tick started within the gap, GATE_MIN_GAP_MINUTES),
-    so no run is created. Any doubt (a read failed) is False: the dispatch goes ahead and the gate stays the backstop.
+    """True when the workflow gate would cancel this tick (another started within GATE_MIN_GAP_MINUTES); a failed read
+    is False.
     """
     import datetime as dt                                          # noqa: PLC0415
     from lifeos.platform import gate                               # noqa: PLC0415
@@ -93,8 +94,8 @@ def tick(token, opener=urllib.request.urlopen):
 
 
 def variables(store):
-    """-> ({name: value}, 200) or (None, None). The three alert switches come from Bitwarden through `store`; any
-    failure stops with no status, never a value or Bitwarden's reply.
+    """-> ({name: value}, 200) or (None, None). The three alert switches come from Bitwarden through `store`; failure
+    never exposes a value.
     """
     try:
         return {name: str(value) for name, value in store().items() if name in VARIABLES}, 200
@@ -111,7 +112,6 @@ def disk_percent(path=DISK_PATH, usage=shutil.disk_usage):
 
 
 def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, sync=None):
-    """One quiet issue + push while the Hermes disk is at or over `limit` percent; closes when back under."""
     percent = disk_percent(path, usage)
     if percent is None:
         return None
@@ -140,8 +140,8 @@ def stall_incident(path=STALL_FILE, exists=os.path.exists, sync=None):
 
 
 def proof_unreadable_incident(path=PROOF_FILE, exists=os.path.exists, sync=None):
-    """The release timer deploys nothing when it cannot read the release-paused flag and writes `path`; this raises
-    one page and closes it when the marker is gone.
+    """One page, closed when the marker is gone, when the release timer wrote `path` because it could not read the
+    release-paused flag.
     """
     if sync is None:
         from lifeos.platform import gate                           # noqa: PLC0415
@@ -156,8 +156,8 @@ def proof_unreadable_incident(path=PROOF_FILE, exists=os.path.exists, sync=None)
 
 
 def read_unit_state(unit, run=None, listdir=None, base=SYSTEMD_DIR):
-    """A unit's state for the drift check: systemd's answer, else (systemctl prints nothing in this sandbox) the
-    unit's enablement link, which proves "enabled" (drift.ENABLED), not "running".
+    """A unit's state for the drift check: systemd's answer, else its enablement link (proves "enabled", not
+    "running").
     """
     run, listdir = run or subprocess.run, listdir or os.listdir
     answer = ""
@@ -180,9 +180,6 @@ def drift_module():
 
 
 def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, unit_state=None, rows=None):
-    """One issue + quiet push while an installed repo-owned file differs from `main` or its unit is not running.
-    Returns the check rows.
-    """
     from lifeos.platform import drift                              # noqa: PLC0415
 
     def expected_for(path):
@@ -218,10 +215,7 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
 
 
 def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, sync=None, logs=None, now=None):
-    """One dry proof run per Close release (decision logic: lifeos/platform/release_proof.py). Reads the deployed
-    commit, the record issue, the manual hourly.yml runs and the pause flag; starts at most one run; pages when a
-    proof fails and opens the pause-flag issue the release timer reads. Never raises.
-    """
+    """One dry proof run per Close release (platform/release_proof.py); pages when a proof fails. Never raises."""
     import datetime as dt                                          # noqa: PLC0415
     from lifeos.platform import gate, release_proof as proof      # noqa: PLC0415
     api = api or gate._api
@@ -281,9 +275,6 @@ def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, syn
 
 
 def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None, store=None):
-    """-> (code, status). Runs the watchdog's incident checks with the switches, token and topic set for this process
-    only.
-    """
     found, status = variables(store)
     if found is None:
         return "TICKER_VARIABLES_UNREADABLE", status
@@ -330,7 +321,7 @@ def main(argv=None, opener=urllib.request.urlopen, run=None, environ=None):
         return 2
     environ = environ if environ is not None else os.environ
     token, topic = credential("github", environ), credential("ntfy", environ)
-    # the switches live in Bitwarden only: no credential, no watch or dry (tick never needs them)
+    # switches live in Bitwarden only: no credential, no watch or dry
     bws = credential("bwsalerts", environ)
     store = None
     if bws:
