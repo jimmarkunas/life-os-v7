@@ -4,6 +4,7 @@ Refuses unless `followup_schema.check` says ready and none of the five tables ex
 NOT EXISTS statements and nothing else, then reads back column counts and emptiness. Without SCHEMA_CONFIRM=APPLY it
 only checks.
 """
+
 import os
 
 from lifeos.inbox.followup_schema import TABLES, check, column_counts, plan

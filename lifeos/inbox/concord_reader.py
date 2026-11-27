@@ -5,6 +5,7 @@ CLI's read-only listing and answers {"ok", "code", "messages", "at"}; no message
 unless "concord" is in `sources.LIVE_READ_SOURCES` (removing it is the rollback). No write is reachable; a test scans
 the file.
 """
+
 import json
 
 from lifeos.inbox import sources
@@ -23,8 +24,17 @@ def parse(raw):
         doc = json.loads(raw)
     except (TypeError, ValueError):
         doc = None
-    if (not isinstance(doc, dict) or set(doc) != {"ok", "code", "messages", "at"} or not isinstance(doc["ok"], bool) or isinstance(doc["messages"], bool)
-            or not isinstance(doc["messages"], int) or isinstance(doc["at"], bool) or not isinstance(doc["at"], int) or doc["code"] not in ("",) + CODES or bool(doc["code"]) == doc["ok"]):
+    if (
+        not isinstance(doc, dict)
+        or set(doc) != {"ok", "code", "messages", "at"}
+        or not isinstance(doc["ok"], bool)
+        or isinstance(doc["messages"], bool)
+        or not isinstance(doc["messages"], int)
+        or isinstance(doc["at"], bool)
+        or not isinstance(doc["at"], int)
+        or doc["code"] not in ("",) + CODES
+        or bool(doc["code"]) == doc["ok"]
+    ):
         return {"ok": False, "code": UNREACHABLE, "messages": 0, "at": 0}
     return doc
 

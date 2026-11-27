@@ -3,6 +3,7 @@
 A record is a pointer plus presentation facts about a task another system owns: it never replaces the source record
 and never infers completion. Errors are InboxError with a fixed lower-case reason word and no record content.
 """
+
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta

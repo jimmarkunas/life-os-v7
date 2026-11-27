@@ -4,6 +4,7 @@ Refuses unless `schema.check` says ready and none of the four tables exists; run
 EXISTS statements and nothing else, then reads back column counts and emptiness. Without the confirmation word it only
 checks.
 """
+
 import os
 
 from lifeos.inbox import schema
