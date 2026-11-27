@@ -13,7 +13,8 @@ import sys
 
 from lifeos.sources.newsletters import config, finalize
 from lifeos.jobs import identity, intake, store
-from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform import stage_timing
+from lifeos.platform.gmail import Gmail, GmailError, error_code, is_rate_limit
 from lifeos.sources.newsletters.parsers import jobright, linkedin
 
 PARSERS = {"jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
@@ -270,6 +271,16 @@ def main(argv=None):
         else:
             counts = extract(gmail, False, args.limit)
     except (GmailError, store.StoreError) as error:
+        if isinstance(error, GmailError) and is_rate_limit(error):
+            # Gmail's per-user limit, still on after every retry: mail not yet read stays under its label and is read
+            # next tick, so the run is degraded, not failed.
+            print(
+                f"EXTRACT DEGRADED: {error_code(error)}; unread mail stays under its label for the next tick",
+                file=sys.stderr,
+            )
+            print("::warning title=extract::Gmail rate limit; extraction deferred to the next tick", flush=True)
+            stage_timing.note_counts({"degraded": True})
+            return 0
         print(f"EXTRACT FAILED: {error}", file=sys.stderr)
         return 1
     print(f"extract {'LIVE' if args.live else 'DRY-RUN'}: {counts}")
