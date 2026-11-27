@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "docs" / "jira" / "issue-schema.v1.json"
-POLICY = (ROOT / "docs" / "life-os-development-policy.md").read_text()
+POLICY_FILE = (ROOT / "docs" / "life-os-development-policy.md").read_text()
+POLICY = POLICY_FILE + "\n".join(f.read_text() for f in sorted((ROOT / "docs" / "policy").glob("*.md")))
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
 DEFS = SCHEMA["$defs"]
 
@@ -79,7 +80,7 @@ class Contract(unittest.TestCase):
 
     def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
         """a new outcome starts as a LIFE Epic in Scoping"""
-        rule = POLICY.split("## 7. Writing tickets", 1)[1].split("## 8.", 1)[0]
+        rule = POLICY_FILE.split("## 7. Writing tickets", 1)[1].split("## 8.", 1)[0]
         for required in (
             "starts as a LIFE Epic in Scoping",
             "Claude writes, ChatGPT reviews",

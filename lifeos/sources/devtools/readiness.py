@@ -18,7 +18,7 @@ LANES = ("lane-career-v7", "lane-edge-comm")
 DESCRIPTION_LIMIT = 4000
 KEY = re.compile(r"LIFE-\d+")
 SIZE_LIMIT = 15 * 1024
-POLICY_LIMIT = 18 * 1024
+POLICY_LIMIT = 15 * 1024
 GWT = ("given", "when", "then")
 ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}
 
