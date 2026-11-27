@@ -13,7 +13,6 @@ caller-controlled path, query, command or flag exists.
 Content goes to the caller only; nothing is written, logged or kept. No stderr; any failure is a fixed state.
 `health` is the local read only (CURRENT, DISCONNECTED, DEGRADED); `sync` is always UNVERIFIED; `attention` is
 NEEDS_ATTENTION only on an incoming unread message from the last 7 days, else UNKNOWN; `count` stays null."""
-
 import glob
 import json
 import os
@@ -30,67 +29,32 @@ PROTOCOL = "2025-06-18"
 SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
 RECENT_UNREAD = "SELECT COUNT(*) FROM message WHERE is_from_me = 0 AND is_read = 0 AND item_type = 0 AND date > ?"
 CONTACTS = os.path.expanduser("~/Library/Application Support/AddressBook")
-MAX_HOURS, MAX_RECENT, MAX_THREAD, MAX_TEXT, MAX_CHAT = 72, 50, 20, 2000, 10**9
-PAGE, MAX_TICKS, MAX_ROWID = 50, 10**18, 2**31 - 1
+MAX_HOURS, MAX_RECENT, MAX_THREAD, MAX_TEXT, MAX_CHAT = 72, 50, 20, 2000, 10 ** 9
+PAGE, MAX_TICKS, MAX_ROWID = 50, 10 ** 18, 2 ** 31 - 1
 EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 TOOLS = {
-    "imessage_attention": (
-        "Aggregate iMessage attention state for the Mac Mini's local Messages copy. Read-only; no content or identities.",
-        EMPTY,
-    ),
-    "imessage_counts": (
-        "Unread incoming messages and conversations on the Mac Mini's local Messages copy, by window, service and group/direct. Read-only.",
-        EMPTY,
-    ),
-    "imessage_recent": (
-        "The newest incoming messages (at most 50) of the last N hours with sender, time, conversation reference and text. Read-only.",
-        {
-            "type": "object",
-            "properties": {"hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS}},
-            "required": ["hours"],
-            "additionalProperties": False,
-        },
-    ),
-    "imessage_conversation": (
-        "The last 20 messages of one conversation (reference from imessage_recent), both directions. Read-only.",
-        {
-            "type": "object",
-            "properties": {"chat": {"type": "integer", "minimum": 1, "maximum": MAX_CHAT}},
-            "required": ["chat"],
-            "additionalProperties": False,
-        },
-    ),
-    "imessage_page": (
-        "All incoming messages of a window, oldest first, one page (50) at a time with a cursor; `more` false proves the end. Read-only.",
-        {
-            "type": "object",
-            "oneOf": [
-                {
-                    "properties": {"hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS}},
-                    "required": ["hours"],
-                    "additionalProperties": False,
-                },
-                {
-                    "properties": {
-                        "after_date": {"type": "integer", "minimum": 1, "maximum": MAX_TICKS},
-                        "after_rowid": {"type": "integer", "minimum": 1, "maximum": MAX_ROWID},
-                    },
-                    "required": ["after_date", "after_rowid"],
-                    "additionalProperties": False,
-                },
-            ],
-        },
-    ),
+    "imessage_attention": ("Aggregate iMessage attention state for the Mac Mini's local Messages copy. Read-only; no content or identities.", EMPTY),
+    "imessage_counts": ("Unread incoming messages and conversations on the Mac Mini's local Messages copy, by window, service and group/direct. Read-only.", EMPTY),
+    "imessage_recent": ("The newest incoming messages (at most 50) of the last N hours with sender, time, conversation reference and text. Read-only.",
+                        {"type": "object", "properties": {"hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS}}, "required": ["hours"],
+                         "additionalProperties": False}),
+    "imessage_conversation": ("The last 20 messages of one conversation (reference from imessage_recent), both directions. Read-only.",
+                              {"type": "object", "properties": {"chat": {"type": "integer", "minimum": 1, "maximum": MAX_CHAT}}, "required": ["chat"],
+                               "additionalProperties": False}),
+    "imessage_page": ("All incoming messages of a window, oldest first, one page (50) at a time with a cursor; `more` false proves the end. Read-only.",
+                      {"type": "object", "oneOf": [
+                          {"properties": {"hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS}}, "required": ["hours"], "additionalProperties": False},
+                          {"properties": {"after_date": {"type": "integer", "minimum": 1, "maximum": MAX_TICKS},
+                                          "after_rowid": {"type": "integer", "minimum": 1, "maximum": MAX_ROWID}},
+                           "required": ["after_date", "after_rowid"], "additionalProperties": False}]}),
 }
 COUNT_DEFINITIONS = {
     "messages": "distinct incoming messages (by GUID) in a conversation with is_read = 0; reactions, retracted (unsent) and non-message rows excluded",
     "conversations": "distinct conversations containing at least one such message",
     "badge": "the Messages app badge is not readable here; compare by hand",
 }
-COUNT_LIMITATION = (
-    "These are this Mac's local read flags. This Mac holds historical unread rows that disagree with Jim's iPhone, so all-time numbers are not the "
-    "iPhone's. A window's numbers are exact only after a same-time comparison with the iPhone confirms them."
-)
+COUNT_LIMITATION = ("These are this Mac's local read flags. This Mac holds historical unread rows that disagree with Jim's iPhone, so all-time numbers are not the "
+                    "iPhone's. A window's numbers are exact only after a same-time comparison with the iPhone confirms them.")
 
 
 def _ticks(moment):
@@ -99,16 +63,8 @@ def _ticks(moment):
 
 def snapshot(db=DB, now=None):
     now = now or datetime.now(timezone.utc)
-    out = {
-        "channel": "imessage",
-        "attention": "UNKNOWN",
-        "count": None,
-        "count_reliable": False,
-        "health": "DISCONNECTED",
-        "sync": "UNVERIFIED",
-        "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "source": SOURCE,
-    }
+    out = {"channel": "imessage", "attention": "UNKNOWN", "count": None, "count_reliable": False, "health": "DISCONNECTED", "sync": "UNVERIFIED",
+           "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"), "source": SOURCE}
     try:
         con = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=2)
     except Exception:
@@ -152,12 +108,12 @@ def _body(text, attributed):
         return None
     size = attributed[p]
     if size == 0x81:
-        size, p = int.from_bytes(attributed[p + 1 : p + 3], "little"), p + 3
+        size, p = int.from_bytes(attributed[p + 1:p + 3], "little"), p + 3
     elif size == 0x82:
-        size, p = int.from_bytes(attributed[p + 1 : p + 5], "little"), p + 5
+        size, p = int.from_bytes(attributed[p + 1:p + 5], "little"), p + 5
     else:
         p += 1
-    raw = attributed[p : p + size]
+    raw = attributed[p:p + size]
     return raw.decode("utf-8", "replace") if len(raw) == size and size else None
 
 
@@ -168,21 +124,15 @@ def _contacts(handles, root=CONTACTS):
     key = lambda h: h.lower() if "@" in h else "".join(c for c in h if c.isdigit())[-10:]
     by_key = {key(h): h for h in wanted}
     names, read = {}, False
-    for path in [os.path.join(root, "AddressBook-v22.abcddb")] + sorted(
-        glob.glob(os.path.join(root, "Sources", "*", "AddressBook-v22.abcddb"))
-    ):
+    for path in [os.path.join(root, "AddressBook-v22.abcddb")] + sorted(glob.glob(os.path.join(root, "Sources", "*", "AddressBook-v22.abcddb"))):
         try:
             con = sqlite3.connect("file:" + path + "?mode=ro", uri=True, timeout=2)
         except Exception:
             continue
         try:
             con.execute("PRAGMA query_only = ON")
-            rows = con.execute(
-                "SELECT r.ZFIRSTNAME, r.ZLASTNAME, r.ZORGANIZATION, p.ZFULLNUMBER FROM ZABCDPHONENUMBER p JOIN ZABCDRECORD r ON r.Z_PK = p.ZOWNER"
-            ).fetchall()
-            rows += con.execute(
-                "SELECT r.ZFIRSTNAME, r.ZLASTNAME, r.ZORGANIZATION, e.ZADDRESS FROM ZABCDEMAILADDRESS e JOIN ZABCDRECORD r ON r.Z_PK = e.ZOWNER"
-            ).fetchall()
+            rows = con.execute("SELECT r.ZFIRSTNAME, r.ZLASTNAME, r.ZORGANIZATION, p.ZFULLNUMBER FROM ZABCDPHONENUMBER p JOIN ZABCDRECORD r ON r.Z_PK = p.ZOWNER").fetchall()
+            rows += con.execute("SELECT r.ZFIRSTNAME, r.ZLASTNAME, r.ZORGANIZATION, e.ZADDRESS FROM ZABCDEMAILADDRESS e JOIN ZABCDRECORD r ON r.Z_PK = e.ZOWNER").fetchall()
             read = True
         except Exception:
             continue
@@ -190,22 +140,15 @@ def _contacts(handles, root=CONTACTS):
             con.close()
         for first, last, org, value in rows:
             handle = by_key.get(key(value)) if isinstance(value, str) else None
-            name = " ".join(x for x in (first, last) if isinstance(x, str) and x) or (
-                org if isinstance(org, str) else ""
-            )
+            name = " ".join(x for x in (first, last) if isinstance(x, str) and x) or (org if isinstance(org, str) else "")
             if handle and name and handle not in names:
                 names[handle] = name
     return names, ("CURRENT" if read else "UNAVAILABLE")
 
 
 def _base(now, db, health="DISCONNECTED"):
-    return {
-        "channel": "imessage",
-        "health": health,
-        "sync": "UNVERIFIED",
-        "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "source": SOURCE,
-    }
+    return {"channel": "imessage", "health": health, "sync": "UNVERIFIED", "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "source": SOURCE}
 
 
 def _read(db, now, work):
@@ -241,60 +184,28 @@ def counts(db=DB, now=None):
 
     def work(con, cols):
         unread = _real(cols) + " AND m.is_read = 0"
-        joined = (
-            " FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID JOIN chat c ON c.ROWID = j.chat_id WHERE "
-            + unread
-        )
+        joined = " FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID JOIN chat c ON c.ROWID = j.chat_id WHERE " + unread
         windows = {}
-        for name, since in (
-            ("all_time", None),
-            ("last_7_days", now - timedelta(days=7)),
-            ("last_24_hours", now - timedelta(hours=24)),
-        ):
+        for name, since in (("all_time", None), ("last_7_days", now - timedelta(days=7)), ("last_24_hours", now - timedelta(hours=24))):
             where, args = (" AND m.date > ?", (_ticks(since),)) if since else ("", ())
-            m, c = con.execute(
-                "SELECT COUNT(DISTINCT m.guid), COUNT(DISTINCT j.chat_id)" + joined + where, args
-            ).fetchone()
+            m, c = con.execute("SELECT COUNT(DISTINCT m.guid), COUNT(DISTINCT j.chat_id)" + joined + where, args).fetchone()
             windows[name] = {"messages": m, "conversations": c}
-        services = {
-            str(k or "unknown"): v
-            for k, v in con.execute("SELECT m.service, COUNT(DISTINCT m.guid)" + joined + " GROUP BY m.service")
-        }
-        group = con.execute(
-            "SELECT COUNT(DISTINCT CASE WHEN c.style = 43 THEN j.chat_id END), COUNT(DISTINCT CASE WHEN c.style <> 43 THEN j.chat_id END)"
-            + joined
-        ).fetchone()
-        return {
-            "unread": windows,
-            "unread_messages_by_service_all_time": services,
-            "unread_conversations_all_time": {"group": group[0], "direct": group[1]},
-        }
-
+        services = {str(k or "unknown"): v for k, v in con.execute("SELECT m.service, COUNT(DISTINCT m.guid)" + joined + " GROUP BY m.service")}
+        group = con.execute("SELECT COUNT(DISTINCT CASE WHEN c.style = 43 THEN j.chat_id END), COUNT(DISTINCT CASE WHEN c.style <> 43 THEN j.chat_id END)"
+                            + joined).fetchone()
+        return {"unread": windows, "unread_messages_by_service_all_time": services,
+                "unread_conversations_all_time": {"group": group[0], "direct": group[1]}}
     health, result = _read(db, now, work)
     out = _base(now, db, health)
-    out.update(
-        {
-            "counts": result if health == "CURRENT" else None,
-            "count_reliable": False,
-            "definitions": COUNT_DEFINITIONS,
-            "limitation": COUNT_LIMITATION,
-        }
-    )
+    out.update({"counts": result if health == "CURRENT" else None, "count_reliable": False, "definitions": COUNT_DEFINITIONS, "limitation": COUNT_LIMITATION})
     return out
 
 
 def _messages(con, cols, where, args, limit, names_root):
-    extra = ", ".join(
-        "m." + c if c in cols else "0" for c in ("attributedBody", "cache_has_attachments", "date_edited")
-    )
-    rows = con.execute(
-        "SELECT m.ROWID, m.guid, m.text, "
-        + extra
-        + ", m.date, m.service, m.is_from_me, m.is_read, h.id, c.ROWID, c.style, c.display_name"
-        " FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID JOIN chat c ON c.ROWID = j.chat_id"
-        " LEFT JOIN handle h ON h.ROWID = m.handle_id WHERE " + where + " ORDER BY m.date DESC, m.ROWID DESC LIMIT ?",
-        args + (limit * 2,),
-    ).fetchall()
+    extra = ", ".join("m." + c if c in cols else "0" for c in ("attributedBody", "cache_has_attachments", "date_edited"))
+    rows = con.execute("SELECT m.ROWID, m.guid, m.text, " + extra + ", m.date, m.service, m.is_from_me, m.is_read, h.id, c.ROWID, c.style, c.display_name"
+                       " FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID JOIN chat c ON c.ROWID = j.chat_id"
+                       " LEFT JOIN handle h ON h.ROWID = m.handle_id WHERE " + where + " ORDER BY m.date DESC, m.ROWID DESC LIMIT ?", args + (limit * 2,)).fetchall()
     seen, picked = set(), []
     for row in rows:
         if row[1] not in seen and len(picked) < limit:
@@ -306,40 +217,13 @@ def _messages(con, cols, where, args, limit, names_root):
 def _shape(picked, names_root):
     names, contacts = _contacts([r[10] for r in picked if not r[8]], names_root)
     out = []
-    for (
-        rowid,
-        _,
-        text,
-        attributed,
-        attachment,
-        edited,
-        date,
-        service,
-        mine,
-        read,
-        handle,
-        chat,
-        style,
-        chat_name,
-    ) in picked:
+    for rowid, _, text, attributed, attachment, edited, date, service, mine, read, handle, chat, style, chat_name in picked:
         body = _body(text, attributed if isinstance(attributed, bytes) else None)
-        out.append(
-            {
-                "ref": "m%d" % rowid,
-                "chat": "c%d" % chat,
-                "sent_at": _iso(date),
-                "from_me": bool(mine),
-                "sender": None if mine else {"handle": handle, "name": names.get(handle)},
-                "group": style == 43,
-                "chat_name": chat_name or None,
-                "service": service or "unknown",
-                "unread": (not mine) and not read,
-                "edited": bool(edited),
-                "attachment": bool(attachment),
-                "text": body[:MAX_TEXT] if body else None,
-                "text_truncated": bool(body) and len(body) > MAX_TEXT,
-            }
-        )
+        out.append({"ref": "m%d" % rowid, "chat": "c%d" % chat, "sent_at": _iso(date), "from_me": bool(mine),
+                    "sender": None if mine else {"handle": handle, "name": names.get(handle)},
+                    "group": style == 43, "chat_name": chat_name or None, "service": service or "unknown", "unread": (not mine) and not read,
+                    "edited": bool(edited), "attachment": bool(attachment), "text": body[:MAX_TEXT] if body else None,
+                    "text_truncated": bool(body) and len(body) > MAX_TEXT})
     return out, contacts
 
 
@@ -354,40 +238,23 @@ def page(hours=None, after=None, db=DB, now=None, contacts_root=CONTACTS):
     box = {}
 
     def work(con, cols):
-        extra = ", ".join(
-            "m." + c if c in cols else "0" for c in ("attributedBody", "cache_has_attachments", "date_edited")
-        )
-        rows = con.execute(
-            "SELECT m.ROWID, m.guid, m.text, "
-            + extra
-            + ", m.date, m.service, m.is_from_me, m.is_read, h.id, c.ROWID, c.style, c.display_name"
-            " FROM (SELECT m.ROWID AS rid, MIN(j.chat_id) AS cid FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID"
-            " WHERE "
-            + _real(cols)
-            + " AND (m.date > ? OR (m.date = ? AND m.ROWID > ?)) GROUP BY m.ROWID ORDER BY m.date, m.ROWID LIMIT ?) p"
-            " JOIN message m ON m.ROWID = p.rid JOIN chat c ON c.ROWID = p.cid LEFT JOIN handle h ON h.ROWID = m.handle_id"
-            " ORDER BY m.date, m.ROWID",
-            (after_date, after_date, after_rowid, PAGE + 1),
-        ).fetchall()
+        extra = ", ".join("m." + c if c in cols else "0" for c in ("attributedBody", "cache_has_attachments", "date_edited"))
+        rows = con.execute("SELECT m.ROWID, m.guid, m.text, " + extra + ", m.date, m.service, m.is_from_me, m.is_read, h.id, c.ROWID, c.style, c.display_name"
+                           " FROM (SELECT m.ROWID AS rid, MIN(j.chat_id) AS cid FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID"
+                           " WHERE " + _real(cols) + " AND (m.date > ? OR (m.date = ? AND m.ROWID > ?)) GROUP BY m.ROWID ORDER BY m.date, m.ROWID LIMIT ?) p"
+                           " JOIN message m ON m.ROWID = p.rid JOIN chat c ON c.ROWID = p.cid LEFT JOIN handle h ON h.ROWID = m.handle_id"
+                           " ORDER BY m.date, m.ROWID", (after_date, after_date, after_rowid, PAGE + 1)).fetchall()
         more = len(rows) > PAGE
         rows = rows[:PAGE]
         box["cursor"] = {"date": rows[-1][6], "rowid": rows[-1][0]} if rows else None
         box["more"] = more
         box["messages"], box["contacts"] = _shape(rows, contacts_root)
         return True
-
     health, _ = _read(db, now, work)
     out = _base(now, db, health)
     ok = health == "CURRENT"
-    out.update(
-        {
-            "messages": box.get("messages") if ok else None,
-            "contacts": box.get("contacts", "UNAVAILABLE"),
-            "limit": PAGE,
-            "more": box.get("more") if ok else None,
-            "cursor": box.get("cursor") if ok else None,
-        }
-    )
+    out.update({"messages": box.get("messages") if ok else None, "contacts": box.get("contacts", "UNAVAILABLE"), "limit": PAGE,
+                "more": box.get("more") if ok else None, "cursor": box.get("cursor") if ok else None})
     return out
 
 
@@ -396,26 +263,12 @@ def recent(hours, db=DB, now=None, contacts_root=CONTACTS):
     box = {}
 
     def work(con, cols):
-        box["messages"], box["contacts"] = _messages(
-            con,
-            cols,
-            _real(cols) + " AND m.date > ?",
-            (_ticks(now - timedelta(hours=hours)),),
-            MAX_RECENT,
-            contacts_root,
-        )
+        box["messages"], box["contacts"] = _messages(con, cols, _real(cols) + " AND m.date > ?", (_ticks(now - timedelta(hours=hours)),), MAX_RECENT, contacts_root)
         return True
-
     health, _ = _read(db, now, work)
     out = _base(now, db, health)
-    out.update(
-        {
-            "hours": hours,
-            "messages": box.get("messages") if health == "CURRENT" else None,
-            "contacts": box.get("contacts", "UNAVAILABLE"),
-            "limit": MAX_RECENT,
-        }
-    )
+    out.update({"hours": hours, "messages": box.get("messages") if health == "CURRENT" else None, "contacts": box.get("contacts", "UNAVAILABLE"),
+                "limit": MAX_RECENT})
     return out
 
 
@@ -424,21 +277,12 @@ def conversation(chat, db=DB, now=None, contacts_root=CONTACTS):
     box = {}
 
     def work(con, cols):
-        box["messages"], box["contacts"] = _messages(
-            con, cols, _real(cols, incoming=False) + " AND c.ROWID = ?", (chat,), MAX_THREAD, contacts_root
-        )
+        box["messages"], box["contacts"] = _messages(con, cols, _real(cols, incoming=False) + " AND c.ROWID = ?", (chat,), MAX_THREAD, contacts_root)
         return True
-
     health, _ = _read(db, now, work)
     out = _base(now, db, health)
-    out.update(
-        {
-            "chat": "c%d" % chat,
-            "messages": box.get("messages") if health == "CURRENT" else None,
-            "contacts": box.get("contacts", "UNAVAILABLE"),
-            "limit": MAX_THREAD,
-        }
-    )
+    out.update({"chat": "c%d" % chat, "messages": box.get("messages") if health == "CURRENT" else None, "contacts": box.get("contacts", "UNAVAILABLE"),
+                "limit": MAX_THREAD})
     return out
 
 
@@ -451,37 +295,19 @@ def _error(mid, code, message):
 
 
 def handle(msg, snap=snapshot, ops=None):
-    ops = ops or {
-        "imessage_counts": lambda args: counts(),
-        "imessage_recent": lambda args: recent(args["hours"]),
-        "imessage_conversation": lambda args: conversation(args["chat"]),
-        "imessage_page": lambda args: (
-            page(args["hours"]) if "hours" in args else page(after=(args["after_date"], args["after_rowid"]))
-        ),
-    }
+    ops = ops or {"imessage_counts": lambda args: counts(), "imessage_recent": lambda args: recent(args["hours"]),
+                  "imessage_conversation": lambda args: conversation(args["chat"]),
+                  "imessage_page": lambda args: page(args["hours"]) if "hours" in args else page(after=(args["after_date"], args["after_rowid"]))}
     method, mid = msg.get("method"), msg.get("id")
     if mid is None:
         return None
     if method == "initialize":
-        result = {
-            "protocolVersion": PROTOCOL,
-            "capabilities": {"tools": {}},
-            "serverInfo": {"name": "lifeos-imessage-attention", "version": "2"},
-        }
+        result = {"protocolVersion": PROTOCOL, "capabilities": {"tools": {}}, "serverInfo": {"name": "lifeos-imessage-attention", "version": "2"}}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {
-            "tools": [
-                {
-                    "name": name,
-                    "description": text,
-                    "inputSchema": schema,
-                    "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
-                }
-                for name, (text, schema) in TOOLS.items()
-            ]
-        }
+        result = {"tools": [{"name": name, "description": text, "inputSchema": schema,
+                             "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}} for name, (text, schema) in TOOLS.items()]}
     elif method == "tools/call":
         params = msg.get("params")
         name = params.get("name") if isinstance(params, dict) else None
@@ -492,21 +318,12 @@ def handle(msg, snap=snapshot, ops=None):
             or (name == "imessage_recent" and set(args) == {"hours"} and _int(args["hours"], 1, MAX_HOURS))
             or (name == "imessage_conversation" and set(args) == {"chat"} and _int(args["chat"], 1, MAX_CHAT))
             or (name == "imessage_page" and set(args) == {"hours"} and _int(args["hours"], 1, MAX_HOURS))
-            or (
-                name == "imessage_page"
-                and set(args) == {"after_date", "after_rowid"}
-                and _int(args["after_date"], 1, MAX_TICKS)
-                and _int(args["after_rowid"], 1, MAX_ROWID)
-            )
-        )
+            or (name == "imessage_page" and set(args) == {"after_date", "after_rowid"} and _int(args["after_date"], 1, MAX_TICKS)
+                and _int(args["after_rowid"], 1, MAX_ROWID)))
         if not valid:
             return _error(mid, -32602, "unsupported tool or arguments")
         state = snap() if name == TOOL else ops[name](args)
-        result = {
-            "content": [{"type": "text", "text": json.dumps(state)}],
-            "structuredContent": state,
-            "isError": state["health"] != "CURRENT",
-        }
+        result = {"content": [{"type": "text", "text": json.dumps(state)}], "structuredContent": state, "isError": state["health"] != "CURRENT"}
     else:
         return _error(mid, -32601, "method not found")
     return {"jsonrpc": "2.0", "id": mid, "result": result}
