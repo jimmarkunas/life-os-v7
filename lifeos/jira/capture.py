@@ -169,17 +169,21 @@ class State:
         except Exception as error:  # noqa: BLE001
             if not db._lost(error):
                 raise
-            self.connection._reconnect(error)
-            store.save(self.connection, key, self._wrap(payload, now))
+            try:
+                self.connection._reconnect(error)
+                store.save(self.connection, key, self._wrap(payload, now))
+            except Exception:  # noqa: BLE001
+                return False
+        return True
 
     def put_comment(self, comment_id, payload, now):
-        self._write(COMMENT_STORE, int(comment_id), payload, now)
+        return self._write(COMMENT_STORE, int(comment_id), payload, now)
 
     def issue(self, key):
         return (ISSUE_STORE.load(self.connection, key) or {}).get("comments") or []
 
     def put_issue(self, key, ids, now):
-        self._write(ISSUE_STORE, key, {"comments": sorted(ids)}, now)
+        return self._write(ISSUE_STORE, key, {"comments": sorted(ids)}, now)
 
 
 def _tick(total, key, why=None):
@@ -190,6 +194,14 @@ def _tick(total, key, why=None):
 
 def _item(key, comment_id, decision):
     return f"{decision} (Jira {key}, comment {comment_id}; Jira is the source of truth)"
+
+
+def _state_write(total, write, *args):
+    if write(*args) is False:
+        total["warnings"] = total.get("warnings", 0) + 1
+        total["why"]["capture_state_unavailable"] = 1
+        return False
+    return True
 
 
 def capture_issue(jira, key, memory, state, live, now, total):
@@ -224,10 +236,16 @@ def capture_issue(jira, key, memory, state, live, now, total):
         new = (reply.get("data") or {}).get("id")
         if reply.get("ok") and new:
             _tick(total, "corrected" if prior and prior.get("state") == "stored" else "stored")
-            state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": new, "state": "stored"}, now)
+            if not _state_write(
+                total, state.put_comment, cid, {"issue": key, "sha": digest, "memory_id": new, "state": "stored"}, now
+            ):
+                return False
         elif reply.get("error") == "sensitive_refused":
             _tick(total, "filtered")
-            state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": "", "state": "filtered"}, now)
+            if not _state_write(
+                total, state.put_comment, cid, {"issue": key, "sha": digest, "memory_id": "", "state": "filtered"}, now
+            ):
+                return False
         else:
             _tick(total, "failed", str(reply.get("error") or "capture_failed")[:40])
             if getattr(memory, "down", ""):
@@ -240,10 +258,13 @@ def capture_issue(jira, key, memory, state, live, now, total):
                 total["writes"] += 1
                 if memory.revoke(prior["memory_id"]).get("ok"):
                     _tick(total, "revoked")
-                    state.put_comment(gone, {**prior, "state": "revoked"}, now)
+                    if not _state_write(total, state.put_comment, gone, {**prior, "state": "revoked"}, now):
+                        return False
                 else:
                     _tick(total, "failed", "revoke_failed")
-        state.put_issue(key, seen, now)
+        if not _state_write(total, state.put_issue, key, seen, now):
+            return False
+    return True
 
 
 def run(limit, live, environ=os.environ, jira=None, now=None, connect=None, memory=None):
@@ -258,6 +279,7 @@ def run(limit, live, environ=os.environ, jira=None, now=None, connect=None, memo
         "unchanged": 0,
         "filtered": 0,
         "failed": 0,
+        "warnings": 0,
         "deferred": 0,
         "would_write": 0,
         "writes": 0,
@@ -278,7 +300,8 @@ def run(limit, live, environ=os.environ, jira=None, now=None, connect=None, memo
             state = State(connection)
             for issue in issues:
                 try:
-                    capture_issue(jira, issue["key"], memory, state, live, now, total)
+                    if capture_issue(jira, issue["key"], memory, state, live, now, total) is False:
+                        break
                 except JiraError:
                     _tick(total, "failed", "jira_comments")
     if total["failed"]:
