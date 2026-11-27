@@ -197,7 +197,7 @@ def rpc(relay, msg, who=None):
                           "annotations": {"readOnlyHint": ro, "destructiveHint": False, "openWorldHint": True}} for n, (d, p, r, ro, *_) in [*FROZEN.items(), *TOOLS.items()]]}
     elif method == "tools/call":
         params = msg.get("params") or {}
-        name, args = params.get("name"), params.get("arguments") or {}
+        name, args = params.get("name"), (mcp_access.lift_flat(params.get("arguments") or {}, MEMORY_OPS) if mcp_access and params.get("name") == "buzz_read" else params.get("arguments") or {})
         try:
             out, err = (dispatch(relay, name, args, who) if name in FROZEN else call_tool(relay, name, args)), False
         except BuzzError as e:
@@ -338,7 +338,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
             need = "buzz:read" if spec and spec[3] else "buzz:write"
             if spec and need not in who["scopes"]:
                 return self._deny(403, "insufficient_scope", need)
-            args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            args = (mcp_access.lift_flat(params["arguments"], MEMORY_OPS) if mcp_access and params.get("name") == "buzz_read" else params["arguments"]) if isinstance(params.get("arguments"), dict) else {}
             relay = relays.get(who["client"])
             if relay is None and who.get("facts", {}).get("credential") and (params.get("name") == "buzz_capabilities" or (params.get("name") == "buzz_read" and (args.get("operation") not in READ or args.get("operation") in ("list_communities", *ROUTES, *MEMORY_OPS)))):
                 relay = Relay({}, {})

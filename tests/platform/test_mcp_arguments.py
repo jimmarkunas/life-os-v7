@@ -31,3 +31,24 @@ class OperationArguments(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiftFlat(unittest.TestCase):
+    OPS = ("memory_recall", "memory_store")
+
+    def test_flat_memory_fields_become_the_arguments_and_community_is_dropped(self):
+        flat = {"operation": "memory_recall", "community": "life-os", "workspace": "Personal", "query": "q"}
+        self.assertEqual(
+            mcp_access.lift_flat(flat, self.OPS),
+            {"operation": "memory_recall", "arguments": {"workspace": "Personal", "query": "q"}},
+        )
+
+    def test_nested_calls_other_operations_and_bare_calls_are_unchanged(self):
+        for args in (
+            {"operation": "memory_recall", "arguments": {"workspace": "Personal"}, "query": "q"},
+            {"operation": "list_channels", "community": "life-os", "workspace": "x"},
+            {"operation": "memory_recall"},
+            {"operation": "memory_recall", "community": "life-os"},
+        ):
+            self.assertEqual(mcp_access.lift_flat(args, self.OPS), args)
+        self.assertEqual(mcp_access.lift_flat("x", self.OPS), "x")

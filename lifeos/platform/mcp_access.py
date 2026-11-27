@@ -219,3 +219,13 @@ def arguments_shape(args):
     if isinstance(value, dict):
         return "object" if isinstance(value.get("workspace"), str) else "object_without_workspace"
     return "string" if isinstance(value, str) else "other"
+
+
+def lift_flat(args, memory_ops):
+    """A memory call whose operation fields arrive flat beside `operation` (no `arguments` object; some clients do
+    this) -> the same call with those fields as its `arguments`. `community` is dropped there: a memory call's tenant is
+    its workspace. Any other call, or one that already has `arguments`, is returned unchanged."""
+    if not isinstance(args, dict) or "arguments" in args or args.get("operation") not in memory_ops:
+        return args
+    extras = {k: v for k, v in args.items() if k not in ("operation", "community")}
+    return {"operation": args["operation"], "arguments": extras} if extras else args
