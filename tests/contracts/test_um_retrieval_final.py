@@ -111,6 +111,12 @@ class Live(Fake):
             self.assertGreaterEqual(res["chosen"]["dev"]["exact_overall"], 0.9)
             self.assertEqual(res["chosen"]["dev"]["absent_abstention"], 1.0)
 
+    def test_a_candidate_that_failed_a_fresh_set_is_never_picked_again(self):
+        lv.dev_capture(self.read, LIVE, REG, self.ev, meter=meter)
+        rows = [r for r in self.ev.rows() if r["kind"] == "devcand"]
+        res = lv.choose_gate(rows, LIVE["queries"], REG, {"C1": Bag(), "C2": Bag()}, exclude=("C3", "C1"))
+        self.assertNotIn(res["chosen"] and res["chosen"]["candidate"], ("C3", "C1"))
+
     def test_a_chosen_gate_runs_on_a_query_set_and_the_summary_judges_it_against_the_bars(self):
         config = {"candidate": "C1", "gate": {"kind": "cosine", "tau": 0.6, "select": "top1"}, "route_all": True}
         lv.acceptance(self.read, LIVE["queries"], REG, self.ev, config, "dev", reps=2, meter=meter, embedder=Bag())

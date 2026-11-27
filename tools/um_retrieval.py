@@ -118,6 +118,39 @@ class OllamaEmbedder:
             return json.loads(answer.read())["embedding"]
 
 
+class OllamaJudge:
+    """A small local model asked one question per candidate: does this stored note state what the question asks for? Loopback only, no spend; the answer is YES or NO and anything else is NO."""
+
+    def __init__(self, url="http://127.0.0.1:11434/api/generate", model="qwen3:0.6b", opener=urllib.request.urlopen):
+        if not url.startswith("http://127.0.0.1:") and not url.startswith("http://localhost:"):
+            raise ValueError("judge_not_loopback")
+        self.url, self.model, self.opener, self.calls, self.cache = url, model, opener, 0, {}
+
+    def answers(self, query, text):
+        key = (query, text)
+        if key not in self.cache:
+            self.calls += 1
+            prompt = (
+                "You decide whether a stored note answers a question.\n"
+                f"Question: {query}\nNote: {text}\n"
+                "Does the note state the specific thing the question asks for? Answer with one word: YES or NO."
+            )
+            body = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "think": False,
+                "options": {"temperature": 0, "num_predict": 3},
+            }
+            request = urllib.request.Request(
+                self.url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
+            )
+            with self.opener(request, timeout=60) as answer:
+                reply = json.loads(answer.read()).get("response", "")
+            self.cache[key] = reply.strip().upper().startswith("YES")
+        return self.cache[key]
+
+
 def cosine(a, b):
     dot = sum(x * y for x, y in zip(a, b))
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
@@ -156,6 +189,7 @@ class Retriever:
         embedder=None,
         gate=None,
         route_all=False,
+        judge=None,
     ):
         self.world, self.client, self.graph, self.grants = world, client, graph, grants
         self.messages = {m["id"]: m["tenant"] for m in messages or []}
@@ -163,6 +197,7 @@ class Retriever:
         self.client_calls = 0
         self.clock, self.floor = clock, floor
         self.embedder, self.gate, self.route_all = embedder, dict(gate or LEGACY_GATE), route_all
+        self.judge, self._judged = judge, 0
         self._doc_vecs, self._qvec, self._sims = {}, None, {}
         self._trace = []
         self._clean = None
@@ -280,6 +315,18 @@ class Retriever:
         kind = self.gate["kind"]
         if kind == "none":
             return 1.0
+        if kind == "judge":
+            if self.gate.get("tau") is not None:  # an optional similarity pre-filter keeps the judge to plausible notes
+                if self._qvec is None or self._qvec[0] != query:
+                    self._qvec = (query, self.embedder.embed(query, "query"))
+                if rec_id not in self._doc_vecs:
+                    self._doc_vecs[rec_id] = self.embedder.embed(self.world.src[rec_id]["text"], "doc")
+                if cosine(self._qvec[1], self._doc_vecs[rec_id]) < self.gate["tau"]:
+                    return 0.0
+            self._judged = getattr(self, "_judged", 0) + 1
+            if self._judged > self.gate.get("max", 4):
+                return 0.0
+            return 1.0 if self.judge.answers(query, self.world.src[rec_id]["text"]) else 0.0
         if kind == "cosine":
             if self._qvec is None or self._qvec[0] != query:
                 self._qvec = (query, self.embedder.embed(query, "query"))
@@ -345,6 +392,7 @@ class Retriever:
         if self.client is None:
             return []
         self.client_calls += 1
+        self._judged = 0
         try:
             items = self.client.recall(query, tenant, TOP_K)
         except Exception:  # noqa: BLE001  an outage is reported, not retried or guessed around

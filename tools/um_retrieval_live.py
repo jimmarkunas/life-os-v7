@@ -138,6 +138,8 @@ PHASE_TOKENS = {
     "accept_dev": ("UM_T6_TOKEN",),
     "accept_H1": ("UM_T7_TOKEN",),
     "accept_H2": ("UM_T7_TOKEN",),
+    "capture_H1": ("UM_T7_TOKEN",),
+    "capture_H2": ("UM_T7_TOKEN",),
     "structured": ("UM_T2_TOKEN",),
     "seed": ("UM_T6_TOKEN",),
     "behavioral": ("UM_T6_TOKEN",),
@@ -737,7 +739,7 @@ class CachedEmbedder:
         return self.cache[key]
 
 
-def replay(rows, queries, registry, gate, embedder=None, keep=None, route_all=True):
+def replay(rows, queries, registry, gate, embedder=None, keep=None, route_all=True, judge=None):
     """Runs the real pipeline over recorded candidates (no live call). `keep` maps a query id to the live ids a server-side cutoff kept. -> {qid: result}"""
     world = rt.build_world(registry)
     out = {}
@@ -755,6 +757,7 @@ def replay(rows, queries, registry, gate, embedder=None, keep=None, route_all=Tr
             embedder=embedder,
             gate=gate,
             route_all=route_all,
+            judge=judge,
         )
         out[row["qid"]] = retriever.answer(row["tenant"], row["query"])
     return out
@@ -790,7 +793,7 @@ def plateau(scores):
     return round((widest[0] + widest[-1]) / 2, 4)
 
 
-def choose_gate(devcand_rows, queries, registry, embedders):
+def choose_gate(devcand_rows, queries, registry, embedders, exclude=()):
     """Scores every free candidate on the dev capture only and picks the simplest that meets the bars. -> {"chosen": config or None, "candidates": {...}}. Nothing here reads a held-out set."""
     q_by = {q["id"]: q for q in queries}
     qs = [q_by[r["qid"]] for r in devcand_rows]
@@ -826,6 +829,8 @@ def choose_gate(devcand_rows, queries, registry, embedders):
         )
     chosen = None
     for name in CANDIDATE_ORDER:
+        if name in exclude:
+            continue
         dev = report.get(name, {}).get("dev")
         if (
             dev
@@ -854,6 +859,49 @@ def choose_gate(devcand_rows, queries, registry, embedders):
     for v in report.values():
         v["sweep_summary"] = {k: [x["exact_overall"], x["absent_abstention"]] for k, x in v.pop("sweep").items()}
     return {"chosen": config, "candidates": report}
+
+
+def set_capture(honcho, queries, registry_unused, evidence, tag, meter=meter_state):
+    """Reads the guarded candidate window of every query of one set, so a candidate can be replayed on it later without another read. Reads only."""
+    rows = LiveRows(honcho)
+    before = meter()
+    for q in queries:
+        window = GuardedMemory(rows).recall(q["query"], q["tenant"], rt.TOP_K)
+        evidence.add(kind="setcand", tag=tag, qid=q["id"], tenant=q["tenant"], query=q["query"], window=window)
+    after = meter()
+    evidence.add(kind="rep_meter", phase=f"capture_{tag}", rep=1, before=before, after=after)
+    assert_unchanged(before, after, evidence, f"capture {tag}")
+
+
+def judge_eval(evidence_rows, sets, judge, embedder=None, gates=None):
+    """Replays the local judge on recorded candidates for every set. -> {gate name: {tag: score + failures by kind}}. The fresh sets were already used, so these numbers are exploratory by construction."""
+    out = {}
+    gates = gates or {
+        "judge": {"kind": "judge", "select": "top1", "max": 4},
+        "cosine+judge": {"kind": "judge", "select": "top1", "max": 4, "tau": 0.7},
+    }
+    for name, gate_cfg in gates.items():
+        out[name] = {}
+        for tag, (queries, registry) in sets.items():
+            rows = [
+                r
+                for r in evidence_rows
+                if (r["kind"] == "devcand" and tag == "dev") or (r["kind"] == "setcand" and r.get("tag") == tag)
+            ]
+            res = replay(rows, queries, registry, gate_cfg, embedder, judge=judge)
+            q_by = {q["id"]: q for q in queries}
+            qs = [q_by[r["qid"]] for r in rows]
+            sc = _score(qs, res)
+            kinds = {}
+            for q in qs:
+                k = q.get("kind", "?")
+                kinds.setdefault(k, [0, 0])
+                kinds[k][0] += exact(q, res[q["id"]]["answers"])
+                kinds[k][1] += 1
+            sc["by_kind"] = {k: f"{v[0]}/{v[1]}" for k, v in sorted(kinds.items())}
+            sc["failures"] = sorted(q["id"] for q in qs if not exact(q, res[q["id"]]["answers"]))
+            out[name][tag] = sc
+    return out
 
 
 def make_embedder(config):
@@ -975,18 +1023,21 @@ PHASES = (
     "accept_dev",
     "accept_H1",
     "accept_H2",
+    "capture_H1",
+    "capture_H2",
+    "judge_eval",
 )
 GATE_FILE = "/var/tmp/um-t6/retrieval_gate.json"
 
 
-def run_select(evidence, live, registry, gate_path, embedders=None):
+def run_select(evidence, live, registry, gate_path, embedders=None, exclude=()):
     """Scores the free candidates on the dev capture alone and writes the frozen gate (or a no-go note) to `gate_path`."""
     rows = [r for r in evidence.rows() if r["kind"] == "devcand"]
     embedders = embedders or {
         "C1": rt.OllamaEmbedder(),
         "C2": rt.OllamaEmbedder(query_prefix="search_query: ", doc_prefix="search_document: "),
     }
-    result = choose_gate(rows, live["queries"], registry, embedders)
+    result = choose_gate(rows, live["queries"], registry, embedders, exclude)
     pathlib.Path(gate_path).write_text(json.dumps(result, indent=1, sort_keys=True))
     return result
 
@@ -1013,6 +1064,7 @@ def main(argv=None, env=None, host=None, now=None):
     ap.add_argument("--evidence", default="/var/tmp/um-t6/evidence.jsonl")
     ap.add_argument("--gate", default=GATE_FILE)
     ap.add_argument("--reps", type=int, default=5)
+    ap.add_argument("--exclude", default="")
     args = ap.parse_args(argv)
     env = os.environ if env is None else env
     live = json.loads((FIX / "behavioral_live.json").read_text())
@@ -1020,8 +1072,18 @@ def main(argv=None, env=None, host=None, now=None):
     if args.phase == "summary":
         print(json.dumps(summary(Evidence(args.evidence)), indent=1, sort_keys=True, default=str))
         return 0
+    if args.phase == "judge_eval":  # offline: recorded candidates and the local models only
+        rows = Evidence(args.evidence).rows()
+        sets = {"dev": (live["queries"], registry)}
+        for name, qs in json.loads((FIX / "acceptance_heldout.json").read_text())["sets"].items():
+            sets[name] = (qs, json.loads((FIX / "acceptance_heldout.json").read_text())["registry"])
+        report = judge_eval(rows, sets, rt.OllamaJudge(), rt.OllamaEmbedder())
+        print(json.dumps(report, indent=1, sort_keys=True))
+        return 0
     if args.phase == "select":  # offline: dev evidence and the local embedding model only
-        result = run_select(Evidence(args.evidence), live, registry, args.gate)
+        result = run_select(
+            Evidence(args.evidence), live, registry, args.gate, exclude=tuple(x for x in args.exclude.split(",") if x)
+        )
         print(
             json.dumps(
                 {"chosen": result["chosen"], "dev": {k: v.get("dev") for k, v in result["candidates"].items()}},
@@ -1052,6 +1114,10 @@ def main(argv=None, env=None, host=None, now=None):
         elif args.phase == "behavioral":
             honcho, _ = build_honcho(WS_BEHAVIORAL, env["UM_T6_TOKEN"], "read")
             behavioral(honcho, live, registry, evidence, args.reps)
+        elif args.phase in ("capture_H1", "capture_H2"):
+            tag = args.phase.split("_", 1)[1]
+            honcho, _ = build_honcho(WS_HELDOUT, env["UM_T7_TOKEN"], "read")
+            set_capture(honcho, held["sets"][tag], held["registry"], evidence, tag)
         elif args.phase == "dev":
             honcho, _ = build_honcho(WS_BEHAVIORAL, env["UM_T6_TOKEN"], "read")
             dev_capture(honcho, live, registry, evidence)
