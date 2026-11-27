@@ -1,4 +1,6 @@
-"""LIFE-861: no workflow job loads a Bitwarden secret that no code it runs reads (tools/secret_usage.py), except the few justified entries in secret_allowlist.json."""
+"""no workflow job loads a Bitwarden secret that no code it runs reads (tools/secret_usage.py), except the few justified
+entries in.
+"""
 import json
 import pathlib
 import sys
@@ -6,7 +8,7 @@ import unittest
 
 try:
     import yaml
-except ImportError:                                                         # the workflow contract tests skip the same way
+except ImportError:  # the workflow contract tests skip the same way
     yaml = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -37,7 +39,9 @@ class LeastPrivilege(unittest.TestCase):
 
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
 class Tool(unittest.TestCase):
-    """The checker on small synthetic workflows, with the real stage code: resolve-jobright reads JOBRIGHT_EMAIL and never Gmail."""
+    """The checker on small synthetic workflows, with the real stage code: resolve-jobright reads JOBRIGHT_EMAIL and
+    never Gmail.
+    """
     def run_tool(self, d):
         import secret_usage
         return secret_usage.analyse({"x.yml": d})[0]

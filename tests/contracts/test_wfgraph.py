@@ -1,4 +1,6 @@
-"""LIFE-1010: tools/wfgraph.py proves a workflow refactor changed no behaviour: the lean steps inline back to the old ones, and any real difference shows."""
+"""tools/wfgraph.py proves a workflow refactor changed no behaviour: the lean steps inline back to the old ones, and any
+real difference shows.
+"""
 import contextlib
 import io
 import pathlib

@@ -1,4 +1,4 @@
-"""LIFE-666: the read-only record-gap lister, worked by hand on a saved export (no network, no credentials, no clock)."""
+"""the read-only record-gap lister, worked by hand on a saved export (no network, no credentials, no clock)."""
 import io
 import json
 import os
@@ -9,8 +9,8 @@ from lifeos.sources.devtools import record_gaps as rg
 
 NOW = "2026-11-13T20:00:00Z"
 EXPORT = {
-    "LIFE-1": [["2026-11-13T12:00:00Z", "[claim] session-a"], ["2026-11-13T12:30:00Z", "progress"], ["2026-11-13T14:00:00Z", "done"]],      # 30 min (short), then 90 min (open), then 360 min to NOW (open)
-    "LIFE-2": [["2026-11-13T12:00:00Z", "[waiting on] CI"], ["2026-11-13T19:30:00Z", "[claim] session-b"]],                                  # 450 min explained, then 30 min (short)
+    "LIFE-1": [["2026-11-13T12:00:00Z", "[claim] session-a"], ["2026-11-13T12:30:00Z", "progress"], ["2026-11-13T14:00:00Z", "done"]],
+    "LIFE-2": [["2026-11-13T12:00:00Z", "[waiting on] CI"], ["2026-11-13T19:30:00Z", "[claim] session-b"]],  # 450 min explained, then 30 min (short)
     "LIFE-3": [],
 }
 

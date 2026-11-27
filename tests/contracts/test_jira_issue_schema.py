@@ -1,5 +1,4 @@
-"""LIFE-79 (Jim, Oct 29 2026): the LIFE Jira issue-writing contract has one machine-readable schema, linked from the canonical policy.
-The schema is a pure JSON document; these checks need no network, Jira or Notion."""
+"""the LIFE Jira issue-writing contract has one machine-readable schema, linked from the canonical policy."""
 import json
 import re
 import unittest
@@ -8,13 +7,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "docs" / "jira" / "issue-schema.v1.json"
-POLICY = (ROOT / "docs" / "life-os-development-policy.md").read_text()     # Jim, Nov 21 2026: the whole policy is one file
+POLICY = (ROOT / "docs" / "life-os-development-policy.md").read_text()
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
 DEFS = SCHEMA["$defs"]
 
 try:
     import jsonschema
-except ImportError:                                    # not a runtime dependency; the stdlib checks below still run
+except ImportError:  # not a runtime dependency
     jsonschema = None
 
 
@@ -26,7 +25,7 @@ class Contract(unittest.TestCase):
     def test_the_policy_owns_the_contract_and_links_the_schema(self):
         self.assertIn("## 7. Writing tickets", POLICY)
         self.assertIn("(jira/issue-schema.v1.json)", POLICY)
-        self.assertNotIn("As the Main User. Given:", POLICY)        # the old combined story/criteria format is reconciled away
+        self.assertNotIn("As the Main User. Given:", POLICY)
 
     def test_the_policy_examples_match_the_schema_formats(self):
         self.assertIn("one branch `life/LIFE-nnn/<slug>`, one PR titled `[LIFE-nnn] <outcome>`", POLICY)
@@ -57,7 +56,7 @@ class Contract(unittest.TestCase):
         self.assertIn("Independent technical review is optional for routine PRs", SCHEMA["description"])
 
     def test_agent_go_is_the_human_released_priority_ordered_queue(self):
-        """Agent Go is the released queue, ordered by Priority then Rank; a status change wakes nobody (Jim, Nov 21 2026)."""
+        """Agent Go is the released queue, ordered by Priority then Rank"""
         delivery = POLICY.split("## 3. Delivery", 1)[1].split("## 4.", 1)[0]
         self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', delivery)
         self.assertIn("never reorder or reprioritize", delivery)
@@ -74,7 +73,7 @@ class Contract(unittest.TestCase):
         self.assertNotIn("Buzz or T3", POLICY)
 
     def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
-        """Jim, Nov 21 2026: LOS is retired; a new outcome starts as a LIFE Epic in Scoping; the description owns requirements; discovery answers are saved and read back."""
+        """a new outcome starts as a LIFE Epic in Scoping"""
         rule = POLICY.split("## 7. Writing tickets", 1)[1].split("## 8.", 1)[0]
         for required in ("starts as a LIFE Epic in Scoping", "Claude writes, ChatGPT reviews", "Only `ready` tickets move to Agent Go", "The description beats comments", "never a comment alone",
                          "`Given … when … then …`", "A tick without cited proof is not Done", "read back before the next question", "Link the Notion requirement"):
@@ -87,19 +86,21 @@ class Contract(unittest.TestCase):
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_a_new_product_outcome_needs_a_scoping_epic_origin_and_los_is_refused(self):
         issue = {k: v for k, v in SCHEMA["examples"][0].items() if k != "product_origin"}
-        self.assertTrue(list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue)))                       # missing product origin
+        self.assertTrue(list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue)))  # missing product origin
         self.assertEqual(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "spec_url": "https://example.com/spec", "approval_source": "Jim, 2026-11-21"}), [])
-        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LOS-70", "spec_url": "https://example.com/spec", "approval_source": "x"}))   # LOS is retired
-        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "approval_source": "x"}))   # an Epic needs its spec link
-        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim"}))   # no LOS origin any more
+        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LOS-70", "spec_url": "https://example.com/spec", "approval_source": "x"}))  # LOS is retired
+        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "approval_source": "x"}))  # an Epic needs its spec link
+        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim"}))  # no LOS origin any more
         self.assertEqual(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100", "epic_approval_source": "Jim approved the finite Epic"}), [])
         self.assertEqual(self._origin_errors({"kind": "bug", "parent_ref": "LIFE-101", "approval_source": "approved Epic LIFE-100"}), [])
-        self.assertTrue(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100"}))             # a claimed exception must cite its approval
-        self.assertTrue(self._origin_errors({"kind": "new_product"}))                                              # no unlisted origin
+        self.assertTrue(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100"}))  # a claimed exception must cite its approval
+        self.assertTrue(self._origin_errors({"kind": "new_product"}))  # no unlisted origin
 
     @staticmethod
     def _unpersisted(answered, capture):
-        """Test fixture check only: answered question numbers that are not in the saved entries or in the verified read-back."""
+        """Test fixture check only: answered question numbers that are not in the saved entries or in the verified read-
+        back.
+        """
         saved = {e["question_number"] for e in capture["entries"]} & set(capture["readback"]["saved_questions"])
         return sorted(set(answered) - saved)
 
@@ -111,11 +112,11 @@ class Contract(unittest.TestCase):
         self.assertEqual(list(validator.iter_errors(capture)), [])
         self.assertEqual(self._unpersisted([13, 14], capture), [])
         partial = dict(capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13], "revision_after": "r"})
-        self.assertEqual(self._unpersisted([13, 14], partial), [14])                                              # DISCOVERY_CAPTURE_BLOCKED: Q14 not saved
+        self.assertEqual(self._unpersisted([13, 14], partial), [14])  # DISCOVERY_CAPTURE_BLOCKED: Q14 not saved
         self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": False, "saved_questions": [13, 14], "revision_after": "r"}))))
-        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": True, "saved_questions": [13, 14]}))))     # a read-back names the revision it read   # no unverified read-back
+        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": True, "saved_questions": [13, 14]}))))
         self.assertTrue(list(validator.iter_errors(dict(capture, entries=[]))))
-        self.assertTrue(list(validator.iter_errors(dict(capture, entries=[entry(13, "ASSUMED")]))))              # approval state is one of the four
+        self.assertTrue(list(validator.iter_errors(dict(capture, entries=[entry(13, "ASSUMED")]))))  # approval state is one of the four
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_acceptance_needs_given_when_then_and_a_check_needs_cited_evidence(self):
@@ -124,15 +125,15 @@ class Contract(unittest.TestCase):
         item = {"given": "g", "when": "w", "then": "t"}
         self.assertEqual(list(validator.iter_errors(issue([dict(item, state="unchecked")]))), [])
         self.assertEqual(list(validator.iter_errors(issue([dict(item, state="checked", evidence="PR #1 same-head CI run 123")]))), [])
-        self.assertTrue(list(validator.iter_errors(issue([]))))                                                    # missing acceptance criteria
-        self.assertTrue(list(validator.iter_errors(issue([{"given": "g", "when": "w"}]))))                         # not Given/When/Then
-        self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked")]))))                         # unsafe completion claim: ticked without proof
+        self.assertTrue(list(validator.iter_errors(issue([]))))  # missing acceptance criteria
+        self.assertTrue(list(validator.iter_errors(issue([{"given": "g", "when": "w"}]))))  # not Given/When/Then
+        self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked")]))))  # unsafe completion claim: ticked without proof
         self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked", evidence="")]))))
         self.assertIn("a checklist tick is never Done", SCHEMA["description"])
         self.assertIn("not a native Jira validator", SCHEMA["description"])
 
     def test_context_efficiency_contract_is_in_the_policy(self):
-        """One owner per fact, linked not copied; the policy is one short read; heavy files are read only when needed."""
+        """One owner per fact, linked not copied"""
         for required in ("never copy a fact into a second place", "Read only when needed", "never read the whole file", "so an agent reads it once"):
             self.assertIn(required, POLICY)
         self.assertNotIn("token limit", POLICY.lower())
@@ -140,10 +141,10 @@ class Contract(unittest.TestCase):
     def test_the_schema_lets_a_fresh_agent_recover_scope_from_one_key_without_chat_history(self):
         for needed in ("key", "product_origin", "acceptance_criteria", "execution", "authorization", "owner", "component", "fix_version"):
             self.assertIn(needed, SCHEMA["required"])
-        self.assertFalse(SCHEMA["additionalProperties"])                    # no place to paste a conversation
+        self.assertFalse(SCHEMA["additionalProperties"])  # no place to paste a conversation
         for chat in ("chat_history", "conversation", "transcript"):
             self.assertNotIn(chat, SCHEMA["properties"])
-        self.assertEqual(SCHEMA["properties"]["notion_requirement"]["$ref"], "#/$defs/https_url")   # detail is linked, not copied into Jira
+        self.assertEqual(SCHEMA["properties"]["notion_requirement"]["$ref"], "#/$defs/https_url")  # detail is linked, not copied into Jira
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_a_pasted_conversation_is_not_accepted_as_issue_content(self):
@@ -160,10 +161,10 @@ class Contract(unittest.TestCase):
         jsonschema.Draft202012Validator.check_schema(SCHEMA)
         for example in SCHEMA["examples"]:
             jsonschema.Draft202012Validator(SCHEMA).validate(example)
-        bad = dict(SCHEMA["examples"][0], ui={"scope": "new_or_changed_ui"})          # new UI without Figma frames or a reason
+        bad = dict(SCHEMA["examples"][0], ui={"scope": "new_or_changed_ui"})  # new UI without Figma frames or a reason
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(SCHEMA).validate(bad)
-        bad = dict(SCHEMA["examples"][0], human_uat={"required": False})              # not required, but no reason recorded
+        bad = dict(SCHEMA["examples"][0], human_uat={"required": False})  # not required, but no reason recorded
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(SCHEMA).validate(bad)
 

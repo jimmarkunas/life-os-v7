@@ -1,11 +1,11 @@
-"""LIFE-558: ruff is an ADVISORY check. It is configured in pyproject.toml, pinned with a hash, and its pull-request step can never fail the job or change the required check."""
+"""ruff is an ADVISORY check."""
 import re
 import unittest
 from pathlib import Path
 
 try:
     import yaml
-except ImportError:                                    # PyYAML is a test-only dependency
+except ImportError:  # PyYAML is a test-only dependency
     yaml = None
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +21,7 @@ class Configured(unittest.TestCase):
         self.assertIn("skip-magic-trailing-comma = false", text)
         self.assertIn("exclude = [\"lifeos/buzz/*.py\"", text)
         self.assertRegex(text, r'select = \["E", "F", "B"\]')
-        self.assertIn('ignore = ["E501"]', text)                                      # existing lines run to 661 characters
+        self.assertIn('ignore = ["E501"]', text)  # existing lines run to 661 characters
 
     def test_ruff_is_pinned_exactly_and_hashed_in_the_test_lock(self):
         pin = re.search(r"^ruff==(\S+)$", (ROOT / "requirements-test.txt").read_text(), flags=re.M)
@@ -60,7 +60,7 @@ class StepIsAdvisory(unittest.TestCase):
         self.assertIsNone(unit.get("continue-on-error"))
 
     def test_the_four_correctness_rules_are_a_blocking_step_and_every_other_rule_stays_advisory(self):
-        """LIFE-596: a deliberate violation of B023, B904, F811 or B017 must fail the pull request check; the advisory step still cannot."""
+        """a deliberate violation of B023, B904, F811 or B017 must fail the pull request check"""
         names = [str(s.get("name", "")) for s in self.job["steps"]]
         blocking = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Ruff correctness rules"))
         self.assertIsNone(blocking.get("continue-on-error"))
@@ -70,7 +70,7 @@ class StepIsAdvisory(unittest.TestCase):
         advisory = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Ruff advisory"))
         self.assertTrue(advisory.get("continue-on-error"))
         unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
-        self.assertGreater(names.index(blocking["name"]), unit)                       # after the unit tests, so it cannot add to their timer
+        self.assertGreater(names.index(blocking["name"]), unit)
 
     def test_the_four_rules_find_nothing_in_the_repository_now(self):
         import subprocess

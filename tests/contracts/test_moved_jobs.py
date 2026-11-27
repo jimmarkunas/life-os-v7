@@ -1,4 +1,4 @@
-"""LIFE-856 change 4: Network Leads (Step 7c) and the scheduled Cloud Fit backlog (Step 6a2) moved out of hourly.yml's finish job into the after-tick domains run. The workflow facts that keep them safe."""
+"""The workflow facts that keep them safe."""
 import pathlib
 import unittest
 
@@ -22,7 +22,7 @@ class MovedJobs(unittest.TestCase):
             condition = self.domains["jobs"][name]["if"]
             for needed in ("needs.gate.outputs.late == 'true'", "needs.gate.outputs.tick == 'true'", "needs.gate.outputs.pipeline == 'true'", f"needs.gate.outputs.due_{name} == 'true'", "needs.gate.result != 'failure'"):
                 self.assertIn(needed, condition, name)
-            self.assertNotIn("inputs.", condition, name)                                                  # no manual trigger, so no second run of the same tick
+            self.assertNotIn("inputs.", condition, name)
 
     def test_the_gate_computes_the_pipeline_output_from_the_ticks_finish_job_and_unknown_counts_as_ran(self):
         gate = self.domains["jobs"]["gate"]
@@ -41,7 +41,7 @@ class MovedJobs(unittest.TestCase):
             self.assertIn(f"{name}=${{{{ needs.{name}.result }}}}", text)
             steps = self.domains["jobs"][name]["steps"]
             self.assertTrue(any(s.get("continue-on-error") and s.get("id") == name for s in steps), name)
-            self.assertIn(f"::error title={name}::", steps[-1]["run"])                                     # the job ends red when its stage failed
+            self.assertIn(f"::error title={name}::", steps[-1]["run"])  # the job ends red when its stage failed
 
     def test_hourly_no_longer_runs_either_after_a_tick_and_keeps_only_the_manual_cloud_backlog(self):
         steps = self.hourly["jobs"]["finish"]["steps"]
@@ -52,7 +52,7 @@ class MovedJobs(unittest.TestCase):
         self.assertNotIn("V7_CLOUD_FIT_SCHEDULED", backlog["if"])
         lanes = next(s for s in steps if s.get("id") == "lanes")
         self.assertNotIn("network_surface", lanes["run"])
-        self.assertIn("fit_cloud_backlog", lanes["run"])                                                  # the manual dispatch is still a named lane
+        self.assertIn("fit_cloud_backlog", lanes["run"])  # the manual dispatch is still a named lane
 
     def test_the_cloud_fit_batch_keeps_its_switch_and_its_55_minute_end(self):
         step = next(s for s in self.domains["jobs"]["fit_cloud_backlog"]["steps"] if s.get("id") == "fit_cloud_backlog")
@@ -60,14 +60,13 @@ class MovedJobs(unittest.TestCase):
         self.assertIn("to_55", step["run"])
         self.assertIn("58 * 60", step["run"])
         self.assertEqual(self.domains["jobs"]["fit_cloud_backlog"]["timeout-minutes"], 58)
-        self.assertEqual(step["env"]["V7_CLOUD_FIT_BACKLOG_PAGE"], "")                                    # a tick never narrows to a pilot page
+        self.assertEqual(step["env"]["V7_CLOUD_FIT_BACKLOG_PAGE"], "")  # a tick never narrows to a pilot page
 
 
 class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
-    """LIFE-856 (Nov 25 2026): PR #1564 moved two steps to domains.yml and left out NOTION_JOB_LEDGER_DATA_SOURCE_ID, a name the old hourly.yml declared at workflow level; both jobs failed with CONFIG_MISSING at once (run
-    45726238990). The settings source fills a name only for a step that declares it, so a moved step must declare every name its old step had, workflow-level ones included, unless the name is listed here as never read."""
-    WORKFLOW_LEVEL = {"HIRING_PIPELINE_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_FIT_GATE"}      # hourly.yml's own `env:` before change 4
-    OLD = {      # the `env:` names each step had in hourly.yml's finish job (git show 13e157f3^ for change 4, 283f7b52 for change 5)
+    """both jobs failed with CONFIG_MISSING at once (run 45726238990)."""
+    WORKFLOW_LEVEL = {"HIRING_PIPELINE_PAGE_ID", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_FIT_GATE"}  # hourly.yml's own `env:` before change 4
+    OLD = {
         "network_surface": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "LIFEOS_ACQ_DB_NAME",
                             "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_JUMP_HOST", "LIFEOS_ACQ_SSH_JUMP_KEY", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
                             "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NETWORK_SURFACE_SKIP", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY", "V7_CLOSE_BASE_URL", "V7_RUNTIME_CONFIG_SOURCE_ID"},
@@ -82,13 +81,13 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
                   "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "NOTION_API_TOKEN", "NTFY_TOPIC", "OPEN_JOBS_CONTACT", "PURGE_FORCE", "TINYFISH_API_KEY", "V7_RUNTIME_CONFIG_SOURCE_ID"},
     }
     JOB = {"network_surface": "network_surface", "fit_cloud_backlog": "fit_cloud_backlog", "sync_seen": "last_seen_purge", "purge": "last_seen_purge"}
-    DROPPED = {      # names the old step carried that its code never reads (least privilege), proved below by a text search of the modules the stage runs
+    DROPPED = {
         "network_surface": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "OPEN_JOBS_CONTACT"},
         "fit_cloud_backlog": set(),
         "sync_seen": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"},
         "purge": {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"},
     }
-    MODULES = {      # the files each stage runs (its own module and what it imports from lifeos.jobs / lifeos.platform for storage, Notion and alerts)
+    MODULES = {
         "network_surface": ["lifeos/sources/network/network_surface.py"],
         "sync_seen": ["lifeos/jobs/repost.py", "lifeos/jobs/store.py", "lifeos/jobs/ledger.py", "lifeos/platform/notion_client.py", "lifeos/platform/db.py"],
         "purge": ["lifeos/jobs/retention.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/jobs/lanes.py", "lifeos/jobs/progression.py", "lifeos/jobs/tombstone.py", "lifeos/jobs/ledger.py", "lifeos/jobs/store.py", "lifeos/platform/alerts.py", "lifeos/platform/db.py"],
@@ -105,7 +104,7 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
         for stage in self.OLD:
             declared = set(self.step(stage).get("env") or {})
             self.assertEqual(sorted((self.OLD[stage] - self.DROPPED[stage]) - declared), [], stage)
-            self.assertEqual(sorted(self.WORKFLOW_LEVEL - declared), [], stage)                                     # the omission that failed run 45726238990
+            self.assertEqual(sorted(self.WORKFLOW_LEVEL - declared), [], stage)  # the omission that failed run 45726238990
 
     def test_a_dropped_name_is_never_read_by_the_stage(self):
         for stage, names in self.DROPPED.items():
@@ -118,13 +117,13 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
             self.assertIn(needed, job["if"])
         self.assertNotIn("inputs.", job["if"])
         ids = [s.get("id") for s in job["steps"] if s.get("id") in ("sync_seen", "purge")]
-        self.assertEqual(ids, ["sync_seen", "purge"])                                                         # the sync first, then the purge, as in the old order
+        self.assertEqual(ids, ["sync_seen", "purge"])
         for stage in ("sync_seen", "purge"):
             self.assertTrue(self.step(stage).get("continue-on-error"))
         self.assertIn("::error title=last_seen_purge::", job["steps"][-1]["run"])
         purge = self.step("purge")["run"]
         for line in ("purge_done", "purge_failed", "exit 1", "not_due"):
-            self.assertIn(line, purge)                                                                         # the purge keeps its own pushes and exit code
+            self.assertIn(line, purge)  # the purge keeps its own pushes and exit code
         for name in ("report", "chain"):
             self.assertIn("last_seen_purge", self.domains["jobs"][name]["needs"])
         self.assertIn("last_seen_purge=${{ needs.last_seen_purge.result }}", " ".join(str(s.get("run", "")) for s in self.domains["jobs"]["report"]["steps"]))
@@ -138,6 +137,6 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
             self.assertIn("needs.prep.outputs.pipeline != 'true'", condition)
             self.assertNotIn("pipeline == 'true'", condition)
         for ident in ("alerts", "lanes"):
-            self.assertIn(ident, steps)                                                                        # they report the finish lanes and stay
+            self.assertIn(ident, steps)  # they report the finish lanes and stay
         self.assertIn("sync_seen=${{ steps.sync_seen.outcome }}", steps["lanes"]["run"])
 

@@ -1,4 +1,6 @@
-"""LIFE-691: no network call in lifeos/ waits forever: every call that leaves the process carries an explicit timeout, and a new one without it fails CI."""
+"""no network call in lifeos/ waits forever: every call that leaves the process carries an explicit timeout, and a new
+one without it fails CI.
+"""
 import ast
 import pathlib
 import unittest
@@ -9,7 +11,7 @@ HTTP_LIBS = {"requests", "httpx"}
 HTTP_CALLS = {"get", "post", "put", "patch", "delete", "request", "head", "Client", "AsyncClient", "Session"}
 SUBPROCESS = {"run", "check_output", "check_call", "call"}
 NETWORK_PROGRAMS = ("ssh", "scp", "curl", "tailscale", '"gh"', "'gh'", "gh ")
-EXEMPT = {}      # "path:line" -> the reason a call may go without a timeout. Empty on purpose: every call has one.
+EXEMPT = {}
 
 
 def _keywords(node):
@@ -17,7 +19,7 @@ def _keywords(node):
 
 
 def findings():
-    """-> [(path:line, what)] for each network call without a timeout."""
+    """> [(path:line, what)] for each network call without a timeout."""
     out = []
     for path in sorted((ROOT / "lifeos").rglob("*.py")):
         try:
@@ -60,7 +62,7 @@ class EveryNetworkCallHasATimeout(unittest.TestCase):
         self.assertEqual(len(missing), 2)
         total = sum(1 for p in (ROOT / "lifeos").rglob("*.py") for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.Call)
                     and (n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")) in ("urlopen", "create_connection"))
-        self.assertGreaterEqual(total, 10)                                                    # the platform clients, the edge helpers and the cards: the scan is not looking at nothing
+        self.assertGreaterEqual(total, 10)
 
 
 if __name__ == "__main__":

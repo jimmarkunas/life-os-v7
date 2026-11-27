@@ -1,5 +1,6 @@
-"""LIFE-225 (ARCH-04), simplified by delivery flow v3: the readiness validator (three refusals, everything else a warning), proven through its real entrypoint (`python -m lifeos.sources.devtools.readiness`, the command AGENTS.md tells every coding agent to run) and, for the repo check, on the real tree in CI.
-Offline: temp-file fixtures only, invented keys and names."""
+"""(ARCH-04), simplified by delivery flow v3: the readiness validator (three refusals, everything else a warning), proven
+through its real entrypoint.
+"""
 import copy
 import json
 import shutil
@@ -86,19 +87,19 @@ class IssueEligibility(Fixture):
                 self.assertNotIn("refused", err)
 
     def test_a_los_origin_is_no_origin_and_a_los_parent_is_unapproved(self):
-        """LIFE-849: LOS is retired. An origin that names only a LOS key is missing, and a LOS parent never approves; a LIFE parent still does."""
+        """LOS is retired."""
         for origin, code in (({"los": "LOS-901", "approved": True}, "origin_missing"), ({"parent": "LOS-901", "approved": True}, "origin_unapproved")):
             with self.subTest(origin=origin):
                 status, out, err = self.issue(lambda d, o=origin: d.update(origin=o))
                 self.assertEqual((status, out), (0, "ready v1\n"))
                 self.assertIn(f"warn v1 {code} ", err)
         self.assertEqual(self.issue(lambda d: None), (0, "ready v1\n", ""))
-        status, out, err = self.issue(lambda d: d.update(key="LOS-901"))              # a LOS issue key is refused like any other non-LIFE key
+        status, out, err = self.issue(lambda d: d.update(key="LOS-901"))
         self.assertEqual((status, out), (2, ""))
         self.assertIn("refused v1 key_invalid key LOS-901", err)
 
     def test_delivery_flow_v3_acceptance_cases_a_to_c(self):
-        """(a) key + one Done-when bullet + no blockers is ready; (b) an unfinished Blocks predecessor refuses; (c) no Done-when refuses."""
+        """(a) key + one Done-when bullet + no blockers is ready"""
         base = {"key": "LIFE-902", "blockers": [], "acceptance": [{"done_when": "the cell holds the text"}]}
         self.assertEqual(entry("issue", self.write("a.json", base))[:2], (0, "ready v1\n"))
         status, out, err = entry("issue", self.write("b.json", {**base, "blockers": [{"key": "LIFE-900", "status": "In Progress"}]}))
@@ -144,7 +145,9 @@ class RepositoryIndex(Fixture):
         return self.dir / "r"
 
     def test_the_real_repository_is_ready(self):
-        """This is the CI gate: a change that breaks the index, a link, an owner or a size limit fails this test on the PR head."""
+        """This is the CI gate: a change that breaks the index, a link, an owner or a size limit fails this test on the
+        PR head.
+        """
         self.assertEqual(entry("repo", ROOT), (0, "ready v1\n", ""))
 
     def test_invalid_repository_changes_are_rejected(self):
@@ -165,10 +168,10 @@ class RepositoryIndex(Fixture):
                 shutil.rmtree(repo)
 
     def test_the_agent_entrypoint_names_the_validator(self):
-        agents = (ROOT / "AGENTS.md").read_text() + (ROOT / "docs" / "agent-reference.md").read_text()      # LIFE-766: boot page plus the full guide
-        for command in ("python -m lifeos.sources.devtools.readiness", "python -m lifeos.sources.devtools.readiness repo"):          # AGENTS.md (Jim-owned) names the real module (LIFE-631: the old-name shim is gone)
+        agents = (ROOT / "AGENTS.md").read_text() + (ROOT / "docs" / "agent-reference.md").read_text()  # boot page plus the full guide
+        for command in ("python -m lifeos.sources.devtools.readiness", "python -m lifeos.sources.devtools.readiness repo"):  # AGENTS.md names the real module
             self.assertIn(command, agents)
-        self.assertNotIn("readiness preflight", agents)             # delivery flow v3: no claim file, no preflight
+        self.assertNotIn("readiness preflight", agents)  # delivery flow v3: no claim file, no preflight
 
 
 if __name__ == "__main__":

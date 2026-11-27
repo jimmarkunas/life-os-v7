@@ -1,4 +1,4 @@
-"""CI guard for the public-repo privacy rule (docs/PRIVACY.md). Patterns only - no personal data."""
+"""CI guard for the public-repo privacy rule (docs/PRIVACY.md)."""
 import pathlib
 import re
 import subprocess
@@ -20,10 +20,10 @@ SECRET_SHAPES = {
     "phone number": re.compile(r"(?<!\d)(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}(?!\d)"),
     "google client id": re.compile(r"\b\d{9,}-[a-z0-9]{20,}\.apps\.googleusercontent\.com"),
 }
-# LIFE-338: live Notion page and data-source ids stay out of the repo; code reads them from LIFEOS_NOTION_<NAME> (lifeos/platform/notion_ids.py).
+# live Notion page and data-source ids stay out of the repo
 NOTION_URL = re.compile(r"(?:notion\.(?:so|com)/(?:[\w-]+/)*[\w-]*?|collection://)([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})\b", re.I)
 ID_LITERAL = re.compile(r"""["']([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})["']""", re.I)
-NOT_NOTION_IDS = {"lifeos/probe.py", "lifeos/platform/alert_store.py"}      # public job ids from vendor sites; Bitwarden item ids (not secrets, LIFE-733)
+NOT_NOTION_IDS = {"lifeos/probe.py", "lifeos/platform/alert_store.py"}  # public job ids from vendor sites
 
 
 def synthetic(value):
@@ -43,7 +43,7 @@ def tracked_text_files():
 
 
 def unapproved_email_counts(files):
-    """-> {file name: how many addresses outside the allowlist}. NEVER the address itself: a failure here is printed into public CI logs (LIFE-519)."""
+    """> {file name: how many addresses outside the allowlist}."""
     counts = {}
     for name, text in files:
         n = sum(1 for m in EMAIL.finditer(text) if m.group(1).lower() not in ALLOWED_EMAIL_DOMAINS)
@@ -54,20 +54,20 @@ def unapproved_email_counts(files):
 
 class PrivacyGuard(unittest.TestCase):
     def test_no_unapproved_emails(self):
-        # The failure message names only files and counts. Find the value yourself with: git grep -n -E '[A-Za-z0-9._%+-]+@' -- <file>
+        # The failure message names only files and counts.
         self.assertEqual(unapproved_email_counts(tracked_text_files()), {}, "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)")
 
     def test_negative_control_a_planted_address_is_caught_and_never_printed(self):
-        """LIFE-519: prove the guard fires on a personal-looking address AND that its failure output holds none of the value. The address is built here, so this file never contains one."""
+        """prove the guard fires on a personal-looking address AND that its failure output holds none of the value."""
         local, domain = "planted" + "." + "person", "gmail" + "." + "com"
         planted = [("fake/file.txt", "contact: " + local + "@" + domain + " for details\n")]
-        self.assertEqual(unapproved_email_counts(planted), {"fake/file.txt": 1})                    # caught (gmail is not on the allowlist)
+        self.assertEqual(unapproved_email_counts(planted), {"fake/file.txt": 1})  # caught (gmail is not on the allowlist)
         with self.assertRaises(AssertionError) as caught:
             self.assertEqual(unapproved_email_counts(planted), {}, "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)")
         shown = str(caught.exception)
-        self.assertIn("fake/file.txt", shown)                                                       # the file is named, so a human can find it
+        self.assertIn("fake/file.txt", shown)  # the file is named, so a human can find it
         for piece in (local, domain, local + "@" + domain, "@"):
-            self.assertNotIn(piece, shown)                                                          # none of the matched value is in the failure text
+            self.assertNotIn(piece, shown)  # none of the matched value is in the failure text
 
     def test_allowed_domains_do_not_include_personal_mail(self):
         for personal in ("gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "yahoo.com", "proton.me", "protonmail.com"):
@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
 
 class ClockFormatTests(unittest.TestCase):
-    """Jim: always AM/PM ("1:30 PM CT"), never 24-hour time, in anything he reads. Machine timestamps (ISO, with a T) are not display."""
+    """Jim: always AM/PM ('1:30 PM CT'), never 24-hour time, in anything he reads."""
 
     def test_no_24_hour_display_time_in_the_code(self):
         import pathlib

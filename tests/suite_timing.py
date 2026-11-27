@@ -1,7 +1,6 @@
-"""LIFE-705: the numbers behind the `suite-timing` workflow (manual, no secrets): N full-suite runs on N fresh runners at once, then one report job that prints min, median, p95 and max
-of the suite's seconds and fails when any run reaches the CI limit (120 s). Runners started in the same minute measure runner-to-runner spread, not hour-to-hour drift; the report says so.
-
-`python -m tests.suite_timing` runs in the report job (GITHUB_RUN_ID, GITHUB_REPOSITORY and GITHUB_TOKEN are set by the runner; the token only reads this run's jobs and logs)."""
+"""the numbers behind the `suite-timing` workflow (manual, no secrets): N full-suite runs on N fresh runners at once,
+then one report job that prints.
+"""
 import datetime as dt
 import json
 import math
@@ -11,7 +10,7 @@ import subprocess
 import sys
 
 LIMIT = 120
-STEP = "Full suite"                                              # the timing job's step whose seconds are the suite's seconds
+STEP = "Full suite"
 SHARD_LINE = re.compile(r"^(?:\S+\s+)?shard (\d+)/(\d+) took ([0-9.]+) s", re.M)
 
 
@@ -46,7 +45,7 @@ def shard_times(log):
 
 
 def report(rows, limit=LIMIT):
-    """-> (text, ok). rows: [{'run': 1, 'seconds': 104, 'shards': {1: 101.2, 2: 98.4}}]."""
+    """> (text, ok)."""
     seconds = [r["seconds"] for r in rows if r.get("seconds") is not None]
     lines = ["| run | suite s | shard seconds |", "|---|---|---|"]
     for row in sorted(rows, key=lambda r: r["run"]):
@@ -62,7 +61,7 @@ def report(rows, limit=LIMIT):
 
 
 def _gh(path, required=True):
-    """The body of a GitHub API GET. A log of a job in this still-running workflow may not be downloadable yet: with required=False that is an empty answer, not a failure."""
+    """The body of a GitHub API GET."""
     done = subprocess.run(["gh", "api", path], capture_output=True, text=True)
     if done.returncode != 0 and required:
         raise SystemExit(f"gh api {path} failed: {done.stderr.strip()[:200]}")

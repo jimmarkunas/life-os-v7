@@ -1,5 +1,6 @@
-"""LIFE-692: a test file may not call the real clock (`datetime.now`, `datetime.utcnow`, `datetime.today`, `date.today`, `time.time`) unless docs/platform/scheduled-checks.md lists it with a reason.
-The list can only shrink: a listed file that no longer calls the real clock fails here, so the converting PR removes it."""
+"""a test file may not call the real clock (`datetime.now`, `datetime.utcnow`, `datetime.today`, `date.today`,
+`time.time`) unless.
+"""
 import ast
 import pathlib
 import re
@@ -10,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
 DOC = ROOT / "docs" / "platform" / "scheduled-checks.md"
 METHODS = {"now", "utcnow", "today"}
-EXEMPT = {"tests/kit/clock.py"}                                    # the fixture itself
+EXEMPT = {"tests/kit/clock.py"}  # the fixture itself
 
 
 def _receiver(node):

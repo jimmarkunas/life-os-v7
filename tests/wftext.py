@@ -1,4 +1,4 @@
-"""LIFE-1013: the generated workflows write repeats as YAML anchors and aliases; a test that reads one as text reads it through here to get the plain text back (YAML readers need nothing)."""
+"""the generated workflows write repeats as YAML anchors and aliases"""
 import pathlib
 import sys
 

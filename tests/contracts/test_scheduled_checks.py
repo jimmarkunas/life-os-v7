@@ -1,4 +1,6 @@
-"""LIFE-692: every workflow with a `cron:` trigger is in docs/platform/scheduled-checks.md and is either checked by the central scheduled check in lifeos.platform.gate or named there as already covered."""
+"""every workflow with a `cron:` trigger is in docs/platform/scheduled-checks.md and is either checked by the central
+scheduled check in.
+"""
 import pathlib
 import re
 import unittest

@@ -1,5 +1,6 @@
-"""LIFE-594: the three platform modules that the most other code imports (notion_client, db, gmail) are fully annotated, with the standard library only, and the advisory type checker (LIFE-559) stays
-advisory. The helpers are the ones LIFE-559's contract test uses; that test is not edited."""
+"""the three platform modules that the most other code imports (notion_client, db, gmail) are fully annotated, with the
+standard library only, and the.
+"""
 import ast
 import sys
 import unittest

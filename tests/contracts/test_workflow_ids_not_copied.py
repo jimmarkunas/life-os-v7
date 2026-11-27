@@ -1,8 +1,4 @@
-"""LIFE-528 (Jim, Nov 10 2026, comment 12557): a Bitwarden secret id that appears in the workflow files must not be copied anywhere else in the repo.
-
-The ids are identifiers, not secret values, and they are already public in the workflow files. A real one pasted into a test file once, so this rule makes the next copy fail the build.
-It reads the ids FROM the workflow files at test time (the bws `secrets:` mapping lines), never lists them, and prints only a file name and a count.
-Files that already pin the workflow mapping on purpose are allow-listed by path with a ceiling: a new copy in them, or in any other file, fails."""
+"""a Bitwarden secret id that appears in the workflow files must not be copied anywhere else in the repo."""
 import re
 import subprocess
 import tempfile
@@ -12,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 MAPPING_LINE = re.compile(r">|secrets?:")
-ALLOWED = {                                                          # path: (most copies it may hold, why)
+ALLOWED = {  # path: (most copies it may hold, why)
     "tests/contracts/test_workflow.py": (63, "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test; 58 since LIFE-699 added the two private acceptance cases; 60 since LIFE-696 added the Bytalos Gmail refresh token and the Todoist token to the followup job); 61 since LIFE-711 added the Action Inbox view QA job's Notion token loader; 62 since LIFE-844 added the Runtime Configuration bootstrap ID"),
     "docs/NOTION_INTEGRATIONS.md": (6, "the integrations table names the Bitwarden id each Notion token is loaded from (identifiers only, already public in the workflows)"),
 }
@@ -20,7 +16,7 @@ ALLOWED = {                                                          # path: (mo
 
 def workflow_ids(root):
     ids = set()
-    sets = Path(root) / ".github" / "actions" / "bws-load" / "sets.yml"                                  # LIFE-1013: the credential lists the workflows name with `set:` are the one home of the ids
+    sets = Path(root) / ".github" / "actions" / "bws-load" / "sets.yml"
     for path in sorted((Path(root) / ".github" / "workflows").glob("*.y*ml")) + ([sets] if sets.exists() else []):
         for line in path.read_text(errors="ignore").splitlines():
             if MAPPING_LINE.search(line):
@@ -36,11 +32,11 @@ def tracked(root):
 
 
 def copies(root, files=None, ids=None):
-    """{path: how many workflow ids it holds}, for every file outside .github/workflows that holds at least one."""
+    """{path: how many workflow ids it holds}, for every file outside.github/workflows that holds at least one."""
     ids = workflow_ids(root) if ids is None else ids
     found = {}
     for rel in (tracked(root) if files is None else files):
-        if rel.startswith((".github/workflows/", ".github/workflows-src/")) or rel == ".github/actions/bws-load/sets.yml":                    # LIFE-764: the fragments domains.yml is joined from are the workflow file's own text
+        if rel.startswith((".github/workflows/", ".github/workflows-src/")) or rel == ".github/actions/bws-load/sets.yml":
             continue
         try:
             text = (Path(root) / rel).read_text(errors="ignore").lower()
@@ -76,7 +72,7 @@ class WorkflowIdsAreNotCopied(unittest.TestCase):
             self.assertTrue(ceiling > 0 and len(reason) > 20, rel)
 
     def test_negative_control_a_made_up_id_copied_from_a_made_up_workflow_is_caught(self):
-        fake = "11111111-2222-4333-8444-555555555555"                      # made up: exists only in this temp tree
+        fake = "11111111-2222-4333-8444-555555555555"  # made up: exists only in this temp tree
         with tempfile.TemporaryDirectory() as tmp:
             tree = Path(tmp)
             (tree / ".github" / "workflows").mkdir(parents=True)
@@ -88,10 +84,10 @@ class WorkflowIdsAreNotCopied(unittest.TestCase):
             (tree / "docs" / "UPPER.md").write_text(f"see {fake.upper()}\n")
             files = ["lifeos/clean.py", "lifeos/leak.py", "docs/UPPER.md", ".github/workflows/x.yml"]
             found = copies(tree, files)
-            self.assertEqual(found, {"lifeos/leak.py": 1, "docs/UPPER.md": 1})        # case does not hide a copy; the workflow file itself is exempt
+            self.assertEqual(found, {"lifeos/leak.py": 1, "docs/UPPER.md": 1})  # case does not hide a copy
             flagged = problems(found, allowed={})
             self.assertEqual(len(flagged), 2)
-            self.assertFalse([f for f in flagged if fake in f.lower()])             # the message names the file and a count, never the id
+            self.assertFalse([f for f in flagged if fake in f.lower()])
 
     def test_negative_control_an_allow_listed_file_may_not_grow_and_a_stale_entry_is_flagged(self):
         allowed = {"a.py": (2, "pins a mapping on purpose for a test of the rule"), "b.py": (1, "stale entry used to prove staleness is flagged")}

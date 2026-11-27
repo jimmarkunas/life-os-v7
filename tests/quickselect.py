@@ -1,6 +1,6 @@
-"""The quick local gate (LIFE-763 CI speed): `python -m tests.quickselect run --base BASE` runs, in parallel processes, the tests a push most often needs: every contract test, the repo-wide
-scanners (testindex.REPO_WIDE), the tests that name or mirror each changed file, the tests that reach a changed lifeos module through the import graph (a test of `credentials` reaches `credential_list` because `credentials` imports it), the tests that
-read a changed data file by path, and any changed test. It never escalates to the whole suite: CI runs that (Jim, Nov 16 2026). `select` only prints the targets."""
+"""The quick local gate: `python -m tests.quickselect run --base BASE` runs, in parallel processes, the tests a push most
+often needs: every contract.
+"""
 import ast
 import functools
 import os
@@ -15,7 +15,7 @@ from tests import shard, testindex
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MAX_JOBS = 8
-HUB_CLOSURE = 40                                                            # a module that more than this many lifeos modules reach is a hub (db, http): follow its direct importers only, never the whole tree
+HUB_CLOSURE = 40
 
 
 def changed_files(base, root=ROOT):
@@ -48,7 +48,9 @@ def lifeos_modules(root=ROOT):
 
 
 def _imported(tree, package, known):
-    """The lifeos modules a parsed file imports, lazy imports inside functions included (`from a.b import c` names `a.b` and, when it exists, `a.b.c`)."""
+    """The lifeos modules a parsed file imports, lazy imports inside functions included (`from a.b import c` names `a.b`
+    and, when it exists, `a.b.c`).
+    """
     found = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -66,7 +68,9 @@ def _imported(tree, package, known):
 
 @functools.lru_cache(maxsize=4)
 def reverse_graph(root=ROOT):
-    """{lifeos module: the lifeos modules that import it}, from the AST of lifeos/ (a name in an __all__ list is not an import)."""
+    """{lifeos module: the lifeos modules that import it}, from the AST of lifeos/ (a name in an __all__ list is not an
+    import).
+    """
     known = lifeos_modules(root)
     reverse = {}
     for name, path in known.items():
@@ -82,7 +86,7 @@ def reverse_graph(root=ROOT):
 
 
 def reached(modules, root=ROOT):
-    """The changed lifeos modules plus every lifeos module that imports one of them, transitively. A hub (reached by more than HUB_CLOSURE modules) contributes its direct importers only."""
+    """The changed lifeos modules plus every lifeos module that imports one of them, transitively."""
     reverse = reverse_graph(root)
     out = set(modules)
     for module in modules:
@@ -129,20 +133,24 @@ def test_references(root=ROOT):
 
 
 def reaching_tests(changed_modules, root=ROOT):
-    """Test modules that import or name a changed lifeos module or anything that imports one (the tests of `credentials` for a change to `credential_list`)."""
+    """Test modules that import or name a changed lifeos module or anything that imports one (the tests of `credentials`
+    for a change to `credential_list`).
+    """
     wanted = reached(changed_modules, root)
     return {name for name, refs in test_references(root).items() if refs & wanted}
 
 
 def data_readers(path, root=ROOT):
-    """Test modules whose source names this changed non-Python file by its repo path, or by its file name when that is distinctive (`codes.json`)."""
+    """Test modules whose source names this changed non-Python file by its repo path, or by its file name when that is
+    distinctive (`codes.json`).
+    """
     base = pathlib.Path(path).name
     needles = {path} | ({base} if "." in base and len(base) >= 8 else set())
     return {name for name, text in test_texts(root).items() if any(n in text for n in needles)}
 
 
 def quick_targets(changed, root=ROOT):
-    """-> sorted dotted test modules: contracts, the repo-wide scanners, and what each changed file maps to. Pure apart from reading the tree."""
+    """> sorted dotted test modules: contracts, the repo-wide scanners, and what each changed file maps to."""
     known = testindex.module_set(root)
     targets = set(testindex.contract_modules(root)) | {m for m in testindex.REPO_WIDE if m in known}
     modules = lifeos_modules(root)
@@ -160,9 +168,9 @@ def quick_targets(changed, root=ROOT):
             stem = p.stem
             dotted_name = path[:-3].replace("/", ".")
             targets |= importers(dotted_name, stem, root)
-            if package and package != "platform":                           # a feature package: its whole mirror test folder
+            if package and package != "platform":  # a feature package: its whole mirror test folder
                 targets |= set(testindex.test_modules(root, "tests/" + package))
-            elif package == "platform":                                     # the shared layer: the tests named after the module, plus every importer found above
+            elif package == "platform":
                 targets |= {m for m in known if m.startswith("tests.platform.test_" + stem)}
             else:
                 targets |= {m for m in known if m == "tests.test_" + stem}

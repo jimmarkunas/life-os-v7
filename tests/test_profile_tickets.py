@@ -1,4 +1,4 @@
-"""LIFE-556: the read-only ticket profile. A saved, trimmed fixture stands in for `gh` (no network, no credentials); the numbers are worked out by hand in the comments."""
+"""the read-only ticket profile."""
 import io
 import json
 import unittest
@@ -29,10 +29,10 @@ class Rows(unittest.TestCase):
     def test_the_numbers_for_one_pr_worked_by_hand(self):
         row = {r["key"]: r for r in self.rows()}["LIFE-901"]
         self.assertEqual((row["files"], row["added"], row["removed"]), (3, 30, 4))
-        self.assertEqual(row["commit_to_merge_min"], 10.0)                       # first commit 18:00, merged 18:10
+        self.assertEqual(row["commit_to_merge_min"], 10.0)  # first commit 18:00, merged 18:10
         self.assertEqual((row["ci_runs"], row["cancelled_runs"], row["failed_before_green"]), (3, 1, 1))
-        self.assertEqual(row["first_run_to_green_min"], 6.0)                     # first run 18:02, green on the final head at 18:08
-        self.assertEqual(row["scope"], ["platform"])                              # generated docs/CODEMAP.md is ignored, tests/platform and lifeos/platform are one package
+        self.assertEqual(row["first_run_to_green_min"], 6.0)  # first run 18:02, green on the final head at 18:08
+        self.assertEqual(row["scope"], ["platform"])
 
     def test_jira_minutes_are_used_only_when_both_times_exist(self):
         rows = {r["key"]: r for r in self.rows(FX["jira"])}
@@ -47,7 +47,7 @@ class Rows(unittest.TestCase):
 
     def test_summary_median_and_worst_and_one_jira_value_per_ticket(self):
         rows = self.rows(FX["jira"])
-        rows.append({**rows[1], "pr": 99})                                        # a second PR of the same ticket
+        rows.append({**rows[1], "pr": 99})  # a second PR of the same ticket
         summary = pt.summary(rows)
         self.assertEqual(summary["jira_start_to_done_min_per_ticket"]["n"], 1)
         self.assertEqual(summary["files"]["worst"], 3)
@@ -59,9 +59,9 @@ class Output(unittest.TestCase):
         out = io.StringIO()
         pt.main(["--last", "2", "--json"], call=fake_gh, out=out)
         text = out.getvalue()
-        self.assertEqual(sorted(json.loads(text)["rows"][0]), sorted(["pr", "key", "files", "added", "removed", "commit_to_merge_min", "ci_runs", "cancelled_runs", "failed_before_green", "first_run_to_green_min", "scope", "first_commit", "merged_at"]))                    # LIFE-598 added the two times the split needs; still numbers, keys and times only
+        self.assertEqual(sorted(json.loads(text)["rows"][0]), sorted(["pr", "key", "files", "added", "removed", "commit_to_merge_min", "ci_runs", "cancelled_runs", "failed_before_green", "first_run_to_green_min", "scope", "first_commit", "merged_at"]))  # added the two times the split needs
         for title_word in ("First", "Second", "Not a ticket"):
-            self.assertNotIn(title_word, text)                                    # no PR title text is copied into the output
+            self.assertNotIn(title_word, text)  # no PR title text is copied into the output
 
     def test_a_failed_gh_call_is_a_fixed_message(self):
         class Done:
@@ -72,12 +72,14 @@ class Output(unittest.TestCase):
 
 
 class Split(unittest.TestCase):
-    """LIFE-598: the ticket's minutes split in three: Agent Go to the first commit, first commit to the last merge, last merge to Done. Worked by hand from the fixture."""
+    """the ticket's minutes split in three: Agent Go to the first commit, first commit to the last merge, last merge to
+    Done.
+    """
     def rows(self, jira):
         return pt.collect(20, jira, fake_gh)
 
     def test_the_three_parts_of_one_ticket_add_up_to_its_total(self):
-        jira = {"LIFE-901": {"start": "2026-11-10T17:30:00Z", "done": "2026-11-10T19:10:00Z"}}      # first commit 18:00, merged 18:10
+        jira = {"LIFE-901": {"start": "2026-11-10T17:30:00Z", "done": "2026-11-10T19:10:00Z"}}  # first commit 18:00, merged 18:10
         parts = pt.split(self.rows(jira), jira)["LIFE-901"]
         self.assertEqual((parts["queue_and_orientation_min"], parts["building_min"], parts["after_merge_to_done_min"], parts["total_min"]), (30.0, 10.0, 60.0, 100.0))
 

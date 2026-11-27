@@ -1,4 +1,4 @@
-"""LIFE-548: the test index builder, the selector and the staleness check. Pure logic over small fake trees; the real index is only read for its shape."""
+"""the test index builder, the selector and the staleness check."""
 import contextlib
 import datetime
 import io
@@ -41,7 +41,7 @@ class Build(unittest.TestCase):
                          "/abs/elsewhere.py": {"contexts": {}}}}
         built = ti.build(cov, ["tests.jobs.test_b.B.test_two", "tests.jobs.test_a.A.test_one"], commit="abc", now=NOW)
         self.assertEqual(built["tests"], ["tests.jobs.test_a.A.test_one", "tests.jobs.test_b.B.test_two"])
-        self.assertEqual(built["covers"], {"jobs/a.py": [0, 1]})                         # relative to lifeos/, no package markers, no absolute paths
+        self.assertEqual(built["covers"], {"jobs/a.py": [0, 1]})
         self.assertEqual(built["generated_at"], "2026-11-10T12:00:00Z")
 
     def test_dump_is_deterministic_and_has_no_absolute_paths(self):
@@ -65,25 +65,25 @@ class Select(unittest.TestCase):
         self.assertEqual(self.pick("lifeos/jobs/a.py"), sorted(CONTRACTS + ["tests.jobs.test_a"]))
 
     def test_a_test_file_the_change_deleted_is_not_a_target_even_when_a_stale_index_still_maps_it(self):
-        (self.root / "tests/jobs/test_b.py").unlink()                                         # the change deletes it; the index (days old) still lists its test
+        (self.root / "tests/jobs/test_b.py").unlink()  # the change deletes it
         picked = ti.select(["lifeos/jobs/b.py"], index({"jobs/b.py": [1]}), self.root)
         self.assertNotIn("tests.jobs.test_b", picked)
         self.assertFalse([t for t in picked if t.startswith("tests.jobs.test_b")])
 
     def test_a_test_id_whose_method_was_renamed_runs_as_its_module_and_a_live_one_stays_precise(self):
-        (self.root / "tests/jobs/test_b.py").write_text("class B:\n    def test_renamed(self):\n        pass\n")        # the change renamed test_two; the index (hours old) still lists the old id
+        (self.root / "tests/jobs/test_b.py").write_text("class B:\n    def test_renamed(self):\n        pass\n")  # the change renamed test_two
         (self.root / "tests/sources/test_c.py").write_text("class C:\n    def test_three(self):\n        pass\n")
         picked = ti.select(["lifeos/jobs/b.py", "lifeos/sources/c.py"], self.idx, self.root)
-        self.assertIn("tests.jobs.test_b", picked)                                            # the whole module runs: no "module has no attribute" error from a stale id
+        self.assertIn("tests.jobs.test_b", picked)
         self.assertFalse([t for t in picked if t.startswith("tests.jobs.test_b.")])
         known = ti.module_set(self.root)
-        self.assertEqual(ti._current("tests.sources.test_c.C.test_three", known, self.root), "tests.sources.test_c.C.test_three")      # an id whose method still exists stays precise
-        self.assertEqual(ti._current("tests.jobs.test_b.B.test_two", known, self.root), "tests.jobs.test_b")                              # one that was renamed becomes its module
+        self.assertEqual(ti._current("tests.sources.test_c.C.test_three", known, self.root), "tests.sources.test_c.C.test_three")  # an id whose method still exists stays precise
+        self.assertEqual(ti._current("tests.jobs.test_b.B.test_two", known, self.root), "tests.jobs.test_b")  # one that was renamed becomes its module
 
     def test_a_test_inside_a_selected_module_is_not_listed_twice(self):
         picked = self.pick("lifeos/jobs/a.py")
         self.assertIn("tests.jobs.test_a", picked)
-        self.assertNotIn("tests.jobs.test_a.A.test_one", picked)                          # the module already runs it
+        self.assertNotIn("tests.jobs.test_a.A.test_one", picked)  # the module already runs it
 
     def test_the_contracts_always_run_even_for_a_docs_only_change(self):
         self.assertEqual(self.pick("docs/INDEX.md"), CONTRACTS)
@@ -98,12 +98,12 @@ class Select(unittest.TestCase):
             self.assertEqual(self.pick(path), ti.FULL, path)
 
     def test_a_new_production_file_never_silently_runs_nothing(self):
-        picked = self.pick("lifeos/jobs/brand_new.py")                                    # not in the index: the whole mirror folder
+        picked = self.pick("lifeos/jobs/brand_new.py")  # not in the index: the whole mirror folder
         self.assertEqual(picked, sorted(CONTRACTS + ["tests.jobs.test_a", "tests.jobs.test_b"]))
-        self.assertEqual(self.pick("lifeos/newpkg/z.py"), ti.FULL)                         # no mirror folder either: everything
+        self.assertEqual(self.pick("lifeos/newpkg/z.py"), ti.FULL)  # no mirror folder either: everything
         self.assertEqual(self.pick("lifeos/unknown_top.py"), ti.FULL)
 
-    def test_a_change_to_any_production_file_also_runs_the_repo_wide_docstyle_test(self):     # LIFE-744: PR 1235 passed with only tests/inbox, then main failed docstyle
+    def test_a_change_to_any_production_file_also_runs_the_repo_wide_docstyle_test(self):
         root = tree(FILES + ["tests/platform/test_docstyle.py"])
         self.assertIn("tests.platform.test_docstyle", ti.select(["lifeos/jobs/brand_new.py"], self.idx, root))
         self.assertIn("tests.platform.test_docstyle", ti.select(["lifeos/jobs/a.py"], self.idx, root))
@@ -136,7 +136,7 @@ class Check(unittest.TestCase):
         self.assertEqual(ti.check(index({"jobs/a.py": [0], "x.py": [1]}, made=NOW - datetime.timedelta(days=7)), NOW), [])
 
     def test_production_files_added_or_deleted_since_the_build_are_not_a_problem(self):
-        """LIFE-588: adding a source must not need a rebuild of the index; `select` sends an unlisted file to its mirror folder, or to FULL."""
+        """adding a source must not need a rebuild of the index"""
         self.assertEqual(ti.check(index({"jobs/a.py": [0], "jobs/deleted.py": [0]}), NOW), [])
 
     def test_a_missing_index_is_reported(self):
@@ -144,28 +144,30 @@ class Check(unittest.TestCase):
 
 
 class SelectCommand(unittest.TestCase):
-    """LIFE-644: the index is restored from a cache in pull requests, so a missing, old, damaged or lying one must never make a test disappear from a run."""
+    """the index is restored from a cache in pull requests, so a missing, old, damaged or lying one must never make a
+    test disappear from a run.
+    """
 
     def run_select(self, loaded, changed=("lifeos/sources/web/boards.py",)):
         out = io.StringIO()
         with mock.patch.object(ti, "load", return_value=loaded), mock.patch.object(ti, "changed_files", return_value=list(changed)), contextlib.redirect_stdout(out), \
-                mock.patch.object(datetime, "datetime", clock.FrozenDateTime):                        # the staleness check asks datetime.now(): the same test clock the index is dated from
+                mock.patch.object(datetime, "datetime", clock.FrozenDateTime):
             self.assertEqual(ti.main(["select", "--base", "HEAD^1"]), 0)
         return out.getvalue().split()
 
     def test_no_index_an_old_one_or_a_damaged_one_prints_full(self):
         fresh_now = clock.now()
         idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
-        self.assertNotEqual(self.run_select(idx), ["FULL"])                                       # control: a fresh, sound index gives a subset
-        self.assertEqual(self.run_select(None), ["FULL"])                                         # no cache restored, no file, or a file load() rejected
+        self.assertNotEqual(self.run_select(idx), ["FULL"])  # control: a fresh, sound index gives a subset
+        self.assertEqual(self.run_select(None), ["FULL"])
         self.assertEqual(self.run_select({**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}), ["FULL"])
-        self.assertEqual(self.run_select(index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now)), ["FULL"])      # a number outside the test list
-        self.assertEqual(self.run_select({"schema": 1, "generated_at": idx["generated_at"]}), ["FULL"])                              # keys missing
+        self.assertEqual(self.run_select(index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now)), ["FULL"])  # a number outside the test list
+        self.assertEqual(self.run_select({"schema": 1, "generated_at": idx["generated_at"]}), ["FULL"])  # keys missing
 
     def test_an_index_that_lies_about_a_file_still_runs_the_tests_named_after_it(self):
-        idx = index({"jobs/a.py": [2]})                                                           # says only a sources test covers jobs/a.py
+        idx = index({"jobs/a.py": [2]})  # says only a sources test covers jobs/a.py
         picked = ti.select(["lifeos/jobs/a.py"], idx, tree(FILES))
-        self.assertIn("tests.jobs.test_a", picked)                                                # the mirror test of the module runs regardless
+        self.assertIn("tests.jobs.test_a", picked)  # the mirror test of the module runs regardless
 
 
 class LoaderAndModules(unittest.TestCase):

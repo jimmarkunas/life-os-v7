@@ -1,4 +1,4 @@
-"""LIFE-549: the http fakes in tests/kit conform to the real urllib (over a loopback server)."""
+"""the http fakes in tests/kit conform to the real urllib (over a loopback server)."""
 import unittest
 
 from tests.kit.conformance import http_subjects as subjects
@@ -19,7 +19,7 @@ class HttpConformance(unittest.TestCase):
         def drifted(case):
             out = subjects.observe_fake(case)
             if "partial" in out:
-                out["partial"] = case["body"]                               # a fake whose read(5) returns everything
+                out["partial"] = case["body"]  # a fake whose read(5) returns everything
             return out
         self.assertTrue(runner.problems(SPEC, "fake", drifted))
 

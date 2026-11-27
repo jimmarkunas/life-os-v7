@@ -1,5 +1,4 @@
-"""LIFE-549: a conformance recording or case file may hold only fake-looking values. Fails on an email address, a token-like string, a long digit run (phone, account or
-message id) or a real-looking URL host, anywhere in tests/kit/conformance/cases or recordings. The negative control proves each rule bites."""
+"""a conformance recording or case file may hold only fake-looking values."""
 import json
 import re
 import unittest
@@ -31,7 +30,7 @@ class RecordingsAreScrubbed(unittest.TestCase):
                 self.assertEqual(violations(text), [])
 
     def test_negative_control_each_rule_catches_its_pattern(self):
-        self.assertEqual(violations('{"a": "' + "jane.doe" + "@" + "mail.test" + '"}'), ["email"])           # built at runtime: the privacy scan reads source text
+        self.assertEqual(violations('{"a": "' + "jane.doe" + "@" + "mail.test" + '"}'), ["email"])
         self.assertEqual(violations('{"t": "' + "aB3" * 12 + '"}'), ["token"])
         self.assertEqual(violations('{"n": "13105551234"}'), ["long_digits"])
         self.assertIn("uuid", violations('{"id": "00000000-0000-4000-8000-000000000000"}'))

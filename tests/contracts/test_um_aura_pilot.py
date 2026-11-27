@@ -1,4 +1,6 @@
-"""LIFE-1005 (REQ-85 T4): the Aura pilot's guard rails, with no database: every statement is a fixed template that carries the label and the namespace, anything else is refused, and the checksum does not depend on the namespace's name."""
+"""(REQ-85 T4): the Aura pilot's guard rails, with no database: every statement is a fixed template that carries the
+label and the namespace, anything.
+"""
 import importlib.util
 import json
 import pathlib
@@ -130,7 +132,7 @@ class Arm(unittest.TestCase):
         sc = Sc()
         arm = pilot.AuraGraph(sc)
         ids, calls = arm.answer("alpha", "What does the offline export bundle requirement say?")
-        self.assertEqual((ids[0], calls), ("FAKE-REQ-001", 2))                                       # one fetch plus one lookup
+        self.assertEqual((ids[0], calls), ("FAKE-REQ-001", 2))  # one fetch plus one lookup
         ids, calls = arm.deps(DOC["dependency_cases"][0])
         self.assertEqual(ids, ["FAKE-REQ-001"])
         self.assertTrue(set(sc.log) <= {"tenant_nodes", "downstream"})

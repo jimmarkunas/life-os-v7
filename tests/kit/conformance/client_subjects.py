@@ -1,4 +1,5 @@
-"""Observers for the clients family: the real Gmail and Google Calendar clients (signatures only) and their kit fakes."""
+"""Observers for the clients family: the real Gmail and Google Calendar clients (signatures only) and their kit fakes.
+"""
 import inspect
 
 from lifeos.platform.gcal import GoogleCalendar

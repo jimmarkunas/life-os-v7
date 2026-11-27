@@ -1,4 +1,4 @@
-"""LIFE-705: the suite-timing report. Nearest-rank percentiles, the step seconds from the Actions job record, shard seconds from the log lines, and a failing verdict when any run reaches 120 s."""
+"""the suite-timing report."""
 import unittest
 
 from tests import suite_timing as T
@@ -27,7 +27,7 @@ class SuiteTimingReport(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("min 95, median 107, p95 119, max 119 (limit 120)", text)
         self.assertIn("runner-to-runner spread", text)
-        self.assertIn("13, 27", text)                                                    # slowest minus fastest shard, per run
+        self.assertIn("13, 27", text)  # slowest minus fastest shard, per run
         text, ok = T.report(rows + [{"run": 3, "seconds": 120, "shards": {}}])
         self.assertFalse(ok)
         self.assertEqual(T.report([{"run": 1, "seconds": None, "shards": {}}])[1], False)

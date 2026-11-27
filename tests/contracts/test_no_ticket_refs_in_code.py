@@ -1,4 +1,4 @@
-"""LIFE-1016: code and workflow source say what and why now; ticket history lives in Jira and git. A comment or docstring in `lifeos/` and a YAML comment in `.github/workflows-src/` (the parts agents edit) may not name a ticket (the first with a small allowlist); `.github/workflows-src/why.yml`, which builds docs/workflows.md, is the one home for ticket numbers there."""
+"""code and workflow source say what and why now"""
 import ast
 import io
 import json
@@ -20,7 +20,9 @@ MAX_ALLOWED = 25
 
 
 def prose_refs(path):
-    """-> sorted [(kind, ticket)] for every ticket id in a Python file's comments and docstrings (runtime strings are not prose)."""
+    """> sorted [(kind, ticket)] for every ticket id in a Python file's comments and docstrings (runtime strings are not
+    prose).
+    """
     text = path.read_text(encoding="utf-8")
     found = []
     for tok in tokenize.generate_tokens(io.StringIO(text).readline):
@@ -35,7 +37,7 @@ def prose_refs(path):
 
 
 def comment_refs(text):
-    """-> [(line number, comment text)] for every YAML comment that names a ticket; a `#` inside a script (`run: |`) or a quoted value is not a YAML comment."""
+    """> [(line number, comment text)] for every YAML comment that names a ticket"""
     lines = text.split("\n")
     inside = wfsrc._literal(lines)
     found = []
@@ -68,7 +70,9 @@ class WorkflowParts(unittest.TestCase):
 
 
 class LifeosCode(unittest.TestCase):
-    """A LIFE-nnn in a lifeos/ comment or docstring fails unless ticket_refs_allowlist.json lists it with a reason (at most 25 entries)."""
+    """A LIFE-nnn in a lifeos/ comment or docstring fails unless ticket_refs_allowlist.json lists it with a reason (at
+    most 25 entries).
+    """
 
     def setUp(self):
         self.allowed = json.loads(ALLOWLIST.read_text(encoding="utf-8"))

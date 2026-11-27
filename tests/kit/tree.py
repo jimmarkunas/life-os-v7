@@ -1,21 +1,22 @@
-"""A synthetic Notion block tree for the floating Hiring Pipeline region and the page digest: GET block, GET children, PATCH a block's own content, PATCH-append table rows, DELETE.
-Everything outside those calls is a test failure. `trip` lets a test change some other block while a write is in flight."""
+"""A synthetic Notion block tree for the floating Hiring Pipeline region and the page digest: GET block, GET children,
+PATCH a block's own content.
+"""
 from copy import deepcopy
 
 from lifeos.platform.notion_client import NotionError
 
 
 def rich(text, link=None):
-    part = {"plain_text": text, "text": {"content": text, "link": {"url": link} if link else None}}      # Notion reports "link": null on plain text
+    part = {"plain_text": text, "text": {"content": text, "link": {"url": link} if link else None}}  # Notion reports "link": null on plain text
     return [part]
 
 
 class Tree:
     def __init__(self):
         self.blocks, self.kids, self.log, self.n = {}, {}, [], 0
-        self.pages = {"page-1"}                       # ids that are pages, not blocks (a Job Ledger page in the job-page tests)
-        self.trip = None                              # (method fragment, callback) fired after a matching write
-        self.fail_write = None                        # method fragment that raises
+        self.pages = {"page-1"}
+        self.trip = None
+        self.fail_write = None  # method fragment that raises
 
     def add(self, block_id, kind, parent, content=None, text=None, index=None, **extra):
         body = content if content is not None else ({"rich_text": rich(text)} if text is not None else {})
@@ -38,7 +39,7 @@ class Tree:
     def snapshot(self, skip=()):
         return {k: deepcopy(v) for k, v in self.blocks.items() if k not in skip}
 
-    # --- the API ---
+    # the API
     def call(self, method, path, body=None):
         self.log.append((method, path))
         if self.fail_write and method != "GET" and self.fail_write in path:
@@ -85,7 +86,9 @@ class Tree:
         raise AssertionError((method, path))
 
     def _make(self, parent, child, index=None):
-        """One appended block as Notion stores it (a table_row, or any block with rich text and nested children), placed at `index` (insert-after) or last."""
+        """One appended block as Notion stores it (a table_row, or any block with rich text and nested children), placed
+        at `index` (insert-after) or last.
+        """
         self.n += 1
         kind = child["type"]
         part = lambda r: {"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}, **({"annotations": r["annotations"]} if "annotations" in r else {})}

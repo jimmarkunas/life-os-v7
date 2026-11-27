@@ -1,5 +1,6 @@
-"""LIFE-559, LIFE-600: the type checker (mypy) is ADVISORY on lifeos/platform, except for the 42 modules in mypy-blocking.txt (Jim, "600 block", Nov 24 2026), where a type error fails the pull request check. It is configured in mypy.ini (pyproject.toml stays
-ruff-only, pinned by test_ruff_advisory.py), pinned with hashes in the test lock; the advisory step can never fail the job or change the required check, and ten platform modules are fully annotated."""
+"""the type checker (mypy) is ADVISORY on lifeos/platform, except for the 42 modules in mypy-blocking.txt, where a type
+error fails the pull request.
+"""
 import ast
 import re
 import unittest
@@ -7,11 +8,11 @@ from pathlib import Path
 
 try:
     import yaml
-except ImportError:                                    # PyYAML is a test-only dependency
+except ImportError:  # PyYAML is a test-only dependency
     yaml = None
 
 ROOT = Path(__file__).resolve().parents[2]
-TYPED = ("names", "tinyfish", "http", "alerts", "runtime", "snapshot_store", "notion_ids", "jira", "outlook", "ledger_body")      # the ten chosen by import count (LIFE-559 comments; `router` is left untyped: its own test forbids any import in it)
+TYPED = ("names", "tinyfish", "http", "alerts", "runtime", "snapshot_store", "notion_ids", "jira", "outlook", "ledger_body")  # the ten chosen by import count
 
 
 class Configured(unittest.TestCase):
@@ -19,7 +20,7 @@ class Configured(unittest.TestCase):
         text = (ROOT / "mypy.ini").read_text()
         self.assertEqual(re.findall(r"^\[([^\]]+)\]", text, flags=re.M), ["mypy"])
         self.assertRegex(text, r"(?m)^files = lifeos/platform$")
-        self.assertNotRegex(text, r"(?m)^(strict|disallow_\w+|warn_return_any|check_untyped_defs)\s*=\s*True")      # lenient mode: no strict flags yet
+        self.assertNotRegex(text, r"(?m)^(strict|disallow_\w+|warn_return_any|check_untyped_defs)\s*=\s*True")  # lenient mode: no strict flags yet
 
     def test_mypy_and_its_dependencies_are_pinned_exactly_and_hashed_in_the_test_lock(self):
         pin = re.search(r"^mypy==(\S+)$", (ROOT / "requirements-test.txt").read_text(), flags=re.M)
@@ -62,7 +63,9 @@ class StepIsAdvisory(unittest.TestCase):
 
 
 def public_functions(tree):
-    """Module-level functions and the methods of module-level classes whose names do not start with an underscore (functions defined inside functions are not public)."""
+    """Module-level functions and the methods of module-level classes whose names do not start with an underscore
+    (functions defined inside functions are.
+    """
     scopes = [tree.body] + [n.body for n in tree.body if isinstance(n, ast.ClassDef)]
     for body in scopes:
         for node in body:
@@ -106,7 +109,7 @@ class TenModulesAreTyped(unittest.TestCase):
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class BlockingSet(unittest.TestCase):
-    """LIFE-600: exactly the modules Jim approved are blocking; every other module stays advisory."""
+    """every other module stays advisory."""
     LISTED = [line for line in (ROOT / "mypy-blocking.txt").read_text().splitlines() if line.strip()]
 
     def test_the_blocking_list_is_the_42_approved_platform_modules_sorted_unique_and_present(self):
@@ -115,9 +118,9 @@ class BlockingSet(unittest.TestCase):
         for path in self.LISTED:
             self.assertRegex(path, r"^lifeos/platform/[a-z_0-9]+\.py$")
             self.assertTrue((ROOT / path).is_file(), path)
-        self.assertNotIn("lifeos/platform/codes.py", self.LISTED)                            # an error module (or any newer module with under two weeks of history) is not in the set
+        self.assertNotIn("lifeos/platform/codes.py", self.LISTED)
         for name in TYPED:
-            self.assertIn(f"lifeos/platform/{name}.py", self.LISTED, name)                  # the ten fully annotated LIFE-559 modules are all blocking
+            self.assertIn(f"lifeos/platform/{name}.py", self.LISTED, name)  # the ten fully annotated modules are all blocking
 
     def test_the_blocking_step_fails_the_job_runs_exactly_the_list_and_comes_after_the_unit_tests(self):
         job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]

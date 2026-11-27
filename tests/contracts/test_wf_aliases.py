@@ -1,4 +1,6 @@
-"""LIFE-1013: the generated domains.yml and hourly.yml write repeated values and repeated env/with blocks once, as YAML anchors and aliases (GitHub Actions reads aliases, not merge keys). The writer keeps that only when it is provably the same document, and the plain text can always be had back."""
+"""the generated domains.yml and hourly.yml write repeated values and repeated env/with blocks once, as YAML anchors and
+aliases (GitHub Actions reads.
+"""
 import pathlib
 import sys
 import unittest
@@ -51,8 +53,8 @@ class Aliases(unittest.TestCase):
         for name in ("domains", "hourly"):
             text = (ROOT / ".github/workflows" / f"{name}.yml").read_text()
             plain = wfsrc.expand_aliases(text)
-            self.assertNotEqual(plain, text, name)                                                   # aliases are in use
-            self.assertEqual(wfsrc.compress(plain), text, name)                                      # the writer is deterministic
+            self.assertNotEqual(plain, text, name)  # aliases are in use
+            self.assertEqual(wfsrc.compress(plain), text, name)  # the writer is deterministic
             self.assertEqual(yaml.safe_load(plain), yaml.safe_load(text), name)
             self.assertLess(len(text), len(plain) * 0.85, name)
 

@@ -1,4 +1,6 @@
-"""LIFE-690: the health model document lists every alert, and the alert gateway is the only sender and refuses a push with no state key."""
+"""the health model document lists every alert, and the alert gateway is the only sender and refuses a push with no state
+key.
+"""
 import io
 import contextlib
 import pathlib
@@ -30,7 +32,7 @@ class HealthModelDocument(unittest.TestCase):
 
 
 class TheGatewayIsTheOnlySender(unittest.TestCase):
-    READER = "lifeos/whatsapp/oracle/forward_alerts.py"          # the Oracle relay only READS the topic (a poll) to forward the Telegram and WhatsApp copies; it never sends
+    READER = "lifeos/whatsapp/oracle/forward_alerts.py"
 
     def test_nothing_but_alerts_py_sends_to_the_push_service_or_calls_the_raw_senders(self):
         offenders = []

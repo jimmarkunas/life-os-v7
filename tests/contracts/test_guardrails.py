@@ -1,4 +1,4 @@
-"""Guardrails ported from the proven V1-V5 behaviour as assertions, not machinery. Each test names the invariant it protects."""
+"""Guardrails ported from the proven V1-V5 behaviour as assertions, not machinery."""
 import inspect
 from pathlib import Path
 import re
@@ -28,12 +28,12 @@ def strings_and_code(path):
 class HumanStateIsNeverDestroyed(unittest.TestCase):
     def test_every_trash_call_sits_behind_a_protection_check(self):
         users = {p.name: p.read_text() for p in CODE if '"in_trash": True' in p.read_text()}
-        self.assertEqual(sorted(users), ["agent_inbox.py", "audit.py", "connections.py", "reset.py", "retention.py"])             # a new destructive writer must be added here on purpose
+        self.assertEqual(sorted(users), ["agent_inbox.py", "audit.py", "connections.py", "reset.py", "retention.py"])
         self.assertLess(users["audit.py"].index("guard.protection"), users["audit.py"].index('"in_trash": True'))
-        self.assertLess(users["reset.py"].index("_no_total(r)"), users["reset.py"].index('"in_trash": True'))      # Amazon Orders: only a row with no Grand Total (D152)
+        self.assertLess(users["reset.py"].index("_no_total(r)"), users["reset.py"].index('"in_trash": True'))  # Amazon Orders: only a row with no Grand Total
         self.assertLess(users["retention.py"].index("hiring_pipeline.handoff_for"), users["retention.py"].index('"in_trash": True'))
-        self.assertLess(users["connections.py"].index("RETIRED = "), users["connections.py"].index('"in_trash": True'))                 # the System health writer trashes only the retired Todoist row, named in RETIRED
-        self.assertLess(users["agent_inbox.py"].index("archive_not_a_test_row"), users["agent_inbox.py"].index('"in_trash": True'))      # the Agent Inbox proof trashes only its own test rows (keys proof-... and direct-...)
+        self.assertLess(users["connections.py"].index("RETIRED = "), users["connections.py"].index('"in_trash": True'))
+        self.assertLess(users["agent_inbox.py"].index("archive_not_a_test_row"), users["agent_inbox.py"].index('"in_trash": True'))
 
     def test_retention_only_ever_selects_unapplied_undecided_rows(self):
         text = str(retention.query_filter(__import__("datetime").datetime(2026, 10, 1), "US Remote"))
@@ -106,7 +106,7 @@ class NoLegacyLifecycleAuthority(unittest.TestCase):
     def test_no_code_reads_or_writes_the_legacy_fields(self):
         bad = [p.name for p in CODE if re.search(r"['\"](Lifecycle|Liveness)['\"]", strings_and_code(p)) and p.name != "publish.py"]
         self.assertEqual(bad, [])
-        # publish only ever writes Liveness = Live on a fresh page (a Ledger schema requirement), never reads it back as a decision
+        # publish only ever writes Liveness = Live on a fresh page (a Ledger schema requirement), never reads it back.
         self.assertNotIn('"Lifecycle"', strings_and_code(ROOT / "lifeos/jobs/publish.py"))
 
 
@@ -129,7 +129,7 @@ class ProductionTargetIdentity(unittest.TestCase):
         wrong = self.full()
         wrong["Applied"] = {"type": "rich_text"}
         self.assertEqual(ledger.verify(self.Source(wrong)), ledger.MISMATCH)
-        self.assertEqual(ledger.verify(self.Source({})), ledger.MISMATCH)               # some other database
+        self.assertEqual(ledger.verify(self.Source({})), ledger.MISMATCH)  # some other database
         self.assertEqual(ledger.verify(self.Source({}, fail=True)), ledger.UNREADABLE)
 
     def test_checked_once_per_client(self):
@@ -178,21 +178,20 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
     def test_exactly_one_recurring_scheduler(self):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
-        self.assertEqual(sorted(scheduled), ["capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state. v3-pages.yml (LIFE-793, Jim's go Nov 17) is the five V3 page stages moved out of the hourly jira job: read-only from Jira, writes only the V3 page callouts
+        self.assertEqual(sorted(scheduled), ["capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])  # the watchdog only raises an alert
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):
-            self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
+            self.assertNotIn(word, safety)
         loader = safety.index("bws-load")
-        self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))   # loaded before any safety command
-        self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")        # no new trigger or runtime path
+        self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))  # loaded before any safety command
+        self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")  # no new trigger or runtime path
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
-        self.assertLess(watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
-        # LIFE-644: the schedules, secret lists, loader ids and dispatch choices are no longer pinned here; BitwardenConsumerTests (test_workflow.py) holds the loader and credential rules
-        # and tests/platform/test_scheduled_jobs.py requires a row for every schedule.
+        self.assertLess(watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch"))  # loaded before the first step that needs it
+        # BitwardenConsumerTests (test_workflow.py) holds the loader and credential rules and.
 
     def test_machine_input_universes_load_and_the_ready_subset_is_inside_them(self):
-        """LIFE-644: a registry may grow without a test edit; it must load, have unique ids, and every lane's ready rows must be rows of the registry."""
+        """a registry may grow without a test edit"""
         for lane, path in registry.PATHS.items():
             rows = registry.load(path)
             ids = [r["id"] for r in rows]
@@ -205,7 +204,9 @@ if __name__ == "__main__":
 
 
 class ExcludedPagesAreCleared(unittest.TestCase):
-    """With the Fit gate on, a published page whose lane decision is EXCLUDE is trashed (never when a human pursuit may exist) and never published again."""
+    """With the Fit gate on, a published page whose lane decision is EXCLUDE is trashed (never when a human pursuit may
+    exist) and never published again.
+    """
     FULL = {"Applied": {"checkbox": False}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}}
 
     def run_audit(self, page_props, gated=True):
@@ -237,7 +238,7 @@ class ExcludedPagesAreCleared(unittest.TestCase):
         counts, trashed, writes = self.run_audit(self.FULL)
         self.assertEqual((len(trashed), counts["by_reason"], counts["excluded_cleared"]), (1, {"excluded_fit": 1}, 1))
         self.assertTrue(any("EXCLUDED_FIT" in w for w in writes))
-        self.assertFalse(any("DELETE" in w for w in writes))                # the ledger hash and the description stay
+        self.assertFalse(any("DELETE" in w for w in writes))  # the ledger hash and the description stay
 
     def test_applied_or_decided_pages_are_never_trashed(self):
         for props in ({**self.FULL, "Applied": {"checkbox": True}}, {**self.FULL, "Saturn Decision": {"select": {"name": "Apply"}}}):
@@ -250,7 +251,9 @@ class ExcludedPagesAreCleared(unittest.TestCase):
 
 
 class InterviewJobIsIsolated(unittest.TestCase):
-    """The Interview job gets only its own token: every Jobs secret is blanked, it is dispatch-only, and its failure is a warning, not a failed run."""
+    """The Interview job gets only its own token: every Jobs secret is blanked, it is dispatch-only, and its failure is a
+    warning, not a failed run.
+    """
 
     def block(self):
         text = wftext.text(ROOT / ".github/workflows/hourly.yml")
@@ -263,19 +266,19 @@ class InterviewJobIsIsolated(unittest.TestCase):
             self.assertIn(f'{name}: ""', block, name)
         self.assertNotIn("secrets.NOTION_API_TOKEN", block)
         self.assertNotIn("secrets.NOTION_INTERVIEW_TOKEN", block)
-        self.assertIn("steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN", block)                 # EDGE-1.3: its own token, as a masked output of its own loader
-        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "V7_RUNTIME_CONFIG_SOURCE_ID"})   # and no other Jobs value reaches this job (LIFE-699: the two private acceptance cases, used only by the manual acceptance steps)
+        self.assertIn("steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN", block)
+        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "V7_RUNTIME_CONFIG_SOURCE_ID"})  # and no other Jobs value reaches this job
 
     def test_dispatch_only_and_failure_is_a_warning(self):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
-        self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
-        self.assertEqual(block.count("continue-on-error: true") - block.count("actions/doppler-load"), 5)            # the four steps (D233: + the negative acceptance case) plus the address loader (LIFE-859); the Bitwarden load and its retry are inside the local action (LIFE-631)
+        self.assertNotIn("\n    continue-on-error:", block)
+        self.assertEqual(block.count("continue-on-error: true") - block.count("actions/doppler-load"), 5)  # the four steps plus the address loader
         self.assertIn("::warning", block)
 
 
 class DecisionIndexTests(unittest.TestCase):
-    """The decision index is what agents read instead of the 47 KB log; it must list every decision."""
+    """The decision index is what agents read instead of the 47 KB log"""
 
     def test_every_decision_heading_is_in_the_index(self):
         from pathlib import Path
@@ -287,8 +290,7 @@ class DecisionIndexTests(unittest.TestCase):
 
 
 class DecisionNumberTests(unittest.TestCase):
-    """LIFE-89 (PLAT-GOV-2): every decision number is used once, in the log and in the index; an amendment or advice continues an existing number.
-    The backstop for a session that skipped `python -m lifeos.sources.devtools.decisions claim` (Oct 20 2026: D229, D231, D235 and D236 were each taken twice)."""
+    """(PLAT-GOV-2): every decision number is used once, in the log and in the index"""
 
     def test_no_decision_number_is_used_twice(self):
         from pathlib import Path

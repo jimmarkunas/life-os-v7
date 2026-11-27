@@ -1,4 +1,4 @@
-"""LIFE-406 (extends D209): the Bitwarden helper program comes from a saved, fingerprint-checked copy; the download retries only when no copy exists."""
+"""the Bitwarden helper program comes from a saved, fingerprint-checked copy"""
 import glob
 import hashlib
 import os
@@ -11,7 +11,7 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ACTION = os.path.join(ROOT, ".github", "actions", "bws-helper")
-CACHE_COMMIT = "0057852bfaa89a56745cba8c7296529d2fc39830"   # actions/cache v4.3.0
+CACHE_COMMIT = "0057852bfaa89a56745cba8c7296529d2fc39830"  # actions/cache v4.3.0
 
 
 def _read(path):
@@ -19,7 +19,7 @@ def _read(path):
         return handle.read()
 
 
-SEEDS = ("./.github/actions/bws-helper", "./.github/actions/job-start")             # LIFE-1010: job-start is the Python step plus the helper step in one
+SEEDS = ("./.github/actions/bws-helper", "./.github/actions/job-start")
 
 
 def _jobs():
@@ -38,28 +38,28 @@ class WorkflowWiring(unittest.TestCase):
             if not loaders:
                 continue
             seen += 1
-            side = ("bws_settings", "bws_runtime_config")                                # LIFE-703: the NOTION_JIRA_TOKEN-only loader that lets a job read the V7 settings page; LIFE-858: the bootstrap-ID-only loader for the compare-only read. Neither is the job's credential loader
+            side = ("bws_settings", "bws_runtime_config")
             main = [i for i in loaders if steps[i].get("id") not in side]
             extra = [i for i in loaders if steps[i].get("id") in side]
             first = loaders[0]
             self.assertGreater(first, 0, (file, name))
             seed = steps[first - 1]
             self.assertIn(seed.get("uses"), SEEDS, (file, name))
-            self.assertNotIn("id", seed, (file, name))                    # nothing downstream reads the helper step
+            self.assertNotIn("id", seed, (file, name))  # nothing downstream reads the helper step
             if main:
-                self.assertNotIn("continue-on-error", seed, (file, name))     # a missing verified helper fails the job; no fallback
-                self.assertEqual(loaders[0], main[0], (file, name))           # the credential loader is first; the settings loader, if any, follows it
+                self.assertNotIn("continue-on-error", seed, (file, name))  # a missing verified helper fails the job
+                self.assertEqual(loaders[0], main[0], (file, name))  # the credential loader is first
             else:
-                self.assertIs(seed.get("continue-on-error"), True, (file, name))   # a job that only reads the settings page (the gate, the profile-sync switch job) never fails on it
+                self.assertIs(seed.get("continue-on-error"), True, (file, name))
             wait = int(seed["with"]["wait_seconds"])
-            self.assertTrue(0 < wait <= 600, (file, name, wait))          # about 10 minutes at most
+            self.assertTrue(0 < wait <= 600, (file, name, wait))  # about 10 minutes at most
             limit = job.get("timeout-minutes", 360)
-            self.assertLessEqual(wait * 3, limit * 60, (file, name))      # the retry never takes more than a third of the job's time limit
-            self.assertIn("ubuntu", str(job["runs-on"]), (file, name))    # the saved program is the Linux x86_64 build
-            self.assertLessEqual(len(main), 1, (file, name))              # one credential loader step per job: the load and its one retry (D209) live inside the local action (LIFE-631)
-            self.assertLessEqual(len(extra), 1, (file, name))             # and at most one settings loader
+            self.assertLessEqual(wait * 3, limit * 60, (file, name))
+            self.assertIn("ubuntu", str(job["runs-on"]), (file, name))  # the saved program is the Linux x86_64 build
+            self.assertLessEqual(len(main), 1, (file, name))
+            self.assertLessEqual(len(extra), 1, (file, name))  # and at most one settings loader
             self.assertEqual(len(main) + len(extra), len(loaders), (file, name))
-        self.assertGreater(seen, 0)                                       # LIFE-644: every job that loads gets its one seed; the number of jobs is not pinned
+        self.assertGreater(seen, 0)  # every job that loads gets its one seed
 
     def test_the_helper_is_called_exactly_once_per_job(self):
         for file, name, job in _jobs():
@@ -76,7 +76,7 @@ class CompositeAction(unittest.TestCase):
     def test_cache_actions_are_pinned_to_a_commit_and_the_key_holds_no_secret(self):
         self.assertEqual(re.findall(r"uses:\s*(actions/cache/\w+)@(\S+)", self.text), [("actions/cache/restore", CACHE_COMMIT), ("actions/cache/save", CACHE_COMMIT)])
         for key in re.findall(r"^\s*key:\s*(.+)$", self.text, re.M):
-            self.assertEqual(key, "bws-helper-3.0.1-${{ hashFiles('.github/actions/bws-helper/helper.sha256') }}")   # version plus the committed fingerprint, nothing else
+            self.assertEqual(key, "bws-helper-3.0.1-${{ hashFiles('.github/actions/bws-helper/helper.sha256') }}")
         self.assertNotIn("secrets.", self.text)
         self.assertNotIn("access_token", self.text)
         self.assertNotIn("GITHUB_ENV", self.text)
@@ -85,15 +85,15 @@ class CompositeAction(unittest.TestCase):
         self.assertIn("$GITHUB_ACTION_PATH/../sm-action/target/x86_64-unknown-linux-gnu/release", self.text)
         self.assertIn("releases/download/v3.0.1/sm-action-x86_64-unknown-linux-gnu", self.text)
         loader = _read(os.path.join(ROOT, ".github", "actions", "bws-load", "action.yml"))
-        self.assertEqual(re.findall(r"uses:\s*(\S*sm-action)", loader), ["./.github/actions/sm-action"] * 2)   # the seeded folder is the folder the vendored action reads (its own target/ folder)
+        self.assertEqual(re.findall(r"uses:\s*(\S*sm-action)", loader), ["./.github/actions/sm-action"] * 2)
 
     def test_fingerprint_is_committed_hex_never_read_from_the_download(self):
         fingerprint = _read(os.path.join(ACTION, "helper.sha256")).strip()
         self.assertRegex(fingerprint, r"^[0-9a-f]{64}$")
-        self.assertEqual(fingerprint, "fa998e9db775d5c7bdbc0fd8840ac6474a8348cdc989176c5ce24c3d09045752")   # GitHub's published digest of the v3.0.1 Linux x86_64 asset, matched by a download on Nov 8, 2026
+        self.assertEqual(fingerprint, "fa998e9db775d5c7bdbc0fd8840ac6474a8348cdc989176c5ce24c3d09045752")
         script = _read(os.path.join(ACTION, "fetch.sh"))
         self.assertIn("helper.sha256", self.text)
-        self.assertNotRegex(script, r"sha256sum[^\n]*>\s*\S*sha256")        # the fingerprint file is only read
+        self.assertNotRegex(script, r"sha256sum[^\n]*>\s*\S*sha256")  # the fingerprint file is only read
 
     def test_test_input_defaults_to_normal_and_only_fail_changes_anything(self):
         self.assertEqual(self.doc["inputs"]["test_download"]["default"], "normal")
@@ -128,7 +128,7 @@ class FetchScript(unittest.TestCase):
         os.makedirs(os.path.dirname(self.dest))
         with open(self.dest, "wb") as handle:
             handle.write(b"example helper program")
-        done, source = run_fetch(self.dest, self.dead, self.sha)      # the download address is dead: any download attempt would fail the run
+        done, source = run_fetch(self.dest, self.dead, self.sha)
         self.assertEqual((done.returncode, source), (0, ["source=saved"]), done.stdout + done.stderr)
         self.assertIn("no download", done.stdout)
         self.assertTrue(os.access(self.dest, os.X_OK))
@@ -137,8 +137,8 @@ class FetchScript(unittest.TestCase):
         done, source = run_fetch(self.dest, self.dead, self.sha, wait="600", pause="10")
         self.assertEqual((done.returncode, source), (1, []))
         pauses = [int(n) for n in re.findall(r"retrying in (\d+)s", done.stdout)]
-        self.assertEqual(pauses[:5], [10, 20, 40, 80, 120])           # growing, capped at 120 s
-        self.assertGreater(sum(pauses), 500)                           # a 600 s budget really spends about ten minutes
+        self.assertEqual(pauses[:5], [10, 20, 40, 80, 120])  # growing, capped at 120 s
+        self.assertGreater(sum(pauses), 500)  # a 600 s budget really spends about ten minutes
         self.assertLessEqual(sum(pauses), 600)
         self.assertIn("Bitwarden was not contacted", done.stdout)
         self.assertFalse(os.path.exists(self.dest))
@@ -152,11 +152,11 @@ class FetchScript(unittest.TestCase):
         os.makedirs(os.path.dirname(self.dest))
         with open(self.dest, "wb") as handle:
             handle.write(b"tampered")
-        done, source = run_fetch(self.dest, self.dead, self.sha)       # no good download either: the job fails and the bad copy is gone
+        done, source = run_fetch(self.dest, self.dead, self.sha)
         self.assertEqual((done.returncode, source), (1, []))
         self.assertIn("does not match the committed fingerprint; discarded", done.stdout)
         self.assertFalse(os.path.exists(self.dest))
-        done, source = run_fetch(self.dest, "file://" + self.good, self.sha)   # with a good download the discarded copy is replaced
+        done, source = run_fetch(self.dest, "file://" + self.good, self.sha)
         self.assertEqual((done.returncode, source), (0, ["source=downloaded"]))
 
     def test_a_download_that_does_not_match_is_never_kept(self):

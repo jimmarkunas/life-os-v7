@@ -43,7 +43,7 @@ class RegistryShape(unittest.TestCase):
 
 
 class DeclaredByTheirPackages(unittest.TestCase):
-    """LIFE-644: a package declares its own codes in lifeos/<package>/codes.json; platform only collects them, and a code is declared once."""
+    """a package declares its own codes in lifeos/<package>/codes.json"""
 
     def test_every_code_is_declared_once_and_a_new_package_file_is_collected_with_no_platform_edit(self):
         words = [w for name in ("codes.json", "reasons.json") for path in sorted((ROOT / "lifeos").glob("*/" + name)) for w in json.loads(path.read_text())]
@@ -74,7 +74,7 @@ PUBLIC_BEFORE_LIFE_72 = frozenset((
     "audit_url_workable_no_account audit_jd_template audit_jd_listing audit_jd_thin no_match_no_board+no_result no_match_no_title+no_result no_match_ambiguous+no_result "
     "no_match_no_board+no_fit no_match_no_title+no_fit no_match_ambiguous+no_fit in_ledger same_opening audit_url_no_job_id").split())
 MADE_PUBLIC_OCT_25 = frozenset("excluded_fit released_keep_list released_ledger requeued_age requeued_direct requeued_fit requeued_floor requeued_linkedin "
-                               "retired_by_jim title_watch_unseen".split())     # Jim, Oct 25 2026: these fixed words print as themselves, not "other"
+                               "retired_by_jim title_watch_unseen".split())
 
 
 def emitted_reasons(root=ROOT / "lifeos"):
@@ -86,7 +86,9 @@ def emitted_reasons(root=ROOT / "lifeos"):
 
 
 class StoredReasons(unittest.TestCase):
-    """The lowercase words written to a job's unresolved_reason: each is registered, and the public allowlist is built from the registry."""
+    """The lowercase words written to a job's unresolved_reason: each is registered, and the public allowlist is built
+    from the registry.
+    """
 
     def test_every_reason_the_sql_writes_or_tests_is_registered(self):
         missing = {r: w for r, w in emitted_reasons().items() if r not in codes.REASONS}

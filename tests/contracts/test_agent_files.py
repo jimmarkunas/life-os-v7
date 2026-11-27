@@ -1,5 +1,6 @@
-"""LIFE-593: the Concord block in the per-tool instruction files is generated from AGENTS.md (the common text, which is all Claude Code uses) plus each tool's own paragraph from the
-generator's table, and cannot drift from it."""
+"""the Concord block in the per-tool instruction files is generated from AGENTS.md plus each tool's own paragraph from
+the generator's table, and cannot.
+"""
 import shutil
 import tempfile
 import unittest
@@ -28,22 +29,22 @@ class GeneratedCopies(unittest.TestCase):
         root = scratch()
         text = (root / "AGENTS.md").read_text()
         (root / "AGENTS.md").write_text(text.replace("Keep each claim small", "Keep each claim tiny", 1))
-        self.assertEqual(sorted(af.drifted(root)), sorted(af.GENERATED))                            # all of them are now behind
-        self.assertEqual(sorted(af.sync(root)), sorted(af.GENERATED))                               # and one run brings them all along
+        self.assertEqual(sorted(af.drifted(root)), sorted(af.GENERATED))  # all of them are now behind
+        self.assertEqual(sorted(af.sync(root)), sorted(af.GENERATED))  # and one run brings them all along
         self.assertEqual(af.drifted(root), [])
         cursor = (root / ".cursor/rules/concord.mdc").read_text()
-        self.assertTrue(cursor.startswith("---"))                                                   # the Cursor header outside the block is kept
+        self.assertTrue(cursor.startswith("---"))  # the Cursor header outside the block is kept
         self.assertIn("Keep each claim tiny", cursor)
 
     def test_agents_md_holds_only_the_common_text_and_each_copy_gets_only_its_own_tools_paragraph(self):
         common = af.source(REAL)
         for tool, paragraph in af.PARAGRAPHS.items():
-            self.assertNotIn(paragraph, common, tool)                                               # the trim: no other tool's monitor text in AGENTS.md
+            self.assertNotIn(paragraph, common, tool)
         self.assertNotIn(af.PREAMBLE, common)
         for name, tool in af.GENERATED.items():
             text = (REAL / name).read_text()
             for other, paragraph in af.PARAGRAPHS.items():
-                self.assertEqual(paragraph in text, other == tool, (name, other))                   # Cursor's file has Cursor's paragraph and nobody else's
+                self.assertEqual(paragraph in text, other == tool, (name, other))
 
     def test_the_cursor_file_follows_a_change_to_its_own_paragraph_in_the_table(self):
         root = scratch()
@@ -68,15 +69,15 @@ class GeneratedCopies(unittest.TestCase):
         self.assertEqual(af.drifted(root), [".github/copilot-instructions.md"])
         (root / ".codex/concord.md").write_text("no markers here\n")
         with self.assertRaises(FileNotFoundError):
-            af.sync(root)                                                                           # a deleted generated file is a person's decision, not silently recreated
+            af.sync(root)
         shutil.copy(REAL / ".github/copilot-instructions.md", root / ".github/copilot-instructions.md")
         with self.assertRaises(ValueError):
-            af.sync(root)                                                                           # a file without the markers is refused, never overwritten
+            af.sync(root)
 
     def test_the_variant_file_is_listed_with_a_reason_and_is_not_compared(self):
         root = scratch()
         self.assertEqual(list(af.VARIANTS), [".agents/rules/concord.md"])
-        self.assertNotEqual(af.block_of((root / ".agents/rules/concord.md").read_text()), af.source(root))     # it really is a different block
+        self.assertNotEqual(af.block_of((root / ".agents/rules/concord.md").read_text()), af.source(root))  # it really is a different block
         self.assertNotIn(".agents/rules/concord.md", af.drifted(root))
         self.assertTrue(all(len(reason.split()) > 5 for reason in af.VARIANTS.values()))
 

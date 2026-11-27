@@ -1,4 +1,4 @@
-"""LIFE-1003: the live entry point's gate fails closed. Every missing condition returns one fixed word before any object is built, any token is used or any call is made; the one open case builds exactly once."""
+"""the live entry point's gate fails closed."""
 import base64
 import importlib.util
 import json
@@ -120,7 +120,7 @@ class Main(unittest.TestCase):
         doc = b'{"ok": true, "spent_usd": 0.7029, "cap_usd": 25.0, "blocked": null, "scope": {"id": "s", "cap_usd": 2.0, "spent_usd": 0.0, "state": "open"}}'
         m = live.MeterHttp(opener=lambda url, timeout: seen.append(url) or Answer(doc))
         self.assertEqual(m.reading()["scope"], {"id": "s", "cap_usd": 2.0, "spent_usd": 0.0, "state": "open"})
-        self.assertFalse(hasattr(m, "spent"))                                                     # no monthly-delta shortcut around the scope
+        self.assertFalse(hasattr(m, "spent"))  # no monthly-delta shortcut around the scope
         self.assertEqual(seen, [live.METER_URL])
 
 

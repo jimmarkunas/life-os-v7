@@ -1,7 +1,6 @@
-"""LIFE-689: a loop over external items without error handling inside, and without a reviewed reason in docs/platform/stage-isolation.md, fails this test.
-
-Each stage's classification (helper | guarded | single | exempt | partial-red) is a manifest entry (lifeos/platform/stages.json, LIFE-768) checked in tests/contracts/test_stages.py; this file keeps the scan and the table of reviewed loops.
-Adding a loop over items that call a client without a try inside fails here until the doc says why."""
+"""a loop over external items without error handling inside, and without a reviewed reason in docs/platform/stage-
+isolation.md, fails this test.
+"""
 import ast
 import importlib.util
 import pathlib
@@ -28,7 +27,9 @@ def loops(module):
 
 
 def loops_in(source):
-    """{(function, iterable text): has a try inside} for every loop over external-looking items whose body calls a client-looking function."""
+    """{(function, iterable text): has a try inside} for every loop over external-looking items whose body calls a
+    client-looking function.
+    """
     tree = ast.parse(source)
     found = {}
     for fn in ast.walk(tree):
@@ -47,7 +48,7 @@ def table(heading):
     text = DOC.read_text()
     block = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
     rows = [[c.strip().strip("`") for c in line.strip().strip("|").split("|")] for line in block.splitlines() if line.startswith("| ") and not line.startswith("| ---")]
-    return rows[1:]                                           # without the header row
+    return rows[1:]  # without the header row
 
 
 class StageIsolation(unittest.TestCase):
@@ -76,7 +77,7 @@ class TheScanAndTheRowsBite(unittest.TestCase):
     def test_the_scan_flags_a_loop_over_items_that_calls_a_client_without_error_handling(self):
         self.assertEqual(loops_in(self.UNGUARDED), {("go", "boards"): False})
         self.assertEqual(loops_in(self.GUARDED), {("go", "boards"): True})
-        self.assertEqual(loops_in("def go(rows):\n    for n in range(3):\n        total = n\n"), {})                  # a loop with no items and no client call is not a finding
+        self.assertEqual(loops_in("def go(rows):\n    for n in range(3):\n        total = n\n"), {})
 
     def test_a_stage_without_a_manifest_entry_fails(self):
         with unittest.mock.patch.dict(run.STAGES, {"brand-new": lambda limit, live: {}}):

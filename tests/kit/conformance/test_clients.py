@@ -1,4 +1,4 @@
-"""LIFE-549: the Gmail and Calendar fakes keep the real clients' method signatures."""
+"""the Gmail and Calendar fakes keep the real clients' method signatures."""
 import unittest
 
 from tests.kit.conformance import client_subjects as subjects

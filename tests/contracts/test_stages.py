@@ -1,7 +1,4 @@
-"""LIFE-768 / LIFE-769: generic checks that loop over the stage manifest (lifeos/platform/stages.json), in place of per-stage pins.
-
-A stage is one manifest entry. These checks assert, for every entry: it is a real stage and every stage has an entry, its fields have the right shape, its budget is bounded and agrees with the workflow job that runs it and the Jobs tick plan,
-its isolation status is true of its code, and every file rendered from the manifest (stage_budgets.json, the two doc tables) is exactly what the manifest says. Adding a stage adds no test."""
+"""generic checks that loop over the stage manifest (lifeos/platform/stages.json), in place of per-stage pins."""
 import importlib.util
 import json
 import pathlib
@@ -23,7 +20,9 @@ PLAN = {step.name: step for step in tick.PLAN}
 
 
 def workflow_steps():
-    """{stage: [(job limit in seconds, step has continue-on-error)]} from every `lifeos.run <stage>` step in the workflows."""
+    """{stage: [(job limit in seconds, step has continue-on-error)]} from every `lifeos.run <stage>` step in the
+    workflows.
+    """
     found = {}
     for doc in WORKFLOWS.values():
         for job in (doc.get("jobs") or {}).values():

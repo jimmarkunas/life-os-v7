@@ -1,4 +1,6 @@
-"""LIFE-764: .github/workflows/domains.yml is the fragments in .github/workflows-src/domains joined in file-name order, one fragment per job plus the header; tools/regen.py --check fails when either side is edited alone."""
+""".github/workflows/domains.yml is the fragments in.github/workflows-src/domains joined in file-name order, one fragment
+per job plus the header
+"""
 import io
 import pathlib
 import re
@@ -30,7 +32,7 @@ class DomainsParts(unittest.TestCase):
         self.assertEqual(regen.domains_text(), GENERATED.read_text(), "run python tools/regen.py")
 
     def test_each_fragment_holds_exactly_the_job_its_file_name_says(self):
-        """LIFE-1010: a long job continues in lettered files (020b-jira.yml) that start at a step and hold no job key; the header is 000-header.yml plus 001-header-inputs.yml."""
+        """a long job continues in lettered files (020b-jira.yml) that start at a step and hold no job key"""
         files = sorted(PARTS.glob("*.yml"))
         self.assertEqual([p.name for p in files[:2]], ["000-header.yml", "001-header-inputs.yml"])
         header = "".join(p.read_text() for p in files[:2])
@@ -44,7 +46,7 @@ class DomainsParts(unittest.TestCase):
             self.assertNotIn("\njobs:", path.read_text(), path.name)
             if found.group(2):
                 self.assertEqual((keys, found.group(3)), ([], job), path.name)
-                self.assertTrue(path.read_text().lstrip().startswith(("-", "#")), path.name)          # starts at a step
+                self.assertTrue(path.read_text().lstrip().startswith(("-", "#")), path.name)  # starts at a step
             else:
                 job = found.group(3)
                 self.assertEqual(keys[:1], [job], path.name)
@@ -58,7 +60,7 @@ class DomainsParts(unittest.TestCase):
         self.assertEqual(list((ROOT / ".github/workflows").glob("*domains*")), [GENERATED])
 
     def test_the_generated_file_has_no_comments_and_the_history_is_in_the_workflow_doc(self):
-        self.assertNotRegex(GENERATED.read_text(), r"(?m)^ {0,8}#")                       # no YAML comment (a shell comment inside a run script is the script's own)
+        self.assertNotRegex(GENERATED.read_text(), r"(?m)^ {0,8}#")
         self.assertEqual(regen.workflow_doc_text(), (ROOT / "docs/workflows.md").read_text(), "run python tools/regen.py")
 
     def test_a_fragment_edited_alone_fails_the_check(self):

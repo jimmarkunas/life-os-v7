@@ -1,4 +1,4 @@
-"""Every pipeline stage resolves to a real function; the registry is the only place a stage is declared."""
+"""Every pipeline stage resolves to a real function"""
 import contextlib
 import importlib
 import inspect
@@ -29,7 +29,7 @@ class RegistryTests(unittest.TestCase):
         with patch("importlib.import_module", return_value=fake):
             self.assertEqual(run.lazy("m", "go", floor=500, lane="X")(40, True), {"n": 1})
         self.assertEqual(calls, [(500, True, {"lane": "X"})])
-        only_live = type("M", (), {"go": staticmethod(lambda live, **kw: calls.append((live, kw)) or {"n": 2})})            # sync-seen and purge: the function keeps its own limit
+        only_live = type("M", (), {"go": staticmethod(lambda live, **kw: calls.append((live, kw)) or {"n": 2})})
         with patch("importlib.import_module", return_value=only_live):
             self.assertEqual(run.lazy("m", "go", floor=500, live_only=True)(40, True), {"n": 2})
         self.assertEqual(calls[1:], [(True, {})])
@@ -40,7 +40,6 @@ class RegistryTests(unittest.TestCase):
 
 
 class GranolaHeadlineTests(unittest.TestCase):
-    """Jim, Nov 6, 2026: print a readable count for the hourly Granola job."""
 
     COUNTS = {"already": 12, "carried": 0, "code": "GRAN_AUTO_NOTHING_NEW", "failed": 0, "meetings": 12, "unfiled_created": 0, "unfiled_waiting": 0, "why": {}}
 
@@ -57,7 +56,7 @@ class GranolaHeadlineTests(unittest.TestCase):
         self.assertEqual(status, 0)
         lines = out.splitlines()
         self.assertEqual(lines[0], "Granola auto: GRAN_AUTO_NOTHING_NEW. On Oracle: 12; already filed: 12; filed this run: 0; waiting for Jim (Unfiled): 0; failed: 0.")
-        self.assertTrue(lines[1].startswith("granola-auto: {"))                       # the full counts line is kept unchanged
+        self.assertTrue(lines[1].startswith("granola-auto: {"))  # the full counts line is kept unchanged
 
     def test_a_busy_run_reports_what_was_filed_and_what_waits(self):
         _, out, _ = self.run_stage({**self.COUNTS, "code": "GRAN_AUTO_DONE", "carried": 3, "meetings": 15, "unfiled_created": 1, "unfiled_waiting": 2})
@@ -101,13 +100,13 @@ class GranolaHeadlineTests(unittest.TestCase):
 
 
 class PartialFailureExitTests(unittest.TestCase):
-    """D182: a publish run that failed a record exits 1 and still prints its counts; nothing else changes."""
+    """a publish run that failed a record exits 1 and still prints its counts"""
 
     @staticmethod
     def _main(stage, counts):
         out, err = io.StringIO(), io.StringIO()
         with warnings.catch_warnings(), patch.dict(run.STAGES, {stage: lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            warnings.simplefilter("ignore", ResourceWarning)                    # another test's unclosed sqlite connection can be collected (and warned about) inside this one's stderr capture
+            warnings.simplefilter("ignore", ResourceWarning)
             code = run.main([stage, "--live"])
         return code, out.getvalue(), err.getvalue()
 
@@ -116,8 +115,8 @@ class PartialFailureExitTests(unittest.TestCase):
                   "fit_sync": {"due": 0, "failed": 0, "synced": 0}, "readback": {"checked": 1, "failed": 0, "verified": 1}, "target": "ok"}
         code, out, err = self._main("publish", counts)
         self.assertEqual(code, 1)
-        self.assertEqual(out, "publish: " + json.dumps(counts, sort_keys=True) + "\n")       # the counts-only line is exactly what it was
-        self.assertEqual(err, "PUBLISH FAILED: PUBLISH_RECORDS_FAILED\n")                   # a fixed code: no job, title or Notion text
+        self.assertEqual(out, "publish: " + json.dumps(counts, sort_keys=True) + "\n")  # the counts-only line is exactly what it was
+        self.assertEqual(err, "PUBLISH FAILED: PUBLISH_RECORDS_FAILED\n")  # a fixed code: no job, title or Notion text
 
     def test_publish_with_no_failed_record_exits_0(self):
         counts = {"picked": 3, "created": 3, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 9, "fit_sync": {"due": 0, "failed": 0, "synced": 0},
@@ -127,14 +126,15 @@ class PartialFailureExitTests(unittest.TestCase):
         self.assertEqual(out, "publish: " + json.dumps(counts, sort_keys=True) + "\n")
 
     def test_publish_that_returned_early_without_a_failed_count_exits_0(self):
-        """The wrong-target return carries no `failed` key: it is not this correction's concern and keeps its exit code."""
+        """The wrong-target return carries no `failed` key: it is not this correction's concern and keeps its exit code.
+        """
         code, out, err = self._main("publish", {"calls": 0, "created": 0, "duplicate": 0, "failed": 0, "picked": 0, "seeded": 0, "target": "wrong"})
         self.assertEqual((code, err), (0, ""))
         code, _, err = self._main("publish", {"target": "wrong"})
         self.assertEqual((code, err), (0, ""))
 
     def test_only_nested_failed_counts_do_not_fail_publish(self):
-        """fit_sync and readback keep their own counts; the top-level `failed` (page creation) is what this exit code reports."""
+        """fit_sync and readback keep their own counts"""
         code, _, err = self._main("publish", {"failed": 0, "fit_sync": {"failed": 2}, "readback": {"failed": 1}})
         self.assertEqual((code, err), (0, ""))
 
@@ -147,7 +147,9 @@ class PartialFailureExitTests(unittest.TestCase):
             self.assertEqual(out, f"{name}: " + json.dumps({"failed": 3, "lane": "x"}, sort_keys=True) + "\n")
 
     def test_every_partial_failure_stage_is_a_real_stage_with_a_registered_fixed_code(self):
-        """D219: a degraded backlog batch is a failed step too; LIFE-10: a job page that could not sync, and a refused sandbox read. LIFE-588: a registered source adds its own through `partial_failure` in its registry row."""
+        """a degraded backlog batch is a failed step too;: a job page that could not sync, and a refused sandbox read.: a
+        registered source adds its own through.
+        """
         for name, code in run.PARTIAL_FAILURE.items():
             self.assertIn(name, run.STAGES, name)
             self.assertIn(code, codes.CODES, name)
@@ -155,7 +157,7 @@ class PartialFailureExitTests(unittest.TestCase):
         self.assertIn("fit", run.STAGES)
 
     def test_fit_fails_only_when_its_enabled_cloud_shadow_degraded(self):
-        """D214: an off-mode Fit run (failed 0) exits 0; a shadow failure (failed 1, cloud_fit DEGRADED) exits 1 with FIT_CLOUD_DEGRADED, its counts still printed."""
+        """an off-mode Fit run (failed 0) exits 0"""
         code, _, err = self._main("fit", {"cloud_fit": "off", "cloud_degraded": 0, "failed": 0, "picked": 3})
         self.assertEqual((code, err), (0, ""))
         code, out, err = self._main("fit", {"cloud_fit": "DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", "cloud_degraded": 1, "failed": 1, "picked": 3})
@@ -170,7 +172,7 @@ class PartialFailureExitTests(unittest.TestCase):
 
 
 class PublishThroughTheRealStageTests(unittest.TestCase):
-    """D182 end to end: the real publish.run with a fake store and fake Notion client. A failed page creation exits 1; every record write is unchanged."""
+    """end to end: the real publish.run with a fake store and fake Notion client."""
 
     class Cursor:
         def __init__(self, rows, writes):
@@ -187,13 +189,13 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
                 self.writes.append((" ".join(sql.split())[:60], tuple(params)[:3]))
                 self.result = []
             elif sql.startswith("SELECT COUNT(*)"):
-                self.result = [(1,)]                                   # the ledger seed marker exists: no cold-start read
-            elif sql.startswith("SELECT j.id, f.admission, f.score"):           # the ordering keys publish reads first (D186): id, admission, score, posted, first surfaced
+                self.result = [(1,)]  # the ledger seed marker exists: no cold-start read
+            elif sql.startswith("SELECT j.id, f.admission, f.score"):
                 self.result = [(r[0], r[17], r[15], r[9], r[8]) for r in self.rows]
             elif "FROM v7_jobs j JOIN v7_job_descriptions" in sql:
                 self.result = [r for r in self.rows if r[0] in params]
             else:
-                self.result = []                                       # not in the ledger, no same-opening page
+                self.result = []  # not in the ledger, no same-opening page
 
         def fetchall(self):
             return self.result
@@ -264,10 +266,10 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
         self.assertEqual(counts["error"], "NOTION_HTTP_400 validation_error body.children[2]")
         self.assertEqual(counts["readback"], {"checked": 1, "failed": 0, "verified": 1})
         self.assertEqual(err, "PUBLISH FAILED: PUBLISH_RECORDS_FAILED\n")
-        self.assertEqual(created, ["key-2"])                           # the good record is still created ...
-        self.assertEqual([w[0][:22] for w in writes], ["UPDATE v7_jobs SET sta", "INSERT IGNORE INTO v7_"])      # ... and recorded at once, exactly as before
-        self.assertEqual(writes[0][1][0], "page-key-2")                # the stored page id is the one Notion returned
-        self.assertNotIn("Example Co", err + out)                      # no job text in the report
+        self.assertEqual(created, ["key-2"])  # the good record is still created...
+        self.assertEqual([w[0][:22] for w in writes], ["UPDATE v7_jobs SET sta", "INSERT IGNORE INTO v7_"])  # ...
+        self.assertEqual(writes[0][1][0], "page-key-2")  # the stored page id is the one Notion returned
+        self.assertNotIn("Example Co", err + out)  # no job text in the report
 
     def test_a_run_with_no_failed_page_exits_0_and_writes_both_records(self):
         code, out, err, writes, created = self._publish(set())
