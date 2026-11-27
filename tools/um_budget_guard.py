@@ -19,7 +19,9 @@ def _load(name):
 
 budget = _load("um_budget")
 
-MAX_METER_ERRORS = 3
+MAX_METER_ERRORS = (
+    3  # consecutive failed meter reads while a step is armed before the guard disarms and stops (meter_blind)
+)
 STALL_S = 180  # no spend and no finished unit for this long while armed: the meter may be refusing
 SETTLE_S = 1.0
 DRAIN_S = 600
@@ -58,7 +60,7 @@ class Guard:
             tranche,
         )
         self.scope_id, self.cap, self.scope_view = scope_id, budget.SCOPE_CAP, None
-        self.events, self.last, self.units_seen, self.exposure = [], None, 0, 0.0
+        self.events, self.last, self.units_seen, self.exposure, self.degraded = [], None, 0, 0.0, None
         self.units_seen_armed, self.spent_at_units = False, 0.0
         self.started = clock.now()
 
@@ -135,12 +137,17 @@ class Guard:
         return spent
 
     def brake(self):
-        """Disarm. Best effort: a refused change is recorded, never raised, because the armed exposure is already inside the bound."""
+        """Disarm, then read the switches back. Best effort: a refused or unreadable change is recorded and the run is reported DEGRADED
+        (`disarm_unverified`), never raised, because the armed exposure is already inside the bound. A disarm does not cancel provider work already in flight."""
         try:
             self.hon.set_flags(False, False)
-            self._log("disarmed")
+            verified = tuple(self.hon.get_flags()) == (False, False)
         except Exception as error:  # noqa: BLE001
             self._log("disarm_failed", error=type(error).__name__)
+            self.degraded = "disarm_unverified"
+            return
+        self._log("disarmed" if verified else "disarm_unverified")
+        self.degraded = None if verified else "disarm_unverified"
 
     def _watch(self, until_idle):
         """While a step runs: read the meter every second; at the trip, disarm and stop. Meter errors are counted; the step is still bounded by its own exposure."""
@@ -158,9 +165,11 @@ class Guard:
                 elif self.clock.now() - since > STALL_S:
                     raise Stop("no_progress") from None
             except MeterError:
-                errors += 1
+                errors += 1  # consecutive failed reads; only a verified reading (full scope check) resets it
                 if errors >= MAX_METER_ERRORS:
-                    self._log("meter_unreadable_while_armed")
+                    self._log("meter_blind", failed_reads=errors)
+                    self.brake()  # the trip cannot be seen while the meter is unreadable: disarm and stop; work already in flight is not cancelled
+                    raise Stop("meter_blind") from None
             except Unauthorized:
                 self.brake()
                 raise Stop("token_expired") from None
@@ -297,6 +306,7 @@ class Guard:
             "spent_usd": None if final is None else round(final, 6),
             "armed_exposure_usd": round(self.exposure, 4),
             "scope": self.scope_view,
+            "degraded": self.degraded,
             "cleanup": self._cleanup(),
             "events": self.events,
         }

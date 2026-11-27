@@ -6,6 +6,7 @@ import importlib.util
 import pathlib
 import random
 import unittest
+from unittest import mock
 from tests.kit.tool_modules import load_tool
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -42,6 +43,8 @@ class World:
         self.flag_fail = False
         self.dream_attempt_cost = None
         self.reads, self.refusing_from, self.expire_from, self.queue_at_arm = 0, None, None, []
+        self.busy_pattern, self.busy_i, self.busy_from_t, self.mismatch_from = None, 0, 0, None
+        self.disarm_ignored, self.disarm_refused = False, False
         self.scope_id, self.scope_state, self.scope_cap, self.blocked, self.scope_gone, self.bad_doc = (
             "t2",
             "open",
@@ -104,6 +107,13 @@ class Meter:
         w.reads += 1
         if w.reads in w.meter_fail:
             raise TimeoutError("meter")
+        if (
+            w.busy_pattern is not None and w.queue and w.t >= w.busy_from_t
+        ):  # failures only while a step is armed and running
+            failed = w.busy_pattern[w.busy_i % len(w.busy_pattern)]
+            w.busy_i += 1
+            if failed:
+                raise TimeoutError("meter")
         if w.bad_doc:
             return {"ok": True, "spent_usd": w.spent, "scope": {"id": w.scope_id}}
         spent = w.spent
@@ -116,7 +126,12 @@ class Meter:
         )
         doc = {"ok": True, "spent_usd": spent, "cap_usd": 25.0, "stopped": False, "blocked": blocked}
         if not w.scope_gone:
-            doc["scope"] = {"id": w.scope_id, "cap_usd": w.scope_cap, "spent_usd": spent - BASE, "state": w.scope_state}
+            doc["scope"] = {
+                "id": "other" if w.mismatch_from is not None and w.t >= w.mismatch_from else w.scope_id,
+                "cap_usd": w.scope_cap,
+                "spent_usd": spent - BASE,
+                "state": w.scope_state,
+            }
         return doc
 
 
@@ -156,6 +171,12 @@ class Honcho:
             raise guard.HonchoError("config_refused")
         if self.flag_fail_disarm and not (reasoning or dream):
             raise guard.HonchoError("disarm_refused")
+        if (
+            self.w.disarm_refused and not (reasoning or dream) and self.w.flags[0]
+        ):  # only a real disarm (the switches are on) is refused
+            raise guard.HonchoError("disarm_refused")
+        if self.w.disarm_ignored and not (reasoning or dream):
+            return  # accepted but not applied: only the read-back shows it
         self.w.flags = [reasoning, dream]
 
     flag_fail_disarm = False
@@ -444,6 +465,134 @@ class Scope(unittest.TestCase):
         g, report = run(w)
         self.assertLessEqual(w.ours(), budget.CEILING)
         self.assertEqual(w.flags, [False, False])
+
+
+class Blind(unittest.TestCase):
+    """LIFE-1043: while a step is armed the third consecutive failed meter read disarms and stops (the trip cannot be seen blind); one or two failures recover; nothing retries around the meter."""
+
+    def blind(self, pattern, cost="typical", **change):
+        w = World(cost)
+        w.busy_pattern = pattern
+        for key, value in change.items():
+            setattr(w, key, value)
+        g, report = run(w)
+        return w, g, report
+
+    def test_the_third_consecutive_failed_read_disarms_and_stops_with_the_evidence(self):
+        w, g, report = self.blind([True])
+        self.assertEqual(report["stopped"], "meter_blind")
+        self.assertEqual(w.flags, [False, False])
+        self.assertEqual(report["cleanup"]["flags"], [False, False])
+        self.assertIs(
+            report["cleanup"]["queue_idle"], False
+        )  # what was already queued is reported for the drain, not cancelled and not retried
+        self.assertEqual(report["scope"]["state"], "open")  # the last valid scope reading
+        self.assertEqual([e["e"] for e in report["events"]].count("meter_blind"), 1)
+        self.assertGreaterEqual(w.armed_posts, 1)
+        self.assertLess(w.armed_posts, 20)  # nothing more was armed after the blind spell began
+        self.assertIsNone(report["degraded"])
+        self.assertLessEqual(
+            w.ours() + sum(sum(item["costs"]) for item in w.queue), budget.CEILING
+        )  # even what is still queued stays inside the ceiling
+
+    def test_one_or_two_failures_then_a_valid_reading_reset_the_count(self):
+        for pattern in ([True, False], [True, True, False], [True, False, True, True, False, False, True]):
+            with self.subTest(pattern):
+                w, g, report = self.blind(pattern)
+                self.assertIsNone(report["stopped"], report)
+                self.assertEqual(w.armed_posts, 20)
+                self.assertNotIn("meter_blind", [e["e"] for e in report["events"]])
+
+    def test_three_failures_that_are_not_consecutive_never_stop_the_run(self):
+        w, g, report = self.blind([True, False, True, False, True, False])
+        self.assertIsNone(report["stopped"], report)
+
+    def test_a_malformed_or_wrong_scope_reading_while_armed_still_stops_at_once(self):
+        w = World("typical")
+        w.mismatch_from = 6
+        g, report = run(w)
+        self.assertEqual(report["stopped"], "scope_mismatch")
+        self.assertEqual(w.flags, [False, False])
+        w = World("typical")
+        w.bad_doc = False
+        w.expire_from = 6
+        self.assertEqual(run(w)[1]["stopped"], "meter_blocked")
+
+    def test_a_first_failure_before_anything_is_armed_still_stops_at_once(self):
+        for k in (1, 2, 3):
+            w = World("typical")
+            w.meter_fail = {k}
+            g, report = run(w)
+            self.assertTrue(report["stopped"].startswith("meter_"), (k, report["stopped"]))
+            self.assertEqual((w.armed_posts, w.spent), (0, BASE), k)
+
+    def test_a_permanent_outage_at_every_start_position_stops_with_the_switches_off(self):
+        stopped_blind = 0
+        for cost in ("typical", "worst"):
+            for k in range(1, 70):
+                w = World(cost)
+                w.meter_fail = set(range(k, 10**6))
+                g, report = run(w)
+                self.assertIn(report["stopped"], ("meter_blind", "meter_TimeoutError"), (cost, k, report["stopped"]))
+                self.assertEqual(w.flags, [False, False], (cost, k))
+                self.assertIsNone(report["degraded"], (cost, k))
+                w.drain()
+                self.assertLessEqual(w.ours(), budget.CEILING, (cost, k))
+                stopped_blind += report["stopped"] == "meter_blind"
+        self.assertGreater(
+            stopped_blind, 20
+        )  # the blind brake, not only the settle stop, ends the run when the outage begins while armed
+
+    def test_two_failures_at_every_position_followed_by_valid_reads_never_stop_the_run(self):
+        for k in range(6, 40):
+            w = World("typical")
+            w.meter_fail = {k, k + 1}
+            g, report = run(w)
+            if report["stopped"]:
+                self.assertTrue(
+                    report["stopped"].startswith("meter_"), (k, report["stopped"])
+                )  # only a failure at a settle read (before arming) stops
+                self.assertNotEqual(report["stopped"], "meter_blind", k)
+
+    def test_a_disarm_that_is_refused_or_not_applied_is_reported_degraded_and_nothing_more_is_armed(self):
+        for attribute in ("disarm_refused", "disarm_ignored"):
+            with self.subTest(attribute):
+                w = World("typical")
+                w.busy_pattern, w.busy_from_t = (
+                    [True],
+                    40,
+                )  # the outage begins while the dream is armed (its switches are on)
+                setattr(w, attribute, True)
+                g, report = run(w)
+                self.assertEqual(report["stopped"], "meter_blind")
+                self.assertEqual(report["degraded"], "disarm_unverified")
+                self.assertEqual(
+                    w.flags, [True, True]
+                )  # the shared switches stayed on: reported, never forced through the shared STOP
+                self.assertTrue(any(e["e"] in ("disarm_failed", "disarm_unverified") for e in report["events"]))
+
+    def test_queued_retries_of_the_dream_are_reported_and_stay_inside_the_ceiling(self):
+        w = World("typical")
+        w.dream_attempts, w.dream_at_worst = 3, True
+        w.busy_pattern, w.busy_from_t = [True], 40
+        g, report = run(w)
+        self.assertEqual(report["stopped"], "meter_blind")
+        self.assertIs(report["cleanup"]["queue_idle"], False)
+        w.drain()  # the queued attempts run on after the guard has stopped; the meter's cap, not the guard, is what bounds them
+        self.assertLessEqual(w.ours(), budget.CEILING)
+
+    def test_the_deadline_during_a_slow_run_stops_with_the_switches_off(self):
+        w = World("typical")
+        with mock.patch.object(guard, "RUN_S", 10):
+            g, report = run(w)
+        self.assertEqual(report["stopped"], "deadline")
+        self.assertEqual(w.flags, [False, False])
+
+    def test_the_brake_and_the_ceiling_keep_their_meaning(self):
+        self.assertEqual((guard.MAX_METER_ERRORS, budget.TRIP, budget.CEILING), (3, 0.80, 2.00))
+        w, g, report = self.blind([False], "worst")
+        self.assertIn(report["stopped"], (None, "tripped"))  # healthy reads: the $0.80 brake behaves as before
+        self.assertLessEqual(w.ours(), budget.CEILING)
 
 
 class Failures(unittest.TestCase):
