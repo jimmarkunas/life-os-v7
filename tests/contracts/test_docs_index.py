@@ -1,4 +1,5 @@
 """docs/README.md lists every markdown file under docs/ as a relative link, and every doc path it links exists."""
+
 import re
 import unittest
 from pathlib import Path

@@ -1,4 +1,5 @@
 """tools/test.sh, the one local test command."""
+
 import os
 import shutil
 import subprocess
@@ -20,7 +21,13 @@ class TestCommand(unittest.TestCase):
 
     def run_script(self, *args, **env):
         base = {"PATH": "/usr/bin:/bin", "HOME": str(self.tmp)}
-        return subprocess.run(["bash", str(self.tmp / "tools" / "test.sh"), *args], capture_output=True, text=True, env={**base, **env}, cwd=str(self.tmp))
+        return subprocess.run(
+            ["bash", str(self.tmp / "tools" / "test.sh"), *args],
+            capture_output=True,
+            text=True,
+            env={**base, **env},
+            cwd=str(self.tmp),
+        )
 
     def test_no_usable_python_names_the_missing_piece_and_exits_three_without_installing_anything(self):
         done = self.run_script("--list", LIFEOS_PYTHON="/nonexistent/python")
@@ -51,8 +58,16 @@ class TestCommand(unittest.TestCase):
 
 class ReceiptTemplate(unittest.TestCase):
     """one receipt template with the six parts, the Jira settings page exists too."""
+
     ROOT = Path(__file__).resolve().parents[2]
-    PARTS = ("1. Context in plain words", "2. What changed", "3. How it was verified", "4. What is unverified", "5. Next steps", "6. How to verify (click only)")
+    PARTS = (
+        "1. Context in plain words",
+        "2. What changed",
+        "3. How it was verified",
+        "4. What is unverified",
+        "5. Next steps",
+        "6. How to verify (click only)",
+    )
 
     def test_the_template_carries_all_six_parts_in_order_and_the_time_helper(self):
         text = (self.ROOT / "docs/platform/receipt-template.md").read_text()

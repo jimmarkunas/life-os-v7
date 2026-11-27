@@ -1,6 +1,7 @@
 """Attention's own node tests (lifeos/whatsapp/oracle/state.test.mjs: the unread-count rules, the answer-socket rule and
 the proof that no message text.
 """
+
 import pathlib
 import shutil
 import subprocess
@@ -18,7 +19,12 @@ def node_major():
 @unittest.skipIf(NODE is None or node_major() < 20, "Node 20 or newer not installed")
 class AttentionStateTests(unittest.TestCase):
     def test_the_node_tests_pass(self):
-        done = subprocess.run([NODE, "--test", str(ROOT / "lifeos" / "whatsapp" / "oracle" / "state.test.mjs")], capture_output=True, text=True, timeout=120)
+        done = subprocess.run(
+            [NODE, "--test", str(ROOT / "lifeos" / "whatsapp" / "oracle" / "state.test.mjs")],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
         self.assertEqual(done.returncode, 0, done.stdout[-2000:])
         self.assertIn("no message text, number or chat id reaches the snapshot", done.stdout)
 

@@ -28,7 +28,9 @@ def M(**kw):
 
 class Route(unittest.TestCase):
     def test_a_client_attendee_makes_it_a_client_meeting_whoever_else_is_on_it(self):
-        self.assertEqual(gc.route(M(attendees=[CLIENT_PERSON, OWN_PERSON, PERSONAL, OTHER_CO])), (gc.CLIENT, "ROUTE_CLIENT_ATTENDEE"))
+        self.assertEqual(
+            gc.route(M(attendees=[CLIENT_PERSON, OWN_PERSON, PERSONAL, OTHER_CO])), (gc.CLIENT, "ROUTE_CLIENT_ATTENDEE")
+        )
 
     def test_only_our_own_people_make_it_internal_and_a_personal_mailbox_does_not_count_as_external(self):
         self.assertEqual(gc.route(M(attendees=[OWN_PERSON, PERSONAL])), (gc.INTERNAL, "ROUTE_INTERNAL_ATTENDEE"))
@@ -69,8 +71,15 @@ class Meetings:
     """The Meetings data source: rows with typed properties and block children, the calls granola_clients makes, and
     Jim's File as choices.
     """
+
     def __init__(self, schema_ok=True, drop_last=False, fail_append=False):
-        self.rows, self.schema_ok, self.drop_last, self.fail_append, self.calls = {}, schema_ok, drop_last, fail_append, []
+        self.rows, self.schema_ok, self.drop_last, self.fail_append, self.calls = (
+            {},
+            schema_ok,
+            drop_last,
+            fail_append,
+            [],
+        )
 
     def call(self, method, path, body=None):
         self.calls.append((method, path))
@@ -82,7 +91,11 @@ class Meetings:
         if method == "POST" and path == "/pages":
             assert body["parent"] == {"type": "data_source_id", "data_source_id": gc.DATA_SOURCE}
             pid = f"row-{len(self.rows)}"
-            self.rows[pid] = {"id": pid, "properties": _typed(body["properties"]), "children": [dict(b, id=f"b{i}") for i, b in enumerate(body.get("children", []))]}
+            self.rows[pid] = {
+                "id": pid,
+                "properties": _typed(body["properties"]),
+                "children": [dict(b, id=f"b{i}") for i, b in enumerate(body.get("children", []))],
+            }
             return {"id": pid}
         if method == "PATCH" and path.startswith("/pages/"):
             self.rows[path.split("/")[2]]["properties"].update(_typed(body["properties"]))
@@ -108,7 +121,11 @@ class Meetings:
 
     def query_data_source(self, source_id, body):
         assert source_id == gc.DATA_SOURCE
-        return {"results": [r for r in self.rows.values() if _matches(r, body["filter"])], "has_more": False, "next_cursor": None}
+        return {
+            "results": [r for r in self.rows.values() if _matches(r, body["filter"])],
+            "has_more": False,
+            "next_cursor": None,
+        }
 
     def choose(self, key, choice):
         row = next(r for r in self.rows.values() if gc._plain(r["properties"][gc.KEY]) == key)
@@ -126,8 +143,17 @@ class Write(unittest.TestCase):
         self.assertEqual((code, counts["readback_ok"]), ("TRANSCRIPT_WRITTEN", 1))
         row = next(iter(notion.rows.values()))
         p = row["properties"]
-        self.assertEqual((gc._plain(p[gc.TITLE]), gc._plain(p[gc.STATUS]), gc._plain(p[gc.FILED_TO]), gc._plain(p[gc.KEY]), p[gc.DATE]["date"]["start"], p[gc.LINES]["number"]),
-                         ("2026-10-13 · TGP kickoff", "Filed", "TGP", "k1", "2026-10-13", 3))
+        self.assertEqual(
+            (
+                gc._plain(p[gc.TITLE]),
+                gc._plain(p[gc.STATUS]),
+                gc._plain(p[gc.FILED_TO]),
+                gc._plain(p[gc.KEY]),
+                p[gc.DATE]["date"]["start"],
+                p[gc.LINES]["number"],
+            ),
+            ("2026-10-13 · TGP kickoff", "Filed", "TGP", "k1", "2026-10-13", 3),
+        )
 
     def test_no_marker_line_shows_on_the_page_and_the_marker_is_read_back_from_its_hidden_link(self):
         notion = Meetings()
@@ -141,7 +167,9 @@ class Write(unittest.TestCase):
         notion = Meetings()
         gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)
         marker = gc.hidden.refs(notion.rows["row-0"]["children"][0])[0]
-        notion.rows["row-0"]["children"][0]["paragraph"] = {"rich_text": [{"type": "text", "text": {"content": marker}, "plain_text": marker}]}  # the page as it was written before
+        notion.rows["row-0"]["children"][0]["paragraph"] = {
+            "rich_text": [{"type": "text", "text": {"content": marker}, "plain_text": marker}]
+        }  # the page as it was written before
         self.assertEqual(gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)[0], "TRANSCRIPT_NOOP")
         self.assertTrue(gc.hidden.refs(notion.rows["row-0"]["children"][0]))
         before = len([c for c in notion.calls if c[0] == "PATCH"])
@@ -160,12 +188,25 @@ class Write(unittest.TestCase):
         notion = Meetings()
         self.assertEqual(gc.unfiled_row(notion, M(), "k1", True), "created")
         code, _ = gc.write(notion, gc.PERSONAL, M(), "k1", envelope(), True)
-        self.assertEqual((code, len(notion.rows), gc._plain(next(iter(notion.rows.values()))["properties"][gc.FILED_TO])), ("TRANSCRIPT_WRITTEN", 1, "Personal"))
+        self.assertEqual(
+            (code, len(notion.rows), gc._plain(next(iter(notion.rows.values()))["properties"][gc.FILED_TO])),
+            ("TRANSCRIPT_WRITTEN", 1, "Personal"),
+        )
 
     def test_a_row_page_holding_something_that_is_not_ours_is_never_touched(self):
         notion = Meetings()
         gc.unfiled_row(notion, M(), "k1", True)
-        notion.rows["row-0"]["children"] = [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Jim wrote this"}, "plain_text": "Jim wrote this"}]}}]
+        notion.rows["row-0"]["children"] = [
+            {
+                "id": "x",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "Jim wrote this"}, "plain_text": "Jim wrote this"}
+                    ]
+                },
+            }
+        ]
         self.assertEqual(gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)[0], "CLIENT_PAGE_NOT_OURS")
         self.assertEqual(len(notion.rows["row-0"]["children"]), 1)
 
@@ -197,7 +238,9 @@ class Write(unittest.TestCase):
     def test_unfiled_rows_are_made_once_and_never_in_a_dry_run(self):
         notion = Meetings()
         self.assertEqual(gc.unfiled_row(notion, M(), "k1", False), "planned")
-        self.assertEqual((gc.unfiled_row(notion, M(), "k1", True), gc.unfiled_row(notion, M(), "k1", True)), ("created", "exists"))
+        self.assertEqual(
+            (gc.unfiled_row(notion, M(), "k1", True), gc.unfiled_row(notion, M(), "k1", True)), ("created", "exists")
+        )
         self.assertEqual(len(notion.rows), 1)
 
 
@@ -205,8 +248,11 @@ def run(meetings, notion, catalog=None, live=True, value="", limit=3, **kw):
     seen = []
     catalog = catalog or Catalog()
     from tests.sources import test_granola_auto as t
+
     with mock.patch.object(t, "ENV", {**t.ENV, "GRAN_UNMATCHED_TO": value}):
-        out = go(oracle(meetings, sink=seen, **kw), notion, catalog, live=live, rounds=(), limit=limit, patch_meetings=False)
+        out = go(
+            oracle(meetings, sink=seen, **kw), notion, catalog, live=live, rounds=(), limit=limit, patch_meetings=False
+        )
     return out, seen, catalog
 
 
@@ -215,7 +261,10 @@ class Auto(unittest.TestCase):
         notion = Meetings()
         out, seen, catalog = run([meeting(title="TGP discovery")], notion)
         c = out["counts"]
-        self.assertEqual((out["code"], c["client_routed"], c["carried"], c["purged"], c["unmatched"], c["failed"]), ("GRAN_AUTO_DONE", 1, 1, 1, 0, 0))
+        self.assertEqual(
+            (out["code"], c["client_routed"], c["carried"], c["purged"], c["unmatched"], c["failed"]),
+            ("GRAN_AUTO_DONE", 1, 1, 1, 0, 0),
+        )
         self.assertEqual([op for op, _ in seen], ["sync", "list", "show", "purge"])
         self.assertEqual([s[2] for s in catalog.saved], ["carried", "carried_purged"])
         self.assertEqual(len(notion.by_status("Filed")), 1)
@@ -224,11 +273,16 @@ class Auto(unittest.TestCase):
         notion = Meetings()
         out, seen, catalog = run([meeting(title="Lunch")], notion)
         c = out["counts"]
-        self.assertEqual((c["carried"], c["unmatched"], c["unfiled_created"], c["unfiled_waiting"], c["left_on_oracle"]), (0, 1, 1, 1, 1))
+        self.assertEqual(
+            (c["carried"], c["unmatched"], c["unfiled_created"], c["unfiled_waiting"], c["left_on_oracle"]),
+            (0, 1, 1, 1, 1),
+        )
         self.assertEqual([op for op, _ in seen], ["sync", "list"])
         self.assertEqual((len(notion.by_status("Unfiled")), catalog.rows), (1, {}))
         again, _, _ = run([meeting(title="Lunch")], notion)
-        self.assertEqual((again["counts"]["unfiled_created"], again["counts"]["unfiled_exists"], len(notion.rows)), (0, 1, 1))
+        self.assertEqual(
+            (again["counts"]["unfiled_created"], again["counts"]["unfiled_exists"], len(notion.rows)), (0, 1, 1)
+        )
 
     def test_jims_choice_files_the_transcript_on_that_row_purges_and_closes_it(self):
         notion = Meetings()
@@ -238,7 +292,9 @@ class Auto(unittest.TestCase):
         c = out["counts"]
         self.assertEqual((c["triage_filed"], c["carried"], c["purged"], c["failed"], len(notion.rows)), (1, 1, 1, 0, 1))
         row = next(iter(notion.rows.values()))
-        self.assertEqual((gc._plain(row["properties"][gc.STATUS]), gc._plain(row["properties"][gc.FILED_TO])), ("Filed", "Personal"))
+        self.assertEqual(
+            (gc._plain(row["properties"][gc.STATUS]), gc._plain(row["properties"][gc.FILED_TO])), ("Filed", "Personal")
+        )
         self.assertEqual([s[2] for s in catalog.saved], ["carried", "carried_purged"])
         self.assertEqual(c["unfiled_waiting"], 0)
 
@@ -255,7 +311,10 @@ class Auto(unittest.TestCase):
         run([meeting(title="Lunch")], notion)
         notion.choose(ga.key_of(UUID), "Delete")
         out, seen, catalog = run([meeting(title="Lunch")], notion)
-        self.assertEqual((out["counts"]["triage_deleted"], out["counts"]["carried"], [op for op, _ in seen if op == "purge"]), (1, 0, ["purge"]))
+        self.assertEqual(
+            (out["counts"]["triage_deleted"], out["counts"]["carried"], [op for op, _ in seen if op == "purge"]),
+            (1, 0, ["purge"]),
+        )
         row = next(iter(notion.rows.values()))
         self.assertEqual((gc._plain(row["properties"][gc.STATUS]), row["children"]), ("Deleted", []))
 
@@ -264,7 +323,9 @@ class Auto(unittest.TestCase):
         run([meeting(title="Lunch")], notion)
         notion.choose(ga.key_of(UUID), "Delete")
         out, _, _ = run([meeting(title="Lunch")], notion, scope="utterances")
-        self.assertEqual((out["counts"]["triage_deleted"], out["counts"]["why"].get("GRAN_PURGE_SCOPE_NOT_CONFIRMED")), (0, 1))
+        self.assertEqual(
+            (out["counts"]["triage_deleted"], out["counts"]["why"].get("GRAN_PURGE_SCOPE_NOT_CONFIRMED")), (0, 1)
+        )
         self.assertEqual(len(notion.by_status("Unfiled")), 1)
 
     def test_a_delete_in_a_dry_run_purges_nothing(self):
@@ -279,7 +340,10 @@ class Auto(unittest.TestCase):
         run([meeting(title="Lunch")], notion)
         notion.choose(ga.key_of(UUID), "Interview")
         out, seen, _ = run([meeting(title="Lunch")], notion)
-        self.assertEqual((out["counts"]["triage_interview_later"], out["counts"]["carried"], "purge" in [op for op, _ in seen]), (1, 0, False))
+        self.assertEqual(
+            (out["counts"]["triage_interview_later"], out["counts"]["carried"], "purge" in [op for op, _ in seen]),
+            (1, 0, False),
+        )
 
     def test_a_row_whose_meeting_is_gone_from_oracle_is_closed(self):
         notion = Meetings()
@@ -292,11 +356,20 @@ class Auto(unittest.TestCase):
     def test_an_ambiguous_route_is_counted_and_waits_as_an_unfiled_row(self):
         notion = Meetings()
         out, _, _ = run([meeting(title="Bytalos prep for TGP")], notion)
-        self.assertEqual((out["counts"]["carried"], out["counts"]["unfiled_created"], out["counts"]["why"].get("ROUTE_TITLE_AMBIGUOUS")), (0, 1, 1))
+        self.assertEqual(
+            (
+                out["counts"]["carried"],
+                out["counts"]["unfiled_created"],
+                out["counts"]["why"].get("ROUTE_TITLE_AMBIGUOUS"),
+            ),
+            (0, 1, 1),
+        )
 
     def test_a_meetings_table_that_cannot_be_read_leaves_everything_on_oracle(self):
         notion = Meetings(schema_ok=False)
-        out, seen, catalog = run([meeting(title="TGP call"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z")], notion)
+        out, seen, catalog = run(
+            [meeting(title="TGP call"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z")], notion
+        )
         c = out["counts"]
         self.assertEqual((c["carried"], c["left_on_oracle"], c["why"].get("GRAN_CLIENT_TARGET_NOT_OK")), (0, 2, 2))
         self.assertNotIn("show", [op for op, _ in seen])
@@ -304,19 +377,30 @@ class Auto(unittest.TestCase):
 
     def test_a_dry_run_plans_rows_and_writes_nothing(self):
         notion = Meetings()
-        out, seen, catalog = run([meeting(title="TGP call"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z")], notion, live=False)
+        out, seen, catalog = run(
+            [meeting(title="TGP call"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z")],
+            notion,
+            live=False,
+        )
         c = out["counts"]
         self.assertEqual((c["carried"], c["unfiled_planned"], catalog.saved, notion.rows), (0, 1, [], {}))
         self.assertNotIn("purge", [op for op, _ in seen])
 
     def test_decisions_and_client_meetings_share_the_per_run_cap(self):
-        extra = [meeting(title="TGP call", mid=f"00000000-0000-4000-8000-00000000000{i}", start=f"2026-10-13T1{i}:00:00Z") for i in range(4)]
+        extra = [
+            meeting(title="TGP call", mid=f"00000000-0000-4000-8000-00000000000{i}", start=f"2026-10-13T1{i}:00:00Z")
+            for i in range(4)
+        ]
         out, _, _ = run(extra, Meetings(), limit=2)
         self.assertEqual((out["counts"]["carried"], out["counts"]["why"].get("GRAN_AUTO_LATER_RUN")), (2, 2))
 
     def test_the_one_off_instruction_files_unmatched_meetings_as_asked(self):
         notion = Meetings()
-        out, _, _ = run([meeting(title="AI Update"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z")], notion, value="client")
+        out, _, _ = run(
+            [meeting(title="AI Update"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z")],
+            notion,
+            value="client",
+        )
         c = out["counts"]
         self.assertEqual((c["client_by_instruction"], c["carried"], c["unmatched"]), (2, 2, 0))
         self.assertEqual({gc._plain(r["properties"][gc.FILED_TO]) for r in notion.rows.values()}, {"TGP"})
@@ -327,10 +411,18 @@ class Auto(unittest.TestCase):
         self.assertEqual((out["counts"]["carried"], out["counts"]["unfiled_created"]), (0, 1))
 
     def test_a_meeting_that_matches_a_round_still_goes_to_the_round(self):
-        row = granola_match.Round("round-page", "2026-10-13", "Becton Dickinson", "Senior Technical Program Manager", "")
+        row = granola_match.Round(
+            "round-page", "2026-10-13", "Becton Dickinson", "Senior Technical Program Manager", ""
+        )
         called = mock.Mock(return_value=("TRANSCRIPT_WRITTEN", {}))
         with mock.patch.object(ga.granola_write, "write", called):
-            out = go(oracle([meeting(title="Becton Dickinson TGP", attendees=[CLIENT_PERSON])]), Meetings(), Catalog(), rounds=(row,), patch_meetings=False)
+            out = go(
+                oracle([meeting(title="Becton Dickinson TGP", attendees=[CLIENT_PERSON])]),
+                Meetings(),
+                Catalog(),
+                rounds=(row,),
+                patch_meetings=False,
+            )
         self.assertEqual((out["counts"]["client_routed"], called.call_count), (0, 1))
 
 

@@ -1,4 +1,5 @@
 """one OS process of the two-process Ledger-creation race (tests/jobs/test_ledger_claim.py)."""
+
 import glob
 import os
 import sys
@@ -10,9 +11,18 @@ from tests.jobs.fakes_jobsdb import JobsDB
 
 def _mariadb():
     import pymysql
+
     env = os.environ
-    return pymysql.connect(host=env["LIFEOS_RACE_DB_HOST"], port=int(env.get("LIFEOS_RACE_DB_PORT") or 3306), user=env["LIFEOS_RACE_DB_USER"], password=env.get("LIFEOS_RACE_DB_PASSWORD", ""),
-                           database=env["LIFEOS_RACE_DB_NAME"], charset="utf8mb4", autocommit=True, connect_timeout=10)
+    return pymysql.connect(
+        host=env["LIFEOS_RACE_DB_HOST"],
+        port=int(env.get("LIFEOS_RACE_DB_PORT") or 3306),
+        user=env["LIFEOS_RACE_DB_USER"],
+        password=env.get("LIFEOS_RACE_DB_PASSWORD", ""),
+        database=env["LIFEOS_RACE_DB_NAME"],
+        charset="utf8mb4",
+        autocommit=True,
+        connect_timeout=10,
+    )
 
 
 def main(argv):

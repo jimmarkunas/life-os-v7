@@ -1,4 +1,5 @@
 """the spend guard in front of every Anthropic call."""
+
 import http.client
 import http.server
 import json
@@ -23,7 +24,15 @@ class Upstream(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-        Upstream.seen.append({"path": self.path, "key": self.headers.get("x-api-key"), "auth": self.headers.get("Authorization"), "version": self.headers.get("anthropic-version"), "body": body})
+        Upstream.seen.append(
+            {
+                "path": self.path,
+                "key": self.headers.get("x-api-key"),
+                "auth": self.headers.get("Authorization"),
+                "version": self.headers.get("anthropic-version"),
+                "body": body,
+            }
+        )
         if self.path == "/v1/embeddings":
             data = json.dumps({"data": [{"embedding": [0.1] * 768}], "usage": {"prompt_tokens": 3}}).encode()
             self.send_response(200)
@@ -40,8 +49,14 @@ class Upstream(http.server.BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
         if Upstream.mode == "stream":
-            lines = [{"type": "message_start", "message": {"usage": {"input_tokens": 1000, "cache_read_input_tokens": 500, "output_tokens": 1}}},
-                     {"type": "message_delta", "usage": {"output_tokens": 200}}, {"type": "message_stop"}]
+            lines = [
+                {
+                    "type": "message_start",
+                    "message": {"usage": {"input_tokens": 1000, "cache_read_input_tokens": 500, "output_tokens": 1}},
+                },
+                {"type": "message_delta", "usage": {"output_tokens": 200}},
+                {"type": "message_stop"},
+            ]
             data = "".join("event: x\ndata: " + json.dumps(e) + "\n\n" for e in lines).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -69,7 +84,13 @@ class Upstream(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        data = json.dumps({"id": "m", "content": [{"type": "text", "text": "hi"}], "usage": {"input_tokens": 2000, "output_tokens": 100, "cache_creation_input_tokens": 0}}).encode()
+        data = json.dumps(
+            {
+                "id": "m",
+                "content": [{"type": "text", "text": "hi"}],
+                "usage": {"input_tokens": 2000, "output_tokens": 100, "cache_creation_input_tokens": 0},
+            }
+        ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
@@ -87,8 +108,14 @@ class Case(unittest.TestCase):
         self.addCleanup(self.up.shutdown)
         port = self.up.server_address[1]
         real = http.client.HTTPSConnection
-        self.patches = [mock.patch.object(mp.http.client, "HTTPSConnection", lambda host, timeout=None: http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)),
-                        mock.patch.object(mp, "OLLAMA", ("127.0.0.1", port))]
+        self.patches = [
+            mock.patch.object(
+                mp.http.client,
+                "HTTPSConnection",
+                lambda host, timeout=None: http.client.HTTPConnection("127.0.0.1", port, timeout=timeout),
+            ),
+            mock.patch.object(mp, "OLLAMA", ("127.0.0.1", port)),
+        ]
         for patch in self.patches:
             patch.start()
             self.addCleanup(patch.stop)
@@ -100,6 +127,7 @@ class Case(unittest.TestCase):
 
         class H(mp.Handler):
             pass
+
         H.ledger, H.key = self.ledger, REAL_KEY
         self.proxy = mp.Server(("127.0.0.1", 0), H)
         threading.Thread(target=self.proxy.serve_forever, args=(0.01,), daemon=True).start()
@@ -110,7 +138,12 @@ class Case(unittest.TestCase):
         if path == "/v1/messages" and isinstance(doc, dict):
             doc = {"model": mp.MODEL, **doc}  # strict admission prices only the one model
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
-        conn.request("POST", path, json.dumps(doc), {"Content-Type": "application/json", "x-api-key": "dummy-local", **(headers or {})})
+        conn.request(
+            "POST",
+            path,
+            json.dumps(doc),
+            {"Content-Type": "application/json", "x-api-key": "dummy-local", **(headers or {})},
+        )
         answer = conn.getresponse()
         return answer.status, answer.read()
 
@@ -123,48 +156,80 @@ class Pricing(unittest.TestCase):
     def test_cost_uses_the_real_classes_and_missing_classes_count_zero(self):
         self.assertAlmostEqual(mp.usage_cost({"input_tokens": 90_000}), 0.009)
         self.assertAlmostEqual(mp.usage_cost({"output_tokens": 1_000_000}), 0.50)
-        self.assertAlmostEqual(mp.usage_cost({"cache_creation_input_tokens": 80_000, "cache_read_input_tokens": 10_000}), 0.01 + 0.0001)
+        self.assertAlmostEqual(
+            mp.usage_cost({"cache_creation_input_tokens": 80_000, "cache_read_input_tokens": 10_000}), 0.01 + 0.0001
+        )
         self.assertEqual(mp.usage_cost(None), 0.0)
 
     def test_a_request_over_100k_input_tokens_is_priced_at_the_long_tier(self):
         self.assertAlmostEqual(mp.usage_cost({"input_tokens": 100_000}), 0.01)
         self.assertAlmostEqual(mp.usage_cost({"input_tokens": 100_001}), 100_001 * 0.50 / 1e6)
-        self.assertAlmostEqual(mp.usage_cost({"input_tokens": 50_000, "cache_read_input_tokens": 60_000, "output_tokens": 1000}), 50_000 * 0.50 / 1e6 + 60_000 * 0.05 / 1e6 + 1000 * 2.50 / 1e6)
+        self.assertAlmostEqual(
+            mp.usage_cost({"input_tokens": 50_000, "cache_read_input_tokens": 60_000, "output_tokens": 1000}),
+            50_000 * 0.50 / 1e6 + 60_000 * 0.05 / 1e6 + 1000 * 2.50 / 1e6,
+        )
 
     def test_the_reservation_is_the_documented_maximum_at_the_dearest_class_and_tier(self):
         self.assertEqual(mp.CONTEXT_TOKENS, 1_000_000)
         self.assertEqual(mp.INPUT_NANO_PER_TOKEN, 1000)
         self.assertEqual(mp.reservation_nano(1000), 1_000_000 * 1000 + 1000 * 2500)
-        self.assertEqual(mp.reservation_nano(mp.MAX_OUTPUT_TOKENS), 1_320_000_000)  # $1.32: the most one admitted request can ever bill
-        self.assertEqual(mp.admission(json.dumps({"model": mp.MODEL, "max_tokens": 1000, "messages": []}).encode()), (1_002_500_000, ""))
+        self.assertEqual(
+            mp.reservation_nano(mp.MAX_OUTPUT_TOKENS), 1_320_000_000
+        )  # $1.32: the most one admitted request can ever bill
+        self.assertEqual(
+            mp.admission(json.dumps({"model": mp.MODEL, "max_tokens": 1000, "messages": []}).encode()),
+            (1_002_500_000, ""),
+        )
         for kind in ("input", "cache_write", "cache_read", "output"):
-            self.assertLessEqual(mp.nano_rate(kind, mp.PRICES), mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES))
-            self.assertLessEqual(mp.nano_rate(kind, mp.LONG_PRICES), mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES))
+            self.assertLessEqual(
+                mp.nano_rate(kind, mp.PRICES),
+                mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES),
+            )
+            self.assertLessEqual(
+                mp.nano_rate(kind, mp.LONG_PRICES),
+                mp.INPUT_NANO_PER_TOKEN if kind != "output" else mp.nano_rate("output", mp.LONG_PRICES),
+            )
 
     def test_the_measured_live_run_costs_about_six_percent_of_the_old_dearest_rate_figure(self):
         new, written, read, out = 157_338, 72_421, 396_850, 27_797  # every call is under 100,000 tokens)
-        real = mp.usd(new, "input") + mp.usd(written, "cache_write") + mp.usd(read, "cache_read") + mp.usd(out, "output")
+        real = (
+            mp.usd(new, "input") + mp.usd(written, "cache_write") + mp.usd(read, "cache_read") + mp.usd(out, "output")
+        )
         self.assertAlmostEqual(real, 0.0427, delta=0.0427 * 0.2)
         dearest = (157_338 + 72_421 + 396_850) * 1.00 / 1e6 + 27_797 * 2.50 / 1e6
         self.assertAlmostEqual(real / dearest, 0.06, delta=0.012)
 
     def test_stream_usage_takes_message_start_then_the_final_output_count(self):
-        raw = ("data: " + json.dumps({"type": "message_start", "message": {"usage": {"input_tokens": 10, "output_tokens": 1}}}) + "\n\n"
-               + "data: " + json.dumps({"type": "message_delta", "usage": {"output_tokens": 77}}) + "\n\n").encode()
+        raw = (
+            "data: "
+            + json.dumps({"type": "message_start", "message": {"usage": {"input_tokens": 10, "output_tokens": 1}}})
+            + "\n\n"
+            + "data: "
+            + json.dumps({"type": "message_delta", "usage": {"output_tokens": 77}})
+            + "\n\n"
+        ).encode()
         self.assertEqual(mp.parse_usage(raw, True), {"input_tokens": 10, "output_tokens": 77})
         self.assertEqual(mp.parse_usage(b"garbage", False), {})
 
 
 class Metering(Case):
     def test_a_message_is_forwarded_with_the_real_key_only_and_settled_at_actual_usage(self):
-        status, body = self.post("/v1/messages", {"model": "claude-haiku-5-5", "max_tokens": 200, "messages": [{"role": "user", "content": "hi"}]}, {"Authorization": "Bearer dummy"})
+        status, body = self.post(
+            "/v1/messages",
+            {"model": "claude-haiku-5-5", "max_tokens": 200, "messages": [{"role": "user", "content": "hi"}]},
+            {"Authorization": "Bearer dummy"},
+        )
         self.assertEqual(status, 200)
         sent = Upstream.seen[0]
-        self.assertEqual((sent["path"], sent["key"], sent["auth"], sent["version"]), ("/v1/messages", REAL_KEY, None, "2023-06-01"))
+        self.assertEqual(
+            (sent["path"], sent["key"], sent["auth"], sent["version"]), ("/v1/messages", REAL_KEY, None, "2023-06-01")
+        )
         self.assertAlmostEqual(self.ledger.spent, 2000 * 0.10 / 1e6 + 100 * 0.50 / 1e6)
         self.assertEqual((self.ledger.reserved, self.ledger.calls), (0.0, 1))
         row = self.audit()[-1]
-        self.assertEqual((row["route"], row["status"], row["input_tokens"], row["output_tokens"]), ("/v1/messages", 200, 2000, 100))
+        self.assertEqual(
+            (row["route"], row["status"], row["input_tokens"], row["output_tokens"]), ("/v1/messages", 200, 2000, 100)
+        )
         self.assertNotIn("hi", json.dumps(row))
         self.assertNotIn(REAL_KEY, json.dumps(row) + open(self.ledger.path).read())
 
@@ -234,6 +299,7 @@ class Metering(Case):
 
 class FailClosed(Case):
     """a budget that cannot be verified, or credits that have ended, stop every Anthropic request"""
+
     MSG = {"max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}
 
     def test_an_unreadable_ledger_refuses_every_request_and_nothing_is_forwarded(self):
@@ -245,12 +311,16 @@ class FailClosed(Case):
         self.assertIn(b"budget cannot be verified", body)
         self.assertEqual(self.post("/v1/messages/count_tokens", {"messages": []})[0], 400)
         self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
-        self.assertEqual(self.post("/v1/embeddings", {"input": "x"})[0], 200)  # the local model is free and still answers
+        self.assertEqual(
+            self.post("/v1/embeddings", {"input": "x"})[0], 200
+        )  # the local model is free and still answers
 
     def test_a_missing_ledger_beside_an_audit_file_with_spend_is_unverified_but_a_fresh_start_is_fine(self):
         self.post("/v1/messages", self.MSG)
         os.remove(self.ledger.path)
-        self.assertEqual(mp.Ledger(state_dir=self.tmp, cap=0.90).unverified, "ledger missing while the audit file shows past spend")
+        self.assertEqual(
+            mp.Ledger(state_dir=self.tmp, cap=0.90).unverified, "ledger missing while the audit file shows past spend"
+        )
         with tempfile.TemporaryDirectory() as fresh:
             self.assertEqual(mp.Ledger(state_dir=fresh, cap=0.90).unverified, "")
 
@@ -269,6 +339,7 @@ class FailClosed(Case):
             if len(saves) > 1:
                 raise OSError("disk full")
             real(ledger)
+
         with mock.patch.object(mp.Ledger, "save", flaky):
             self.assertEqual(self.post("/v1/messages", self.MSG)[0], 200)
         self.assertEqual(self.ledger.unverified, "ledger unwritable")
@@ -281,7 +352,9 @@ class FailClosed(Case):
             self.assertEqual((status, b"promotional credits ended" in body), (400, True))
             conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
             conn.request("GET", "/health")
-            self.assertEqual(json.loads(conn.getresponse().read())["blocked"], "promotional credits ended: spend would be paid")
+            self.assertEqual(
+                json.loads(conn.getresponse().read())["blocked"], "promotional credits ended: spend would be paid"
+            )
             self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
 
     def test_the_first_budget_refusal_leaves_one_exhausted_file_and_never_overwrites_it(self):
@@ -339,19 +412,23 @@ if __name__ == "__main__":
 
 class MonthlyWindow(Case):
     """the cap is per window (5th, 6:00 PM CT to the next 5th, 6:00 PM CT)"""
+
     MSG = {"max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}
 
     def at(self, year, month, day, hour, minute=0):
         from datetime import datetime as D
+
         return int(D(year, month, day, hour, minute, tzinfo=mp.CENTRAL).timestamp())
 
     def test_the_window_runs_from_the_5th_at_6pm_ct_to_the_next_5th_at_6pm_ct(self):
-        for moment, start, end in ((self.at(2026, 11, 23, 12), self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18)),
-                                   (self.at(2026, 12, 5, 17, 59), self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18)),
-                                   (self.at(2026, 12, 5, 18), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
-                                   (self.at(2027, 1, 2, 9), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
-                                   (self.at(2027, 3, 5, 17, 59), self.at(2027, 2, 5, 18), self.at(2027, 3, 5, 18)),
-                                   (self.at(2027, 3, 5, 18), self.at(2027, 3, 5, 18), self.at(2027, 4, 5, 18))):  # across the March 2027 daylight-time change
+        for moment, start, end in (
+            (self.at(2026, 11, 23, 12), self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18)),
+            (self.at(2026, 12, 5, 17, 59), self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18)),
+            (self.at(2026, 12, 5, 18), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
+            (self.at(2027, 1, 2, 9), self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
+            (self.at(2027, 3, 5, 17, 59), self.at(2027, 2, 5, 18), self.at(2027, 3, 5, 18)),
+            (self.at(2027, 3, 5, 18), self.at(2027, 3, 5, 18), self.at(2027, 4, 5, 18)),
+        ):  # across the March 2027 daylight-time change
             self.assertEqual(mp.window(moment), (start, end))
         self.assertEqual(self.at(2026, 12, 5, 18), 1796515200)
 
@@ -366,9 +443,15 @@ class MonthlyWindow(Case):
         self.assertEqual(self.ledger.why_blocked(), "")
         self.assertEqual((self.ledger.spent, self.ledger.calls, self.ledger.start), (0.0, 0, self.at(2026, 12, 5, 18)))
         saved = json.load(open(self.ledger.path))
-        self.assertEqual((saved["window_start"], saved["window_end"], saved["spent_usd"]), (self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18), 0.0))
+        self.assertEqual(
+            (saved["window_start"], saved["window_end"], saved["spent_usd"]),
+            (self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18), 0.0),
+        )
         old = [json.loads(line) for line in open(self.ledger.windows_path)]
-        self.assertEqual((len(old), old[0]["start"], old[0]["end"], old[0]["cap_usd"]), (1, self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18), 25))
+        self.assertEqual(
+            (len(old), old[0]["start"], old[0]["end"], old[0]["cap_usd"]),
+            (1, self.at(2026, 11, 5, 18), self.at(2026, 12, 5, 18), 25),
+        )
         self.assertGreater(old[0]["spent_usd"], 22.99)
 
     def test_over_the_cap_stops_inference_until_the_next_window_then_resumes(self):
@@ -376,7 +459,9 @@ class MonthlyWindow(Case):
         self.ledger.clock = lambda: self.at(2026, 11, 23, 12)
         self.ledger.start, self.ledger.end = mp.window(self.ledger.clock())
         self.ledger.spent = 24.999
-        self.assertEqual(self.post("/v1/messages", {"max_tokens": 4000, "messages": [{"role": "user", "content": "hi"}]})[0], 400)
+        self.assertEqual(
+            self.post("/v1/messages", {"max_tokens": 4000, "messages": [{"role": "user", "content": "hi"}]})[0], 400
+        )
         self.assertEqual([s for s in Upstream.seen if s["path"] != "/v1/embeddings"], [])
         self.assertTrue(os.path.exists(os.path.join(self.tmp, "EXHAUSTED")))
         self.ledger.clock = lambda: self.at(2026, 12, 5, 18, 0)
@@ -413,13 +498,28 @@ class MonthlyWindow(Case):
         with open(self.ledger.path, "w") as handle:
             json.dump({"spent_usd": 0.40692, "calls": 12, "cap_usd": 0.9, "saved": 1}, handle)
         ledger = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.at(2026, 11, 23, 12))
-        self.assertEqual((ledger.spent, ledger.calls, ledger.start, ledger.unverified), (0.40692, 12, self.at(2026, 11, 5, 18), ""))
+        self.assertEqual(
+            (ledger.spent, ledger.calls, ledger.start, ledger.unverified), (0.40692, 12, self.at(2026, 11, 5, 18), "")
+        )
 
     def test_a_restart_after_the_boundary_starts_the_new_window(self):
         with open(self.ledger.path, "w") as handle:
-            json.dump({"spent_usd": 3.0, "calls": 5, "cap_usd": 25, "window_start": self.at(2026, 11, 5, 18), "window_end": self.at(2026, 12, 5, 18), "saved": 1}, handle)
+            json.dump(
+                {
+                    "spent_usd": 3.0,
+                    "calls": 5,
+                    "cap_usd": 25,
+                    "window_start": self.at(2026, 11, 5, 18),
+                    "window_end": self.at(2026, 12, 5, 18),
+                    "saved": 1,
+                },
+                handle,
+            )
         ledger = mp.Ledger(state_dir=self.tmp, cap=25, clock=lambda: self.at(2026, 12, 20, 9))
-        self.assertEqual((ledger.spent, ledger.calls, ledger.start, ledger.end), (0.0, 0, self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)))
+        self.assertEqual(
+            (ledger.spent, ledger.calls, ledger.start, ledger.end),
+            (0.0, 0, self.at(2026, 12, 5, 18), self.at(2027, 1, 5, 18)),
+        )
 
     def test_health_names_the_window_and_the_cap(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)

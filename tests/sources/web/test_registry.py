@@ -23,16 +23,32 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(all(r["status"] == "discovery" for r in helpers))
 
     def test_coverage_counts(self):
-        cov = collections.Counter((row["tier"], row["status"]) for row in registry.enabled())  # {(tier, status): count} over enabled sources
+        cov = collections.Counter(
+            (row["tier"], row["status"]) for row in registry.enabled()
+        )  # {(tier, status): count} over enabled sources
         self.assertEqual(cov[("employer", "ready")], 28)
         self.assertNotIn(("employer", "port"), cov)
         self.assertEqual(cov[("employer", "bespoke")], 2)  # Shopify, Atlassian (company career pages)
-        self.assertEqual((cov[("staffing", "ready")], cov[("staffing", "bespoke")]), (1, 9))  # Apex (SmartRecruiters) is the only ready agency
+        self.assertEqual(
+            (cov[("staffing", "ready")], cov[("staffing", "bespoke")]), (1, 9)
+        )  # Apex (SmartRecruiters) is the only ready agency
         self.assertEqual(cov[("helper", "discovery")], 3)
 
     def test_bad_rows_are_rejected(self):
         import json, tempfile, pathlib
-        bad = {"sources": [{"id": "x", "company": "X", "tier": "employer", "kind": "greenhouse", "status": "ready", "enabled": True}]}
+
+        bad = {
+            "sources": [
+                {
+                    "id": "x",
+                    "company": "X",
+                    "tier": "employer",
+                    "kind": "greenhouse",
+                    "status": "ready",
+                    "enabled": True,
+                }
+            ]
+        }
         with tempfile.TemporaryDirectory() as d:
             p = pathlib.Path(d) / "r.json"
             p.write_text(json.dumps(bad))

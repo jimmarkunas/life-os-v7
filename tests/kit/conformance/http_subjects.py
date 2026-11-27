@@ -1,4 +1,5 @@
 """Observers for the http family: the fake (tests/kit/http.py) and the real urllib over a loopback server."""
+
 import threading
 import urllib.error
 import urllib.request
@@ -38,7 +39,7 @@ def observe_fake(case):
 class _Handler(BaseHTTPRequestHandler):
     cases = {}
 
-    def do_GET(self):                                                        # noqa: N802 - the stdlib names the hook
+    def do_GET(self):  # noqa: N802 - the stdlib names the hook
         case = self.cases[self.path.lstrip("/")]
         data = case["body"].encode()
         self.send_response(case["status"])

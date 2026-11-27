@@ -1,4 +1,5 @@
 """the LIFE Jira issue-writing contract has one machine-readable schema, linked from the canonical policy."""
+
 import json
 import re
 import unittest
@@ -40,7 +41,9 @@ class Contract(unittest.TestCase):
 
     def test_the_story_statement_and_acceptance_criteria_stay_separate(self):
         story = SCHEMA["properties"]["statement"]["oneOf"][0]["properties"]["text"]["pattern"]
-        self.assertTrue(re.fullmatch(story, "As a job seeker, I want my interview pages built for me, so that I prepare faster."))
+        self.assertTrue(
+            re.fullmatch(story, "As a job seeker, I want my interview pages built for me, so that I prepare faster.")
+        )
         self.assertFalse(re.fullmatch(story, "As the Main User. Given: x. When: y. Then: z."))
         self.assertEqual(SCHEMA["properties"]["acceptance_criteria"]["items"]["required"], ["given", "when", "then"])
 
@@ -58,7 +61,9 @@ class Contract(unittest.TestCase):
     def test_agent_go_is_the_human_released_priority_ordered_queue(self):
         """Agent Go is the released queue, ordered by Priority then Rank"""
         delivery = POLICY.split("## 3. Delivery", 1)[1].split("## 4.", 1)[0]
-        self.assertIn('project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', delivery)
+        self.assertIn(
+            'project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC', delivery
+        )
         self.assertIn("never reorder or reprioritize", delivery)
         self.assertIn("A Jira status change starts nothing", delivery)
         self.assertIn("unfinished `Blocks` predecessor", delivery)
@@ -75,8 +80,17 @@ class Contract(unittest.TestCase):
     def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
         """a new outcome starts as a LIFE Epic in Scoping"""
         rule = POLICY.split("## 7. Writing tickets", 1)[1].split("## 8.", 1)[0]
-        for required in ("starts as a LIFE Epic in Scoping", "Claude writes, ChatGPT reviews", "Only `ready` tickets move to Agent Go", "The description beats comments", "never a comment alone",
-                         "`Given … when … then …`", "A tick without cited proof is not Done", "read back before the next question", "Link the Notion requirement"):
+        for required in (
+            "starts as a LIFE Epic in Scoping",
+            "Claude writes, ChatGPT reviews",
+            "Only `ready` tickets move to Agent Go",
+            "The description beats comments",
+            "never a comment alone",
+            "`Given … when … then …`",
+            "A tick without cited proof is not Done",
+            "read back before the next question",
+            "Link the Notion requirement",
+        ):
             self.assertIn(required, rule)
 
     def _origin_errors(self, origin):
@@ -87,13 +101,52 @@ class Contract(unittest.TestCase):
     def test_a_new_product_outcome_needs_a_scoping_epic_origin_and_los_is_refused(self):
         issue = {k: v for k, v in SCHEMA["examples"][0].items() if k != "product_origin"}
         self.assertTrue(list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue)))  # missing product origin
-        self.assertEqual(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "spec_url": "https://example.com/spec", "approval_source": "Jim, 2026-11-21"}), [])
-        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LOS-70", "spec_url": "https://example.com/spec", "approval_source": "x"}))  # LOS is retired
-        self.assertTrue(self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "approval_source": "x"}))  # an Epic needs its spec link
-        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim"}))  # no LOS origin any more
-        self.assertEqual(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100", "epic_approval_source": "Jim approved the finite Epic"}), [])
-        self.assertEqual(self._origin_errors({"kind": "bug", "parent_ref": "LIFE-101", "approval_source": "approved Epic LIFE-100"}), [])
-        self.assertTrue(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100"}))  # a claimed exception must cite its approval
+        self.assertEqual(
+            self._origin_errors(
+                {
+                    "kind": "scoping_epic",
+                    "epic_key": "LIFE-846",
+                    "spec_url": "https://example.com/spec",
+                    "approval_source": "Jim, 2026-11-21",
+                }
+            ),
+            [],
+        )
+        self.assertTrue(
+            self._origin_errors(
+                {
+                    "kind": "scoping_epic",
+                    "epic_key": "LOS-70",
+                    "spec_url": "https://example.com/spec",
+                    "approval_source": "x",
+                }
+            )
+        )  # LOS is retired
+        self.assertTrue(
+            self._origin_errors({"kind": "scoping_epic", "epic_key": "LIFE-846", "approval_source": "x"})
+        )  # an Epic needs its spec link
+        self.assertTrue(
+            self._origin_errors(
+                {"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim"}
+            )
+        )  # no LOS origin any more
+        self.assertEqual(
+            self._origin_errors(
+                {
+                    "kind": "approved_epic_child",
+                    "epic_key": "LIFE-100",
+                    "epic_approval_source": "Jim approved the finite Epic",
+                }
+            ),
+            [],
+        )
+        self.assertEqual(
+            self._origin_errors({"kind": "bug", "parent_ref": "LIFE-101", "approval_source": "approved Epic LIFE-100"}),
+            [],
+        )
+        self.assertTrue(
+            self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100"})
+        )  # a claimed exception must cite its approval
         self.assertTrue(self._origin_errors({"kind": "new_product"}))  # no unlisted origin
 
     @staticmethod
@@ -107,16 +160,44 @@ class Contract(unittest.TestCase):
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_every_answered_discovery_question_must_be_saved_and_read_back(self):
         validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/discovery_capture", "$defs": DEFS})
-        entry = lambda n, state="APPROVED DECISION": {"question_number": n, "owner_answer": "Jim's answer", "decision_state": state, "requirement_impact": "impact", "open_gap": "none"}
-        capture = {"epic_key": "LIFE-846", "tranche": 4, "owner_reply_date": "2026-11-01", "entries": [entry(13), entry(14, "UNRESOLVED")], "readback": {"verified": True, "saved_questions": [13, 14], "revision_after": "2026-11-01T12:00:00.000-0600"}}
+        entry = lambda n, state="APPROVED DECISION": {
+            "question_number": n,
+            "owner_answer": "Jim's answer",
+            "decision_state": state,
+            "requirement_impact": "impact",
+            "open_gap": "none",
+        }
+        capture = {
+            "epic_key": "LIFE-846",
+            "tranche": 4,
+            "owner_reply_date": "2026-11-01",
+            "entries": [entry(13), entry(14, "UNRESOLVED")],
+            "readback": {
+                "verified": True,
+                "saved_questions": [13, 14],
+                "revision_after": "2026-11-01T12:00:00.000-0600",
+            },
+        }
         self.assertEqual(list(validator.iter_errors(capture)), [])
         self.assertEqual(self._unpersisted([13, 14], capture), [])
-        partial = dict(capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13], "revision_after": "r"})
+        partial = dict(
+            capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13], "revision_after": "r"}
+        )
         self.assertEqual(self._unpersisted([13, 14], partial), [14])  # DISCOVERY_CAPTURE_BLOCKED: Q14 not saved
-        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": False, "saved_questions": [13, 14], "revision_after": "r"}))))
-        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": True, "saved_questions": [13, 14]}))))
+        self.assertTrue(
+            list(
+                validator.iter_errors(
+                    dict(capture, readback={"verified": False, "saved_questions": [13, 14], "revision_after": "r"})
+                )
+            )
+        )
+        self.assertTrue(
+            list(validator.iter_errors(dict(capture, readback={"verified": True, "saved_questions": [13, 14]})))
+        )
         self.assertTrue(list(validator.iter_errors(dict(capture, entries=[]))))
-        self.assertTrue(list(validator.iter_errors(dict(capture, entries=[entry(13, "ASSUMED")]))))  # approval state is one of the four
+        self.assertTrue(
+            list(validator.iter_errors(dict(capture, entries=[entry(13, "ASSUMED")])))
+        )  # approval state is one of the four
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_acceptance_needs_given_when_then_and_a_check_needs_cited_evidence(self):
@@ -124,27 +205,47 @@ class Contract(unittest.TestCase):
         issue = lambda criteria: dict(SCHEMA["examples"][0], acceptance_criteria=criteria)
         item = {"given": "g", "when": "w", "then": "t"}
         self.assertEqual(list(validator.iter_errors(issue([dict(item, state="unchecked")]))), [])
-        self.assertEqual(list(validator.iter_errors(issue([dict(item, state="checked", evidence="PR #1 same-head CI run 123")]))), [])
+        self.assertEqual(
+            list(validator.iter_errors(issue([dict(item, state="checked", evidence="PR #1 same-head CI run 123")]))), []
+        )
         self.assertTrue(list(validator.iter_errors(issue([]))))  # missing acceptance criteria
         self.assertTrue(list(validator.iter_errors(issue([{"given": "g", "when": "w"}]))))  # not Given/When/Then
-        self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked")]))))  # unsafe completion claim: ticked without proof
+        self.assertTrue(
+            list(validator.iter_errors(issue([dict(item, state="checked")])))
+        )  # unsafe completion claim: ticked without proof
         self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked", evidence="")]))))
         self.assertIn("a checklist tick is never Done", SCHEMA["description"])
         self.assertIn("not a native Jira validator", SCHEMA["description"])
 
     def test_context_efficiency_contract_is_in_the_policy(self):
         """One owner per fact, linked not copied"""
-        for required in ("never copy a fact into a second place", "Read only when needed", "never read the whole file", "so an agent reads it once"):
+        for required in (
+            "never copy a fact into a second place",
+            "Read only when needed",
+            "never read the whole file",
+            "so an agent reads it once",
+        ):
             self.assertIn(required, POLICY)
         self.assertNotIn("token limit", POLICY.lower())
 
     def test_the_schema_lets_a_fresh_agent_recover_scope_from_one_key_without_chat_history(self):
-        for needed in ("key", "product_origin", "acceptance_criteria", "execution", "authorization", "owner", "component", "fix_version"):
+        for needed in (
+            "key",
+            "product_origin",
+            "acceptance_criteria",
+            "execution",
+            "authorization",
+            "owner",
+            "component",
+            "fix_version",
+        ):
             self.assertIn(needed, SCHEMA["required"])
         self.assertFalse(SCHEMA["additionalProperties"])  # no place to paste a conversation
         for chat in ("chat_history", "conversation", "transcript"):
             self.assertNotIn(chat, SCHEMA["properties"])
-        self.assertEqual(SCHEMA["properties"]["notion_requirement"]["$ref"], "#/$defs/https_url")  # detail is linked, not copied into Jira
+        self.assertEqual(
+            SCHEMA["properties"]["notion_requirement"]["$ref"], "#/$defs/https_url"
+        )  # detail is linked, not copied into Jira
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_a_pasted_conversation_is_not_accepted_as_issue_content(self):

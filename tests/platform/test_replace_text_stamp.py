@@ -1,6 +1,7 @@
 """a card whose body write fails after its heading stamp was written keeps the OLD stamp (and the old body), never a NEW
 stamp over OLD content.
 """
+
 import copy
 import unittest
 
@@ -72,8 +73,7 @@ def body_of(notion):
 
 
 def insert_path(notion):
-    """The first old line changes block type, so the write takes the insert-then-delete path instead of editing in place.
-    """
+    """The first old line changes block type, so the write takes the insert-then-delete path instead of editing in place."""
     kid = notion.children["mail-callout"][1]
     kid["type"] = "bulleted_list_item"
     kid["bulleted_list_item"] = kid.pop("paragraph")
@@ -82,13 +82,20 @@ def insert_path(notion):
 
 class FailureAfterTheStamp(unittest.TestCase):
     def test_a_body_write_refused_after_the_heading_write_keeps_the_old_stamp_and_the_old_body(self):
-        for name, notion in (("in place", Watched(["old status", "old detail"])), ("insert", insert_path(Watched(["old status", "old detail"])))):
+        for name, notion in (
+            ("in place", Watched(["old status", "old detail"])),
+            ("insert", insert_path(Watched(["old status", "old detail"]))),
+        ):
             client = FailsAtWrite(notion, 2)
             with self.assertRaises(NotionError) as raised:
                 write(client, ["new status", "new detail"], heading=STAMP)
-            self.assertEqual(str(raised.exception), "NOTION_HTTP_409", name)  # the failure the card already reported, unchanged
+            self.assertEqual(
+                str(raised.exception), "NOTION_HTTP_409", name
+            )  # the failure the card already reported, unchanged
             self.assertEqual((heading_of(notion), body_of(notion)), (OLD_STAMP, ["old status", "old detail"]), name)
-            self.assertEqual(client.heading_writes, [STAMP, OLD_STAMP], name)  # the stamp was written, then put back once
+            self.assertEqual(
+                client.heading_writes, [STAMP, OLD_STAMP], name
+            )  # the stamp was written, then put back once
 
     def test_a_later_failure_also_puts_the_old_stamp_back(self):
         notion = Watched(["old status", "old detail"])
@@ -120,25 +127,58 @@ class NothingElseChanges(unittest.TestCase):
         """
         notion = Watched(["old status", "old detail"])
         write(notion, ["new status", "new detail"], heading=STAMP)
-        self.assertEqual([(m, p.split("?")[0]) for m, p in notion.log], [
-            ("GET", "/blocks/mail-callout"), ("GET", "/blocks/mail-callout/children"), ("PATCH", "/blocks/heading-mail-callout"),
-            ("PATCH", "/blocks/mail-old-0"), ("PATCH", "/blocks/mail-old-1"), ("GET", "/blocks/mail-callout/children")])
-        self.assertEqual([(b["id"], b["type"], report_region.plain(b)) for b in notion.children["mail-callout"]],
-                         [("heading-mail-callout", "heading_3", STAMP), ("mail-old-0", "paragraph", "new status"), ("mail-old-1", "paragraph", "new detail"), ("mail-table-old", "table", "")])
+        self.assertEqual(
+            [(m, p.split("?")[0]) for m, p in notion.log],
+            [
+                ("GET", "/blocks/mail-callout"),
+                ("GET", "/blocks/mail-callout/children"),
+                ("PATCH", "/blocks/heading-mail-callout"),
+                ("PATCH", "/blocks/mail-old-0"),
+                ("PATCH", "/blocks/mail-old-1"),
+                ("GET", "/blocks/mail-callout/children"),
+            ],
+        )
+        self.assertEqual(
+            [(b["id"], b["type"], report_region.plain(b)) for b in notion.children["mail-callout"]],
+            [
+                ("heading-mail-callout", "heading_3", STAMP),
+                ("mail-old-0", "paragraph", "new status"),
+                ("mail-old-1", "paragraph", "new detail"),
+                ("mail-table-old", "table", ""),
+            ],
+        )
         notion = insert_path(Watched(["old status", "old detail"]))
         write(notion, ["new status", "new detail"], heading=STAMP)
-        self.assertEqual([(m, p.split("?")[0]) for m, p in notion.log], [
-            ("GET", "/blocks/mail-callout"), ("GET", "/blocks/mail-callout/children"), ("PATCH", "/blocks/heading-mail-callout"),
-            ("APPEND", "/blocks/mail-callout/children"), ("DELETE", "/blocks/mail-old-0"), ("DELETE", "/blocks/mail-old-1"), ("GET", "/blocks/mail-callout/children")])
-        self.assertEqual([(b["id"], b["type"], report_region.plain(b)) for b in notion.children["mail-callout"]],
-                         [("heading-mail-callout", "heading_3", STAMP), ("agenda-4", "paragraph", "new status"), ("agenda-5", "paragraph", "new detail"), ("mail-table-old", "table", "")])
+        self.assertEqual(
+            [(m, p.split("?")[0]) for m, p in notion.log],
+            [
+                ("GET", "/blocks/mail-callout"),
+                ("GET", "/blocks/mail-callout/children"),
+                ("PATCH", "/blocks/heading-mail-callout"),
+                ("APPEND", "/blocks/mail-callout/children"),
+                ("DELETE", "/blocks/mail-old-0"),
+                ("DELETE", "/blocks/mail-old-1"),
+                ("GET", "/blocks/mail-callout/children"),
+            ],
+        )
+        self.assertEqual(
+            [(b["id"], b["type"], report_region.plain(b)) for b in notion.children["mail-callout"]],
+            [
+                ("heading-mail-callout", "heading_3", STAMP),
+                ("agenda-4", "paragraph", "new status"),
+                ("agenda-5", "paragraph", "new detail"),
+                ("mail-table-old", "table", ""),
+            ],
+        )
 
     def test_a_write_refused_on_its_first_request_is_unchanged_and_sends_no_restore(self):
         notion = Watched(["old status"])
         client = FailsAtWrite(notion, 1)
         with self.assertRaises(NotionError):
             write(client, ["new status"], heading=STAMP)
-        self.assertEqual((heading_of(notion), body_of(notion), client.heading_writes), (OLD_STAMP, ["old status"], [STAMP]))
+        self.assertEqual(
+            (heading_of(notion), body_of(notion), client.heading_writes), (OLD_STAMP, ["old status"], [STAMP])
+        )
 
     def test_a_card_whose_heading_needed_no_write_sends_no_restore_when_its_body_fails(self):
         notion = Watched(["old status"])
@@ -157,7 +197,9 @@ class NothingElseChanges(unittest.TestCase):
 
 
 class ThroughARealCard(unittest.TestCase):
-    def test_the_amazon_card_keeps_its_old_stamp_and_its_old_content_and_its_failure_code_when_its_body_write_fails(self):
+    def test_the_amazon_card_keeps_its_old_stamp_and_its_old_content_and_its_failure_code_when_its_body_write_fails(
+        self,
+    ):
         notion = AmazonRegions()
         others = ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout")
         before = {k: copy.deepcopy(notion.full_tree(k)) for k in others}
@@ -166,7 +208,9 @@ class ThroughARealCard(unittest.TestCase):
         with self.assertRaises(NotionError) as raised:
             amazon_card.run(0, True, environ=ENV, reader=Reader(ROWS), client=client, now=NOW)
         self.assertEqual(str(raised.exception), "NOTION_HTTP_409")  # the failure code the card already reported
-        self.assertEqual([(b["id"], b["type"], report_region.plain(b)) for b in notion.children["amazon-callout"]], card_before)  # the Amazon card: old heading text and old body
+        self.assertEqual(
+            [(b["id"], b["type"], report_region.plain(b)) for b in notion.children["amazon-callout"]], card_before
+        )  # the Amazon card: old heading text and old body
         self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders")
         self.assertEqual({k: notion.full_tree(k) for k in others}, before)  # every other region exactly as before
         self.assertEqual(client.heading_writes, ["Amazon Orders (10/4 · 1:30 PM CT)", "Amazon Orders"])

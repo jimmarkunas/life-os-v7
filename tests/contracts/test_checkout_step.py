@@ -1,4 +1,5 @@
 """every job fetches the repository with our own git step instead of actions/checkout."""
+
 import os
 import pathlib
 import re
@@ -13,12 +14,26 @@ except ImportError:
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 NAME = "Checkout the exact commit (own fetch, token never stored)"
-HEAD = ["auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\\n'); echo \"::add-mask::$auth\"",
-        "git init -q . && git remote add origin \"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY\""]
+HEAD = [
+    "auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\\n'); echo \"::add-mask::$auth\"",
+    "git init -q . && git remote add origin \"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY\"",
+]
 VARIANTS = {
-    "default": HEAD + ["git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=1 origin \"$GITHUB_SHA\"", "git checkout -q --detach FETCH_HEAD"],
-    "depth2": HEAD + ["git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=2 origin \"$GITHUB_SHA\"", "git checkout -q --detach FETCH_HEAD"],
-    "main": HEAD + ["git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'", "git checkout -q -B main origin/main"],
+    "default": HEAD
+    + [
+        "git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=1 origin \"$GITHUB_SHA\"",
+        "git checkout -q --detach FETCH_HEAD",
+    ],
+    "depth2": HEAD
+    + [
+        "git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --no-tags --depth=2 origin \"$GITHUB_SHA\"",
+        "git checkout -q --detach FETCH_HEAD",
+    ],
+    "main": HEAD
+    + [
+        "git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'",
+        "git checkout -q -B main origin/main",
+    ],
 }
 TOKEN = "ghs_FIXTURETOKEN0123456789"
 
@@ -35,7 +50,11 @@ def make_remote(tmp):
     remote = pathlib.Path(tmp, "owner", "repo")
     remote.mkdir(parents=True)
     git(remote, "init", "-q", "-b", "main")
-    for key, value in (("user.email", "fixture.invalid"), ("user.name", "t"), ("uploadpack.allowAnySHA1InWant", "true")):
+    for key, value in (
+        ("user.email", "fixture.invalid"),
+        ("user.name", "t"),
+        ("uploadpack.allowAnySHA1InWant", "true"),
+    ):
         git(remote, "config", key, value)
     (remote / "one.txt").write_text("1")
     git(remote, "add", "."), git(remote, "commit", "-qm", "one")
@@ -48,8 +67,22 @@ def make_remote(tmp):
 def run_step(variant, tmp, remote, sha, token=TOKEN, text=None):
     work = pathlib.Path(tmp, "work")
     work.mkdir()
-    env = {"PATH": os.environ["PATH"], "HOME": str(tmp), "GITHUB_SERVER_URL": "file://" + str(remote.parents[1]), "GITHUB_REPOSITORY": "owner/repo", "GITHUB_SHA": sha, "GITHUB_TOKEN": token}
-    done = subprocess.run(["bash", "-c", (text or script(variant)).replace("${{ github.token }}", token)], cwd=work, env=env, capture_output=True, text=True, timeout=60)
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": str(tmp),
+        "GITHUB_SERVER_URL": "file://" + str(remote.parents[1]),
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_SHA": sha,
+        "GITHUB_TOKEN": token,
+    }
+    done = subprocess.run(
+        ["bash", "-c", (text or script(variant)).replace("${{ github.token }}", token)],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     return work, done
 
 
@@ -67,7 +100,9 @@ class StepBehaviour(unittest.TestCase):
             self.assertNotIn(TOKEN, config)
             self.assertNotIn("extraheader", config)
             lines = done.stdout.splitlines()
-            self.assertTrue(lines[0].startswith("::add-mask::") and TOKEN not in lines[0])  # the encoded header is masked first
+            self.assertTrue(
+                lines[0].startswith("::add-mask::") and TOKEN not in lines[0]
+            )  # the encoded header is masked first
             self.assertNotIn(TOKEN, done.stdout + done.stderr)
 
     def test_depth2_keeps_the_parent_and_main_fetches_every_branch(self):
@@ -84,8 +119,13 @@ class StepBehaviour(unittest.TestCase):
             self.assertIn("origin/side", git(work, "branch", "-r"))
             self.assertEqual(git(work, "rev-list", "--count", "HEAD"), "2")
 
-    def test_a_step_that_stores_the_token_fails_the_same_check(self):  # fail-then-pass: the leak this test exists to catch
-        leaking = script("default").replace("git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch", "git config http.extraheader \"AUTHORIZATION: basic $auth\" && git fetch")
+    def test_a_step_that_stores_the_token_fails_the_same_check(
+        self,
+    ):  # fail-then-pass: the leak this test exists to catch
+        leaking = script("default").replace(
+            "git -c \"http.extraheader=AUTHORIZATION: basic $auth\" fetch",
+            "git config http.extraheader \"AUTHORIZATION: basic $auth\" && git fetch",
+        )
         with tempfile.TemporaryDirectory() as tmp:
             remote = make_remote(tmp)
             work, done = run_step("default", tmp, remote, git(remote, "rev-parse", "HEAD"), text=leaking)

@@ -1,4 +1,5 @@
 """Synthetic Gmail and Notion stores for Amazon Orders tests."""
+
 from copy import deepcopy
 
 from lifeos.amazon import events
@@ -25,10 +26,14 @@ class AmazonGmail:
             raise self.fail_list
         import re
         from datetime import datetime, timezone
+
         after = re.search(r"after:(\d+)", query)
         floor = datetime.fromtimestamp(int(after.group(1)), timezone.utc) if after else None
-        ids = [key for key, row in self.messages.items()
-               if floor is None or datetime.fromisoformat(row["received_at"]) >= floor]
+        ids = [
+            key
+            for key, row in self.messages.items()
+            if floor is None or datetime.fromisoformat(row["received_at"]) >= floor
+        ]
         if len(ids) > limit:
             raise RuntimeError("GMAIL_LIST_LIMIT_EXCEEDED")
         return ids
@@ -64,14 +69,23 @@ def notion_page(order_id, row, page_id):
         "Order ID": {"type": "title", "title": _text(row.get("Order ID", order_id))},
         "Status": {"type": "select", "select": {"name": row.get("Status")} if row.get("Status") else None},
         "Ordered At": {"type": "date", "date": {"start": row["Ordered At"]} if row.get("Ordered At") else None},
-        "Latest Event At": {"type": "date", "date": {"start": row["Latest Event At"]} if row.get("Latest Event At") else None},
-        "Grand Total": {"type": "number", "number": float(row["Grand Total"]) if row.get("Grand Total") is not None else None},
+        "Latest Event At": {
+            "type": "date",
+            "date": {"start": row["Latest Event At"]} if row.get("Latest Event At") else None,
+        },
+        "Grand Total": {
+            "type": "number",
+            "number": float(row["Grand Total"]) if row.get("Grand Total") is not None else None,
+        },
         "Item Summary": {"type": "rich_text", "rich_text": _text(row.get("Item Summary"))},
         "Item Count": {"type": "number", "number": row.get("Item Count")},
         "Amazon Order URL": {"type": "url", "url": row.get("Amazon Order URL")},
         "Source Message IDs": {"type": "rich_text", "rich_text": _text(row.get("Source Message IDs"))},
         "Last Source Subject": {"type": "rich_text", "rich_text": _text(row.get("Last Source Subject"))},
-        "Last Reconciled At": {"type": "date", "date": {"start": row["Last Reconciled At"]} if row.get("Last Reconciled At") else None},
+        "Last Reconciled At": {
+            "type": "date",
+            "date": {"start": row["Last Reconciled At"]} if row.get("Last Reconciled At") else None,
+        },
         "Needs Review": {"type": "checkbox", "checkbox": bool(row.get("Needs Review", False))},
     }
     return {"id": page_id, "properties": properties}
@@ -83,12 +97,26 @@ class AmazonNotion:
         self.duplicates = set(duplicates or ())
         self.mismatch, self.calls, self.serial = mismatch, [], 0
         self.trace = trace if trace is not None else []
-        self.schema = {name: {"type": kind} for name, kind in {
-            "Order ID": "title", "Status": "select", "Ordered At": "date", "Latest Event At": "date",
-            "Grand Total": "number", "Item Summary": "rich_text", "Item Count": "number",
-            "Amazon Order URL": "url", "Source Message IDs": "rich_text", "Last Source Subject": "rich_text",
-            "Last Reconciled At": "date", "Needs Review": "checkbox"}.items()}
-        self.schema["Status"]["select"] = {"options": [{"name": name} for name in ("ORDERED", "SHIPPED", "DELIVERED", "REVIEW")]}
+        self.schema = {
+            name: {"type": kind}
+            for name, kind in {
+                "Order ID": "title",
+                "Status": "select",
+                "Ordered At": "date",
+                "Latest Event At": "date",
+                "Grand Total": "number",
+                "Item Summary": "rich_text",
+                "Item Count": "number",
+                "Amazon Order URL": "url",
+                "Source Message IDs": "rich_text",
+                "Last Source Subject": "rich_text",
+                "Last Reconciled At": "date",
+                "Needs Review": "checkbox",
+            }.items()
+        }
+        self.schema["Status"]["select"] = {
+            "options": [{"name": name} for name in ("ORDERED", "SHIPPED", "DELIVERED", "REVIEW")]
+        }
 
     def call(self, method, path, body=None):
         self.calls.append((method, path, deepcopy(body)))
@@ -112,7 +140,7 @@ class AmazonNotion:
         if "filter" not in body:  # watermark read: newest Latest Event At first
             dated = [p for p in self.rows.values() if p["properties"]["Latest Event At"]["date"]]
             dated.sort(key=lambda p: p["properties"]["Latest Event At"]["date"]["start"], reverse=True)
-            return {"results": [deepcopy(p) for p in dated[:body["page_size"]]], "has_more": False}
+            return {"results": [deepcopy(p) for p in dated[: body["page_size"]]], "has_more": False}
         order_id = body["filter"]["title"]["equals"]
         if order_id in self.duplicates:
             page = self.rows.get(order_id)
@@ -162,12 +190,26 @@ class AmazonNotion:
     @staticmethod
     def _row(page):
         from lifeos.amazon.stage import _row_from_page
+
         return _row_from_page(page)
 
 
-def message(message_id, local, order_id="123-1234567-1234567", *, at="2026-10-03T12:00:00+00:00", body=None,
-            subject="Example item", labels=None):
+def message(
+    message_id,
+    local,
+    order_id="123-1234567-1234567",
+    *,
+    at="2026-10-03T12:00:00+00:00",
+    body=None,
+    subject="Example item",
+    labels=None,
+):
     sender = f"{local}{chr(64)}amazon.com"
-    return {"id": message_id, "sender": sender, "subject": subject, "received_at": at,
-            "body_text": body if body is not None else f"Order {order_id}\nGrand Total: $12.34",
-            "label_ids": labels if labels is not None else ["INBOX"]}
+    return {
+        "id": message_id,
+        "sender": sender,
+        "subject": subject,
+        "received_at": at,
+        "body_text": body if body is not None else f"Order {order_id}\nGrand Total: $12.34",
+        "label_ids": labels if labels is not None else ["INBOX"],
+    }

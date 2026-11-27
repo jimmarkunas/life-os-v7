@@ -15,8 +15,18 @@ SECRET = "SECRET-transcript-words"
 
 
 def raw_transcript(doc, n=3):
-    rows = [{"id": "u%d" % i, "document_id": doc, "text": "%s %d" % (SECRET, i), "start_timestamp": "2026-10-13T17:%02d:00Z" % (30 + i),
-             "end_timestamp": "2026-10-13T17:%02d:30Z" % (30 + i), "source": "microphone", "is_final": True} for i in range(n)]
+    rows = [
+        {
+            "id": "u%d" % i,
+            "document_id": doc,
+            "text": "%s %d" % (SECRET, i),
+            "start_timestamp": "2026-10-13T17:%02d:00Z" % (30 + i),
+            "end_timestamp": "2026-10-13T17:%02d:30Z" % (30 + i),
+            "source": "microphone",
+            "is_final": True,
+        }
+        for i in range(n)
+    ]
     return json.dumps({"transcript": rows})
 
 
@@ -27,6 +37,7 @@ def frame(body):
 
 class Fake:
     """A stand-in for the grans CLI: records every command and answers like it."""
+
     def __init__(self, signed_in=True, sync_exit=0, hang=False, show_out=None):
         self.calls, self.signed_in, self.sync_exit, self.hang, self.show_out = [], signed_in, sync_exit, hang, show_out
 
@@ -38,7 +49,9 @@ class Fake:
         if head == "sync":
             return subprocess.CompletedProcess(argv, self.sync_exit, b"", b"boom words that must never be returned")
         if head == "auth":
-            return subprocess.CompletedProcess(argv, 0 if self.signed_in else 1, b"Signed in.\n" if self.signed_in else b"Not signed in\n", b"")
+            return subprocess.CompletedProcess(
+                argv, 0 if self.signed_in else 1, b"Signed in.\n" if self.signed_in else b"Not signed in\n", b""
+            )
         if head == "show":
             out = self.show_out if self.show_out is not None else raw_transcript(argv[2])
             return subprocess.CompletedProcess(argv, 0, out.encode() if isinstance(out, str) else out, b"")
@@ -59,13 +72,37 @@ class Helper(unittest.TestCase):
             create table transcript_sync_log(document_id text, status text);
             create table panel_sync_log(document_id text, status text);
             create table events(id text primary key, summary text);""")
-        db.execute("insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)", (DOC, "2026-10-13T17:31:00Z", None, json.dumps({"id": "evt-1", "start": {"dateTime": "2026-10-13T12:30:00-05:00"}}), "Follow up sync"))
-        db.execute("insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)", (OTHER, "2026-10-20T15:00:00Z", None, None, None))
-        db.execute("insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)", ("deleted-doc-0001", "2026-10-01T15:00:00Z", "2026-10-02T00:00:00Z", None, "gone"))
-        db.executemany("insert into document_people values (?,?,?)", [(DOC, "attendee@example.com", "A"), (DOC, None, "Named Only"), (DOC, None, None)])
+        db.execute(
+            "insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)",
+            (
+                DOC,
+                "2026-10-13T17:31:00Z",
+                None,
+                json.dumps({"id": "evt-1", "start": {"dateTime": "2026-10-13T12:30:00-05:00"}}),
+                "Follow up sync",
+            ),
+        )
+        db.execute(
+            "insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)",
+            (OTHER, "2026-10-20T15:00:00Z", None, None, None),
+        )
+        db.execute(
+            "insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)",
+            ("deleted-doc-0001", "2026-10-01T15:00:00Z", "2026-10-02T00:00:00Z", None, "gone"),
+        )
+        db.executemany(
+            "insert into document_people values (?,?,?)",
+            [(DOC, "attendee@example.com", "A"), (DOC, None, "Named Only"), (DOC, None, None)],
+        )
         for doc in (DOC, OTHER):
-            db.executemany("insert into transcript_utterances values (?,?,?)", [("%s-%d" % (doc[:4], i), doc, "t") for i in range(3)])
-        db.execute("update documents set notes_markdown=?, summary=? where id=?", ("NOTES-md " + "n" * 70_000, "SUMMARY-text", DOC))
+            db.executemany(
+                "insert into transcript_utterances values (?,?,?)",
+                [("%s-%d" % (doc[:4], i), doc, "t") for i in range(3)],
+            )
+        db.execute(
+            "update documents set notes_markdown=?, summary=? where id=?",
+            ("NOTES-md " + "n" * 70_000, "SUMMARY-text", DOC),
+        )
         db.execute("insert into panels values ('p1', ?, 'PANEL-text', '2026-10-13', null)", (OTHER,))
         for doc in (DOC, OTHER):
             db.execute("insert into chunks (document_id, text) values (?, 'c')", (doc,))
@@ -85,7 +122,11 @@ class Helper(unittest.TestCase):
     def call(self, body, fake=None, raw=None):
         fake = fake or Fake()
         out = io.BytesIO()
-        gh.main(io.BytesIO(raw if raw is not None else frame(body)), out, gh.Context(run=fake, grans="/g", db=self.db, contract=contract))
+        gh.main(
+            io.BytesIO(raw if raw is not None else frame(body)),
+            out,
+            gh.Context(run=fake, grans="/g", db=self.db, contract=contract),
+        )
         head, _, rest = out.getvalue().partition(b"\n")
         self.assertEqual(head, b"gran1 %d" % len(rest))
         return json.loads(rest), fake
@@ -107,7 +148,9 @@ class Helper(unittest.TestCase):
         self.assertNotIn("boom", json.dumps(reply))
 
     def test_a_failed_sync_while_signed_out_is_auth_expired(self):
-        self.assertEqual(self.call({"op": "sync", "nonce": "n"}, Fake(sync_exit=1, signed_in=False))[0]["code"], "GRAN_AUTH_EXPIRED")
+        self.assertEqual(
+            self.call({"op": "sync", "nonce": "n"}, Fake(sync_exit=1, signed_in=False))[0]["code"], "GRAN_AUTH_EXPIRED"
+        )
 
     def test_a_hung_cli_is_a_timeout(self):
         self.assertEqual(self.call({"op": "sync", "nonce": "n"}, Fake(hang=True))[0]["code"], "GRAN_TIMEOUT")
@@ -117,7 +160,9 @@ class Helper(unittest.TestCase):
         self.assertEqual(fake.calls, [])  # read from the database
         ids = [m["id"] for m in reply["meetings"]]
         self.assertEqual(ids, [DOC, OTHER])  # oldest first
-        self.assertEqual(reply["meetings"][0]["start"], "2026-10-13T12:30:00-05:00")  # the calendar start wins over created_at
+        self.assertEqual(
+            reply["meetings"][0]["start"], "2026-10-13T12:30:00-05:00"
+        )  # the calendar start wins over created_at
         self.assertEqual(reply["meetings"][0]["attendees"], ["attendee@example.com", "Named Only"])
         self.assertEqual(reply["meetings"][1]["start"], "2026-10-20T15:00:00Z")  # no calendar event: created_at
 
@@ -132,7 +177,9 @@ class Helper(unittest.TestCase):
         self.assertTrue(reply["notes"].startswith("NOTES-md"))
         self.assertEqual(reply["summary"], "SUMMARY-text")
         other, _ = self.call({"op": "show", "id": OTHER, "nonce": "n"})
-        self.assertEqual((other["notes"], other["summary"]), ("", "PANEL-text"))  # no summary column: the meeting's panels
+        self.assertEqual(
+            (other["notes"], other["summary"]), ("", "PANEL-text")
+        )  # no summary column: the meeting's panels
 
     def test_list_announces_what_this_helper_can_do(self):
         self.assertEqual(self.call({"op": "list", "nonce": "n"})[0]["caps"], ["notes", "purge_all"])
@@ -142,15 +189,23 @@ class Helper(unittest.TestCase):
         reply, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "scope": "all", "nonce": "n"})
         self.assertEqual((reply["ok"], reply["scope"]), (True, "all"))
         self.assertGreaterEqual(reply["purged"], 1)
-        for table, column in (("documents", "id"), ("transcript_utterances", "document_id"), ("chunks", "document_id"), ("document_people", "document_id"),
-                              ("transcript_sync_log", "document_id"), ("panel_sync_log", "document_id")):
+        for table, column in (
+            ("documents", "id"),
+            ("transcript_utterances", "document_id"),
+            ("chunks", "document_id"),
+            ("document_people", "document_id"),
+            ("transcript_sync_log", "document_id"),
+            ("panel_sync_log", "document_id"),
+        ):
             self.assertEqual(self.count(table, column, DOC), 0, table)
             if table != "document_people":  # (the other meeting has no attendees)
                 self.assertGreater(self.count(table, column, OTHER), 0, table)  # the other meeting is untouched
         self.assertEqual(self.count("events", "id", "evt-1"), 0)
         self.assertEqual(self.count("events", "id", "evt-2"), 1)
         db = sqlite3.connect(self.db)
-        self.assertEqual(db.execute("select count(*) from embeddings").fetchone()[0], 1)  # only the other meeting's vector remains
+        self.assertEqual(
+            db.execute("select count(*) from embeddings").fetchone()[0], 1
+        )  # only the other meeting's vector remains
         db.close()
         again, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "scope": "all", "nonce": "n"})
         self.assertEqual((again["ok"], again["purged"], again["scope"]), (True, 0, "all"))
@@ -191,31 +246,55 @@ class Helper(unittest.TestCase):
         self.assertEqual(self.utterances(DOC), 3)
 
     def test_purge_of_a_transcript_that_fails_the_contract_returns_the_contract_code_and_deletes_nothing(self):
-        reply, _ = self.call({"op": "purge", "id": DOC, "content_sha256": "0" * 64, "nonce": "n"}, Fake(show_out="not json"))
+        reply, _ = self.call(
+            {"op": "purge", "id": DOC, "content_sha256": "0" * 64, "nonce": "n"}, Fake(show_out="not json")
+        )
         self.assertEqual(reply["code"], "TRANSCRIPT_INVALID_JSON")
         self.assertEqual(self.utterances(DOC), 3)
 
     def test_bad_frames_and_ops_are_fixed_codes(self):
-        cases = [({"op": "show", "nonce": "n"}, "GRAN_BAD_FRAME"),  # no id
-                 ({"op": "show", "id": "../../etc/passwd", "nonce": "n"}, "GRAN_BAD_FRAME"),
-                 ({"op": "show", "id": DOC + "; id", "nonce": "n"}, "GRAN_BAD_FRAME"),
-                 ({"op": "purge", "id": DOC, "content_sha256": "ABC", "nonce": "n"}, "GRAN_BAD_FRAME"),
-                 ({"op": "purge", "id": DOC, "nonce": "n"}, "GRAN_BAD_FRAME"),
-                 ({"op": "delete", "nonce": "n"}, "GRAN_BAD_OP"),
-                 ({"nonce": "n"}, "GRAN_BAD_OP"),
-                 ({"op": "list"}, "GRAN_BAD_FRAME"),  # no nonce
-                 ({"op": "list", "nonce": "x" * 65}, "GRAN_BAD_FRAME")]
+        cases = [
+            ({"op": "show", "nonce": "n"}, "GRAN_BAD_FRAME"),  # no id
+            ({"op": "show", "id": "../../etc/passwd", "nonce": "n"}, "GRAN_BAD_FRAME"),
+            ({"op": "show", "id": DOC + "; id", "nonce": "n"}, "GRAN_BAD_FRAME"),
+            ({"op": "purge", "id": DOC, "content_sha256": "ABC", "nonce": "n"}, "GRAN_BAD_FRAME"),
+            ({"op": "purge", "id": DOC, "nonce": "n"}, "GRAN_BAD_FRAME"),
+            ({"op": "delete", "nonce": "n"}, "GRAN_BAD_OP"),
+            ({"nonce": "n"}, "GRAN_BAD_OP"),
+            ({"op": "list"}, "GRAN_BAD_FRAME"),  # no nonce
+            ({"op": "list", "nonce": "x" * 65}, "GRAN_BAD_FRAME"),
+        ]
         for body, code in cases:
             reply, fake = self.call(body)
             self.assertEqual((reply["ok"], reply["code"]), (False, code), body)
             self.assertEqual(fake.calls, [], body)  # nothing was run
-        for raw in (b"", b"gran1 5\nabc", b"gran1 0\n", b"gran1 4097\n", b"gran2 2\n{}", b"gran1 2\n[]", b"gran1 7\nnot json", b"gran1 a\n{}", b"gran1 01\n{}"):
+        for raw in (
+            b"",
+            b"gran1 5\nabc",
+            b"gran1 0\n",
+            b"gran1 4097\n",
+            b"gran2 2\n{}",
+            b"gran1 2\n[]",
+            b"gran1 7\nnot json",
+            b"gran1 a\n{}",
+            b"gran1 01\n{}",
+        ):
             reply, fake = self.call(None, raw=raw)
             self.assertEqual(reply["code"], "GRAN_BAD_FRAME", raw)
 
     def test_every_reply_code_is_registered(self):
         from lifeos.platform import codes
-        for code in ("GRAN_BAD_FRAME", "GRAN_BAD_OP", "GRAN_NOT_FOUND", "GRAN_SYNC_FAILED", "GRAN_AUTH_EXPIRED", "GRAN_TIMEOUT", "GRAN_OVERSIZE", "GRAN_HASH_MISMATCH"):
+
+        for code in (
+            "GRAN_BAD_FRAME",
+            "GRAN_BAD_OP",
+            "GRAN_NOT_FOUND",
+            "GRAN_SYNC_FAILED",
+            "GRAN_AUTH_EXPIRED",
+            "GRAN_TIMEOUT",
+            "GRAN_OVERSIZE",
+            "GRAN_HASH_MISMATCH",
+        ):
             self.assertIn(code, codes.CODES)
 
 

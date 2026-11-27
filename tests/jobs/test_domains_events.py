@@ -1,4 +1,5 @@
 """item 11: which domains.yml jobs run for which trigger."""
+
 import json
 import pathlib
 import sys
@@ -15,7 +16,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "domains.yml"
 TABLE = pathlib.Path(__file__).resolve().parent / "domains_event_table.json"
 GATES = ("gate", "chain")
-TRIGGER_INPUTS = ("all", "amazon", "bills_paid", "calendar_sync", "dcc", "hiring", "imessage", "jira", "live", "megibow", "physical_mail", "recruiters", "refresh")
+TRIGGER_INPUTS = (
+    "all",
+    "amazon",
+    "bills_paid",
+    "calendar_sync",
+    "dcc",
+    "hiring",
+    "imessage",
+    "jira",
+    "live",
+    "megibow",
+    "physical_mail",
+    "recruiters",
+    "refresh",
+)
 
 
 def load():
@@ -31,9 +46,10 @@ def order(jobs):
             return
         done.add(name)
         needs = jobs[name].get("needs") or []
-        for n in ([needs] if isinstance(needs, str) else needs):
+        for n in [needs] if isinstance(needs, str) else needs:
             visit(n)
         out.append(name)
+
     for name in jobs:
         visit(name)
     return out
@@ -48,18 +64,58 @@ def events(doc):
     out = {}
     for conclusion in ("success", "failure", "cancelled", "skipped"):
         for title in ("tick", "manual", "quick"):
-            out[f"after hourly: {title}, {conclusion}"] = ("workflow_run", {"conclusion": conclusion, "display_title": title}, {}, {}, ())
-    for variables in ({"V7_IMESSAGE_ALERTS": "true"}, {"GRANOLA_AUTO": "off"}, {"V7_IMESSAGE_ALERTS": "true", "GRANOLA_AUTO": "off"}):
-        out["after hourly: tick, success, " + ", ".join(f"{k}={v}" for k, v in variables.items())] = ("workflow_run", {"conclusion": "success", "display_title": "tick"}, {}, variables, ())
+            out[f"after hourly: {title}, {conclusion}"] = (
+                "workflow_run",
+                {"conclusion": conclusion, "display_title": title},
+                {},
+                {},
+                (),
+            )
+    for variables in (
+        {"V7_IMESSAGE_ALERTS": "true"},
+        {"GRANOLA_AUTO": "off"},
+        {"V7_IMESSAGE_ALERTS": "true", "GRANOLA_AUTO": "off"},
+    ):
+        out["after hourly: tick, success, " + ", ".join(f"{k}={v}" for k, v in variables.items())] = (
+            "workflow_run",
+            {"conclusion": "success", "display_title": "tick"},
+            {},
+            variables,
+            (),
+        )
     for broken in ("jira", "amazon", "recruiters", "interview"):  # the report job runs only when some job failed
-        out[f"after hourly: tick, success, {broken} fails"] = ("workflow_run", {"conclusion": "success", "display_title": "tick"}, {}, {}, (broken,))
+        out[f"after hourly: tick, success, {broken} fails"] = (
+            "workflow_run",
+            {"conclusion": "success", "display_title": "tick"},
+            {},
+            {},
+            (broken,),
+        )
         out[f"dispatch: all=True, {broken} fails"] = ("workflow_dispatch", {}, dict(base, all=True), {}, (broken,))
     for covered in ("true", "unknown"):
-        out[f"after hourly: tick, success, early run {covered}"] = ("workflow_run", {"conclusion": "success", "display_title": "tick", "_early_covered": covered}, {}, {}, ())
-    out["after hourly: tick, cancelled, early run true"] = ("workflow_run", {"conclusion": "cancelled", "display_title": "tick", "_early_covered": "true"}, {}, {}, ())
+        out[f"after hourly: tick, success, early run {covered}"] = (
+            "workflow_run",
+            {"conclusion": "success", "display_title": "tick", "_early_covered": covered},
+            {},
+            {},
+            (),
+        )
+    out["after hourly: tick, cancelled, early run true"] = (
+        "workflow_run",
+        {"conclusion": "cancelled", "display_title": "tick", "_early_covered": "true"},
+        {},
+        {},
+        (),
+    )
     out["early run: phase=tick"] = ("workflow_dispatch", {}, dict(base, phase="tick"), {}, ())
     for broken in ("jira", "recruiters"):
-        out[f"early run: phase=tick, {broken} fails"] = ("workflow_dispatch", {}, dict(base, phase="tick"), {}, (broken,))
+        out[f"early run: phase=tick, {broken} fails"] = (
+            "workflow_dispatch",
+            {},
+            dict(base, phase="tick"),
+            {},
+            (broken,),
+        )
     out["dispatch: no input"] = ("workflow_dispatch", {}, dict(base), {}, ())
     for name in TRIGGER_INPUTS:
         if name not in spec:
@@ -81,15 +137,31 @@ def runs(doc, event, not_due=()):
     name, run_fields, inputs, variables, failing = event
     due = {f"due_{job}": ("false" if job in not_due and name == "workflow_run" else "true") for job in doc["jobs"]}
     covered = run_fields.get("_early_covered", "false")
-    ctx = {"github": {"event_name": name, "event": {"workflow_run": run_fields}}, "inputs": inputs, "vars": {}, "env": {}, "steps": {"due": {"outputs": due}, "cover": {"outputs": {"early_covered": covered}}, "settings": {"outputs": variables}}}
+    ctx = {
+        "github": {"event_name": name, "event": {"workflow_run": run_fields}},
+        "inputs": inputs,
+        "vars": {},
+        "env": {},
+        "steps": {
+            "due": {"outputs": due},
+            "cover": {"outputs": {"early_covered": covered}},
+            "settings": {"outputs": variables},
+        },
+    }
     results = {}
     for job in order(doc["jobs"]):
         spec = doc["jobs"][job]
         needs = spec.get("needs") or []
         needs = [needs] if isinstance(needs, str) else needs
-        ctx["needs"] = {n: {"result": results.get(n, "skipped"), "outputs": results.get(n + ".outputs", {})} for n in needs}
+        ctx["needs"] = {
+            n: {"result": results.get(n, "skipped"), "outputs": results.get(n + ".outputs", {})} for n in needs
+        }
         condition = spec.get("if")
-        ok = truthy(evaluate(str(condition), ctx)) if condition is not None else all(results.get(n) == "success" for n in needs)
+        ok = (
+            truthy(evaluate(str(condition), ctx))
+            if condition is not None
+            else all(results.get(n) == "success" for n in needs)
+        )
         results[job] = ("failure" if job in failing else "success") if ok else "skipped"
         if ok and spec.get("outputs"):
             results[job + ".outputs"] = {k: str(evaluate(str(v), ctx)).lower() for k, v in spec["outputs"].items()}
@@ -105,7 +177,11 @@ def gate_expected(event):
     cancelled) or `all`.
     """
     name, run_fields, inputs, variables, failing = event
-    tick = name == "workflow_run" and run_fields.get("conclusion") != "cancelled" and run_fields.get("display_title") == "tick"
+    tick = (
+        name == "workflow_run"
+        and run_fields.get("conclusion") != "cancelled"
+        and run_fields.get("display_title") == "tick"
+    )
     early = name == "workflow_dispatch" and inputs.get("phase") == "tick"  # the early run of a tick
     return bool(tick or early or inputs.get("all"))
 
@@ -126,10 +202,37 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_a_clean_tick_runs_the_chain_a_failure_adds_the_report_and_a_cancelled_or_manual_run_runs_nothing(self):
         current = table()
-        chain = {"jira", "followup", "agenda", "bills", "amazon", "amazon_retention", "mail", "hiring", "dcc", "weekly_review", "megibow", "recruiters", "hiring_outcomes", "interview", "outlook", "granola", "network_surface", "fit_cloud_backlog", "last_seen_purge"}
+        chain = {
+            "jira",
+            "followup",
+            "agenda",
+            "bills",
+            "amazon",
+            "amazon_retention",
+            "mail",
+            "hiring",
+            "dcc",
+            "weekly_review",
+            "megibow",
+            "recruiters",
+            "hiring_outcomes",
+            "interview",
+            "outlook",
+            "granola",
+            "network_surface",
+            "fit_cloud_backlog",
+            "last_seen_purge",
+        }
         self.assertEqual(chain, set(domain_jobs(current["after hourly: tick, success"])))
-        self.assertEqual(set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"})  # the report job exists to name a failed job
-        for label in ("after hourly: tick, cancelled", "after hourly: manual, success", "after hourly: quick, success", "dispatch: no input"):
+        self.assertEqual(
+            set(domain_jobs(current["after hourly: tick, success, jira fails"])), chain | {"report"}
+        )  # the report job exists to name a failed job
+        for label in (
+            "after hourly: tick, cancelled",
+            "after hourly: manual, success",
+            "after hourly: quick, success",
+            "dispatch: no input",
+        ):
             self.assertEqual(domain_jobs(current[label]), [], label)
 
     def test_a_tick_makes_one_early_run_and_one_run_after_it_and_every_domain_job_runs_exactly_once(self):
@@ -146,10 +249,17 @@ class DomainsEventTable(unittest.TestCase):
         self.assertEqual(early & after, set())  # no job runs twice
         self.assertEqual(early | after, chain | early_only)  # none is skipped
         self.assertEqual(set(domain_jobs(runs(doc, events_["after hourly: tick, success, early run unknown"]))), late)
-        self.assertEqual(domain_jobs(runs(doc, events_["after hourly: tick, cancelled, early run true"])), [])  # a cancelled tick still runs nothing after it
-        self.assertEqual(domain_jobs(runs(doc, events_["dispatch: all=True"])), sorted(chain - {"network_surface", "fit_cloud_backlog", "last_seen_purge"}))
+        self.assertEqual(
+            domain_jobs(runs(doc, events_["after hourly: tick, cancelled, early run true"])), []
+        )  # a cancelled tick still runs nothing after it
+        self.assertEqual(
+            domain_jobs(runs(doc, events_["dispatch: all=True"])),
+            sorted(chain - {"network_surface", "fit_cloud_backlog", "last_seen_purge"}),
+        )
         for broken in ("jira", "recruiters"):
-            self.assertIn("report", runs(doc, events_[f"early run: phase=tick, {broken} fails"]))  # the early run pushes its own failures
+            self.assertIn(
+                "report", runs(doc, events_[f"early run: phase=tick, {broken} fails"])
+            )  # the early run pushes its own failures
 
     def test_the_gate_runs_exactly_for_a_tick_or_all(self):
         doc = load()
@@ -163,7 +273,11 @@ class DomainsEventTable(unittest.TestCase):
         for name, job in doc["jobs"].items():
             if name != "gate":
                 self.assertIn("gate", job["needs"], name)
-        self.assertEqual(text.count("github.event.workflow_run.display_title == 'tick'"), 2, "the trigger clause is stated once in the gate job (its condition and its tick output)")
+        self.assertEqual(
+            text.count("github.event.workflow_run.display_title == 'tick'"),
+            2,
+            "the trigger clause is stated once in the gate job (its condition and its tick output)",
+        )
 
     def test_a_job_that_is_not_due_is_skipped_on_a_tick_and_never_on_its_own_input_or_on_all(self):
         """the due output decides a tick"""

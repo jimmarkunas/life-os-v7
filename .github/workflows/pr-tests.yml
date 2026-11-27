@@ -70,8 +70,8 @@ jobs:
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           if [ "$elapsed" -ge 120 ]; then echo "TIME GATE ONLY: every test passed; the suite took ${elapsed} s and the limit is 120 s (LIFE-705)" | tee -a "$GITHUB_STEP_SUMMARY"; echo "::error::The unit-test suite took ${elapsed} s; the limit is 120 s"; exit 1; fi
           if [ "$elapsed" -ge 90 ]; then echo "::warning::The unit-test suite took ${elapsed} s; the warning level is 90 s"; fi
-      - name: Ruff format check (lifeos and tools at 120 columns; ruff is pinned in requirements-test.txt)
-        run: python -m ruff format --check --no-cache lifeos tools
+      - name: Ruff format check (lifeos, tools and tests at 120 columns; ruff is pinned in requirements-test.txt)
+        run: python -m ruff format --check --no-cache lifeos tools tests
       - name: Ruff correctness rules (LIFE-596; BLOCKING on B023 loop variable in a closure, B904 raise without from, F811 redefinition and B017 blind assertRaises; every other rule stays advisory below)
         run: python -m ruff check --no-cache --select B023,B904,F811,B017 --output-format concise .
       - name: Ruff advisory (LIFE-558; the Python files this change touches, counts only, can never fail the job or change the required check)

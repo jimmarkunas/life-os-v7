@@ -29,11 +29,22 @@ class FirstPartyReaders(unittest.TestCase):
 
     def test_an_empty_page_is_failed_unless_the_registry_zero_marker_is_on_it(self):
         self.assertEqual(listing("static_complete_html", "<p>Welcome</p>").status, "FAILED")
-        got = listing("static_complete_html", "<p>There are no open positions at Acme at the moment.</p>", zero_marker="no open positions at Acme")
+        got = listing(
+            "static_complete_html",
+            "<p>There are no open positions at Acme at the moment.</p>",
+            zero_marker="no open positions at Acme",
+        )
         self.assertEqual((got.status, got.jobs), ("COMPLETE", []))
 
     def test_json_ld_job_postings_are_read(self):
-        ld = json.dumps({"@type": "JobPosting", "title": "Platform Engineer", "url": "https://acme.example/j/1", "identifier": {"value": "J1"}})
+        ld = json.dumps(
+            {
+                "@type": "JobPosting",
+                "title": "Platform Engineer",
+                "url": "https://acme.example/j/1",
+                "identifier": {"value": "J1"},
+            }
+        )
         got = listing("static_complete_html", f'<script type="application/ld+json">{ld}</script>')
         self.assertEqual([(j["id"], j["title"]) for j in got.jobs], [("J1", "Platform Engineer")])
 
@@ -48,7 +59,9 @@ class FirstPartyReaders(unittest.TestCase):
         self.assertEqual([j["title"] for j in got.jobs], ["Program Manager"])
 
     def test_bluestonex_card_label(self):
-        got = listing("bluestonex_html", '<a href="/careers/qa">QA Analyst Full-time More information</a><a href="/x">Other</a>')
+        got = listing(
+            "bluestonex_html", '<a href="/careers/qa">QA Analyst Full-time More information</a><a href="/x">Other</a>'
+        )
         self.assertEqual(len(got.jobs), 1)
         self.assertEqual(got.jobs[0]["title"], "QA Analyst")
 
@@ -60,25 +73,45 @@ class FirstPartyReaders(unittest.TestCase):
         self.assertEqual([j["title"] for j in live.jobs], ["Analyst"])
 
     def test_futuristic_portal_items(self):
-        item = ('<div class="rjjobportal-job-item"><span class="rjjobportal-job-title">1. Engineer</span>'
-                '<span class="rjjobportal-meta-label">Job Reference Number</span> <span class="rjjobportal-meta-val">FT-9</span>'
-                '<span class="rjjobportal-meta-label">Location</span> <span class="rjjobportal-meta-val">London</span>'
-                '<span class="rjjobportal-meta-label">Annual Salary</span> <span class="rjjobportal-meta-val">£70,000</span></div>')
+        item = (
+            '<div class="rjjobportal-job-item"><span class="rjjobportal-job-title">1. Engineer</span>'
+            '<span class="rjjobportal-meta-label">Job Reference Number</span> <span class="rjjobportal-meta-val">FT-9</span>'
+            '<span class="rjjobportal-meta-label">Location</span> <span class="rjjobportal-meta-val">London</span>'
+            '<span class="rjjobportal-meta-label">Annual Salary</span> <span class="rjjobportal-meta-val">£70,000</span></div>'
+        )
         got = listing("futuristic_html", f'<div class="rjjobportal-careers-wrapper">{item}</div>')
         self.assertEqual([(j["id"], j["title"], j["location"]) for j in got.jobs], [("FT-9", "Engineer", "London")])
         self.assertIn("£70,000", got.jobs[0]["content"])
         self.assertEqual(listing("futuristic_html", "<p>no wrapper</p>").status, "FAILED")
 
     def test_doubleword_array_in_the_app_bundle(self):
-        js = ('x=[{title:"ML Engineer",slug:"ml-engineer",department:"Eng",type:"Full",seniority:"Senior",location:"London",compensation:"£90k",applyEmail:"x"}];'
-              'x.map(r=>r);"Open Positions"')
+        js = (
+            'x=[{title:"ML Engineer",slug:"ml-engineer",department:"Eng",type:"Full",seniority:"Senior",location:"London",compensation:"£90k",applyEmail:"x"}];'
+            'x.map(r=>r);"Open Positions"'
+        )
         page = '<script src="/assets/index-abc.js"></script>'
-        got = listing("doubleword_bundle", page, url="https://dw.example/careers/", more={"https://dw.example/assets/index-abc.js": Page(js)})
+        got = listing(
+            "doubleword_bundle",
+            page,
+            url="https://dw.example/careers/",
+            more={"https://dw.example/assets/index-abc.js": Page(js)},
+        )
         self.assertEqual([(j["id"], j["location"]) for j in got.jobs], [("ml-engineer", "London")])
-        self.assertEqual(listing("doubleword_bundle", "<p>nothing</p>", url="https://dw.example/careers/").status, "FAILED")
+        self.assertEqual(
+            listing("doubleword_bundle", "<p>nothing</p>", url="https://dw.example/careers/").status, "FAILED"
+        )
 
     def test_revolut_exhaustive_count_or_failed(self):
-        data = {"props": {"pageProps": {"positions": [{"id": "1", "text": "PM", "locations": [{"name": "London", "type": "Hybrid", "country": "UK"}]}], "openPositionsCount": 1}}}
+        data = {
+            "props": {
+                "pageProps": {
+                    "positions": [
+                        {"id": "1", "text": "PM", "locations": [{"name": "London", "type": "Hybrid", "country": "UK"}]}
+                    ],
+                    "openPositionsCount": 1,
+                }
+            }
+        }
         html = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(data)}</script>'
         got = listing("revolut_html", html)
         self.assertEqual([(j["id"], j["title"]) for j in got.jobs], [("1", "PM")])
@@ -97,11 +130,14 @@ class FirstPartyReaders(unittest.TestCase):
 
     def test_http_errors_are_failed_never_zero(self):
         for status, reason in ((403, "blocked_403"), (429, "rate_limited_429"), (404, "not_found"), (500, "http_500")):
-            got = lister.list_source(src("static_complete_html"), fetcher({"https://acme.example/careers": Page("", status)}))
+            got = lister.list_source(
+                src("static_complete_html"), fetcher({"https://acme.example/careers": Page("", status)})
+            )
             self.assertEqual((got.status, got.reason), ("FAILED", reason))
 
     def test_every_scale_up_source_marked_ready_has_a_reader(self):
         from lifeos.sources.web import registry
+
         for row in registry.for_lane("Scale-Up"):
             self.assertIn(row["kind"], lister.READERS, row["id"])
 
@@ -112,23 +148,34 @@ if __name__ == "__main__":
 
 class StreamReaderTests(unittest.TestCase):
     """Stream's label is '<role> <city> <department>' and its place is only in the URL slug."""
-    PAGE = ('<html><body>'
-            '<a href="/en/careers/delivery-manager-london-8459831">Delivery Manager London Delivery</a>'
-            '<a href="/en/careers/director-of-partnerships-new-york-123456">Director of Partnerships New York Commercial</a>'
-            '<a href="/en/careers/senior-engineer-5555">Senior Engineer</a>'
-            '</body></html>')
+
+    PAGE = (
+        '<html><body>'
+        '<a href="/en/careers/delivery-manager-london-8459831">Delivery Manager London Delivery</a>'
+        '<a href="/en/careers/director-of-partnerships-new-york-123456">Director of Partnerships New York Commercial</a>'
+        '<a href="/en/careers/senior-engineer-5555">Senior Engineer</a>'
+        '</body></html>'
+    )
 
     def rows(self):
         from lifeos.sources.web import html_readers
+
         return html_readers.READERS["stream_html"](self.PAGE, {"url": "https://stream.co/en/company/careers"}, None)
 
     def test_the_city_becomes_the_location_and_the_title_loses_the_city_and_department(self):
         by_url = {r["url"].rsplit("/", 1)[-1]: r for r in self.rows()}
-        self.assertEqual((by_url["delivery-manager-london-8459831"]["title"], by_url["delivery-manager-london-8459831"]["location"]), ("Delivery Manager", "London"))
-        self.assertEqual((by_url["director-of-partnerships-new-york-123456"]["title"], by_url["director-of-partnerships-new-york-123456"]["location"]),
-                         ("Director of Partnerships", "New York"))
+        self.assertEqual(
+            (by_url["delivery-manager-london-8459831"]["title"], by_url["delivery-manager-london-8459831"]["location"]),
+            ("Delivery Manager", "London"),
+        )
+        self.assertEqual(
+            (
+                by_url["director-of-partnerships-new-york-123456"]["title"],
+                by_url["director-of-partnerships-new-york-123456"]["location"],
+            ),
+            ("Director of Partnerships", "New York"),
+        )
 
     def test_a_label_without_a_city_in_its_slug_is_left_as_it_is(self):
         row = next(r for r in self.rows() if r["url"].endswith("senior-engineer-5555"))
         self.assertEqual((row["title"], row["location"]), ("Senior Engineer", ""))
-

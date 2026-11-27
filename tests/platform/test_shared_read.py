@@ -7,13 +7,38 @@ from lifeos.platform import shared_read as S
 
 NOW = datetime(2026, 11, 16, 18, 0, tzinfo=timezone.utc)
 CC, CX, OTHER = "5d77" + "0" * 60, "c0de" + "0" * 60, "ee" * 32
-POLICY = A.load(json.dumps({"version": 1, "default": {}, "agents": {CC: {"jira": "read", "github": "read"}, CX: {"jira": "read"}, OTHER: {"jira": "off"}}}))
-ISSUE = {"key": "LIFE-1", "summary": "a title", "status": "To Do", "updated": "2026-11-16", "assignee": "must not leave", "description": "nor this"}
+POLICY = A.load(
+    json.dumps(
+        {
+            "version": 1,
+            "default": {},
+            "agents": {CC: {"jira": "read", "github": "read"}, CX: {"jira": "read"}, OTHER: {"jira": "off"}},
+        }
+    )
+)
+ISSUE = {
+    "key": "LIFE-1",
+    "summary": "a title",
+    "status": "To Do",
+    "updated": "2026-11-16",
+    "assignee": "must not leave",
+    "description": "nor this",
+}
 
 
 def grant(client, principal, tenant="personal", **kw):
-    return S.Grant(**{"client": client, "principal": principal, "tenant": tenant, "account": "acct-1", "tool": "jira.get_issue", "credential_ref": "bws-jira-read-" + client,
-                      "expires": NOW + timedelta(hours=1), **kw})
+    return S.Grant(
+        **{
+            "client": client,
+            "principal": principal,
+            "tenant": tenant,
+            "account": "acct-1",
+            "tool": "jira.get_issue",
+            "credential_ref": "bws-jira-read-" + client,
+            "expires": NOW + timedelta(hours=1),
+            **kw,
+        }
+    )
 
 
 class Harness:
@@ -27,8 +52,30 @@ class Harness:
             raise RuntimeError("secret detail that must not appear")
         return {"data": self.data, "request_id": "jira-req-" + str(len(self.fetched)), "fetched_at": self.at}
 
-    def call(self, client="claude-code", principal=CC, tenant="personal", tool="jira.get_issue", account="acct-1", trusted=True, policy=POLICY, audit=None, rid="r1"):
-        return S.read(S.Session(client, principal, tenant, trusted), tool, account, {"key": "LIFE-1"}, self.grants, policy, self.fetch, audit or self.receipts.append, NOW, rid)
+    def call(
+        self,
+        client="claude-code",
+        principal=CC,
+        tenant="personal",
+        tool="jira.get_issue",
+        account="acct-1",
+        trusted=True,
+        policy=POLICY,
+        audit=None,
+        rid="r1",
+    ):
+        return S.read(
+            S.Session(client, principal, tenant, trusted),
+            tool,
+            account,
+            {"key": "LIFE-1"},
+            self.grants,
+            policy,
+            self.fetch,
+            audit or self.receipts.append,
+            NOW,
+            rid,
+        )
 
 
 class Read(unittest.TestCase):
@@ -39,7 +86,9 @@ class Read(unittest.TestCase):
         self.assertEqual(set(a.data), set(S.FIELDS))  # assignee and description never leave
         self.assertEqual([r["client"] for r in h.receipts if r["outcome"] == "ok"], ["claude-code", "codex"])
         self.assertNotEqual(h.receipts[0]["principal_fp"], h.receipts[2]["principal_fp"])
-        self.assertEqual([f[0] for f in h.fetched], ["bws-jira-read-claude-code", "bws-jira-read-codex"])  # each client uses its own credential NAME
+        self.assertEqual(
+            [f[0] for f in h.fetched], ["bws-jira-read-claude-code", "bws-jira-read-codex"]
+        )  # each client uses its own credential NAME
 
     def test_receipts_hold_fixed_words_ids_and_fingerprints_only(self):
         h = Harness()
@@ -47,7 +96,21 @@ class Read(unittest.TestCase):
         text = json.dumps(h.receipts)
         for forbidden in (CC, "LIFE-1", "a title", "assignee", "bws-jira"):
             self.assertNotIn(forbidden, text)
-        self.assertEqual(set(h.receipts[-1]), {"t", "client", "principal_fp", "tenant", "tool", "request_id", "source_request_id", "outcome", "reason", "age_s"})
+        self.assertEqual(
+            set(h.receipts[-1]),
+            {
+                "t",
+                "client",
+                "principal_fp",
+                "tenant",
+                "tool",
+                "request_id",
+                "source_request_id",
+                "outcome",
+                "reason",
+                "age_s",
+            },
+        )
         self.assertEqual(h.receipts[-1]["source_request_id"], "jira-req-1")
 
     def test_no_receipt_no_read(self):
@@ -55,6 +118,7 @@ class Read(unittest.TestCase):
 
         def broken(_):
             raise OSError("disk full")
+
         with self.assertRaises(OSError):
             h.call(audit=broken)
         self.assertEqual(h.fetched, [])
@@ -102,7 +166,9 @@ class FailClosed(unittest.TestCase):
     def test_revoked_and_expired(self):
         self.refused("grant_revoked", harness={"grants": [grant("claude-code", CC, revoked=True)]})
         self.refused("grant_expired", harness={"grants": [grant("claude-code", CC, expires=NOW)]})
-        self.refused("grant_expired", harness={"grants": [grant("claude-code", CC, expires=NOW - timedelta(seconds=1))]})
+        self.refused(
+            "grant_expired", harness={"grants": [grant("claude-code", CC, expires=NOW - timedelta(seconds=1))]}
+        )
 
     def test_stale_and_future_dated_responses_are_not_returned(self):
         for at in (NOW - timedelta(seconds=301), NOW + timedelta(seconds=61)):
@@ -126,7 +192,12 @@ class FailClosed(unittest.TestCase):
 
 class Isolation(unittest.TestCase):
     def test_personal_and_bytalos_do_not_share_grants_identity_or_cache(self):
-        h = Harness(grants=[grant("claude-code", CC, "personal"), grant("claude-code", CC, "bytalos", account="acct-b", credential_ref="bws-jira-read-bytalos")])
+        h = Harness(
+            grants=[
+                grant("claude-code", CC, "personal"),
+                grant("claude-code", CC, "bytalos", account="acct-b", credential_ref="bws-jira-read-bytalos"),
+            ]
+        )
         self.assertEqual(h.call(tenant="personal").reason, "ok")
         self.assertEqual(h.call(tenant="bytalos").reason, "no_grant")  # wrong account for the Bytalos grant
         self.assertEqual(h.call(tenant="bytalos", account="acct-b").reason, "ok")
@@ -136,15 +207,22 @@ class Isolation(unittest.TestCase):
 
     def test_revoking_one_client_leaves_the_other_and_other_sources_alone(self):
         h = Harness()
-        h.grants = S.revoke(h.grants + (grant("claude-code", CC, tool="jira.get_issue", account="acct-2"),), "claude-code")
+        h.grants = S.revoke(
+            h.grants + (grant("claude-code", CC, tool="jira.get_issue", account="acct-2"),), "claude-code"
+        )
         self.assertEqual(h.call().reason, "grant_revoked")
         self.assertEqual(h.call("codex", CX).reason, "ok")
         self.assertEqual(S.revoke((), "codex"), ())
-        self.assertEqual(A.decide(POLICY, CC, "github", "read")[0], "allow")  # the policy for other services did not change
-        self.assertEqual(A.decide(POLICY, CC, "notion", "read"), ("deny", "service_off"))  # and nothing new became implicitly allowed
+        self.assertEqual(
+            A.decide(POLICY, CC, "github", "read")[0], "allow"
+        )  # the policy for other services did not change
+        self.assertEqual(
+            A.decide(POLICY, CC, "notion", "read"), ("deny", "service_off")
+        )  # and nothing new became implicitly allowed
 
     def test_the_module_imports_no_network_or_credential_code(self):
         import pathlib
+
         text = pathlib.Path(S.__file__).read_text()
         for word in ("urllib", "requests", "socket", "subprocess", "os.environ", "open("):
             self.assertNotIn(word, text)

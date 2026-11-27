@@ -1,6 +1,7 @@
 """outcome 2: the credential list is names, providers and dates only, every entry is complete, and a dated entry warns
 through the existing expiry alert.
 """
+
 import datetime as dt
 import re
 import unittest
@@ -10,13 +11,23 @@ from lifeos.platform import credentials as cred
 from lifeos.sources.apps import alerts_app as app
 
 TODAY = dt.date(2026, 11, 10)
-SECRET_SHAPES = (re.compile(r"[A-Za-z0-9+/=_]{32,}"), re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I),
-                 re.compile(r"\b(ghp_|github_pat_|ntn_|secret_|xox[bp]-|sk-|AKIA)[A-Za-z0-9_]+"), re.compile(r"-----BEGIN"), re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"),
-                 re.compile(r"https?://[^\s]*[?&](token|key|secret)=", re.I))
+SECRET_SHAPES = (
+    re.compile(r"[A-Za-z0-9+/=_]{32,}"),
+    re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I),
+    re.compile(r"\b(ghp_|github_pat_|ntn_|secret_|xox[bp]-|sk-|AKIA)[A-Za-z0-9_]+"),
+    re.compile(r"-----BEGIN"),
+    re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"),
+    re.compile(r"https?://[^\s]*[?&](token|key|secret)=", re.I),
+)
 
 
-BITWARDEN_NAMES = ("openclaw/outlook/clientId", "openclaw/outlook/personal/mailboxFingerprint", "openclaw/outlook/personal/refreshToken",
-                   "openclaw/outlook/work/mailboxFingerprint", "openclaw/outlook/work/refreshToken")  # secret NAMES Jim gave
+BITWARDEN_NAMES = (
+    "openclaw/outlook/clientId",
+    "openclaw/outlook/personal/mailboxFingerprint",
+    "openclaw/outlook/personal/refreshToken",
+    "openclaw/outlook/work/mailboxFingerprint",
+    "openclaw/outlook/work/refreshToken",
+)  # secret NAMES Jim gave
 
 
 def secret_like(text):
@@ -41,7 +52,9 @@ class TheList(unittest.TestCase):
             if e["expiry_source"] in ("none", "no_expiry"):
                 self.assertIsNone(e["expires"], e["key"])
             if e["expiry_source"] == "no_expiry":
-                self.assertTrue(e.get("source_label", "").startswith("No fixed expiry ("), e["key"])  # a stated reason, never a bare claim
+                self.assertTrue(
+                    e.get("source_label", "").startswith("No fixed expiry ("), e["key"]
+                )  # a stated reason, never a bare claim
 
     def test_no_value_looks_like_a_secret_an_id_an_email_or_a_key(self):
         for e in cred.load():
@@ -50,22 +63,44 @@ class TheList(unittest.TestCase):
                     self.assertFalse(secret_like(value), (e["key"], field))
 
     def test_negative_control_the_secret_check_catches_planted_values(self):
-        for planted in ("ghp_" + "a" * 36, "github_pat_" + "B" * 40, "secret_" + "c" * 30, "00000000-0000-4000-8000-000000000000", "-----" + "BEGIN " + "PRIV" + "ATE KEY-----", "jim@example.com",
-                        "https://x.test/path?token=abc", "A" * 40):
+        for planted in (
+            "ghp_" + "a" * 36,
+            "github_pat_" + "B" * 40,
+            "secret_" + "c" * 30,
+            "00000000-0000-4000-8000-000000000000",
+            "-----" + "BEGIN " + "PRIV" + "ATE KEY-----",
+            "jim@example.com",
+            "https://x.test/path?token=abc",
+            "A" * 40,
+        ):
             self.assertTrue(secret_like(planted), planted)
         self.assertFalse(secret_like("Notion internal integration secrets have no expiry"))
-        self.assertFalse(secret_like("Bitwarden secret names: " + ", ".join(BITWARDEN_NAMES)))  # the listed names are allowed
+        self.assertFalse(
+            secret_like("Bitwarden secret names: " + ", ".join(BITWARDEN_NAMES))
+        )  # the listed names are allowed
         self.assertTrue(secret_like("openclaw/outlook/work/" + "Ab1" * 12))
 
     def test_the_file_is_names_only_so_nothing_in_it_could_be_a_value(self):
         fields = {k for e in cred.load() for k in e}
         self.assertNotIn("value", fields)
-        self.assertTrue(fields <= set(cred.REQUIRED) | set(cred.OPTIONAL), fields - set(cred.REQUIRED))  # only the known name-and-date fields
+        self.assertTrue(
+            fields <= set(cred.REQUIRED) | set(cred.OPTIONAL), fields - set(cred.REQUIRED)
+        )  # only the known name-and-date fields
 
 
 class Rows(unittest.TestCase):
     def entry(self, expires, source="manual"):
-        return {"key": "k", "label": "L", "provider": "P", "used_for": "u", "read_in": "r", "expiry_source": source, "expires": expires, "how_read": "h", "renew": "do it"}
+        return {
+            "key": "k",
+            "label": "L",
+            "provider": "P",
+            "used_for": "u",
+            "read_in": "r",
+            "expiry_source": source,
+            "expires": expires,
+            "how_read": "h",
+            "renew": "do it",
+        }
 
     def test_status_follows_the_days_left(self):
         for days, want in ((-1, "Expired"), (0, "Warning"), (7, "Warning"), (8, "OK"), (300, "OK")):
@@ -94,8 +129,12 @@ class Rows(unittest.TestCase):
 class Warning(unittest.TestCase):
     def test_a_dated_credential_inside_seven_days_raises_the_existing_expiry_alert(self):
         counts = {"stopped_sources": [], "yield_72h": {}, "yield_7d": {}, "daily": {}}
-        soon = {"k": {"label": "Test token", "expires": (TODAY + dt.timedelta(days=5)).isoformat(), "renew": "renew it"}}
-        far = {"k": {"label": "Test token", "expires": (TODAY + dt.timedelta(days=60)).isoformat(), "renew": "renew it"}}
+        soon = {
+            "k": {"label": "Test token", "expires": (TODAY + dt.timedelta(days=5)).isoformat(), "renew": "renew it"}
+        }
+        far = {
+            "k": {"label": "Test token", "expires": (TODAY + dt.timedelta(days=60)).isoformat(), "renew": "renew it"}
+        }
         now = dt.datetime(2026, 11, 10, 12, 0)
         found = [a for a in job_alerts.detect(counts, now, soon) if a.key == "expiry_k"]
         self.assertEqual(len(found), 1)
@@ -115,7 +154,12 @@ class Screen(unittest.TestCase):
         self.assertFalse(secret_like(re.sub(r"<[^>]+>", " ", html)))
 
     def test_the_page_carries_the_credentials_section_and_reads_no_notion(self):
-        status, _, body, _ = app._page({"enabled": True, "mute": "", "channels": {k: ("ntfy",) for k in app.registry.REGISTRY}}, b"secret", "jim", dt.datetime(2026, 11, 10, 12, 0))
+        status, _, body, _ = app._page(
+            {"enabled": True, "mute": "", "channels": {k: ("ntfy",) for k in app.registry.REGISTRY}},
+            b"secret",
+            "jim",
+            dt.datetime(2026, 11, 10, 12, 0),
+        )
         self.assertEqual(status, 200)
         self.assertIn(b"Credentials", body)
         source = open(app.__file__).read() + open(cred.__file__).read()
@@ -129,15 +173,22 @@ if __name__ == "__main__":
 
 class NoFixedExpiry(unittest.TestCase):
     """a credential with nothing that expires says so, with its reason"""
+
     def test_outlook_and_the_calendar_key_show_the_reason_and_the_status(self):
         rows = {r["key"]: r for r in cred.rows(TODAY)}
         self.assertEqual(rows["outlook_sign_in"]["source"], "No fixed expiry (delegated sign-in, no app secret)")
-        self.assertEqual((rows["outlook_sign_in"]["status"], rows["gcal_service_account"]["status"]), ("No fixed expiry", "No fixed expiry"))
+        self.assertEqual(
+            (rows["outlook_sign_in"]["status"], rows["gcal_service_account"]["status"]),
+            ("No fixed expiry", "No fixed expiry"),
+        )
         self.assertNotIn("No fixed expiry", [r["status"] for r in rows.values() if r["expires"]])
 
     def test_the_new_bitwarden_and_atlassian_dates_are_in_the_list(self):
         got = {k: v["expires"] for k, v in cred.expiries().items()}
-        self.assertEqual((got["bws_runtime_token"], got["bws_runtime_token_old"], got["bws_mac_token"]), ("2027-11-04", "2026-12-05", "2027-11-04"))
+        self.assertEqual(
+            (got["bws_runtime_token"], got["bws_runtime_token_old"], got["bws_mac_token"]),
+            ("2027-11-04", "2026-12-05", "2027-11-04"),
+        )
         self.assertEqual((got["atlassian_openclaw_jira"], got["atlassian_orca"]), ("2027-10-10", "2027-11-07"))
 
     def test_the_screen_counts_no_fixed_expiry_apart_from_unknown(self):

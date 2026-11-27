@@ -11,8 +11,14 @@ from lifeos.run import STAGES
 from tests.interview.test_notion import Fake, ENV
 
 ROOT = Path(__file__).resolve().parents[2]
-CASE = {"company": "Example", "role": "Program Manager", "confirmed_round": True,
-        "interview_date": "2026-10-01", "interviewer": None, "ordinal": 1}
+CASE = {
+    "company": "Example",
+    "role": "Program Manager",
+    "confirmed_round": True,
+    "interview_date": "2026-10-01",
+    "interviewer": None,
+    "ordinal": 1,
+}
 
 
 def env(case=CASE, **extra):
@@ -59,8 +65,10 @@ class SecretContract(unittest.TestCase):
                 refused(self, env({**CASE, key: value}), "acceptance_secret_invalid")
 
     def test_valid_secret_builds_the_exact_queries(self):
-        self.assertEqual(acceptance.parse(json.dumps(CASE)),
-                         (ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", None, 1)))
+        self.assertEqual(
+            acceptance.parse(json.dumps(CASE)),
+            (ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", None, 1)),
+        )
         both = {**CASE, "interviewer": " Sam Synthetic ", "ordinal": None}
         self.assertEqual(acceptance.parse(json.dumps(both))[1], RoundQuery(True, "2026-10-01", "Sam Synthetic", None))
 
@@ -89,6 +97,7 @@ class Delegation(unittest.TestCase):
     def test_stage_is_registered_and_normal_stages_stay_evidence_free(self):
         self.assertIn("interview-acceptance", STAGES)
         from lifeos.sources.interview import interview_evidence
+
         for name, owner, target in (("interview", interview_evidence, "run"), ("interview-probe", stage, "probe")):
             with patch.object(owner, target, return_value={}) as call:
                 STAGES[name](20, False)
@@ -107,12 +116,12 @@ class WorkflowWiring(unittest.TestCase):
 
     def job(self):
         start = self.text.index("\n  interview:\n")
-        return self.text[start:self.text.index("\n  report:\n")]
+        return self.text[start : self.text.index("\n  report:\n")]
 
     def step(self):
         job = self.job()
         start = job.index("      - id: iacc")
-        return job[start:job.index("      - name: Interview warning")]
+        return job[start : job.index("      - name: Interview warning")]
 
     def test_step_is_manual_dispatch_with_its_own_input_only(self):
         step = self.step()
@@ -125,15 +134,27 @@ class WorkflowWiring(unittest.TestCase):
     def test_secret_is_step_scoped_and_used_once(self):
         self.assertEqual(self.text.count("secrets.INTERVIEW_ACCEPTANCE_JSON"), 0)  # not a GitHub secret any more
         self.assertEqual(self.text.count("steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON"), 1)
-        self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON }}", self.step())
-        self.assertNotIn("INTERVIEW_ACCEPTANCE_JSON:", self.text[:self.text.index("\njobs:")])  # never workflow-level env
+        self.assertIn(
+            "INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON }}", self.step()
+        )
+        self.assertNotIn(
+            "INTERVIEW_ACCEPTANCE_JSON:", self.text[: self.text.index("\njobs:")]
+        )  # never workflow-level env
 
     def test_job_gate_cannot_run_for_schedule_and_jobs_credentials_stay_blank(self):
         job = self.job()
         self.assertIn("github.event_name == 'workflow_dispatch'", job.split("runs-on")[0])
-        for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "FIT_PROFILE_JSON"):
+        for name in (
+            "NOTION_API_TOKEN",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+            "TINYFISH_API_KEY",
+            "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+            "FIT_PROFILE_JSON",
+        ):
             self.assertIn(f'{name}: ""', job)
-        self.assertEqual(len([m for m in re.findall(r"secrets\.\w+", job) if m != "secrets.DOPPLER_TOKEN"]), 3)  # 4 (was 8)
+        self.assertEqual(
+            len([m for m in re.findall(r"secrets\.\w+", job) if m != "secrets.DOPPLER_TOKEN"]), 3
+        )  # 4 (was 8)
 
     def test_command_never_embeds_the_case(self):
         step = self.step()

@@ -1,4 +1,5 @@
 """the Gmail and Calendar fakes keep the real clients' method signatures."""
+
 import unittest
 
 from tests.kit.conformance import client_subjects as subjects
@@ -19,6 +20,7 @@ class ClientConformance(unittest.TestCase):
             if out["params"]:
                 out["params"] = out["params"][:-1] or ["x"]
             return out
+
         self.assertTrue(runner.problems(SPEC, "fake_gmail", drifted))
 
 

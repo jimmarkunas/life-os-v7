@@ -1,4 +1,5 @@
 """test data: a fake Runtime Configuration data source (the one settings source)."""
+
 from lifeos.platform import runtime_config as rc
 from lifeos.platform import settings
 
@@ -23,6 +24,7 @@ def row(name, value, kind=None, revision=1, active=True, **skip):
 
 class Source:
     """A data source addressed by ID."""
+
     def __init__(self, rows, pages=1, broken=False, title="Runtime Configuration"):
         self.rows, self.pages, self.broken, self.title, self.calls = rows, pages, broken, title, []
 
@@ -33,7 +35,7 @@ class Source:
         assert (method, path) == ("POST", f"/data_sources/{SOURCE}/query"), (method, path)
         start = int((body or {}).get("start_cursor") or 0)
         size = -(-len(self.rows) // self.pages) or 1
-        chunk = self.rows[start:start + size]
+        chunk = self.rows[start : start + size]
         more = start + size < len(self.rows)
         return {"results": chunk, "has_more": more, "next_cursor": str(start + size) if more else None}
 

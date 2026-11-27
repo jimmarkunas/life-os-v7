@@ -1,6 +1,7 @@
 """Synthetic Action Inbox fixtures: fake native records for the six sources in two workspaces, fake sources and a fake
 executor.
 """
+
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -24,15 +25,61 @@ def raw(source, workspace):
     p = "personal" if workspace == "personal" else "bytalos"
     base = {"updated": "2026-11-14T13:30:00", "tz": "America/Chicago", "url": f"https://example.test/{source}/{p}/1"}
     return {
-        "jira": {**base, "key": f"LIFE-{1 if p == 'personal' else 2}", "summary": f"{SAME_TITLE} {CANARY}", "description": CANARY, "assignee": "jim", "status": "Human UAT",
-                 "evidence": [f"https://example.test/pr/{p}"]},
-        "todoist": {**base, "id": f"t{1 if p == 'personal' else 2}", "content": SAME_TITLE, "description": CANARY, "assignee": "jim", "status": "open", "due": "2026-11-14T09:00:00",
-                    "project_scope": p},
-        "concord": {**base, "id": f"c{1 if p == 'personal' else 2}", "title": SAME_TITLE, "body": CANARY, "agent": "claude-code", "status": "pending_approval",
-                    "evidence": [f"concord://evidence/{p}"], "correlation_id": f"corr-{p}"},
-        "followup": {**base, "id": f"f{1 if p == 'personal' else 2}", "title": SAME_TITLE, "notes": CANARY, "owner": "jim", "status": "open", "next_checkpoint": "2026-11-14T10:00:00"},
-        "calendar": {**base, "id": f"e{1 if p == 'personal' else 2}", "summary": SAME_TITLE, "description": CANARY, "status": "confirmed", "start": "2026-11-14T16:00:00"},
-        "asana": {**base, "gid": f"a{1 if p == 'personal' else 2}", "name": SAME_TITLE, "notes": CANARY, "assignee": "jim", "status": "open", "due": "2026-11-15T09:00:00"},
+        "jira": {
+            **base,
+            "key": f"LIFE-{1 if p == 'personal' else 2}",
+            "summary": f"{SAME_TITLE} {CANARY}",
+            "description": CANARY,
+            "assignee": "jim",
+            "status": "Human UAT",
+            "evidence": [f"https://example.test/pr/{p}"],
+        },
+        "todoist": {
+            **base,
+            "id": f"t{1 if p == 'personal' else 2}",
+            "content": SAME_TITLE,
+            "description": CANARY,
+            "assignee": "jim",
+            "status": "open",
+            "due": "2026-11-14T09:00:00",
+            "project_scope": p,
+        },
+        "concord": {
+            **base,
+            "id": f"c{1 if p == 'personal' else 2}",
+            "title": SAME_TITLE,
+            "body": CANARY,
+            "agent": "claude-code",
+            "status": "pending_approval",
+            "evidence": [f"concord://evidence/{p}"],
+            "correlation_id": f"corr-{p}",
+        },
+        "followup": {
+            **base,
+            "id": f"f{1 if p == 'personal' else 2}",
+            "title": SAME_TITLE,
+            "notes": CANARY,
+            "owner": "jim",
+            "status": "open",
+            "next_checkpoint": "2026-11-14T10:00:00",
+        },
+        "calendar": {
+            **base,
+            "id": f"e{1 if p == 'personal' else 2}",
+            "summary": SAME_TITLE,
+            "description": CANARY,
+            "status": "confirmed",
+            "start": "2026-11-14T16:00:00",
+        },
+        "asana": {
+            **base,
+            "gid": f"a{1 if p == 'personal' else 2}",
+            "name": SAME_TITLE,
+            "notes": CANARY,
+            "assignee": "jim",
+            "status": "open",
+            "due": "2026-11-15T09:00:00",
+        },
     }[source]
 
 
@@ -62,8 +109,17 @@ def grants(workspaces=("personal", "bytalos"), sources=None, expires=None, revok
         for s, allowed in policy.MATRIX.items():
             if sources and s not in sources:
                 continue
-            out.append(policy.Grant(s, w, f"jim-{w}", frozenset(actions.get(s, allowed) if actions else allowed), f"cred:{s}:{w}", expires or NOW + timedelta(days=1),
-                                    revoked=(s, w) in revoked))
+            out.append(
+                policy.Grant(
+                    s,
+                    w,
+                    f"jim-{w}",
+                    frozenset(actions.get(s, allowed) if actions else allowed),
+                    f"cred:{s}:{w}",
+                    expires or NOW + timedelta(days=1),
+                    revoked=(s, w) in revoked,
+                )
+            )
     return tuple(out)
 
 
@@ -106,6 +162,7 @@ def memory_ledger():
     @contextmanager
     def connect():
         yield shared
+
     ledger = Ledger(connect)
     ledger.ensure_schema()
     return ledger
@@ -115,6 +172,7 @@ def file_ledger(path, create=True):
     """A ledger over the file at `path`: a new call is a new worker (or a restarted process) seeing the same durable
     state.
     """
+
     @contextmanager
     def connect():
         connection = FileDb(path)
@@ -122,6 +180,7 @@ def file_ledger(path, create=True):
             yield connection
         finally:
             connection.raw.close()
+
     ledger = Ledger(connect)
     if create:
         ledger.ensure_schema()

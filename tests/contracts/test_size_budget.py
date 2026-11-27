@@ -1,4 +1,5 @@
 """the size budget of the big workflows."""
+
 import pathlib
 import tempfile
 import unittest
@@ -17,8 +18,7 @@ BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
 
 
 def problems(flows, src, ratchet=RATCHET):
-    """> one text per breach: a generated workflow over its limit, a part over 8 KB, a step name over 80 characters.
-    """
+    """> one text per breach: a generated workflow over its limit, a part over 8 KB, a step name over 80 characters."""
     out = []
     for path in sorted(pathlib.Path(flows).glob("*.yml")):
         if path.name not in BUDGETED:
@@ -27,7 +27,11 @@ def problems(flows, src, ratchet=RATCHET):
         if size > ratchet.get(path.name, GENERATED_MAX):
             out.append(f"{path.name} is {size} bytes, over {ratchet.get(path.name, GENERATED_MAX)}")
         for name, job in (yaml.safe_load(path.read_text()).get("jobs") or {}).items():
-            out += [f"{path.name} {name}: step name of {len(s['name'])} characters: {s['name'][:40]}" for s in job.get("steps") or [] if len(str(s.get("name", ""))) > NAME_MAX]
+            out += [
+                f"{path.name} {name}: step name of {len(s['name'])} characters: {s['name'][:40]}"
+                for s in job.get("steps") or []
+                if len(str(s.get("name", ""))) > NAME_MAX
+            ]
     for part in sorted(pathlib.Path(src).rglob("*.yml")):
         if part.name == "why.yml":
             continue
@@ -50,11 +54,17 @@ class Budget(unittest.TestCase):
             flows.mkdir()
             src.mkdir(parents=True)
             (src / "010-a.yml").write_text("# " + "x" * PART_MAX + "\n")
-            (flows / "hourly.yml").write_text("jobs:\n  a:\n    steps:\n      - name: " + "n" * (NAME_MAX + 1) + "\n        run: echo\n")
+            (flows / "hourly.yml").write_text(
+                "jobs:\n  a:\n    steps:\n      - name: " + "n" * (NAME_MAX + 1) + "\n        run: echo\n"
+            )
             (flows / "domains.yml").write_text("jobs: {}\n# " + "y" * 200 + "\n")
             found = problems(flows, src.parent, ratchet={"domains.yml": 100})
         self.assertEqual(len(found), 3, found)
-        self.assertTrue(any("010-a.yml" in f for f in found) and any("step name" in f for f in found) and any("domains.yml" in f for f in found))
+        self.assertTrue(
+            any("010-a.yml" in f for f in found)
+            and any("step name" in f for f in found)
+            and any("domains.yml" in f for f in found)
+        )
 
     def test_a_clean_tree_has_no_problem_and_the_caps_sit_above_the_reached_sizes_with_room_to_grow(self):
         with tempfile.TemporaryDirectory() as tmp:

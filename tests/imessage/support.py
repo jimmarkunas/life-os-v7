@@ -1,4 +1,5 @@
 """test helpers that more than one test module (often in another domain) uses."""
+
 import struct
 import ipaddress
 
@@ -11,7 +12,11 @@ SIG = b"\r\n\r\n\x00\r\nQUIT\n"
 
 def v2(src, cmd=0x21):
     a = ipaddress.ip_address(src)
-    fam, size, dst = (0x11, 12, ipaddress.IPv4Address("127.0.0.1").packed) if a.version == 4 else (0x21, 36, ipaddress.IPv6Address("::1").packed)
+    fam, size, dst = (
+        (0x11, 12, ipaddress.IPv4Address("127.0.0.1").packed)
+        if a.version == 4
+        else (0x21, 36, ipaddress.IPv6Address("::1").packed)
+    )
     return SIG + bytes([cmd, fam]) + struct.pack("!H", size) + a.packed + dst + struct.pack("!HH", 50000, 47342)
 
 

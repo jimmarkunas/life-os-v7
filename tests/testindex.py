@@ -1,4 +1,5 @@
 """a test index (which tests run which production file) and a selector that picks the tests a change can affect."""
+
 import argparse
 import datetime
 import json
@@ -15,10 +16,32 @@ SCHEMA = 1
 MAX_AGE_DAYS = 7
 
 FULL = "FULL"
-FULL_PREFIXES = ("tests/kit/", ".github/", ".claude/", "lifeos/platform/", "requirements")  # a change here can affect any test
-FULL_FILES = ("docs/PRIVACY.md", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini", ".coveragerc", "conftest.py", ".gitignore")
+FULL_PREFIXES = (
+    "tests/kit/",
+    ".github/",
+    ".claude/",
+    "lifeos/platform/",
+    "requirements",
+)  # a change here can affect any test
+FULL_FILES = (
+    "docs/PRIVACY.md",
+    "pyproject.toml",
+    "setup.cfg",
+    "setup.py",
+    "tox.ini",
+    ".coveragerc",
+    "conftest.py",
+    ".gitignore",
+)
 FULL_SUFFIXES = (".lock",)
-REPO_WIDE = ("tests.platform.test_docstyle", "tests.platform.test_settings", "tests.platform.test_bws_plain", "tests.platform.test_switches", "tests.platform.test_due", "tests.jira.test_jira")
+REPO_WIDE = (
+    "tests.platform.test_docstyle",
+    "tests.platform.test_settings",
+    "tests.platform.test_bws_plain",
+    "tests.platform.test_switches",
+    "tests.platform.test_due",
+    "tests.jira.test_jira",
+)
 IGNORED_PREFIXES = ("docs/", "tools/")  # docs run the contracts only
 
 
@@ -51,7 +74,7 @@ def build(coverage_json, tests, skipped=(), commit="", now=None):
             for context in contexts:
                 if context in position:
                     found.add(position[context])
-        covers[path[len("lifeos/"):]] = sorted(found)
+        covers[path[len("lifeos/") :]] = sorted(found)
     modules = {}
     for t in ids:
         parts = t.split(".")
@@ -84,7 +107,10 @@ def dump(index):
     lines.append('  "covers": {')
     items = list(index["covers"].items())
     for i, (path, nums) in enumerate(items):
-        lines.append("    %s: %s%s" % (json.dumps(path), json.dumps(nums, separators=(",", ":")), "," if i < len(items) - 1 else ""))
+        lines.append(
+            "    %s: %s%s"
+            % (json.dumps(path), json.dumps(nums, separators=(",", ":")), "," if i < len(items) - 1 else "")
+        )
     lines.append("  }")
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -116,7 +142,7 @@ def select(changed, index, root=ROOT):
             return FULL
         if "/" not in path and not path.endswith(".md"):
             return FULL
-        if path.startswith("tests/") and "/" not in path[len("tests/"):]:
+        if path.startswith("tests/") and "/" not in path[len("tests/") :]:
             if path.startswith("tests/test_") and path.endswith(".py"):
                 targets.add(dotted(path))
                 continue
@@ -130,7 +156,7 @@ def select(changed, index, root=ROOT):
         if path.startswith(IGNORED_PREFIXES) or path.endswith(".md"):
             continue
         if path.startswith("lifeos/"):
-            rel = path[len("lifeos/"):]
+            rel = path[len("lifeos/") :]
             package = rel.split("/")[0] if "/" in rel else None
             mirror = pathlib.Path(root) / "tests" / package if package else None
             stem = os.path.splitext(os.path.basename(rel))[0]
@@ -153,7 +179,9 @@ def select(changed, index, root=ROOT):
     targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}
     targets = {_current(t, known, root) for t in targets}  # ...
     modules = {t for t in targets if t in known}
-    return sorted(t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules))  # a test id inside a selected module would run twice
+    return sorted(
+        t for t in targets if t in modules or not any(t.startswith(m + ".") for m in modules)
+    )  # a test id inside a selected module would run twice
 
 
 def _current(target, known, root=ROOT):
@@ -185,7 +213,9 @@ def check(index, now=None, max_age_days=MAX_AGE_DAYS):
         return ["the test index is missing or unreadable"]
     now = now or datetime.datetime.now(datetime.timezone.utc)
     try:
-        made = datetime.datetime.strptime(index["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+        made = datetime.datetime.strptime(index["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=datetime.timezone.utc
+        )
         age = (now - made).days
         return ["the test index is %d days old (limit %d)" % (age, max_age_days)] if age > max_age_days else []
     except (KeyError, ValueError):
@@ -194,7 +224,9 @@ def check(index, now=None, max_age_days=MAX_AGE_DAYS):
 
 def all_tests(root=ROOT):
     """> (every test id, the skipped ones), found by loading the suite the same way CI does."""
-    suite = unittest.defaultTestLoader.discover(str(pathlib.Path(root) / "tests"), pattern="test_*.py", top_level_dir=str(root))
+    suite = unittest.defaultTestLoader.discover(
+        str(pathlib.Path(root) / "tests"), pattern="test_*.py", top_level_dir=str(root)
+    )
     found, skipped = [], []
 
     def walk(item):
@@ -207,12 +239,15 @@ def all_tests(root=ROOT):
             method = getattr(item, item._testMethodName, None) if hasattr(item, "_testMethodName") else None
             if getattr(item.__class__, "__unittest_skip__", False) or getattr(method, "__unittest_skip__", False):
                 skipped.append(tid)
+
     walk(suite)
     return found, skipped
 
 
 def changed_files(base):
-    out = subprocess.run(["git", "diff", "--name-only", base, "HEAD"], capture_output=True, text=True, cwd=ROOT, check=True).stdout
+    out = subprocess.run(
+        ["git", "diff", "--name-only", base, "HEAD"], capture_output=True, text=True, cwd=ROOT, check=True
+    ).stdout
     return [line.strip() for line in out.splitlines() if line.strip()]
 
 
@@ -222,15 +257,52 @@ def build_command(out):
     data = ROOT / ".coverage-test-index.data"
     rc.write_text("[run]\ndynamic_context = test_function\nsource = lifeos\n")
     try:
-        subprocess.run([sys.executable, "-m", "coverage", "run", "--rcfile=%s" % rc, "--data-file=%s" % data, "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-p", "test_*.py"], cwd=ROOT, check=True,
-                       env={**os.environ, "TESTINDEX_BUILDING": "1"})
-        subprocess.run([sys.executable, "-m", "coverage", "json", "--rcfile=%s" % rc, "--data-file=%s" % data, "--show-contexts", "-o", str(ROOT / ".coverage-test-index.json"), "-q"], cwd=ROOT, check=True)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                "--rcfile=%s" % rc,
+                "--data-file=%s" % data,
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests",
+                "-t",
+                ".",
+                "-p",
+                "test_*.py",
+            ],
+            cwd=ROOT,
+            check=True,
+            env={**os.environ, "TESTINDEX_BUILDING": "1"},
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "json",
+                "--rcfile=%s" % rc,
+                "--data-file=%s" % data,
+                "--show-contexts",
+                "-o",
+                str(ROOT / ".coverage-test-index.json"),
+                "-q",
+            ],
+            cwd=ROOT,
+            check=True,
+        )
         coverage_json = json.loads((ROOT / ".coverage-test-index.json").read_text())
     finally:
         for leftover in (rc, data, ROOT / ".coverage-test-index.json"):
             leftover.unlink(missing_ok=True)
     tests, skipped = all_tests()
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT
+    ).stdout.strip()
     index = build(coverage_json, tests, skipped, commit)
     pathlib.Path(out).write_text(dump(index))
     return index
@@ -248,12 +320,17 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "build":
         index = build_command(args.out)
-        print("test index: %d tests, %d production files, %d uncovered" % (len(index["tests"]), len(index["covers"]), len(index["uncovered"])))
+        print(
+            "test index: %d tests, %d production files, %d uncovered"
+            % (len(index["tests"]), len(index["covers"]), len(index["uncovered"]))
+        )
         return 0
     if args.command == "select":
         try:
             index = load()
-            picked = select(changed_files(args.base), None if check(index) else index)  # an index older than 7 days is never used
+            picked = select(
+                changed_files(args.base), None if check(index) else index
+            )  # an index older than 7 days is never used
         except Exception:
             picked = FULL
         print(FULL if picked == FULL else "\n".join(picked))

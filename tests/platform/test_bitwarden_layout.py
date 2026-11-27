@@ -1,6 +1,7 @@
 """the Bitwarden layout document names exactly three projects, and the alert ids are the same in the code that reads
 them.
 """
+
 import re
 import unittest
 from pathlib import Path

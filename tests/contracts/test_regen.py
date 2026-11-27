@@ -1,6 +1,7 @@
 """tools/regen.py finds nothing to add or drop (the registries are current), adds the rows a new stage needs, and with
 --commit (what preflight runs).
 """
+
 import io
 import pathlib
 import sys
@@ -31,7 +32,12 @@ class Regen(unittest.TestCase):
         with mock.patch.dict(run.STAGES, {"brand-new": run.lazy("lifeos.accountability.changelog")}):
             code, out = self.check()
         self.assertEqual(code, 1)
-        for table in ("stages.json: added brand-new", "stage_budgets.json: rendered from stages.json", "timeouts.md: added brand-new", "stage-isolation.md: added brand-new"):
+        for table in (
+            "stages.json: added brand-new",
+            "stage_budgets.json: rendered from stages.json",
+            "timeouts.md: added brand-new",
+            "stage-isolation.md: added brand-new",
+        ):
             self.assertIn(table, out)
 
     def test_commit_mode_refuses_a_dirty_tree_and_a_check_run(self):
@@ -55,7 +61,7 @@ class Regen(unittest.TestCase):
         added = next(call for call in calls if call[0] == "add")
         committed = next(call for call in calls if call[0] == "commit")
         self.assertEqual(list(added[2:]), wanted)
-        self.assertEqual(list(committed[-len(wanted):]), wanted)
+        self.assertEqual(list(committed[-len(wanted) :]), wanted)
         self.assertIn("[LIFE-9]", committed[3])
 
 

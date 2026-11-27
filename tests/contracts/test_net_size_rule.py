@@ -1,6 +1,7 @@
 """the net-size rule is in the three places agents read (pull request template, receipt template, AGENTS.md), and
 AGENTS.md stays under its byte cap.
 """
+
 import pathlib
 import unittest
 
@@ -27,7 +28,9 @@ class NetSizeRule(unittest.TestCase):
         self.assertFalse(asks_for_net_size("Jira: LIFE-\n\n## What changes\n\n## Evidence\n\n## Not proven yet\n"))
         self.assertFalse(asks_for_net_size("## Net size\n\nlines, counted by hand\n"))
 
-    def test_the_pull_request_template_asks_why_a_second_package_changed_and_how_a_sweep_is_labelled(self):  # makes Jim's 1-in-5 cross-package target measurable
+    def test_the_pull_request_template_asks_why_a_second_package_changed_and_how_a_sweep_is_labelled(
+        self,
+    ):  # makes Jim's 1-in-5 cross-package target measurable
         template = (ROOT / ".github/pull_request_template.md").read_text()
         self.assertTrue(asks_about_cross_package(template))
         self.assertLess(template.index("## Net size"), template.index("## Cross-package change"))
@@ -46,7 +49,7 @@ class NetSizeRule(unittest.TestCase):
         self.assertEqual(text.count("**Net size.**"), 1)
         rules = text.index("## Rules (each enforced by a test)")
         following = text.find("\n## ", rules + 5)
-        section = text[rules:following if following != -1 else len(text)]
+        section = text[rules : following if following != -1 else len(text)]
         self.assertIn("**Net size.**", section)
         self.assertIn(COMMAND, section)
 

@@ -1,6 +1,7 @@
 """two cards writing different regions of the Daily Report at the same moment both succeed (no 409, no 404, nothing aimed
 at the page itself)
 """
+
 import copy
 import threading
 import time
@@ -17,7 +18,11 @@ class Fail(Exception):
 
 
 def para(text):
-    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}}
+    return {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]},
+    }
 
 
 class ConflictingNotion:
@@ -64,7 +69,9 @@ class ConflictingNotion:
 
 
 def write(client, block_id, title, module, lines, heading=None):
-    return report_region.replace_text(client, block_id, title, module, [para(t) for t in lines], {"x": "unused"}, Fail, "test", True, heading=heading)
+    return report_region.replace_text(
+        client, block_id, title, module, [para(t) for t in lines], {"x": "unused"}, Fail, "test", True, heading=heading
+    )
 
 
 def both_write(rounds, first, second):
@@ -76,9 +83,13 @@ def both_write(rounds, first, second):
             barrier.wait()
             try:
                 work(n)
-            except Exception as error:                                              # noqa: BLE001 - the test reports whatever a thread raised
+            except Exception as error:  # noqa: BLE001 - the test reports whatever a thread raised
                 errors.append(repr(error))
-    threads = [threading.Thread(target=runner, args=(work,), name=name) for name, work in (("mail-job", first), ("agenda-job", second))]
+
+    threads = [
+        threading.Thread(target=runner, args=(work,), name=name)
+        for name, work in (("mail-job", first), ("agenda-job", second))
+    ]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -94,27 +105,44 @@ class TwoCardsAtTheSameMoment(unittest.TestCase):
         self.notion = ConflictingNotion(MailRegions())
 
     def test_two_cards_writing_different_regions_both_succeed_with_no_409_or_404(self):
-        mail = lambda n: write(self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"mail status {n}", f"mail detail {n}"])             # noqa: E731
-        calendar = lambda n: write(self.notion, "calendar-callout", "Calendar", router.OWNERS[router.CALENDAR_REGION], [f"calendar line {n}"])                              # noqa: E731
+        mail = lambda n: write(
+            self.notion,
+            "mail-callout",
+            "Mail Alerts",
+            router.OWNERS[router.MAIL_ALERTS_REGION],
+            [f"mail status {n}", f"mail detail {n}"],
+        )  # noqa: E731
+        calendar = lambda n: write(
+            self.notion, "calendar-callout", "Calendar", router.OWNERS[router.CALENDAR_REGION], [f"calendar line {n}"]
+        )  # noqa: E731
         errors = both_write(15, mail, calendar)
         self.assertEqual((errors, self.notion.conflicts), ([], []))
         regions = {}
         for thread, region in self.notion.touched:
             regions.setdefault(thread, set()).add(region)
         self.assertEqual(regions, {"mail-job": {"mail-callout"}, "agenda-job": {"calendar-callout"}})
-        self.assertEqual([report_region.plain(b) for b in self.notion.inner.children["mail-callout"][1:3]], ["mail status 14", "mail detail 14"])
+        self.assertEqual(
+            [report_region.plain(b) for b in self.notion.inner.children["mail-callout"][1:3]],
+            ["mail status 14", "mail detail 14"],
+        )
         self.assertEqual(report_region.plain(self.notion.inner.children["calendar-callout"][1]), "calendar line 14")
 
     def test_the_simulation_bites_two_writers_on_one_region_collide(self):
-        one = lambda n: write(self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"first {n}"])                                         # noqa: E731
-        two = lambda n: write(self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"second {n}"])                                        # noqa: E731
+        one = lambda n: write(
+            self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"first {n}"]
+        )  # noqa: E731
+        two = lambda n: write(
+            self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"second {n}"]
+        )  # noqa: E731
         errors = both_write(10, one, two)
         self.assertTrue(self.notion.conflicts and errors)
         self.assertTrue(all("NOTION_HTTP_409" in e for e in errors))
 
     def test_the_simulation_bites_a_whole_page_walk_beside_a_card_write_collides(self):
-        walk = lambda n: self.notion.call("GET", f"/blocks/{self.notion.inner.page_id}/children?page_size=100")                                                               # noqa: E731
-        mail = lambda n: write(self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"mail status {n}"])                                   # noqa: E731
+        walk = lambda n: self.notion.call("GET", f"/blocks/{self.notion.inner.page_id}/children?page_size=100")  # noqa: E731
+        mail = lambda n: write(
+            self.notion, "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], [f"mail status {n}"]
+        )  # noqa: E731
         errors = both_write(10, mail, walk)
         self.assertTrue(self.notion.conflicts and errors)
 
@@ -126,6 +154,7 @@ class TwoCardsAtTheSameMoment(unittest.TestCase):
 
 class FailsOnItsFirstWrite:
     """Refuses the first write request it sees the way Notion answers a conflict, then behaves normally."""
+
     WRITES = ("PATCH", "POST", "DELETE", "PUT")
 
     def __init__(self, inner):
@@ -155,7 +184,14 @@ class AFailedWriteKeepsTheLastAcceptedCard(unittest.TestCase):
             notion = MailRegions()
             before = copy.deepcopy(notion.children["mail-callout"])
             with self.assertRaises(NotionError):
-                write(FailsOnItsFirstWrite(notion), "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], ["a new status"], heading=heading)
+                write(
+                    FailsOnItsFirstWrite(notion),
+                    "mail-callout",
+                    "Mail Alerts",
+                    router.OWNERS[router.MAIL_ALERTS_REGION],
+                    ["a new status"],
+                    heading=heading,
+                )
             self.assertEqual(notion.children["mail-callout"], before, heading)
             self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts")
 

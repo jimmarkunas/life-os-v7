@@ -1,4 +1,5 @@
 """Parsing and measuring a connections export."""
+
 import json
 import unittest
 
@@ -11,28 +12,45 @@ You will only see email addresses for connections who have chosen to allow their
 
 '''
 HEAD = "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
-SAMPLE = NOTES + HEAD + "\n".join([
-    'Ada,Example,https://www.linkedin.com/in/ada-example/,,"Acme Technologies, Inc.",Director of Product,05 Sep 2026',
-    'Ada,Example,HTTPS://WWW.LINKEDIN.COM/in/Ada-Example?trk=x,,Acme,VP Product,01 Jan 2020',
-    '"Pat, MBA",Sample,https://www.linkedin.com/in/pat-sample,pat@example.com,Widget Co,Engineer,04 Sep 2026',
-    'Sam,Sample,https://www.linkedin.com/in/sam-sample,,Sam Sample,Founder,03 Sep 2026',
-    'Lee,Example,https://uk.linkedin.com/in/lee-example,,Freelance Consultant,Consultant,02 Sep 2026',
-    'Kim,Example,https://www.linkedin.com/in/kim-example,,Independent Bank,Analyst,not a date',
-    'Ron,Example,,,Globex,Manager,01 Sep 2026',
-    'Ron,Example,,,Globex Group,Manager,31 Aug 2026',
-    'Zed,Example,https://example.com/profile/zed,,Initech,Lead,30 Aug 2026',
-    'Bad,Row,only,three',
-    '',
-]) + "\n"
+SAMPLE = (
+    NOTES
+    + HEAD
+    + "\n".join(
+        [
+            'Ada,Example,https://www.linkedin.com/in/ada-example/,,"Acme Technologies, Inc.",Director of Product,05 Sep 2026',
+            'Ada,Example,HTTPS://WWW.LINKEDIN.COM/in/Ada-Example?trk=x,,Acme,VP Product,01 Jan 2020',
+            '"Pat, MBA",Sample,https://www.linkedin.com/in/pat-sample,pat@example.com,Widget Co,Engineer,04 Sep 2026',
+            'Sam,Sample,https://www.linkedin.com/in/sam-sample,,Sam Sample,Founder,03 Sep 2026',
+            'Lee,Example,https://uk.linkedin.com/in/lee-example,,Freelance Consultant,Consultant,02 Sep 2026',
+            'Kim,Example,https://www.linkedin.com/in/kim-example,,Independent Bank,Analyst,not a date',
+            'Ron,Example,,,Globex,Manager,01 Sep 2026',
+            'Ron,Example,,,Globex Group,Manager,31 Aug 2026',
+            'Zed,Example,https://example.com/profile/zed,,Initech,Lead,30 Aug 2026',
+            'Bad,Row,only,three',
+            '',
+        ]
+    )
+    + "\n"
+)
 
 
 class KeyTests(unittest.TestCase):
     def test_profile_keys_ignore_scheme_case_country_query_and_trailing_slash(self):
-        for url in ("https://www.linkedin.com/in/ada-example/", "HTTP://linkedin.com/in/Ada-Example", "https://uk.linkedin.com/in/ada-example?trk=1#top"):
+        for url in (
+            "https://www.linkedin.com/in/ada-example/",
+            "HTTP://linkedin.com/in/Ada-Example",
+            "https://uk.linkedin.com/in/ada-example?trk=1#top",
+        ):
             self.assertEqual(parse.url_key(url), "ada-example")
 
     def test_blank_and_non_profile_addresses_have_no_key(self):
-        for url in ("", "   ", "https://example.com/in/ada", "https://www.linkedin.com/company/acme", "https://www.linkedin.com/in/"):
+        for url in (
+            "",
+            "   ",
+            "https://example.com/in/ada",
+            "https://www.linkedin.com/company/acme",
+            "https://www.linkedin.com/in/",
+        ):
             self.assertIsNone(parse.url_key(url))
 
     def test_company_key_drops_legal_and_generic_words(self):

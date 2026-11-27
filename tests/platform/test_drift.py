@@ -1,4 +1,5 @@
 """step 0: the deploy drift check."""
+
 import contextlib
 import io
 import json
@@ -21,7 +22,9 @@ class Classify(unittest.TestCase):
         self.assertEqual(drift.classify(drift.blob_sha(GOOD), GOOD, "active"), drift.DEPLOYED)
 
     def test_blob_sha_is_gits_object_id(self):
-        self.assertEqual(drift.blob_sha(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")  # git hash-object of an empty file
+        self.assertEqual(
+            drift.blob_sha(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+        )  # git hash-object of an empty file
         self.assertEqual(drift.blob_sha(b"hello\n"), "ce013625030ba8dba906f756967f9e9ca394464a")
 
     def test_a_different_hash_a_missing_file_or_a_stopped_unit_is_drift(self):
@@ -48,13 +51,21 @@ class Check(unittest.TestCase):
         rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: GOOD, lambda u: "active", surfaces())
         self.assertEqual([r["state"] for r in rows], [drift.DEPLOYED] * 2)
         self.assertEqual(rows[0]["installed_hash"], drift.blob_sha(GOOD)[:12])
-        self.assertNotIn("installed", json.dumps(rows).replace("installed_hash", ""))  # no file content anywhere in the rows
+        self.assertNotIn(
+            "installed", json.dumps(rows).replace("installed_hash", "")
+        )  # no file content anywhere in the rows
 
     def test_a_reader_that_raises_reads_as_unknown(self):
         def boom(_):
             raise RuntimeError("secret detail")
+
         for kwargs in ({"expected_for": boom}, {"read": boom}, {"unit_state_for": boom}):
-            args = {"expected_for": lambda p: drift.blob_sha(GOOD), "read": lambda p: GOOD, "unit_state_for": lambda u: "active", **kwargs}
+            args = {
+                "expected_for": lambda p: drift.blob_sha(GOOD),
+                "read": lambda p: GOOD,
+                "unit_state_for": lambda u: "active",
+                **kwargs,
+            }
             rows = drift.check(surfaces=surfaces(1), **args)
             self.assertEqual(rows[0]["state"], drift.UNKNOWN)
             self.assertNotIn("secret", json.dumps(rows))
@@ -67,7 +78,9 @@ class Check(unittest.TestCase):
         for path, reason in drift.UNCOVERED_INSTALLERS.items():
             self.assertTrue(Path(path).is_file(), path)
             self.assertGreater(len(reason.split()), 5, path)  # a reason, not a placeholder
-            self.assertNotIn(path, {s.repo_path for s in drift.SURFACES}, path)  # covered AND allowlisted is a contradiction
+            self.assertNotIn(
+                path, {s.repo_path for s in drift.SURFACES}, path
+            )  # covered AND allowlisted is a contradiction
 
     def test_a_new_installer_with_no_surface_and_no_allowlist_entry_is_reported(self):
         scripts = ["lifeos/edge/ticker/oracle/install-ticker.sh", "lifeos/edge/newthing/install-newthing.sh"]
@@ -79,7 +92,10 @@ class Check(unittest.TestCase):
 
     def test_the_close_release_script_the_updater_and_their_timer_are_watched(self):
         by_name = {s.name: s for s in drift.SURFACES}
-        for name, installed in (("close/close_release.py", "/opt/lifeos-close/bin/close_release.py"), ("close/install-close.sh", "/opt/lifeos-close/bin/install-close.sh")):
+        for name, installed in (
+            ("close/close_release.py", "/opt/lifeos-close/bin/close_release.py"),
+            ("close/install-close.sh", "/opt/lifeos-close/bin/install-close.sh"),
+        ):
             self.assertEqual((by_name[name].installed, by_name[name].unit), (installed, "lifeos-close-release.timer"))
         self.assertEqual(by_name["close/close_release.py"].repo_path, "lifeos/edge/oracle/close_release.py")
 
@@ -112,7 +128,9 @@ class TickerIncident(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         label, title, body, signal, open_push, close_push = calls[0]
         self.assertEqual((label, signal), ("deploy-drift", True))
-        self.assertEqual((open_push[2], open_push[3], close_push[3]), ("info", "deploy_drift", "deploy_drift_recovered"))
+        self.assertEqual(
+            (open_push[2], open_push[3], close_push[3]), ("info", "deploy_drift", "deploy_drift_recovered")
+        )
         self.assertIn("ticker/alerts.py", body)
 
     def test_all_deployed_closes_and_unknown_does_nothing(self):
@@ -134,26 +152,43 @@ class TickerIncident(unittest.TestCase):
 
             def read(self):
                 return json.dumps(self.body).encode()
+
         asked = []
 
         def opener(request, timeout=0):
             asked.append(request.full_url)
             return Response({"sha": drift.blob_sha(GOOD)})
+
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "f.py").write_bytes(GOOD)
-            one = (drift.Surface("x", "lifeos/x.py", str(Path(tmp, "f.py")), "u.timer"),
-                   drift.Surface("gone", "lifeos/y.py", str(Path(tmp, "gone.py")), "u.timer"))
-            rows = drift.check(lambda p: ticker._status(ticker._request(f"repos/{ticker.REPO}/contents/{p}?ref=main", "t"), opener)[1]["sha"],
-                               lambda p: ticker.Path(p).read_bytes() if ticker.Path(p).exists() else drift.MISSING, lambda u: "active", one)
+            one = (
+                drift.Surface("x", "lifeos/x.py", str(Path(tmp, "f.py")), "u.timer"),
+                drift.Surface("gone", "lifeos/y.py", str(Path(tmp, "gone.py")), "u.timer"),
+            )
+            rows = drift.check(
+                lambda p: ticker._status(ticker._request(f"repos/{ticker.REPO}/contents/{p}?ref=main", "t"), opener)[1][
+                    "sha"
+                ],
+                lambda p: ticker.Path(p).read_bytes() if ticker.Path(p).exists() else drift.MISSING,
+                lambda u: "active",
+                one,
+            )
         self.assertEqual([r["state"] for r in rows], ["DEPLOYED", "DRIFT"])
         self.assertTrue(all("?ref=main" in url for url in asked))
 
 
 class Why(unittest.TestCase):
     """an UNKNOWN surface says why, in fixed codes"""
+
     def ok(self, **kwargs):
-        args = {"expected_for": lambda p: drift.blob_sha(GOOD), "read": lambda p: GOOD, "unit_state_for": lambda u: "active", **kwargs}
+        args = {
+            "expected_for": lambda p: drift.blob_sha(GOOD),
+            "read": lambda p: GOOD,
+            "unit_state_for": lambda u: "active",
+            **kwargs,
+        }
         return drift.check(surfaces=surfaces(1), **args)
 
     def test_a_decided_row_has_no_why_and_an_unknown_one_names_the_unreadable_piece(self):
@@ -168,6 +203,7 @@ class Why(unittest.TestCase):
 
         def crash(_):
             raise RuntimeError("secret detail")
+
         self.assertEqual(self.ok(expected_for=coded)[0]["why"], "EXPECTED_HTTP_403")
         row = self.ok(read=crash)[0]
         self.assertEqual((row["state"], row["why"]), (drift.UNKNOWN, "READER_FAILED:RuntimeError"))
@@ -177,21 +213,36 @@ class Why(unittest.TestCase):
         self.assertEqual(self.ok(read=lambda p: b"other")[0]["why"], "")
 
     def test_explain_is_one_line_with_counts_names_and_codes_only(self):
-        rows = [{"surface": "a", "state": "DEPLOYED", "why": ""}, {"surface": "b", "state": "UNKNOWN", "why": "EXPECTED_HTTP_404"}, {"surface": "c", "state": "DRIFT", "why": ""}]
+        rows = [
+            {"surface": "a", "state": "DEPLOYED", "why": ""},
+            {"surface": "b", "state": "UNKNOWN", "why": "EXPECTED_HTTP_404"},
+            {"surface": "c", "state": "DRIFT", "why": ""},
+        ]
         line = drift.explain(rows)
-        self.assertEqual(line, "drift: deployed=1 drift=1 unknown=1 signal=open drifted=c undecided=EXPECTED_HTTP_404:1(b)")
+        self.assertEqual(
+            line, "drift: deployed=1 drift=1 unknown=1 signal=open drifted=c undecided=EXPECTED_HTTP_404:1(b)"
+        )
         many = [{"surface": f"s{i}", "state": "UNKNOWN", "why": "EXPECTED_NETWORK"} for i in range(5)]
-        self.assertEqual(drift.explain(many), "drift: deployed=0 drift=0 unknown=5 signal=unchanged undecided=EXPECTED_NETWORK:5(s0,s1,s2,...)")
-        self.assertEqual(drift.explain([{"surface": "a", "state": "DEPLOYED", "why": ""}]), "drift: deployed=1 drift=0 unknown=0 signal=recovered")
+        self.assertEqual(
+            drift.explain(many),
+            "drift: deployed=0 drift=0 unknown=5 signal=unchanged undecided=EXPECTED_NETWORK:5(s0,s1,s2,...)",
+        )
+        self.assertEqual(
+            drift.explain([{"surface": "a", "state": "DEPLOYED", "why": ""}]),
+            "drift: deployed=1 drift=0 unknown=0 signal=recovered",
+        )
         self.assertIn("signal=unchanged", drift.explain([rows[1]]))
 
 
 class Journal(unittest.TestCase):
     """The ticker's drift check prints its decision, whatever it decides."""
+
     def run_it(self, opener):
         calls, out = [], io.StringIO()
         with contextlib.redirect_stdout(out):
-            rows = ticker.drift_incident("t", opener=opener, sync=lambda *a: calls.append(a), read=lambda p: GOOD, unit_state=lambda u: "active")
+            rows = ticker.drift_incident(
+                "t", opener=opener, sync=lambda *a: calls.append(a), read=lambda p: GOOD, unit_state=lambda u: "active"
+            )
         return rows, calls, out.getvalue()
 
     def answer(self, status, body=None):
@@ -204,12 +255,14 @@ class Journal(unittest.TestCase):
 
             def read(self):
                 return json.dumps(body or {}).encode()
+
         Response.status = status
 
         def opener(request, timeout=0):
             if status != 200:
                 raise urllib.error.HTTPError(request.full_url, status, "x", {}, None)
             return Response()
+
         return opener
 
     def test_a_github_refusal_leaves_every_surface_unknown_says_so_and_changes_nothing(self):
@@ -222,6 +275,7 @@ class Journal(unittest.TestCase):
     def test_a_network_failure_is_named_too(self):
         def down(request, timeout=0):
             raise urllib.error.URLError("secret host")
+
         rows, calls, out = self.run_it(down)
         self.assertIn("EXPECTED_NETWORK", out)
         self.assertNotIn("secret", out)
@@ -236,13 +290,20 @@ class Journal(unittest.TestCase):
 
 class UnitStateWithoutSystemd(unittest.TestCase):
     """inside the ticker's sandbox systemctl prints nothing"""
+
     def fake_run(self, out):
         class Done:
             stdout = out
+
         return lambda *a, **k: Done()
 
     def test_systemd_answer_wins_when_it_gives_one(self):
-        self.assertEqual(ticker.read_unit_state("u.timer", run=self.fake_run("inactive\n"), listdir=lambda d: self.fail("not asked")), "inactive")
+        self.assertEqual(
+            ticker.read_unit_state(
+                "u.timer", run=self.fake_run("inactive\n"), listdir=lambda d: self.fail("not asked")
+            ),
+            "inactive",
+        )
 
     def test_no_answer_falls_back_to_the_enablement_link_for_a_timer_and_a_service(self):
         seen = []
@@ -250,6 +311,7 @@ class UnitStateWithoutSystemd(unittest.TestCase):
         def listing(path):
             seen.append(path)
             return ["a.timer", "b.service"]
+
         run = self.fake_run("")
         self.assertEqual(ticker.read_unit_state("a.timer", run=run, listdir=listing, base="/b"), drift.ENABLED)
         self.assertEqual(ticker.read_unit_state("b.service", run=run, listdir=listing, base="/b"), drift.ENABLED)
@@ -264,6 +326,7 @@ class UnitStateWithoutSystemd(unittest.TestCase):
 
         def unreadable(path):
             raise PermissionError("secret path")
+
         with self.assertRaises(drift.Unreadable) as raised:
             ticker.read_unit_state("a.timer", run=self.fake_run(""), listdir=unreadable)
         self.assertEqual(raised.exception.code, drift.UNIT_UNREADABLE)
@@ -288,8 +351,15 @@ class UnitStateWithoutSystemd(unittest.TestCase):
         parameter `unit_state` shadowed the reader of.
         """
         from unittest import mock
+
         calls = []
-        with mock.patch("subprocess.run", return_value=mock.Mock(stdout="")), mock.patch("os.listdir", return_value=["lifeos-ticker-watch.timer", "lifeos-offsite-backup.timer", "lifeos-close-release.timer"]):
+        with (
+            mock.patch("subprocess.run", return_value=mock.Mock(stdout="")),
+            mock.patch(
+                "os.listdir",
+                return_value=["lifeos-ticker-watch.timer", "lifeos-offsite-backup.timer", "lifeos-close-release.timer"],
+            ),
+        ):
             out = io.StringIO()
 
             class Response:
@@ -303,8 +373,14 @@ class UnitStateWithoutSystemd(unittest.TestCase):
 
                 def read(self):
                     return json.dumps({"sha": drift.blob_sha(GOOD)}).encode()
+
             with contextlib.redirect_stdout(out):
-                rows = ticker.drift_incident("t", opener=lambda request, timeout=0: Response(), sync=lambda *a: calls.append(a), read=lambda p: GOOD)
+                rows = ticker.drift_incident(
+                    "t",
+                    opener=lambda request, timeout=0: Response(),
+                    sync=lambda *a: calls.append(a),
+                    read=lambda p: GOOD,
+                )
         self.assertEqual({r["state"] for r in rows}, {drift.DEPLOYED})
         self.assertNotIn("READER_FAILED", out.getvalue())
         self.assertIn("UNIT_STATE_FROM_ENABLED=", out.getvalue())
@@ -312,10 +388,21 @@ class UnitStateWithoutSystemd(unittest.TestCase):
 
     def test_no_function_in_the_ticker_has_a_parameter_named_like_a_function_it_defines(self):
         import ast
+
         tree = ast.parse(Path(ticker.__file__).read_text())
         names = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
-        shadows = sorted(f"{n.name}({a.arg})" for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) for a in n.args.args + n.args.kwonlyargs if a.arg in names)
-        self.assertEqual(shadows, [], "a parameter that shares the name of a module function hides it inside that function (LIFE-725)")
+        shadows = sorted(
+            f"{n.name}({a.arg})"
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef)
+            for a in n.args.args + n.args.kwonlyargs
+            if a.arg in names
+        )
+        self.assertEqual(
+            shadows,
+            [],
+            "a parameter that shares the name of a module function hides it inside that function (LIFE-725)",
+        )
 
     def test_a_changed_file_is_drift_even_when_the_unit_is_only_enabled(self):
         rows = drift.check(lambda p: drift.blob_sha(GOOD), lambda p: b"other", lambda u: drift.ENABLED, surfaces(1))

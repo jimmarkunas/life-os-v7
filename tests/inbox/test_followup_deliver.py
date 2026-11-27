@@ -1,4 +1,5 @@
 """Followup open loops delivered to the Agent Inbox as items."""
+
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -13,12 +14,36 @@ SOURCE = "a1" * 16
 TID = "ab" * 32
 
 
-def thread(tid=TID, title="Send the signed quote", state="upcoming", due="2026-11-20T15:00:00Z", url="https://mail.google.com/mail/u/0/#all/m1", notes="checkpoint source-backed; evidence 1"):
-    return {"id": tid, "title": title, "state": state, "next_checkpoint": due, "url": url, "notes": notes, "owner": "", "status": "open"}
+def thread(
+    tid=TID,
+    title="Send the signed quote",
+    state="upcoming",
+    due="2026-11-20T15:00:00Z",
+    url="https://mail.google.com/mail/u/0/#all/m1",
+    notes="checkpoint source-backed; evidence 1",
+):
+    return {
+        "id": tid,
+        "title": title,
+        "state": state,
+        "next_checkpoint": due,
+        "url": url,
+        "notes": notes,
+        "owner": "",
+        "status": "open",
+    }
 
 
 def payload(threads=(), workspace="personal", closed=(), review=()):
-    return {"component": "followup", "state": "PASS", "workspace": workspace, "account": "a", "threads": list(threads), "review": list(review), "closed": list(closed)}
+    return {
+        "component": "followup",
+        "state": "PASS",
+        "workspace": workspace,
+        "account": "a",
+        "threads": list(threads),
+        "review": list(review),
+        "closed": list(closed),
+    }
 
 
 def _store(prop):
@@ -26,9 +51,13 @@ def _store(prop):
         if kind in prop:
             value = prop[kind]
             if kind in ("title", "rich_text"):
-                value = [{**piece, "plain_text": piece["text"]["content"]} for piece in value]  # Notion returns plain_text on every piece
+                value = [
+                    {**piece, "plain_text": piece["text"]["content"]} for piece in value
+                ]  # Notion returns plain_text on every piece
             if kind == "date" and value:
-                value = {"start": value["start"].replace("Z", ".000+00:00") if "T" in value["start"] else value["start"]}  # and spells a date-time its own way
+                value = {
+                    "start": value["start"].replace("Z", ".000+00:00") if "T" in value["start"] else value["start"]
+                }  # and spells a date-time its own way
             return {"type": kind, kind: value}
     return {"type": "unknown"}
 
@@ -53,14 +82,19 @@ class FakeNotion:
         if path.startswith("/blocks/"):  # the page body of a row (none kept here)
             return {"results": [], "has_more": False}
         if path == "/search":
-            return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}], "has_more": False}
+            return {
+                "results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}],
+                "has_more": False,
+            }
         raise AssertionError(f"unexpected call {method} {path}")
 
     def call_once(self, method, path, body=None):
         self.writes.append((method, path, body))
         if method == "POST" and path == "/pages":
             assert body["parent"]["data_source_id"] == SOURCE, "a write left the inbox data source"
-            self.pages.append({"id": f"p{len(self.pages)}", "properties": {k: _store(v) for k, v in body["properties"].items()}})
+            self.pages.append(
+                {"id": f"p{len(self.pages)}", "properties": {k: _store(v) for k, v in body["properties"].items()}}
+            )
         elif method == "PATCH" and path.startswith("/blocks/"):
             pass
         elif method == "PATCH":
@@ -108,12 +142,23 @@ class Delivery(unittest.TestCase):
         counts = self.go(payload([thread()]))
         self.assertEqual((counts["created"], len(self.n.pages)), (1, 1))
         row = self.n.row()
-        self.assertEqual((row["From"], row["Subject"], row["Workspace"], row["Status"], row["Urgency"]), ("Followup", "Send the signed quote", "Personal", "New", "FYI"))
-        self.assertEqual((D._moment(row["Due"]), row["Link"], row["Key"]), (D._moment("2026-11-20T15:00:00Z"), "https://mail.google.com/mail/u/0/#all/m1", self.key))
+        self.assertEqual(
+            (row["From"], row["Subject"], row["Workspace"], row["Status"], row["Urgency"]),
+            ("Followup", "Send the signed quote", "Personal", "New", "FYI"),
+        )
+        self.assertEqual(
+            (D._moment(row["Due"]), row["Link"], row["Key"]),
+            (D._moment("2026-11-20T15:00:00Z"), "https://mail.google.com/mail/u/0/#all/m1", self.key),
+        )
         self.assertLessEqual(len(row["Key"]), 64)
 
     def test_urgency_follows_the_state_and_the_checkpoint(self):
-        cases = [("needs_action_today", "2026-11-15T15:00:00Z", "Now"), ("needs_action_today", "2026-11-17T20:00:00Z", "Today"), ("waiting_aging", "2026-11-12", "This week"), ("upcoming", "2026-11-25", "FYI")]
+        cases = [
+            ("needs_action_today", "2026-11-15T15:00:00Z", "Now"),
+            ("needs_action_today", "2026-11-17T20:00:00Z", "Today"),
+            ("waiting_aging", "2026-11-12", "This week"),
+            ("upcoming", "2026-11-25", "FYI"),
+        ]
         for state, due, urgency in cases:
             with self.subTest(state=state, due=due):
                 self.assertEqual(D.urgency_of(state, due, NOW), urgency)
@@ -122,15 +167,22 @@ class Delivery(unittest.TestCase):
         self.go(payload([thread()]))
         before = len(self.n.writes)
         counts = self.go(payload([thread()]), now=NOW + timedelta(hours=1))
-        self.assertEqual((counts["created"], counts["unchanged"], len(self.n.pages), len(self.n.writes)), (0, 1, 1, before))
+        self.assertEqual(
+            (counts["created"], counts["unchanged"], len(self.n.pages), len(self.n.writes)), (0, 1, 1, before)
+        )
 
     def test_an_updated_loop_updates_its_row_and_never_touches_status(self):
         self.go(payload([thread()]))
         self.n.set_status(self.key, "Snoozed")
-        counts = self.go(payload([thread(state="needs_action_today", due="2026-11-16T15:00:00Z", title="Send the revised quote")]))
+        counts = self.go(
+            payload([thread(state="needs_action_today", due="2026-11-16T15:00:00Z", title="Send the revised quote")])
+        )
         row = self.n.row()
         self.assertEqual((counts["updated"], len(self.n.pages)), (1, 1))
-        self.assertEqual((row["Subject"], row["Urgency"], D._moment(row["Due"]), row["Status"]), ("Send the revised quote", "Now", D._moment("2026-11-16T15:00:00Z"), "Snoozed"))
+        self.assertEqual(
+            (row["Subject"], row["Urgency"], D._moment(row["Due"]), row["Status"]),
+            ("Send the revised quote", "Now", D._moment("2026-11-16T15:00:00Z"), "Snoozed"),
+        )
 
     def test_a_row_jim_already_decided_is_never_edited_or_reopened_or_duplicated(self):
         for status in ("Done", "Dismissed", "Promoted"):
@@ -141,7 +193,17 @@ class Delivery(unittest.TestCase):
                 n.set_status(self.key, status)
                 writes = len(n.writes)
                 counts = D.deliver([payload([thread(title="Changed", due="2026-12-01")])], now=NOW, client=n)
-                self.assertEqual((counts["kept"], counts["created"], len(n.pages), len(n.writes), n.row()["Status"], n.row()["Subject"]), (1, 0, 1, writes, status, "Send the signed quote"))
+                self.assertEqual(
+                    (
+                        counts["kept"],
+                        counts["created"],
+                        len(n.pages),
+                        len(n.writes),
+                        n.row()["Status"],
+                        n.row()["Subject"],
+                    ),
+                    (1, 0, 1, writes, status, "Send the signed quote"),
+                )
 
     def test_review_needed_suggestions_are_never_sent(self):
         counts = self.go(payload([], review=[thread(state="review_needed")]))
@@ -158,14 +220,27 @@ class Delivery(unittest.TestCase):
         self.assertEqual(self.n.row()["Status"], "New")
 
     def test_only_followup_rows_are_ever_touched(self):
-        self.n.pages.append({"id": "other", "properties": {"Key": {"type": "rich_text", "rich_text": [{"plain_text": self.key}]}, "From": {"type": "rich_text", "rich_text": [{"plain_text": "claude-code"}]},
-                                                          "Status": {"type": "select", "select": {"name": "New"}}, "Subject": {"type": "title", "title": [{"plain_text": "x"}]}}})
+        self.n.pages.append(
+            {
+                "id": "other",
+                "properties": {
+                    "Key": {"type": "rich_text", "rich_text": [{"plain_text": self.key}]},
+                    "From": {"type": "rich_text", "rich_text": [{"plain_text": "claude-code"}]},
+                    "Status": {"type": "select", "select": {"name": "New"}},
+                    "Subject": {"type": "title", "title": [{"plain_text": "x"}]},
+                },
+            }
+        )
         self.go(payload([], closed=[TID]))
         self.assertEqual(self.n.pages[0]["properties"]["Status"]["select"]["name"], "New")
         self.assertEqual(self.n.writes, [])
 
     def test_unsafe_items_are_skipped_by_reason_and_never_written(self):
-        bad = [thread(url="https://example.test/m1"), thread(tid="cd" * 32, title="Call jim@example.com about the quote"), thread(tid="ef" * 32, title="token=abcdef123456789 quote")]
+        bad = [
+            thread(url="https://example.test/m1"),
+            thread(tid="cd" * 32, title="Call jim@example.com about the quote"),
+            thread(tid="ef" * 32, title="token=abcdef123456789 quote"),
+        ]
         counts = self.go(payload(bad))
         self.assertEqual((counts["created"], counts["skipped"], self.n.pages), (0, 3, []))
 
@@ -174,7 +249,9 @@ class Delivery(unittest.TestCase):
         self.assertEqual((counts["created"], counts["skipped"], self.n.pages), (0, 0, []))
 
     def test_the_sender_rate_limit_stops_a_flood_and_counts_it(self):
-        threads = [thread(tid=f"{i:02x}" + "0" * 62, title=f"Loop {i} outcome") for i in range(agent_inbox.RATE_PER_HOUR + 3)]
+        threads = [
+            thread(tid=f"{i:02x}" + "0" * 62, title=f"Loop {i} outcome") for i in range(agent_inbox.RATE_PER_HOUR + 3)
+        ]
         counts = self.go(payload(threads))
         self.assertEqual((counts["created"], counts["skipped"]), (agent_inbox.RATE_PER_HOUR, 3))
 
@@ -214,7 +291,18 @@ class Stage(unittest.TestCase):
         rig.run()
         (stored,) = rig.store.threads("personal", ACCOUNT)
         rig.rows["gmail"] = [mail("m2", "2026-11-17T09:00:00+00:00", "done")]
-        rig.wiring = S.Wiring(**{**rig.wiring.__dict__, "classify": lambda item: {"kind": "outcome_ended", "outcome_key": "Send the signed quote", "owner": "jim", "who": "", "title": "done"}})
+        rig.wiring = S.Wiring(
+            **{
+                **rig.wiring.__dict__,
+                "classify": lambda item: {
+                    "kind": "outcome_ended",
+                    "outcome_key": "Send the signed quote",
+                    "owner": "jim",
+                    "who": "",
+                    "title": "done",
+                },
+            }
+        )
         rig.run(at=T0 + timedelta(days=1))
         self.assertEqual(rig.published[-1]["closed"], [stored["thread_id"]])
         self.assertEqual(rig.published[-1]["closed"], [thread_id("personal", ACCOUNT, "Send the signed quote")])

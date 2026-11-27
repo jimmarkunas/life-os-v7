@@ -1,5 +1,5 @@
-""".github/workflows/hourly.yml is the parts in.github/workflows-src/hourly joined in file-name order, like domains.yml
-"""
+""".github/workflows/hourly.yml is the parts in.github/workflows-src/hourly joined in file-name order, like domains.yml"""
+
 import io
 import pathlib
 import re
@@ -48,8 +48,16 @@ class HourlyParts(unittest.TestCase):
 
     def test_the_parts_define_the_jobs_the_workflow_runs(self):
         import yaml
+
         jobs = list(yaml.safe_load(GENERATED.read_text())["jobs"])
-        self.assertEqual(jobs, [p.stem.split("-", 1)[1] for p in sorted(PARTS.glob("*.yml")) if re.match(r"^\d{3}-", p.name) and p.name != "000-header.yml"])
+        self.assertEqual(
+            jobs,
+            [
+                p.stem.split("-", 1)[1]
+                for p in sorted(PARTS.glob("*.yml"))
+                if re.match(r"^\d{3}-", p.name) and p.name != "000-header.yml"
+            ],
+        )
 
     def test_the_parts_sit_outside_the_workflows_folder_so_github_never_runs_them(self):
         self.assertEqual(sorted(p.name for p in (ROOT / ".github/workflows").glob("*hourly*")), ["hourly.yml"])

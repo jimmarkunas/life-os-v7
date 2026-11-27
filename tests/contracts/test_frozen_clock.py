@@ -1,6 +1,7 @@
 """a test file may not call the real clock (`datetime.now`, `datetime.utcnow`, `datetime.today`, `date.today`,
 `time.time`) unless.
 """
+
 import ast
 import pathlib
 import re
@@ -37,7 +38,13 @@ def allowlist():
 
 class FrozenClockContract(unittest.TestCase):
     def files(self):
-        return sorted(p for p in TESTS.rglob("*.py") if "__pycache__" not in p.parts and "contracts" not in p.parts and p.relative_to(ROOT).as_posix() not in EXEMPT)
+        return sorted(
+            p
+            for p in TESTS.rglob("*.py")
+            if "__pycache__" not in p.parts
+            and "contracts" not in p.parts
+            and p.relative_to(ROOT).as_posix() not in EXEMPT
+        )
 
     def test_no_test_file_reads_the_real_clock_unless_listed(self):
         listed = allowlist()
@@ -47,20 +54,29 @@ class FrozenClockContract(unittest.TestCase):
             calls = real_clock_calls(path)
             if calls and rel not in listed:
                 bad.append(f"{rel}:{calls[0][0]} calls {calls[0][1]}")
-        self.assertFalse(bad, "use tests.kit.clock (or list the file with a reason in docs/platform/scheduled-checks.md):\n" + "\n".join(bad))
+        self.assertFalse(
+            bad,
+            "use tests.kit.clock (or list the file with a reason in docs/platform/scheduled-checks.md):\n"
+            + "\n".join(bad),
+        )
 
     def test_the_allowlist_only_holds_files_that_still_read_the_real_clock(self):
         stale = [rel for rel in sorted(allowlist()) if not (ROOT / rel).exists() or not real_clock_calls(ROOT / rel)]
         self.assertFalse(stale, "remove from the allowlist in docs/platform/scheduled-checks.md:\n" + "\n".join(stale))
 
     def test_the_detector_sees_each_form_and_ignores_the_fixture(self):
-        source = ("import datetime, time\nfrom datetime import date\nfrom tests.kit import clock\n"
-                  "a = datetime.datetime.now()\nb = datetime.datetime.utcnow()\nc = date.today()\nd = time.time()\ne = datetime.datetime.today()\n"
-                  "ok = (clock.now(), clock.today(), clock.time())\n")
+        source = (
+            "import datetime, time\nfrom datetime import date\nfrom tests.kit import clock\n"
+            "a = datetime.datetime.now()\nb = datetime.datetime.utcnow()\nc = date.today()\nd = time.time()\ne = datetime.datetime.today()\n"
+            "ok = (clock.now(), clock.today(), clock.time())\n"
+        )
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as handle:
             handle.write(source)
         try:
-            self.assertEqual([c for _, c in real_clock_calls(handle.name)], ["datetime.now()", "datetime.utcnow()", "date.today()", "time.time()", "datetime.today()"])
+            self.assertEqual(
+                [c for _, c in real_clock_calls(handle.name)],
+                ["datetime.now()", "datetime.utcnow()", "date.today()", "time.time()", "datetime.today()"],
+            )
         finally:
             pathlib.Path(handle.name).unlink()
 

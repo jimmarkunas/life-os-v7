@@ -1,4 +1,5 @@
 """Synthetic Jira and Notion for the accountability tests: fictional keys and text only."""
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,7 +9,14 @@ NOW = datetime(2026, 11, 18, 9, 5, tzinfo=ZoneInfo("America/Chicago"))  # a Wedn
 
 
 def rich(content, url=None):
-    return [{"type": "text", "plain_text": content, "href": url, "text": {"content": content, "link": {"url": url} if url else None}}]
+    return [
+        {
+            "type": "text",
+            "plain_text": content,
+            "href": url,
+            "text": {"content": content, "link": {"url": url} if url else None},
+        }
+    ]
 
 
 def para(block_id, content):
@@ -16,9 +24,16 @@ def para(block_id, content):
 
 
 def summary_line(page_id):
-    return {"id": "s-" + page_id, "type": "paragraph", "paragraph": {"rich_text": [
-        {"type": "text", "plain_text": "Summary for Claude: ", "text": {"content": "Summary for Claude: "}},
-        {"type": "mention", "plain_text": "page", "mention": {"type": "page", "page": {"id": page_id}}}]}}
+    return {
+        "id": "s-" + page_id,
+        "type": "paragraph",
+        "paragraph": {
+            "rich_text": [
+                {"type": "text", "plain_text": "Summary for Claude: ", "text": {"content": "Summary for Claude: "}},
+                {"type": "mention", "plain_text": "page", "mention": {"type": "page", "page": {"id": page_id}}},
+            ]
+        },
+    }
 
 
 def canonical(url):
@@ -54,7 +69,9 @@ class Notion:
         block = {"id": table_id, "type": "table", "table": {"table_width": 2}}
         self.blocks[table_id] = block
         for i, (a, b) in enumerate([("Lane", "Done / all")] + rows):
-            self.add(table_id, {"id": f"{table_id}-r{i}", "type": "table_row", "table_row": {"cells": [rich(a), rich(b)]}})
+            self.add(
+                table_id, {"id": f"{table_id}-r{i}", "type": "table_row", "table_row": {"cells": [rich(a), rich(b)]}}
+            )
         return block
 
     def toggle(self, toggle_id, inner):
@@ -68,9 +85,21 @@ class Notion:
         self.indexes = getattr(self, "indexes", {})
         page = f"ix-{key}"
         self.indexes[key] = page
-        self.blocks[page] = {"id": page, "type": "page", "object": "page", "properties": {"title": {"type": "title", "title": rich(title)}}}
+        self.blocks[page] = {
+            "id": page,
+            "type": "page",
+            "object": "page",
+            "properties": {"title": {"type": "title", "title": rich(title)}},
+        }
         for i, (content, url) in enumerate(lines):
-            self.add(page, {"id": f"{page}-b{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich(content, url)}})
+            self.add(
+                page,
+                {
+                    "id": f"{page}-b{i}",
+                    "type": "bulleted_list_item",
+                    "bulleted_list_item": {"rich_text": rich(content, url)},
+                },
+            )
 
     def text(self, block_id):
         block = self.blocks[block_id]
@@ -100,22 +129,48 @@ class Notion:
             after = body["after"]
             for child in body["children"]:
                 self.made += 1
-                new = {"id": f"{block_id}-new{self.made}", "type": child["type"], child["type"]: {"rich_text": [rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] for n in child[child["type"]]["rich_text"]]}}
+                new = {
+                    "id": f"{block_id}-new{self.made}",
+                    "type": child["type"],
+                    child["type"]: {
+                        "rich_text": [
+                            rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0]
+                            for n in child[child["type"]]["rich_text"]
+                        ]
+                    },
+                }
                 self.blocks[new["id"]] = new
                 order = self.kids[block_id]
                 order.insert(order.index(after) + 1, new["id"])
                 after = new["id"]
                 for inner in child[child["type"]].get("children") or []:
                     self.made += 1
-                    made = {"id": f"{new['id']}-in{self.made}", "type": inner["type"], inner["type"]: {"rich_text": [rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] for n in inner[inner["type"]]["rich_text"]]}}
+                    made = {
+                        "id": f"{new['id']}-in{self.made}",
+                        "type": inner["type"],
+                        inner["type"]: {
+                            "rich_text": [
+                                rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0]
+                                for n in inner[inner["type"]]["rich_text"]
+                            ]
+                        },
+                    }
                     self.blocks[made["id"]] = made
                     self.kids.setdefault(new["id"], []).append(made["id"])
             return {"results": []}
         block = self.blocks[block_id]
         if block["type"] == "table_row":
-            block["table_row"]["cells"] = [[rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0] for n in c] for c in body["table_row"]["cells"]]
+            block["table_row"]["cells"] = [
+                [rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0] for n in c]
+                for c in body["table_row"]["cells"]
+            ]
         else:
-            block[block["type"]] = {"rich_text": [rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0] for n in body[block["type"]]["rich_text"]]}
+            block[block["type"]] = {
+                "rich_text": [
+                    rich(n["text"]["content"], canonical((n["text"].get("link") or {}).get("url")))[0]
+                    for n in body[block["type"]]["rich_text"]
+                ]
+            }
         return block
 
     def links(self, block_id):
@@ -143,9 +198,17 @@ class Jira:
 
 
 def child(key, parent, done, resolved=None, subtask=False, resolution="Done", labels=()):
-    return {"key": key, "fields": {"parent": {"key": parent}, "issuetype": {"name": "Task", "subtask": subtask},
-                                   "status": {"statusCategory": {"key": "done" if done else "indeterminate"}}, "resolutiondate": resolved,
-                                   "resolution": {"name": resolution} if done else None, "labels": list(labels)}}
+    return {
+        "key": key,
+        "fields": {
+            "parent": {"key": parent},
+            "issuetype": {"name": "Task", "subtask": subtask},
+            "status": {"statusCategory": {"key": "done" if done else "indeterminate"}},
+            "resolutiondate": resolved,
+            "resolution": {"name": resolution} if done else None,
+            "labels": list(labels),
+        },
+    }
 
 
 def epic(key, name):

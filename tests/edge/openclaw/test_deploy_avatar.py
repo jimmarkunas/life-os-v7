@@ -1,4 +1,5 @@
 """the OpenClaw avatar install."""
+
 import getpass
 import hashlib
 import json
@@ -38,8 +39,18 @@ class Deploy(unittest.TestCase):
         self.ws = os.path.join(self.state, "workspace")
         os.makedirs(os.path.join(self.ws, "avatars"))
         self.conf = os.path.join(self.state, "openclaw.json")
-        self.old_conf = json.dumps({"agents": {"entries": {"main": {"identity": {"avatar": "data:image/png;base64," + "A" * 500}}, "fit": {"identity": {"name": "Fit"}}}},
-                                    "gateway": {"auth": {"token": "SECRETVALUE"}}}, indent=2)
+        self.old_conf = json.dumps(
+            {
+                "agents": {
+                    "entries": {
+                        "main": {"identity": {"avatar": "data:image/png;base64," + "A" * 500}},
+                        "fit": {"identity": {"name": "Fit"}},
+                    }
+                },
+                "gateway": {"auth": {"token": "SECRETVALUE"}},
+            },
+            indent=2,
+        )
         with open(self.conf, "w") as handle:
             handle.write(self.old_conf)
         self.src = os.path.join(self.tmp, "src")
@@ -59,12 +70,35 @@ class Deploy(unittest.TestCase):
             handle.write(data)
 
     def set_manifest(self, data, size=None):
-        self.write(self.manifest, ("# test\nmain openclaw-256.apng %s %d\n" % (sha(data), len(data) if size is None else size)).encode())
+        self.write(
+            self.manifest,
+            ("# test\nmain openclaw-256.apng %s %d\n" % (sha(data), len(data) if size is None else size)).encode(),
+        )
 
     def run_script(self, *args):
         env = dict(os.environ, FAKE_LOG=self.log, FAKE_CONF=self.conf)
-        done = subprocess.run(["bash", SCRIPT, "--src", self.src, "--home", self.home, "--manifest", self.manifest, "--backup", self.backup,
-                               "--user", getpass.getuser(), "--bin", self.fake, *args], capture_output=True, text=True, env=env)
+        done = subprocess.run(
+            [
+                "bash",
+                SCRIPT,
+                "--src",
+                self.src,
+                "--home",
+                self.home,
+                "--manifest",
+                self.manifest,
+                "--backup",
+                self.backup,
+                "--user",
+                getpass.getuser(),
+                "--bin",
+                self.fake,
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
         return done.returncode, done.stdout + done.stderr
 
     def calls(self):
@@ -121,7 +155,9 @@ class Deploy(unittest.TestCase):
         self.assertEqual(open(idmd).read(), original)  # dry run writes nothing
         status, out = self.run_script("--apply")
         self.assertEqual(status, 0, out)
-        self.assertEqual(open(idmd).read(), "# Identity\n- Name: OpenClaw\n- Avatar: avatars/openclaw.png\n- Emoji: x\n")
+        self.assertEqual(
+            open(idmd).read(), "# Identity\n- Name: OpenClaw\n- Avatar: avatars/openclaw.png\n- Emoji: x\n"
+        )
         self.assertEqual(os.stat(idmd).st_mode & 0o777, 0o640)
         self.assertEqual(open(os.path.join(self.backup, "IDENTITY.md")).read(), original)
         self.assertIn("ROLLBACK IDENTITY.md: cp -p %s %s" % (os.path.join(self.backup, "IDENTITY.md"), idmd), out)
@@ -161,12 +197,22 @@ class Deploy(unittest.TestCase):
             if os.path.exists(self.conf):
                 self.assertEqual(open(self.conf).read(), self.old_conf, needle)
             self.assertFalse(os.path.exists(self.backup), needle)
+
         refuse("hashes to", lambda: self.write(self.image, PNG + b"x") or self.set_manifest(PNG, len(PNG) + 1))
         self.write(self.image, PNG)
-        refuse("not a PNG" if False else "does not start like a PNG", lambda: (self.write(self.image, b"GIF89a" + b"0" * 50), self.set_manifest(b"GIF89a" + b"0" * 50)))
+        refuse(
+            "not a PNG" if False else "does not start like a PNG",
+            lambda: (self.write(self.image, b"GIF89a" + b"0" * 50), self.set_manifest(b"GIF89a" + b"0" * 50)),
+        )
         self.write(self.image, PNG)
         self.set_manifest(PNG)
-        refuse("at most 2000000", lambda: (self.write(self.manifest, ("main openclaw-256.apng %s 3000000\n" % sha(PNG)).encode()), self.write(self.image, PNG + b"0" * 2_999_000)))
+        refuse(
+            "at most 2000000",
+            lambda: (
+                self.write(self.manifest, ("main openclaw-256.apng %s 3000000\n" % sha(PNG)).encode()),
+                self.write(self.image, PNG + b"0" * 2_999_000),
+            ),
+        )
         self.write(self.image, PNG)
         self.set_manifest(PNG)
         refuse("no line for agent", lambda: self.write(self.manifest, b"# nothing\n"))
@@ -190,7 +236,14 @@ class Deploy(unittest.TestCase):
 
     def test_the_script_restarts_nothing_and_touches_no_other_setting(self):
         code = "\n".join(l for l in open(SCRIPT).read().splitlines() if not l.lstrip().startswith("#"))
-        for pattern in (r"systemctl", r"\bkill\b", r"\breboot\b", r"gateway\s+(restart|stop)", r"agents\s+(add|delete|remove)", r"config\s+set"):
+        for pattern in (
+            r"systemctl",
+            r"\bkill\b",
+            r"\breboot\b",
+            r"gateway\s+(restart|stop)",
+            r"agents\s+(add|delete|remove)",
+            r"config\s+set",
+        ):
             self.assertIsNone(re.search(pattern, code), pattern)
         self.assertEqual(len(re.findall(r"set-identity", code)), 3)  # dry-run text, direct call, sudo call
 

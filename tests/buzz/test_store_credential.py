@@ -1,4 +1,5 @@
 """deploy/buzz-mcp/store-credential with a fake bws."""
+
 import json
 import os
 import re
@@ -41,7 +42,9 @@ class StoreCredential(unittest.TestCase):
         (self.tmp / "bin/bws").write_text(FAKE_BWS)
         (self.tmp / "bin/bws").chmod(0o755)
         (self.tmp / "env").write_text("export BWS_ACCESS_TOKEN='synthetic-token'\n")
-        self.state(projects=[{"id": "proj-1", "name": "LIFE OS EDGE/OPENCLAW"}, {"id": "proj-2", "name": "other"}], secrets={})
+        self.state(
+            projects=[{"id": "proj-1", "name": "LIFE OS EDGE/OPENCLAW"}, {"id": "proj-2", "name": "other"}], secrets={}
+        )
 
     def state(self, **over):
         path = self.tmp / "state.json"
@@ -50,12 +53,24 @@ class StoreCredential(unittest.TestCase):
         path.write_text(json.dumps(data))
 
     def run_script(self, *args, env_file=True):
-        env = {**os.environ, "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}", "FAKE_STATE": str(self.tmp / "state.json"), "FAKE_LOG": str(self.tmp / "argv.log"),
-               "STORE_CREDENTIALS_ENV": str(self.tmp / "env") if env_file else str(self.tmp / "missing"), "STORE_CREDENTIALS_USER": "root-is-not-used-here"}
-        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env, cwd=self.tmp)
+        env = {
+            **os.environ,
+            "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}",
+            "FAKE_STATE": str(self.tmp / "state.json"),
+            "FAKE_LOG": str(self.tmp / "argv.log"),
+            "STORE_CREDENTIALS_ENV": str(self.tmp / "env") if env_file else str(self.tmp / "missing"),
+            "STORE_CREDENTIALS_USER": "root-is-not-used-here",
+        }
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env, cwd=self.tmp
+        )
 
     def created_values(self):
-        lines = [json.loads(x) for x in (self.tmp / "argv.log").read_text().splitlines()] if (self.tmp / "argv.log").exists() else []
+        lines = (
+            [json.loads(x) for x in (self.tmp / "argv.log").read_text().splitlines()]
+            if (self.tmp / "argv.log").exists()
+            else []
+        )
         return {a[2]: a[3] for a in lines if a[:2] == ["secret", "create"]}
 
     def test_check_proves_write_with_a_synthetic_probe_that_is_deleted_again(self):
@@ -72,23 +87,40 @@ class StoreCredential(unittest.TestCase):
         self.assertEqual(sorted(values), sorted("lifeos/edge/" + n for n in names))
         for name, line in zip(names, lines):
             value = values["lifeos/edge/" + name]
-            self.assertTrue(re.fullmatch(r"[0-9a-f]{64}", value) and 0 < int(value, 16) < nip98.N)  # a valid secp256k1 secret
+            self.assertTrue(
+                re.fullmatch(r"[0-9a-f]{64}", value) and 0 < int(value, 16) < nip98.N
+            )  # a valid secp256k1 secret
             self.assertRegex(line, rf"^{name} [0-9a-f-]{{36}} ok pubkey={nip98.pubkey(bytes.fromhex(value))}$")
             self.assertNotIn(value, done.stdout + done.stderr)
-            self.assertNotIn(value, "".join(p.read_text(errors="replace") for p in self.tmp.rglob("*") if p.is_file() and p.name not in ("argv.log", "state.json")))  # nowhere else
-        self.assertNotEqual(values["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"], values["lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE"])
+            self.assertNotIn(
+                value,
+                "".join(
+                    p.read_text(errors="replace")
+                    for p in self.tmp.rglob("*")
+                    if p.is_file() and p.name not in ("argv.log", "state.json")
+                ),
+            )  # nowhere else
+        self.assertNotEqual(
+            values["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"], values["lifeos/edge/BUZZ_SELFHOST_AGENT_CLAUDE"]
+        )
 
     def test_the_muse_bearer_credential_is_stored_whole_once_and_only_the_hash_of_its_secret_is_printed(self):
         """lifeos/edge/LIFEOS_MCP_MUSE holds lm1.muse.<secret>"""
         import hashlib
+
         done = self.run_script("LIFEOS_MCP_MUSE")
         value = self.created_values()["lifeos/edge/LIFEOS_MCP_MUSE"]
         self.assertRegex(value, r"^lm1\.muse\.[A-Za-z0-9_-]{43}$")
         secret = value.split(".")[2]
-        self.assertRegex(done.stdout.strip(), rf"^LIFEOS_MCP_MUSE [0-9a-f-]{{36}} ok sha256={hashlib.sha256(secret.encode()).hexdigest()}$")
+        self.assertRegex(
+            done.stdout.strip(),
+            rf"^LIFEOS_MCP_MUSE [0-9a-f-]{{36}} ok sha256={hashlib.sha256(secret.encode()).hexdigest()}$",
+        )
         self.assertNotIn(secret, done.stdout + done.stderr)
         before = dict(self.created_values())
-        self.assertEqual(self.run_script("LIFEOS_MCP_MUSE").stdout.strip(), "LIFEOS_MCP_MUSE exists")  # never regenerated
+        self.assertEqual(
+            self.run_script("LIFEOS_MCP_MUSE").stdout.strip(), "LIFEOS_MCP_MUSE exists"
+        )  # never regenerated
         self.assertEqual(self.created_values(), before)
 
     def test_an_existing_name_is_never_overwritten_and_an_unknown_name_is_refused(self):
@@ -97,7 +129,9 @@ class StoreCredential(unittest.TestCase):
         done = self.run_script("BUZZ_SELFHOST_OWNER_KEY", "NOTION_API_TOKEN", "BUZZ_SELFHOST_RELAY_KEY")
         self.assertEqual(done.stdout.splitlines()[:2], ["BUZZ_SELFHOST_OWNER_KEY exists", "NOTION_API_TOKEN failed"])
         self.assertRegex(done.stdout.splitlines()[2], r"^BUZZ_SELFHOST_RELAY_KEY .* ok pubkey=")
-        self.assertEqual(self.created_values()["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"], before["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"])  # the owner key was not regenerated
+        self.assertEqual(
+            self.created_values()["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"], before["lifeos/edge/BUZZ_SELFHOST_OWNER_KEY"]
+        )  # the owner key was not regenerated
 
     def test_missing_write_project_or_vault_say_so_and_create_nothing(self):
         self.state(no_write=True)
@@ -111,7 +145,23 @@ class StoreCredential(unittest.TestCase):
     def test_the_closed_list_holds_pilot_keys_only_and_the_script_is_executable(self):
         text = SCRIPT.read_text()
         names = re.search(r"NAMES = \((.*?)\)", text, re.S).group(1)
-        self.assertEqual(re.findall(r'"(\w+)"', names), ["BUZZ_SELFHOST_OWNER_KEY", "BUZZ_SELFHOST_RELAY_KEY", "BUZZ_SELFHOST_AGENT_HERMES_DEVELOPER", "BUZZ_SELFHOST_AGENT_CLAUDE", "BUZZ_SELFHOST_AGENT_CHATGPT", "BUZZ_KEY_MUSE_LIFE_OS", "LIFEOS_MCP_MUSE", "LIFEOS_MCP_JIRA_CAPTURE", "BUZZ_KEY_DUET_LIFE_OS", "BUZZ_KEY_DUET_BYTALOS", "BUZZ_SELFHOST_AGENT_DUET", "BUZZ_SELFHOST_AGENT_OPENCLAW"])
+        self.assertEqual(
+            re.findall(r'"(\w+)"', names),
+            [
+                "BUZZ_SELFHOST_OWNER_KEY",
+                "BUZZ_SELFHOST_RELAY_KEY",
+                "BUZZ_SELFHOST_AGENT_HERMES_DEVELOPER",
+                "BUZZ_SELFHOST_AGENT_CLAUDE",
+                "BUZZ_SELFHOST_AGENT_CHATGPT",
+                "BUZZ_KEY_MUSE_LIFE_OS",
+                "LIFEOS_MCP_MUSE",
+                "LIFEOS_MCP_JIRA_CAPTURE",
+                "BUZZ_KEY_DUET_LIFE_OS",
+                "BUZZ_KEY_DUET_BYTALOS",
+                "BUZZ_SELFHOST_AGENT_DUET",
+                "BUZZ_SELFHOST_AGENT_OPENCLAW",
+            ],
+        )
         self.assertEqual(stat.S_IMODE(SCRIPT.stat().st_mode) & 0o111, 0o111)
 
 

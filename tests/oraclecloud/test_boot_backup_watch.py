@@ -1,4 +1,5 @@
 """no free boot-volume backup slot on Oracle raises one quiet phone alert, through the gateway"""
+
 import contextlib
 import datetime as dt
 import io
@@ -15,7 +16,7 @@ FULL = {"used": 5, "available": 0}
 class Decide(unittest.TestCase):
     def test_no_free_slot_opens_one_quiet_alert_naming_the_count(self):
         state, plan = bw.decide(None, FULL, NOW)
-        (kind, alert), = plan.notify
+        ((kind, alert),) = plan.notify
         self.assertEqual((kind, alert.key, alert.severity, state["alert_open"]), ("open", bw.KEY, alerts.INFO, True))
         self.assertEqual(alert.title, "Oracle boot-volume backups are full: 5 of 5 in use")
 
@@ -31,7 +32,9 @@ class Decide(unittest.TestCase):
 
     def test_an_unreadable_reading_is_unknown_and_changes_nothing(self):
         self.assertIsNone(bw.healthy(None))
-        self.assertIsNone(bw.decide({"alert_open": True, "last_notified": NOW}, None, NOW))  # neither opens nor resolves
+        self.assertIsNone(
+            bw.decide({"alert_open": True, "last_notified": NOW}, None, NOW)
+        )  # neither opens nor resolves
 
     def test_negative_control_the_line_is_zero_free_not_a_fixed_count(self):
         self.assertTrue(bw.healthy({"used": 99, "available": 1}))

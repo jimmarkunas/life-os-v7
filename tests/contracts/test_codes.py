@@ -46,18 +46,29 @@ class DeclaredByTheirPackages(unittest.TestCase):
     """a package declares its own codes in lifeos/<package>/codes.json"""
 
     def test_every_code_is_declared_once_and_a_new_package_file_is_collected_with_no_platform_edit(self):
-        words = [w for name in ("codes.json", "reasons.json") for path in sorted((ROOT / "lifeos").glob("*/" + name)) for w in json.loads(path.read_text())]
+        words = [
+            w
+            for name in ("codes.json", "reasons.json")
+            for path in sorted((ROOT / "lifeos").glob("*/" + name))
+            for w in json.loads(path.read_text())
+        ]
         self.assertEqual(sorted(w for w in words if words.count(w) > 1), [])
         with tempfile.TemporaryDirectory() as root:
             (Path(root) / "pkg").mkdir()
-            (Path(root) / "pkg" / "codes.json").write_text(json.dumps({"PKG_NEW_CODE": ["pkg", "ok", False, "It worked.", "None.", "info"]}))
+            (Path(root) / "pkg" / "codes.json").write_text(
+                json.dumps({"PKG_NEW_CODE": ["pkg", "ok", False, "It worked.", "None.", "info"]})
+            )
             self.assertEqual(codes.declared(Path(root))[0]["PKG_NEW_CODE"].severity, "info")
 
 
 class EveryCodeIsRegistered(unittest.TestCase):
     def test_every_emitted_code_is_registered_or_a_config_name(self):
         missing = unregistered(emitted())
-        self.assertEqual(missing, {}, "declare each new code in lifeos/<its package>/codes.json (stage, class, attempt, meaning, action, severity); a config or environment name goes in lifeos/platform/not_codes.json")
+        self.assertEqual(
+            missing,
+            {},
+            "declare each new code in lifeos/<its package>/codes.json (stage, class, attempt, meaning, action, severity); a config or environment name goes in lifeos/platform/not_codes.json",
+        )
 
     def test_the_check_turns_red_for_an_unregistered_code(self):
         found = {c: "x.py:1" for c in codes.candidates('def f():\n    raise Error("BRAND_NEW_UNREGISTERED_CODE")\n')}
@@ -68,13 +79,18 @@ class EveryCodeIsRegistered(unittest.TestCase):
         self.assertEqual(codes.candidates('"""Raises SOME_FAKE_CODE."""\nx = "REAL_CODE"\n'), {"REAL_CODE": 2})
 
 
-PUBLIC_BEFORE_LIFE_72 = frozenset((
-    "none http_N link_mismatch jd_thin jd_template jd_listing description_empty description_empty_tf hold_expired unresolved_after_recovery lane_exclude repost "
-    "repost_ambiguous recovery_retry screen_pay listing_url no_job_id dup_other_source dup_of_final_url closed unknown Fit_N_below_N audit_url_listing_url audit_url_root "
-    "audit_url_workable_no_account audit_jd_template audit_jd_listing audit_jd_thin no_match_no_board+no_result no_match_no_title+no_result no_match_ambiguous+no_result "
-    "no_match_no_board+no_fit no_match_no_title+no_fit no_match_ambiguous+no_fit in_ledger same_opening audit_url_no_job_id").split())
-MADE_PUBLIC_OCT_25 = frozenset("excluded_fit released_keep_list released_ledger requeued_age requeued_direct requeued_fit requeued_floor requeued_linkedin "
-                               "retired_by_jim title_watch_unseen".split())
+PUBLIC_BEFORE_LIFE_72 = frozenset(
+    (
+        "none http_N link_mismatch jd_thin jd_template jd_listing description_empty description_empty_tf hold_expired unresolved_after_recovery lane_exclude repost "
+        "repost_ambiguous recovery_retry screen_pay listing_url no_job_id dup_other_source dup_of_final_url closed unknown Fit_N_below_N audit_url_listing_url audit_url_root "
+        "audit_url_workable_no_account audit_jd_template audit_jd_listing audit_jd_thin no_match_no_board+no_result no_match_no_title+no_result no_match_ambiguous+no_result "
+        "no_match_no_board+no_fit no_match_no_title+no_fit no_match_ambiguous+no_fit in_ledger same_opening audit_url_no_job_id"
+    ).split()
+)
+MADE_PUBLIC_OCT_25 = frozenset(
+    "excluded_fit released_keep_list released_ledger requeued_age requeued_direct requeued_fit requeued_floor requeued_linkedin "
+    "retired_by_jim title_watch_unseen".split()
+)
 
 
 def emitted_reasons(root=ROOT / "lifeos"):
@@ -110,10 +126,14 @@ class StoredReasons(unittest.TestCase):
         self.assertEqual(alertstate.REASONS, codes.public_reasons())
 
     def test_the_reason_check_turns_red_for_an_unregistered_reason(self):
-        found = codes.sql_reasons("cursor.execute(\"UPDATE v7_jobs SET unresolved_reason='brand_new_reason' WHERE id=%s\")")
+        found = codes.sql_reasons(
+            "cursor.execute(\"UPDATE v7_jobs SET unresolved_reason='brand_new_reason' WHERE id=%s\")"
+        )
         self.assertEqual(found, {"brand_new_reason"})
         self.assertNotIn("brand_new_reason", codes.REASONS)
-        self.assertEqual(codes.sql_reasons("unresolved_reason IN ('jd_thin', 'closed') AND x LIKE 'audit_%%'"), {"jd_thin", "closed"})
+        self.assertEqual(
+            codes.sql_reasons("unresolved_reason IN ('jd_thin', 'closed') AND x LIKE 'audit_%%'"), {"jd_thin", "closed"}
+        )
 
 
 class FitFamiliesBuiltFromStrings(unittest.TestCase):

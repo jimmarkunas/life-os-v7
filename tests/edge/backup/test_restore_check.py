@@ -1,4 +1,5 @@
 """the one-command real-key restore check (restore_check.py)."""
+
 import atexit
 import contextlib
 import io
@@ -41,10 +42,49 @@ def make_pair(base, passphrase="", slot=0):
         tag = "%s%d" % ("pp" if passphrase else "np", slot)
         home = Path(root) / ("priv-" + tag)
         home.mkdir(mode=0o700)
-        subprocess.run(["gpg", "--homedir", str(home), "--batch", "--quiet", "--pinentry-mode", "loopback", "--passphrase", passphrase, "--quick-generate-key", UID, "default", "default", "never"], check=True, capture_output=True)
+        subprocess.run(
+            [
+                "gpg",
+                "--homedir",
+                str(home),
+                "--batch",
+                "--quiet",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--quick-generate-key",
+                UID,
+                "default",
+                "default",
+                "never",
+            ],
+            check=True,
+            capture_output=True,
+        )
         pub = Path(root) / ("pub-%s.asc" % tag)
-        pub.write_bytes(subprocess.run(["gpg", "--homedir", str(home), "--armor", "--export", UID], check=True, capture_output=True).stdout)
-        secret = subprocess.run(["gpg", "--homedir", str(home), "--batch", "--pinentry-mode", "loopback", "--passphrase", passphrase, "--armor", "--export-secret-keys", UID], check=True, capture_output=True).stdout
+        pub.write_bytes(
+            subprocess.run(
+                ["gpg", "--homedir", str(home), "--armor", "--export", UID], check=True, capture_output=True
+            ).stdout
+        )
+        secret = subprocess.run(
+            [
+                "gpg",
+                "--homedir",
+                str(home),
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--armor",
+                "--export-secret-keys",
+                UID,
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
         _PAIRS[key] = (str(pub), secret, root)
     return _PAIRS[key][0], _PAIRS[key][1]
 
@@ -52,8 +92,29 @@ def make_pair(base, passphrase="", slot=0):
 def seal(pub, plain, dest):
     home = tempfile.mkdtemp(prefix="sealk-", dir="/tmp")
     try:
-        subprocess.run(["gpg", "--homedir", home, "--batch", "--quiet", "--import", pub], check=True, capture_output=True)
-        subprocess.run(["gpg", "--homedir", home, "--batch", "--quiet", "--yes", "--trust-model", "always", "--output", dest, "--encrypt", "--recipient", UID, plain], check=True, capture_output=True)
+        subprocess.run(
+            ["gpg", "--homedir", home, "--batch", "--quiet", "--import", pub], check=True, capture_output=True
+        )
+        subprocess.run(
+            [
+                "gpg",
+                "--homedir",
+                home,
+                "--batch",
+                "--quiet",
+                "--yes",
+                "--trust-model",
+                "always",
+                "--output",
+                dest,
+                "--encrypt",
+                "--recipient",
+                UID,
+                plain,
+            ],
+            check=True,
+            capture_output=True,
+        )
     finally:
         shutil.rmtree(home, ignore_errors=True)
 
@@ -124,13 +185,25 @@ class Run(unittest.TestCase):
             archive, code = build(tmp, pub)
             out = io.StringIO()
             with key_source(secret):
-                self.assertEqual(rc.run_check(archive, ("bws", "x"), ram=fake_ram, out=out, manifests=("code/lifeos-fit/",)), 0)
+                self.assertEqual(
+                    rc.run_check(archive, ("bws", "x"), ram=fake_ram, out=out, manifests=("code/lifeos-fit/",)), 0
+                )
             text = out.getvalue()
             self.assertTrue(text.startswith("PASS "), text)
             self.assertIn("archives=2", text)
             self.assertIn("mac_databases=3", text)
             self.assertIn("nightly_databases=1", text)
-            for word in ("front.py", "gw.mjs", "auth", "cred", "token", "fake-not-a-secret", UID, "state.db", "BEGIN PGP"):
+            for word in (
+                "front.py",
+                "gw.mjs",
+                "auth",
+                "cred",
+                "token",
+                "fake-not-a-secret",
+                UID,
+                "state.db",
+                "BEGIN PGP",
+            ):
                 self.assertNotIn(word, text)  # counts only
             self.assertIn("nightly_manifest_code_lifeos-fit=2 files", text)
             n, h = rc.manifest_hash(_BUILT[pub][2], "code/lifeos-fit/")
@@ -143,12 +216,21 @@ class Run(unittest.TestCase):
 
             def fetch(source, run=subprocess.run):
                 return secret if source[1] == "key" else b"correct horse"
+
             out = io.StringIO()
             with mock.patch.object(rc, "fetch_key", fetch):
-                self.assertEqual(rc.run_check(archive, ("bws", "key"), ram=fake_ram, out=out, passphrase=("bws", "pp")), 0, out.getvalue())
+                self.assertEqual(
+                    rc.run_check(archive, ("bws", "key"), ram=fake_ram, out=out, passphrase=("bws", "pp")),
+                    0,
+                    out.getvalue(),
+                )
             wrong = io.StringIO()
-            with mock.patch.object(rc, "fetch_key", lambda s, run=subprocess.run: secret if s[1] == "key" else b"wrong"):
-                self.assertEqual(rc.run_check(archive, ("bws", "key"), ram=fake_ram, out=wrong, passphrase=("bws", "pp")), 1)
+            with mock.patch.object(
+                rc, "fetch_key", lambda s, run=subprocess.run: secret if s[1] == "key" else b"wrong"
+            ):
+                self.assertEqual(
+                    rc.run_check(archive, ("bws", "key"), ram=fake_ram, out=wrong, passphrase=("bws", "pp")), 1
+                )
             self.assertEqual(wrong.getvalue(), "FAIL restore_decrypt\n")
 
     def test_a_key_that_does_not_open_the_archive_is_a_fixed_code(self):
@@ -169,6 +251,7 @@ class Run(unittest.TestCase):
             with fake_ram() as path:
                 made.append(path)
                 yield path
+
         with tempfile.TemporaryDirectory() as tmp:
             pub, secret = make_pair(tmp)
             archive, _ = build(tmp, pub)
@@ -196,6 +279,7 @@ class DefaultId(unittest.TestCase):
             def fake_run_check(archive, source, **kwargs):
                 seen["source"] = source
                 return 0
+
             with mock.patch.object(rc, "ID_FILE", str(idfile)), mock.patch.object(rc, "run_check", fake_run_check):
                 self.assertEqual(rc.main(["backup.tar.gz.gpg"], out=io.StringIO()), 0)
             self.assertEqual(seen["source"], ("bws", "the-id"))
@@ -209,7 +293,10 @@ class DefaultId(unittest.TestCase):
             idfile = Path(tmp) / "id"
             idfile.write_text("from-file")
             seen = {}
-            with mock.patch.object(rc, "ID_FILE", str(idfile)), mock.patch.object(rc, "run_check", lambda a, s, **k: seen.setdefault("s", s) and 0):
+            with (
+                mock.patch.object(rc, "ID_FILE", str(idfile)),
+                mock.patch.object(rc, "run_check", lambda a, s, **k: seen.setdefault("s", s) and 0),
+            ):
                 rc.main(["backup.tar.gz.gpg", "--bws-secret", "from-cli"], out=io.StringIO())
             self.assertEqual(seen["s"], ("bws", "from-cli"))
 
@@ -224,6 +311,7 @@ class Prompt(unittest.TestCase):
                 if source[0] == "prompt":
                     return b"correct horse"
                 return secret
+
             out = io.StringIO()
             with mock.patch.object(rc, "fetch_key", fetch):
                 code = rc.run_check(archive, ("bws", "key"), ram=fake_ram, out=out, passphrase=("prompt", ""))
@@ -231,7 +319,10 @@ class Prompt(unittest.TestCase):
             self.assertNotIn("correct horse", out.getvalue())
 
     def test_the_prompt_is_hidden_and_needs_a_terminal(self):
-        with mock.patch.object(rc.getpass, "getpass", return_value="typed") as asked, mock.patch("builtins.open", mock.mock_open()):
+        with (
+            mock.patch.object(rc.getpass, "getpass", return_value="typed") as asked,
+            mock.patch("builtins.open", mock.mock_open()),
+        ):
             self.assertEqual(rc.fetch_key(("prompt", "")), b"typed")
         self.assertIn("hidden", asked.call_args[0][0])
         with mock.patch("builtins.open", side_effect=OSError):
@@ -241,14 +332,22 @@ class Prompt(unittest.TestCase):
 
     def test_the_flag_selects_the_prompt_source(self):
         seen = {}
-        with mock.patch.object(rc, "ID_FILE", "/nonexistent/id"), mock.patch.object(rc, "run_check", lambda a, s, **k: seen.update(p=k.get("passphrase")) or 0):
+        with (
+            mock.patch.object(rc, "ID_FILE", "/nonexistent/id"),
+            mock.patch.object(rc, "run_check", lambda a, s, **k: seen.update(p=k.get("passphrase")) or 0),
+        ):
             rc.main(["backup.tar.gz.gpg", "--bws-secret", "x", "--passphrase-prompt"], out=io.StringIO())
         self.assertEqual(seen["p"], ("prompt", ""))
 
     def test_a_missing_archive_is_a_fixed_code_before_anything_is_asked(self):
         out = io.StringIO()
         with mock.patch.object(rc, "fetch_key", side_effect=AssertionError("must not ask")):
-            self.assertEqual(rc.run_check("/nonexistent/x.tar.gz.gpg", ("bws", "x"), ram=fake_ram, out=out, passphrase=("prompt", "")), 1)
+            self.assertEqual(
+                rc.run_check(
+                    "/nonexistent/x.tar.gz.gpg", ("bws", "x"), ram=fake_ram, out=out, passphrase=("prompt", "")
+                ),
+                1,
+            )
         self.assertEqual(out.getvalue(), "FAIL restore_no_archive\n")
 
 
@@ -259,6 +358,7 @@ class Fetch(unittest.TestCase):
         def run(command, **kwargs):
             seen["c"], seen["k"] = command, kwargs
             return subprocess.CompletedProcess(command, code, stdout=stdout, stderr=b"detail that must never surface")
+
         return run, seen
 
     def test_bws_reads_the_value_field_and_asks_for_json_only(self):
@@ -272,7 +372,11 @@ class Fetch(unittest.TestCase):
         self.assertEqual(seen["c"], ["bw", "get", "notes", "ITEM"])
 
     def test_failures_are_fixed_codes(self):
-        for source, run in ((("bws", "x"), self.runner(1, b"")[0]), (("bws", "x"), self.runner(0, b"not json")[0]), (("bw", "x"), self.runner(0, b"")[0])):
+        for source, run in (
+            (("bws", "x"), self.runner(1, b"")[0]),
+            (("bws", "x"), self.runner(0, b"not json")[0]),
+            (("bw", "x"), self.runner(0, b"")[0]),
+        ):
             with self.assertRaises(rc.CheckError) as ctx:
                 rc.fetch_key(source, run)
             self.assertEqual(str(ctx.exception), "restore_key_fetch")
@@ -294,6 +398,7 @@ class Ram(unittest.TestCase):
         def run(command, **kwargs):
             calls.append(command[0])
             return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
         with self.assertRaises(rc.CheckError):
             with rc.ram_folder(run=run, platform="darwin"):
                 pass
@@ -307,6 +412,7 @@ class Ram(unittest.TestCase):
             if command[0] == "hdiutil" and command[1] == "attach":
                 return subprocess.CompletedProcess(command, 0, stdout="/dev/disk9   \n", stderr="")
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
         with mock.patch.object(rc.os, "chmod"), mock.patch.object(rc.shutil, "rmtree"):
             with self.assertRaises(ValueError):
                 with rc.ram_folder(run=run, platform="darwin"):

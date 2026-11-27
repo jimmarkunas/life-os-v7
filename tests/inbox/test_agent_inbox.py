@@ -1,4 +1,5 @@
 """the Agent Inbox: what a writer may add, where it may write, and the tile recount."""
+
 import io
 import json
 import unittest
@@ -15,14 +16,27 @@ PAGE = "b2" * 16
 
 
 def ok_item(**over):
-    return {"from": "claude-code", "subject": "Approve the key rotation plan", "urgency": "Today", "workspace": "Personal", **over}
+    return {
+        "from": "claude-code",
+        "subject": "Approve the key rotation plan",
+        "urgency": "Today",
+        "workspace": "Personal",
+        **over,
+    }
 
 
 class FakeClient:
     """A Notion double that keeps rows, answers the four calls the inbox makes, and remembers every write."""
 
     def __init__(self, found=1, tiles=True, source=SOURCE, parent_is_page=False):
-        self.source, self.rows, self.writes, self.blocks, self.calls_made, self.row_blocks = source, [], [], {}, [], {}  # row_blocks: the page body of each row
+        self.source, self.rows, self.writes, self.blocks, self.calls_made, self.row_blocks = (
+            source,
+            [],
+            [],
+            {},
+            [],
+            {},
+        )  # row_blocks: the page body of each row
         self.found = found
         self.tiles = tiles
         self.parent_is_page = parent_is_page  # the database sits inside the Agent Inbox page
@@ -33,15 +47,34 @@ class FakeClient:
         self.blocks["cl"] = [{"id": f"col{i}", "type": "column"} for i in range(5)]
         for i in range(5):
             self.blocks[f"col{i}"] = [{"id": f"co{i}", "type": "callout"}]
-            self.blocks[f"co{i}"] = [{"id": f"h{i}", "type": "heading_3", "heading_3": {"rich_text": [{"plain_text": "-"}]}},
-                                     {"id": f"p{i}", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "old"}]}}]
+            self.blocks[f"co{i}"] = [
+                {"id": f"h{i}", "type": "heading_3", "heading_3": {"rich_text": [{"plain_text": "-"}]}},
+                {"id": f"p{i}", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "old"}]}},
+            ]
 
     def call(self, method, path, body=None):
         self.calls_made.append((method, path))
         if path == "/search":
             if body["filter"]["value"] == "data_source":
-                return {"results": [{"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]} for _ in range(self.found)], "has_more": False}
-            return {"results": [{"object": "page", "id": PAGE, "properties": {"title": {"title": [{"plain_text": agent_inbox.PAGE_TITLE}]}}}] if self.tiles else [], "has_more": False}
+                return {
+                    "results": [
+                        {"object": "data_source", "id": SOURCE, "title": [{"plain_text": agent_inbox.DB_TITLE}]}
+                        for _ in range(self.found)
+                    ],
+                    "has_more": False,
+                }
+            return {
+                "results": [
+                    {
+                        "object": "page",
+                        "id": PAGE,
+                        "properties": {"title": {"title": [{"plain_text": agent_inbox.PAGE_TITLE}]}},
+                    }
+                ]
+                if self.tiles
+                else [],
+                "has_more": False,
+            }
         if method == "GET" and path.startswith("/data_sources/"):
             return {"parent": {"type": "database_id", "database_id": "db"}}
         if method == "GET" and path.startswith("/databases/"):
@@ -51,7 +84,13 @@ class FakeClient:
         if method == "GET" and path.startswith(f"/blocks/{PAGE}/children"):
             return {"results": self.page_children, "has_more": False}
         if method == "GET" and path.startswith("/blocks/row"):
-            return {"results": [{"id": f"{path.split('/')[2]}-b{i}"} for i, _ in enumerate(self.row_blocks.get(path.split("/")[2], ()))], "has_more": False}
+            return {
+                "results": [
+                    {"id": f"{path.split('/')[2]}-b{i}"}
+                    for i, _ in enumerate(self.row_blocks.get(path.split("/")[2], ()))
+                ],
+                "has_more": False,
+            }
         if method == "DELETE" and path.startswith("/blocks/row"):
             self.writes.append(("DELETE", path, None))
             self.row_blocks[path.split("/")[2].split("-b")[0]] = []
@@ -69,8 +108,25 @@ class FakeClient:
             props = body["properties"]
             self.row_blocks[f"row{len(self.rows)}"] = body.get("children", [])
             created_due = ((props.get("Due") or {}).get("date") or {}).get("start", "")
-            self.rows.append({"due": ((props.get("Due") or {}).get("date") or {}).get("start", ""), "details": props["Details"]["rich_text"][0]["text"]["content"] if props["Details"]["rich_text"] else "", "id": f"row{len(self.rows)}", "status": props["Status"]["select"]["name"], "urgency": props["Urgency"]["select"]["name"], "key": props["Key"]["rich_text"][0]["text"]["content"],
-                              "from": props["From"]["rich_text"][0]["text"]["content"], "properties": {"From": {"rich_text": [{"plain_text": props["From"]["rich_text"][0]["text"]["content"]}]}, **({"Due": {"date": {"start": created_due}}} if created_due else {})}, "subject": props["Subject"]["title"][0]["text"]["content"], "created": NOW})
+            self.rows.append(
+                {
+                    "due": ((props.get("Due") or {}).get("date") or {}).get("start", ""),
+                    "details": props["Details"]["rich_text"][0]["text"]["content"]
+                    if props["Details"]["rich_text"]
+                    else "",
+                    "id": f"row{len(self.rows)}",
+                    "status": props["Status"]["select"]["name"],
+                    "urgency": props["Urgency"]["select"]["name"],
+                    "key": props["Key"]["rich_text"][0]["text"]["content"],
+                    "from": props["From"]["rich_text"][0]["text"]["content"],
+                    "properties": {
+                        "From": {"rich_text": [{"plain_text": props["From"]["rich_text"][0]["text"]["content"]}]},
+                        **({"Due": {"date": {"start": created_due}}} if created_due else {}),
+                    },
+                    "subject": props["Subject"]["title"][0]["text"]["content"],
+                    "created": NOW,
+                }
+            )
         elif method == "PATCH" and body.get("properties"):
             row = next(r for r in self.rows if f"/pages/{r['id']}" == path)
             props = body["properties"]
@@ -82,7 +138,9 @@ class FakeClient:
                 row["due"] = (props["Due"].get("date") or {}).get("start", "")
                 row.setdefault("properties", {})["Due"] = {"date": {"start": row["due"]} if row["due"] else None}
             if "Details" in props:
-                row["details"] = props["Details"]["rich_text"][0]["text"]["content"] if props["Details"]["rich_text"] else ""
+                row["details"] = (
+                    props["Details"]["rich_text"][0]["text"]["content"] if props["Details"]["rich_text"] else ""
+                )
         elif method == "PATCH" and body.get("in_trash"):
             self.rows = [r for r in self.rows if f"/pages/{r['id']}" != path]
         return {}
@@ -115,23 +173,35 @@ class FakeClient:
             elif part.get("timestamp") == "created_time":
                 after = datetime.fromisoformat(part["created_time"]["after"])
                 rows = [r for r in rows if r["created"] > after]
-        return {"results": rows[:body.get("page_size", 100)], "has_more": False}
+        return {"results": rows[: body.get("page_size", 100)], "has_more": False}
 
 
 class Validation(unittest.TestCase):
     def test_a_good_item_normalizes_with_a_stable_key(self):
         a, b = agent_inbox.normalize(ok_item(), NOW), agent_inbox.normalize(ok_item(), NOW)
         self.assertEqual(a["key"], b["key"])
-        self.assertEqual((a["urgency"], a["workspace"], a["due"], a["due_given"], a["link"]), ("Today", "Personal", agent_inbox.due_for("Today", NOW), False, ""))  # Today means 11:59 PM CT that day
+        self.assertEqual(
+            (a["urgency"], a["workspace"], a["due"], a["due_given"], a["link"]),
+            ("Today", "Personal", agent_inbox.due_for("Today", NOW), False, ""),
+        )  # Today means 11:59 PM CT that day
 
     def test_defaults_are_today_and_personal(self):
         item = agent_inbox.normalize({"from": "codex", "subject": "x"})
         self.assertEqual((item["urgency"], item["workspace"]), ("Today", "Personal"))
 
     def test_every_refusal_is_a_fixed_word(self):
-        cases = {"from_missing": ok_item(**{"from": ""}), "subject_missing": ok_item(subject=" "), "urgency_invalid": ok_item(urgency="Soon"), "workspace_invalid": ok_item(workspace="TGP"),
-                 "subject_invalid": ok_item(subject="x" * (agent_inbox.SUBJECT_MAX + 1)), "due_invalid": ok_item(due="tomorrow-ish"), "link_invalid": ok_item(link="ftp://host/x"),
-                 "from_invalid": ok_item(**{"from": "sender name with spaces and an at sign @"}), "key_invalid": ok_item(key="bad key!"), "details_invalid": ok_item(details="y" * 1501)}
+        cases = {
+            "from_missing": ok_item(**{"from": ""}),
+            "subject_missing": ok_item(subject=" "),
+            "urgency_invalid": ok_item(urgency="Soon"),
+            "workspace_invalid": ok_item(workspace="TGP"),
+            "subject_invalid": ok_item(subject="x" * (agent_inbox.SUBJECT_MAX + 1)),
+            "due_invalid": ok_item(due="tomorrow-ish"),
+            "link_invalid": ok_item(link="ftp://host/x"),
+            "from_invalid": ok_item(**{"from": "sender name with spaces and an at sign @"}),
+            "key_invalid": ok_item(key="bad key!"),
+            "details_invalid": ok_item(details="y" * 1501),
+        }
         for word, item in cases.items():
             with self.subTest(word):
                 with self.assertRaises(InboxError) as caught:
@@ -139,8 +209,14 @@ class Validation(unittest.TestCase):
                 self.assertEqual(caught.exception.reason, word)
 
     def test_secrets_and_personal_data_never_pass(self):
-        fakes = {"nsec": "n" + "sec1" + "q" * 40, "github": "gh" + "p_" + "A" * 30, "private key": "-----BEGIN " + "RSA PRIVATE KEY-----", "bearer": "Bearer " + "x" * 30,
-                 "assignment": "pass" + "word: " + "hunter2hunter2", "hex": "ab" * 25}
+        fakes = {
+            "nsec": "n" + "sec1" + "q" * 40,
+            "github": "gh" + "p_" + "A" * 30,
+            "private key": "-----BEGIN " + "RSA PRIVATE KEY-----",
+            "bearer": "Bearer " + "x" * 30,
+            "assignment": "pass" + "word: " + "hunter2hunter2",
+            "hex": "ab" * 25,
+        }
         for name, text in fakes.items():
             for field in ("subject", "details"):
                 with self.subTest(f"{name} {field}"):
@@ -157,7 +233,10 @@ class Validation(unittest.TestCase):
             with self.assertRaises(InboxError) as caught:
                 agent_inbox.normalize(ok_item(link=f"https://{host}/x"))
             self.assertEqual(caught.exception.reason, "link_synthetic_host")
-        self.assertEqual(agent_inbox.normalize(ok_item(link="https://github.com/org/repo/pull/1"))["link"], "https://github.com/org/repo/pull/1")
+        self.assertEqual(
+            agent_inbox.normalize(ok_item(link="https://github.com/org/repo/pull/1"))["link"],
+            "https://github.com/org/repo/pull/1",
+        )
 
     def test_properties_always_start_as_new_and_set_nothing_else(self):
         props = agent_inbox.properties(agent_inbox.normalize(ok_item(due="2026-11-20")))
@@ -177,7 +256,9 @@ class Sending(unittest.TestCase):
     def test_the_same_key_never_adds_a_second_row(self):
         client = FakeClient()
         agent_inbox.send(client, ok_item(key="k1"), now=NOW)
-        self.assertEqual(agent_inbox.send(client, ok_item(key="k1", subject="different words"), now=NOW), {"updated": 1})
+        self.assertEqual(
+            agent_inbox.send(client, ok_item(key="k1", subject="different words"), now=NOW), {"updated": 1}
+        )
         self.assertEqual((len(client.rows), client.rows[0]["subject"]), (1, "different words"))
         self.assertEqual([w[:2] for w in client.writes], [("POST", "/pages"), ("PATCH", "/pages/row0")])
         with self.assertRaises(InboxError) as caught:
@@ -217,7 +298,9 @@ class Tiles(unittest.TestCase):
         self.assertEqual(first, {"tiles": 5, "tiles_changed": 10})
         numbers = [client.blocks[f"co{i}"][0]["heading_3"]["rich_text"][0]["plain_text"] for i in range(5)]
         labels = [client.blocks[f"co{i}"][1]["paragraph"]["rich_text"][0]["plain_text"] for i in range(5)]
-        self.assertEqual((numbers, labels), (["2", "1", "0", "0", "1"], ["Now", "Today", "This week", "FYI", "Snoozed"]))
+        self.assertEqual(
+            (numbers, labels), (["2", "1", "0", "0", "1"], ["Now", "Today", "This week", "FYI", "Snoozed"])
+        )
         self.assertEqual(agent_inbox.recount_page(client), {"tiles": 5, "tiles_changed": 0})
 
     def test_only_the_five_tiles_are_ever_patched(self):
@@ -259,7 +342,10 @@ class Tool(unittest.TestCase):
         self.assertEqual(send_to_jim.deliver(ok_item(), environ={}), {"ok": False, "reason": "config_missing"})
 
     def test_deliver_reports_a_refusal_as_a_word(self):
-        self.assertEqual(send_to_jim.deliver(ok_item(urgency="Soon"), client=FakeClient(), now=NOW), {"ok": False, "reason": "urgency_invalid"})
+        self.assertEqual(
+            send_to_jim.deliver(ok_item(urgency="Soon"), client=FakeClient(), now=NOW),
+            {"ok": False, "reason": "urgency_invalid"},
+        )
 
     def test_the_row_survives_a_tile_failure(self):
         client = FakeClient(tiles=False)
@@ -268,26 +354,60 @@ class Tool(unittest.TestCase):
 
     def test_mcp_lists_one_tool_and_calls_it(self):
         client = FakeClient()
-        lines = [json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}), json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
-                 json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
-                 json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "send_to_jim", "arguments": {k: v for k, v in ok_item().items() if k != "from"}}}),
-                 json.dumps({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "something_else", "arguments": {}}})]
+        lines = [
+            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+            json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "send_to_jim", "arguments": {k: v for k, v in ok_item().items() if k != "from"}},
+                }
+            ),
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "tools/call",
+                    "params": {"name": "something_else", "arguments": {}},
+                }
+            ),
+        ]
         out, receipts = io.StringIO(), []
         with mock.patch("sys.stdout", out):
-            send_to_jim.serve(lines, client=client, access=open_access(), facts={"os_user": "jimmarkunas"}, audit=receipts.append, now=NOW)
+            send_to_jim.serve(
+                lines,
+                client=client,
+                access=open_access(),
+                facts={"os_user": "jimmarkunas"},
+                audit=receipts.append,
+                now=NOW,
+            )
         replies = [json.loads(line) for line in out.getvalue().splitlines()]
         self.assertEqual([r["id"] for r in replies], [1, 2, 3, 4])
         self.assertEqual([t["name"] for t in replies[1]["result"]["tools"]], ["send_to_jim"])
         self.assertFalse(replies[2]["result"]["isError"])
         self.assertEqual(replies[3]["error"]["message"], "method_not_found")
         self.assertEqual((len(client.rows), client.rows[0]["from"]), (1, "claude-code-mac"))
-        self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")])  # the gate's receipt first, then the result
+        self.assertEqual(
+            [(r["outcome"], r["reason"]) for r in receipts], [("allow", "ok"), ("ok", "ok")]
+        )  # the gate's receipt first, then the result
 
 
 class SpoofedFrom(unittest.TestCase):
     def test_mcp_refuses_forged_from_without_a_provider_call(self):
         client, receipts = FakeClient(), []
-        result = send_to_jim.governed(ok_item(**{"from": "another-agent"}), {}, client, open_access(), {"os_user": "jimmarkunas"}, receipts.append, NOW)
+        result = send_to_jim.governed(
+            ok_item(**{"from": "another-agent"}),
+            {},
+            client,
+            open_access(),
+            {"os_user": "jimmarkunas"},
+            receipts.append,
+            NOW,
+        )
         self.assertEqual(result, {"ok": False, "reason": "from_spoofed"})
         self.assertEqual(client.writes, [])
         self.assertEqual([(r["outcome"], r["reason"]) for r in receipts], [("deny", "from_spoofed")])
@@ -318,6 +438,7 @@ class Stage(unittest.TestCase):
 
     def test_the_stage_never_reads_another_system(self):
         import lifeos.inbox.agent_inbox as module
+
         with open(module.__file__, encoding="utf-8") as handle:
             source = handle.read()
         for word in ("jira", "todoist", "calendar", "asana", "concord", "followup"):
@@ -326,23 +447,34 @@ class Stage(unittest.TestCase):
 
 class DueRule(unittest.TestCase):
     """Due replaces Urgency."""
+
     def at(self, y, mo, d, h, mi, tz="America/Chicago"):
         from zoneinfo import ZoneInfo
+
         return datetime(y, mo, d, h, mi, tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
 
     def test_each_urgency_maps_to_its_due_and_the_ct_day_boundary_decides_the_day(self):
         due = agent_inbox.due_for
         late, early = self.at(2026, 11, 25, 23, 30), self.at(2026, 11, 26, 0, 30)
-        self.assertEqual((due("Now", late), due("Today", late), due("Today", early)), ("2026-11-25T23:30:00-06:00", "2026-11-25T23:59:00-06:00", "2026-11-26T23:59:00-06:00"))
+        self.assertEqual(
+            (due("Now", late), due("Today", late), due("Today", early)),
+            ("2026-11-25T23:30:00-06:00", "2026-11-25T23:59:00-06:00", "2026-11-26T23:59:00-06:00"),
+        )
         self.assertEqual(due("FYI", late), "")
 
     def test_this_week_is_the_coming_sunday_and_the_same_day_on_a_sunday_and_across_a_dst_change(self):
         due = agent_inbox.due_for
         self.assertEqual(due("This week", self.at(2026, 11, 25, 10, 0)), "2026-11-29T23:59:00-06:00")  # a Wednesday
-        self.assertEqual(due("This week", self.at(2026, 11, 29, 10, 0)), "2026-11-29T23:59:00-06:00")  # a Sunday: the same day
-        self.assertEqual(due("This week", self.at(2026, 11, 30, 10, 0)), "2026-12-06T23:59:00-06:00")  # a Monday: the next Sunday
+        self.assertEqual(
+            due("This week", self.at(2026, 11, 29, 10, 0)), "2026-11-29T23:59:00-06:00"
+        )  # a Sunday: the same day
+        self.assertEqual(
+            due("This week", self.at(2026, 11, 30, 10, 0)), "2026-12-06T23:59:00-06:00"
+        )  # a Monday: the next Sunday
         self.assertEqual(due("This week", self.at(2027, 3, 13, 12, 0)), "2027-03-14T23:59:00-05:00")
-        self.assertEqual(due("Today", self.at(2026, 11, 1, 12, 0)), "2026-11-01T23:59:00-06:00")  # the day the clocks went back
+        self.assertEqual(
+            due("Today", self.at(2026, 11, 1, 12, 0)), "2026-11-01T23:59:00-06:00"
+        )  # the day the clocks went back
 
     def test_an_explicit_due_wins_fyi_has_none_and_the_key_never_depends_on_the_computed_due(self):
         explicit = agent_inbox.normalize(ok_item(due="2026-12-01"), NOW)
@@ -365,24 +497,57 @@ class DueRule(unittest.TestCase):
 
     def test_fill_missing_due_gives_open_rows_their_due_from_their_own_received_time_and_touches_nothing_else(self):
         client = FakeClient()
-        for n, (urgency, status, due) in enumerate((("Now", "New", ""), ("Today", "New", ""), ("This week", "New", ""), ("FYI", "New", ""), ("Today", "New", "2026-12-01"), ("Today", "Done", ""))):
-            client.rows.append({"id": f"row{n}", "status": status, "urgency": urgency, "due": due, "key": f"k{n}", "from": "x", "created": NOW})
+        for n, (urgency, status, due) in enumerate(
+            (
+                ("Now", "New", ""),
+                ("Today", "New", ""),
+                ("This week", "New", ""),
+                ("FYI", "New", ""),
+                ("Today", "New", "2026-12-01"),
+                ("Today", "Done", ""),
+            )
+        ):
+            client.rows.append(
+                {
+                    "id": f"row{n}",
+                    "status": status,
+                    "urgency": urgency,
+                    "due": due,
+                    "key": f"k{n}",
+                    "from": "x",
+                    "created": NOW,
+                }
+            )
         for r in client.rows:
             r["created_time"] = "2026-11-17T02:00:00.000Z"
             r["properties"] = {"Urgency": {"select": {"name": r["urgency"]}}}
         out = agent_inbox.fill_missing_due(client, SOURCE)
         self.assertEqual(out, {"filled": 3, "left": 1})
-        patched = {path: body["properties"]["Due"]["date"]["start"] for method, path, body in client.writes if method == "PATCH"}
-        self.assertEqual(patched, {"/pages/row0": "2026-11-16T20:00:00-06:00", "/pages/row1": "2026-11-16T23:59:00-06:00", "/pages/row2": "2026-11-22T23:59:00-06:00"})
+        patched = {
+            path: body["properties"]["Due"]["date"]["start"]
+            for method, path, body in client.writes
+            if method == "PATCH"
+        }
+        self.assertEqual(
+            patched,
+            {
+                "/pages/row0": "2026-11-16T20:00:00-06:00",
+                "/pages/row1": "2026-11-16T23:59:00-06:00",
+                "/pages/row2": "2026-11-22T23:59:00-06:00",
+            },
+        )
 
 
 class StyledBody(unittest.TestCase):
     """target 6: the page body carries the content"""
+
     TEXT = "Approve the plan, about 3 minutes\nTicket | Your step | Where\n987 | reply **987 ok** | Jira\n988 | reply **988 ok** | Jira\n- first bullet\n1. first step\n# A heading\nplain words"
 
     def test_the_text_becomes_a_callout_a_table_lists_headings_and_bold(self):
         kinds = [b["type"] for b in agent_inbox.body_blocks(self.TEXT)]
-        self.assertEqual(kinds, ["callout", "table", "bulleted_list_item", "numbered_list_item", "heading_2", "paragraph"])
+        self.assertEqual(
+            kinds, ["callout", "table", "bulleted_list_item", "numbered_list_item", "heading_2", "paragraph"]
+        )
         table = agent_inbox.body_blocks(self.TEXT)[1]["table"]
         self.assertEqual((table["table_width"], len(table["children"]), table["has_column_header"]), (3, 3, True))
         bold = table["children"][1]["table_row"]["cells"][1]

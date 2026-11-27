@@ -1,6 +1,7 @@
 """a quiet board is re-read on the quiet schedule (24 h base, backing off to 72 h) even when its answer is a 304 or an
 identical listing
 """
+
 from datetime import datetime, timedelta
 import unittest
 from unittest import mock
@@ -9,29 +10,68 @@ from lifeos.platform import limits
 from lifeos.sources.web import lister, run
 from tests.sources.web.test_conditional import BOARD, GH, NOW, Provider
 
-ENGINEER = {"jobs": [{"id": 9, "title": "Staff Software Engineer", "location": {"name": "Remote - US"}, "absolute_url": "https://boards.greenhouse.io/acme/jobs/9",
-                      "first_published": "2026-10-18", "content": "x"}]}
-SOURCE = {**BOARD, "tier": "employer", "status": "ready", "enabled": True, "refresh_hours": limits.BOARDS_REFRESH_HOURS, "hot_hours": limits.BOARDS_HOT_HOURS, "quiet": True}
+ENGINEER = {
+    "jobs": [
+        {
+            "id": 9,
+            "title": "Staff Software Engineer",
+            "location": {"name": "Remote - US"},
+            "absolute_url": "https://boards.greenhouse.io/acme/jobs/9",
+            "first_published": "2026-10-18",
+            "content": "x",
+        }
+    ]
+}
+SOURCE = {
+    **BOARD,
+    "tier": "employer",
+    "status": "ready",
+    "enabled": True,
+    "refresh_hours": limits.BOARDS_REFRESH_HOURS,
+    "hot_hours": limits.BOARDS_HOT_HOURS,
+    "quiet": True,
+}
 
 
 class Quiet(unittest.TestCase):
     def setUp(self):
         from tests.jobs.fakes_jobsdb import JobsDB
+
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 
     def sim(self, provider, reads, repo=None):
         """Read the board each time it falls due (the clock carries over between calls)."""
         from lifeos.sources.web import boards
+
         now, out = getattr(self, "now", NOW), []
         first_read = now == NOW
         for i in range(reads):
-            with mock.patch.object(run.store, "connect", return_value=self.db), mock.patch.object(run.store, "ensure_schema"):
-                first = (lambda *a: boards.backfill(*a, environ={"BOARDS_BACKFILL": "on"})) if first_read and i == 0 else boards.run
-                counts = first(40, True, now, lambda s: lister.list_source(s, provider), repo or run.SqlRepo(), [SOURCE])
-            due, failures = self.db.raw.execute("SELECT due_at, failures FROM v7_sources WHERE source_id='gh-acme'").fetchone()
+            with (
+                mock.patch.object(run.store, "connect", return_value=self.db),
+                mock.patch.object(run.store, "ensure_schema"),
+            ):
+                first = (
+                    (lambda *a: boards.backfill(*a, environ={"BOARDS_BACKFILL": "on"}))
+                    if first_read and i == 0
+                    else boards.run
+                )
+                counts = first(
+                    40, True, now, lambda s: lister.list_source(s, provider), repo or run.SqlRepo(), [SOURCE]
+                )
+            due, failures = self.db.raw.execute(
+                "SELECT due_at, failures FROM v7_sources WHERE source_id='gh-acme'"
+            ).fetchone()
             due = due if isinstance(due, datetime) else datetime.fromisoformat(str(due))
-            path = "304" if counts["not_modified"] else "same_frontier" if counts["same_frontier"] else "failed" if counts["failed"] else "full"
+            path = (
+                "304"
+                if counts["not_modified"]
+                else "same_frontier"
+                if counts["same_frontier"]
+                else "failed"
+                if counts["failed"]
+                else "full"
+            )
             out.append((path, round((due - now).total_seconds() / 3600, 1), failures))
             now = due
         self.now = now
@@ -69,9 +109,11 @@ class Quiet(unittest.TestCase):
         class Plain:
             def __init__(self, inner):
                 self.inner = inner
+
             states = property(lambda self: self.inner.states)
             items = property(lambda self: self.inner.items)
             commit = property(lambda self: self.inner.commit)
+
         quiet = [h for _, h, _ in self.sim(Provider(body=ENGINEER), 10, Plain(run.SqlRepo()))]
         self.assertEqual(quiet[-4:], [72.0] * 4)
 
@@ -79,6 +121,7 @@ class Quiet(unittest.TestCase):
 class Dead(unittest.TestCase):
     def setUp(self):
         from tests.jobs.fakes_jobsdb import JobsDB
+
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
         self.sim = Quiet.sim.__get__(self)
@@ -86,7 +129,9 @@ class Dead(unittest.TestCase):
     def test_the_fifth_not_found_in_a_row_goes_weekly_and_earlier_ones_keep_the_ladder(self):
         out = self.sim(Provider(body=ENGINEER, status=404), 9)
         self.assertEqual([h for _, h, _ in out[:4]], [1.0, 2.0, 4.0, 8.0])  # the ladder is untouched until the fifth
-        self.assertEqual([h for _, h, _ in out[4:]], [limits.BOARDS_DEAD_RETRY_DAYS * 24.0] * 5)  # the fifth and every later not_found: weekly
+        self.assertEqual(
+            [h for _, h, _ in out[4:]], [limits.BOARDS_DEAD_RETRY_DAYS * 24.0] * 5
+        )  # the fifth and every later not_found: weekly
         self.assertEqual(out[4][2], 5)
 
     def test_a_failure_that_is_not_not_found_never_goes_weekly(self):
@@ -104,12 +149,24 @@ class Dead(unittest.TestCase):
     def test_a_failed_read_never_removes_what_the_board_held(self):
         provider = Provider(body=GH)
         self.sim(provider, 1)
-        before = self.db.raw.execute("SELECT COUNT(*) FROM v7_source_items WHERE source_id='gh-acme' AND state='CURRENT'").fetchone()[0]
+        before = self.db.raw.execute(
+            "SELECT COUNT(*) FROM v7_source_items WHERE source_id='gh-acme' AND state='CURRENT'"
+        ).fetchone()[0]
         self.assertGreater(before, 0)
         provider.status = 404
         self.sim(provider, 6)
-        after = self.db.raw.execute("SELECT COUNT(*) FROM v7_source_items WHERE source_id='gh-acme' AND state='CURRENT'").fetchone()[0]
-        self.assertEqual((before, self.db.raw.execute("SELECT COUNT(*) FROM v7_source_items WHERE source_id='gh-acme' AND state='REMOVED'").fetchone()[0]), (after, 0))
+        after = self.db.raw.execute(
+            "SELECT COUNT(*) FROM v7_source_items WHERE source_id='gh-acme' AND state='CURRENT'"
+        ).fetchone()[0]
+        self.assertEqual(
+            (
+                before,
+                self.db.raw.execute(
+                    "SELECT COUNT(*) FROM v7_source_items WHERE source_id='gh-acme' AND state='REMOVED'"
+                ).fetchone()[0],
+            ),
+            (after, 0),
+        )
 
 
 if __name__ == "__main__":

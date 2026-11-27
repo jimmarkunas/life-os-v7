@@ -1,4 +1,5 @@
 """Megibow on Jim & Matt V3 — fixtures for Jim's and Matt's callouts (ticket step 9)."""
+
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
@@ -9,11 +10,16 @@ from lifeos.sources.cards import megibow as stage
 
 NOW = datetime(2026, 11, 13, 14, 0, tzinfo=CHI)  # Friday
 WEEKS = visible_weeks(NOW.date())
+
+
 def CELL(t):
     return [{"type": "text", "plain_text": t, "text": {"content": t}}]
 
+
 DASHES = [["Activity", "Sep 21", "Sep 28", "Oct 5", "Oct 12", "Oct 19", "Oct 26", "Nov 2", "Nov 9", "Cumulative"]] + [
-    [label] + ["–"] * 9 for label in ("Outreach", "Scheduled", "Networking calls", "Recruiter calls", "Company calls", "Total")]
+    [label] + ["–"] * 9
+    for label in ("Outreach", "Scheduled", "Networking calls", "Recruiter calls", "Company calls", "Total")
+]
 
 
 MATT_ID, GONE_ID = "[removed]", "[removed]"
@@ -26,19 +32,44 @@ def para(i, text):
 
 class Page:
     """One V3 page: Jim's and Matt's callouts, their summary pages, the register and Matt's database."""
+
     def __init__(self, matt_rows=None, matt_down=False, register_block=MATT_ID, jim_block="jim"):
         self.blocks = {}
         self.kids = {}
-        for who, note in (("jim", None), ("matt", "A dash means the week is not entered yet. It is never counted as zero.")):
+        for who, note in (
+            ("jim", None),
+            ("matt", "A dash means the week is not entered yet. It is never counted as zero."),
+        ):
             kids = [f"{who}-h", f"{who}-stamp", f"{who}-tbl"] + ([f"{who}-note"] if note else []) + [f"{who}-sum"]
-            self.blocks[who] = {"id": who, "type": "callout", "parent": {"type": "page_id", "page_id": "v3page"}, "callout": {"rich_text": []}}
-            self.blocks[f"{who}-h"] = {"id": f"{who}-h", "type": "heading_3", "heading_3": {"rich_text": CELL(f"Megibow ({who.title()})")}}
+            self.blocks[who] = {
+                "id": who,
+                "type": "callout",
+                "parent": {"type": "page_id", "page_id": "v3page"},
+                "callout": {"rich_text": []},
+            }
+            self.blocks[f"{who}-h"] = {
+                "id": f"{who}-h",
+                "type": "heading_3",
+                "heading_3": {"rich_text": CELL(f"Megibow ({who.title()})")},
+            }
             self.blocks[f"{who}-stamp"] = para(f"{who}-stamp", "Not updated yet")
             self.blocks[f"{who}-tbl"] = {"id": f"{who}-tbl", "type": "table", "table": {"table_width": 10}}
             if note:
                 self.blocks[f"{who}-note"] = para(f"{who}-note", note)
-            self.blocks[f"{who}-sum"] = {"id": f"{who}-sum", "type": "paragraph", "paragraph": {"rich_text": CELL("Summary for Claude: ") + [
-                {"type": "mention", "plain_text": "V3 summary", "mention": {"type": "page", "page": {"id": f"{who}-page"}}}]}}
+            self.blocks[f"{who}-sum"] = {
+                "id": f"{who}-sum",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": CELL("Summary for Claude: ")
+                    + [
+                        {
+                            "type": "mention",
+                            "plain_text": "V3 summary",
+                            "mention": {"type": "page", "page": {"id": f"{who}-page"}},
+                        }
+                    ]
+                },
+            }
             self.kids[who] = kids
             self.kids[f"{who}-tbl"] = []
             for r, row in enumerate(DASHES):
@@ -47,9 +78,22 @@ class Page:
                 self.kids[f"{who}-tbl"].append(rid)
             self.blocks[f"{who}-page-p"] = para(f"{who}-page-p", "Machine page.")
             self.kids[f"{who}-page"] = [f"{who}-page-p"]
-        self.blocks["reg-code"] = {"id": "reg-code", "type": "code", "code": {"rich_text": CELL(f"R2  jim.megibow     {jim_block}\nR3  matt.megibow    {register_block}\nR4L jim.week x")}}
+        self.blocks["reg-code"] = {
+            "id": "reg-code",
+            "type": "code",
+            "code": {
+                "rich_text": CELL(
+                    f"R2  jim.megibow     {jim_block}\nR3  matt.megibow    {register_block}\nR4L jim.week x"
+                )
+            },
+        }
         self.kids["register"] = ["reg-code"]
-        self.blocks["elsewhere"] = {"id": "elsewhere", "type": "callout", "parent": {"type": "page_id", "page_id": "otherpage"}, "callout": {"rich_text": []}}
+        self.blocks["elsewhere"] = {
+            "id": "elsewhere",
+            "type": "callout",
+            "parent": {"type": "page_id", "page_id": "otherpage"},
+            "callout": {"rich_text": []},
+        }
         self.matt_rows, self.matt_down = matt_rows or [], matt_down
         self.writes, self.inserted = [], 0
 
@@ -57,28 +101,58 @@ class Page:
         return {k: repr(v) for k, v in self.blocks.items()}, {k: list(v) for k, v in self.kids.items()}
 
     def text(self, block_id):
-        return "".join(p.get("plain_text") or p["text"]["content"] for p in self.blocks[block_id][self.blocks[block_id]["type"]]["rich_text"])
+        return "".join(
+            p.get("plain_text") or p["text"]["content"]
+            for p in self.blocks[block_id][self.blocks[block_id]["type"]]["rich_text"]
+        )
 
     def cells(self, who):
-        return [[c[0]["text"]["content"] for c in self.blocks[r]["table_row"]["cells"]] for r in self.kids[f"{who}-tbl"]]
+        return [
+            [c[0]["text"]["content"] for c in self.blocks[r]["table_row"]["cells"]] for r in self.kids[f"{who}-tbl"]
+        ]
 
     def call(self, method, path, body=None):
         path = path.replace(MATT_ID, "matt").replace(JIM_ID, "jim").replace(ELSEWHERE_ID, "elsewhere")
         if method == "POST" and path == "/search":
             kind = body["filter"]["value"]
             if kind == "page":
-                return {"results": [{"id": "register", "properties": {"Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE}]}}},
-                                    {"id": "other", "properties": {"Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE + " (old)"}]}}}], "has_more": False}
+                return {
+                    "results": [
+                        {
+                            "id": "register",
+                            "properties": {"Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE}]}},
+                        },
+                        {
+                            "id": "other",
+                            "properties": {
+                                "Name": {"type": "title", "title": [{"plain_text": v3.REGISTER_TITLE + " (old)"}]}
+                            },
+                        },
+                    ],
+                    "has_more": False,
+                }
             return {"results": [{"id": "mattdb", "title": [{"plain_text": v3.MATT_SOURCE_TITLE}]}], "has_more": False}
         if method == "GET" and path == "/data_sources/mattdb":
             if self.matt_down:
                 raise NotionError("NOTION_HTTP_404")
-            return {"properties": {"Week Start": {"type": "date"}, "Week": {"type": "title"}, **{a: {"type": "number"} for a in C.ACTIVITIES}}}
+            return {
+                "properties": {
+                    "Week Start": {"type": "date"},
+                    "Week": {"type": "title"},
+                    **{a: {"type": "number"} for a in C.ACTIVITIES},
+                }
+            }
         if method == "GET" and path.startswith("/data_sources/"):
-            return {"parent": {"type": "database_id", "database_id": "review-db"}, "properties": {n: {"type": t} for n, t in review.SCHEMA.items()}}
+            return {
+                "parent": {"type": "database_id", "database_id": "review-db"},
+                "properties": {n: {"type": t} for n, t in review.SCHEMA.items()},
+            }
         if method == "GET" and path.startswith("/pages/"):
             name = v3.V3_PAGE_TITLE if path.endswith("v3page") else "Some other page"
-            return {"id": path.split("/")[2], "properties": {"title": {"type": "title", "title": [{"plain_text": name}]}}}
+            return {
+                "id": path.split("/")[2],
+                "properties": {"title": {"type": "title", "title": [{"plain_text": name}]}},
+            }
         if method == "GET" and "/children" in path:
             parent = path.split("/")[2]
             if parent not in self.kids:
@@ -97,16 +171,30 @@ class Page:
         if path.endswith("/children"):
             assert bid in ("jim", "matt"), path  # a new paragraph only ever goes inside a callout
             new = f"{bid}-notes"
-            self.blocks[new] = {"id": new, "type": "paragraph", "paragraph": {"rich_text": [dict(p, plain_text=p["text"]["content"]) for p in body["children"][0]["paragraph"]["rich_text"]]}}
+            self.blocks[new] = {
+                "id": new,
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        dict(p, plain_text=p["text"]["content"]) for p in body["children"][0]["paragraph"]["rich_text"]
+                    ]
+                },
+            }
             self.kids[bid].insert(self.kids[bid].index(body["after"]) + 1, new)
             self.inserted += 1
         else:
-            assert bid in self.blocks and not bid.startswith(("jim-h", "matt-h", "jim-sum", "matt-sum", "matt-note", "reg")), path
+            assert bid in self.blocks and not bid.startswith(
+                ("jim-h", "matt-h", "jim-sum", "matt-sum", "matt-note", "reg")
+            ), path
             kind = self.blocks[bid]["type"]
             if kind == "table_row":
-                self.blocks[bid]["table_row"]["cells"] = [[dict(c[0], plain_text=c[0]["text"]["content"])] for c in body["table_row"]["cells"]]
+                self.blocks[bid]["table_row"]["cells"] = [
+                    [dict(c[0], plain_text=c[0]["text"]["content"])] for c in body["table_row"]["cells"]
+                ]
             else:
-                self.blocks[bid][kind]["rich_text"] = [dict(p, plain_text=p["text"]["content"]) for p in body[kind]["rich_text"]]
+                self.blocks[bid][kind]["rich_text"] = [
+                    dict(p, plain_text=p["text"]["content"]) for p in body[kind]["rich_text"]
+                ]
         self.writes.append(bid)
         return {}
 
@@ -121,7 +209,14 @@ class Page:
 
 def row(monday, outreach, scheduled=0, net=0, rec=0, comp=0, edited="2026-11-01T00:00:00Z"):
     nums = dict(zip(C.ACTIVITIES, (outreach, scheduled, net, rec, comp), strict=True))
-    return {"id": f"p{monday}", "last_edited_time": edited, "properties": {"Week Start": {"date": {"start": monday.isoformat()}}, **{a: {"number": n} for a, n in nums.items()}}}
+    return {
+        "id": f"p{monday}",
+        "last_edited_time": edited,
+        "properties": {
+            "Week Start": {"date": {"start": monday.isoformat()}},
+            **{a: {"number": n} for a, n in nums.items()},
+        },
+    }
 
 
 def matt(page, live=True, now=NOW):
@@ -205,7 +300,11 @@ class Matt(unittest.TestCase):
         self.assertIn("Week of Sep 21: 5/1/1/1/0 = 8", text)
 
     def test_duplicate_and_blank_rows(self):
-        dup = [row(WEEKS[2], 1, edited="2026-10-01T00:00:00Z"), row(WEEKS[2], 4, edited="2026-10-02T00:00:00Z"), row(WEEKS[3], None, None, None, None, None)]
+        dup = [
+            row(WEEKS[2], 1, edited="2026-10-01T00:00:00Z"),
+            row(WEEKS[2], 4, edited="2026-10-02T00:00:00Z"),
+            row(WEEKS[3], None, None, None, None, None),
+        ]
         got, ignored = v3.matt_rows(Page(dup), "mattdb")
         self.assertEqual((got[WEEKS[2]][C.OUTREACH], WEEKS[3] in got, ignored), (4, False, 1))
 
@@ -237,8 +336,15 @@ def sent(i, when):
 
 
 def run(page, env=ENV, gcal=None):
-    gm = Gmail({"a": sent("a", datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)), "b": sent("b", datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc))})
-    return stage.run(0, True, environ=env, gmail=gm, gcal=gcal or Gcal(), outlook_clients=[], notion=page, now=NOW, known={"lensa"})
+    gm = Gmail(
+        {
+            "a": sent("a", datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)),
+            "b": sent("b", datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc)),
+        }
+    )
+    return stage.run(
+        0, True, environ=env, gmail=gm, gcal=gcal or Gcal(), outlook_clients=[], notion=page, now=NOW, known={"lensa"}
+    )
 
 
 class Jim(unittest.TestCase):
@@ -274,7 +380,9 @@ class Jim(unittest.TestCase):
         class Down(Gcal):
             def list_events(self, a, b):
                 from lifeos.platform.gcal import GcalError
+
                 raise GcalError("GCAL_DOWN")
+
         page = Page()
         with self.assertRaises(stage.MegibowError):
             run(page, gcal=Down())
@@ -295,10 +403,27 @@ class Jim(unittest.TestCase):
         self.assertEqual(page.snapshot(), before)
 
     def test_jims_v3_totals_equal_the_v2_table_for_the_same_weeks(self):
-        outcomes = [{"status": C.COUNTED, "activity": a, "week": w, "key": f"{a}{w}{i}", "reason": "x"} for i, (a, w) in enumerate(
-            [(C.OUTREACH, WEEKS[-1]), (C.OUTREACH, WEEKS[-2]), (C.SCHEDULED, WEEKS[-2]), (C.RECRUITER, WEEKS[-3]), (C.COMPANY, WEEKS[-1])])]
+        outcomes = [
+            {"status": C.COUNTED, "activity": a, "week": w, "key": f"{a}{w}{i}", "reason": "x"}
+            for i, (a, w) in enumerate(
+                [
+                    (C.OUTREACH, WEEKS[-1]),
+                    (C.OUTREACH, WEEKS[-2]),
+                    (C.SCHEDULED, WEEKS[-2]),
+                    (C.RECRUITER, WEEKS[-3]),
+                    (C.COMPANY, WEEKS[-1]),
+                ]
+            )
+        ]
         frozen = {WEEKS[-4]: {a: 2 for a in C.ACTIVITIES}, WEEKS[-5]: {a: 1 for a in C.ACTIVITIES}}
-        proj = P.project(outcomes, NOW.date(), frozen, {a: 3 for a in C.ACTIVITIES}, date(2026, 10, 5), {WEEKS[0]: {a: 1 for a in C.ACTIVITIES}, WEEKS[1]: {a: 0 for a in C.ACTIVITIES}})
+        proj = P.project(
+            outcomes,
+            NOW.date(),
+            frozen,
+            {a: 3 for a in C.ACTIVITIES},
+            date(2026, 10, 5),
+            {WEEKS[0]: {a: 1 for a in C.ACTIVITIES}, WEEKS[1]: {a: 0 for a in C.ACTIVITIES}},
+        )
         old, new = R.table(proj), v3.table(proj["weeks"], proj["counts"], proj["cumulative"])
         for r in range(1, 7):
             self.assertEqual(old[r][2:], new[r][1:9])

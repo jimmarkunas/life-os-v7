@@ -8,13 +8,6 @@ from lifeos.platform.notion_client import NotionError
 from tests.jobs.support import FakeClient, FakeStore, PARENT, connect
 
 
-
-
-
-
-
-
-
 HEADER = ["company", "link"]
 ROWS = [["ExampleCo", "https://example.com/1"], ["OtherCo", "https://example.com/2"]]
 
@@ -22,7 +15,9 @@ ROWS = [["ExampleCo", "https://example.com/1"], ["OtherCo", "https://example.com
 class Private(unittest.TestCase):
     def test_a_dry_run_counts_and_writes_nothing(self):
         client = FakeClient()
-        self.assertEqual(pr.publish(client, "T", HEADER, ROWS, False), {"rows": 2, "page": "dry", "failed": 0, "why": {}})
+        self.assertEqual(
+            pr.publish(client, "T", HEADER, ROWS, False), {"rows": 2, "page": "dry", "failed": 0, "why": {}}
+        )
         self.assertEqual(client.writes, [])
 
     def test_a_live_run_writes_one_page_under_the_ledgers_parent_and_reads_the_rows_back(self):
@@ -31,7 +26,9 @@ class Private(unittest.TestCase):
         self.assertEqual((counts["page"], counts["failed"]), ("new", 0))
         method, path, body = client.writes[0]
         self.assertEqual((method, path, body["parent"]), ("POST", "/pages", {"type": "page_id", "page_id": PARENT}))
-        self.assertEqual(body["template"], {"type": "template_id", "template_id": "e" * 32})  # created from the Full Width template
+        self.assertEqual(
+            body["template"], {"type": "template_id", "template_id": "e" * 32}
+        )  # created from the Full Width template
         self.assertNotIn("children", body)
         self.assertEqual([m for m, _, _ in client.writes][:2], ["POST", "PATCH"])
         cells = client.written()[1][0]["table"]["children"][1]["table_row"]["cells"]
@@ -65,27 +62,36 @@ class Private(unittest.TestCase):
 
     def test_the_module_has_no_title_search(self):
         import inspect
+
         source = inspect.getsource(pr)
         self.assertNotIn('"/search"', source)
 
     def test_a_notion_error_is_a_fixed_code(self):
-        self.assertEqual(pr.publish(FakeClient(fail=True), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_NOTION_FAILED": 1})
+        self.assertEqual(
+            pr.publish(FakeClient(fail=True), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_NOTION_FAILED": 1}
+        )
 
     def test_rows_that_do_not_read_back_are_reported(self):
-        self.assertEqual(pr.publish(FakeClient(lose_rows=1), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_READBACK_MISMATCH": 1})
+        self.assertEqual(
+            pr.publish(FakeClient(lose_rows=1), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_READBACK_MISMATCH": 1}
+        )
 
     def test_long_reports_are_split_into_tables_each_with_the_header(self):
         blocks = pr.tables(HEADER, [["c", "l"]] * 200)
         self.assertEqual([len(b["table"]["children"]) for b in blocks], [91, 91, 21])
 
 
-
 class SharedHelpers(unittest.TestCase):
     """it uses lifeos/platform/stored_pages."""
 
     def test_the_table_definition_is_the_one_private_report_always_used(self):
-        original = snapshot_store.Store("v7_private_reports", key_column="report_key", key_type="VARCHAR(96)")  # exactly what private_report.STORE was before
-        self.assertEqual((stored_pages.STORE.table, stored_pages.STORE.key_column, stored_pages.STORE.schema), (original.table, original.key_column, original.schema))
+        original = snapshot_store.Store(
+            "v7_private_reports", key_column="report_key", key_type="VARCHAR(96)"
+        )  # exactly what private_report.STORE was before
+        self.assertEqual(
+            (stored_pages.STORE.table, stored_pages.STORE.key_column, stored_pages.STORE.schema),
+            (original.table, original.key_column, original.schema),
+        )
 
     def test_private_report_calls_the_shared_helpers_and_defines_none_of_its_own(self):
         self.assertFalse(hasattr(pr, "_existing") or hasattr(pr, "_remember") or hasattr(pr, "STORE"))
@@ -93,15 +99,22 @@ class SharedHelpers(unittest.TestCase):
 
     def test_an_old_record_comes_back_as_the_same_page_id(self):
         class OldRow:
-            def ensure(self, connection): pass
-            def load(self, connection, key): return {"taken_at": "2026-11-01T00:00:00+00:00", "schema": 1, "page_id": "page-old"}
+            def ensure(self, connection):
+                pass
+
+            def load(self, connection, key):
+                return {"taken_at": "2026-11-01T00:00:00+00:00", "schema": 1, "page_id": "page-old"}
 
         class Conn:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
 
         class Client:
-            def call(self, method, path): return {"archived": False}
+            def call(self, method, path):
+                return {"archived": False}
+
         with mock.patch.object(stored_pages, "STORE", OldRow()):
             self.assertEqual(stored_pages.find(Client(), Conn, "dash:key", True), "page-old")
-

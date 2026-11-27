@@ -1,6 +1,7 @@
 """Node comes from a checked download (not actions/setup-node) and Python from the runner image in a virtual environment
 (not actions/setup-python).
 """
+
 import hashlib
 import io
 import os
@@ -32,13 +33,22 @@ def run_install(url, recorded, tmp):
     path_file = pathlib.Path(tmp, "path")
     work = pathlib.Path(tmp, "work")
     work.mkdir()
-    env = {"PATH": os.environ["PATH"], "NODE_URL": url, "NODE_SHA256_FILE": str(fingerprint), "NODE_DIR": str(pathlib.Path(tmp, "node")), "GITHUB_PATH": str(path_file), "NODE_TMP": str(work)}
+    env = {
+        "PATH": os.environ["PATH"],
+        "NODE_URL": url,
+        "NODE_SHA256_FILE": str(fingerprint),
+        "NODE_DIR": str(pathlib.Path(tmp, "node")),
+        "GITHUB_PATH": str(path_file),
+        "NODE_TMP": str(work),
+    }
     done = subprocess.run(["bash", str(NODE / "install.sh")], env=env, capture_output=True, text=True, timeout=60)
     return done, path_file
 
 
 class NodeInstall(unittest.TestCase):
-    def test_a_matching_download_is_unpacked_and_put_on_the_path_and_a_changed_one_is_refused_with_nothing_installed(self):
+    def test_a_matching_download_is_unpacked_and_put_on_the_path_and_a_changed_one_is_refused_with_nothing_installed(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmp:
             good = pathlib.Path(tmp, "good.tar.xz")
             make_tarball(good)

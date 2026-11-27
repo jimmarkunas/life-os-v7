@@ -1,4 +1,5 @@
 """outcome 1: the alert gateway (lifeos/platform/alerts.py) is the only place that sends an alert."""
+
 import re
 import unittest
 from pathlib import Path
@@ -15,11 +16,23 @@ PATTERNS = {
     "mac_notification": re.compile(r"osascript|display notification|terminal-notifier"),
 }
 ALLOWED = {
-    "lifeos/platform/alerts.py": ({"ntfy"}, "THE GATEWAY: the one POST to the phone push service; Telegram and WhatsApp copies follow it (LIFE-73, LIFE-75)."),
-    "lifeos/whatsapp/oracle/forward_alerts.py": ({"ntfy", "openclaw_send"}, "THE RELAY: reads the gateway's ntfy topic and copies each alert to Telegram and WhatsApp; it creates no alert of its own."),
-    "lifeos/whatsapp/oracle/lifeos-alerts-whatsapp.service": ({"openclaw_send"}, "The relay's systemd unit (describes the relay above)."),
-    "lifeos/edge/oracle/openclaw-jira.mjs": ({"openclaw_send"}, "NOT an alert: the single-use approval prompt (with buttons) Jim answers before a Jira write; the phone push service cannot carry buttons. "
-                                                               "Kept on the existing OpenClaw channel; routing it through the gateway is Jim's decision (LIFE-528 comment)."),
+    "lifeos/platform/alerts.py": (
+        {"ntfy"},
+        "THE GATEWAY: the one POST to the phone push service; Telegram and WhatsApp copies follow it (LIFE-73, LIFE-75).",
+    ),
+    "lifeos/whatsapp/oracle/forward_alerts.py": (
+        {"ntfy", "openclaw_send"},
+        "THE RELAY: reads the gateway's ntfy topic and copies each alert to Telegram and WhatsApp; it creates no alert of its own.",
+    ),
+    "lifeos/whatsapp/oracle/lifeos-alerts-whatsapp.service": (
+        {"openclaw_send"},
+        "The relay's systemd unit (describes the relay above).",
+    ),
+    "lifeos/edge/oracle/openclaw-jira.mjs": (
+        {"openclaw_send"},
+        "NOT an alert: the single-use approval prompt (with buttons) Jim answers before a Jira write; the phone push service cannot carry buttons. "
+        "Kept on the existing OpenClaw channel; routing it through the gateway is Jim's decision (LIFE-528 comment).",
+    ),
 }
 
 
@@ -59,7 +72,11 @@ class OnlyTheGatewaySends(unittest.TestCase):
         self.assertEqual(problems(scan(repo_files())), [])
 
     def test_the_only_post_to_the_phone_push_service_is_in_the_gateway(self):
-        posts = [p for p, text in repo_files().items() if re.search(r"https://ntfy\.sh/\{[^\n]*", text) and re.search(r'method="POST"', text)]
+        posts = [
+            p
+            for p, text in repo_files().items()
+            if re.search(r"https://ntfy\.sh/\{[^\n]*", text) and re.search(r'method="POST"', text)
+        ]
         self.assertEqual(posts, ["lifeos/platform/alerts.py"])  # the relay only READS the topic (a GET poll)
 
     def test_every_allowed_entry_has_a_reason(self):
@@ -67,10 +84,12 @@ class OnlyTheGatewaySends(unittest.TestCase):
             self.assertTrue(kinds and len(reason) > 20, path)
 
     def test_negative_control_a_direct_send_elsewhere_fails_and_a_clean_file_passes(self):
-        planted = {"lifeos/jobs/new_thing.py": 'urllib.request.Request(f"https://ntfy.sh/{topic}", data=b"x")',
-                   "lifeos/jobs/bot.py": 'requests.post("https://api.telegram.org/bot1/sendMessage")',
-                   "lifeos/jobs/mac.py": 'subprocess.run(["osascript", "-e", "display notification"])',
-                   "lifeos/jobs/fine.py": "from lifeos.platform import alerts\nalerts.push('quiet_24h', 't', 'b')"}
+        planted = {
+            "lifeos/jobs/new_thing.py": 'urllib.request.Request(f"https://ntfy.sh/{topic}", data=b"x")',
+            "lifeos/jobs/bot.py": 'requests.post("https://api.telegram.org/bot1/sendMessage")',
+            "lifeos/jobs/mac.py": 'subprocess.run(["osascript", "-e", "display notification"])',
+            "lifeos/jobs/fine.py": "from lifeos.platform import alerts\nalerts.push('quiet_24h', 't', 'b')",
+        }
         flagged = problems(scan(planted))
         self.assertEqual(len([f for f in flagged if "outside the gateway" in f]), 3)
         self.assertFalse([f for f in flagged if "fine.py" in f])

@@ -19,15 +19,29 @@ def sender(local, domain="amazon.com"):
 
 
 def event(message_id, status, at, *, order_id="123-1234567-1234567", total=None, subject="Example item", url=None):
-    return {"id": message_id, "sender": sender({"ORDERED": "auto-confirm", "SHIPPED": "shipment-tracking", "DELIVERED": "order-update"}[status]),
-            "received_at": at, "order_id": order_id, "status": status, "grand_total": total,
-            "item_summary": subject, "item_count": None, "subject": subject,
-            "amazon_order_url": url or events.CANONICAL_URL.format(order_id)}
+    return {
+        "id": message_id,
+        "sender": sender(
+            {"ORDERED": "auto-confirm", "SHIPPED": "shipment-tracking", "DELIVERED": "order-update"}[status]
+        ),
+        "received_at": at,
+        "order_id": order_id,
+        "status": status,
+        "grand_total": total,
+        "item_summary": subject,
+        "item_count": None,
+        "subject": subject,
+        "amazon_order_url": url or events.CANONICAL_URL.format(order_id),
+    }
 
 
 class EventExtractionTests(unittest.TestCase):
     def test_each_event_class_exact_sender_and_body_identity(self):
-        for local, status in (("auto-confirm", "ORDERED"), ("shipment-tracking", "SHIPPED"), ("order-update", "DELIVERED")):
+        for local, status in (
+            ("auto-confirm", "ORDERED"),
+            ("shipment-tracking", "SHIPPED"),
+            ("order-update", "DELIVERED"),
+        ):
             parsed = events.extract(message("m-1", local, subject="Example order"))
             self.assertEqual(parsed["status"], status)
             self.assertEqual(parsed["order_id"], "123-1234567-1234567")
@@ -35,27 +49,45 @@ class EventExtractionTests(unittest.TestCase):
             self.assertNotIn("body_text", parsed)
 
     def test_rejects_lookalikes_subdomains_and_nonallowlisted_senders(self):
-        for address in (sender("auto-confirm", "amazon.com.evil.example"), sender("xauto-confirm"),
-                        sender("auto-confirm", "mail.amazon.com"), sender("auto-confirm", "amazon.co")):
-            parsed = events.extract({"id": "m", "sender": address, "received_at": NOW, "body_text": "123-1234567-1234567"})
+        for address in (
+            sender("auto-confirm", "amazon.com.evil.example"),
+            sender("xauto-confirm"),
+            sender("auto-confirm", "mail.amazon.com"),
+            sender("auto-confirm", "amazon.co"),
+        ):
+            parsed = events.extract(
+                {"id": "m", "sender": address, "received_at": NOW, "body_text": "123-1234567-1234567"}
+            )
             self.assertEqual(parsed["reason"], "SENDER_UNSUPPORTED")
         uppercase_local = "AUTO-CONFIRM" + chr(64) + "amazon.com"
-        parsed = events.extract({"id": "m", "sender": uppercase_local, "received_at": NOW, "body_text": "123-1234567-1234567"})
+        parsed = events.extract(
+            {"id": "m", "sender": uppercase_local, "received_at": NOW, "body_text": "123-1234567-1234567"}
+        )
         self.assertEqual(parsed["reason"], "SENDER_UNSUPPORTED")
-        parsed = events.extract({"id": "m", "sender": "Amazon <" + sender("auto-confirm") + ">, <" + sender("shipment-tracking") + ">",
-                                "received_at": NOW, "body_text": "123-1234567-1234567"})
+        parsed = events.extract(
+            {
+                "id": "m",
+                "sender": "Amazon <" + sender("auto-confirm") + ">, <" + sender("shipment-tracking") + ">",
+                "received_at": NOW,
+                "body_text": "123-1234567-1234567",
+            }
+        )
         self.assertEqual(parsed["status"], "REVIEW")
 
     def test_zero_or_two_distinct_body_order_ids_are_review_and_subject_is_ignored(self):
-        for body, reason in (("nothing here", "ORDER_ID_MISSING"),
-                             ("123-1234567-1234567 and 321-7654321-7654321", "ORDER_ID_AMBIGUOUS")):
+        for body, reason in (
+            ("nothing here", "ORDER_ID_MISSING"),
+            ("123-1234567-1234567 and 321-7654321-7654321", "ORDER_ID_AMBIGUOUS"),
+        ):
             parsed = events.extract(message("m", "auto-confirm", body=body, subject="123-1234567-1234567"))
             self.assertEqual((parsed["status"], parsed["reason"]), ("REVIEW", reason))
 
     def test_grand_total_only_from_ordered_and_conflicting_totals_review(self):
         ordered = events.extract(message("m", "auto-confirm", body="123-1234567-1234567 Grand Total: $12.34"))
         shipped = events.extract(message("m", "shipment-tracking", body="123-1234567-1234567 Grand Total: $98.76"))
-        conflict = events.extract(message("m", "auto-confirm", body="123-1234567-1234567 Grand Total: $12.34 Grand Total: $17.00"))
+        conflict = events.extract(
+            message("m", "auto-confirm", body="123-1234567-1234567 Grand Total: $12.34 Grand Total: $17.00")
+        )
         malformed = events.extract(message("m", "auto-confirm", body="123-1234567-1234567 Grand Total: $12.345"))
         self.assertEqual(ordered["grand_total"], "12.34")
         self.assertIsNone(shipped["grand_total"])
@@ -65,23 +97,34 @@ class EventExtractionTests(unittest.TestCase):
 
 class ReturnMailTests(unittest.TestCase):
     """the return sender is a fourth allowlisted sender"""
+
     def extract(self, subject):
         return events.extract(message("m-r", "return", subject=subject))
 
     def test_refund_subjects_are_refunded_and_the_item_text_loses_its_prefix(self):
-        for subject, item in (("Refund issued for Wiaocit 3 Pack Tempered Glass....", "Wiaocit 3 Pack Tempered Glass...."),
-                              ("Advance refund issued for FNTCASE for iPhone 17 Phone Case....", "FNTCASE for iPhone 17 Phone Case...."),
-                              ("Your refund for MOSISO Keyboard Cover Compatible....", "MOSISO Keyboard Cover Compatible....")):
+        for subject, item in (
+            ("Refund issued for Wiaocit 3 Pack Tempered Glass....", "Wiaocit 3 Pack Tempered Glass...."),
+            ("Advance refund issued for FNTCASE for iPhone 17 Phone Case....", "FNTCASE for iPhone 17 Phone Case...."),
+            ("Your refund for MOSISO Keyboard Cover Compatible....", "MOSISO Keyboard Cover Compatible...."),
+        ):
             parsed = self.extract(subject)
-            self.assertEqual((parsed["status"], parsed["item_summary"], parsed["grand_total"]), ("REFUNDED", item, None))
+            self.assertEqual(
+                (parsed["status"], parsed["item_summary"], parsed["grand_total"]), ("REFUNDED", item, None)
+            )
 
     def test_other_return_notices_are_returning(self):
-        for subject in ("Dropoff confirmed for SHENHE Women's Cheerleader...", "Return request confirmed for Ailun 3 Pack Screen Protector...", "Your return of ROYALAY Lumbar Support Pillow...",
-                        "Your return drop off confirmation for MOSISO Keyboard Cover Compatible...."):
+        for subject in (
+            "Dropoff confirmed for SHENHE Women's Cheerleader...",
+            "Return request confirmed for Ailun 3 Pack Screen Protector...",
+            "Your return of ROYALAY Lumbar Support Pillow...",
+            "Your return drop off confirmation for MOSISO Keyboard Cover Compatible....",
+        ):
             self.assertEqual(self.extract(subject)["status"], "RETURNING")
 
     def test_a_return_mail_without_one_order_number_goes_to_review(self):
-        parsed = events.extract({**message("m-r", "return", subject="Refund issued for X"), "body_text": "no order here"})
+        parsed = events.extract(
+            {**message("m-r", "return", subject="Refund issued for X"), "body_text": "no order here"}
+        )
         self.assertEqual((parsed["status"], parsed["reason"]), ("REVIEW", "ORDER_ID_MISSING"))
 
     def test_status_never_goes_down_and_a_refund_after_delivery_wins(self):
@@ -108,20 +151,35 @@ class ReconciliationTests(unittest.TestCase):
     def test_later_regression_total_url_and_duplicate_event_conflicts(self):
         shipped = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00")
         later_ordered = event("m-order", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34")
-        row, reason = orders.reconcile([shipped, later_ordered], now=NOW)  # split shipments make a later lower status normal
+        row, reason = orders.reconcile(
+            [shipped, later_ordered], now=NOW
+        )  # split shipments make a later lower status normal
         self.assertIsNone(reason)
-        self.assertEqual((row["Status"], row["Grand Total"], row["Latest Event At"]), ("SHIPPED", "12.34", "2026-10-03T12:00:00+00:00"))
-        split = [event("d1", "DELIVERED", "2026-10-02T12:00:00+00:00"), event("s2", "SHIPPED", "2026-10-04T12:00:00+00:00")]
+        self.assertEqual(
+            (row["Status"], row["Grand Total"], row["Latest Event At"]),
+            ("SHIPPED", "12.34", "2026-10-03T12:00:00+00:00"),
+        )
+        split = [
+            event("d1", "DELIVERED", "2026-10-02T12:00:00+00:00"),
+            event("s2", "SHIPPED", "2026-10-04T12:00:00+00:00"),
+        ]
         row, reason = orders.reconcile(split, now=NOW)
-        self.assertEqual((reason, row["Status"], row["Latest Event At"]), (None, "DELIVERED", "2026-10-04T12:00:00+00:00"))
+        self.assertEqual(
+            (reason, row["Status"], row["Latest Event At"]), (None, "DELIVERED", "2026-10-04T12:00:00+00:00")
+        )
         old_delivered = {"Status": "DELIVERED", "Latest Event At": "2026-10-02T12:00:00+00:00"}
         row, reason = orders.reconcile([event("s3", "SHIPPED", "2026-10-05T12:00:00+00:00")], old_delivered, NOW)
         self.assertEqual((reason, row["Status"]), (None, "DELIVERED"))
         old = {"Status": "ORDERED", "Grand Total": "11.00"}
-        row, reason = orders.reconcile([event("m-order", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")], old, NOW)
+        row, reason = orders.reconcile(
+            [event("m-order", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")], old, NOW
+        )
         self.assertEqual(reason, "TOTAL_CONFLICT")
         old_url = {"Status": "ORDERED", "Amazon Order URL": "https://example.com/wrong"}
-        self.assertEqual(orders.reconcile([event("m-order", "ORDERED", "2026-10-01T12:00:00+00:00")], old_url, NOW)[1], "URL_CONFLICT")
+        self.assertEqual(
+            orders.reconcile([event("m-order", "ORDERED", "2026-10-01T12:00:00+00:00")], old_url, NOW)[1],
+            "URL_CONFLICT",
+        )
         first = event("same", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")
         second = {**first, "grand_total": "19.00"}
         self.assertEqual(orders.reconcile([first, second], now=NOW)[1], "DUPLICATE_EVENT_CONFLICT")
@@ -148,7 +206,9 @@ class ReconciliationTests(unittest.TestCase):
         row, _ = orders.reconcile([event("m-1", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")], now=NOW)
         later = {**row, "Latest Event At": "2026-10-01T12:00:30+00:00", "Item Summary": row["Item Summary"] + " "}
         self.assertFalse(orders.same(row, later))  # seconds differ
-        self.assertTrue(orders.equal(row, later, orders.FIELDS, lambda v: str(v)[:16], lambda v: str(v).strip()))  # minutes and trimmed text agree
+        self.assertTrue(
+            orders.equal(row, later, orders.FIELDS, lambda v: str(v)[:16], lambda v: str(v).strip())
+        )  # minutes and trimmed text agree
         self.assertFalse(orders.equal(row, {**row, "Grand Total": "x"}, ("Grand Total",)))
         self.assertFalse(orders.equal(row, {**row, "Item Count": "x"}, ("Item Count",)))
         self.assertTrue(orders.equal(row, {**row, "Grand Total": 12.34}, ("Grand Total",)))
@@ -189,18 +249,34 @@ class StageTests(unittest.TestCase):
                 if message_id == "m-1":
                     raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
                 return super().message_record(message_id)
-        rows = {"m-1": message("m-1", "auto-confirm"), "m-2": message("m-2", "auto-confirm", order_id="555-5555555-5555555")}
+
+        rows = {
+            "m-1": message("m-1", "auto-confirm"),
+            "m-2": message("m-2", "auto-confirm", order_id="555-5555555-5555555"),
+        }
         with self.assertRaises(stage.AmazonError):
             stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW)
-        counts = stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW, skip_unreadable=True)
-        self.assertEqual((counts["unreadable"], counts["accepted"], counts["orders_new"], counts["filed"]), (1, 1, 1, 1))
+        counts = stage.run(
+            10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW, skip_unreadable=True
+        )
+        self.assertEqual(
+            (counts["unreadable"], counts["accepted"], counts["orders_new"], counts["filed"]), (1, 1, 1, 1)
+        )
 
     def test_a_rate_limited_read_names_its_reason_never_the_url_or_message(self):
         class Limited(AmazonGmail):
             def message_record(self, message_id):
                 raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 429 rateLimitExceeded")
+
         with self.assertRaises(stage.AmazonError) as caught:
-            stage.run(10, True, environ=TOKEN, gmail=Limited({"m-1": message("m-1", "auto-confirm")}), notion=AmazonNotion(), now=NOW)
+            stage.run(
+                10,
+                True,
+                environ=TOKEN,
+                gmail=Limited({"m-1": message("m-1", "auto-confirm")}),
+                notion=AmazonNotion(),
+                now=NOW,
+            )
         self.assertIn("AMAZON_GMAIL_READ_FAILED_HTTP_429_RATELIMITEXCEEDED", str(caught.exception))
         self.assertNotIn("googleapis", str(caught.exception))
         self.assertNotIn("m-1", str(caught.exception))
@@ -220,10 +296,24 @@ class StageTests(unittest.TestCase):
         self.assertEqual(output["review"], 1)
         self.assertNotIn("modify", [call[0] for call in gmail.calls])
 
-        prior = orders.reconcile([event("old", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34"),
-                                  event("ship", "SHIPPED", "2026-10-02T12:00:00+00:00")], now=NOW)[0]
+        prior = orders.reconcile(
+            [
+                event("old", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34"),
+                event("ship", "SHIPPED", "2026-10-02T12:00:00+00:00"),
+            ],
+            now=NOW,
+        )[0]
         page = notion_page(prior["Order ID"], prior, "page-old")
-        gmail2 = AmazonGmail({"m-regress": message("m-regress", "auto-confirm", at="2026-10-03T12:00:00+00:00", body=f"Order {prior['Order ID']}\nGrand Total: $99.00")})
+        gmail2 = AmazonGmail(
+            {
+                "m-regress": message(
+                    "m-regress",
+                    "auto-confirm",
+                    at="2026-10-03T12:00:00+00:00",
+                    body=f"Order {prior['Order ID']}\nGrand Total: $99.00",
+                )
+            }
+        )
         notion2 = AmazonNotion({prior["Order ID"]: page})
         output2 = stage.run(10, True, environ=TOKEN, gmail=gmail2, notion=notion2, now=NOW)
         self.assertEqual(output2["review"], 1)
@@ -234,7 +324,9 @@ class StageTests(unittest.TestCase):
     def test_duplicate_notion_orders_fail_closed(self):
         msg = message("m-1", "auto-confirm")
         row, _ = orders.reconcile([events.extract(msg)], now=NOW)
-        notion = AmazonNotion({row["Order ID"]: notion_page(row["Order ID"], row, "page-1")}, duplicates={row["Order ID"]})
+        notion = AmazonNotion(
+            {row["Order ID"]: notion_page(row["Order ID"], row, "page-1")}, duplicates={row["Order ID"]}
+        )
         gmail = AmazonGmail({"m-1": msg})
         with self.assertRaises(stage.AmazonError):
             stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
@@ -273,17 +365,24 @@ class StageTests(unittest.TestCase):
         self.assertEqual(second["orders_same"], 1)
 
     def test_review_readback_change_to_unrelated_property_is_rejected(self):
-        prior = orders.reconcile([event("old", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34"),
-                                  event("ship", "SHIPPED", "2026-10-02T12:00:00+00:00")], now=NOW)[0]
+        prior = orders.reconcile(
+            [
+                event("old", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34"),
+                event("ship", "SHIPPED", "2026-10-02T12:00:00+00:00"),
+            ],
+            now=NOW,
+        )[0]
         page = notion_page(prior["Order ID"], prior, "page-old")
         gmail = AmazonGmail({"m-regress": message("m-regress", "auto-confirm", at="2026-10-04T12:00:00+00:00")})
         notion = AmazonNotion({prior["Order ID"]: page})
         original = notion.call_once
+
         def changed(method, path, body=None):
             result = original(method, path, body)
             if method == "PATCH":
                 notion.rows[prior["Order ID"]]["properties"]["Item Summary"]["rich_text"] = []
             return result
+
         notion.call_once = changed
         with self.assertRaises(stage.AmazonError) as caught:
             stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
@@ -291,7 +390,9 @@ class StageTests(unittest.TestCase):
         self.assertNotIn("modify", [call[0] for call in gmail.calls])
 
     def test_incomplete_gmail_read_does_not_start_any_notion_write_or_filing(self):
-        gmail = AmazonGmail({"m-1": message("m-1", "auto-confirm"), "m-2": message("m-2", "shipment-tracking")}, fail_read="m-2")
+        gmail = AmazonGmail(
+            {"m-1": message("m-1", "auto-confirm"), "m-2": message("m-2", "shipment-tracking")}, fail_read="m-2"
+        )
         notion = AmazonNotion()
         with self.assertRaises(stage.AmazonError):
             stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
@@ -339,9 +440,17 @@ class IngressRepairTests(unittest.TestCase):
         a, b = "111-1111111-1111111", "222-2222222-2222222"
         msgs = {}
         for oid, base in ((a, "2026-09-29"), (b, "2026-09-30")):
-            for i, (local, hour) in enumerate((("auto-confirm", "08"), ("shipment-tracking", "12"), ("order-update", "18"))):
+            for i, (local, hour) in enumerate(
+                (("auto-confirm", "08"), ("shipment-tracking", "12"), ("order-update", "18"))
+            ):
                 mid = f"{oid[:3]}-{i}"
-                msgs[mid] = message(mid, local, order_id=oid, at=f"{base}T{hour}:00:00+00:00", labels=["label-amazon"] if i == 1 else ["INBOX"])
+                msgs[mid] = message(
+                    mid,
+                    local,
+                    order_id=oid,
+                    at=f"{base}T{hour}:00:00+00:00",
+                    labels=["label-amazon"] if i == 1 else ["INBOX"],
+                )
         gmail, notion = AmazonGmail(msgs), AmazonNotion()
         first = stage.run(50, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertEqual(first["orders_new"], 2)
@@ -363,14 +472,30 @@ class IngressRepairTests(unittest.TestCase):
 
     def test_explicit_since_overrides_the_watermark(self):
         gmail = AmazonGmail({})
-        stage.run(10, False, environ={**TOKEN, "AMAZON_SINCE": "2026-09-10"}, gmail=gmail, notion=AmazonNotion(), now=NOW)
+        stage.run(
+            10, False, environ={**TOKEN, "AMAZON_SINCE": "2026-09-10"}, gmail=gmail, notion=AmazonNotion(), now=NOW
+        )
         query = next(c[1] for c in gmail.calls if c[0] == "list")
         self.assertIn(f"after:{int(datetime(2026, 9, 10, tzinfo=timezone.utc).timestamp())}", query)
 
     def test_a_real_contradiction_goes_to_review_never_overwrites_state(self):
-        prior = _row("123-1234567-1234567", "SHIPPED", None, [("o", "ORDERED", "2026-10-01T12:00:00+00:00"), ("s", "SHIPPED", "2026-10-02T12:00:00+00:00")])
+        prior = _row(
+            "123-1234567-1234567",
+            "SHIPPED",
+            None,
+            [("o", "ORDERED", "2026-10-01T12:00:00+00:00"), ("s", "SHIPPED", "2026-10-02T12:00:00+00:00")],
+        )
         notion = AmazonNotion({prior["Order ID"]: notion_page(prior["Order ID"], prior, "page-1")})
-        gmail = AmazonGmail({"late": message("late", "auto-confirm", at="2026-10-03T12:00:00+00:00", body="Order 123-1234567-1234567\nGrand Total: $99.00")})
+        gmail = AmazonGmail(
+            {
+                "late": message(
+                    "late",
+                    "auto-confirm",
+                    at="2026-10-03T12:00:00+00:00",
+                    body="Order 123-1234567-1234567\nGrand Total: $99.00",
+                )
+            }
+        )
         notion.rows[prior["Order ID"]] = notion_page(prior["Order ID"], {**prior, "Grand Total": "12.34"}, "page-1")
         counts = stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertEqual(counts["review"], 1)
@@ -379,6 +504,7 @@ class IngressRepairTests(unittest.TestCase):
 
     def test_no_second_datastore_or_scheduler_is_introduced(self):
         import inspect
+
         source = inspect.getsource(stage)
         for banned in ("lifeos.jobs", "psycopg", "tinyfish", "TinyFish", "cron"):
             self.assertNotIn(banned, source)
@@ -403,11 +529,20 @@ class GmailClientTests(unittest.TestCase):
     def test_message_record_extracts_plain_or_readable_html_without_persisting_body(self):
         gmail = Gmail("i", "s", "r")
         import base64
+
         encode = lambda text: base64.urlsafe_b64encode(text.encode()).decode().rstrip("=")
-        gmail._request = lambda *args: {"payload": {"headers": [{"name": "From", "value": sender("auto-confirm")},
-                                                                      {"name": "Subject", "value": "Example item"}],
-                                                   "mimeType": "text/html", "body": {"data": encode("<p>Example</p>")}},
-                                        "internalDate": "1791028800000", "labelIds": ["INBOX"]}
+        gmail._request = lambda *args: {
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": sender("auto-confirm")},
+                    {"name": "Subject", "value": "Example item"},
+                ],
+                "mimeType": "text/html",
+                "body": {"data": encode("<p>Example</p>")},
+            },
+            "internalDate": "1791028800000",
+            "labelIds": ["INBOX"],
+        }
         row = gmail.message_record("m")
         self.assertEqual(row["body_text"], "Example")
         self.assertEqual(row["subject"], "Example item")
@@ -429,17 +564,32 @@ if __name__ == "__main__":
 
 class DecideOrderTests(unittest.TestCase):
     """the pure per-order decision, called directly with plain values (no fakes)."""
+
     ORDER = "123-1234567-1234567"
 
     def test_a_first_event_makes_a_row_with_no_conflict(self):
-        desired, conflict, cause = stage.decide_order(self.ORDER, None, [event("m-1", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34")], [], NOW)
+        desired, conflict, cause = stage.decide_order(
+            self.ORDER, None, [event("m-1", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34")], [], NOW
+        )
         self.assertEqual((desired["Status"], conflict, cause), ("ORDERED", False, None))
 
     def test_two_different_totals_freeze_the_row_in_review(self):
-        events_ = [event("m-1", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34"), event("m-2", "ORDERED", "2026-10-03T12:05:00+00:00", total="99.00")]
+        events_ = [
+            event("m-1", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34"),
+            event("m-2", "ORDERED", "2026-10-03T12:05:00+00:00", total="99.00"),
+        ]
         desired, conflict, cause = stage.decide_order(self.ORDER, None, events_, [], NOW)
         self.assertEqual((desired["Status"], conflict, cause), ("REVIEW", True, "TOTAL_CONFLICT"))
 
     def test_a_mail_that_names_no_order_goes_to_review_with_its_parse_reason(self):
-        unparsed = {"id": "m-3", "sender": sender("auto-confirm"), "subject": "s", "received_at": "2026-10-03T12:00:00+00:00", "body_text": "no order here", "label_ids": []}
-        self.assertEqual(stage.decide_order(self.ORDER, None, [], [unparsed], NOW)[1:], (True, "PARSE_ORDER_ID_MISSING"))
+        unparsed = {
+            "id": "m-3",
+            "sender": sender("auto-confirm"),
+            "subject": "s",
+            "received_at": "2026-10-03T12:00:00+00:00",
+            "body_text": "no order here",
+            "label_ids": [],
+        }
+        self.assertEqual(
+            stage.decide_order(self.ORDER, None, [], [unparsed], NOW)[1:], (True, "PARSE_ORDER_ID_MISSING")
+        )

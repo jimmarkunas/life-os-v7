@@ -1,4 +1,5 @@
 """generic checks that loop over the stage manifest (lifeos/platform/stages.json), in place of per-stage pins."""
+
 import importlib.util
 import json
 import pathlib
@@ -29,7 +30,9 @@ def workflow_steps():
             for step in job.get("steps") or []:
                 for token in (step.get("run") or "").split("lifeos.run ")[1:]:
                     if token.split():
-                        found.setdefault(token.split()[0], []).append((int(job.get("timeout-minutes", 0)) * 60, bool(step.get("continue-on-error"))))
+                        found.setdefault(token.split()[0], []).append(
+                            (int(job.get("timeout-minutes", 0)) * 60, bool(step.get("continue-on-error")))
+                        )
     return found
 
 
@@ -40,7 +43,11 @@ def table_rows(path, heading):
 
 class ManifestShape(unittest.TestCase):
     def test_every_stage_has_exactly_one_entry_and_no_entry_is_stale(self):
-        self.assertEqual(sorted(set(run.STAGES) - set(ENTRIES)), [], "a stage has no entry in lifeos/platform/stages.json: run python tools/regen.py (a loop with no try needs your verdict)")
+        self.assertEqual(
+            sorted(set(run.STAGES) - set(ENTRIES)),
+            [],
+            "a stage has no entry in lifeos/platform/stages.json: run python tools/regen.py (a loop with no try needs your verdict)",
+        )
         self.assertEqual(sorted(set(ENTRIES) - set(run.STAGES)), [], "an entry names a stage that no longer exists")
 
     def test_every_entry_has_the_same_fields_with_the_right_types_and_a_bounded_budget(self):
@@ -71,9 +78,13 @@ class ManifestAgreesWithTheRunnerAndTheWorkflows(unittest.TestCase):
     def test_the_jobs_tick_stages_use_the_ticks_own_budget_and_its_bulk_rule(self):
         for name, step in PLAN.items():
             if name in ENTRIES:
-                self.assertEqual((ENTRIES[name]["seconds"], ENTRIES[name]["required"]), (step.budget, not step.bulk), name)
+                self.assertEqual(
+                    (ENTRIES[name]["seconds"], ENTRIES[name]["required"]), (step.budget, not step.bulk), name
+                )
 
-    def test_a_stage_with_a_workflow_step_is_required_exactly_when_a_step_lacks_continue_on_error_and_never_exceeds_its_largest_job_limit(self):
+    def test_a_stage_with_a_workflow_step_is_required_exactly_when_a_step_lacks_continue_on_error_and_never_exceeds_its_largest_job_limit(
+        self,
+    ):
         for name, found in workflow_steps().items():
             if name not in ENTRIES or name in PLAN:
                 continue
@@ -82,7 +93,11 @@ class ManifestAgreesWithTheRunnerAndTheWorkflows(unittest.TestCase):
 
     def test_the_partial_failure_column_matches_the_runner(self):
         for name, entry in ENTRIES.items():
-            self.assertEqual(entry["exits_1"], name in run.PARTIAL_FAILURE, f"{name}: 'exits 1 on any failed item' disagrees with lifeos.run.PARTIAL_FAILURE")
+            self.assertEqual(
+                entry["exits_1"],
+                name in run.PARTIAL_FAILURE,
+                f"{name}: 'exits 1 on any failed item' disagrees with lifeos.run.PARTIAL_FAILURE",
+            )
             if entry["status"] == "partial-red":
                 self.assertIn(name, run.PARTIAL_FAILURE, name)
 
@@ -101,21 +116,37 @@ class IsolationIsTrueOfTheCode(unittest.TestCase):
                 continue
             if entry["status"] == "helper":
                 source = pathlib.Path(importlib.util.find_spec(target[0]).origin).read_text()
-                self.assertIn("isolate.run_items", source, f"{name} is marked helper but does not call isolate.run_items")
+                self.assertIn(
+                    "isolate.run_items", source, f"{name} is marked helper but does not call isolate.run_items"
+                )
             if entry["status"] == "single":
-                self.assertEqual(isolation.loops(target[0]), {}, f"{name} is marked single but its module loops over items that call a client: mark it guarded or helper")
+                self.assertEqual(
+                    isolation.loops(target[0]),
+                    {},
+                    f"{name} is marked single but its module loops over items that call a client: mark it guarded or helper",
+                )
 
 
 class RenderedFilesAreTheManifest(unittest.TestCase):
     def test_stage_budgets_json_is_exactly_what_the_manifest_renders(self):
-        self.assertEqual((ROOT / "lifeos/platform/stage_budgets.json").read_text(), stages.budgets_text(DATA), "run python tools/regen.py")
+        self.assertEqual(
+            (ROOT / "lifeos/platform/stage_budgets.json").read_text(),
+            stages.budgets_text(DATA),
+            "run python tools/regen.py",
+        )
 
     def test_the_two_doc_tables_hold_exactly_the_manifests_rows(self):
-        for path, heading, wanted in (("docs/platform/timeouts.md", "Stage budgets", stages.timeouts_rows(DATA)), ("docs/platform/stage-isolation.md", "Every stage", stages.isolation_rows(DATA))):
+        for path, heading, wanted in (
+            ("docs/platform/timeouts.md", "Stage budgets", stages.timeouts_rows(DATA)),
+            ("docs/platform/stage-isolation.md", "Every stage", stages.isolation_rows(DATA)),
+        ):
             self.assertEqual(table_rows(path, heading), wanted, f"{path}: run python tools/regen.py")
 
     def test_the_manifest_file_is_in_the_canonical_form_regen_writes(self):
-        self.assertEqual((ROOT / "lifeos/platform/stages.json").read_text(), stages.dump(json.loads((ROOT / "lifeos/platform/stages.json").read_text())))
+        self.assertEqual(
+            (ROOT / "lifeos/platform/stages.json").read_text(),
+            stages.dump(json.loads((ROOT / "lifeos/platform/stages.json").read_text())),
+        )
 
 
 if __name__ == "__main__":

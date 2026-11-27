@@ -6,7 +6,9 @@ from unittest import mock
 from lifeos.platform import gate
 
 _environ = mock.patch.dict(os.environ)
-_no_logs = mock.patch.object(gate, "_logs", side_effect=OSError("tests never download real run logs"))  # the check-in's write-conflict count reads logs
+_no_logs = mock.patch.object(
+    gate, "_logs", side_effect=OSError("tests never download real run logs")
+)  # the check-in's write-conflict count reads logs
 
 
 def setUpModule():
@@ -19,11 +21,19 @@ def tearDownModule():
     _no_logs.stop()
     _environ.stop()
 
+
 NOW = dt.datetime(2026, 10, 1, 17, 7, tzinfo=dt.timezone.utc)
 
 
 def run(rid, started, conclusion="success", updated=None, title="tick"):
-    return {"id": rid, "display_title": title, "run_started_at": started, "created_at": started, "conclusion": conclusion, "updated_at": updated or started}
+    return {
+        "id": rid,
+        "display_title": title,
+        "run_started_at": started,
+        "created_at": started,
+        "conclusion": conclusion,
+        "updated_at": updated or started,
+    }
 
 
 class Gate(unittest.TestCase):
@@ -34,7 +44,10 @@ class Gate(unittest.TestCase):
         self.assertEqual(gate.decide([run(1, "2026-10-01T16:07:00Z")], NOW, 9), "run")
 
     def test_cancelled_runs_and_itself_do_not_count(self):
-        self.assertEqual(gate.decide([run(9, "2026-10-01T17:07:00Z", None), run(2, "2026-10-01T16:57:00Z", "cancelled")], NOW, 9), "run")
+        self.assertEqual(
+            gate.decide([run(9, "2026-10-01T17:07:00Z", None), run(2, "2026-10-01T16:57:00Z", "cancelled")], NOW, 9),
+            "run",
+        )
 
     def test_a_tick_stuck_with_no_conclusion_for_over_40_minutes_does_not_block_the_next_tick(self):
         stuck = run(1, "2026-10-01T16:26:00Z", None)
@@ -52,11 +65,20 @@ class Gate(unittest.TestCase):
         self.assertEqual(gate.decide([run(1, "2026-10-01T16:30:00Z", "success")], NOW, 9), "skip")
 
     def test_manual_runs_never_block_a_tick(self):
-        self.assertEqual(gate.decide([run(1, "2026-10-01T17:00:00Z", title="manual"), run(2, "2026-10-01T16:50:00Z", title="hourly")], NOW, 9), "run")
+        self.assertEqual(
+            gate.decide(
+                [run(1, "2026-10-01T17:00:00Z", title="manual"), run(2, "2026-10-01T16:50:00Z", title="hourly")], NOW, 9
+            ),
+            "run",
+        )
 
     def test_active_lists_only_running_runs_of_that_kind(self):
-        runs = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress"), dict(run(2, "2026-10-01T16:50:00Z", None), status="completed"),
-                dict(run(3, "2026-10-01T17:05:00Z", None), status="queued"), dict(run(9, "2026-10-01T17:07:00Z", None, title="manual"), status="in_progress")]
+        runs = [
+            dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress"),
+            dict(run(2, "2026-10-01T16:50:00Z", None), status="completed"),
+            dict(run(3, "2026-10-01T17:05:00Z", None), status="queued"),
+            dict(run(9, "2026-10-01T17:07:00Z", None, title="manual"), status="in_progress"),
+        ]
         self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual")], [1])
         self.assertEqual([r["id"] for r in gate.active(runs, 9, "tick")], [3])
 
@@ -65,46 +87,73 @@ class Gate(unittest.TestCase):
         manual = dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")
         tick = dict(run(2, "2026-10-01T17:07:00Z", None), status="in_progress")
         runs = [manual, tick]
-        self.assertEqual(gate.ahead(runs, 2, "manual", tick["created_at"]), [manual])  # the tick waits for the older manual run
-        self.assertEqual(gate.ahead(runs, 1, "tick", manual["created_at"]), [])  # the older manual run does not wait for the tick
+        self.assertEqual(
+            gate.ahead(runs, 2, "manual", tick["created_at"]), [manual]
+        )  # the tick waits for the older manual run
+        self.assertEqual(
+            gate.ahead(runs, 1, "tick", manual["created_at"]), []
+        )  # the older manual run does not wait for the tick
         later = dict(run(3, "2026-10-01T17:09:00Z", None, title="manual"), status="queued")
-        self.assertEqual(gate.ahead(runs + [later], 3, "tick", later["created_at"]), [tick])  # a newer manual run waits for the tick
+        self.assertEqual(
+            gate.ahead(runs + [later], 3, "tick", later["created_at"]), [tick]
+        )  # a newer manual run waits for the tick
 
     def test_a_tick_runs_after_the_manual_run_ahead_of_it_finishes(self):
         busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")]
         done = [dict(run(1, "2026-10-01T17:00:00Z", "success", title="manual"), status="completed")]
         answers, sleeps = [busy, busy, done], []
-        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: answers.pop(0), sleeps.append), (1, True))
+        self.assertEqual(
+            gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: answers.pop(0), sleeps.append), (1, True)
+        )
         self.assertEqual(sleeps, [30, 30])
 
     def test_a_queued_run_older_than_the_stuck_limit_is_not_active_and_not_ahead(self):
         """item 8: decide already ignored a stuck run"""
-        stuck_manual = dict(run(1, "2026-10-01T15:00:00Z", None, title="manual"), status="queued")  # created two hours before NOW, never started
+        stuck_manual = dict(
+            run(1, "2026-10-01T15:00:00Z", None, title="manual"), status="queued"
+        )  # created two hours before NOW, never started
         fresh_manual = dict(run(4, "2026-10-01T16:55:00Z", None, title="manual"), status="in_progress")
         runs = [stuck_manual, fresh_manual]
         self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual", now=NOW)], [4])
         self.assertEqual([r["id"] for r in gate.ahead(runs, 9, "manual", "2026-10-01T17:07:00Z", now=NOW)], [4])
-        self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual")], [1, 4])  # without a clock nothing is cut, as before
+        self.assertEqual(
+            [r["id"] for r in gate.active(runs, 9, "manual")], [1, 4]
+        )  # without a clock nothing is cut, as before
 
     def test_a_tick_does_not_wait_for_a_stuck_manual_run(self):
         stuck_manual = [dict(run(1, "2026-10-01T15:00:00Z", None, title="manual"), status="queued")]
         sleeps = []
-        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: stuck_manual, sleeps.append, clock=lambda: NOW), (0, True))
+        self.assertEqual(
+            gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: stuck_manual, sleeps.append, clock=lambda: NOW),
+            (0, True),
+        )
         self.assertEqual(sleeps, [])
-        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: stuck_manual, sleeps.append, minutes=1)[1], False)  # no clock: waits, then gives up, as before
+        self.assertEqual(
+            gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: stuck_manual, sleeps.append, minutes=1)[1],
+            False,
+        )  # no clock: waits, then gives up, as before
 
     def test_a_tick_still_blocked_after_the_wait_gives_up_and_the_next_tick_covers_the_hour(self):
         busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")]
         sleeps = []
-        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: busy, sleeps.append, minutes=2), (2, False))
+        self.assertEqual(
+            gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: busy, sleeps.append, minutes=2), (2, False)
+        )
         self.assertEqual(len(sleeps), 4)
 
     def test_main_never_cancels_a_tick_for_a_manual_run_it_can_wait_for(self):
         import os
         from unittest import mock
+
         posts = []
-        manual_busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress"), run(5, "2026-10-01T15:07:00Z")]
-        manual_done = [dict(run(1, "2026-10-01T17:00:00Z", "success", title="manual"), status="completed"), run(5, "2026-10-01T15:07:00Z")]
+        manual_busy = [
+            dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress"),
+            run(5, "2026-10-01T15:07:00Z"),
+        ]
+        manual_done = [
+            dict(run(1, "2026-10-01T17:00:00Z", "success", title="manual"), status="completed"),
+            run(5, "2026-10-01T15:07:00Z"),
+        ]
         lists = [manual_busy, manual_busy, manual_done]
 
         def api(path, method="GET", body=None):
@@ -114,8 +163,12 @@ class Gate(unittest.TestCase):
             if path == "actions/runs/2":
                 return {"created_at": "2026-10-01T17:07:00Z"}
             return {"workflow_runs": lists.pop(0)}
-        with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "2", "GITHUB_EVENT_NAME": "schedule"}), mock.patch.object(gate, "_api", side_effect=api), \
-                mock.patch("time.sleep"):
+
+        with (
+            mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "2", "GITHUB_EVENT_NAME": "schedule"}),
+            mock.patch.object(gate, "_api", side_effect=api),
+            mock.patch("time.sleep"),
+        ):
             self.assertEqual(gate.main(), 0)
         self.assertEqual(posts, [])  # no cancel: the tick ran after its turn came
 
@@ -152,19 +205,23 @@ class GapVariable(unittest.TestCase):
             self.assertEqual(gate.decide(newest, NOW, 9), "skip")
         with mock.patch.dict("os.environ", {"GATE_MIN_GAP_MINUTES": "20"}):
             self.assertEqual(gate.decide(newest, NOW, 9), "run")
-            self.assertEqual(gate.decide([run(1, "2026-10-01T16:52:00Z")], NOW, 9), "skip")  # 15 minutes: still too soon
+            self.assertEqual(
+                gate.decide([run(1, "2026-10-01T16:52:00Z")], NOW, 9), "skip"
+            )  # 15 minutes: still too soon
 
 
 class Tick(unittest.TestCase):
     def test_workflow_accepts_a_timer_tick_with_the_same_gate(self):
         import pathlib
+
         root = pathlib.Path(__file__).resolve().parents[2]
         text = (root / ".github/workflows/hourly.yml").read_text()
         self.assertIn("      tick:", text)
-        self.assertIn("inputs.tick", text.split("      - id: pipeline\n")[1].split("\n      - ")[0])  # the prep job's Pipeline decision step
+        self.assertIn(
+            "inputs.tick", text.split("      - id: pipeline\n")[1].split("\n      - ")[0]
+        )  # the prep job's Pipeline decision step
         self.assertIn("TICK: ${{ inputs.tick }}", text)
         self.assertIn('os.environ.get("TICK")', (root / "lifeos/platform/gate.py").read_text())
-
 
 
 def ago(hours, conclusion="failure", title="tick", rid=1):
@@ -188,12 +245,26 @@ class Failing(unittest.TestCase):
 
     def test_three_passing_ticks_in_a_row_close_it_however_many_failures_are_left_in_the_window(self):
         failures = [ago(h) for h in (4, 5, 6, 7, 8)]
-        self.assertIs(gate.failing([ago(1, "success"), ago(2, "success"), ago(3, "success")] + failures, NOW), False)  # closes, and never opens
-        self.assertIs(gate.failing([ago(1, "success"), ago(2, "success"), ago(3)] + failures, NOW), True)  # one failure among the last three
+        self.assertIs(
+            gate.failing([ago(1, "success"), ago(2, "success"), ago(3, "success")] + failures, NOW), False
+        )  # closes, and never opens
+        self.assertIs(
+            gate.failing([ago(1, "success"), ago(2, "success"), ago(3)] + failures, NOW), True
+        )  # one failure among the last three
         self.assertIs(gate.failing([ago(1, "success"), ago(2), ago(3, "success")] + failures, NOW), True)
-        self.assertIs(gate.failing([ago(1, "success"), ago(2, "success")] + failures, NOW), True)  # only two passes so far
-        self.assertIsNone(gate.failing([ago(1, "success"), ago(2, "success"), ago(3, "cancelled"), ago(5), ago(6)], NOW))
-        runs = [ago(0.5, "success", title="manual"), ago(1, "success"), ago(1.5, "cancelled"), ago(2, "success"), ago(3, "success")] + failures
+        self.assertIs(
+            gate.failing([ago(1, "success"), ago(2, "success")] + failures, NOW), True
+        )  # only two passes so far
+        self.assertIsNone(
+            gate.failing([ago(1, "success"), ago(2, "success"), ago(3, "cancelled"), ago(5), ago(6)], NOW)
+        )
+        runs = [
+            ago(0.5, "success", title="manual"),
+            ago(1, "success"),
+            ago(1.5, "cancelled"),
+            ago(2, "success"),
+            ago(3, "success"),
+        ] + failures
         self.assertIs(gate.failing(runs, NOW), False)
 
     def test_manual_cancelled_and_old_runs_never_count(self):
@@ -213,6 +284,7 @@ class Failing(unittest.TestCase):
 
 class FakeGitHub:
     """Records issue API calls"""
+
     def __init__(self, issues=()):
         self.issues, self.calls = list(issues), []
 
@@ -238,8 +310,14 @@ class Incident(unittest.TestCase):
     def test_a_new_incident_pushes_first_then_opens_the_issue(self):
         order, api = [], FakeGitHub()
         inner = api.__call__
-        result = self.sync(lambda path, method="GET", body=None: (order.append(f"{method} {path.split('?')[0]}"), inner(path, method, body))[1], True,
-                           lambda *a: (order.append("push"), True)[1])
+        result = self.sync(
+            lambda path, method="GET", body=None: (
+                order.append(f"{method} {path.split('?')[0]}"),
+                inner(path, method, body),
+            )[1],
+            True,
+            lambda *a: (order.append("push"), True)[1],
+        )
         self.assertEqual((result, order.index("push") < order.index("POST issues")), ("opened", True))
         self.assertEqual(api.calls[-1][2]["labels"], ["lbl"])
 
@@ -264,13 +342,20 @@ class Incident(unittest.TestCase):
 
     @staticmethod
     def issue(opened_h, quiet_h, labels=("lbl",)):
-        stamp = lambda h: (NOW - dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")      # noqa: E731
-        return {"number": 7, "labels": [{"name": n} for n in labels], "created_at": stamp(opened_h), "updated_at": stamp(quiet_h)}
+        stamp = lambda h: (NOW - dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+        return {
+            "number": 7,
+            "labels": [{"name": n} for n in labels],
+            "created_at": stamp(opened_h),
+            "updated_at": stamp(quiet_h),
+        }
 
     def test_an_incident_still_true_after_three_quiet_hours_re_pages_and_records_it(self):
         pushed, api = [], FakeGitHub([self.issue(opened_h=7, quiet_h=3)])
         self.assertEqual(self.sync(api, True, lambda *a: pushed.append(a) or True), "reminded")
-        self.assertEqual(pushed, [("Still open: T", "B Still open after 7 h.", "page")])  # same key and severity as the first page
+        self.assertEqual(
+            pushed, [("Still open: T", "B Still open after 7 h.", "page")]
+        )  # same key and severity as the first page
         self.assertEqual(api.writes(), [("POST", "issues/7/comments")])  # the comment restarts the clock
 
     def test_no_reminder_inside_the_window_or_when_the_signal_is_unchanged_or_recovered(self):
@@ -279,7 +364,9 @@ class Incident(unittest.TestCase):
             self.assertIsNone(self.sync(api, signal, lambda *a, pushed=pushed: pushed.append(a) or True))
             self.assertEqual((pushed, api.writes()), ([], []))
         pushed, api = [], FakeGitHub([self.issue(opened_h=12, quiet_h=10)])
-        self.assertEqual(self.sync(api, False, lambda *a: pushed.append(a) or True), "closed")  # recovered: the recovery push only
+        self.assertEqual(
+            self.sync(api, False, lambda *a: pushed.append(a) or True), "closed"
+        )  # recovered: the recovery push only
         self.assertEqual(pushed, [self.CLOSE])
 
     def test_an_info_incident_is_never_re_paged(self):
@@ -288,7 +375,16 @@ class Incident(unittest.TestCase):
         old = gate._api
         gate._api = api
         try:
-            got = gate.sync_incident("lbl", "title", "body", True, ("T", "B", "info"), ("C", "R", "info"), push=lambda *a: pushed.append(a) or True, now=NOW)
+            got = gate.sync_incident(
+                "lbl",
+                "title",
+                "body",
+                True,
+                ("T", "B", "info"),
+                ("C", "R", "info"),
+                push=lambda *a: pushed.append(a) or True,
+                now=NOW,
+            )
         finally:
             gate._api = old
         self.assertIsNone(got)
@@ -308,7 +404,9 @@ class Incident(unittest.TestCase):
 
     def test_a_refused_reminder_writes_nothing_so_the_next_run_tries_again(self):
         api = FakeGitHub([self.issue(opened_h=5, quiet_h=4)])
-        self.assertEqual(self.sync(api, True, lambda *a: False), "reminded")  # muted, switched off, flood cap or ntfy down
+        self.assertEqual(
+            self.sync(api, True, lambda *a: False), "reminded"
+        )  # muted, switched off, flood cap or ntfy down
         self.assertEqual(api.writes(), [])
 
     def test_a_pending_incident_is_retried_not_reminded(self):
@@ -326,7 +424,15 @@ class Incident(unittest.TestCase):
             gate.watch(NOW)
         finally:
             gate._api, gate._push = old
-        self.assertIn(("Still open: V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab. Still open after 8 h.", "page", "pipeline_stalled"), pushed)
+        self.assertIn(
+            (
+                "Still open: V7 pipeline stalled",
+                "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab. Still open after 8 h.",
+                "page",
+                "pipeline_stalled",
+            ),
+            pushed,
+        )
 
     def test_recovery_pushes_once_and_closes_the_issue(self):
         pushed, api = [], FakeGitHub([{"number": 7, "labels": [{"name": "lbl"}]}])
@@ -355,12 +461,19 @@ class Incident(unittest.TestCase):
 
 
 class StuckTickAlert(unittest.TestCase):
-    """step 3 (GWT-3): a tick run with no conclusion for over 40 minutes pages the phone once, through the real watchdog.
-    """
+    """step 3 (GWT-3): a tick run with no conclusion for over 40 minutes pages the phone once, through the real watchdog."""
 
     def run_(self, minutes, status="queued", conclusion=None, title="tick", rid=1):
         created = (NOW - dt.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        return {"id": rid, "display_title": title, "status": status, "conclusion": conclusion, "created_at": created, "run_started_at": created, "updated_at": created}
+        return {
+            "id": rid,
+            "display_title": title,
+            "status": status,
+            "conclusion": conclusion,
+            "created_at": created,
+            "run_started_at": created,
+            "updated_at": created,
+        }
 
     def watch(self, runs, open_stuck=False, refuse_cancel=False):
         pushed, calls = [], []
@@ -373,8 +486,20 @@ class StuckTickAlert(unittest.TestCase):
             if method == "POST" and path.endswith("/cancel") and refuse_cancel:
                 raise OSError("HTTP 409")
             if method == "GET" and "issues?" in path:
-                return [{"number": 7, "labels": [{"name": gate.STUCK_LABEL}], "updated_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "created_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ")}] if (open_stuck and f"labels={gate.STUCK_LABEL}" in path) else []
+                return (
+                    [
+                        {
+                            "number": 7,
+                            "labels": [{"name": gate.STUCK_LABEL}],
+                            "updated_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "created_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        }
+                    ]
+                    if (open_stuck and f"labels={gate.STUCK_LABEL}" in path)
+                    else []
+                )
             return {}
+
         old = gate._api
         gate._api = api
         try:
@@ -424,16 +549,25 @@ class StuckTickAlert(unittest.TestCase):
             asked.append((method, path))
             if "/runs/2/" in path:
                 raise OSError("refused")
+
         runs = [self.run_(41, rid=1), self.run_(50, rid=2), self.run_(70, rid=3), self.run_(10, rid=4)]
         out = gate.reap(runs, NOW, call=api)
         self.assertEqual(out, {"found": 3, "cancelled": [1, 3], "refused": [2], "still_stuck": [3]})
-        self.assertEqual([p for m, p in asked], ["actions/runs/1/cancel", "actions/runs/2/cancel", "actions/runs/3/cancel"])
+        self.assertEqual(
+            [p for m, p in asked], ["actions/runs/1/cancel", "actions/runs/2/cancel", "actions/runs/3/cancel"]
+        )
         self.assertIs(gate.reaper_alerts(out), True)
         self.assertIsNone(gate.reaper_alerts({"found": 1, "cancelled": [1], "refused": [], "still_stuck": []}))
         self.assertIs(gate.reaper_alerts({"found": 0, "cancelled": [], "refused": [], "still_stuck": []}), False)
 
     def test_a_tick_younger_than_the_limit_a_manual_run_and_a_finished_run_are_not_stuck(self):
-        pushed, _ = self.watch([self.run_(30), self.run_(90, title="manual", rid=2), self.run_(90, status="completed", conclusion="success", rid=3)])
+        pushed, _ = self.watch(
+            [
+                self.run_(30),
+                self.run_(90, title="manual", rid=2),
+                self.run_(90, status="completed", conclusion="success", rid=3),
+            ]
+        )
         self.assertEqual(pushed, [])
 
     def test_the_incident_closes_with_a_recovered_push_when_nothing_is_stuck(self):
@@ -445,13 +579,27 @@ class StuckTickAlert(unittest.TestCase):
 class DailyCheckin(unittest.TestCase):
     def test_it_is_due_once_a_day_in_the_first_half_hour_only(self):
         at = lambda h, m: dt.datetime(2026, 10, 11, h, m, tzinfo=dt.timezone.utc)
-        self.assertEqual([gate.digest_due(at(13, 17)), gate.digest_due(at(13, 47)), gate.digest_due(at(12, 17)), gate.digest_due(at(14, 17))], [True, False, False, False])
+        self.assertEqual(
+            [
+                gate.digest_due(at(13, 17)),
+                gate.digest_due(at(13, 47)),
+                gate.digest_due(at(12, 17)),
+                gate.digest_due(at(14, 17)),
+            ],
+            [True, False, False, False],
+        )
 
     def test_a_healthy_day_says_ok_with_counts_only(self):
-        title, body = gate.health([ago(0.3, "success", rid=1), ago(5, "success", rid=2), ago(6, "cancelled", rid=3)], [ago(2, "success", title=gate.DOMAINS_TITLE)], NOW)
+        title, body = gate.health(
+            [ago(0.3, "success", rid=1), ago(5, "success", rid=2), ago(6, "cancelled", rid=3)],
+            [ago(2, "success", title=gate.DOMAINS_TITLE)],
+            NOW,
+        )
         self.assertEqual(title, "V7 daily check: OK")
         self.assertIn("2 hourly runs, 2 ok, 0 failed", body)
-        self.assertIn("Coverage: 2 of 24 expected, 22 missed.", body)  # (LIFETMP-62): observed against expected, in counts
+        self.assertIn(
+            "Coverage: 2 of 24 expected, 22 missed.", body
+        )  # (LIFETMP-62): observed against expected, in counts
 
     def test_coverage_counts_missed_hours_and_never_goes_negative(self):
         self.assertEqual(gate.coverage(24), (24, 24, 0))
@@ -461,7 +609,9 @@ class DailyCheckin(unittest.TestCase):
 
     def test_any_failed_tick_or_domain_run_or_a_stale_success_says_degraded(self):
         self.assertIn("DEGRADED", gate.health([ago(1, "success"), ago(3)], [], NOW)[0])
-        self.assertIn("DEGRADED", gate.health([ago(1, "success")], [ago(4, "failure", title=gate.DOMAINS_TITLE)], NOW)[0])
+        self.assertIn(
+            "DEGRADED", gate.health([ago(1, "success")], [ago(4, "failure", title=gate.DOMAINS_TITLE)], NOW)[0]
+        )
         title, body = gate.health([ago(3, "success")], [], NOW)
         self.assertEqual((title, "180 min ago" in body), ("V7 daily check: DEGRADED", True))
         self.assertIn("no good run", gate.health([], [], NOW)[1])
@@ -469,8 +619,17 @@ class DailyCheckin(unittest.TestCase):
     def test_watch_sends_the_checkin_at_the_hour_and_not_otherwise(self):
         for hour, expect in ((13, ["V7 daily check: OK"]), (9, [])):
             now, pushed = dt.datetime(2026, 10, 11, hour, 17, tzinfo=dt.timezone.utc), []
-            fresh = lambda now=now: {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                                "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+            fresh = lambda now=now: {
+                "workflow_runs": [
+                    {
+                        "id": 1,
+                        "display_title": "tick",
+                        "conclusion": "success",
+                        "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    }
+                ]
+            }
             old = gate._api
             gate._api = lambda path, *a, fresh=fresh, **k: fresh() if "workflows/" in path else {}
             try:
@@ -484,12 +643,24 @@ class DailyCheckin(unittest.TestCase):
         never called and the first real.
         """
         from lifeos.platform import alerts
+
         now, sent = dt.datetime(2026, 10, 11, 13, 17, tzinfo=dt.timezone.utc), []
-        fresh = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                    "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+        fresh = {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "display_title": "tick",
+                    "conclusion": "success",
+                    "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            ]
+        }
         old_api, old_ntfy = gate._api, alerts.ntfy
         gate._api = lambda path, *a, **k: fresh if "workflows/" in path else {}
-        alerts.ntfy = lambda topic, title, body, severity, post=None, channels=None: sent.append((topic, title, severity, tuple(channels or ()))) or True
+        alerts.ntfy = lambda topic, title, body, severity, post=None, channels=None: (
+            sent.append((topic, title, severity, tuple(channels or ()))) or True
+        )
         try:
             with mock.patch.dict(os.environ, {"NTFY_TOPIC": "topic", "ALERTS_ENABLED": "on", "ALERT_SETTINGS": ""}):
                 gate.watch(now)
@@ -499,14 +670,21 @@ class DailyCheckin(unittest.TestCase):
 
 
 class CheckinOncePerDay(unittest.TestCase):
-    """It now goes out once per check-in day, from the first watchdog run at or after the usual hour, and never twice.
-    """
+    """It now goes out once per check-in day, from the first watchdog run at or after the usual hour, and never twice."""
+
     DAY = dt.datetime(2026, 11, 15, 13, 17, tzinfo=dt.timezone.utc)
 
     @staticmethod
     def wd(when, rid, conclusion="success", status="completed", name="watchdog"):
         stamp = when.strftime("%Y-%m-%dT%H:%M:%SZ")
-        return {"id": rid, "name": name, "status": status, "conclusion": conclusion, "created_at": stamp, "run_started_at": stamp}
+        return {
+            "id": rid,
+            "name": name,
+            "status": status,
+            "conclusion": conclusion,
+            "created_at": stamp,
+            "run_started_at": stamp,
+        }
 
     def at(self, hours, minutes):
         return dt.datetime(2026, 11, 15, hours, minutes, tzinfo=dt.timezone.utc)
@@ -515,7 +693,9 @@ class CheckinOncePerDay(unittest.TestCase):
         self.assertEqual(gate.checkin_decision(self.DAY, [self.wd(self.at(11, 32), 1)], own_id=9), (True, "", None))
 
     def test_a_skipped_window_sends_once_at_the_first_later_run_and_says_it_is_late(self):
-        due, note, code = gate.checkin_decision(self.at(17, 11), [self.wd(self.at(11, 32), 1), self.wd(self.at(3, 27), 2)], own_id=9)
+        due, note, code = gate.checkin_decision(
+            self.at(17, 11), [self.wd(self.at(11, 32), 1), self.wd(self.at(3, 27), 2)], own_id=9
+        )
         self.assertTrue(due)
         self.assertIsNone(code)
         self.assertIn("Sent late", note)
@@ -525,7 +705,10 @@ class CheckinOncePerDay(unittest.TestCase):
     def test_a_second_run_the_same_day_does_not_send_again(self):
         earlier = self.wd(self.at(13, 17), 5)
         for hours, minutes in ((13, 47), (14, 17), (17, 11), (23, 40)):
-            self.assertFalse(gate.checkin_decision(self.at(hours, minutes), [earlier, self.wd(self.at(11, 32), 1)], own_id=9)[0], (hours, minutes))
+            self.assertFalse(
+                gate.checkin_decision(self.at(hours, minutes), [earlier, self.wd(self.at(11, 32), 1)], own_id=9)[0],
+                (hours, minutes),
+            )
 
     def test_a_run_still_going_counts_as_sending_and_this_run_does_not_count_itself(self):
         going = self.wd(self.at(13, 2), 5, conclusion=None, status="in_progress")
@@ -541,14 +724,18 @@ class CheckinOncePerDay(unittest.TestCase):
         today_run = self.wd(self.at(13, 17), 5)
         tomorrow = self.at(13, 17) + dt.timedelta(days=1)
         self.assertTrue(gate.checkin_decision(tomorrow, [today_run], own_id=9)[0])
-        self.assertFalse(gate.checkin_decision(tomorrow + dt.timedelta(hours=4), [self.wd(tomorrow, 6), today_run], own_id=9)[0])
+        self.assertFalse(
+            gate.checkin_decision(tomorrow + dt.timedelta(hours=4), [self.wd(tomorrow, 6), today_run], own_id=9)[0]
+        )
 
     def test_before_the_hour_nothing_is_sent(self):
         self.assertEqual(gate.checkin_decision(self.at(12, 47), [], own_id=9), (False, "", None))
         self.assertEqual(gate.checkin_decision(self.at(0, 5), [], own_id=9), (False, "", None))
 
     def test_another_workflows_runs_in_the_list_are_ignored(self):
-        self.assertTrue(gate.checkin_decision(self.at(14, 17), [self.wd(self.at(13, 17), 5, name="hourly")], own_id=9)[0])
+        self.assertTrue(
+            gate.checkin_decision(self.at(14, 17), [self.wd(self.at(13, 17), 5, name="hourly")], own_id=9)[0]
+        )
 
     def test_an_unreadable_history_sends_in_the_normal_window_with_a_note_and_otherwise_stays_quiet_with_a_code(self):
         due, note, code = gate.checkin_decision(self.DAY, None, own_id=9)
@@ -558,8 +745,19 @@ class CheckinOncePerDay(unittest.TestCase):
 
     def watch(self, now, history, hourly_success_minutes_ago=10):
         pushed, printed = [], []
-        tick = {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                   "updated_at": (now - dt.timedelta(minutes=hourly_success_minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+        tick = {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "display_title": "tick",
+                    "conclusion": "success",
+                    "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "updated_at": (now - dt.timedelta(minutes=hourly_success_minutes_ago)).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                }
+            ]
+        }
 
         def api(path, *a, **k):
             if path.startswith("actions/workflows/watchdog.yml/runs?per_page=30"):
@@ -567,7 +765,12 @@ class CheckinOncePerDay(unittest.TestCase):
                     raise OSError("unreadable")
                 return {"workflow_runs": history}
             return tick if "workflows/" in path else {}
-        with mock.patch.object(gate, "_api", api), mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "9"}), mock.patch("builtins.print", side_effect=lambda *a, **k: printed.append(" ".join(map(str, a)))):
+
+        with (
+            mock.patch.object(gate, "_api", api),
+            mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "9"}),
+            mock.patch("builtins.print", side_effect=lambda *a, **k: printed.append(" ".join(map(str, a)))),
+        ):
             gate.watch(now, push=lambda *a: pushed.append(a) or True)
         return pushed, printed
 
@@ -597,13 +800,16 @@ class CheckinOncePerDay(unittest.TestCase):
 
     def test_the_ticker_never_sends_the_checkin(self):
         pushed = []
-        with mock.patch.object(gate, "_api", lambda path, *a, **k: {"workflow_runs": []} if "workflows/" in path else {}):
+        with mock.patch.object(
+            gate, "_api", lambda path, *a, **k: {"workflow_runs": []} if "workflows/" in path else {}
+        ):
             gate.watch(self.at(17, 11), push=lambda *a: pushed.append(a) or True, checkin=False)
         self.assertNotIn("daily_check", [p[3] for p in pushed])
 
 
 class PurgeIsNamed(unittest.TestCase):
     """the Sunday purge failed twice and the push only said 'finish'."""
+
     text = (__import__("pathlib").Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
 
     def test_the_lane_step_lists_purge_and_hands_the_stage_names_to_the_report_job(self):

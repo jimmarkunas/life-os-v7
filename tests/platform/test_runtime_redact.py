@@ -27,7 +27,9 @@ class Runtime(unittest.TestCase):
 
 class Redact(unittest.TestCase):
     def test_secrets_tokens_and_emails_are_removed(self):
-        out = redact.redact({"note": "Bearer abc123 sent to jim@example.com using TOPSECRET", "api_token": "x"}, secrets=["TOPSECRET"])
+        out = redact.redact(
+            {"note": "Bearer abc123 sent to jim@example.com using TOPSECRET", "api_token": "x"}, secrets=["TOPSECRET"]
+        )
         self.assertNotIn("abc123", out["note"])
         self.assertNotIn("jim@example.com", out["note"])
         self.assertNotIn("TOPSECRET", out["note"])
@@ -38,7 +40,9 @@ class Redact(unittest.TestCase):
         out = redact.redact(text)
         for secret in ("AbC123xyz", "7h3Qp9", "812 3456 7890"):
             self.assertNotIn(secret, out)
-        out = redact.redact({"joinUrl": "https://x.example/j/1", "meeting_id": "123", "passcode": "9", "transcript": "..."})
+        out = redact.redact(
+            {"joinUrl": "https://x.example/j/1", "meeting_id": "123", "passcode": "9", "transcript": "..."}
+        )
         self.assertEqual(set(out.values()), {redact.REDACTED})
 
     def test_notion_ids_in_text_and_unknown_objects(self):

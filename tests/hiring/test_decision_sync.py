@@ -1,6 +1,7 @@
 """synthetic only: a Hiring Decision set by hand in the Job Ledger gets Decision On, one history line and Freshness
 Status Closed
 """
+
 import json
 import unittest
 from datetime import datetime
@@ -9,12 +10,19 @@ from zoneinfo import ZoneInfo
 from lifeos.hiring import decision as D, decision_sync as S
 
 NOW = datetime(2026, 11, 25, 10, 0, tzinfo=ZoneInfo("America/Chicago"))
-T = lambda text: [{"type": "text", "plain_text": text, "text": {"content": text}}]      # noqa: E731
+T = lambda text: [{"type": "text", "plain_text": text, "text": {"content": text}}]  # noqa: E731
 
 
 def row(pid, decision="Rejected", on=None, history="", fresh="Fresh"):
-    return {"id": pid, "properties": {D.DECISION: {"type": "select", "select": {"name": decision} if decision else None}, D.HISTORY: {"type": "rich_text", "rich_text": T(history)},
-                                      S.DECISION_ON: {"type": "date", "date": {"start": on} if on else None}, S.FRESHNESS: {"type": "select", "select": {"name": fresh}}}}
+    return {
+        "id": pid,
+        "properties": {
+            D.DECISION: {"type": "select", "select": {"name": decision} if decision else None},
+            D.HISTORY: {"type": "rich_text", "rich_text": T(history)},
+            S.DECISION_ON: {"type": "date", "date": {"start": on} if on else None},
+            S.FRESHNESS: {"type": "select", "select": {"name": fresh}},
+        },
+    }
 
 
 class Ledger:
@@ -47,13 +55,28 @@ class DecisionSync(unittest.TestCase):
         counts = S.run(ledger, True, NOW)
         self.assertEqual((counts["decided"], counts["would_sync"], counts["synced"], counts["failed"]), (1, 1, 1, 0))
         props = ledger.pages["p1"]["properties"]
-        self.assertEqual((props[D.DECISION]["select"]["name"], props[S.DECISION_ON]["date"]["start"], props[S.FRESHNESS]["select"]["name"]), ("Rejected", "2026-11-25", "Closed"))
+        self.assertEqual(
+            (
+                props[D.DECISION]["select"]["name"],
+                props[S.DECISION_ON]["date"]["start"],
+                props[S.FRESHNESS]["select"]["name"],
+            ),
+            ("Rejected", "2026-11-25", "Closed"),
+        )
         [entry] = D.entries(D._text(props[D.HISTORY], "rich_text"))
         self.assertEqual((entry["outcome"], entry["action"]), ("Rejected", "hand-set"))
         self.assertNotIn(D.DECISION, ledger.writes[0][1])  # the decision itself is never written
 
     def test_a_row_that_already_has_all_three_is_left_alone_and_a_replay_writes_nothing(self):
-        done = json.dumps({"op": "x1", "action": "CONFIRM_REJECTED", "at": "2026-11-20T09:00:00-06:00", "reason": "r", "outcome": "Passed"})
+        done = json.dumps(
+            {
+                "op": "x1",
+                "action": "CONFIRM_REJECTED",
+                "at": "2026-11-20T09:00:00-06:00",
+                "reason": "r",
+                "outcome": "Passed",
+            }
+        )
         ledger = Ledger(row("p1", "Passed", on="2026-11-20", history=done, fresh="Closed"), row("p2"))
         S.run(ledger, True, NOW)
         self.assertEqual([w[0] for w in ledger.writes], ["p2"])
@@ -64,7 +87,13 @@ class DecisionSync(unittest.TestCase):
         ledger = Ledger(row("p1", on="2026-11-01", fresh="Closed"))
         S.run(ledger, True, NOW)
         self.assertEqual(list(ledger.writes[0][1]), [D.HISTORY])
-        ledger = Ledger(row("p2", on="2026-11-01", history=json.dumps({"op": "o", "action": "A", "at": "t", "reason": "r", "outcome": "Rejected"})))
+        ledger = Ledger(
+            row(
+                "p2",
+                on="2026-11-01",
+                history=json.dumps({"op": "o", "action": "A", "at": "t", "reason": "r", "outcome": "Rejected"}),
+            )
+        )
         S.run(ledger, True, NOW)
         self.assertEqual(list(ledger.writes[0][1]), [S.FRESHNESS])
 

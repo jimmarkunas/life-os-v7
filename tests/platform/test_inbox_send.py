@@ -1,4 +1,5 @@
 """(synthetic): the governed send_to_jim operation, with the Notion double of the inbox tests."""
+
 import unittest
 from datetime import datetime, timezone
 
@@ -9,7 +10,11 @@ NOW = datetime(2026, 11, 23, 5, 0, tzinfo=timezone.utc)
 
 
 def send(client, **args):
-    return S.run("send_to_jim", {"subject": "Synthetic LIFE-876 test item", "_client": "mac-claude-code", **args}, {"client": client, "now": lambda: NOW})
+    return S.run(
+        "send_to_jim",
+        {"subject": "Synthetic LIFE-876 test item", "_client": "mac-claude-code", **args},
+        {"client": client, "now": lambda: NOW},
+    )
 
 
 class SendToJim(unittest.TestCase):
@@ -34,7 +39,9 @@ class SendToJim(unittest.TestCase):
             send(client, key="shared-key-1", **{"_client": "oracle-claude-code"})
         self.assertEqual((raised.exception.reason, len(client.rows)), ("key_other_sender", 1))
 
-    def test_the_gate_route_is_the_items_workspace_a_write_on_agent_inbox_and_an_unknown_workspace_is_an_unknown_tenant(self):
+    def test_the_gate_route_is_the_items_workspace_a_write_on_agent_inbox_and_an_unknown_workspace_is_an_unknown_tenant(
+        self,
+    ):
         self.assertEqual(S.route("send_to_jim", {}, "x"), ("personal", "write", "agent-inbox", "notion"))
         self.assertEqual(S.route("send_to_jim", {"workspace": "Bytalos"}, "x")[0], "bytalos")
         for name in ("TGP", "Other", "personal"):

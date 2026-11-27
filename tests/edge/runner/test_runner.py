@@ -1,4 +1,5 @@
 """the script-pack runner (lifeos/edge/runner/runner.py) and its installer, on temp folders and a fake systemctl."""
+
 import hashlib
 import io
 import json
@@ -24,6 +25,7 @@ PEM_BEGIN, PEM_END = "-----BEGIN OPENSSH " + "PRIVATE KEY-----", "-----END OPENS
 
 class FakeSystemd:
     """Service state lives in flag files so a pack STEP (plain bash) can 'stop' a service"""
+
     def __init__(self, folder):
         self.folder, self.calls = folder, []
 
@@ -61,7 +63,12 @@ class Base(unittest.TestCase):
         os.makedirs(os.path.join(root, "steps"))
         for name, text in steps.items():
             Path(root, "steps", name).write_text("#!/bin/bash\n" + text)
-        manifest = {"schema": 1, "ticket": ticket or key, "steps": ["steps/" + n for n in sorted(steps)], "restore": restore or {}}
+        manifest = {
+            "schema": 1,
+            "ticket": ticket or key,
+            "steps": ["steps/" + n for n in sorted(steps)],
+            "restore": restore or {},
+        }
         if timeout:
             manifest["step_timeout_seconds"] = timeout
         manifest.update(extra or {})
@@ -118,9 +125,17 @@ class PackIdentity(Base):  # GWT-RUN-01
         Path(root, "extra.txt").write_text("x")
         self.assertEqual(self.run_cli("check", root)[1].strip(), "PACK fail E_PACK")
         os.remove(os.path.join(root, "extra.txt"))
-        for bad in ({"restore": {"files": ["/etc/sudoers.d/x"]}}, {"restore": {"files": ["relative/path"]}}, {"restore": {"files": ["/etc/../etc/shadow"]}},
-                    {"restore": {"files": ["/opt/lifeos-runner/runner.py"]}}, {"restore": {"services": ["bad name.service"]}}, {"steps": ["../x.sh"]}, {"schema": 2},
-                    {"step_timeout_seconds": 99999}, {"ticket": "lifeos-1"}):
+        for bad in (
+            {"restore": {"files": ["/etc/sudoers.d/x"]}},
+            {"restore": {"files": ["relative/path"]}},
+            {"restore": {"files": ["/etc/../etc/shadow"]}},
+            {"restore": {"files": ["/opt/lifeos-runner/runner.py"]}},
+            {"restore": {"services": ["bad name.service"]}},
+            {"steps": ["../x.sh"]},
+            {"schema": 2},
+            {"step_timeout_seconds": 99999},
+            {"ticket": "lifeos-1"},
+        ):
             root = self.pack(extra=bad)
             self.assertEqual(self.run_cli("check", root)[1].strip(), "PACK fail E_PACK", bad)
 
@@ -128,12 +143,17 @@ class PackIdentity(Base):  # GWT-RUN-01
 class Approval(Base):  # GWT-RUN-02 and the negative tests
     def test_a_matching_sha8_and_ticket_runs_and_the_terminal_shows_exactly_one_line(self):
         marker = os.path.join(self.tmp, "ran")
-        root = self.pack(steps={"10-a.sh": "echo step one noise\ntouch %s\n" % marker, "20-b.sh": "echo READBACK count=3\n"})
+        root = self.pack(
+            steps={"10-a.sh": "echo step one noise\ntouch %s\n" % marker, "20-b.sh": "echo READBACK count=3\n"}
+        )
         status, out = self.run_cli("LIFE-310", self.sha8(root))
         self.assertEqual((status, out), (0, "RESULT ok\n"))
         self.assertTrue(os.path.exists(marker))
         data = self.result()
-        self.assertEqual((data["outcome"], data["code"], data["steps_run"], data["steps_total"], data["readback"]), ("ok", None, 2, 2, ["count=3"]))
+        self.assertEqual(
+            (data["outcome"], data["code"], data["steps_run"], data["steps_total"], data["readback"]),
+            ("ok", None, 2, 2, ["count=3"]),
+        )
         self.assertNotIn("noise", self.everything_written())  # step output is never kept, only counts
         self.assertEqual(data["step_results"][0]["output_lines"], 1)
         self.assertTrue(Path(self.state, "results", "LIFE-310-%s.json" % self.sha8(root)).exists())
@@ -177,6 +197,7 @@ class Approval(Base):  # GWT-RUN-02 and the negative tests
 
     def test_only_one_run_at_a_time(self):
         import fcntl
+
         root = self.pack()
         os.makedirs(self.state)
         with open(os.path.join(self.state, "lock"), "w") as held:
@@ -194,9 +215,14 @@ class RestoreOnFailure(Base):  # GWT-RUN-03
 
     def test_a_failing_step_puts_files_and_services_back_and_says_so(self):
         restore = self.setup_world()
-        root = self.pack(restore=restore, steps={
-            "10-change.sh": "echo changed > %s\nchmod 600 %s\necho new > %s\ntouch %s\n" % (self.edited, self.edited, self.created, self.sysd.flag("demo.service")),
-            "20-fail.sh": "exit 3\n"})
+        root = self.pack(
+            restore=restore,
+            steps={
+                "10-change.sh": "echo changed > %s\nchmod 600 %s\necho new > %s\ntouch %s\n"
+                % (self.edited, self.edited, self.created, self.sysd.flag("demo.service")),
+                "20-fail.sh": "exit 3\n",
+            },
+        )
         self.assertEqual(self.run_cli("LIFE-310", self.sha8(root)), (1, "RESULT fail E_STEP_2\n"))
         self.assertEqual(Path(self.edited).read_text(), "original\n")
         self.assertEqual(oct(os.stat(self.edited).st_mode & 0o777), oct(0o640))
@@ -217,7 +243,9 @@ class RestoreOnFailure(Base):  # GWT-RUN-03
 
     def test_a_step_that_hangs_is_killed_and_restored(self):
         restore = self.setup_world()
-        root = self.pack(restore=restore, timeout=1, steps={"10-hang.sh": "echo changed > %s\nsleep 30\n" % self.edited})
+        root = self.pack(
+            restore=restore, timeout=1, steps={"10-hang.sh": "echo changed > %s\nsleep 30\n" % self.edited}
+        )
         began = time.monotonic()
         self.assertEqual(self.run_cli("LIFE-310", self.sha8(root)), (1, "RESULT fail E_TIMEOUT_1\n"))
         self.assertLess(time.monotonic() - began, 15)
@@ -226,12 +254,22 @@ class RestoreOnFailure(Base):  # GWT-RUN-03
 
     def test_an_interrupted_run_restores_before_it_exits(self):
         restore = self.setup_world()
-        root = self.pack(restore=restore, steps={"10-change.sh": "echo changed > %s\nkill -TERM $PPID\nsleep 20\n" % self.edited})
-        driver = ("import sys; from lifeos.edge.runner import runner; "
-                  "h = runner.Host(state=sys.argv[1], inbox=sys.argv[2], require_root=False, systemctl=lambda *a: (0, 'active')); "
-                  "sys.exit(runner.main(sys.argv[3:], h))")
+        root = self.pack(
+            restore=restore, steps={"10-change.sh": "echo changed > %s\nkill -TERM $PPID\nsleep 20\n" % self.edited}
+        )
+        driver = (
+            "import sys; from lifeos.edge.runner import runner; "
+            "h = runner.Host(state=sys.argv[1], inbox=sys.argv[2], require_root=False, systemctl=lambda *a: (0, 'active')); "
+            "sys.exit(runner.main(sys.argv[3:], h))"
+        )
         began = time.monotonic()
-        done = subprocess.run([sys.executable, "-c", driver, self.state, self.inbox, "LIFE-310", self.sha8(root)], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        done = subprocess.run(
+            [sys.executable, "-c", driver, self.state, self.inbox, "LIFE-310", self.sha8(root)],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         self.assertEqual((done.returncode, done.stdout, done.stderr), (1, "RESULT fail E_INTERRUPTED\n", ""))
         self.assertLess(time.monotonic() - began, 15)
         self.assertEqual(Path(self.edited).read_text(), "original\n")
@@ -239,30 +277,72 @@ class RestoreOnFailure(Base):  # GWT-RUN-03
 
     def test_a_restore_that_cannot_finish_says_so_and_keeps_the_snapshot(self):
         restore = self.setup_world()
-        root = self.pack(restore=restore, steps={"10-break.sh": "rm -f %s\nmkdir %s\nexit 1\n" % (self.edited, self.edited)})
+        root = self.pack(
+            restore=restore, steps={"10-break.sh": "rm -f %s\nmkdir %s\nexit 1\n" % (self.edited, self.edited)}
+        )
         status, out = self.run_cli("LIFE-310", self.sha8(root))
         self.assertEqual((status, out), (1, "RESULT fail E_RESTORE\n"))
         self.assertEqual(self.result()["restore_failed"], [self.edited])
-        self.assertTrue(os.listdir(os.path.join(self.state, "snapshots")))  # the originals stay on disk for a manual put-back
+        self.assertTrue(
+            os.listdir(os.path.join(self.state, "snapshots"))
+        )  # the originals stay on disk for a manual put-back
 
 
 class NoSecretsPrinted(Base):  # GWT-RUN-04
     def test_secret_looking_output_is_redacted_everywhere_and_only_names_and_counts_are_kept(self):
-        steps = {"10-noisy.sh": ("echo token=abcdefghij1234567890\necho %s\necho 'Authorization: %s'\n"
-                                 "echo 'password: hunter2hunter2'\necho github_pat_SHORT123456789\necho ghp_abcdefghij0123456789\necho %s\necho AAAAB3NzaC1yc2EAAAADAQABAAABAQC7\necho %s\n"
-                                 "echo READBACK node_count=4 secret=%s\necho READBACK services=2\necho READBACK note=github_pat_SHORT123456789 other=ghp_abcdefghij0123456789\n" % (TOKEN, BEARER, PEM_BEGIN, PEM_END, TOKEN))}
+        steps = {
+            "10-noisy.sh": (
+                "echo token=abcdefghij1234567890\necho %s\necho 'Authorization: %s'\n"
+                "echo 'password: hunter2hunter2'\necho github_pat_SHORT123456789\necho ghp_abcdefghij0123456789\necho %s\necho AAAAB3NzaC1yc2EAAAADAQABAAABAQC7\necho %s\n"
+                "echo READBACK node_count=4 secret=%s\necho READBACK services=2\necho READBACK note=github_pat_SHORT123456789 other=ghp_abcdefghij0123456789\n"
+                % (TOKEN, BEARER, PEM_BEGIN, PEM_END, TOKEN)
+            )
+        }
         root = self.pack(steps=steps)
         status, out = self.run_cli("LIFE-310", self.sha8(root))
         self.assertEqual((status, out), (0, "RESULT ok\n"))
         written = self.everything_written()
-        for secret in (TOKEN, "github_pat_SHORT123456789", "ghp_abcdefghij0123456789", "abcdefghij1234567890", "hunter2hunter2", "abcdefghijklmnopqrstuvwxyz0123", "AAAAB3NzaC1yc2EAAAADAQABAAABAQC7"):
+        for secret in (
+            TOKEN,
+            "github_pat_SHORT123456789",
+            "ghp_abcdefghij0123456789",
+            "abcdefghij1234567890",
+            "hunter2hunter2",
+            "abcdefghijklmnopqrstuvwxyz0123",
+            "AAAAB3NzaC1yc2EAAAADAQABAAABAQC7",
+        ):
             self.assertNotIn(secret, written)
             self.assertNotIn(secret, out)
         data = self.result()
         self.assertGreaterEqual(data["redactions_total"], 7)
-        self.assertEqual(data["readback"], ["node_count=4 secret=[REDACTED]", "services=2", "note=[REDACTED:token] other=[REDACTED:token]"])
-        self.assertEqual(set(data), {"schema", "runner_version", "ticket", "sha8", "sha256", "outcome", "code", "steps_total", "steps_run", "step_results", "restored", "restore_failed", "readback",
-                                     "redactions_total", "started_epoch", "finished_epoch", "finished_ct", "restored_count", "redacted_note"})
+        self.assertEqual(
+            data["readback"],
+            ["node_count=4 secret=[REDACTED]", "services=2", "note=[REDACTED:token] other=[REDACTED:token]"],
+        )
+        self.assertEqual(
+            set(data),
+            {
+                "schema",
+                "runner_version",
+                "ticket",
+                "sha8",
+                "sha256",
+                "outcome",
+                "code",
+                "steps_total",
+                "steps_run",
+                "step_results",
+                "restored",
+                "restore_failed",
+                "readback",
+                "redactions_total",
+                "started_epoch",
+                "finished_epoch",
+                "finished_ct",
+                "restored_count",
+                "redacted_note",
+            },
+        )
 
     def test_redact_keeps_paths_and_plain_numbers_and_removes_long_tokens(self):
         text, n = runner.redact("see /opt/lifeos-ticker/lifeos/platform/redact.py rows=12 ok")
@@ -271,7 +351,11 @@ class NoSecretsPrinted(Base):  # GWT-RUN-04
         self.assertEqual((text, n), ("x [REDACTED:long] y", 1))
 
     def test_step_stdin_is_closed_and_the_environment_is_clean(self):
-        root = self.pack(steps={"10-env.sh": "read -t 1 line; echo READBACK stdin_eof=$?\nenv | grep -c '^SECRET_ENV=' | sed 's/^/READBACK leaked=/'\n"})
+        root = self.pack(
+            steps={
+                "10-env.sh": "read -t 1 line; echo READBACK stdin_eof=$?\nenv | grep -c '^SECRET_ENV=' | sed 's/^/READBACK leaked=/'\n"
+            }
+        )
         os.environ["SECRET_ENV"] = "abc"
         self.addCleanup(os.environ.pop, "SECRET_ENV", None)
         self.assertEqual(self.run_cli("LIFE-310", self.sha8(root))[1], "RESULT ok\n")
@@ -291,7 +375,11 @@ class Installer(unittest.TestCase):
         return done.returncode, done.stdout + done.stderr
 
     def files(self):
-        return sorted(str(p.relative_to(self.prefix)) for p in Path(self.prefix).rglob("*")) if os.path.isdir(self.prefix) else []
+        return (
+            sorted(str(p.relative_to(self.prefix)) for p in Path(self.prefix).rglob("*"))
+            if os.path.isdir(self.prefix)
+            else []
+        )
 
     def test_the_pin_equals_the_runner_so_one_printed_hash_covers_both(self):
         pin = [l for l in INSTALLER.read_text().splitlines() if l.startswith("RUNNER_SHA256=")][0].split("=")[1]
@@ -308,10 +396,27 @@ class Installer(unittest.TestCase):
         status, out = self.run_script("install")
         self.assertEqual(status, 0, out)
         self.assertIn("ROLLBACK: sudo bash install-runner.sh uninstall", out)
-        self.assertEqual(self.files(), ["opt", "opt/lifeos-runner", "opt/lifeos-runner/runner.py", "usr", "usr/local", "usr/local/sbin", "usr/local/sbin/lifeos-run", "var", "var/lib",
-                                        "var/lib/lifeos-runner", "var/lib/lifeos-runner/results"])
+        self.assertEqual(
+            self.files(),
+            [
+                "opt",
+                "opt/lifeos-runner",
+                "opt/lifeos-runner/runner.py",
+                "usr",
+                "usr/local",
+                "usr/local/sbin",
+                "usr/local/sbin/lifeos-run",
+                "var",
+                "var/lib",
+                "var/lib/lifeos-runner",
+                "var/lib/lifeos-runner/results",
+            ],
+        )
         self.assertEqual(os.stat(os.path.join(self.prefix, "usr/local/sbin/lifeos-run")).st_mode & 0o777, 0o755)
-        self.assertEqual(Path(self.prefix, "usr/local/sbin/lifeos-run").read_text(), '#!/bin/sh\nexec /usr/bin/python3 -I /opt/lifeos-runner/runner.py "$@"\n')
+        self.assertEqual(
+            Path(self.prefix, "usr/local/sbin/lifeos-run").read_text(),
+            '#!/bin/sh\nexec /usr/bin/python3 -I /opt/lifeos-runner/runner.py "$@"\n',
+        )
         self.assertEqual(self.run_script("install")[0], 0)  # idempotent
         self.assertEqual(self.run_script("verify")[0], 0)
         installed = Path(self.prefix, "opt/lifeos-runner/runner.py")
@@ -332,15 +437,33 @@ class Installer(unittest.TestCase):
     def test_a_changed_runner_is_refused_and_nothing_is_installed(self):
         shutil.copy(INSTALLER, self.tmp)
         Path(self.tmp, "runner.py").write_text(RUNNER_PY.read_text() + "# changed\n")
-        done = subprocess.run(["bash", os.path.join(self.tmp, "install-runner.sh"), "--prefix", self.prefix, "install"], capture_output=True, text=True)
+        done = subprocess.run(
+            ["bash", os.path.join(self.tmp, "install-runner.sh"), "--prefix", self.prefix, "install"],
+            capture_output=True,
+            text=True,
+        )
         self.assertEqual(done.returncode, 1)
         self.assertIn("does not match the pinned sha256", done.stdout)
         self.assertEqual(self.files(), [])
 
     def test_it_installs_no_timer_service_watcher_or_sudoers_rule(self):
         for path in (INSTALLER, RUNNER_PY):
-            code = "\n".join(l for l in path.read_text().splitlines() if not l.lstrip().startswith("#") and "echo" not in l and "say " not in l)
-            for word in ("crontab", "systemd-run", "OnCalendar", "/etc/sudoers.d", "visudo", "nohup", "while true", "threading.Timer", "sched."):
+            code = "\n".join(
+                l
+                for l in path.read_text().splitlines()
+                if not l.lstrip().startswith("#") and "echo" not in l and "say " not in l
+            )
+            for word in (
+                "crontab",
+                "systemd-run",
+                "OnCalendar",
+                "/etc/sudoers.d",
+                "visudo",
+                "nohup",
+                "while true",
+                "threading.Timer",
+                "sched.",
+            ):
                 self.assertNotIn(word, code, "%s mentions %s" % (path.name, word))
         self.assertNotIn("systemctl enable", INSTALLER.read_text().replace("#", "", 0).split("case")[1])
 

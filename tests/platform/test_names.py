@@ -29,6 +29,7 @@ class Names(unittest.TestCase):
 
     def test_jobs_reexports_the_same_functions(self):
         from lifeos.jobs import hiring_pipeline, names as jobs_names
+
         self.assertIs(hiring_pipeline.same_company, names.same_company)
         self.assertIs(jobs_names.core, names.core)
 

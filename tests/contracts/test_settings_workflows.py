@@ -1,12 +1,14 @@
 """the workflows read the V7 settings page for every movable name, and what still comes from GitHub is listed here with
 its phase-5 status.
 """
+
 import pathlib
 import re
 import unittest
 
 from lifeos.platform import settings
 import sys as _sys
+
 _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "tools"))
 import wfsets  # noqa: E402
 
@@ -29,8 +31,7 @@ STATUS = {
     "ticker": "the Oracle ticker reads this GitHub variable through the API (lifeos/edge/ticker/ticker.py); it stays until the ticker reads the page",
 }
 # One line per movable name still read from GitHub (the whole list)
-EXPECTED = {
-}
+EXPECTED = {}
 
 
 def references():
@@ -46,14 +47,36 @@ def references():
 class MovableNamesFromGitHub(unittest.TestCase):
     def test_every_remaining_movable_reference_has_a_phase_5_status(self):
         listed = references()
-        self.assertEqual(sorted(set(listed) - set(EXPECTED)), [], "a new GitHub value for a movable name: read it from the settings page instead, or list it here with Jim's yes")
-        self.assertEqual(sorted(set(EXPECTED) - set(listed)), [], "no workflow reads this name from GitHub any more: delete its line (and shrink FROZEN)")
+        self.assertEqual(
+            sorted(set(listed) - set(EXPECTED)),
+            [],
+            "a new GitHub value for a movable name: read it from the settings page instead, or list it here with Jim's yes",
+        )
+        self.assertEqual(
+            sorted(set(EXPECTED) - set(listed)),
+            [],
+            "no workflow reads this name from GitHub any more: delete its line (and shrink FROZEN)",
+        )
         for name, status in EXPECTED.items():
             self.assertIn(status, STATUS, name)
 
     def test_the_names_that_never_existed_in_github_are_declared_empty_not_read_from_github(self):
-        gone = ("INTERVIEW_CONVERT", "INTERVIEW_CONVERT_CAP", "JIRA_CARD_PROJECTS", "JIRA_GTV_CONTEXT_URL", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NETWORK_SURFACE_SKIP",
-                "PHYSICAL_MAIL_EXPECT", "TICK_CAP_ATS", "TICK_CAP_DICE", "TICK_CAP_JOBRIGHT", "TICK_CAP_LINKEDIN", "TICK_CAP_TINYFISH", "TICK_MAX_PARALLEL")
+        gone = (
+            "INTERVIEW_CONVERT",
+            "INTERVIEW_CONVERT_CAP",
+            "JIRA_CARD_PROJECTS",
+            "JIRA_GTV_CONTEXT_URL",
+            "MEGIBOW_EXCLUDED_DOMAINS",
+            "MEGIBOW_REVIEW_DB_ID",
+            "NETWORK_SURFACE_SKIP",
+            "PHYSICAL_MAIL_EXPECT",
+            "TICK_CAP_ATS",
+            "TICK_CAP_DICE",
+            "TICK_CAP_JOBRIGHT",
+            "TICK_CAP_LINKEDIN",
+            "TICK_CAP_TINYFISH",
+            "TICK_MAX_PARALLEL",
+        )
         self.assertEqual(sorted(set(gone) & set(references())), [])
 
     def test_a_safety_value_or_credential_is_never_read_from_the_settings_page(self):
@@ -67,25 +90,58 @@ class DefaultsWhenNothingIsSet(unittest.TestCase):
     """The gate and the steps declare the name empty"""
 
     def test_nothing_on_the_page_changes_nothing(self):
-        env = {n: "" for n in ("INTERVIEW_CONVERT", "NETWORK_SURFACE_SKIP", "TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL", "PHYSICAL_MAIL_EXPECT")}
+        env = {
+            n: ""
+            for n in (
+                "INTERVIEW_CONVERT",
+                "NETWORK_SURFACE_SKIP",
+                "TICK_CAP_LINKEDIN",
+                "TICK_CAP_ATS",
+                "TICK_MAX_PARALLEL",
+                "PHYSICAL_MAIL_EXPECT",
+            )
+        }
         before = dict(env)
-        out = settings.apply({**env, "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}, _Page(["GRANOLA_AUTO on"]))  # the source holds a name these steps never declare
+        out = settings.apply(
+            {**env, "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}, _Page(["GRANOLA_AUTO on"])
+        )  # the source holds a name these steps never declare
         self.assertEqual((out["status"], out["filled"], env), ("ok", [], before))
 
     def test_the_code_defaults_are_the_old_workflow_defaults(self):
-        from lifeos.jobs import tick                                                       # noqa: PLC0415
-        from lifeos.sources.interview import interview_sweep                               # noqa: PLC0415
+        from lifeos.jobs import tick  # noqa: PLC0415
+        from lifeos.sources.interview import interview_sweep  # noqa: PLC0415
+
         caps = tick.concurrency_from_env({})
-        self.assertEqual((caps["caps"]["linkedin"], caps["caps"]["tinyfish"], caps["caps"]["jobright"], caps["caps"]["dice"], caps["caps"]["ats"], caps["parallel"]), (1, 1, 1, 1, 8, 4))
-        self.assertEqual(tick.concurrency_from_env({n: "" for n in ("TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL")}), caps)  # declared empty = unset
-        self.assertEqual(interview_sweep.mode({"INTERVIEW_CONVERT": ""}), interview_sweep.mode({}))  # empty = off, as with an unset variable
+        self.assertEqual(
+            (
+                caps["caps"]["linkedin"],
+                caps["caps"]["tinyfish"],
+                caps["caps"]["jobright"],
+                caps["caps"]["dice"],
+                caps["caps"]["ats"],
+                caps["parallel"],
+            ),
+            (1, 1, 1, 1, 8, 4),
+        )
+        self.assertEqual(
+            tick.concurrency_from_env({n: "" for n in ("TICK_CAP_LINKEDIN", "TICK_CAP_ATS", "TICK_MAX_PARALLEL")}), caps
+        )  # declared empty = unset
+        self.assertEqual(
+            interview_sweep.mode({"INTERVIEW_CONVERT": ""}), interview_sweep.mode({})
+        )  # empty = off, as with an unset variable
         self.assertEqual(interview_sweep.mode({}), "")
-        self.assertIn('(environ.get("NETWORK_SURFACE_SKIP") or "on")', (ROOT / "lifeos/sources/network/network_surface.py").read_text())  # empty means on, as the workflow's `|| 'on'` did
+        self.assertIn(
+            '(environ.get("NETWORK_SURFACE_SKIP") or "on")',
+            (ROOT / "lifeos/sources/network/network_surface.py").read_text(),
+        )  # empty means on, as the workflow's `|| 'on'` did
 
     def test_the_page_can_set_the_two_switches_the_gate_and_the_network_stage_read(self):
         env = {"INTERVIEW_CONVERT": "", "NETWORK_SURFACE_SKIP": "", "V7_RUNTIME_CONFIG_SOURCE_ID": SOURCE_ID}
         out = settings.apply(env, _Page(["INTERVIEW_CONVERT inventory", "NETWORK_SURFACE_SKIP off"]))
-        self.assertEqual((env["INTERVIEW_CONVERT"], env["NETWORK_SURFACE_SKIP"], out["filled"]), ("inventory", "off", ["INTERVIEW_CONVERT", "NETWORK_SURFACE_SKIP"]))
+        self.assertEqual(
+            (env["INTERVIEW_CONVERT"], env["NETWORK_SURFACE_SKIP"], out["filled"]),
+            ("inventory", "off", ["INTERVIEW_CONVERT", "NETWORK_SURFACE_SKIP"]),
+        )
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -119,8 +175,12 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
         data = yaml.safe_load((WORKFLOWS / "domains.yml").read_text())
         out = data["jobs"]["gate"]["outputs"]
         self.assertEqual(out["granola_auto"].split("#")[0].strip(), "${{ steps.settings.outputs.GRANOLA_AUTO }}")
-        self.assertEqual(out["imessage_alerts"].split("#")[0].strip(), "${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}")
-        sync = yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"]["outputs"]["fit_profile_sync"]
+        self.assertEqual(
+            out["imessage_alerts"].split("#")[0].strip(), "${{ steps.settings.outputs.V7_IMESSAGE_ALERTS }}"
+        )
+        sync = yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"]["outputs"][
+            "fit_profile_sync"
+        ]
         self.assertEqual(sync.split("#")[0].strip(), "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}")
 
     def test_no_job_gets_a_permissions_block_from_this_change(self):
@@ -133,14 +193,55 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
                     self.assertIn(path.name, files, f"{path.name} gained `{permission}`")
         gate = yaml.safe_load((WORKFLOWS / "domains.yml").read_text())["jobs"]["gate"]
         self.assertEqual(gate["permissions"], {"contents": "read", "actions": "read"})
-        self.assertNotIn("permissions", yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"])
+        self.assertNotIn(
+            "permissions", yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"]
+        )
 
 
 # The only names a `needs.<job>.outputs.<name>` may carry: due flags and trigger facts, settings switches.
-KNOWN_OUTPUTS = {"all", "codes", "due_network_surface", "due_fit_cloud_backlog", "due_last_seen_purge", "pipeline", "due_agenda", "due_amazon", "due_amazon_retention", "due_bills", "due_dcc", "due_followup", "due_granola", "due_hiring", "due_hiring_outcomes", "due_imessage", "due_weekly_review",
-                 "due_interview", "due_jira", "due_mail", "due_megibow", "due_outlook", "due_recruiters", "early", "extract", "failed", "fit_profile_sync", "granola_auto", "imessage_alerts", "late",
-                 "matrix", "pipeline", "sweep", "tick",
-                 "run", "mode", "limit", "deadline_minutes", "slot", "slot_ct", "late_reason"}
+KNOWN_OUTPUTS = {
+    "all",
+    "codes",
+    "due_network_surface",
+    "due_fit_cloud_backlog",
+    "due_last_seen_purge",
+    "pipeline",
+    "due_agenda",
+    "due_amazon",
+    "due_amazon_retention",
+    "due_bills",
+    "due_dcc",
+    "due_followup",
+    "due_granola",
+    "due_hiring",
+    "due_hiring_outcomes",
+    "due_imessage",
+    "due_weekly_review",
+    "due_interview",
+    "due_jira",
+    "due_mail",
+    "due_megibow",
+    "due_outlook",
+    "due_recruiters",
+    "early",
+    "extract",
+    "failed",
+    "fit_profile_sync",
+    "granola_auto",
+    "imessage_alerts",
+    "late",
+    "matrix",
+    "pipeline",
+    "sweep",
+    "tick",
+    "run",
+    "mode",
+    "limit",
+    "deadline_minutes",
+    "slot",
+    "slot_ct",
+    "late_reason",
+}
 SECRET_NAME = re.compile(r"(_TOKEN|_KEY|_SECRET|_PASSWORD|_PRIVATE_KEY)$")
 
 
@@ -149,7 +250,11 @@ def output_problems(docs, texts):
     problems = []
     for file, doc in docs.items():
         for job, body in (doc.get("jobs") or {}).items():
-            loaders = {s.get("id") for s in body.get("steps") or [] if str(s.get("uses", "")).endswith("bws-load") and s.get("id")}
+            loaders = {
+                s.get("id")
+                for s in body.get("steps") or []
+                if str(s.get("uses", "")).endswith("bws-load") and s.get("id")
+            }
             for key, value in (body.get("outputs") or {}).items():
                 text = str(value)
                 if "secrets." in text:
@@ -189,7 +294,10 @@ jobs:
 """
         problems = output_problems({"bad.yml": yaml.safe_load(bad)}, {"bad.yml": bad})
         self.assertEqual(len(problems), 4, problems)
-        self.assertEqual(sorted(p.split(":")[-1].split(" carries")[0].strip() for p in problems if "carries" in p), ["output leak_loader", "output leak_named", "output leak_secret"])
+        self.assertEqual(
+            sorted(p.split(":")[-1].split(" carries")[0].strip() for p in problems if "carries" in p),
+            ["output leak_loader", "output leak_named", "output leak_secret"],
+        )
         self.assertTrue(any("mystery_switch" in p for p in problems))
         self.assertFalse(any("granola_auto" in p for p in problems))  # a settings step's switch output is allowed
 
@@ -198,5 +306,6 @@ SOURCE_ID = "5a1c0e57-3b2d-4f6a-9c1d-0e2f3a4b5c6d"
 
 
 def _Page(lines):
-    from tests.platform.settings_fixture import from_lines                        # noqa: PLC0415
+    from tests.platform.settings_fixture import from_lines  # noqa: PLC0415
+
     return from_lines(lines)

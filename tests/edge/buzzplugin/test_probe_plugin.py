@@ -31,7 +31,18 @@ class Manifest(unittest.TestCase):
 
     def test_the_plugin_has_no_network_shell_file_or_secret_access(self):
         text = (DIR / "plugin.js").read_text()
-        for word in ("fetch(", "XMLHttpRequest", "ctx.host", "runCommand", "spawn", "require(", "import(", "localStorage", "process.env", "eval("):
+        for word in (
+            "fetch(",
+            "XMLHttpRequest",
+            "ctx.host",
+            "runCommand",
+            "spawn",
+            "require(",
+            "import(",
+            "localStorage",
+            "process.env",
+            "eval(",
+        ):
             self.assertNotIn(word, text, word)
         self.assertEqual(re.findall(r"^import ", text, re.M), [])
 
@@ -39,10 +50,22 @@ class Manifest(unittest.TestCase):
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
 class Behaviour(unittest.TestCase):
     def test_hooks_observe_only_and_the_tool_reports_names_never_inputs(self):
-        run = subprocess.run(["node", "--input-type=module", "-e", DRIVER % {"plugin": (DIR / "plugin.js").as_uri()}], capture_output=True, text=True, timeout=30)
+        run = subprocess.run(
+            ["node", "--input-type=module", "-e", DRIVER % {"plugin": (DIR / "plugin.js").as_uri()}],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         self.assertEqual(run.returncode, 0, run.stderr)
         out = json.loads(run.stdout)
-        self.assertEqual([h[:2] for h in out["hooks"]], [["buzz.claude-code/claude-code", "PreToolUse"], ["buzz.codex/codex", "PreToolUse"], ["buzz.pi/pi", "beforeTool"]])
+        self.assertEqual(
+            [h[:2] for h in out["hooks"]],
+            [
+                ["buzz.claude-code/claude-code", "PreToolUse"],
+                ["buzz.codex/codex", "PreToolUse"],
+                ["buzz.pi/pi", "beforeTool"],
+            ],
+        )
         self.assertEqual(out["tools"], ["lifeos_probe_report"])
         self.assertEqual(out["returns"], [None, None, None])
         self.assertIsNone(out["pi"])

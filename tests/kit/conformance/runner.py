@@ -1,4 +1,5 @@
 """fake conformance."""
+
 import json
 import os
 
@@ -16,8 +17,7 @@ def recording(name):
 
 
 def differences(spec, subject_name, observe):
-    """> {case name: {observable: (expected, got)}} for every case this subject runs (an `applies_to` list limits it)
-    """
+    """> {case name: {observable: (expected, got)}} for every case this subject runs (an `applies_to` list limits it)"""
     out = {}
     for case in spec["cases"]:
         if "applies_to" in case and subject_name not in case["applies_to"]:

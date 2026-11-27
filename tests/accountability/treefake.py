@@ -1,11 +1,16 @@
 """A fake Notion for the block writers (synthetic): nested block creation (children inline, tables with rows), `after`
 placement and has_children, as.
 """
+
 from tests.accountability import fakes as F
 
 
 def _pieces(rich):
-    return [F.rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0] | {"annotations": n.get("annotations") or {}} for n in rich or []]
+    return [
+        F.rich(n["text"]["content"], (n["text"].get("link") or {}).get("url"))[0]
+        | {"annotations": n.get("annotations") or {}}
+        for n in rich or []
+    ]
 
 
 class TreeNotion(F.Notion):

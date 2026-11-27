@@ -1,6 +1,7 @@
 """tools/push_life_branch.sh is the one force-style push an agent may run: it pushes only the current life/* branch, with
 a lease on the tip it just.
 """
+
 import json
 import os
 import shutil
@@ -23,8 +24,24 @@ def clean_env(**more):
 
 def git(cwd, *args, check=True, env=None):
     env = env or clean_env()
-    done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
-                          cwd=cwd, env=env, capture_output=True, text=True)
+    done = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=T",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "init.defaultBranch=main",
+            *args,
+        ],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
     if check and done.returncode:
         raise AssertionError(f"git {args}: {done.stderr}")
     return done
@@ -98,7 +115,9 @@ class Wrapper(unittest.TestCase):
         done = self.run_script()
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.remote(BRANCH), tip)
-        self.assertEqual(git(self.work, "rev-parse", "--abbrev-ref", f"{BRANCH}@{{upstream}}").stdout.strip(), f"origin/{BRANCH}")
+        self.assertEqual(
+            git(self.work, "rev-parse", "--abbrev-ref", f"{BRANCH}@{{upstream}}").stdout.strip(), f"origin/{BRANCH}"
+        )
 
     def test_a_rewritten_branch_updates_the_remote_and_prints_old_and_new(self):
         old = self.start_branch()
@@ -138,8 +157,10 @@ class Wrapper(unittest.TestCase):
         real = shutil.which("git")
         shim = self.tmp / "bin" / "git"
         shim.parent.mkdir()
-        shim.write_text(f"#!/bin/sh\nif [ \"$1\" = push ] && [ ! -e '{self.tmp}/raced' ]; then\n  : > '{self.tmp}/raced'\n"
-                        f"  '{real}' -C '{self.other}' push -q origin {BRANCH} || exit 1\nfi\nexec '{real}' \"$@\"\n")
+        shim.write_text(
+            f"#!/bin/sh\nif [ \"$1\" = push ] && [ ! -e '{self.tmp}/raced' ]; then\n  : > '{self.tmp}/raced'\n"
+            f"  '{real}' -C '{self.other}' push -q origin {BRANCH} || exit 1\nfi\nexec '{real}' \"$@\"\n"
+        )
         shim.chmod(0o755)
         self.env = clean_env(PATH=f"{shim.parent}:{os.environ['PATH']}")
         return theirs
@@ -174,7 +195,10 @@ class Wrapper(unittest.TestCase):
         self.assertEqual(self.remote("main"), main_before)
         self.assertEqual(self.remote(BRANCH), self.head(self.work))
         self.assertNotEqual(self.remote(BRANCH), old)
-        self.assertEqual(sorted(git(self.bare, "for-each-ref", "--format=%(refname)").stdout.split()), ["refs/heads/" + BRANCH, "refs/heads/main"])
+        self.assertEqual(
+            sorted(git(self.bare, "for-each-ref", "--format=%(refname)").stdout.split()),
+            ["refs/heads/" + BRANCH, "refs/heads/main"],
+        )
 
     def test_arguments_cannot_rescue_a_refused_branch(self):
         before = self.remote("main")
@@ -191,10 +215,24 @@ class Wrapper(unittest.TestCase):
         self.assertEqual(text.count("git push"), 2)
 
 
-
 class Settings(unittest.TestCase):
-    DENY = ["git push --force:*", "git push -f:*", "git push --force-with-lease:*", "git push --delete:*", "git push -d:*", "git push * --force*", "git push * -f*",
-            "git push * --delete*", "git push * -d *", "git push * +*", "git branch -D:*", "git branch -d:*", "git branch --delete:*", "git branch * -D*", "git branch * --delete*"]
+    DENY = [
+        "git push --force:*",
+        "git push -f:*",
+        "git push --force-with-lease:*",
+        "git push --delete:*",
+        "git push -d:*",
+        "git push * --force*",
+        "git push * -f*",
+        "git push * --delete*",
+        "git push * -d *",
+        "git push * +*",
+        "git branch -D:*",
+        "git branch -d:*",
+        "git branch --delete:*",
+        "git branch * -D*",
+        "git branch * --delete*",
+    ]
 
     def test_the_wrapper_is_allowed_and_every_force_and_delete_form_stays_denied(self):
         perms = json.loads((ROOT / ".claude" / "settings.json").read_text())["permissions"]

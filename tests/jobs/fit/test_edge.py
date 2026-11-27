@@ -1,6 +1,7 @@
 """the V7 side of Oracle's fit1 verb, against a fake endpoint that follows the Oracle operator's wire contract and one
 real loopback socket.
 """
+
 import json
 import re
 import socket
@@ -13,11 +14,33 @@ from types import SimpleNamespace
 
 from lifeos.jobs.fit import edge, judge
 
-REQUEST = {"title": "Technical Program Manager", "description": "Run delivery for a synthetic commerce platform.", "profile": {"years": 15}}
+REQUEST = {
+    "title": "Technical Program Manager",
+    "description": "Run delivery for a synthetic commerce platform.",
+    "profile": {"years": 15},
+}
 BASE, CAPPED = SimpleNamespace(capped=False, exclusion=None), SimpleNamespace(capped=True, exclusion=None)
-RECEIPT = {"provider": "openai", "model": "gpt-6-luna", "transport": "gateway", "agent": "fit", "run_ids": ["run-1234567890"], "run_finished": True, "started": "t0", "ended": "t1", "fallback": False,
-           "usage": {"input_tokens": 1389, "cached_input_tokens": 0, "cache_write_tokens": 0, "output_tokens": 69, "reasoning_tokens": "unavailable", "total_tokens": 1458},
-           "cost": "unavailable", "deadline_s": 60}
+RECEIPT = {
+    "provider": "openai",
+    "model": "gpt-6-luna",
+    "transport": "gateway",
+    "agent": "fit",
+    "run_ids": ["run-1234567890"],
+    "run_finished": True,
+    "started": "t0",
+    "ended": "t1",
+    "fallback": False,
+    "usage": {
+        "input_tokens": 1389,
+        "cached_input_tokens": 0,
+        "cache_write_tokens": 0,
+        "output_tokens": 69,
+        "reasoning_tokens": "unavailable",
+        "total_tokens": 1458,
+    },
+    "cost": "unavailable",
+    "deadline_s": 60,
+}
 JUDGMENT = json.dumps({"score": 90, "rationale": "Aligned on delivery ownership.", "confidence": "high"})
 HOST = "oracle.example"
 
@@ -27,8 +50,17 @@ def reply(sent, **override):
         body = json.loads(sent.split(b"\n", 1)[1])
     except (IndexError, ValueError):
         body = {"request": {}, "nonce": ""}
-    out = {"schema": "lifeos.fit.v1", "status": "OK", "request_hash": edge.digest(body["request"]), "nonce": body["nonce"], "fixture": "A", "judgment_raw": JUDGMENT, "receipt": dict(RECEIPT),
-           "runs_today": 6, "limit": 20}
+    out = {
+        "schema": "lifeos.fit.v1",
+        "status": "OK",
+        "request_hash": edge.digest(body["request"]),
+        "nonce": body["nonce"],
+        "fixture": "A",
+        "judgment_raw": JUDGMENT,
+        "receipt": dict(RECEIPT),
+        "runs_today": 6,
+        "limit": 20,
+    }
     out.update(override)
     return json.dumps(out).encode()
 
@@ -39,6 +71,7 @@ def refusal(sent, reason="NOT_ALLOWLISTED", status="REFUSED"):
 
 class Endpoint:
     """A fake Oracle: records every frame"""
+
     def __init__(self, answer=None):
         self.answer, self.sent, self.nonces = answer, [], set()
 
@@ -56,7 +89,9 @@ class Endpoint:
 
 def manifest(request=REQUEST, sha=None):
     path = Path(tempfile.mkdtemp()) / "fixtures.json"
-    path.write_text(json.dumps({"fixtures": [{"id": "A", "request": request, "request_sha256": sha or edge.digest(request)}]}))
+    path.write_text(
+        json.dumps({"fixtures": [{"id": "A", "request": request, "request_sha256": sha or edge.digest(request)}]})
+    )
     return path
 
 
@@ -85,6 +120,7 @@ class Transport(unittest.TestCase):
                     data += conn.recv(4096)
                 got.append(data)
                 conn.sendall(b'{"ok":1}\n')
+
         thread = threading.Thread(target=serve)
         thread.start()
         data = edge.frame(REQUEST, "n" * 32)
@@ -104,6 +140,7 @@ class Transport(unittest.TestCase):
             with conn:
                 conn.recv(4096)
                 conn.sendall(b"x" * 20000)
+
         thread = threading.Thread(target=serve)
         thread.start()
         got = edge.exchange("127.0.0.1", b"fit1 2\n{}", port=server.getsockname()[1], wait=5)
@@ -123,16 +160,27 @@ class Invoke(unittest.TestCase):
     def test_a_correlated_ok_reply_is_accepted_by_the_unchanged_envelope(self):
         endpoint = Endpoint()
         got = edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=endpoint)
-        self.assertEqual((got["judgment"], got["request_hash"], len(endpoint.sent)), (judge.Judgment(90, "Go", "Aligned on delivery ownership.", "high"), edge.digest(REQUEST), 1))
+        self.assertEqual(
+            (got["judgment"], got["request_hash"], len(endpoint.sent)),
+            (judge.Judgment(90, "Go", "Aligned on delivery ownership.", "high"), edge.digest(REQUEST), 1),
+        )
         self.assertEqual((got["receipt"]["model"], got["runs_today"], got["limit"]), ("gpt-6-luna", 6, 20))
 
     def test_the_provider_prefixed_model_name_is_the_same_pinned_model(self):
-        got = edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, receipt={**RECEIPT, "model": "openai/gpt-6-luna"})))
+        got = edge.invoke(
+            HOST,
+            REQUEST,
+            BASE,
+            "t",
+            send=Endpoint(lambda s: reply(s, receipt={**RECEIPT, "model": "openai/gpt-6-luna"})),
+        )
         self.assertEqual(got["judgment"].score, 90)
 
     def test_the_code_owned_caps_still_decide(self):
         capped = edge.invoke(HOST, REQUEST, CAPPED, REQUEST["title"], send=Endpoint())
-        self.assertEqual((capped["judgment"].score, capped["judgment"].decision), (40, "No-Go"))  # the family cap is V7's, not the model's
+        self.assertEqual(
+            (capped["judgment"].score, capped["judgment"].decision), (40, "No-Go")
+        )  # the family cap is V7's, not the model's
 
     def test_every_doubt_is_a_fixed_code_and_the_model_is_never_called_again(self):
         cases = {
@@ -153,7 +201,9 @@ class Invoke(unittest.TestCase):
             "FIT_EDGE_ERROR": lambda s: reply(s, status="ERROR", judgment_raw=None),
             "FIT_EDGE_OVERSIZE": lambda s: refusal(s, None, "OVERSIZE"),
             "FIT_EDGE_OFF_CONTRACT/unknown status": lambda s: reply(s, status="SOMETHING_NEW"),
-            "FIT_EDGE_OFF_CONTRACT/no status": lambda s: json.dumps({k: v for k, v in json.loads(reply(s)).items() if k != "status"}).encode(),
+            "FIT_EDGE_OFF_CONTRACT/no status": lambda s: json.dumps(
+                {k: v for k, v in json.loads(reply(s)).items() if k != "status"}
+            ).encode(),
             "FIT_EDGE_OFF_CONTRACT/schema": lambda s: reply(s, schema="other"),
             "FIT_EDGE_RECEIPT_REJECTED/fallback": lambda s: reply(s, receipt={**RECEIPT, "fallback": True}),
             "FIT_EDGE_RECEIPT_REJECTED/model": lambda s: reply(s, receipt={**RECEIPT, "model": "gpt-5"}),
@@ -187,37 +237,103 @@ class Invoke(unittest.TestCase):
 
     def test_a_receipt_from_any_of_oracles_lanes_is_accepted_and_no_other_agent_is(self):
         for agent in ("fit", "fit2", "fit3"):  # each lane is its own clone of the fit agent
-            got = edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=Endpoint(lambda s, agent=agent: reply(s, receipt={**RECEIPT, "agent": agent})))
+            got = edge.invoke(
+                HOST,
+                REQUEST,
+                BASE,
+                REQUEST["title"],
+                send=Endpoint(lambda s, agent=agent: reply(s, receipt={**RECEIPT, "agent": agent})),
+            )
             self.assertEqual(got["receipt"]["agent"], agent)
         for agent in ("main", "fit4", "FIT2", "", None):
             with self.assertRaises(edge.EdgeError) as ctx:
-                edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=Endpoint(lambda s, agent=agent: reply(s, receipt={**RECEIPT, "agent": agent})))
+                edge.invoke(
+                    HOST,
+                    REQUEST,
+                    BASE,
+                    REQUEST["title"],
+                    send=Endpoint(lambda s, agent=agent: reply(s, receipt={**RECEIPT, "agent": agent})),
+                )
             self.assertEqual((str(ctx.exception), ctx.exception.detail), ("FIT_EDGE_RECEIPT_REJECTED", "agent"), agent)
 
     def test_a_receipt_must_be_the_complete_oracle_run_record_before_any_judgment_is_accepted(self):
-        bad = {"receipt": "x", "provider": {"provider": "anthropic"}, "model": {"model": ["gpt-6-luna"]}, "transport": {"transport": "http"}, "agent": {"agent": "main"},
-               "fallback": {"fallback": "false"}, "run_ids": {"run_ids": []}, "run_finished": {"run_finished": False}, "started": {"started": ""}, "ended": {"ended": 5}}
-        bad.update({"fallback ": {"fallback": 0}, "fallback  ": {"fallback": None}, "run_ids ": {"run_ids": "run-1"}, "run_ids  ": {"run_ids": [1]}, "run_ids   ": {"run_ids": [""]},
-                    "run_ids    ": {"run_ids": ["r"] * 9}, "run_ids     ": {"run_ids": ["r" * 65]}, "run_finished ": {"run_finished": "true"}, "model ": {"model": "gpt-6-luna-mini"}})
+        bad = {
+            "receipt": "x",
+            "provider": {"provider": "anthropic"},
+            "model": {"model": ["gpt-6-luna"]},
+            "transport": {"transport": "http"},
+            "agent": {"agent": "main"},
+            "fallback": {"fallback": "false"},
+            "run_ids": {"run_ids": []},
+            "run_finished": {"run_finished": False},
+            "started": {"started": ""},
+            "ended": {"ended": 5},
+        }
+        bad.update(
+            {
+                "fallback ": {"fallback": 0},
+                "fallback  ": {"fallback": None},
+                "run_ids ": {"run_ids": "run-1"},
+                "run_ids  ": {"run_ids": [1]},
+                "run_ids   ": {"run_ids": [""]},
+                "run_ids    ": {"run_ids": ["r"] * 9},
+                "run_ids     ": {"run_ids": ["r" * 65]},
+                "run_finished ": {"run_finished": "true"},
+                "model ": {"model": "gpt-6-luna-mini"},
+            }
+        )
         for field, change in bad.items():
             receipt = "x" if field == "receipt" else {**RECEIPT, **change}
             endpoint = Endpoint(lambda s, receipt=receipt: reply(s, receipt=receipt))
             with self.assertRaises(edge.EdgeError) as ctx:
                 edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=endpoint)
-            self.assertEqual((str(ctx.exception), ctx.exception.detail, len(endpoint.sent)), ("FIT_EDGE_RECEIPT_REJECTED", field.strip(), 1), field)
-        for missing in ("provider", "model", "transport", "agent", "fallback", "run_ids", "run_finished", "started", "ended"):
+            self.assertEqual(
+                (str(ctx.exception), ctx.exception.detail, len(endpoint.sent)),
+                ("FIT_EDGE_RECEIPT_REJECTED", field.strip(), 1),
+                field,
+            )
+        for missing in (
+            "provider",
+            "model",
+            "transport",
+            "agent",
+            "fallback",
+            "run_ids",
+            "run_finished",
+            "started",
+            "ended",
+        ):
             with self.assertRaises(edge.EdgeError) as ctx:
-                edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s, missing=missing: reply(s, receipt={k: v for k, v in RECEIPT.items() if k != missing})))
+                edge.invoke(
+                    HOST,
+                    REQUEST,
+                    BASE,
+                    "t",
+                    send=Endpoint(
+                        lambda s, missing=missing: reply(s, receipt={k: v for k, v in RECEIPT.items() if k != missing})
+                    ),
+                )
             self.assertEqual((str(ctx.exception), ctx.exception.detail), ("FIT_EDGE_RECEIPT_REJECTED", missing))
         with self.assertRaises(edge.EdgeError) as ctx:
             edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, judgment_raw=None)))
         self.assertEqual(ctx.exception.detail, "judgment_raw")
         extra = {**RECEIPT, "usage": "unavailable", "cost": "unavailable", "deadline_s": 60, "something_new": 1}
-        self.assertEqual(edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, receipt=extra)))["judgment"].score, 90)
+        self.assertEqual(
+            edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, receipt=extra)))["judgment"].score,
+            90,
+        )
 
     def test_an_unhashable_refusal_reason_is_a_plain_refusal_not_a_crash(self):
         with self.assertRaises(edge.EdgeError) as ctx:
-            edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, status="REFUSED", reason=["NOT_ALLOWLISTED"], judgment_raw=None, receipt=None)))
+            edge.invoke(
+                HOST,
+                REQUEST,
+                BASE,
+                "t",
+                send=Endpoint(
+                    lambda s: reply(s, status="REFUSED", reason=["NOT_ALLOWLISTED"], judgment_raw=None, receipt=None)
+                ),
+            )
         self.assertEqual(str(ctx.exception), "FIT_EDGE_REFUSED")
 
     def test_no_host_sends_nothing(self):
@@ -232,7 +348,10 @@ class Stage(unittest.TestCase):
         for answer in (lambda s: b"", refusal, lambda s: refusal(s, None, "OVERSIZE")):
             endpoint = Endpoint(answer)
             out = edge.run(0, False, NEGATIVE, endpoint, manifest())
-            self.assertEqual((out["status"], out["refused"], out["probes"], out["model_calls_expected"], out["failed"]), ("OK", 5, 5, 0, 0))
+            self.assertEqual(
+                (out["status"], out["refused"], out["probes"], out["model_calls_expected"], out["failed"]),
+                ("OK", 5, 5, 0, 0),
+            )
         sent = dict(zip(edge.probes(), endpoint.sent))
         self.assertEqual(sent["bad_length"], b"fit1 abc\n")
         self.assertIn(b'"extra":1', sent["unknown_key"])
@@ -247,6 +366,7 @@ class Stage(unittest.TestCase):
 
         def hang(s):
             raise edge.EdgeError("FIT_EDGE_TIMEOUT")
+
         out = edge.run(0, False, NEGATIVE, Endpoint(hang), manifest())
         self.assertEqual((out["status"], out["hung"], out["failed"]), ("FIT_EDGE_PROBE_FAILED", 5, 1))
 
@@ -258,17 +378,52 @@ class Stage(unittest.TestCase):
         self.assertEqual((out["status"], out["unexpected_reply"]), ("FIT_EDGE_PROBE_FAILED", 5))
 
     def test_the_stage_names_the_receipt_field_that_failed(self):
-        out = edge.run(0, False, ENV, Endpoint(lambda s: reply(s, receipt={**RECEIPT, "run_finished": False})), manifest())
-        self.assertEqual((out["status"], out["detail"], out["failed"]), ("FIT_EDGE_RECEIPT_REJECTED", "run_finished", 1))
+        out = edge.run(
+            0, False, ENV, Endpoint(lambda s: reply(s, receipt={**RECEIPT, "run_finished": False})), manifest()
+        )
+        self.assertEqual(
+            (out["status"], out["detail"], out["failed"]), ("FIT_EDGE_RECEIPT_REJECTED", "run_finished", 1)
+        )
 
     def test_a_fixture_run_is_one_invocation_then_a_replay_that_must_be_refused(self):
         endpoint = Endpoint()
         out = edge.run(0, False, ENV, endpoint, manifest())
         self.assertEqual((out["status"], out["failed"], len(endpoint.sent)), ("OK", 0, 2))
         self.assertEqual(endpoint.sent[0], endpoint.sent[1])  # the replay is the same frame, same nonce
-        self.assertEqual((out["provider"], out["model"], out["fallback"], out["agent"], out["usage"], out["cost"], out["score"], out["decision"], out["confidence"], out["nonce_correlated"],
-                          out["replay_refused"], out["runs_today"], out["limit"], out["run_ids"]),
-                         ("openai", "gpt-6-luna", False, "fit", RECEIPT["usage"], "unavailable", 90, "Go", "high", True, True, 6, 20, ["run-12345678"]))
+        self.assertEqual(
+            (
+                out["provider"],
+                out["model"],
+                out["fallback"],
+                out["agent"],
+                out["usage"],
+                out["cost"],
+                out["score"],
+                out["decision"],
+                out["confidence"],
+                out["nonce_correlated"],
+                out["replay_refused"],
+                out["runs_today"],
+                out["limit"],
+                out["run_ids"],
+            ),
+            (
+                "openai",
+                "gpt-6-luna",
+                False,
+                "fit",
+                RECEIPT["usage"],
+                "unavailable",
+                90,
+                "Go",
+                "high",
+                True,
+                True,
+                6,
+                20,
+                ["run-12345678"],
+            ),
+        )
         self.assertEqual(out["request_hash"], edge.digest(REQUEST)[:8])
 
     def test_a_replay_the_server_accepts_is_a_failure_that_names_it(self):
@@ -281,14 +436,22 @@ class Stage(unittest.TestCase):
         self.assertEqual((out["status"], out["failed"], len(endpoint.sent)), ("FIT_EDGE_NO_REPLY", 1, 1))
 
     def test_nothing_leaves_v7_without_a_matching_manifest_entry(self):
-        for label, path, status in (("missing file", Path("/nonexistent/fixtures.json"), "FIT_EDGE_FIXTURE_MISSING"), ("unknown label", manifest(), "FIT_EDGE_FIXTURE_MISSING"),
-                                    ("modified fixture", manifest(sha="0" * 64), "FIT_EDGE_FIXTURE_HASH")):
+        for label, path, status in (
+            ("missing file", Path("/nonexistent/fixtures.json"), "FIT_EDGE_FIXTURE_MISSING"),
+            ("unknown label", manifest(), "FIT_EDGE_FIXTURE_MISSING"),
+            ("modified fixture", manifest(sha="0" * 64), "FIT_EDGE_FIXTURE_HASH"),
+        ):
             endpoint = Endpoint()
             env = {**ENV, "FIT_EDGE_MODE": "Z" if label == "unknown label" else "A"}
             self.assertEqual(edge.run(0, False, env, endpoint, path)["status"], status, label)
             self.assertEqual(endpoint.sent, [], label)
-        self.assertEqual(edge.run(0, False, {"FIT_EDGE_MODE": "A"}, Endpoint(), manifest())["status"], "FIT_EDGE_NOT_CONFIGURED")  # no host
-        self.assertEqual(edge.run(0, False, {"IMESSAGE_ALERTS_HOST": HOST}, Endpoint(), manifest())["status"], "FIT_EDGE_NOT_CONFIGURED")  # no mode
+        self.assertEqual(
+            edge.run(0, False, {"FIT_EDGE_MODE": "A"}, Endpoint(), manifest())["status"], "FIT_EDGE_NOT_CONFIGURED"
+        )  # no host
+        self.assertEqual(
+            edge.run(0, False, {"IMESSAGE_ALERTS_HOST": HOST}, Endpoint(), manifest())["status"],
+            "FIT_EDGE_NOT_CONFIGURED",
+        )  # no mode
 
 
 class CommittedFixture(unittest.TestCase):
@@ -296,32 +459,61 @@ class CommittedFixture(unittest.TestCase):
         data = json.loads(edge.MANIFEST.read_text())
         self.assertEqual((data["schema"], [f["id"] for f in data["fixtures"]]), ("lifeos.fit.edge_fixtures.v1", ["A"]))
         fixture = data["fixtures"][0]
-        self.assertEqual(edge.digest(fixture["request"]), fixture["request_sha256"])  # the canonicalisation rule matches Oracle's
+        self.assertEqual(
+            edge.digest(fixture["request"]), fixture["request_sha256"]
+        )  # the canonicalisation rule matches Oracle's
         self.assertEqual(fixture["request_sha256"], "26045e94d1d3a825e8fa2835f038175826df5280fd5f09801d68f7ea2bf84069")
         self.assertIn("SYNTHETIC", fixture["request"]["profile"]["notice"])
-        self.assertEqual(set(fixture["request"]), {"title", "description", "profile"})  # exactly what judge.request produces
-        self.assertNotRegex(edge.MANIFEST.read_text(), r"@|https?://|\b\d{3}[-.]\d{3}[-.]\d{4}\b")  # no address, link or number
+        self.assertEqual(
+            set(fixture["request"]), {"title", "description", "profile"}
+        )  # exactly what judge.request produces
+        self.assertNotRegex(
+            edge.MANIFEST.read_text(), r"@|https?://|\b\d{3}[-.]\d{3}[-.]\d{4}\b"
+        )  # no address, link or number
 
 
 class Dormant(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[3]
 
     def test_only_the_manual_workflow_runs_it_and_no_tick_scheduler_or_live_path_reaches_it(self):
-        mentions = [p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "fit-edge-test" in p.read_text()]
+        mentions = [
+            p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "fit-edge-test" in p.read_text()
+        ]
         self.assertEqual(mentions, ["fit-edge-test.yml"])
         text = (self.ROOT / ".github/workflows/fit-edge-test.yml").read_text()
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|push|pull_request\w*|repository_dispatch):")
         self.assertNotIn("--live", text)
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text)) - {"DOPPLER_TOKEN"}), ["LIFEOS_BWS_RUNTIME_TOKEN"])
+        self.assertEqual(
+            sorted(set(re.findall(r"secrets\.(\w+)", text)) - {"DOPPLER_TOKEN"}), ["LIFEOS_BWS_RUNTIME_TOKEN"]
+        )
         self.assertIn("inputs.confirm == 'SYNTHETIC'", text)
-        importers = [str(p.relative_to(self.ROOT)) for p in (self.ROOT / "lifeos").rglob("*.py") if p.name != "edge.py" and ("fit.edge" in p.read_text() or "fit import edge" in p.read_text())]
-        self.assertEqual(sorted(importers), ["lifeos/jobs/fit/backlog.py", "lifeos/jobs/fit/cloud.py", "lifeos/run.py", "lifeos/sources/cards/oracle_card.py"])
-        workflows = [p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()]
+        importers = [
+            str(p.relative_to(self.ROOT))
+            for p in (self.ROOT / "lifeos").rglob("*.py")
+            if p.name != "edge.py" and ("fit.edge" in p.read_text() or "fit import edge" in p.read_text())
+        ]
+        self.assertEqual(
+            sorted(importers),
+            [
+                "lifeos/jobs/fit/backlog.py",
+                "lifeos/jobs/fit/cloud.py",
+                "lifeos/run.py",
+                "lifeos/sources/cards/oracle_card.py",
+            ],
+        )
+        workflows = [
+            p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()
+        ]
         self.assertEqual(sorted(workflows), ["domains.yml", "hourly.yml"])
         hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
-        self.assertEqual(re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ env.V7_CLOUD_FIT || 'off' }}"])  # off unless Jim sets the variable
+        self.assertEqual(
+            re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ env.V7_CLOUD_FIT || 'off' }}"]
+        )  # off unless Jim sets the variable
         self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == '(shadow|canary)'", hourly)), 0)
-        self.assertIn("the store's Oracle fallback needs the tailnet on every run", "".join(p.read_text() for p in (self.ROOT / ".github/workflows-src/hourly").glob("*.yml")))
+        self.assertIn(
+            "the store's Oracle fallback needs the tailnet on every run",
+            "".join(p.read_text() for p in (self.ROOT / ".github/workflows-src/hourly").glob("*.yml")),
+        )
         # the brief reference is masked.
         self.assertEqual(re.findall(r'V7_CLOUD_FIT_PROFILE_REF: ("")', hourly), ['""'] * 2)
         for path in (self.ROOT / ".github/workflows").glob("*.y*ml"):
@@ -355,6 +547,7 @@ class ConnectRetry(unittest.TestCase):
             if len(tries) == 1:
                 raise TimeoutError
             return Conn()
+
         with mock.patch.object(edge.socket, "create_connection", connect):
             self.assertEqual(edge.exchange("oracle.example", b"FRAME", sleep=lambda s: None), b"REPLY")
         self.assertEqual((len(tries), sent[0]), (2, b"FRAME"))
@@ -365,6 +558,7 @@ class ConnectRetry(unittest.TestCase):
         def connect(addr, timeout=None):
             tries.append(addr)
             raise (TimeoutError if len(tries) == 1 else ConnectionRefusedError)
+
         with mock.patch.object(edge.socket, "create_connection", connect):
             with self.assertRaises(edge.EdgeError) as ctx:
                 edge.exchange("oracle.example", b"FRAME", sleep=lambda s: None)

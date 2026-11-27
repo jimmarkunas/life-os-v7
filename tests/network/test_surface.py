@@ -1,4 +1,5 @@
 """surfacing: invented people, companies and ids only."""
+
 import contextlib
 import io
 import json
@@ -23,16 +24,32 @@ def build(jobs=None, people=None):
     """people: (id, company_key, company_name, title, state, last_verified)."""
     conn = MySQLite()
     store.ensure_schema(conn)
-    conn.raw.execute("CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, dedupe_key TEXT, status TEXT, company TEXT, title TEXT, notion_page_id TEXT)")
+    conn.raw.execute(
+        "CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, dedupe_key TEXT, status TEXT, company TEXT, title TEXT, notion_page_id TEXT)"
+    )
     conn.raw.execute("CREATE TABLE v7_job_fit (job_id INTEGER, admission TEXT)")
-    for i, (key, page, company, title, admission) in enumerate(jobs or [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT")], 1):
+    for i, (key, page, company, title, admission) in enumerate(
+        jobs or [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT")], 1
+    ):
         conn.raw.execute("INSERT INTO v7_jobs VALUES (?,?,?,?,?,?)", (i, key, "PUBLISHED", company, title, page))
         conn.raw.execute("INSERT INTO v7_job_fit VALUES (?,?)", (i, admission))
-    for n, (pid, ckey, cname, title, state, verified) in enumerate(people or [(1, "acme", "Acme Corp", "Director of Product", "CURRENT", "2026-09-20"), (2, "acme", "Acme Corp", "Engineer", "CURRENT", "2026-09-25")], 1):
-        conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
-                         (pid, f"k{pid}", f"person-{pid:05d}", f"Invented Person{pid}", "2026-09-07 00:00:00", "2026-09-07"))
-        conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
-                         " source_observed_at, material_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (pid, ckey, cname, title, state, "2026-09-07", "2026-09-07", verified, "X", "r", "2026-09-07", f"h{n}"))
+    for n, (pid, ckey, cname, title, state, verified) in enumerate(
+        people
+        or [
+            (1, "acme", "Acme Corp", "Director of Product", "CURRENT", "2026-09-20"),
+            (2, "acme", "Acme Corp", "Engineer", "CURRENT", "2026-09-25"),
+        ],
+        1,
+    ):
+        conn.raw.execute(
+            "INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
+            (pid, f"k{pid}", f"person-{pid:05d}", f"Invented Person{pid}", "2026-09-07 00:00:00", "2026-09-07"),
+        )
+        conn.raw.execute(
+            "INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+            " source_observed_at, material_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (pid, ckey, cname, title, state, "2026-09-07", "2026-09-07", verified, "X", "r", "2026-09-07", f"h{n}"),
+        )
     save_pipeline(conn, [])
     return conn
 
@@ -64,9 +81,17 @@ class Surface(unittest.TestCase):
         conn, ledger = build(), ledger_for()
         before = ledger.texts("page-1")
         counts = go(conn, ledger)
-        self.assertEqual((counts["blocks"], counts["with_leads"], counts["tables_present"], counts["live"]), ({"would_created": 1}, 1, False, False))
+        self.assertEqual(
+            (counts["blocks"], counts["with_leads"], counts["tables_present"], counts["live"]),
+            ({"would_created": 1}, 1, False, False),
+        )
         self.assertEqual((ledger.texts("page-1"), ledger.writes), (before, []))
-        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('v7_network_dismissals','v7_network_aliases')").fetchone()[0], 0)
+        self.assertEqual(
+            conn.raw.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('v7_network_dismissals','v7_network_aliases')"
+            ).fetchone()[0],
+            0,
+        )
 
     def test_live_creates_the_tables_and_one_owned_block_and_a_replay_writes_nothing(self):
         conn, ledger = build(), ledger_for()
@@ -77,7 +102,9 @@ class Surface(unittest.TestCase):
         self.assertEqual(texts[:3], before)  # the description region is untouched and first
         self.assertEqual((texts[3], shown(ledger, "page-1")), ("\u2060LinkedIn connections", 2))
         owned = ledger.owned("page-1")
-        self.assertTrue(owned[0]["type"] == "paragraph" and "v7-net" not in "".join(ledger.texts("page-1")))  # nothing machine-made shows on the page
+        self.assertTrue(
+            owned[0]["type"] == "paragraph" and "v7-net" not in "".join(ledger.texts("page-1"))
+        )  # nothing machine-made shows on the page
         self.assertEqual(sum(1 for c in owned if c["type"] == "to_do"), 6)
         ledger.writes.clear()
         again = go(conn, ledger, live=True)
@@ -89,24 +116,45 @@ class Surface(unittest.TestCase):
         ledger.tick("page-1", "Closed 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["ticks_dismiss"], counts["blocks"]), (1, {"replaced": 1}))
-        self.assertEqual(conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)])
+        self.assertEqual(
+            conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)]
+        )
         self.assertEqual(shown(ledger, "page-1"), 1)
-        conn.raw.execute("UPDATE v7_network_positions SET title='VP of Product' WHERE person_id=1")  # new evidence for that person
+        conn.raw.execute(
+            "UPDATE v7_network_positions SET title='VP of Product' WHERE person_id=1"
+        )  # new evidence for that person
         go(conn, ledger, live=True)
         self.assertEqual(shown(ledger, "page-1"), 2)  # it returns only because the evidence changed
 
     def test_a_same_company_tick_becomes_a_learned_alias_that_never_rewrites_the_stored_company(self):
-        conn = build(people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")], jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")])
+        conn = build(
+            people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")],
+            jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")],
+        )
         ledger = ledger_for()
         go(conn, ledger, live=True)
         owned = ledger.owned("page-1")
-        self.assertTrue(any("Same company" in c["to_do"]["rich_text"][1]["plain_text"] for c in owned if c["type"] == "to_do"))
+        self.assertTrue(
+            any("Same company" in c["to_do"]["rich_text"][1]["plain_text"] for c in owned if c["type"] == "to_do")
+        )
         ledger.tick("page-1", "Same company 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual(counts["ticks_same_company"], 1)
-        self.assertEqual(conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(), [("meta platforms", "meta")])
-        self.assertEqual(conn.raw.execute("SELECT company_key, company_name FROM v7_network_positions").fetchall(), [("meta platforms", "Meta Platforms Inc")])  # stored identity unchanged
-        self.assertFalse(any("Same company" in c["to_do"]["rich_text"][1]["plain_text"] for c in ledger.owned("page-1") if c["type"] == "to_do"))
+        self.assertEqual(
+            conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(),
+            [("meta platforms", "meta")],
+        )
+        self.assertEqual(
+            conn.raw.execute("SELECT company_key, company_name FROM v7_network_positions").fetchall(),
+            [("meta platforms", "Meta Platforms Inc")],
+        )  # stored identity unchanged
+        self.assertFalse(
+            any(
+                "Same company" in c["to_do"]["rich_text"][1]["plain_text"]
+                for c in ledger.owned("page-1")
+                if c["type"] == "to_do"
+            )
+        )
 
     def test_a_tick_on_evidence_that_has_since_changed_is_not_carried_over(self):
         conn, ledger = build(), ledger_for()
@@ -128,7 +176,10 @@ class Surface(unittest.TestCase):
         self.assertEqual(go(conn, ledger, live=True)["blocks"], {"none": 1})  # nothing to remove, nothing created
 
     def test_a_job_that_stops_being_a_target_loses_its_block_and_the_page_budget_serves_targets_first(self):
-        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Other Co", "Engineer", "REVIEW")]
+        jobs = [
+            (KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"),
+            (KEY2, "page-2", "Other Co", "Engineer", "REVIEW"),
+        ]
         conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
         go(conn, ledger, live=True)
         conn.raw.execute("UPDATE v7_job_fit SET admission='REVIEW' WHERE job_id=1")
@@ -141,10 +192,16 @@ class Surface(unittest.TestCase):
             counts = go(conn, ledger, live=True)
         finally:
             network_surface.DEFAULT_PAGES = saved
-        self.assertEqual((counts["blocks"], counts["pages_deferred"]), ({"created": 1}, 1))  # the target page was served first
+        self.assertEqual(
+            (counts["blocks"], counts["pages_deferred"]), ({"created": 1}, 1)
+        )  # the target page was served first
 
     def test_a_page_that_is_not_the_canonical_ledger_page_is_never_written_and_the_run_is_degraded(self):
-        for flags, why in (({"archived": True}, "page_gone"), ({"source": "f" * 32}, "wrong_data_source"), ({"description": False}, "no_description_marker")):
+        for flags, why in (
+            ({"archived": True}, "page_gone"),
+            ({"source": "f" * 32}, "wrong_data_source"),
+            ({"description": False}, "no_description_marker"),
+        ):
             conn, ledger = build(), FakeLedger()
             ledger.add_page("page-1", KEY1, **flags)
             self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED", flags)
@@ -163,20 +220,46 @@ class Surface(unittest.TestCase):
         self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
 
     def test_only_admitted_jobs_and_resolvable_pursuits_get_blocks_and_unsafe_pursuits_are_counted(self):
-        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Acme Corp", "Engineer", "REVIEW"), (KEY3, "page-3", "Acme Corp", "Analyst", "REVIEW")]
+        jobs = [
+            (KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"),
+            (KEY2, "page-2", "Acme Corp", "Engineer", "REVIEW"),
+            (KEY3, "page-3", "Acme Corp", "Analyst", "REVIEW"),
+        ]
         conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"), (KEY3, "page-3"))
-        save_pipeline(conn, [pipeline_row("Acme Corp", "Engineer", "Hiring-Manager Interview Scheduled", "hiring_manager", "2026-10-09T15:00:00-05:00"),  # resolves to page-2 (REVIEW but a pursuit)
-                             pipeline_row("Acme Corp", "Unlisted Role"),  # no Ledger page: no safe surface
-                             pipeline_row("Elsewhere Ltd", "Engineer")])
+        save_pipeline(
+            conn,
+            [
+                pipeline_row(
+                    "Acme Corp",
+                    "Engineer",
+                    "Hiring-Manager Interview Scheduled",
+                    "hiring_manager",
+                    "2026-10-09T15:00:00-05:00",
+                ),  # resolves to page-2 (REVIEW but a pursuit)
+                pipeline_row("Acme Corp", "Unlisted Role"),  # no Ledger page: no safe surface
+                pipeline_row("Elsewhere Ltd", "Engineer"),
+            ],
+        )
         counts = go(conn, ledger, live=True)
         self.assertEqual((shown(ledger, "page-1"), shown(ledger, "page-2")), (2, 2))
         self.assertEqual(len(ledger.texts("page-3")), 3)  # a plain REVIEW job gets nothing
-        self.assertEqual((counts["targets_admitted"], counts["targets_pursuit_resolved"], counts["applied_no_safe_surface"], counts["interview_no_safe_surface"]), (1, 1, 2, 0))
+        self.assertEqual(
+            (
+                counts["targets_admitted"],
+                counts["targets_pursuit_resolved"],
+                counts["applied_no_safe_surface"],
+                counts["interview_no_safe_surface"],
+            ),
+            (1, 1, 2, 0),
+        )
         self.assertEqual(counts["pursuit_ambiguous"], 0)
 
     def test_two_ledger_pages_for_one_pursuit_are_ambiguous_and_write_nothing_for_it(self):
         jobs = [(KEY1, "page-1", "Zed Corp", "Engineer", "REVIEW"), (KEY2, "page-2", "Zed Corp", "Engineer", "REVIEW")]
-        conn, ledger = build(jobs=jobs, people=[(1, "zed", "Zed Corp", "Engineer", "CURRENT", "2026-09-20")]), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
+        conn, ledger = (
+            build(jobs=jobs, people=[(1, "zed", "Zed Corp", "Engineer", "CURRENT", "2026-09-20")]),
+            ledger_for((KEY1, "page-1"), (KEY2, "page-2")),
+        )
         save_pipeline(conn, [pipeline_row("Zed Corp", "Engineer")])
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["pursuit_ambiguous"], counts["applied_no_safe_surface"], ledger.writes), (1, 1, []))
@@ -212,9 +295,18 @@ class Surface(unittest.TestCase):
 
 def state_for(conn):
     from lifeos.network import match
+
     roster, jobs, pipeline = network_surface._read(conn, NOW)
-    index = match.build_index([(pid, ckey, title, state, network_surface._day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
-    details = {posid: (name, url, cname, title, network_surface._day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
+    index = match.build_index(
+        [
+            (pid, ckey, title, state, network_surface._day(verified), posid)
+            for pid, ckey, title, state, verified, posid, *_ in roster
+        ]
+    )
+    details = {
+        posid: (name, url, cname, title, network_surface._day(verified))
+        for pid, ckey, title, state, verified, posid, cname, name, url in roster
+    }
     return index, details, TODAY, {}, set(), KEY1
 
 
@@ -233,21 +325,33 @@ class Corrections(unittest.TestCase):
     """
 
     def test_an_explicit_limit_of_one_reads_and_writes_at_most_one_page(self):
-        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT")]
+        jobs = [
+            (KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"),
+            (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT"),
+        ]
         conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
         counts = go(conn, ledger, live=True, limit=1)
-        self.assertEqual((counts["pages_read"], counts["pages_deferred"], ledger.writes), (1, 1, ["APPEND"] * 5 + ["UPDATE"]))
+        self.assertEqual(
+            (counts["pages_read"], counts["pages_deferred"], ledger.writes), (1, 1, ["APPEND"] * 5 + ["UPDATE"])
+        )
         self.assertEqual((owned_count(ledger, "page-1"), owned_count(ledger, "page-2")), (1, 0))
         self.assertEqual(go(conn, ledger, limit=5)["pages_read"], 2)  # a larger explicit limit reads more
 
     def test_hourly_rotation_reaches_every_page_without_stored_state(self):
         from datetime import timedelta
-        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT"), (KEY3, "page-3", "Acme Corp", "Analyst", "ADMIT"),
-                ("e" * 64, "page-4", "Nowhere Ltd", "Engineer", "REVIEW")]
+
+        jobs = [
+            (KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"),
+            (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT"),
+            (KEY3, "page-3", "Acme Corp", "Analyst", "ADMIT"),
+            ("e" * 64, "page-4", "Nowhere Ltd", "Engineer", "REVIEW"),
+        ]
         conn = build(jobs=jobs)
         ledger = ledger_for((KEY1, "page-1"), (KEY2, "page-2"), (KEY3, "page-3"), ("e" * 64, "page-4"))
         for hour in range(4):
-            network_surface.run(2, True, environ=SKIP_OFF, connection=conn, client=ledger, now=NOW + timedelta(hours=hour), today=TODAY)
+            network_surface.run(
+                2, True, environ=SKIP_OFF, connection=conn, client=ledger, now=NOW + timedelta(hours=hour), today=TODAY
+            )
         self.assertEqual([owned_count(ledger, f"page-{n}") for n in (1, 2, 3)], [1, 1, 1])
         self.assertEqual(owned_count(ledger, "page-4"), 0)
 
@@ -258,7 +362,9 @@ class Corrections(unittest.TestCase):
         conn.raw.execute("UPDATE v7_network_positions SET title='VP of Product' WHERE person_id=1")
         ledger.drop_appends = True
         self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
-        self.assertEqual((ledger.texts("page-1"), "DELETE" in ledger.writes), (before, False))  # the old block is still there
+        self.assertEqual(
+            (ledger.texts("page-1"), "DELETE" in ledger.writes), (before, False)
+        )  # the old block is still there
 
     def test_an_interrupted_retirement_leaves_the_old_block_visible_and_the_retry_converges(self):
         conn, ledger = build(), ledger_for()
@@ -278,7 +384,15 @@ class Corrections(unittest.TestCase):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
         ledger.drop_appends = False
-        ledger.call_once("PATCH", "/blocks/page-1/children", {"children": [surface.build_block(network_surface._leads("Acme Corp", "Product Director", *self.state(conn))[0])]})
+        ledger.call_once(
+            "PATCH",
+            "/blocks/page-1/children",
+            {
+                "children": [
+                    surface.build_block(network_surface._leads("Acme Corp", "Product Director", *self.state(conn))[0])
+                ]
+            },
+        )
         self.assertEqual(owned_count(ledger), 2)
         self.assertEqual(go(conn, ledger, live=True)["blocks"], {"converged": 1})
         self.assertEqual(owned_count(ledger), 1)
@@ -290,8 +404,10 @@ class Corrections(unittest.TestCase):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
         conn.raw.execute("DELETE FROM v7_network_positions")
-        conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
-                         " source_observed_at, material_hash) VALUES (1,'otherco','Other','x','CURRENT','2026-09-07','2026-09-07','2026-09-20','X','r','2026-09-07','zz')")
+        conn.raw.execute(
+            "INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+            " source_observed_at, material_hash) VALUES (1,'otherco','Other','x','CURRENT','2026-09-07','2026-09-07','2026-09-20','X','r','2026-09-07','zz')"
+        )
         ledger.fail_delete = True
         self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
         self.assertEqual(owned_count(ledger), 1)
@@ -299,33 +415,72 @@ class Corrections(unittest.TestCase):
         self.assertEqual(go(conn, ledger, live=True)["blocks"], {"removed": 1})
 
     def test_a_dismissed_lead_pushed_out_of_the_top_five_keeps_its_decision_and_stays_suppressed(self):
-        people = [(1, "acme", "Acme Corp", "Director", "CURRENT", "2026-09-20")] + [(10 + i, "acme", "Acme Corp", "Engineer", "CURRENT", "2026-09-01") for i in range(4)]
+        people = [(1, "acme", "Acme Corp", "Director", "CURRENT", "2026-09-20")] + [
+            (10 + i, "acme", "Acme Corp", "Engineer", "CURRENT", "2026-09-01") for i in range(4)
+        ]
         conn, ledger = build(people=people), ledger_for()
         go(conn, ledger, live=True)
         self.assertEqual(shown(ledger, "page-1"), 5)
         ledger.tick("page-1", "Closed 1:")  # Jim dismisses person 1
         for i in range(6):
-            conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
-                             (50 + i, f"k{50 + i}", f"person-{50 + i:05d}", f"Invented Person{50 + i}", "2026-09-07 00:00:00", "2026-09-07"))
-            conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
-                             " source_observed_at, material_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (50 + i, "acme", "Acme Corp", "Product Director", "CURRENT", "2026-09-07", "2026-09-07", "2026-10-05", "X", "r", "2026-09-07", f"n{i}"))
+            conn.raw.execute(
+                "INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
+                (
+                    50 + i,
+                    f"k{50 + i}",
+                    f"person-{50 + i:05d}",
+                    f"Invented Person{50 + i}",
+                    "2026-09-07 00:00:00",
+                    "2026-09-07",
+                ),
+            )
+            conn.raw.execute(
+                "INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+                " source_observed_at, material_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    50 + i,
+                    "acme",
+                    "Acme Corp",
+                    "Product Director",
+                    "CURRENT",
+                    "2026-09-07",
+                    "2026-09-07",
+                    "2026-10-05",
+                    "X",
+                    "r",
+                    "2026-09-07",
+                    f"n{i}",
+                ),
+            )
         counts = go(conn, ledger, live=True)
         self.assertEqual(counts["ticks_dismiss"], 1)
         self.assertEqual(conn.raw.execute("SELECT person_id FROM v7_network_dismissals").fetchall(), [(1,)])
         conn.raw.execute("DELETE FROM v7_network_positions WHERE person_id >= 50")
         go(conn, ledger, live=True)
-        refs = [unquote(c["to_do"]["rich_text"][0]["href"].rsplit("/lifeos/", 1)[-1]) for c in ledger.owned("page-1") if c["type"] == "to_do"]
+        refs = [
+            unquote(c["to_do"]["rich_text"][0]["href"].rsplit("/lifeos/", 1)[-1])
+            for c in ledger.owned("page-1")
+            if c["type"] == "to_do"
+        ]
         self.assertFalse(any(r.startswith("Dismiss 1:") for r in refs))
 
     def test_a_conflicting_alias_confirmation_fails_closed_and_changes_nothing(self):
-        conn = build(people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")], jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")])
+        conn = build(
+            people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")],
+            jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")],
+        )
         ledger = ledger_for()
         go(conn, ledger, live=True)
-        conn.raw.execute("INSERT INTO v7_network_aliases (alias_key, company_key, confirmed_at) VALUES ('meta platforms', 'somethingelse', '2026-10-01 00:00:00')")
+        conn.raw.execute(
+            "INSERT INTO v7_network_aliases (alias_key, company_key, confirmed_at) VALUES ('meta platforms', 'somethingelse', '2026-10-01 00:00:00')"
+        )
         ledger.tick("page-1", "Same company 1:")
         before = ledger.texts("page-1")
         self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
-        self.assertEqual(conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(), [("meta platforms", "somethingelse")])
+        self.assertEqual(
+            conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(),
+            [("meta platforms", "somethingelse")],
+        )
         self.assertEqual(ledger.texts("page-1"), before)
         with self.assertRaises(NetworkError) as ctx:
             store.save_decisions(conn, [], [("meta platforms", "meta")])
@@ -337,28 +492,41 @@ class StoredState(unittest.TestCase):
     """a page is read only when it is dirty"""
 
     def settled(self, jobs=None):
-        jobs = jobs or [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Nowhere Ltd", "Engineer", "ADMIT")]
+        jobs = jobs or [
+            (KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"),
+            (KEY2, "page-2", "Nowhere Ltd", "Engineer", "ADMIT"),
+        ]
         conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
         first = go(conn, ledger, live=True)
         return conn, ledger, first
 
     def test_the_first_live_run_reads_every_page_once_and_records_what_each_was_proven_to_show(self):
         conn, ledger, first = self.settled()
-        self.assertEqual((first["pages_read"], first["pages_dirty"], first["state_saved"], first["blocks"]), (2, 2, 2, {"created": 1, "none": 1}))
+        self.assertEqual(
+            (first["pages_read"], first["pages_dirty"], first["state_saved"], first["blocks"]),
+            (2, 2, 2, {"created": 1, "none": 1}),
+        )
         rows = dict(conn.raw.execute("SELECT job_key, written_hash FROM v7_network_page_state").fetchall())
         self.assertEqual((len(rows[KEY1]), rows[KEY2]), (12, ""))
-        self.assertEqual([c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_state)").fetchall()], ["job_key", "page_id", "written_hash", "checked_at"])
+        self.assertEqual(
+            [c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_state)").fetchall()],
+            ["job_key", "page_id", "written_hash", "checked_at"],
+        )
 
     def test_a_page_with_no_leads_and_no_block_is_not_read_again_and_the_block_page_is(self):
         conn, ledger, _ = self.settled()
         counts = go(conn, ledger, live=True, limit=1)
-        self.assertEqual((counts["pages_read"], counts["pages_dirty"], counts["blocks"]), (1, 0, {"unchanged": 1}))  # only the page that holds a block
+        self.assertEqual(
+            (counts["pages_read"], counts["pages_dirty"], counts["blocks"]), (1, 0, {"unchanged": 1})
+        )  # only the page that holds a block
         counts = go(conn, ledger, live=True, limit=2)
         self.assertEqual((counts["pages_read"], counts["blocks"]), (2, {"unchanged": 1, "none": 1}))
 
     def test_a_new_job_is_dirty_and_is_read_first_even_with_a_budget_of_one(self):
         conn, ledger, _ = self.settled()
-        conn.raw.execute("INSERT INTO v7_jobs VALUES (3,?,?,?,?,?)", (KEY3, "PUBLISHED", "Acme Corp", "Product Manager", "page-3"))
+        conn.raw.execute(
+            "INSERT INTO v7_jobs VALUES (3,?,?,?,?,?)", (KEY3, "PUBLISHED", "Acme Corp", "Product Manager", "page-3")
+        )
         conn.raw.execute("INSERT INTO v7_job_fit VALUES (3,'ADMIT')")
         ledger.add_page("page-3", KEY3)
         counts = go(conn, ledger, live=True, limit=1)
@@ -367,10 +535,14 @@ class StoredState(unittest.TestCase):
 
     def test_a_roster_change_makes_only_the_pages_of_that_company_dirty(self):
         conn, ledger, _ = self.settled()
-        conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (9,'k9','person-00009','Invented Person9',"
-                         "'2026-09-07 00:00:00','2026-09-07','ACTIVE','SEED_ONLY')")
-        conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
-                         " source_observed_at, material_hash) VALUES (9,'acme','Acme Corp','Product Lead','CURRENT','2026-10-01','2026-10-01','2026-10-01','X','r','2026-10-01','h9')")
+        conn.raw.execute(
+            "INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (9,'k9','person-00009','Invented Person9',"
+            "'2026-09-07 00:00:00','2026-09-07','ACTIVE','SEED_ONLY')"
+        )
+        conn.raw.execute(
+            "INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+            " source_observed_at, material_hash) VALUES (9,'acme','Acme Corp','Product Lead','CURRENT','2026-10-01','2026-10-01','2026-10-01','X','r','2026-10-01','h9')"
+        )
         counts = go(conn, ledger, live=True, limit=1)
         self.assertEqual((counts["pages_read"], counts["pages_dirty"], counts["blocks"]), (1, 1, {"replaced": 1}))
         self.assertEqual(go(conn, ledger, live=True, limit=1)["pages_dirty"], 0)
@@ -395,11 +567,16 @@ class StoredState(unittest.TestCase):
         conn, ledger = build(), ledger_for()
         counts = go(conn, ledger)
         self.assertEqual((counts["state_table"], counts["pages_read"], counts["pages_dirty"]), (False, 1, 1))
-        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='v7_network_page_state'").fetchone()[0], 0)
+        self.assertEqual(
+            conn.raw.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='v7_network_page_state'").fetchone()[0], 0
+        )
 
     def test_a_failed_state_save_degrades_the_run_but_loses_only_the_shortcut(self):
         conn, ledger = build(), ledger_for()
-        saved, store.save_page_state = store.save_page_state, lambda *a, **k: (_ for _ in ()).throw(NetworkError("NETWORK_STORE_FAILED"))
+        saved, store.save_page_state = (
+            store.save_page_state,
+            lambda *a, **k: (_ for _ in ()).throw(NetworkError("NETWORK_STORE_FAILED")),
+        )
         try:
             self.assertEqual(degraded(conn, ledger, live=True), "NETWORK_SURFACE_DEGRADED")
         finally:
@@ -419,6 +596,7 @@ class StoredState(unittest.TestCase):
 
             def rollback(self):
                 raise RuntimeError("InterfaceError (0, '')")
+
         conn = Dropped()
         with self.assertRaises(NetworkError) as ctx:
             store.save_page_state(conn, {"k": ("page", "hash")})
@@ -427,6 +605,7 @@ class StoredState(unittest.TestCase):
 
     def test_a_production_sized_ledger_converges_within_the_bound_then_reads_only_what_changed(self):
         from datetime import timedelta
+
         n_leads, n_other, n_nontarget, budget = 154, 921, 525, 82
         surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
         others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
@@ -435,13 +614,17 @@ class StoredState(unittest.TestCase):
         state, stuck = {}, "t0900"
         bound = -(-total // (budget - budget // 5))
         for hour in range(bound + 3):
-            picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, budget, NOW + timedelta(hours=hour))
+            picked, _, dirty = network_surface._queue_state(
+                surfaced, others, wanted, state, budget, NOW + timedelta(hours=hour)
+            )
             self.assertLessEqual(len(picked), budget)
             for key, page, *_ in picked:
                 if key != stuck:
                     state[key] = (page, wanted.get(key, ""))
         self.assertEqual(len(state), total - 1)
-        picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, budget, NOW + timedelta(hours=99))
+        picked, _, dirty = network_surface._queue_state(
+            surfaced, others, wanted, state, budget, NOW + timedelta(hours=99)
+        )
         self.assertEqual(dirty, 1)  # steady state: only the failed page is dirty
         self.assertIn(stuck, [k for k, *_ in picked])
         reads = [k for k, *_ in picked if k != stuck]
@@ -458,14 +641,22 @@ class Contract(unittest.TestCase):
     def test_surface_code_has_no_mail_or_pipeline_page_writes_and_is_not_in_the_hourly_workflow(self):
         for name in ("lifeos/network/surface.py", "lifeos/sources/network/network_surface.py"):
             text = (self.ROOT / name).read_text()
-            for banned in ("TinyFish", "tinyfish", "sendMail", "/send", "move(", "hiring_pipeline.read", "Hiring Pipeline page"):
+            for banned in (
+                "TinyFish",
+                "tinyfish",
+                "sendMail",
+                "/send",
+                "move(",
+                "hiring_pipeline.read",
+                "Hiring Pipeline page",
+            ):
                 self.assertNotIn(banned, text, name)
         hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
         self.assertNotIn("id: network_surface", hourly)
         self.assertNotIn("network_surface=${{ steps.network_surface.outcome }}", hourly)
         text = (self.ROOT / ".github/workflows/domains.yml").read_text()
-        step = text[text.index("id: network_surface"):]
-        step = step[:step.index("      - name: Fail the job if any stage step failed")]
+        step = text[text.index("id: network_surface") :]
+        step = step[: step.index("      - name: Fail the job if any stage step failed")]
         self.assertIn("continue-on-error: true", step)
         self.assertIn("--limit 82", step)  # ...
         self.assertIn("::warning title=Network surface::", step)  # ...
@@ -474,7 +665,12 @@ class Contract(unittest.TestCase):
     def test_the_importer_does_not_create_the_surface_tables(self):
         conn = MySQLite()
         store.ensure_schema(conn)
-        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('v7_network_dismissals','v7_network_aliases')").fetchone()[0], 0)
+        self.assertEqual(
+            conn.raw.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('v7_network_dismissals','v7_network_aliases')"
+            ).fetchone()[0],
+            0,
+        )
 
 
 class LeadsBlock(unittest.TestCase):
@@ -482,7 +678,9 @@ class LeadsBlock(unittest.TestCase):
     PAGE = "00000000-0000-0000-0000-000000000008"
 
     def world(self, **kw):
-        return build(jobs=[(KEY1, self.PAGE, "Acme Corp", "Product Director", "ADMIT")], **kw), ledger_for((KEY1, self.PAGE))
+        return build(jobs=[(KEY1, self.PAGE, "Acme Corp", "Product Director", "ADMIT")], **kw), ledger_for(
+            (KEY1, self.PAGE)
+        )
 
     def test_a_live_run_writes_only_the_cards_and_a_replay_writes_nothing(self):
         conn, ledger = self.world()
@@ -491,20 +689,67 @@ class LeadsBlock(unittest.TestCase):
         self.assertEqual(ledger.texts(self.PAGE)[:3], before)
         self.assertEqual(set(ledger.writes), {"APPEND", "UPDATE"})
         owned = ledger.owned(self.PAGE)
-        self.assertEqual([c["type"] for c in owned], ["paragraph", "to_do", "to_do", "to_do"] * 2)  # the approved cards carry no Mark as Sent line
+        self.assertEqual(
+            [c["type"] for c in owned], ["paragraph", "to_do", "to_do", "to_do"] * 2
+        )  # the approved cards carry no Mark as Sent line
         ledger.writes.clear()
-        self.assertEqual((go(conn, ledger, live=True, environ=self.ENV)["blocks"], ledger.writes), ({"unchanged": 1}, []))
+        self.assertEqual(
+            (go(conn, ledger, live=True, environ=self.ENV)["blocks"], ledger.writes), ({"unchanged": 1}, [])
+        )
 
     def test_an_old_style_block_is_read_for_its_ticks_replaced_once_and_nothing_machine_made_shows(self):
         """The first run after the redesign: the page holds the old toggle (visible marker and ids)"""
         conn, ledger = self.world()
         leads = network_surface._leads("Acme Corp", "Product Director", *state_for(conn))[0]
-        old = {"object": "block", "type": "toggle", "toggle": {"rich_text": [{"type": "text", "text": {"content": f"Network Leads ({len(leads)})"}}], "children": [
-            {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "v7-net:1 oldhash"}}]}}]
-            + [c for l in leads for c in ({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": f"{l['name']} · {surface.reason(l)} · open profile"}}]}},
-                                           {"object": "block", "type": "to_do", "to_do": {"rich_text": [{"type": "text", "text": {"content": f"Dismiss · {l['person_id']}:{l['evidence_hash']}"}}], "checked": l["person_id"] == 1}})]}}
+        old = {
+            "object": "block",
+            "type": "toggle",
+            "toggle": {
+                "rich_text": [{"type": "text", "text": {"content": f"Network Leads ({len(leads)})"}}],
+                "children": [
+                    {
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": [{"type": "text", "text": {"content": "v7-net:1 oldhash"}}]},
+                    }
+                ]
+                + [
+                    c
+                    for l in leads
+                    for c in (
+                        {
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [
+                                    {
+                                        "type": "text",
+                                        "text": {"content": f"{l['name']} · {surface.reason(l)} · open profile"},
+                                    }
+                                ]
+                            },
+                        },
+                        {
+                            "object": "block",
+                            "type": "to_do",
+                            "to_do": {
+                                "rich_text": [
+                                    {
+                                        "type": "text",
+                                        "text": {"content": f"Dismiss · {l['person_id']}:{l['evidence_hash']}"},
+                                    }
+                                ],
+                                "checked": l["person_id"] == 1,
+                            },
+                        },
+                    )
+                ],
+            },
+        }
         ledger.call_once("PATCH", f"/blocks/{self.PAGE}/children", {"children": [old]})
-        self.assertEqual([x["person_id"] for x in surface.leads_on_page(ledger, self.PAGE)], [2])  # the old block still reads, with Jim's dismissal
+        self.assertEqual(
+            [x["person_id"] for x in surface.leads_on_page(ledger, self.PAGE)], [2]
+        )  # the old block still reads, with Jim's dismissal
         counts = go(conn, ledger, live=True, environ=self.ENV)
         self.assertEqual((counts["blocks"], counts["ticks_dismiss"]), ({"replaced": 1}, 1))
         self.assertEqual((owned_count(ledger, self.PAGE), shown(ledger, self.PAGE)), (1, 1))
@@ -514,20 +759,38 @@ class LeadsBlock(unittest.TestCase):
         self.assertEqual([x["person_id"] for x in surface.leads_on_page(ledger, self.PAGE)], [2])
 
     def test_the_new_block_shows_a_bold_name_the_reason_and_a_reach_out_link_to_the_verified_profile_only(self):
-        lead = {"person_id": 1, "tier": "CURRENT", "freshness": "FRESH", "age_days": 3, "name": "Invented Person1", "company": "Acme Corp", "title": "Director", "verified": date(2026, 10, 1),
-                "url_key": "person-00001", "evidence_hash": "abc"}
+        lead = {
+            "person_id": 1,
+            "tier": "CURRENT",
+            "freshness": "FRESH",
+            "age_days": 3,
+            "name": "Invented Person1",
+            "company": "Acme Corp",
+            "title": "Director",
+            "verified": date(2026, 10, 1),
+            "url_key": "person-00001",
+            "evidence_hash": "abc",
+        }
         block = surface.build_block([lead])["callout"]
         para = block["children"][0]["paragraph"]["rich_text"]
         self.assertEqual((para[0]["text"]["content"], para[0]["annotations"]["bold"]), ("Invented Person1", True))
-        self.assertEqual((para[-1]["text"]["content"], para[-1]["text"]["link"]["url"]), ("Reach Out ↗", "https://www.linkedin.com/in/person-00001"))
-        visible = "".join(r["text"]["content"] for r in block["rich_text"]) + "".join(r["text"]["content"] for c in block["children"] for r in c[c["type"]]["rich_text"])
+        self.assertEqual(
+            (para[-1]["text"]["content"], para[-1]["text"]["link"]["url"]),
+            ("Reach Out ↗", "https://www.linkedin.com/in/person-00001"),
+        )
+        visible = "".join(r["text"]["content"] for r in block["rich_text"]) + "".join(
+            r["text"]["content"] for c in block["children"] for r in c[c["type"]]["rich_text"]
+        )
         for machine in ("net:2", "Dismiss 1:", "abc"):
             self.assertNotIn(machine, visible)
 
     def test_the_leads_reader_used_by_the_deployed_close_service_reads_the_leads_back(self):
         conn, ledger = self.world()
         go(conn, ledger, live=True, environ=self.ENV)
-        self.assertEqual([lead["name"] for lead in surface.leads_on_page(ledger, self.PAGE)], ["Invented Person1", "Invented Person2"])
+        self.assertEqual(
+            [lead["name"] for lead in surface.leads_on_page(ledger, self.PAGE)],
+            ["Invented Person1", "Invented Person2"],
+        )
 
     def test_a_job_without_leads_gets_no_block(self):
         conn, ledger = self.world(people=[(9, "other", "Other Co", "Engineer", "CURRENT", "2026-09-20")])
@@ -537,9 +800,20 @@ class LeadsBlock(unittest.TestCase):
 
 class Block(unittest.TestCase):
     def test_reason_templates_are_fixed_and_stale_leads_say_verify_first(self):
-        lead = {"person_id": 1, "tier": "CURRENT", "freshness": "STALE", "age_days": 201, "company": "Acme", "title": "Director", "verified": date(2026, 3, 20)}
+        lead = {
+            "person_id": 1,
+            "tier": "CURRENT",
+            "freshness": "STALE",
+            "age_days": 201,
+            "company": "Acme",
+            "title": "Director",
+            "verified": date(2026, 3, 20),
+        }
         self.assertEqual(surface.reason(lead), "Listed at Acme as Director, as of Mar 20 (201 days) · verify first")
-        self.assertEqual(surface.reason(dict(lead, tier="PREVIOUS", freshness="FRESH")), "Previously listed at Acme, as of Mar 20 (201 days)")
+        self.assertEqual(
+            surface.reason(dict(lead, tier="PREVIOUS", freshness="FRESH")),
+            "Previously listed at Acme, as of Mar 20 (201 days)",
+        )
         self.assertIn("Same company?", surface.reason(dict(lead, tier="POSSIBLE", freshness="FRESH")))
         for word in ("close", "refer", "willing", "influence", "authority", "warm"):
             self.assertNotIn(word, surface.reason(lead).lower())
@@ -551,9 +825,11 @@ if __name__ == "__main__":
 
 class StepTiming(unittest.TestCase):
     """step 1: seconds and Notion calls per page and per outcome, counts only (no page id, title or content)."""
+
     def test_timing_sums_seconds_and_calls_per_outcome(self):
         class Notion:
             calls = 0
+
         ticks, notion = iter([0.0, 0.0, 6.0, 6.0, 8.0, 8.0]), Notion()
         timing = network_surface.Timing(notion, clock=lambda: next(ticks))
         started = timing.start()
@@ -565,7 +841,10 @@ class StepTiming(unittest.TestCase):
         report = timing.report()
         self.assertEqual((report["pages"], report["notion_calls"], report["calls_per_page"]), (2, 17, 8.5))
         self.assertEqual(report["by_outcome"]["replaced"], {"pages": 1, "seconds": 6.0, "calls": 15})
-        self.assertEqual(sorted(report), ["by_outcome", "calls_per_page", "gap_seconds", "notion_calls", "pages", "seconds", "slowest_page_seconds"])
+        self.assertEqual(
+            sorted(report),
+            ["by_outcome", "calls_per_page", "gap_seconds", "notion_calls", "pages", "seconds", "slowest_page_seconds"],
+        )
 
     def test_a_live_run_reports_its_timing_and_nothing_identifying(self):
         conn, ledger = build(), ledger_for()
@@ -582,6 +861,7 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
     """a page proven earlier and untouched since (same last_edited_time, recorded after its proof) costs one Notion call
     instead of a full read
     """
+
     ON = {}
 
     PROOF = "2026-10-07 11:30:00"  # the stores stamp the real clock
@@ -597,8 +877,20 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
         conn, ledger = self.settled()
         before, written = ledger.calls, list(ledger.writes)
         counts = go(conn, ledger, live=True, environ=self.ON)
-        self.assertEqual((ledger.calls - before, ledger.writes == written, counts["unchanged_skipped"], counts["blocks"]), (1, True, 1, {}))
-        self.assertEqual(counts["timing"]["by_outcome"], {"skipped_unchanged": {"pages": 1, "seconds": counts["timing"]["by_outcome"]["skipped_unchanged"]["seconds"], "calls": 1}})
+        self.assertEqual(
+            (ledger.calls - before, ledger.writes == written, counts["unchanged_skipped"], counts["blocks"]),
+            (1, True, 1, {}),
+        )
+        self.assertEqual(
+            counts["timing"]["by_outcome"],
+            {
+                "skipped_unchanged": {
+                    "pages": 1,
+                    "seconds": counts["timing"]["by_outcome"]["skipped_unchanged"]["seconds"],
+                    "calls": 1,
+                }
+            },
+        )
 
     def test_before_and_after_the_same_replay_calls_with_the_skip_off_and_on(self):
         conn, ledger = self.settled()
@@ -615,7 +907,9 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
         conn, ledger = self.settled()
         ledger.tick("page-1", "Closed ")
         counts = go(conn, ledger, live=True, environ=self.ON)
-        self.assertEqual((counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1}))
+        self.assertEqual(
+            (counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1})
+        )
         self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 1)
 
     def test_a_write_records_the_time_after_the_write_so_the_next_run_skips(self):
@@ -638,7 +932,9 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
     def test_a_page_edited_in_the_last_three_minutes_is_never_skipped(self):
         conn, ledger = self.settled()
         edited = datetime.strptime(ledger.edited_time("page-1")[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-        counts = network_surface.run(0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY)
+        counts = network_surface.run(
+            0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY
+        )
         self.assertEqual((counts.get("unchanged_skipped", 0), counts["blocks"]), (0, {"unchanged": 1}))
 
     def test_a_proof_older_than_a_week_is_not_trusted(self):
@@ -657,7 +953,10 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
 
     def test_the_table_holds_a_job_key_and_a_time_string_only(self):
         conn, _ = self.settled()
-        self.assertEqual([c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_edit)").fetchall()], ["job_key", "edited", "recorded_at"])
+        self.assertEqual(
+            [c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_edit)").fetchall()],
+            ["job_key", "edited", "recorded_at"],
+        )
 
     def test_a_page_proven_before_edit_times_were_recorded_is_skipped_when_it_was_not_edited_after_its_proof(self):
         """The rotation reaches a page about every 60 hours, so most pages carry only the saved proof time."""
@@ -681,8 +980,9 @@ class UnchangedPagesAreSkipped(unittest.TestCase):
         ledger.edited["page-1"] += 150
         conn.raw.execute("UPDATE v7_network_page_state SET checked_at='2026-10-07 10:00:00'")
         counts = go(conn, ledger, live=True, environ=self.ON)
-        self.assertEqual((counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1}))
-
+        self.assertEqual(
+            (counts.get("unchanged_skipped", 0), counts["ticks_dismiss"], counts["blocks"]), (0, 1, {"replaced": 1})
+        )
 
 
 def five_leads(n=5):
@@ -730,7 +1030,9 @@ class DeepReadCosts(unittest.TestCase):
         ledger.tick("page-1", "Closed 5:")
         _, owned = surface.read_page(ledger, "page-1", key=KEY1)
         ticks = owned[0]["ticks"]
-        self.assertEqual(len([t for t in ticks if t[0] in ("Contacted", "Referral", "Closed")]), 15)  # three status ticks on each of five cards
+        self.assertEqual(
+            len([t for t in ticks if t[0] in ("Contacted", "Referral", "Closed")]), 15
+        )  # three status ticks on each of five cards
         self.assertEqual([t for t in ticks if t[3]], [("Closed", 5, ticks[-1][2], True)])
 
     def test_a_decision_on_the_last_card_is_still_found_persisted_and_replaces_the_block(self):
@@ -755,6 +1057,7 @@ class DeepReadCosts(unittest.TestCase):
             if method == "GET" and any(f"/blocks/{t}/children" in path for t in toggles):
                 return {"results": [], "has_more": True, "next_cursor": None}
             return real(method, path, body)
+
         ledger.call = cut_short
         with self.assertRaises(surface.SurfaceError) as raised:
             surface.read_page(ledger, "page-1", key=KEY1)
@@ -771,6 +1074,7 @@ class DeepReadCosts(unittest.TestCase):
         def spy(method, path, body=None):
             seen.append(path)
             return real(method, path, body)
+
         ledger.call = spy
         counts = go(conn, ledger, live=True)
         self.assertEqual(counts["blocks"], {"unchanged": 1})
@@ -781,6 +1085,7 @@ class DeepReadCosts(unittest.TestCase):
 
 class SkipMissReasons(unittest.TestCase):
     """a page read in full says why it was not skipped, in a fixed word and a number"""
+
     ON = {}
     PROOF = UnchangedPagesAreSkipped.PROOF
 
@@ -801,7 +1106,9 @@ class SkipMissReasons(unittest.TestCase):
     def test_a_page_edited_a_moment_ago_and_an_old_proof_are_told_apart(self):
         conn, ledger = self.settled()
         edited = datetime.strptime(ledger.edited_time("page-1")[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-        counts = network_surface.run(0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY)
+        counts = network_surface.run(
+            0, True, environ=self.ON, connection=conn, client=ledger, now=edited + timedelta(seconds=60), today=TODAY
+        )
         self.assertEqual(counts["skip_missed"], {"edited_just_now": 1})
         conn.raw.execute("UPDATE v7_network_page_edit SET recorded_at='2026-09-29 12:00:00'")
         counts = go(conn, ledger, live=True, environ=self.ON)
@@ -814,7 +1121,15 @@ class SkipMissReasons(unittest.TestCase):
         self.assertNotIn("skip_missed", go(conn, ledger, live=True, environ=SKIP_OFF))
 
     def test_the_reasons_are_a_closed_set_of_fixed_words(self):
-        words = {"not_proven", "no_edit_time", "no_proof_time", "edited_since_proof", "unreadable_time", "edited_just_now", "proof_too_old"}
+        words = {
+            "not_proven",
+            "no_edit_time",
+            "no_proof_time",
+            "edited_since_proof",
+            "unreadable_time",
+            "edited_just_now",
+            "proof_too_old",
+        }
         skip = network_surface.Skip({}, {"k"}, None, NOW)
         self.assertEqual(skip.miss("other", "2026-10-07T09:00:00.000Z"), "not_proven")
         self.assertEqual(skip.miss("k", None), "no_edit_time")

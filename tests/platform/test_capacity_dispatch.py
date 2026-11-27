@@ -1,5 +1,5 @@
-"""the hourly tick starts the AI Capacity card when GitHub's own cron has not (it ran the card only every 5 to 10 hours).
-"""
+"""the hourly tick starts the AI Capacity card when GitHub's own cron has not (it ran the card only every 5 to 10 hours)."""
+
 import os
 import pathlib
 import stat
@@ -37,7 +37,16 @@ def run_step(last, **extra):
         gh.write_text(FAKE_GH)
         gh.chmod(gh.stat().st_mode | stat.S_IEXEC)
         log = pathlib.Path(tmp, "calls")
-        env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}", "GH_LOG": str(log), "LAST": last, "GITHUB_REPOSITORY": "o/r", "GITHUB_REF_NAME": "main", "GITHUB_RUN_ID": "7", **extra}
+        env = {
+            **os.environ,
+            "PATH": f"{tmp}:{os.environ['PATH']}",
+            "GH_LOG": str(log),
+            "LAST": last,
+            "GITHUB_REPOSITORY": "o/r",
+            "GITHUB_REF_NAME": "main",
+            "GITHUB_RUN_ID": "7",
+            **extra,
+        }
         done = subprocess.run(["bash", "-e", "-c", step()["run"]], env=env, capture_output=True, text=True, timeout=60)
         return done.returncode, log.read_text().splitlines() if log.exists() else []
 
@@ -77,7 +86,9 @@ class TickStartsTheCard(unittest.TestCase):
         doc = yaml.safe_load((ROOT / ".github/workflows/capacity-card.yml").read_text())
         on = doc.get("on") or doc.get(True)
         self.assertEqual(on["workflow_dispatch"]["inputs"]["tick"]["default"], False)
-        live_step = next(s for s in doc["jobs"]["capacitycard"]["steps"] if str(s.get("name", "")).startswith("Plain switches"))
+        live_step = next(
+            s for s in doc["jobs"]["capacitycard"]["steps"] if str(s.get("name", "")).startswith("Plain switches")
+        )
         self.assertIn("!inputs.tick", live_step["with"]["live_mode"])
         self.assertEqual(on["schedule"], [{"cron": "55 * * * *"}])  # the cron stays as a backup
 

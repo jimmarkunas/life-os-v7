@@ -12,29 +12,41 @@ TODAY = date(2026, 4, 2)
 
 
 def page(name="Example Cable", paid=False, status="Active", cycle="Monthly", due="2026-04-01", next_due="2026-04-02"):
-    return {"id": "synthetic-page", "properties": {
-        "Name": {"type": "title", "title": [{"plain_text": name}]},
-        "Status": {"type": "status", "status": {"name": status}},
-        "Cycle": {"type": "select", "select": {"name": cycle} if cycle is not None else None},
-        "Paid": {"type": "checkbox", "checkbox": paid},
-        "Due Date": {"type": "date", "date": {"start": due} if due else None},
-        "Next Due": {"type": "formula", "formula": {"type": "date", "date": {"start": next_due} if next_due else None}},
-        "Last Paid": {"type": "date", "date": None},
-        "Costs per Cycle": {"type": "number", "number": 12.34},
-        "Last Observed Amount": {"type": "number", "number": 12.34},
-    }}
+    return {
+        "id": "synthetic-page",
+        "properties": {
+            "Name": {"type": "title", "title": [{"plain_text": name}]},
+            "Status": {"type": "status", "status": {"name": status}},
+            "Cycle": {"type": "select", "select": {"name": cycle} if cycle is not None else None},
+            "Paid": {"type": "checkbox", "checkbox": paid},
+            "Due Date": {"type": "date", "date": {"start": due} if due else None},
+            "Next Due": {
+                "type": "formula",
+                "formula": {"type": "date", "date": {"start": next_due} if next_due else None},
+            },
+            "Last Paid": {"type": "date", "date": None},
+            "Costs per Cycle": {"type": "number", "number": 12.34},
+            "Last Observed Amount": {"type": "number", "number": 12.34},
+        },
+    }
 
 
 def payload_rows(rows):
-    return {"schema": snapshot.SCHEMA_V, "taken_at": "2026-04-02T00:00:00-05:00", "timezone": "America/Chicago", "rows": rows}
+    return {
+        "schema": snapshot.SCHEMA_V,
+        "taken_at": "2026-04-02T00:00:00-05:00",
+        "timezone": "America/Chicago",
+        "rows": rows,
+    }
 
 
 class BillSnapshotTests(unittest.TestCase):
     def test_paginates_and_reads_evaluated_formula_next_due(self):
         first = page()
         second = page(name="Example Systems")
-        client = DataSourcePages({"results": [first], "has_more": True, "next_cursor": "cursor-1"},
-                                 {"results": [second], "has_more": False})
+        client = DataSourcePages(
+            {"results": [first], "has_more": True, "next_cursor": "cursor-1"}, {"results": [second], "has_more": False}
+        )
         rows = snapshot.query_all(client)
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["Next Due"], "2026-04-02")
@@ -45,7 +57,13 @@ class BillSnapshotTests(unittest.TestCase):
         database = BillsSnapshotDB(old)
         client = DataSourcePages({"results": [page()], "has_more": True, "next_cursor": None})
         with self.assertRaises(snapshot.BillsError) as caught:
-            snapshot.run(1, True, client=client, now=datetime(2026, 4, 2, tzinfo=timezone.utc), connect=lambda database=database: database)
+            snapshot.run(
+                1,
+                True,
+                client=client,
+                now=datetime(2026, 4, 2, tzinfo=timezone.utc),
+                connect=lambda database=database: database,
+            )
         self.assertEqual(str(caught.exception), "BILLS_PAGE_INCOMPLETE")
         self.assertEqual(json.loads(database.payload), old)
         self.assertEqual(database.sql, [])
@@ -67,13 +85,23 @@ class BillSnapshotTests(unittest.TestCase):
     def test_live_save_reads_back_private_snapshot_and_dry_run_only_returns_counts(self):
         client = DataSourcePages({"results": [page()], "has_more": False})
         database = BillsSnapshotDB()
-        counts = snapshot.run(1, True, client=client,
-                              now=datetime(2026, 4, 3, 0, 30, tzinfo=timezone.utc), connect=lambda database=database: database)
-        self.assertEqual(counts, {"rows": 1, "active": 1, "paid": 0, "stale_due": 1,
-                                  "due_today": 1, "due_7d": 0, "saved": 1})
+        counts = snapshot.run(
+            1,
+            True,
+            client=client,
+            now=datetime(2026, 4, 3, 0, 30, tzinfo=timezone.utc),
+            connect=lambda database=database: database,
+        )
+        self.assertEqual(
+            counts, {"rows": 1, "active": 1, "paid": 0, "stale_due": 1, "due_today": 1, "due_7d": 0, "saved": 1}
+        )
         self.assertEqual(snapshot.load(database)["rows"][0]["Next Due"], "2026-04-02")
-        dry_counts = snapshot.run(1, False, client=DataSourcePages({"results": [page()], "has_more": False}),
-                                  now=datetime(2026, 4, 2, tzinfo=timezone.utc))
+        dry_counts = snapshot.run(
+            1,
+            False,
+            client=DataSourcePages({"results": [page()], "has_more": False}),
+            now=datetime(2026, 4, 2, tzinfo=timezone.utc),
+        )
         self.assertEqual(set(dry_counts), {"rows", "active", "paid", "stale_due", "due_today", "due_7d", "saved"})
         self.assertNotIn("Example Cable", repr(dry_counts))
         self.assertNotIn("12.34", repr(dry_counts))
@@ -83,9 +111,14 @@ class BillStateTests(unittest.TestCase):
     def test_stale_due_definition_and_every_exclusion(self):
         overdue = {"Status": "Active", "Paid": False, "Cycle": "Monthly", "Due Date": "2026-04-01"}
         excluded = [
-            {**overdue, "Paid": True}, {**overdue, "Status": "Inactive"},
-            {**overdue, "Cycle": "Lifetime"}, {**overdue, "Cycle": "One Time"},
-            {**overdue, "Cycle": None}, {**overdue, "Due Date": None}, {**overdue, "Cycle": "4 Years"}, {**overdue, "Cycle": "Not A Cycle"},
+            {**overdue, "Paid": True},
+            {**overdue, "Status": "Inactive"},
+            {**overdue, "Cycle": "Lifetime"},
+            {**overdue, "Cycle": "One Time"},
+            {**overdue, "Cycle": None},
+            {**overdue, "Due Date": None},
+            {**overdue, "Cycle": "4 Years"},
+            {**overdue, "Cycle": "Not A Cycle"},
             {**overdue, "Due Date": "2026-04-02"},
         ]
         buckets = state.classify([overdue, *excluded], TODAY)
@@ -103,10 +136,15 @@ class BillStateTests(unittest.TestCase):
 
 class NotionClientBillsTests(unittest.TestCase):
     def test_separate_credentials_and_query_helper_use_common_call_path(self):
-        client = notion_client.Client({"NOTION_BILLS_TOKEN": "synthetic-token", "NOTION_BILLS_DATA_SOURCE_ID": "abc-123"},
-                                      token_name="NOTION_BILLS_TOKEN", source_name="NOTION_BILLS_DATA_SOURCE_ID")
+        client = notion_client.Client(
+            {"NOTION_BILLS_TOKEN": "synthetic-token", "NOTION_BILLS_DATA_SOURCE_ID": "abc-123"},
+            token_name="NOTION_BILLS_TOKEN",
+            source_name="NOTION_BILLS_DATA_SOURCE_ID",
+        )
         calls = []
-        client.call = lambda method, path, body=None: calls.append((method, path, body)) or {"results": [], "has_more": False}
+        client.call = lambda method, path, body=None: (
+            calls.append((method, path, body)) or {"results": [], "has_more": False}
+        )
         client.query_data_source(body={"page_size": 100})
         self.assertEqual(calls, [("POST", "/data_sources/abc-123/query", {"page_size": 100})])
 
@@ -117,12 +155,14 @@ if __name__ == "__main__":
 
 class DisplayFieldTests(unittest.TestCase):
     def page(self, **extra):
-        props = {"Name": {"type": "title", "title": [{"plain_text": "Example Bill"}]},
-                 "Status": {"type": "select", "select": {"name": "Active"}},
-                 "Cycle": {"type": "select", "select": {"name": "Monthly"}},
-                 "Paid": {"type": "checkbox", "checkbox": False},
-                 "Due Date": {"type": "date", "date": {"start": "2026-10-01"}},
-                 "Next Due": {"type": "formula", "formula": {"type": "date", "date": {"start": "2026-11-01"}}}}
+        props = {
+            "Name": {"type": "title", "title": [{"plain_text": "Example Bill"}]},
+            "Status": {"type": "select", "select": {"name": "Active"}},
+            "Cycle": {"type": "select", "select": {"name": "Monthly"}},
+            "Paid": {"type": "checkbox", "checkbox": False},
+            "Due Date": {"type": "date", "date": {"start": "2026-10-01"}},
+            "Next Due": {"type": "formula", "formula": {"type": "date", "date": {"start": "2026-11-01"}}},
+        }
         props.update(extra)
         return {"id": "p1", "properties": props}
 
@@ -136,27 +176,41 @@ class DisplayFieldTests(unittest.TestCase):
             snapshot.compact(self.page(Cycle={"type": "rollup", "rollup": {}}))
 
 
-def paid_page(*, page_id="11111111-1111-4111-8111-111111111111", cycle="Monthly", paid=False,
-              status="Active", next_due="2026-10-10", pay="Paid", due="2026-10-01"):
-    return {"id": page_id, "parent": {"type": "data_source_id", "data_source_id": PaidBillTracker.SOURCE},
-            "properties": {
-                "Name": {"type": "title", "title": [{"plain_text": "Example Systems"}]},
-                "Status": {"type": "select", "select": {"name": status} if status else None},
-                "Cycle": {"type": "select", "select": {"name": cycle} if cycle else None},
-                "Paid": {"type": "checkbox", "checkbox": paid},
-                "Pay": {"type": "select", "select": {"name": pay} if pay else None},
-                "Due Date": {"type": "date", "date": {"start": due}},
-                "Next Due": {"type": "formula", "formula": {"type": "date",
-                                                              "date": {"start": next_due} if next_due else None}},
-                "Last Paid": {"type": "date", "date": None},
-                "Costs per Cycle": {"type": "number", "number": 12.34},
-                "Last Observed Amount": {"type": "number", "number": 12.34},
-            }}
+def paid_page(
+    *,
+    page_id="11111111-1111-4111-8111-111111111111",
+    cycle="Monthly",
+    paid=False,
+    status="Active",
+    next_due="2026-10-10",
+    pay="Paid",
+    due="2026-10-01",
+):
+    return {
+        "id": page_id,
+        "parent": {"type": "data_source_id", "data_source_id": PaidBillTracker.SOURCE},
+        "properties": {
+            "Name": {"type": "title", "title": [{"plain_text": "Example Systems"}]},
+            "Status": {"type": "select", "select": {"name": status} if status else None},
+            "Cycle": {"type": "select", "select": {"name": cycle} if cycle else None},
+            "Paid": {"type": "checkbox", "checkbox": paid},
+            "Pay": {"type": "select", "select": {"name": pay} if pay else None},
+            "Due Date": {"type": "date", "date": {"start": due}},
+            "Next Due": {
+                "type": "formula",
+                "formula": {"type": "date", "date": {"start": next_due} if next_due else None},
+            },
+            "Last Paid": {"type": "date", "date": None},
+            "Costs per Cycle": {"type": "number", "number": 12.34},
+            "Last Observed Amount": {"type": "number", "number": 12.34},
+        },
+    }
 
 
 class PaidProcessorTests(unittest.TestCase):
     def setUp(self):
         from zoneinfo import ZoneInfo
+
         self.now = datetime(2026, 10, 3, 12, tzinfo=ZoneInfo("America/Chicago"))
 
     def run_paid(self, client, database=None, *, live=True, limit=40):
@@ -194,8 +248,10 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(client.writes, [("Last Paid", "Status"), ("Pay",)])
 
     def test_unsupported_or_unknown_cycles_and_missing_next_due_stay_checked(self):
-        pages = [paid_page(page_id=f"00000000-0000-4000-8000-{i:012d}", cycle=cycle)
-                 for i, cycle in enumerate(("Lifetime", "4 Years", None), 1)]
+        pages = [
+            paid_page(page_id=f"00000000-0000-4000-8000-{i:012d}", cycle=cycle)
+            for i, cycle in enumerate(("Lifetime", "4 Years", None), 1)
+        ]
         pages.append(paid_page(page_id="00000000-0000-4000-8000-000000000004", next_due=None))
         client = PaidBillTracker(*pages)
         counts, _ = self.run_paid(client)
@@ -206,8 +262,9 @@ class PaidProcessorTests(unittest.TestCase):
     def test_dry_run_and_snapshot_never_update_notion_or_create_ledger_rows(self):
         page = paid_page()
         client = PaidBillTracker(page)
-        counts = paid.run(40, False, client=client, now=self.now,
-                          connect=lambda: self.fail("dry run must not open the ledger"))
+        counts = paid.run(
+            40, False, client=client, now=self.now, connect=lambda: self.fail("dry run must not open the ledger")
+        )
         self.assertEqual(counts["writes"], 0)
         self.assertEqual(client.writes, [])
         self.assertEqual(BillsPaidDB().rows, {})
@@ -229,10 +286,14 @@ class PaidProcessorTests(unittest.TestCase):
 
     def test_complete_queue_paginates_before_any_row_write(self):
         first, second = paid_page(), paid_page(page_id="22222222-2222-4222-8222-222222222222")
-        client = PaidBillTracker(first, second, responses=[
-            {"results": [first], "has_more": True, "next_cursor": "cursor-example"},
-            {"results": [second], "has_more": False},
-        ])
+        client = PaidBillTracker(
+            first,
+            second,
+            responses=[
+                {"results": [first], "has_more": True, "next_cursor": "cursor-example"},
+                {"results": [second], "has_more": False},
+            ],
+        )
         counts = paid.run(1, False, client=client, now=self.now)
         self.assertEqual(counts["paid_rows"], 2)
         self.assertEqual(counts["skipped"], 1)
@@ -266,8 +327,10 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(client.pages[page["id"]]["properties"]["Pay"]["select"]["name"], "Paid")
         page = paid_page()
         client = PaidBillTracker(page)
+
         def fail_write(*_args, **_kwargs):
             raise RuntimeError("Example Systems 12.34")
+
         client.update_page_properties = fail_write
         counts, _ = self.run_paid(client)
         self.assertEqual(counts["failed"], 1)
@@ -276,8 +339,11 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertNotIn("12.34", repr(counts))
 
     def test_crash_after_steps_three_four_and_five_resumes_without_advancing_twice(self):
-        scenarios = (("after_step_3", None, True), ("after_step_4", "verified", False),
-                     ("after_step_5", "complete", False))
+        scenarios = (
+            ("after_step_3", None, True),
+            ("after_step_4", "verified", False),
+            ("after_step_5", "complete", False),
+        )
         for label, fail_step, fail_read in scenarios:
             with self.subTest(step=label):
                 page = paid_page()
@@ -317,7 +383,10 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(props["Due Date"]["date"]["start"], due)
         self.assertEqual(props["Pay"]["select"]["name"], "Paid")  # left tagged for a person
         from datetime import timedelta
-        counts = paid.run(40, True, client=client, now=self.now + timedelta(days=1), connect=lambda database=database: database)
+
+        counts = paid.run(
+            40, True, client=client, now=self.now + timedelta(days=1), connect=lambda database=database: database
+        )
         self.assertEqual(counts["advanced"], 1)  # the next day a tick is a new payment
 
     def test_per_run_cap_leaves_extra_commands_checked(self):
@@ -339,25 +408,32 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertNotIn("12.34", str(caught.exception))
 
     def test_page_update_helper_uses_single_non_retried_patch_and_only_requested_property(self):
-        client = notion_client.Client({"NOTION_BILLS_TOKEN": "synthetic-token",
-                                       "NOTION_BILLS_DATA_SOURCE_ID": PaidBillTracker.SOURCE},
-                                      token_name="NOTION_BILLS_TOKEN", source_name="NOTION_BILLS_DATA_SOURCE_ID")
+        client = notion_client.Client(
+            {"NOTION_BILLS_TOKEN": "synthetic-token", "NOTION_BILLS_DATA_SOURCE_ID": PaidBillTracker.SOURCE},
+            token_name="NOTION_BILLS_TOKEN",
+            source_name="NOTION_BILLS_DATA_SOURCE_ID",
+        )
         calls = []
         client.call_once = lambda method, path, body=None: calls.append((method, path, body)) or {}
         client.update_page_properties("11111111-1111-4111-8111-111111111111", {"Paid": {"checkbox": False}})
-        self.assertEqual(calls, [("PATCH", "/pages/11111111111141118111111111111111",
-                                  {"properties": {"Paid": {"checkbox": False}}})])
+        self.assertEqual(
+            calls, [("PATCH", "/pages/11111111111141118111111111111111", {"properties": {"Paid": {"checkbox": False}}})]
+        )
 
 
 class PayTagTests(unittest.TestCase):
     """the Pay tag (Unpaid, Paid, Auto) next to the legacy checkbox."""
+
     def setUp(self):
         from zoneinfo import ZoneInfo
+
         self.now = datetime(2026, 10, 3, 12, tzinfo=ZoneInfo("America/Chicago"))
 
     def go(self, client, database=None, now=None):
         database = database or BillsPaidDB(client.event_log)
-        return paid.run(40, True, client=client, now=now or self.now, connect=lambda database=database: database), database
+        return paid.run(
+            40, True, client=client, now=now or self.now, connect=lambda database=database: database
+        ), database
 
     def props(self, client, page):
         return client.pages[page["id"]]["properties"]
@@ -368,7 +444,10 @@ class PayTagTests(unittest.TestCase):
         counts, _ = self.go(client)
         props = self.props(client, page)
         self.assertEqual((counts["advanced"], counts["failed"]), (1, 0))
-        self.assertEqual((props["Due Date"]["date"]["start"], props["Last Paid"]["date"]["start"], props["Pay"]["select"]["name"]), ("2026-10-10", "2026-10-03", "Unpaid"))
+        self.assertEqual(
+            (props["Due Date"]["date"]["start"], props["Last Paid"]["date"]["start"], props["Pay"]["select"]["name"]),
+            ("2026-10-10", "2026-10-03", "Unpaid"),
+        )
         self.assertEqual(client.writes, [("Last Paid", "Due Date"), ("Pay",)])
         self.assertFalse(props["Paid"]["checkbox"])
 
@@ -385,7 +464,10 @@ class PayTagTests(unittest.TestCase):
         counts, database = self.go(client)
         props = self.props(client, page)
         self.assertEqual((counts["auto_rows"], counts["advanced"], counts["failed"]), (1, 1, 0))
-        self.assertEqual((props["Due Date"]["date"]["start"], props["Last Paid"]["date"]["start"], props["Pay"]["select"]["name"]), ("2026-10-10", "2026-10-01", "Auto"))
+        self.assertEqual(
+            (props["Due Date"]["date"]["start"], props["Last Paid"]["date"]["start"], props["Pay"]["select"]["name"]),
+            ("2026-10-10", "2026-10-01", "Auto"),
+        )
         self.assertEqual(client.writes, [("Last Paid", "Due Date")])
         self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
         writes = len(client.writes)
@@ -401,6 +483,7 @@ class PayTagTests(unittest.TestCase):
         counts, _ = self.go(client, database)
         self.assertEqual((counts["advanced"], counts["review"], len(client.writes)), (0, 1, writes))
         from datetime import timedelta
+
         counts, _ = self.go(client, database, now=self.now + timedelta(days=1))
         self.assertEqual(counts["advanced"], 1)  # one cycle per day, never two in a run
 
@@ -412,12 +495,23 @@ class PayTagTests(unittest.TestCase):
         self.assertEqual(counts["failed"], 1)
         counts, _ = self.go(client, database)
         props = self.props(client, page)
-        self.assertEqual((counts["failed"], props["Due Date"]["date"]["start"], props["Pay"]["select"]["name"]), (0, "2026-10-10", "Auto"))
+        self.assertEqual(
+            (counts["failed"], props["Due Date"]["date"]["start"], props["Pay"]["select"]["name"]),
+            (0, "2026-10-10", "Auto"),
+        )
         self.assertEqual(json.loads(database.rows[page["id"]])["step"], "complete")
 
     def test_auto_whose_formula_date_is_not_after_the_due_date_or_whose_cycle_is_one_time_is_never_written(self):
-        stuck = paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False, pay="Auto", due="2026-10-01", next_due="2026-10-01")
-        once = paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, pay="Auto", due="2026-10-01", cycle="One Time")
+        stuck = paid_page(
+            page_id="00000000-0000-4000-8000-000000000001",
+            paid=False,
+            pay="Auto",
+            due="2026-10-01",
+            next_due="2026-10-01",
+        )
+        once = paid_page(
+            page_id="00000000-0000-4000-8000-000000000002", paid=False, pay="Auto", due="2026-10-01", cycle="One Time"
+        )
         client = PaidBillTracker(stuck, once)
         counts, _ = self.go(client)
         self.assertEqual((counts["advanced"], counts["one_time"], client.writes), (0, 0, []))
@@ -435,7 +529,10 @@ class PayTagTests(unittest.TestCase):
         self.assertIsNone(self.props(client, inactive)["Pay"]["select"])
 
     def test_a_missing_or_retyped_pay_column_stops_the_run_with_the_fixed_code_before_any_write(self):
-        for label, change in (("missing", lambda p: p["properties"].pop("Pay")), ("retyped", lambda p: p["properties"]["Pay"].update({"type": "checkbox", "checkbox": False}))):
+        for label, change in (
+            ("missing", lambda p: p["properties"].pop("Pay")),
+            ("retyped", lambda p: p["properties"]["Pay"].update({"type": "checkbox", "checkbox": False})),
+        ):
             page = paid_page()
             change(page)
             client = PaidBillTracker(page)
@@ -444,9 +541,15 @@ class PayTagTests(unittest.TestCase):
             self.assertEqual((str(caught.exception), client.writes), ("BILLS_PAY_PROPERTY_INVALID", []), label)
 
     def test_dry_run_counts_the_pay_work_and_writes_nothing(self):
-        pages = [paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False, pay="Paid"),
-                 paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, pay="Auto", due="2026-10-01")]
+        pages = [
+            paid_page(page_id="00000000-0000-4000-8000-000000000001", paid=False, pay="Paid"),
+            paid_page(page_id="00000000-0000-4000-8000-000000000002", paid=False, pay="Auto", due="2026-10-01"),
+        ]
         client = PaidBillTracker(*pages)
-        counts = paid.run(40, False, client=client, now=self.now, connect=lambda: self.fail("dry run must not open the ledger"))
-        self.assertEqual((counts["paid_rows"], counts["auto_rows"], counts["advanced"], counts["writes"], client.writes), (1, 1, 2, 0, []))
-
+        counts = paid.run(
+            40, False, client=client, now=self.now, connect=lambda: self.fail("dry run must not open the ledger")
+        )
+        self.assertEqual(
+            (counts["paid_rows"], counts["auto_rows"], counts["advanced"], counts["writes"], client.writes),
+            (1, 1, 2, 0, []),
+        )

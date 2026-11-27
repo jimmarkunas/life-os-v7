@@ -1,30 +1,70 @@
 """(synthetic): the three accountability stages fill the V3 callouts from fake Jira, say so plainly when there are no
 quarter epics, and go DEGRADED.
 """
+
 import unittest
 from unittest import mock
 
 from lifeos.accountability import artifacts, changelog, goals, index, read, region, render, review, week
 from tests.accountability import fakes as F
 
-Q4_EPICS = [F.epic("JFM-9", "Career Q4 2026"), F.epic("JFM-102", "LIFE OS Q4 2026"), F.epic("MEJ-1", "Career Q4 2026"), F.epic("MEJ-3", "Health Q4 2026")]
-KIDS = [F.child("JFM-20", "JFM-9", True, "2026-10-12T10:00:00.000-0500"), F.child("JFM-21", "JFM-9", True, "2026-08-01T10:00:00.000-0500"),
-        F.child("JFM-22", "JFM-9", False), F.child("JFM-23", "JFM-102", False), F.child("JFM-24", "JFM-9", False, subtask=True),
-        F.child("MEJ-20", "MEJ-1", True, "2026-11-02T10:00:00.000-0600"), F.child("MEJ-21", "MEJ-3", False)]
+Q4_EPICS = [
+    F.epic("JFM-9", "Career Q4 2026"),
+    F.epic("JFM-102", "LIFE OS Q4 2026"),
+    F.epic("MEJ-1", "Career Q4 2026"),
+    F.epic("MEJ-3", "Health Q4 2026"),
+]
+KIDS = [
+    F.child("JFM-20", "JFM-9", True, "2026-10-12T10:00:00.000-0500"),
+    F.child("JFM-21", "JFM-9", True, "2026-08-01T10:00:00.000-0500"),
+    F.child("JFM-22", "JFM-9", False),
+    F.child("JFM-23", "JFM-102", False),
+    F.child("JFM-24", "JFM-9", False, subtask=True),
+    F.child("MEJ-20", "MEJ-1", True, "2026-11-02T10:00:00.000-0600"),
+    F.child("MEJ-21", "MEJ-3", False),
+]
 
 
 def page(notion, middle_kind):
     for who in ("jim", "matt"):
         block = f"b-{who}-{middle_kind}"
         if middle_kind == "goals":
-            lane_rows = [("Career", "–"), ("Creative", "–"), ("Health, Finances & Travel" if who == "matt" else "Health", "–"), ("LIFE OS", "–")]
-            notion.callout(block, f"Quarterly goals {who}", "Not updated yet · done / all tasks", [notion.table(f"t-{who}", lane_rows)], f"pg-{who}")
+            lane_rows = [
+                ("Career", "–"),
+                ("Creative", "–"),
+                ("Health, Finances & Travel" if who == "matt" else "Health", "–"),
+                ("LIFE OS", "–"),
+            ]
+            notion.callout(
+                block,
+                f"Quarterly goals {who}",
+                "Not updated yet · done / all tasks",
+                [notion.table(f"t-{who}", lane_rows)],
+                f"pg-{who}",
+            )
         elif middle_kind == "artifacts":
-            notion.callout(block, f"Artifacts {who}", "Not updated yet", [F.para(f"art-{who}", "Nothing yet. old text")], f"pg-{who}")
+            notion.callout(
+                block,
+                f"Artifacts {who}",
+                "Not updated yet",
+                [F.para(f"art-{who}", "Nothing yet. old text")],
+                f"pg-{who}",
+            )
         elif middle_kind == "review":
-            notion.callout(block, f"Quarterly review {who}", "Not updated yet", [notion.toggle(f"tg-{who}", "Nothing yet."), F.para(f"past-{who}", "Past quarters appear here when each quarter closes.")], f"pg-{who}")
+            notion.callout(
+                block,
+                f"Quarterly review {who}",
+                "Not updated yet",
+                [
+                    notion.toggle(f"tg-{who}", "Nothing yet."),
+                    F.para(f"past-{who}", "Past quarters appear here when each quarter closes."),
+                ],
+                f"pg-{who}",
+            )
         else:
-            notion.callout(block, f"This week {who}", "Not updated yet", [F.para(f"body-{who}", "Nothing yet.")], f"pg-{who}")
+            notion.callout(
+                block, f"This week {who}", "Not updated yet", [F.para(f"body-{who}", "Nothing yet.")], f"pg-{who}"
+            )
 
 
 def jira(extra=None, down=False):
@@ -37,19 +77,41 @@ class Address(unittest.TestCase):
 
     def client(self, parent_title="Jim & Matt V3"):
         CAL = "c" * 32
-        blocks = {CAL: {"parent": {"type": "block_id", "block_id": "col"}}, "col": {"parent": {"type": "block_id", "block_id": "cols"}}, "cols": {"parent": {"type": "page_id", "page_id": "v3"}}}
-        pages = {"v3": {"properties": {"title": {"type": "title", "title": F.rich(parent_title)}}}}  # a real page keeps its title in the title property
-        register = [{"id": "r", "type": "code", "code": {"rich_text": F.rich("R4L jim.week        " + CAL + "\nR4R matt.week       " + CAL + "")}}]
+        blocks = {
+            CAL: {"parent": {"type": "block_id", "block_id": "col"}},
+            "col": {"parent": {"type": "block_id", "block_id": "cols"}},
+            "cols": {"parent": {"type": "page_id", "page_id": "v3"}},
+        }
+        pages = {
+            "v3": {"properties": {"title": {"type": "title", "title": F.rich(parent_title)}}}
+        }  # a real page keeps its title in the title property
+        register = [
+            {
+                "id": "r",
+                "type": "code",
+                "code": {"rich_text": F.rich("R4L jim.week        " + CAL + "\nR4R matt.week       " + CAL + "")},
+            }
+        ]
 
         class Fake:
             def call(self, method, path, body=None, *args, **kwargs):
                 if method == "POST":
-                    return {"results": [{"id": "reg", "object": "page", "properties": {"title": {"type": "title", "title": F.rich(region.REGISTER_TITLE)}}}], "has_more": False}
+                    return {
+                        "results": [
+                            {
+                                "id": "reg",
+                                "object": "page",
+                                "properties": {"title": {"type": "title", "title": F.rich(region.REGISTER_TITLE)}},
+                            }
+                        ],
+                        "has_more": False,
+                    }
                 if "/children" in path:
                     return {"results": register, "has_more": False}
                 if path.startswith("/pages/"):
                     return pages[path.split("/pages/")[1]]
                 return blocks[path.split("/blocks/")[1]]
+
         return Fake()
 
     def test_a_callout_in_a_column_on_the_v3_page_is_found_by_its_register_row(self):
@@ -82,23 +144,47 @@ def indexed(rows):
 
 class Knowledge(unittest.TestCase):
     def go(self, notion, fake, rows, live=True):
-        with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-artifacts"), mock.patch.object(index, "rows", lambda _n, key: rows):
+        with (
+            mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-artifacts"),
+            mock.patch.object(index, "rows", lambda _n, key: rows),
+        ):
             return artifacts.run(0, live, environ={"JIRA_SITE_URL": SITE}, jira=fake, notion=notion, now=F.NOW)
 
     def bullets(self, notion, who):
         """[(type, [(text, link)])] of the body blocks between the stamp and the end of the callout."""
-        return [(notion.blocks[k]["type"], [(t, u) for t, u in notion.links(k)]) for k in notion.kids[f"b-{who}-artifacts"][2:]]
+        return [
+            (notion.blocks[k]["type"], [(t, u) for t, u in notion.links(k)])
+            for k in notion.kids[f"b-{who}-artifacts"][2:]
+        ]
 
-    MATT = indexed([("Matt", "Travel Tracker", ID_A, "MEJ-74,MEJ-99", "Sheet", "verified"), ("Matt", "Band Sheet", ID_B, "MEJ-33", "Sheet", "verified")])
+    MATT = indexed(
+        [
+            ("Matt", "Travel Tracker", ID_A, "MEJ-74,MEJ-99", "Sheet", "verified"),
+            ("Matt", "Band Sheet", ID_B, "MEJ-33", "Sheet", "verified"),
+        ]
+    )
 
     def test_each_artifact_is_its_own_native_bullet_with_its_own_link(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        rows = self.MATT + indexed([("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"), ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved")])
+        rows = self.MATT + indexed(
+            [
+                ("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"),
+                ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved"),
+            ]
+        )
         counts = self.go(notion, F.Jira({}), rows)
-        self.assertEqual(self.bullets(notion, "matt"), [("bulleted_list_item", [("Travel Tracker", SHEET.format(ID_A))]), ("bulleted_list_item", [("Band Sheet", SHEET.format(ID_B))])])
+        self.assertEqual(
+            self.bullets(notion, "matt"),
+            [
+                ("bulleted_list_item", [("Travel Tracker", SHEET.format(ID_A))]),
+                ("bulleted_list_item", [("Band Sheet", SHEET.format(ID_B))]),
+            ],
+        )
         self.assertEqual(self.bullets(notion, "jim"), [("bulleted_list_item", [("Plan Doc", SHEET.format(ID_C))])])
-        self.assertEqual((counts["matt"]["artifacts"], counts["jim"]["artifacts"], counts["jim"]["unresolved"]), (2, 1, 1))
+        self.assertEqual(
+            (counts["matt"]["artifacts"], counts["jim"]["artifacts"], counts["jim"]["unresolved"]), (2, 1, 1)
+        )
 
     def test_the_summary_for_claude_line_is_removed_and_nothing_task_like_remains(self):
         notion = F.Notion()
@@ -113,7 +199,11 @@ class Knowledge(unittest.TestCase):
     def test_a_legacy_body_of_one_bullet_with_newlines_becomes_separate_bullets(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        notion.blocks["art-matt"] = {"id": "art-matt", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("Travel Tracker\nBand Sheet\nTo-do lists")}}
+        notion.blocks["art-matt"] = {
+            "id": "art-matt",
+            "type": "bulleted_list_item",
+            "bulleted_list_item": {"rich_text": F.rich("Travel Tracker\nBand Sheet\nTo-do lists")},
+        }
         self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual([b[0] for b in self.bullets(notion, "matt")], ["bulleted_list_item"] * 2)
         self.assertEqual(notion.kids["b-matt-artifacts"][2], "art-matt")  # the existing block is reused, not recreated
@@ -121,18 +211,28 @@ class Knowledge(unittest.TestCase):
     def test_a_persons_decorative_link_paragraph_above_the_bullets_is_never_touched(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        deco = {"id": "deco-matt", "type": "paragraph", "paragraph": {"rich_text": F.rich("Board (MEJ)", "https://jira.example.com/board")}}
+        deco = {
+            "id": "deco-matt",
+            "type": "paragraph",
+            "paragraph": {"rich_text": F.rich("Board (MEJ)", "https://jira.example.com/board")},
+        }
         notion.blocks["deco-matt"] = deco
         notion.kids["b-matt-artifacts"].insert(2, "deco-matt")  # heading, stamp, decoration, then the body
         for i in range(3):  # the person's own placeholder bullets below it
-            notion.blocks[f"ph{i}"] = {"id": f"ph{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich("Placeholder")}}
+            notion.blocks[f"ph{i}"] = {
+                "id": f"ph{i}",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {"rich_text": F.rich("Placeholder")},
+            }
         notion.kids["b-matt-artifacts"][3:4] = ["ph0", "ph1", "ph2"]  # replaces the legacy paragraph body
         before = dict(notion.blocks["deco-matt"])
         self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual(notion.blocks["deco-matt"], before)
         self.assertNotIn("deco-matt", notion.writes)
         self.assertEqual(notion.kids["b-matt-artifacts"][2], "deco-matt")
-        self.assertEqual([b[1][0][0] for b in self.bullets(notion, "matt")[1:]], ["Travel Tracker", "Band Sheet"])  # the placeholders became the artifacts
+        self.assertEqual(
+            [b[1][0][0] for b in self.bullets(notion, "matt")[1:]], ["Travel Tracker", "Band Sheet"]
+        )  # the placeholders became the artifacts
         notion.writes.clear()
         self.go(notion, F.Jira({}), self.MATT)
         self.assertEqual(notion.writes, [])
@@ -140,7 +240,11 @@ class Knowledge(unittest.TestCase):
     def test_a_decorative_paragraph_survives_the_no_artifacts_message_and_the_switch_back(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        notion.blocks["deco-jim"] = {"id": "deco-jim", "type": "paragraph", "paragraph": {"rich_text": F.rich("Board (JFM)", "https://jira.example.com/board")}}
+        notion.blocks["deco-jim"] = {
+            "id": "deco-jim",
+            "type": "paragraph",
+            "paragraph": {"rich_text": F.rich("Board (JFM)", "https://jira.example.com/board")},
+        }
         notion.kids["b-jim-artifacts"].insert(2, "deco-jim")
         self.go(notion, F.Jira({}), None)
         self.assertEqual(notion.kids["b-jim-artifacts"][2], "deco-jim")
@@ -152,9 +256,26 @@ class Knowledge(unittest.TestCase):
     def test_an_excluded_file_is_never_shown_never_unresolved_and_never_a_new_candidate(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        doc = {"type": "doc", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": f"https://docs.google.com/document/d/{'f' * 25}/edit"}}]}]}
+        doc = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "x",
+                    "marks": [
+                        {"type": "link", "attrs": {"href": f"https://docs.google.com/document/d/{'f' * 25}/edit"}}
+                    ],
+                }
+            ],
+        }
         issues = [{"key": "JFM-60", "fields": {"description": doc, "comment": {"comments": []}}}]
-        rows = indexed([("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"), ("Jim", "Visa Doc", "f" * 25, "JFM-60", "Doc", "excluded"), ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved")])
+        rows = indexed(
+            [
+                ("Jim", "Plan Doc", ID_C, "JFM-5", "Doc", "verified"),
+                ("Jim", "Visa Doc", "f" * 25, "JFM-60", "Doc", "excluded"),
+                ("Jim", "Lost Doc", "d" * 25, "JFM-6", "Doc", "unresolved"),
+            ]
+        )
         counts = self.go(notion, F.Jira({"project = JFM": issues}), rows)
         self.assertEqual(self.bullets(notion, "jim"), [("bulleted_list_item", [("Plan Doc", SHEET.format(ID_C))])])
         self.assertEqual((counts["jim"]["unresolved"], counts["jim"]["unindexed_candidates"]), (1, 0))
@@ -200,12 +321,40 @@ class Knowledge(unittest.TestCase):
     def test_jims_jira_candidates_are_found_deduplicated_by_file_id_and_counted_against_the_index(self):
         notion = F.Notion()
         page(notion, "artifacts")
-        doc = lambda fid: {"type": "doc", "content": [{"type": "text", "text": "see", "marks": [{"type": "link", "attrs": {"href": f"https://docs.google.com/document/d/{fid}/edit"}}]}]}
-        issues = [{"key": "JFM-5", "fields": {"description": doc(ID_C), "comment": {"comments": []}}},
-                  {"key": "JFM-6", "fields": {"description": None, "comment": {"comments": [{"body": doc(ID_C)}, {"body": doc("e" * 25)}]}}},
-                  {"key": "JFM-7", "fields": {"description": {"type": "doc", "content": [{"type": "text", "text": "make a spreadsheet, no link"}]}, "comment": {"comments": []}}}]
+        doc = lambda fid: {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "see",
+                    "marks": [{"type": "link", "attrs": {"href": f"https://docs.google.com/document/d/{fid}/edit"}}],
+                }
+            ],
+        }
+        issues = [
+            {"key": "JFM-5", "fields": {"description": doc(ID_C), "comment": {"comments": []}}},
+            {
+                "key": "JFM-6",
+                "fields": {
+                    "description": None,
+                    "comment": {"comments": [{"body": doc(ID_C)}, {"body": doc("e" * 25)}]},
+                },
+            },
+            {
+                "key": "JFM-7",
+                "fields": {
+                    "description": {
+                        "type": "doc",
+                        "content": [{"type": "text", "text": "make a spreadsheet, no link"}],
+                    },
+                    "comment": {"comments": []},
+                },
+            },
+        ]
         found = read.google_files(F.Jira({"project = JFM": issues}), "JFM")
-        self.assertEqual(found, {ID_C: {"kind": "Doc", "keys": ["JFM-5", "JFM-6"]}, "e" * 25: {"kind": "Doc", "keys": ["JFM-6"]}})
+        self.assertEqual(
+            found, {ID_C: {"kind": "Doc", "keys": ["JFM-5", "JFM-6"]}, "e" * 25: {"kind": "Doc", "keys": ["JFM-6"]}}
+        )
         rows = indexed([("Jim", "Plan Doc", ID_C, "JFM-5,JFM-6", "Doc", "verified")])
         counts = self.go(notion, F.Jira({"project = JFM": issues}), rows)
         self.assertEqual(counts["jim"]["unindexed_candidates"], 1)  # the second doc is a candidate nobody verified yet
@@ -216,13 +365,27 @@ class IndexPages(unittest.TestCase):
 
     def make(self, title):
         notion = F.Notion()
-        notion.index_page("index.reviews", title, [("Jim | Q3 2026 | past → Quarterly review — Jim — Q3 2026", "https://www.notion.so/" + "1" * 32), ("Jim | Q4 2026 | current → Quarterly review — Jim — Q4 2026", "https://www.notion.so/" + "2" * 32), ("Matt | Q4 2026 | current → Quarterly review — Matt — Q4 2026", "https://www.notion.so/" + "3" * 32)])
+        notion.index_page(
+            "index.reviews",
+            title,
+            [
+                ("Jim | Q3 2026 | past → Quarterly review — Jim — Q3 2026", "https://www.notion.so/" + "1" * 32),
+                ("Jim | Q4 2026 | current → Quarterly review — Jim — Q4 2026", "https://www.notion.so/" + "2" * 32),
+                ("Matt | Q4 2026 | current → Quarterly review — Matt — Q4 2026", "https://www.notion.so/" + "3" * 32),
+            ],
+        )
         return notion
 
     def test_the_review_links_put_the_current_quarter_first_and_only_the_persons_own(self):
         notion = self.make(index.TITLES["index.reviews"])
         with mock.patch.object(region, "register_row", lambda n, key: getattr(n, "indexes", {}).get(key)):
-            self.assertEqual(index.reviews(notion, "Jim"), [("Q4 2026 (current)", "https://www.notion.so/" + "2" * 32), ("Q3 2026", "https://www.notion.so/" + "1" * 32)])
+            self.assertEqual(
+                index.reviews(notion, "Jim"),
+                [
+                    ("Q4 2026 (current)", "https://www.notion.so/" + "2" * 32),
+                    ("Q3 2026", "https://www.notion.so/" + "1" * 32),
+                ],
+            )
             self.assertEqual([label for label, _ in index.reviews(notion, "Matt")], ["Q4 2026 (current)"])
 
     def test_a_page_with_another_title_or_no_register_row_is_not_an_index(self):
@@ -234,8 +397,13 @@ class IndexPages(unittest.TestCase):
 class Changelog(unittest.TestCase):
     def build(self, lines):
         notion = F.Notion()
-        bullets = [{"id": f"bl{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich(t)}} for i, t in enumerate(lines)]
-        notion.callout("b-shared-log", "Canon / Change Log", "New lines are added; old ones never change", bullets, "pg-log")
+        bullets = [
+            {"id": f"bl{i}", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": F.rich(t)}}
+            for i, t in enumerate(lines)
+        ]
+        notion.callout(
+            "b-shared-log", "Canon / Change Log", "New lines are added; old ones never change", bullets, "pg-log"
+        )
         return notion
 
     def go(self, notion, now=F.NOW, live=True):
@@ -249,7 +417,10 @@ class Changelog(unittest.TestCase):
         self.assertEqual(counts["shared"]["appended"], 1)
         kids = [notion.text(k) for k in notion.kids["b-shared-log"] if notion.blocks[k]["type"] == "bulleted_list_item"]
         self.assertEqual(kids[:2], old)
-        self.assertEqual(kids[2], "Oct 7 2026 — Q4 2026 began (first Wednesday of the quarter): Jim and Matt create the quarter's epics, labelled goals-2026-q4")
+        self.assertEqual(
+            kids[2],
+            "Oct 7 2026 — Q4 2026 began (first Wednesday of the quarter): Jim and Matt create the quarter's epics, labelled goals-2026-q4",
+        )
         self.assertEqual(notion.writes.count("b-shared-log"), 1)
 
     def test_a_second_run_in_the_same_quarter_appends_nothing(self):
@@ -275,11 +446,16 @@ class QuarterSchedule(unittest.TestCase):
 
     def test_the_first_wednesdays(self):
         from datetime import date
-        self.assertEqual([read.first_wednesday(2026, m) for m in (1, 4, 7, 10)], [date(2026, 1, 7), date(2026, 4, 1), date(2026, 7, 1), date(2026, 10, 7)])
+
+        self.assertEqual(
+            [read.first_wednesday(2026, m) for m in (1, 4, 7, 10)],
+            [date(2026, 1, 7), date(2026, 4, 1), date(2026, 7, 1), date(2026, 10, 7)],
+        )
         self.assertEqual(read.first_wednesday(2027, 1), date(2027, 1, 6))
 
     def test_the_day_before_a_first_wednesday_still_belongs_to_the_old_quarter(self):
         from datetime import date
+
         self.assertEqual(read.quarter(date(2026, 10, 6))[:2], (2026, 3))
         self.assertEqual(read.quarter(date(2026, 10, 7))[:2], (2026, 4))
         self.assertEqual(read.quarter(date(2027, 1, 5))[:2], (2026, 4))
@@ -302,29 +478,61 @@ class Stages(unittest.TestCase):
             self.run_stage(week, "week", notion, F.Jira({}, down=True), True)
         self.assertEqual(str(caught.exception), "ACCOUNTABILITY_DEGRADED:jim,matt")
         self.assertEqual(notion.text("body-jim"), "Nothing yet.")
-        self.assertEqual(notion.text("b-jim-week-st"), "DEGRADED · Jira could not be read at 11/18 · 9:05 AM CT · showing last accepted 11/18 · 8:05 AM CT")
+        self.assertEqual(
+            notion.text("b-jim-week-st"),
+            "DEGRADED · Jira could not be read at 11/18 · 9:05 AM CT · showing last accepted 11/18 · 8:05 AM CT",
+        )
         self.assertEqual(notion.text("pg-jim-p"), "old summary")  # the summary page keeps its last accepted text too
 
     def test_week_links_every_ticket_and_keeps_open_work_apart_from_done(self):
         notion = F.Notion()
         page(notion, "week")
-        open_issues = [{"key": "JFM-30", "fields": {"summary": "Send the note", "status": {"name": "To Do"}, "duedate": "2026-11-20"}},
-                       {"key": "JFM-31", "fields": {"summary": "Book the call", "status": {"name": "In Progress"}, "duedate": "2026-11-10"}}]
-        finished = [{"key": "JFM-1", "fields": {"summary": "Shipped it", "status": {"name": "Done", "statusCategory": {"key": "done"}}}}]
+        open_issues = [
+            {
+                "key": "JFM-30",
+                "fields": {"summary": "Send the note", "status": {"name": "To Do"}, "duedate": "2026-11-20"},
+            },
+            {
+                "key": "JFM-31",
+                "fields": {"summary": "Book the call", "status": {"name": "In Progress"}, "duedate": "2026-11-10"},
+            },
+        ]
+        finished = [
+            {
+                "key": "JFM-1",
+                "fields": {"summary": "Shipped it", "status": {"name": "Done", "statusCategory": {"key": "done"}}},
+            }
+        ]
         fake = jira({"statusCategory != Done AND (sprint": open_issues, "statusCategory = Done": finished})
         self.run_stage(week, "week", notion, fake, False)
         self.assertEqual(notion.writes, [])
         self.run_stage(week, "week", notion, fake, True)
         body = notion.text("body-jim").split("\n")
-        self.assertEqual(body, ["2 open · 1 overdue · 0 blocked · 1 done this week", "In progress / To do (2)", "JFM-31 Book the call (In Progress, overdue)",
-                                "JFM-30 Send the note (To Do)", "", "Done this week (1)", "JFM-1 Shipped it (Done)"])
+        self.assertEqual(
+            body,
+            [
+                "2 open · 1 overdue · 0 blocked · 1 done this week",
+                "In progress / To do (2)",
+                "JFM-31 Book the call (In Progress, overdue)",
+                "JFM-30 Send the note (To Do)",
+                "",
+                "Done this week (1)",
+                "JFM-1 Shipped it (Done)",
+            ],
+        )
         links = dict(notion.links("body-jim"))
-        self.assertEqual([links[k] for k in ("JFM-31", "JFM-30", "JFM-1")], [f"{SITE}/browse/{k}" for k in ("JFM-31", "JFM-30", "JFM-1")])
+        self.assertEqual(
+            [links[k] for k in ("JFM-31", "JFM-30", "JFM-1")],
+            [f"{SITE}/browse/{k}" for k in ("JFM-31", "JFM-30", "JFM-1")],
+        )
 
     def test_a_more_in_jira_link_survives_notion_rewriting_its_escapes(self):
         notion = F.Notion()
         page(notion, "week")
-        many = [{"key": f"JFM-{n}", "fields": {"summary": f"Task {n}", "status": {"name": "To Do"}, "duedate": None}} for n in range(40, 56)]
+        many = [
+            {"key": f"JFM-{n}", "fields": {"summary": f"Task {n}", "status": {"name": "To Do"}, "duedate": None}}
+            for n in range(40, 56)
+        ]
         fake = jira({"statusCategory != Done AND (sprint": many})
         self.run_stage(week, "week", notion, fake, True)
         links = [url for text, url in notion.links("body-jim") if "more in Jira" in text]
@@ -337,36 +545,64 @@ class Stages(unittest.TestCase):
     def test_without_a_site_address_the_lines_are_plain_text_not_broken_links(self):
         notion = F.Notion()
         page(notion, "week")
-        open_issues = [{"key": "JFM-30", "fields": {"summary": "Send the note", "status": {"name": "To Do"}, "duedate": None}}]
+        open_issues = [
+            {"key": "JFM-30", "fields": {"summary": "Send the note", "status": {"name": "To Do"}, "duedate": None}}
+        ]
         with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-week"):
-            week.run(0, True, environ={}, jira=jira({"statusCategory != Done AND (sprint": open_issues}), notion=notion, now=F.NOW)
+            week.run(
+                0,
+                True,
+                environ={},
+                jira=jira({"statusCategory != Done AND (sprint": open_issues}),
+                notion=notion,
+                now=F.NOW,
+            )
         self.assertEqual({url for _, url in notion.links("body-jim")}, {None})
 
     def combined(self, notion, fake, reviews=None, live=True):
         names = {"goals": "goals"}
-        with mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-goals"), mock.patch.object(index, "reviews", lambda _n, person: reviews):
+        with (
+            mock.patch.object(region, "address", lambda _n, key: f"b-{key.split('.')[0]}-goals"),
+            mock.patch.object(index, "reviews", lambda _n, person: reviews),
+        ):
             return goals.run(0, live, environ={"JIRA_SITE_URL": SITE}, jira=fake, notion=notion, now=F.NOW)
 
-    def test_the_combined_callout_has_title_epic_rows_with_links_a_note_and_the_review_toggle_and_loses_the_summary_line(self):
+    def test_the_combined_callout_has_title_epic_rows_with_links_a_note_and_the_review_toggle_and_loses_the_summary_line(
+        self,
+    ):
         notion = F.Notion()
         page(notion, "goals")
-        links = [("Q4 2026 (current)", "https://www.notion.so/" + "2" * 32), ("Q3 2026", "https://www.notion.so/" + "1" * 32)]
+        links = [
+            ("Q4 2026 (current)", "https://www.notion.so/" + "2" * 32),
+            ("Q3 2026", "https://www.notion.so/" + "1" * 32),
+        ]
         counts = self.combined(notion, jira(), links)
         self.assertEqual(notion.text("b-jim-goals-h"), "Quarterly Goals & Review — Jim · Q4 2026")
         self.assertEqual(notion.text("b-matt-goals-h"), "Quarterly Goals & Review — Matt · Q4 2026")
         self.assertIn("Last refreshed 11/18 · 9:05 AM CT", notion.text("b-jim-goals-st"))
-        row = lambda who, i: [[(p["plain_text"], p["href"]) for p in cell] for cell in notion.blocks[f"t-{who}-r{i}"]["table_row"]["cells"]]
+        row = lambda who, i: [
+            [(p["plain_text"], p["href"]) for p in cell]
+            for cell in notion.blocks[f"t-{who}-r{i}"]["table_row"]["cells"]
+        ]
         self.assertEqual(row("jim", 1), [[("Career", f"{SITE}/browse/JFM-9")], [("1 / 2", None)]])
         self.assertEqual(row("jim", 2), [[("Creative", None)], [("–", None)]])  # no Creative epic: no link, a dash
         self.assertEqual(row("jim", 4), [[("LIFE OS", f"{SITE}/browse/JFM-102")], [("0 / 1", None)]])
-        self.assertEqual(row("matt", 3), [[("Health, Finances & Travel", f"{SITE}/browse/MEJ-3")], [("0 / 1", None)]])  # matched by "Health"
+        self.assertEqual(
+            row("matt", 3), [[("Health, Finances & Travel", f"{SITE}/browse/MEJ-3")], [("0 / 1", None)]]
+        )  # matched by "Health"
         kids = notion.kids["b-jim-goals"]
-        self.assertEqual([notion.blocks[k]["type"] for k in kids], ["heading_3", "paragraph", "table", "paragraph", "toggle"])
+        self.assertEqual(
+            [notion.blocks[k]["type"] for k in kids], ["heading_3", "paragraph", "table", "paragraph", "toggle"]
+        )
         self.assertIn("open tasks are not under a quarter epic", notion.text(kids[3]))
         self.assertEqual(notion.text(kids[4]), "Quarterly Reviews")
         inner = notion.kids[kids[4]]
-        self.assertEqual(notion.links(inner[0]), [("Q4 2026 (current)", links[0][1]), ("\n", None), ("Q3 2026", links[1][1])])
-        self.assertNotIn("summary for claude", " ".join(notion.text(k).lower() for k in kids if notion.blocks[k]["type"] != "table"))
+        self.assertEqual(
+            notion.links(inner[0]), [("Q4 2026 (current)", links[0][1]), ("\n", None), ("Q3 2026", links[1][1])]
+        )
+        self.assertNotIn(
+            "summary for claude", " ".join(notion.text(k).lower() for k in kids if notion.blocks[k]["type"] != "table")
+        )
         self.assertEqual(notion.deleted, ["s-pg-jim", "s-pg-matt"])
         self.assertEqual((counts["jim"]["epics"], counts["jim"]["review_pages"]), (2, 2))
 
@@ -378,7 +614,9 @@ class Stages(unittest.TestCase):
         notion.writes.clear()
         self.combined(notion, jira(), links)
         self.assertEqual(notion.writes, [])
-        self.assertEqual([k for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "toggle"].__len__(), 1)  # no second toggle
+        self.assertEqual(
+            [k for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "toggle"].__len__(), 1
+        )  # no second toggle
 
     def test_a_dry_run_changes_nothing(self):
         notion = F.Notion()
@@ -405,12 +643,17 @@ class Stages(unittest.TestCase):
             self.combined(notion, F.Jira({}, down=True))
         self.assertEqual(str(caught.exception), "ACCOUNTABILITY_DEGRADED:jim,matt")
         self.assertTrue(notion.text("b-jim-goals-st").startswith("DEGRADED · Jira could not be read"))
-        self.assertEqual([notion.text(k) for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "paragraph"][1:], before[1:])
+        self.assertEqual(
+            [notion.text(k) for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "paragraph"][1:],
+            before[1:],
+        )
 
     def test_the_retired_review_stage_writes_nothing(self):
         notion = F.Notion()
         page(notion, "review")
-        self.assertEqual(review.run(0, True, environ={}, jira=jira(), notion=notion, now=F.NOW), {"retired": True, "writes": 0})
+        self.assertEqual(
+            review.run(0, True, environ={}, jira=jira(), notion=notion, now=F.NOW), {"retired": True, "writes": 0}
+        )
         self.assertEqual(notion.writes, [])
 
     def test_an_unexpected_callout_shape_writes_nothing(self):
@@ -423,7 +666,11 @@ class Stages(unittest.TestCase):
         self.assertEqual(notion.writes, [])
 
     def test_the_degraded_stamp_of_a_region_never_accepted_says_so(self):
-        self.assertTrue(render.degraded_stamp("Not updated yet · V7 fills this", F.NOW).endswith("showing last accepted nothing yet"))
+        self.assertTrue(
+            render.degraded_stamp("Not updated yet · V7 fills this", F.NOW).endswith(
+                "showing last accepted nothing yet"
+            )
+        )
         again = render.degraded_stamp(render.degraded_stamp("Last refreshed 11/18 · 8:05 AM CT", F.NOW), F.NOW)
         self.assertTrue(again.endswith("showing last accepted 11/18 · 8:05 AM CT"))
 

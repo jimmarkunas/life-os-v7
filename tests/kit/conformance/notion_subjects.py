@@ -1,11 +1,17 @@
 """Observers for the notion family: the recorded real response shapes, and the FakeBlocks fake."""
+
 import copy
 
 from tests.kit.conformance import runner
 from tests.kit.notion import FakeBlocks
 
 RECORDING = runner.recording("notion_blocks")
-ACTION_RECORD = {"list": "list_children", "delete": "delete_block", "update": "update_block", "append": "append_children"}
+ACTION_RECORD = {
+    "list": "list_children",
+    "delete": "delete_block",
+    "update": "update_block",
+    "append": "append_children",
+}
 
 
 def _summarize(case, response):
@@ -34,7 +40,17 @@ def observe_fake_blocks(case):
     elif action == "delete":
         response = fake.call("DELETE", "/blocks/" + kid["id"])
     elif action == "update":
-        response = fake.call("PATCH", "/blocks/" + kid["id"], {"paragraph": {"rich_text": [{"text": {"content": "new fake text"}}]}})
+        response = fake.call(
+            "PATCH", "/blocks/" + kid["id"], {"paragraph": {"rich_text": [{"text": {"content": "new fake text"}}]}}
+        )
     else:
-        response = fake.call_once("POST", "/blocks/other-fake/children", {"children": [{"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "added fake text"}}]}}]})
+        response = fake.call_once(
+            "POST",
+            "/blocks/other-fake/children",
+            {
+                "children": [
+                    {"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "added fake text"}}]}}
+                ]
+            },
+        )
     return _summarize(case, response)

@@ -11,9 +11,25 @@ from lifeos.platform import alert_registry as registry, alerts
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GATEWAY = "lifeos/platform/alerts.py"
-APPROVED_PAGE = {"source_stopped_*", "expiry_*", "jira_rollover_stuck", "calendar_sync_stuck", "imessage_action", "pipeline_stalled", "pipeline_failing", "megibow_stale",
-                 "run_failed", "domain_jobs_failed", "purge_failed", "safety_failed", "test_push",
-                 "known_state_expired_*", "scheduled_red_*", "release_proof_failed", "release_pause_unreadable"}
+APPROVED_PAGE = {
+    "source_stopped_*",
+    "expiry_*",
+    "jira_rollover_stuck",
+    "calendar_sync_stuck",
+    "imessage_action",
+    "pipeline_stalled",
+    "pipeline_failing",
+    "megibow_stale",
+    "run_failed",
+    "domain_jobs_failed",
+    "purge_failed",
+    "safety_failed",
+    "test_push",
+    "known_state_expired_*",
+    "scheduled_red_*",
+    "release_proof_failed",
+    "release_pause_unreadable",
+}
 
 
 def sources():
@@ -33,8 +49,13 @@ def repo_findings():
 
 
 def constants(tree):
-    return {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
-            for t in n.targets if isinstance(t, ast.Name)}
+    return {
+        t.id: n.value.value
+        for n in tree.body
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
 
 
 def key_of(node, names):
@@ -60,7 +81,13 @@ def findings(texts):
         tree = ast.parse(text)
         names = constants(tree)
         for node in ast.walk(tree):
-            if name != GATEWAY and isinstance(node, ast.Attribute) and node.attr == "ntfy" and isinstance(node.value, ast.Name) and node.value.id == "alerts":
+            if (
+                name != GATEWAY
+                and isinstance(node, ast.Attribute)
+                and node.attr == "ntfy"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "alerts"
+            ):
                 ntfy_users.append(name)
             if not isinstance(node, ast.Call):
                 continue
@@ -101,7 +128,9 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         self.assertGreaterEqual(len(alert_calls), 14)
         for name, key, severity in alert_calls:
             with self.subTest(file=name, key=key):
-                self.assertIsNotNone(key, "an alert key must be a literal, a module constant or an f-string with a literal start")
+                self.assertIsNotNone(
+                    key, "an alert key must be a literal, a module constant or an f-string with a literal start"
+                )
                 spec = registry.REGISTRY.get(key) if key.endswith("*") else registry.lookup(key)
                 self.assertIsNotNone(spec, f"{key} is not in lifeos/platform/alert_registry.py")
                 self.assertEqual(severity, spec.severity)
@@ -120,8 +149,14 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
 
     def test_the_incident_pushes_in_the_gate_carry_registered_keys_and_agree_on_severity(self):
         tree = ast.parse(sources()["lifeos/platform/gate.py"])
-        rows = [tuple(e.value for e in n.elts) for n in ast.walk(tree) if isinstance(n, ast.Tuple) and len(n.elts) == 4 and all(isinstance(e, ast.Constant) for e in n.elts)
-                and n.elts[2].value in ("page", "info")]
+        rows = [
+            tuple(e.value for e in n.elts)
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Tuple)
+            and len(n.elts) == 4
+            and all(isinstance(e, ast.Constant) for e in n.elts)
+            and n.elts[2].value in ("page", "info")
+        ]
         self.assertEqual(len(rows), 6)
         for title, body, severity, key in rows:
             with self.subTest(key=key):
@@ -129,6 +164,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
 
     def test_the_imessage_pushes_use_registered_keys(self):
         from lifeos.imessage import stage
+
         self.assertEqual(registry.severity(stage.KEY), "page")
 
     def test_every_workflow_push_names_a_registered_key(self):
@@ -145,10 +181,15 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
                 self.assertIsNotNone(registry.lookup(key))
 
     def test_the_checks_turn_red_for_an_unlisted_alert_a_wrong_severity_and_a_direct_send(self):
-        probe = {"lifeos/evil/watch.py": 'from lifeos.platform import alerts\nalerts.Alert("brand_new_alert", alerts.PAGE, "t")\nalerts.Alert(f"source_stopped_{n}", alerts.INFO, "t")\n'
-                                         'alerts.push("another_new_one", "t", "b")\nalerts.ntfy("topic", "t", "b", "page")\n'}
+        probe = {
+            "lifeos/evil/watch.py": 'from lifeos.platform import alerts\nalerts.Alert("brand_new_alert", alerts.PAGE, "t")\nalerts.Alert(f"source_stopped_{n}", alerts.INFO, "t")\n'
+            'alerts.push("another_new_one", "t", "b")\nalerts.ntfy("topic", "t", "b", "page")\n'
+        }
         alert_calls, push_calls, ntfy_users = findings(probe)
-        self.assertEqual(alert_calls, [("lifeos/evil/watch.py", "brand_new_alert", "page"), ("lifeos/evil/watch.py", "source_stopped_*", "info")])
+        self.assertEqual(
+            alert_calls,
+            [("lifeos/evil/watch.py", "brand_new_alert", "page"), ("lifeos/evil/watch.py", "source_stopped_*", "info")],
+        )
         self.assertIsNone(registry.lookup("brand_new_alert"))
         self.assertNotEqual("info", registry.severity("source_stopped_dice"))  # a wrong severity is caught
         self.assertEqual(push_calls, [("lifeos/evil/watch.py", "another_new_one")])
@@ -172,7 +213,9 @@ class Push(unittest.TestCase):
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertTrue(alerts.push("run_failed", "V7 run failed", "lane x", "topic", self.post))
             self.assertTrue(alerts.push("attention_new", "LIFE OS Attention", "2 new items", "topic", self.post))
-        self.assertEqual(self.sent, [("V7 run failed", "high"), ("LIFE OS Attention", "low")])  # PAGE is high priority, INFO low
+        self.assertEqual(
+            self.sent, [("V7 run failed", "high"), ("LIFE OS Attention", "low")]
+        )  # PAGE is high priority, INFO low
 
     def test_an_unlisted_key_is_refused_and_nothing_is_sent(self):
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):

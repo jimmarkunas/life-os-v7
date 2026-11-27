@@ -1,4 +1,5 @@
 """(REQ-85 T1): the retrieval baseline runner and its fabricated corpus."""
+
 import importlib.util
 import io
 import json
@@ -15,14 +16,32 @@ spec = importlib.util.spec_from_file_location("um_baseline", ROOT / "tools" / "u
 um = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(um)
 DOC = json.loads(um.CORPUS.read_text())
-METRICS = {"precision_at_5", "recall", "abstention_accuracy", "canonical_citation_rate", "wrong_tenant_leaks", "fabricated_answers", "p50_ms", "p95_ms", "tool_calls", "cost_usd"}
+METRICS = {
+    "precision_at_5",
+    "recall",
+    "abstention_accuracy",
+    "canonical_citation_rate",
+    "wrong_tenant_leaks",
+    "fabricated_answers",
+    "p50_ms",
+    "p95_ms",
+    "tool_calls",
+    "cost_usd",
+}
 
 
 class FakeHoncho:
     """Stands in for the T2 client: recall(query, tenant, top_k) -> [{'source_ref', 'text'}]."""
 
     def __init__(self, world, leak=False, fabricate=False, uncited=False):
-        self.world, self.leak, self.fabricate, self.uncited, self.cost_usd, self.calls = world, leak, fabricate, uncited, 0.002, 0
+        self.world, self.leak, self.fabricate, self.uncited, self.cost_usd, self.calls = (
+            world,
+            leak,
+            fabricate,
+            uncited,
+            0.002,
+            0,
+        )
 
     def recall(self, query, tenant, top_k):
         self.calls += 1
@@ -49,7 +68,14 @@ class Corpus(unittest.TestCase):
         ids = {s["id"] for s in DOC["sources"]}
         self.assertTrue(all(re.fullmatch(r"FAKE-[A-Z]+-\d{3}", i) for i in ids))
         text = json.dumps(DOC)
-        for pattern in (r"[\w.+-]+@[\w-]+\.[\w.]+", r"https?://", r"\b[A-Fa-f0-9]{32,}\b", r"\bsk-[A-Za-z0-9]{10,}", r"\b\d{3}[- .]\d{3}[- .]\d{4}\b", r"\b[A-Za-z0-9_-]{20,}\b"):
+        for pattern in (
+            r"[\w.+-]+@[\w-]+\.[\w.]+",
+            r"https?://",
+            r"\b[A-Fa-f0-9]{32,}\b",
+            r"\bsk-[A-Za-z0-9]{10,}",
+            r"\b\d{3}[- .]\d{3}[- .]\d{4}\b",
+            r"\b[A-Za-z0-9_-]{20,}\b",
+        ):
             self.assertIsNone(re.search(pattern, text), pattern)
         for e in DOC["edges"]:
             self.assertIn(e["from"], ids)
@@ -123,7 +149,10 @@ class WithAClient(unittest.TestCase):
             um.run(DOC, ("honcho",), 1)
         self.assertEqual(str(caught.exception), "honcho_client_missing")
         world = um.World(DOC)
-        with mock.patch.object(socket.socket, "connect", side_effect=AssertionError("network")), mock.patch("socket.create_connection", side_effect=AssertionError("network")):
+        with (
+            mock.patch.object(socket.socket, "connect", side_effect=AssertionError("network")),
+            mock.patch("socket.create_connection", side_effect=AssertionError("network")),
+        ):
             report = um.run(DOC, ("direct", "graph", "honcho", "combined"), 2, {"honcho": FakeHoncho(world)})
         self.assertEqual(set(report), {"direct", "graph", "honcho", "combined"})
 

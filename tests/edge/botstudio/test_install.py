@@ -1,4 +1,5 @@
 """the private hosting script for the Bot Studio."""
+
 import hashlib
 import os
 import shutil
@@ -27,10 +28,16 @@ class Install(unittest.TestCase):
         self.put(os.path.join(self.src, "index.html"), INDEX)
         self.put(os.path.join(self.src, "assets", "app.js"), b"console.log(1)\n")
         self.put(os.path.join(self.src, "assets", "app.css"), b"body{}\n")
-        open(self.ss_file, "w").write("State Recv-Q Send-Q Local Address:Port Peer\nLISTEN 0 5 127.0.0.1:8787 0.0.0.0:*\n")
-        open(self.serve_file, "w").write("https://lifeos-edge-01.tail96b07f.ts.net (tailnet only)\n|-- / proxy http://127.0.0.1:18789\n")
+        open(self.ss_file, "w").write(
+            "State Recv-Q Send-Q Local Address:Port Peer\nLISTEN 0 5 127.0.0.1:8787 0.0.0.0:*\n"
+        )
+        open(self.serve_file, "w").write(
+            "https://lifeos-edge-01.tail96b07f.ts.net (tailnet only)\n|-- / proxy http://127.0.0.1:18789\n"
+        )
         self.fake("systemctl", 'echo "systemctl $*" >> "$FAKE_LOG"\n[ "$1" = is-active ] && echo active\nexit 0')
-        self.fake("tailscale", 'echo "tailscale $*" >> "$FAKE_LOG"\n[ "$1 $2" = "serve status" ] && cat "$FAKE_SERVE"\nexit 0')
+        self.fake(
+            "tailscale", 'echo "tailscale $*" >> "$FAKE_LOG"\n[ "$1 $2" = "serve status" ] && cat "$FAKE_SERVE"\nexit 0'
+        )
         self.fake("curl", 'case "$*" in *http_code*) echo 200 ;; *) cat "$FAKE_INDEX" ;; esac\nexit 0')
         self.fake("ss", 'cat "$FAKE_SS"\nexit 0')
         self.index_copy = os.path.join(self.tmp, "index_served.html")
@@ -46,8 +53,17 @@ class Install(unittest.TestCase):
         os.chmod(path, 0o755)
 
     def run_script(self, verb, *args, env=None):
-        e = dict(os.environ, FAKE_LOG=self.log, FAKE_SS=self.ss_file, FAKE_SERVE=self.serve_file, FAKE_INDEX=os.path.join(self.src, "index.html"),
-                 SYSTEMCTL=os.path.join(self.bin, "systemctl"), TAILSCALE=os.path.join(self.bin, "tailscale"), CURL=os.path.join(self.bin, "curl"), SS=os.path.join(self.bin, "ss"))
+        e = dict(
+            os.environ,
+            FAKE_LOG=self.log,
+            FAKE_SS=self.ss_file,
+            FAKE_SERVE=self.serve_file,
+            FAKE_INDEX=os.path.join(self.src, "index.html"),
+            SYSTEMCTL=os.path.join(self.bin, "systemctl"),
+            TAILSCALE=os.path.join(self.bin, "tailscale"),
+            CURL=os.path.join(self.bin, "curl"),
+            SS=os.path.join(self.bin, "ss"),
+        )
         e.update(env or {})
         done = subprocess.run(["bash", SCRIPT, verb, "--root", self.root, *args], capture_output=True, text=True, env=e)
         return done.returncode, done.stdout + done.stderr
@@ -74,7 +90,16 @@ class Install(unittest.TestCase):
         self.assertEqual(os.stat(os.path.join(dist, "assets", "app.js")).st_mode & 0o777, 0o644)
         self.assertEqual(os.stat(dist).st_mode & 0o777, 0o755)
         unit = open(os.path.join(self.root, "etc", "systemd", "system", "lifeos-botstudio.service")).read()
-        for needle in ("--bind 127.0.0.1", "http.server 8788", "DynamicUser=yes", "NoNewPrivileges=yes", "ProtectSystem=strict", "IPAddressDeny=any", "IPAddressAllow=localhost", "CapabilityBoundingSet="):
+        for needle in (
+            "--bind 127.0.0.1",
+            "http.server 8788",
+            "DynamicUser=yes",
+            "NoNewPrivileges=yes",
+            "ProtectSystem=strict",
+            "IPAddressDeny=any",
+            "IPAddressAllow=localhost",
+            "CapabilityBoundingSet=",
+        ):
             self.assertIn(needle, unit, needle)
         self.assertNotIn("0.0.0.0", unit)
         calls = self.calls()
@@ -103,6 +128,7 @@ class Install(unittest.TestCase):
             self.assertEqual(status, 1, (needle, out))
             self.assertIn(needle, out)
             self.assertEqual(os.listdir(self.root), [], needle)
+
         refuse("has no index.html", lambda: os.remove(os.path.join(self.src, "index.html")))
         refuse("symbolic link", lambda: os.symlink("/etc/passwd", os.path.join(self.src, "assets", "x.js")))
         refuse("file type not allowed", lambda: self.put(os.path.join(self.src, "assets", "run.sh"), b"#!/bin/sh\n"))
@@ -114,8 +140,13 @@ class Install(unittest.TestCase):
         self.assertIn("--src DIR is required", out)
 
     def test_ports_that_belong_to_other_services_are_refused(self):
-        for env, needle in (({"PORT": "8787"}, "belongs to another service"), ({"PORT": "18789"}, "belongs to another service"), ({"PORT": "443"}, "belongs to another service"),
-                            ({"HTTPS_PORT": "443"}, "OpenClaw rule"), ({"PORT": "80x"}, "must be numbers")):
+        for env, needle in (
+            ({"PORT": "8787"}, "belongs to another service"),
+            ({"PORT": "18789"}, "belongs to another service"),
+            ({"PORT": "443"}, "belongs to another service"),
+            ({"HTTPS_PORT": "443"}, "OpenClaw rule"),
+            ({"PORT": "80x"}, "must be numbers"),
+        ):
             status, out = self.run_script("dry", "--src", self.src, env=env)
             self.assertEqual(status, 1, (env, out))
             self.assertIn(needle, out)
@@ -126,14 +157,18 @@ class Install(unittest.TestCase):
         self.assertEqual(status, 1, out)
         self.assertIn("already in use", out)
         open(self.ss_file, "w").write("State\n")
-        open(self.serve_file, "a").write("https://lifeos-edge-01.tail96b07f.ts.net:8443 (tailnet only)\n|-- / proxy http://127.0.0.1:9999\n")
+        open(self.serve_file, "a").write(
+            "https://lifeos-edge-01.tail96b07f.ts.net:8443 (tailnet only)\n|-- / proxy http://127.0.0.1:9999\n"
+        )
         status, out = self.run_script("dry", "--src", self.src)
         self.assertEqual(status, 1, out)
         self.assertIn("already published for something else", out)
 
     def test_status_reports_the_service_the_page_and_the_publication(self):
         self.assertEqual(self.run_script("install", "--src", self.src)[0], 0)
-        open(self.serve_file, "a").write("https://lifeos-edge-01.tail96b07f.ts.net:8443 (tailnet only)\n|-- / proxy http://127.0.0.1:8788\n")
+        open(self.serve_file, "a").write(
+            "https://lifeos-edge-01.tail96b07f.ts.net:8443 (tailnet only)\n|-- / proxy http://127.0.0.1:8788\n"
+        )
         status, out = self.run_script("status")
         self.assertEqual(status, 0, out)
         self.assertIn("service: active", out)
@@ -150,7 +185,9 @@ class Install(unittest.TestCase):
         self.assertIn("systemctl disable --now lifeos-botstudio.service", calls)
         self.assertNotIn("--https=443", calls)
         self.assertFalse(os.path.exists(os.path.join(self.root, "opt", "lifeos-botstudio")))
-        self.assertFalse(os.path.exists(os.path.join(self.root, "etc", "systemd", "system", "lifeos-botstudio.service")))
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "etc", "systemd", "system", "lifeos-botstudio.service"))
+        )
 
     def test_the_script_can_never_run_funnel(self):
         with open(SCRIPT) as handle:

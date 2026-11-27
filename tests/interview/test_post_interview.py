@@ -4,22 +4,37 @@ from pathlib import Path
 import unittest
 
 from lifeos.interview import advisor
-from lifeos.interview.post_interview import (GroundedReviewItem, PostInterviewReview,
-    RecommendedFollowUp, ReviewAssessment, render_post_interview_review,
-    validate_post_interview_review)
+from lifeos.interview.post_interview import (
+    GroundedReviewItem,
+    PostInterviewReview,
+    RecommendedFollowUp,
+    ReviewAssessment,
+    render_post_interview_review,
+    validate_post_interview_review,
+)
 
 
 def input_bundle():
-    manifest = advisor.AdvisorManifest("sl-v1", "a" * 64, "gt-v1", "b" * 64,
-        "profile-v1", "c" * 64, "bank-v1", "d" * 64, "prompt-v1")
-    sources = (advisor.AdvisorSource("JD-SYN", advisor.SourceKind.JOB_DESCRIPTION, "Synthetic role."),
+    manifest = advisor.AdvisorManifest(
+        "sl-v1", "a" * 64, "gt-v1", "b" * 64, "profile-v1", "c" * 64, "bank-v1", "d" * 64, "prompt-v1"
+    )
+    sources = (
+        advisor.AdvisorSource("JD-SYN", advisor.SourceKind.JOB_DESCRIPTION, "Synthetic role."),
         advisor.AdvisorSource("CP-SYN", advisor.SourceKind.CANDIDATE_PROFILE, "Synthetic profile."),
         advisor.AdvisorSource("SL-SYN", advisor.SourceKind.STRAIGHT_LINE_DOCTRINE, "Synthetic doctrine."),
-        advisor.AdvisorSource("GT-SYN", advisor.SourceKind.GAME_THEORY_DOCTRINE, "Synthetic game theory."))
-    evidence = (advisor.CandidateEvidence(advisor.EvidenceRef("E-SYN-001", 1), "American Apparel synthetic result.", "CP-SYN@1"),
-        advisor.CandidateEvidence(advisor.EvidenceRef("E-SYN-002", 2), "DIRECTV synthetic orchestration result.", "CP-SYN@1"))
-    return advisor.AdvisorInputBundle("Synthetic Co", "Synthetic Role", "2026-10-04", "Interviewer", 1,
-        "JOB-SYN", manifest, sources, evidence)
+        advisor.AdvisorSource("GT-SYN", advisor.SourceKind.GAME_THEORY_DOCTRINE, "Synthetic game theory."),
+    )
+    evidence = (
+        advisor.CandidateEvidence(
+            advisor.EvidenceRef("E-SYN-001", 1), "American Apparel synthetic result.", "CP-SYN@1"
+        ),
+        advisor.CandidateEvidence(
+            advisor.EvidenceRef("E-SYN-002", 2), "DIRECTV synthetic orchestration result.", "CP-SYN@1"
+        ),
+    )
+    return advisor.AdvisorInputBundle(
+        "Synthetic Co", "Synthetic Role", "2026-10-04", "Interviewer", 1, "JOB-SYN", manifest, sources, evidence
+    )
 
 
 def item(text="Synthetic grounded observation.", **changes):
@@ -42,17 +57,26 @@ def review(**changes):
         evidence_used=(item("Used a synthetic case study."),),
         stronger_unused_evidence_refs=("E-SYN-002@2",),
         commitments=(item("Send a short operating model."),),
-        recommended_follow_up=RecommendedFollowUp("Send a follow-up", "Within one day",
-            "Lower the action threshold", "Show a low-meeting coordination operating model.",
-            "One-page operating model", "Thank you for the conversation.", (1,), ()),
+        recommended_follow_up=RecommendedFollowUp(
+            "Send a follow-up",
+            "Within one day",
+            "Lower the action threshold",
+            "Show a low-meeting coordination operating model.",
+            "One-page operating model",
+            "Thank you for the conversation.",
+            (1,),
+            (),
+        ),
         exact_next_action=item("Draft the one-page operating model."),
-        next_round_adjustments=(item("Lead with explicit owners and async decisions."),))
+        next_round_adjustments=(item("Lead with explicit owners and async decisions."),),
+    )
     return replace(base, **changes)
 
 
 class PostInterviewContractTests(unittest.TestCase):
     def test_valid_review_validates_and_renders(self):
-        value = input_bundle(); result = review()
+        value = input_bundle()
+        result = review()
         validate_post_interview_review(value, 4, (), result)
         rendered = render_post_interview_review(value, 4, (), result)
         self.assertIn("# Executive Read", rendered)
@@ -79,25 +103,27 @@ class PostInterviewContractTests(unittest.TestCase):
         validate_post_interview_review(input_bundle(), 4, ("NOTE-A",), noted)
 
     def test_optional_sections_may_be_empty_but_required_section_may_not(self):
-        validate_post_interview_review(input_bundle(), 4, (), replace(review(),
-            interviewer_signals=(), objection_audit=(), commitments=()))
+        validate_post_interview_review(
+            input_bundle(), 4, (), replace(review(), interviewer_signals=(), objection_audit=(), commitments=())
+        )
         with self.assertRaises(advisor.AdvisorContractError):
             validate_post_interview_review(input_bundle(), 4, (), replace(review(), actual_needs=()))
 
     def test_stronger_unused_evidence_resolves_from_full_bank(self):
         value = input_bundle()
-        rendered = render_post_interview_review(value, 4, (), replace(review(),
-            stronger_unused_evidence_refs=("E-SYN-001@1",)))
+        rendered = render_post_interview_review(
+            value, 4, (), replace(review(), stronger_unused_evidence_refs=("E-SYN-001@1",))
+        )
         self.assertIn("American Apparel synthetic result.", rendered)
         self.assertNotIn("E-SYN-001@1", rendered)
         self.assertIn("DIRECTV synthetic orchestration result.", render_post_interview_review(value, 4, (), review()))
 
     def test_unused_evidence_refs_are_unique_bounded_and_resolved(self):
-        for refs in (("E-SYN-001@1", "E-SYN-001@1"), tuple("E-SYN-001@1" for _ in range(6)),
-                     ("E-MISSING@1",)):
+        for refs in (("E-SYN-001@1", "E-SYN-001@1"), tuple("E-SYN-001@1" for _ in range(6)), ("E-MISSING@1",)):
             with self.subTest(refs=refs), self.assertRaises(advisor.AdvisorContractError):
-                validate_post_interview_review(input_bundle(), 4, (),
-                    replace(review(), stronger_unused_evidence_refs=refs))
+                validate_post_interview_review(
+                    input_bundle(), 4, (), replace(review(), stronger_unused_evidence_refs=refs)
+                )
 
     def test_empty_stronger_unused_evidence_validates_and_renders_heading_only(self):
         value = input_bundle()
@@ -107,15 +133,22 @@ class PostInterviewContractTests(unittest.TestCase):
         self.assertIn("# Stronger Unused Evidence\n\n# Commitments", rendered)
 
     def test_one_through_five_valid_unused_evidence_refs_pass(self):
-        value = replace(input_bundle(), evidence=tuple(advisor.CandidateEvidence(
-            advisor.EvidenceRef(f"E-SYN-{number:03d}", 1), f"Synthetic evidence {number}.", "CP-SYN@1")
-            for number in range(1, 6)))
+        value = replace(
+            input_bundle(),
+            evidence=tuple(
+                advisor.CandidateEvidence(
+                    advisor.EvidenceRef(f"E-SYN-{number:03d}", 1), f"Synthetic evidence {number}.", "CP-SYN@1"
+                )
+                for number in range(1, 6)
+            ),
+        )
         refs = tuple(f"E-SYN-{number:03d}@1" for number in range(1, 6))
         validate_post_interview_review(value, 4, (), replace(review(), stronger_unused_evidence_refs=refs))
 
     def test_follow_up_and_exact_next_action_each_require_grounding(self):
-        follow = replace(review(), recommended_follow_up=replace(review().recommended_follow_up,
-            transcript_lines=(), note_refs=()))
+        follow = replace(
+            review(), recommended_follow_up=replace(review().recommended_follow_up, transcript_lines=(), note_refs=())
+        )
         action = replace(review(), exact_next_action=item(transcript_lines=(), note_refs=()))
         for bad in (follow, action):
             with self.assertRaises(advisor.AdvisorContractError):
@@ -123,8 +156,11 @@ class PostInterviewContractTests(unittest.TestCase):
 
     def test_assessments_render_and_internal_provenance_is_hidden_in_order(self):
         value = input_bundle()
-        assessed = replace(review(), executive_read=(item("Read assessment.", assessment=ReviewAssessment.EFFECTIVE),),
-                           actual_needs=(item("Need assessment.", assessment=ReviewAssessment.MISSED),))
+        assessed = replace(
+            review(),
+            executive_read=(item("Read assessment.", assessment=ReviewAssessment.EFFECTIVE),),
+            actual_needs=(item("Need assessment.", assessment=ReviewAssessment.MISSED),),
+        )
         rendered = render_post_interview_review(value, 4, (), assessed)
         self.assertIn("**Assessment:** EFFECTIVE", rendered)
         self.assertIn("**Assessment:** MISSED", rendered)
@@ -151,8 +187,19 @@ class PostInterviewContractTests(unittest.TestCase):
         tree = ast.parse(source)
         imports = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
         imports |= {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
-        self.assertFalse(any(name and (name.startswith("openai") or name.startswith("anthropic")
-            or "notion" in name or "workflow" in name or "platform" in name) for name in imports))
+        self.assertFalse(
+            any(
+                name
+                and (
+                    name.startswith("openai")
+                    or name.startswith("anthropic")
+                    or "notion" in name
+                    or "workflow" in name
+                    or "platform" in name
+                )
+                for name in imports
+            )
+        )
         self.assertNotIn("urlopen", source)
         self.assertNotIn("parse_transcript", source)
         self.assertNotIn("raw_notes", source.lower())

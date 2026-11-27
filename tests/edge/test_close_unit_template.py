@@ -1,6 +1,7 @@
 """the Close service unit sends stderr to the journal, so a refused form's fixed reason code
 (lifeos/sources/apps/signed.refused) can be read
 """
+
 import pathlib
 import unittest
 
@@ -18,7 +19,10 @@ class CloseUnitTemplate(unittest.TestCase):
         """the Recruiter Outreach card is a live Notion view"""
         text = SCRIPT.read_text()
         self.assertNotIn('cat > "$1/lifeos-close-redraw', text)
-        self.assertIn("enable --now lifeos-close.socket >/dev/null; systemctl disable --now lifeos-close-redraw.socket lifeos-close-redraw.service", text)
+        self.assertIn(
+            "enable --now lifeos-close.socket >/dev/null; systemctl disable --now lifeos-close-redraw.socket lifeos-close-redraw.service",
+            text,
+        )
 
 
 if __name__ == "__main__":

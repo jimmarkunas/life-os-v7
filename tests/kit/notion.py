@@ -10,17 +10,31 @@ class FakeBlocks:
     def call(self, method, path, body=None):
         self.log.append(method)
         if method == "GET":
-            return {"object": "list", "results": [dict(k) for k in self.kids], "next_cursor": None, "has_more": False}  # the paging fields the real list carries
+            return {
+                "object": "list",
+                "results": [dict(k) for k in self.kids],
+                "next_cursor": None,
+                "has_more": False,
+            }  # the paging fields the real list carries
         if method == "DELETE":
             bid = path.rsplit("/", 1)[1]
             gone = next((k for k in self.kids if k["id"] == bid), {"id": bid})
             self.kids = [k for k in self.kids if k["id"] != bid]
-            return {**gone, "object": "block", "archived": True, "in_trash": True}  # the real DELETE returns the archived block
+            return {
+                **gone,
+                "object": "block",
+                "archived": True,
+                "in_trash": True,
+            }  # the real DELETE returns the archived block
         if method == "PATCH" and path.startswith("/blocks/") and "children" not in path:
             for k in self.kids:
                 if k["id"] == path.rsplit("/", 1)[1]:
                     kind = next(iter(body))
-                    k[kind] = {"rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
+                    k[kind] = {
+                        "rich_text": [
+                            {"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]
+                        ]
+                    }
                     return {"object": "block", **k}  # the real PATCH returns the updated block
             return {}
         raise AssertionError(path)
@@ -37,12 +51,24 @@ class FakeBlocks:
 
     @staticmethod
     def _listing(blocks):
-        return {"object": "list", "results": blocks, "next_cursor": None, "has_more": False, "type": "block", "block": {}}
+        return {
+            "object": "list",
+            "results": blocks,
+            "next_cursor": None,
+            "has_more": False,
+            "type": "block",
+            "block": {},
+        }
 
     def _made(self, b):
         self.n += 1
         t = b["type"]
-        return {"object": "block", "id": f"b{self.n}", "type": t, t: {"rich_text": [{"plain_text": r["text"]["content"]} for r in b[t]["rich_text"]]}}
+        return {
+            "object": "block",
+            "id": f"b{self.n}",
+            "type": t,
+            t: {"rich_text": [{"plain_text": r["text"]["content"]} for r in b[t]["rich_text"]]},
+        }
 
 
 class DataSourcePages:
@@ -66,8 +92,7 @@ class PaidBillTracker:
 
     SOURCE = "11111111-1111-4111-8111-111111111111"
 
-    def __init__(self, *pages, responses=None, event_log=None, recalculate_formula=True,
-                 fail_read_after_update=False):
+    def __init__(self, *pages, responses=None, event_log=None, recalculate_formula=True, fail_read_after_update=False):
         self.pages = {page["id"]: page for page in pages}
         self.responses = list(responses) if responses is not None else None
         self.event_log = event_log if event_log is not None else []
@@ -95,11 +120,14 @@ class PaidBillTracker:
         if self.fail_read_after_update and self.updated:
             self.fail_read_after_update = False
             from lifeos.platform.notion_client import NotionError
+
             raise NotionError("NOTION_NETWORK")
         if page_id not in self.pages:
             from lifeos.platform.notion_client import NotionError
+
             raise NotionError("NOTION_HTTP_404")
         import copy
+
         return copy.deepcopy(self.pages[page_id])
 
     def update_page_properties(self, page_id, properties):
@@ -116,42 +144,61 @@ class PaidBillTracker:
             prop[kind] = value[kind]
         if "Due Date" in properties and self.recalculate_formula:
             from datetime import date, timedelta
+
             due = date.fromisoformat(page["properties"]["Due Date"]["date"]["start"])
             cycle = page["properties"]["Cycle"]["select"]["name"]
-            days = {"Weekly": 7, "Bi-Weekly": 14, "Monthly": 30, "Quarterly": 91,
-                    "Yearly": 365}.get(cycle, 30)
+            days = {"Weekly": 7, "Bi-Weekly": 14, "Monthly": 30, "Quarterly": 91, "Yearly": 365}.get(cycle, 30)
             next_due = due + timedelta(days=days)
-            page["properties"]["Next Due"]["formula"] = {
-                "type": "date", "date": {"start": next_due.isoformat()}}
+            page["properties"]["Next Due"]["formula"] = {"type": "date", "date": {"start": next_due.isoformat()}}
         return {"id": page_id}
 
 
 class AgendaRegions:
     """Nested Calendar target and independently readable protected JIRA callout."""
 
-    def __init__(self, calendar_title="Calendar", heading_type="heading_3", extra_calendar=False,
-                 calendar_type="callout", change_jira_on=None):
+    def __init__(
+        self,
+        calendar_title="Calendar",
+        heading_type="heading_3",
+        extra_calendar=False,
+        calendar_type="callout",
+        change_jira_on=None,
+    ):
         self.page_id, self.log, self.serial = "page-example", [], 0
         self.roots, self.children, self.metas = [], {}, {}
         self.change_jira_on = change_jira_on
-        self._add_region("calendar-callout", calendar_title, [self._paragraph("Foreign writer content")],
-                         heading_type=heading_type, block_type=calendar_type)
+        self._add_region(
+            "calendar-callout",
+            calendar_title,
+            [self._paragraph("Foreign writer content")],
+            heading_type=heading_type,
+            block_type=calendar_type,
+        )
         if extra_calendar:
             self._add_region("calendar-callout-duplicate", "Calendar", [])
         self._add_region("jira-callout", "JIRA Execution", [self._paragraph("Protected JIRA content")])
         self._add_region("dcc-callout", "ChatGPT · Daily Command Center", [self._paragraph("Protected DCC content")])
 
     def _text_block(self, block_id, kind, text):
-        return {"id": block_id, "type": kind, "has_children": False,
-                kind: {"rich_text": [{"plain_text": text, "text": {"content": text}}]}}
+        return {
+            "id": block_id,
+            "type": kind,
+            "has_children": False,
+            kind: {"rich_text": [{"plain_text": text, "text": {"content": text}}]},
+        }
 
     def _paragraph(self, text):
         self.serial += 1
         return self._text_block(f"paragraph-{self.serial}", "paragraph", text)
 
     def _add_region(self, block_id, heading, body, heading_type="heading_4", block_type="callout"):
-        root = {"id": block_id, "type": block_type, "has_children": True,
-                "parent": {"type": "block_id", "block_id": "column-parent"}, block_type: {}}
+        root = {
+            "id": block_id,
+            "type": block_type,
+            "has_children": True,
+            "parent": {"type": "block_id", "block_id": "column-parent"},
+            block_type: {},
+        }
         self.roots.append(root)
         self.metas[block_id] = root
         self.children[block_id] = [self._text_block(f"heading-{block_id}", heading_type, heading), *body]
@@ -172,6 +219,7 @@ class AgendaRegions:
                 if block:
                     return self._api_copy(block)
             from lifeos.platform.notion_client import NotionError
+
             raise NotionError("NOTION_HTTP_404")
         if method == "DELETE":
             block_id = clean.rsplit("/", 1)[1]
@@ -204,8 +252,14 @@ class AgendaRegions:
             new_id = f"agenda-{self.serial}"
             kind = block["type"]
             plain = "".join(part["text"]["content"] for part in block[kind]["rich_text"] if "text" in part)
-            made.append({"id": new_id, "type": kind, "has_children": False,
-                         kind: {"rich_text": [{"plain_text": plain, "text": {"content": plain}}]}})
+            made.append(
+                {
+                    "id": new_id,
+                    "type": kind,
+                    "has_children": False,
+                    kind: {"rich_text": [{"plain_text": plain, "text": {"content": plain}}]},
+                }
+            )
         self.children.setdefault(block_id, []).extend(made)
         if self.change_jira_on == "APPEND":
             self.children["jira-callout"].append(self._paragraph("Changed protected content"))
@@ -235,9 +289,23 @@ class BillsRegions(AgendaRegions):
     def __init__(self, view_title="View of Bills", extra_kid=None, change_on=None, change_region="calendar-callout"):
         super().__init__()
         self.change_on, self.change_region = change_on, change_region
-        status = self._text_block("bills-status-old", "paragraph", "STALE · last accepted 9/14 9:44 AM CT · 4 active recurring items were overdue")
-        status["paragraph"]["rich_text"].append({"plain_text": "Bill Tracker", "text": {"content": "Bill Tracker", "link": {"url": "https://example.com/tracker"}}})
-        view = {"id": "bills-view-old", "type": "child_database", "has_children": False, "child_database": {"title": view_title}}
+        status = self._text_block(
+            "bills-status-old",
+            "paragraph",
+            "STALE · last accepted 9/14 9:44 AM CT · 4 active recurring items were overdue",
+        )
+        status["paragraph"]["rich_text"].append(
+            {
+                "plain_text": "Bill Tracker",
+                "text": {"content": "Bill Tracker", "link": {"url": "https://example.com/tracker"}},
+            }
+        )
+        view = {
+            "id": "bills-view-old",
+            "type": "child_database",
+            "has_children": False,
+            "child_database": {"title": view_title},
+        }
         kids = [status, view] + ([extra_kid] if extra_kid else [])
         self._add_region("bills-callout", "Bills: This Week", kids, heading_type="heading_3")
 
@@ -258,40 +326,52 @@ class BillsRegions(AgendaRegions):
         after = body.get("after")
         if (body.get("position") or {}).get("type") == "start":
             kids = self.children[block_id]
-            made = kids[-len(body["children"]):]
-            del kids[-len(body["children"]):]
+            made = kids[-len(body["children"]) :]
+            del kids[-len(body["children"]) :]
             kids[0:0] = made
-            result = {"results": made + kids[len(made):]}
+            result = {"results": made + kids[len(made) :]}
         elif after:
             kids = self.children[block_id]
-            made = kids[-len(body["children"]):]
-            del kids[-len(body["children"]):]
+            made = kids[-len(body["children"]) :]
+            del kids[-len(body["children"]) :]
             at = next(i for i, k in enumerate(kids) if k["id"] == after) + 1
             kids[at:at] = made
-            result = {"results": made + kids[at + len(made):]}
+            result = {"results": made + kids[at + len(made) :]}
         self._poke("APPEND")
         return result
 
 
 class AmazonRegions(BillsRegions):
-    """BillsRegions plus the Amazon callout as it stood on 2026-10-04: a heading and the frozen September status text.
-    """
+    """BillsRegions plus the Amazon callout as it stood on 2026-10-04: a heading and the frozen September status text."""
 
     def __init__(self, table=True, **kwargs):
         super().__init__(**kwargs)
-        old = self._text_block("amazon-status-old", "paragraph", "DEGRADED · last accepted order state retained · unresolved Amazon exact-source recovery debt remains")
-        kids = [old] + ([{"id": "amazon-table-old", "type": "table", "has_children": False, "table": {}}] if table else [])
+        old = self._text_block(
+            "amazon-status-old",
+            "paragraph",
+            "DEGRADED · last accepted order state retained · unresolved Amazon exact-source recovery debt remains",
+        )
+        kids = [old] + (
+            [{"id": "amazon-table-old", "type": "table", "has_children": False, "table": {}}] if table else []
+        )
         self._add_region("amazon-callout", "Amazon Orders", kids, heading_type="heading_3")
 
 
 class AttentionRegions(AmazonRegions):
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        root = {"id": "attention-callout", "type": "callout", "has_children": True, "parent": {"type": "block_id", "block_id": "column-parent"}, "callout": {}}
+        root = {
+            "id": "attention-callout",
+            "type": "callout",
+            "has_children": True,
+            "parent": {"type": "block_id", "block_id": "column-parent"},
+            "callout": {},
+        }
         self.roots.append(root)
         self.metas["attention-callout"] = root
-        self.children["attention-callout"] = [{"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}]
+        self.children["attention-callout"] = [
+            {"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}
+        ]
 
 
 class MailRegions(AttentionRegions):
@@ -301,7 +381,10 @@ class MailRegions(AttentionRegions):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        kids = [self._text_block("mail-status-old", "paragraph", "old mail status"), {"id": "mail-table-old", "type": "table", "has_children": False, "table": {}}]
+        kids = [
+            self._text_block("mail-status-old", "paragraph", "old mail status"),
+            {"id": "mail-table-old", "type": "table", "has_children": False, "table": {}},
+        ]
         self._add_region("mail-callout", "Mail Alerts", kids, heading_type="heading_3")
 
 

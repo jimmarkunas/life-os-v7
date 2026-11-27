@@ -1,4 +1,5 @@
 """the Notion block fake conforms to the recorded response shapes."""
+
 import unittest
 
 from tests.kit.conformance import notion_subjects as subjects
@@ -20,6 +21,7 @@ class NotionConformance(unittest.TestCase):
             if case["action"] == "list":
                 out["missing_keys"] = ["next_cursor"]  # a fake whose page listing forgot the cursor
             return out
+
         self.assertTrue(runner.problems(SPEC, "fake_blocks", drifted))
 
 

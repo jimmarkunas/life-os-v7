@@ -9,7 +9,14 @@ VENDOR = filing.SENDER
 
 class FakeGmail:
     def __init__(self, senders, fail=None, stuck=None):
-        self.senders, self.fail, self.stuck, self.labels, self.calls, self.created = senders, fail, stuck, {m: ["INBOX", "UNREAD"] for m in senders}, [], []
+        self.senders, self.fail, self.stuck, self.labels, self.calls, self.created = (
+            senders,
+            fail,
+            stuck,
+            {m: ["INBOX", "UNREAD"] for m in senders},
+            [],
+            [],
+        )
 
     def list_ids(self, query, limit):
         self.calls.append(("list", query, limit))
@@ -36,7 +43,9 @@ class FakeGmail:
 class Filing(unittest.TestCase):
     def test_a_dry_run_counts_and_changes_nothing(self):
         gmail = FakeGmail({"m1": f"Vendor <{VENDOR}>", "m2": VENDOR})
-        self.assertEqual(filing.run(0, False, gmail=gmail), {"listed": 2, "filed": 0, "skipped_sender": 0, "failed": 0, "why": {}})
+        self.assertEqual(
+            filing.run(0, False, gmail=gmail), {"listed": 2, "filed": 0, "skipped_sender": 0, "failed": 0, "why": {}}
+        )
         self.assertEqual([c[0] for c in gmail.calls], ["list"])
         self.assertEqual(gmail.created, [])
         self.assertIn(f"from:{VENDOR}", gmail.calls[0][1])
@@ -79,9 +88,13 @@ class OneBadMessageNeverFailsTheStage(unittest.TestCase):
         gmail = FakeGmail({f"m{i}": VENDOR for i in range(5)}, fail="m2")
         code, err, out = self.exit_of(gmail)
         self.assertEqual((code, err), (0, ""))
-        self.assertEqual(sorted(m for m, labels in gmail.labels.items() if labels == ["Label_pm"]), ["m0", "m1", "m3", "m4"])
+        self.assertEqual(
+            sorted(m for m, labels in gmail.labels.items() if labels == ["Label_pm"]), ["m0", "m1", "m3", "m4"]
+        )
         self.assertIn('"item_codes": {"PHYSMAIL_FILING_MOVE_FAILED": 1}', out)
-        self.assertIn('"why": {"PHYSMAIL_FILING_MOVE_FAILED": 1}', out)  # the counts the stage always printed are unchanged
+        self.assertIn(
+            '"why": {"PHYSMAIL_FILING_MOVE_FAILED": 1}', out
+        )  # the counts the stage always printed are unchanged
 
     def test_all_messages_failing_exit_one_with_the_fixed_code(self):
         gmail = FakeGmail({f"m{i}": VENDOR for i in range(5)})
@@ -97,7 +110,9 @@ class OneBadMessageNeverFailsTheStage(unittest.TestCase):
     def test_an_error_that_is_not_a_gmail_error_no_longer_stops_the_run(self):
         gmail = FakeGmail({"m1": VENDOR, "m2": VENDOR})
         original = gmail.sender
-        gmail.sender = lambda message_id: (_ for _ in ()).throw(ValueError("boom")) if message_id == "m1" else original(message_id)
+        gmail.sender = lambda message_id: (
+            (_ for _ in ()).throw(ValueError("boom")) if message_id == "m1" else original(message_id)
+        )
         counts = filing.run(0, True, gmail=gmail)
         self.assertEqual((counts["filed"], counts["failed"], counts["why"]), (1, 1, {"PHYSMAIL_FILING_MOVE_FAILED": 1}))
 

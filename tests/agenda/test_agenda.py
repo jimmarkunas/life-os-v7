@@ -29,29 +29,49 @@ def compacted(raw):
 
 
 def saved_snapshot(events, taken_at=None):
-    return {"schema": 1, "taken_at": (taken_at or NOW).isoformat(), "timezone": "America/Chicago",
-            "today": "2026-03-08", "tomorrow": "2026-03-09", "events": events}
+    return {
+        "schema": 1,
+        "taken_at": (taken_at or NOW).isoformat(),
+        "timezone": "America/Chicago",
+        "today": "2026-03-08",
+        "tomorrow": "2026-03-09",
+        "events": events,
+    }
 
 
 class AgendaSnapshotTests(unittest.TestCase):
     def test_window_edges_are_chicago_midnights_and_follow_daylight_saving(self):
         start, end, today, tomorrow = snapshot.window(datetime(2026, 3, 8, 12, tzinfo=TZ))
-        self.assertEqual((start, end, today.isoformat(), tomorrow.isoformat()),
-                         ("2026-03-08T00:00:00-06:00", "2026-03-10T00:00:00-05:00", "2026-03-08", "2026-03-09"))
+        self.assertEqual(
+            (start, end, today.isoformat(), tomorrow.isoformat()),
+            ("2026-03-08T00:00:00-06:00", "2026-03-10T00:00:00-05:00", "2026-03-08", "2026-03-09"),
+        )
 
     def test_full_read_across_pages_filters_events_and_keeps_all_day_timed_and_bridge_source(self):
-        copied = timed("event-1", "Example meeting", location="Room 2, example.com",
-                       hangoutLink="https://example.com/meeting", extendedProperties={"private": {"v7_src": "outlook"}})
+        copied = timed(
+            "event-1",
+            "Example meeting",
+            location="Room 2, example.com",
+            hangoutLink="https://example.com/meeting",
+            extendedProperties={"private": {"v7_src": "outlook"}},
+        )
         day_event = all_day()
         next_day = timed("event-3", "Example tomorrow", "2026-03-09T09:00:00-05:00", "2026-03-09T09:30:00-05:00")
-        events = CalendarEvents([copied, day_event], [next_day,
-            timed("cancelled", "Example cancelled", status="cancelled"),
-            timed("declined", "Example declined", attendees=[{"self": True, "responseStatus": "declined"}]),
-            {**timed("working", "Example working location"), "eventType": "workingLocation"}])
+        events = CalendarEvents(
+            [copied, day_event],
+            [
+                next_day,
+                timed("cancelled", "Example cancelled", status="cancelled"),
+                timed("declined", "Example declined", attendees=[{"self": True, "responseStatus": "declined"}]),
+                {**timed("working", "Example working location"), "eventType": "workingLocation"},
+            ],
+        )
         snap = snapshot.build(events, NOW)
         self.assertEqual([item["id"] for item in snap["events"]], ["event-1", "all-day", "event-3"])
-        self.assertEqual((snap["events"][0]["source"], snap["events"][1]["all_day"], snap["events"][0]["meeting_link"]),
-                         ("bridge", True, "https://example.com/meeting"))
+        self.assertEqual(
+            (snap["events"][0]["source"], snap["events"][1]["all_day"], snap["events"][0]["meeting_link"]),
+            ("bridge", True, "https://example.com/meeting"),
+        )
         self.assertEqual(events.windows, [("2026-03-08T00:00:00-06:00", "2026-03-10T00:00:00-05:00")])
 
     def test_incomplete_calendar_read_raises_and_leaves_previous_snapshot(self):
@@ -73,14 +93,19 @@ class AgendaSnapshotTests(unittest.TestCase):
         calendar = CalendarEvents([timed("e1", "Example private title"), all_day()])
         database = AgendaSnapshotDB()
         counts = snapshot.run(1, True, calendar=calendar, now=NOW, connect=lambda: database)
-        self.assertEqual(counts, {"events": 2, "all_day": 1, "today": 2, "tomorrow": 0,
-                                  "saved": 1, "blocks_written": 0, "status": "fresh"})
+        self.assertEqual(
+            counts,
+            {"events": 2, "all_day": 1, "today": 2, "tomorrow": 0, "saved": 1, "blocks_written": 0, "status": "fresh"},
+        )
         self.assertNotIn("Example private title", json.dumps(counts))
         self.assertEqual(snapshot.load(database)["events"][0]["title"], "Example private title")
 
     def test_google_client_paginates_in_start_time_order_and_rejects_incomplete_page(self):
         client = GoogleCalendar('{"client_email":"synthetic","private_key":"key"}', "calendar", sign=lambda *_: b"x")
-        pages = [{"items": [{"id": "a", "eventType": "default", "attendees": []}], "nextPageToken": "page-2"}, {"items": [{"id": "b"}]}]
+        pages = [
+            {"items": [{"id": "a", "eventType": "default", "attendees": []}], "nextPageToken": "page-2"},
+            {"items": [{"id": "b"}]},
+        ]
         calls = []
         client.request = lambda method, path, params: (calls.append(dict(params)), pages.pop(0))[1]
         self.assertEqual([row["id"] for row in client.list_events("min", "max")], ["a", "b"])
@@ -98,8 +123,7 @@ class AgendaCardTests(unittest.TestCase):
         self.assertEqual(sum("Nothing scheduled" in plain(block) for block in empty), 2)
         current = timed("now", "Example current", "2026-03-08T09:00:00-05:00", "2026-03-08T10:00:00-05:00")
         later = timed("next", "Example next", "2026-03-08T11:00:00-05:00", "2026-03-08T11:30:00-05:00")
-        blocks, _ = card.render(saved_snapshot([compacted(current),
-                                                compacted(later)]), now=NOW)
+        blocks, _ = card.render(saved_snapshot([compacted(current), compacted(later)]), now=NOW)
         rendered = [plain(block) for block in blocks]
         self.assertTrue(any(line.startswith("Now ·") for line in rendered))
         upcoming, _ = card.render(saved_snapshot([compacted(later)]), now=NOW)
@@ -109,18 +133,34 @@ class AgendaCardTests(unittest.TestCase):
         self.assertGreater(len(many_blocks), 100)
 
     def test_the_same_title_and_time_shows_once_as_the_richer_copy_and_next_lands_on_it(self):
-        gmail = timed("gmail", "🍕 Pizza night (1/2 price)", "2026-03-08T18:30:00-05:00", "2026-03-08T21:00:00-05:00", location="Moretti's Ristorante and Pizzeria")
-        mine = timed("mine", "🍕 Pizza night (1/2 price)", "2026-03-08T18:30:00-05:00", "2026-03-08T21:00:00-05:00", location="Moretti's Ristorante and Pizzeria - 365 W Dundee Rd, Wheeling, IL 60090, USA")
+        gmail = timed(
+            "gmail",
+            "🍕 Pizza night (1/2 price)",
+            "2026-03-08T18:30:00-05:00",
+            "2026-03-08T21:00:00-05:00",
+            location="Moretti's Ristorante and Pizzeria",
+        )
+        mine = timed(
+            "mine",
+            "🍕 Pizza night (1/2 price)",
+            "2026-03-08T18:30:00-05:00",
+            "2026-03-08T21:00:00-05:00",
+            location="Moretti's Ristorante and Pizzeria - 365 W Dundee Rd, Wheeling, IL 60090, USA",
+        )
         saved = saved_snapshot([compacted(gmail), compacted(mine)])
         before = json.dumps(saved, sort_keys=True)
         blocks, counts = card.render(saved, now=NOW)
         lines = [plain(b) for b in blocks if plain(b).startswith(("Next", "6:30"))]
         self.assertEqual(len(lines), 1)
-        self.assertTrue(lines[0].startswith("Next · 6:30 PM–9:00 PM — 🍕 Pizza night") and "365 W Dundee Rd" in lines[0])
+        self.assertTrue(
+            lines[0].startswith("Next · 6:30 PM–9:00 PM — 🍕 Pizza night") and "365 W Dundee Rd" in lines[0]
+        )
         self.assertEqual((counts["events"], counts["merged"]), (2, 1))
         self.assertEqual(json.dumps(saved, sort_keys=True), before)  # display only: the stored snapshot is untouched
         swapped, _ = card.render(saved_snapshot([compacted(mine), compacted(gmail)]), now=NOW)
-        self.assertEqual(sorted(plain(b) for b in blocks), sorted(plain(b) for b in swapped))  # the order the two arrive in does not matter
+        self.assertEqual(
+            sorted(plain(b) for b in blocks), sorted(plain(b) for b in swapped)
+        )  # the order the two arrive in does not matter
 
     def test_a_meeting_link_outranks_a_longer_location_and_title_case_and_spacing_do_not_matter(self):
         long_place = timed("a", "Team  Sync", location="A very long location name that has no meeting link at all")
@@ -132,8 +172,12 @@ class AgendaCardTests(unittest.TestCase):
 
     def test_events_that_differ_in_title_time_or_day_are_never_merged(self):
         base = timed("a", "Dentist")
-        distinct = [timed("b", "Dentist cleaning"), timed("c", "Dentist", "2026-03-08T10:00:00-05:00", "2026-03-08T11:00:00-05:00"),
-                    timed("d", "Dentist", "2026-03-08T11:00:00-05:00", "2026-03-08T11:30:00-05:00"), timed("e", "Dentist", "2026-03-09T10:00:00-05:00", "2026-03-09T10:30:00-05:00")]
+        distinct = [
+            timed("b", "Dentist cleaning"),
+            timed("c", "Dentist", "2026-03-08T10:00:00-05:00", "2026-03-08T11:00:00-05:00"),
+            timed("d", "Dentist", "2026-03-08T11:00:00-05:00", "2026-03-08T11:30:00-05:00"),
+            timed("e", "Dentist", "2026-03-09T10:00:00-05:00", "2026-03-09T10:30:00-05:00"),
+        ]
         blocks, counts = card.render(saved_snapshot([compacted(e) for e in [base] + distinct]), now=NOW)
         self.assertEqual((counts["merged"], sum("Dentist" in plain(b) for b in blocks)), (0, 5))
         both_all_day = [compacted(all_day("x", "Holiday")), compacted(all_day("y", "holiday"))]
@@ -157,7 +201,9 @@ class AgendaCardTests(unittest.TestCase):
         blocks, _ = card.render(saved, now=NOW)
         self.assertFalse(any(plain(b).startswith("Updated") for b in blocks))
         notion = AgendaRegions()
-        notion.children["calendar-callout"][1] = notion._paragraph("Updated 12:14 CT")  # last hour's separate status line
+        notion.children["calendar-callout"][1] = notion._paragraph(
+            "Updated 12:14 CT"
+        )  # last hour's separate status line
         card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved))
         kids = notion.children["calendar-callout"]
         self.assertEqual(plain(kids[0]), heading)
@@ -171,19 +217,36 @@ class AgendaCardTests(unittest.TestCase):
     def test_stale_never_claims_content_V7_did_not_write(self):
         notion = AgendaRegions()
         with self.assertRaises(card.CardError) as caught:
-            card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved_snapshot([], NOW.replace(hour=4))))
+            card.run(
+                1,
+                True,
+                environ=self._env(),
+                client=notion,
+                now=NOW,
+                connect=lambda: AgendaSnapshotDB(saved_snapshot([], NOW.replace(hour=4))),
+            )
         self.assertEqual(str(caught.exception), "AGENDA_CARD_STALE_NO_BASELINE")
 
     def test_the_card_is_owned_under_the_new_heading_and_under_the_older_ones(self):
         """V7 keeps its card across the deploy: the new `Calendar (11/13 · 1:18 PM CT)`, the dated `Updated` heading and
         the time-only one.
         """
-        for text in ("Calendar", "Calendar (11/13 · 1:18 PM CT)", "Calendar (Updated Nov 13 · 1:18 PM CT)", "Calendar (Updated 1:18 PM CT)", "Calendar (STALE · last accepted 11/13 · 1:18 PM CT)"):
-            self.assertTrue(card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text)
+        for text in (
+            "Calendar",
+            "Calendar (11/13 · 1:18 PM CT)",
+            "Calendar (Updated Nov 13 · 1:18 PM CT)",
+            "Calendar (Updated 1:18 PM CT)",
+            "Calendar (STALE · last accepted 11/13 · 1:18 PM CT)",
+        ):
+            self.assertTrue(
+                card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text
+            )
 
     def test_a_heading_that_only_starts_with_calendar_is_not_the_card(self):
         for text in ("Calendar notes", "Calendars (Updated 1:00 PM CT)", "Calendar (Updated 1:00 PM CT) extra"):
-            self.assertFalse(card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text)
+            self.assertFalse(
+                card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text
+            )
 
     def test_nested_card_accepts_heading_three_and_four_and_replaces_foreign_content(self):
         event = compacted(timed("one", "Example fresh"))
@@ -193,17 +256,21 @@ class AgendaCardTests(unittest.TestCase):
                 notion = AgendaRegions(heading_type=heading_type, extra_calendar=True)
                 before_heading = dict(notion.children["calendar-callout"][0])
                 before_jira = notion.full_tree("jira-callout")
-                counts = card.run(1, True, environ=self._env(), client=notion,
-                                  now=NOW, connect=lambda: database)
+                counts = card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
                 ops = [kind for kind, _ in notion.log]
                 append_at, delete_at = ops.index("APPEND"), ops.index("DELETE")
-                final_read = max(i for i, (kind, path) in enumerate(notion.log)
-                                 if kind == "GET" and path.startswith("/blocks/calendar-callout/children"))
+                final_read = max(
+                    i
+                    for i, (kind, path) in enumerate(notion.log)
+                    if kind == "GET" and path.startswith("/blocks/calendar-callout/children")
+                )
                 self.assertLess(append_at, delete_at)
                 self.assertLess(delete_at, final_read)
                 self.assertEqual(notion.children["calendar-callout"][0]["id"], before_heading["id"])
                 self.assertTrue(plain(notion.children["calendar-callout"][0]).startswith("Calendar ("))
-                self.assertNotIn("Foreign writer content", [plain(block) for block in notion.children["calendar-callout"]])
+                self.assertNotIn(
+                    "Foreign writer content", [plain(block) for block in notion.children["calendar-callout"]]
+                )
                 self.assertEqual(notion.full_tree("jira-callout"), before_jira)
                 self.assertEqual(counts["status"], "fresh")
                 self.assertGreater(counts["blocks_written"], 0)
@@ -215,20 +282,35 @@ class AgendaCardTests(unittest.TestCase):
 
     def test_invalid_target_shape_refuses_writes(self):
         database = AgendaSnapshotDB(saved_snapshot([]))
-        for notion, configured in ((AgendaRegions(calendar_title="Other"), "calendar-callout"),
-                                   (AgendaRegions(), "jira-callout"),
-                                   (AgendaRegions(calendar_type="paragraph"), "calendar-callout"),
-                                   (AgendaRegions(calendar_title="Calendar", heading_type="paragraph"), "calendar-callout")):
+        for notion, configured in (
+            (AgendaRegions(calendar_title="Other"), "calendar-callout"),
+            (AgendaRegions(), "jira-callout"),
+            (AgendaRegions(calendar_type="paragraph"), "calendar-callout"),
+            (AgendaRegions(calendar_title="Calendar", heading_type="paragraph"), "calendar-callout"),
+        ):
             before = len(notion.log)
             with self.assertRaises(card.CardError):
-                card.run(1, True, environ={**self._env(), "CALENDAR_CARD_BLOCK_ID": configured}, client=notion,
-                         now=NOW, connect=lambda: database)
+                card.run(
+                    1,
+                    True,
+                    environ={**self._env(), "CALENDAR_CARD_BLOCK_ID": configured},
+                    client=notion,
+                    now=NOW,
+                    connect=lambda: database,
+                )
             self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log[before:]))
 
     def test_a_missing_jira_id_refuses_before_writes(self):
         notion = AgendaRegions()
         with self.assertRaises(card.CardError):
-            card.run(1, True, environ={"CALENDAR_CARD_BLOCK_ID": "calendar-callout"}, client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved_snapshot([])))
+            card.run(
+                1,
+                True,
+                environ={"CALENDAR_CARD_BLOCK_ID": "calendar-callout"},
+                client=notion,
+                now=NOW,
+                connect=lambda: AgendaSnapshotDB(saved_snapshot([])),
+            )
         self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log))
 
     def test_a_jira_card_write_during_ours_no_longer_fails_the_run(self):
@@ -245,7 +327,11 @@ class AgendaCardTests(unittest.TestCase):
         before = notion.full_tree("jira-callout")
 
         def buggy_writer(client, block_id, blocks, *rest):
-            client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+            client.call(
+                "PATCH",
+                f"/blocks/{foreign}",
+                {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}},
+            )
 
         with mock.patch.object(card, "_append", buggy_writer):
             with self.assertRaises(card.CardError) as caught:
@@ -263,10 +349,11 @@ class AgendaCardTests(unittest.TestCase):
         saved = saved_snapshot([], NOW.replace(hour=4))
         database = AgendaSnapshotDB(saved)
         notion = AgendaRegions()
-        notion.children["calendar-callout"][0]["heading_3"]["rich_text"] = [{"plain_text": "Calendar (Updated 4:00 AM CT)"}]  # V7 wrote it before
+        notion.children["calendar-callout"][0]["heading_3"]["rich_text"] = [
+            {"plain_text": "Calendar (Updated 4:00 AM CT)"}
+        ]  # V7 wrote it before
         notion.children["calendar-callout"].append(notion._paragraph("Example previous event"))
-        counts = card.run(1, True, environ=self._env(), client=notion,
-                          now=NOW, connect=lambda: database)
+        counts = card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
         self.assertEqual(counts["status"], "stale")
         self.assertEqual(counts["blocks_written"], 1)
         self.assertTrue(plain(notion.children["calendar-callout"][0]).startswith("Calendar (STALE · last accepted"))
@@ -286,7 +373,9 @@ class RealCalendarShapeTests(unittest.TestCase):
         self.assertEqual(compacted({**timed("u2", "x"), "summary": "   "})["title"], "(no title)")
 
     def test_a_zero_length_event_is_kept_on_its_day(self):
-        item = compacted(timed("z1", "Example reminder", start="2026-03-08T11:00:00-05:00", end="2026-03-08T11:00:00-05:00"))
+        item = compacted(
+            timed("z1", "Example reminder", start="2026-03-08T11:00:00-05:00", end="2026-03-08T11:00:00-05:00")
+        )
         self.assertEqual(item["days"], ["2026-03-08"])
 
     def test_an_event_that_ends_before_it_starts_is_still_invalid(self):
@@ -306,8 +395,13 @@ class HyphenatedIdTests(unittest.TestCase):
 
         def call(self, method, path, body=None):
             if path.endswith("/children?page_size=100"):
-                heading = {"object": "block", "id": "h1", "type": "heading_3", "has_children": False,
-                           "heading_3": {"rich_text": [{"plain_text": "Calendar"}]}}
+                heading = {
+                    "object": "block",
+                    "id": "h1",
+                    "type": "heading_3",
+                    "has_children": False,
+                    "heading_3": {"rich_text": [{"plain_text": "Calendar"}]},
+                }
                 return {"results": [heading], "has_more": False}
             return {"object": "block", "id": self.hyphenated, "type": "callout", "has_children": True}
 
@@ -323,7 +417,11 @@ class HyphenatedIdTests(unittest.TestCase):
 
 def links(block):
     """[(text, url)] of every linked piece in a rendered event bullet."""
-    return [(part["text"]["content"], part["text"]["link"]["url"]) for part in block["bulleted_list_item"]["rich_text"] if part["text"].get("link")]
+    return [
+        (part["text"]["content"], part["text"]["link"]["url"])
+        for part in block["bulleted_list_item"]["rich_text"]
+        if part["text"].get("link")
+    ]
 
 
 def event_blocks(snap):
@@ -333,6 +431,7 @@ def event_blocks(snap):
 
 class CalendarDeepLinkTests(unittest.TestCase):
     """The event title opens the event in Google Calendar"""
+
     CAL = "https://www.google.com/calendar/event?eid=abc123"
     MEET = "https://teams.example.com/meet/42"
 
@@ -344,8 +443,9 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual((both["calendar_link"], both["meeting_link"]), (self.CAL, self.MEET))
         day = compacted(all_day(htmlLink=self.CAL))
         self.assertEqual((day["calendar_link"], day["meeting_link"]), (self.CAL, None))
-        conference = compacted(timed("t2", "Example call", htmlLink=self.CAL,
-                                          conferenceData={"entryPoints": [{"uri": self.MEET}]}))
+        conference = compacted(
+            timed("t2", "Example call", htmlLink=self.CAL, conferenceData={"entryPoints": [{"uri": self.MEET}]})
+        )
         self.assertEqual((conference["calendar_link"], conference["meeting_link"]), (self.CAL, self.MEET))
 
     def test_a_missing_or_non_web_event_link_is_none_and_a_wrong_type_is_invalid(self):
@@ -356,17 +456,44 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "AGENDA_EVENT_INVALID")
 
     def test_timed_event_title_links_to_the_calendar_and_join_links_to_the_meeting(self):
-        snap = saved_snapshot([compacted(timed("t1", "Example sync", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00",
-                                                    htmlLink=self.CAL, hangoutLink=self.MEET, location="Room 2"))])
+        snap = saved_snapshot(
+            [
+                compacted(
+                    timed(
+                        "t1",
+                        "Example sync",
+                        "2026-03-08T09:30:00-05:00",
+                        "2026-03-08T10:45:00-05:00",
+                        htmlLink=self.CAL,
+                        hangoutLink=self.MEET,
+                        location="Room 2",
+                    )
+                )
+            ]
+        )
         block = event_blocks(snap)[0]
         self.assertEqual(links(block), [("Example sync", self.CAL), ("Join", self.MEET)])
         self.assertEqual(plain(block), "Now · 9:30 AM–10:45 AM — Example sync · Join · Room 2")
 
     def test_a_location_that_is_a_web_address_becomes_a_small_link_named_for_its_site(self):
-        snap = saved_snapshot([compacted(timed("t7", "Example session", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00", htmlLink=self.CAL,
-                                                    location="https://www.example.com/live/AbC123"))])
+        snap = saved_snapshot(
+            [
+                compacted(
+                    timed(
+                        "t7",
+                        "Example session",
+                        "2026-03-08T09:30:00-05:00",
+                        "2026-03-08T10:45:00-05:00",
+                        htmlLink=self.CAL,
+                        location="https://www.example.com/live/AbC123",
+                    )
+                )
+            ]
+        )
         block = event_blocks(snap)[0]
-        self.assertEqual(links(block), [("Example session", self.CAL), ("example.com", "https://www.example.com/live/AbC123")])
+        self.assertEqual(
+            links(block), [("Example session", self.CAL), ("example.com", "https://www.example.com/live/AbC123")]
+        )
         self.assertEqual(plain(block), "Now · 9:30 AM–10:45 AM — Example session · example.com")
 
     def test_words_around_an_address_stay_plain_and_an_address_the_join_link_carries_is_not_repeated(self):
@@ -375,7 +502,9 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual([p["text"]["content"] for p in mixed if p["text"].get("link")], ["example.com"])
         self.assertEqual(card._location_parts(self.MEET, self.MEET), [])
         long_one = "https://example.com/" + "a" * 2000
-        self.assertFalse([p for p in card._location_parts(long_one) if p["text"].get("link")])  # too long for Notion's link: stays text
+        self.assertFalse(
+            [p for p in card._location_parts(long_one) if p["text"].get("link")]
+        )  # too long for Notion's link: stays text
         self.assertEqual(card._location_parts("   "), [])
 
     def test_all_day_event_links_to_the_calendar_and_has_no_join_without_a_meeting(self):
@@ -389,8 +518,17 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual(links(event_blocks(snap)[0]), [("Join", self.MEET)])
 
     def test_a_snapshot_saved_before_the_field_existed_is_still_valid_and_renders_unlinked(self):
-        old = {"id": "old", "title": "Example old", "start": "2026-03-08T11:00:00-05:00", "end": "2026-03-08T11:30:00-05:00",
-               "all_day": False, "location": None, "meeting_link": None, "source": "native", "days": ["2026-03-08"]}
+        old = {
+            "id": "old",
+            "title": "Example old",
+            "start": "2026-03-08T11:00:00-05:00",
+            "end": "2026-03-08T11:30:00-05:00",
+            "all_day": False,
+            "location": None,
+            "meeting_link": None,
+            "source": "native",
+            "days": ["2026-03-08"],
+        }
         blocks, counts = card.render(saved_snapshot([old]), now=NOW)
         self.assertEqual(counts["events"], 1)
         self.assertEqual(links(event_blocks(saved_snapshot([old]))[0]), [])
@@ -402,8 +540,19 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "AGENDA_SNAPSHOT_INVALID")
 
     def test_production_path_calendar_read_to_saved_snapshot_to_card(self):
-        calendar = CalendarEvents([timed("p1", "Example sync", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00",
-                                         htmlLink=self.CAL, hangoutLink=self.MEET), all_day(htmlLink=self.CAL + "2")])
+        calendar = CalendarEvents(
+            [
+                timed(
+                    "p1",
+                    "Example sync",
+                    "2026-03-08T09:30:00-05:00",
+                    "2026-03-08T10:45:00-05:00",
+                    htmlLink=self.CAL,
+                    hangoutLink=self.MEET,
+                ),
+                all_day(htmlLink=self.CAL + "2"),
+            ]
+        )
         database = AgendaSnapshotDB()
         snapshot.run(1, True, calendar=calendar, now=NOW, connect=lambda: database)
         loaded = snapshot.load(database)

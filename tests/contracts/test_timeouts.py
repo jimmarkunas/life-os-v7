@@ -1,6 +1,7 @@
 """every workflow job has a measured `timeout-minutes` and docs/platform/timeouts.md lists them all (the per-stage
 budgets are checked in.
 """
+
 import json
 import pathlib
 import unittest
@@ -22,7 +23,11 @@ class WorkflowJobTimeouts(unittest.TestCase):
         found = jobs()
         for key, job in found.items():
             self.assertIsInstance(job.get("timeout-minutes"), int, key)
-        self.assertEqual(sorted(found), sorted(TIMEOUTS["jobs"]), "a job was added or removed: regenerate lifeos/platform/timeouts.json and the doc")
+        self.assertEqual(
+            sorted(found),
+            sorted(TIMEOUTS["jobs"]),
+            "a job was added or removed: regenerate lifeos/platform/timeouts.json and the doc",
+        )
 
     def test_a_job_has_its_target_or_is_listed_as_pending_with_the_value_it_still_has(self):
         pending = set(TIMEOUTS["pending"])
@@ -30,8 +35,14 @@ class WorkflowJobTimeouts(unittest.TestCase):
             row = TIMEOUTS["jobs"][key]
             self.assertLessEqual(row["target"], row["current"], key)  # a timeout is only ever tightened
             if key in pending:
-                self.assertEqual(job["timeout-minutes"], row["current"], f"{key} is pending: it must still have its old value")
-                self.assertGreater(row["current"], row["target"], f"{key} is pending but already at its target: remove it from `pending`")
+                self.assertEqual(
+                    job["timeout-minutes"], row["current"], f"{key} is pending: it must still have its old value"
+                )
+                self.assertGreater(
+                    row["current"],
+                    row["target"],
+                    f"{key} is pending but already at its target: remove it from `pending`",
+                )
             else:
                 self.assertEqual(job["timeout-minutes"], row["target"], key)
 
@@ -54,7 +65,9 @@ class WorkflowJobTimeouts(unittest.TestCase):
         for key, job in jobs().items():
             for step in job.get("steps") or []:
                 if step.get("uses") == "./.github/actions/bws-helper":
-                    self.assertLessEqual(int(step["with"]["wait_seconds"]) * 3, TIMEOUTS["jobs"][key]["target"] * 60, key)
+                    self.assertLessEqual(
+                        int(step["with"]["wait_seconds"]) * 3, TIMEOUTS["jobs"][key]["target"] * 60, key
+                    )
 
     def test_jobs_at_their_limit_are_named_for_jim_in_the_doc(self):
         for key in TIMEOUTS["at_limit"]:

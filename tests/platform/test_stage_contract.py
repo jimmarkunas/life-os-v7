@@ -1,11 +1,19 @@
 """the stage contract type (lifeos/platform/stage_contract.py)."""
+
 import unittest
 
 from lifeos.platform import codes, stage_contract as sc
 
 
 def contract(run, **over):
-    fields = dict(name="demo", run=run, inputs=("a page",), outputs=("status", "n"), dry_run="reads and counts", write="writes one row")
+    fields = dict(
+        name="demo",
+        run=run,
+        inputs=("a page",),
+        outputs=("status", "n"),
+        dry_run="reads and counts",
+        write="writes one row",
+    )
     return sc.Contract(**{**fields, **over})
 
 
@@ -35,15 +43,26 @@ class ContractTests(unittest.TestCase):
 
     def test_describe_lists_the_declaration(self):
         d = contract(lambda limit, live: {}).describe()
-        self.assertEqual((d["name"], d["inputs"], d["outputs"], d["dry_run"], d["write"]), ("demo", ["a page"], ["status", "n"], "reads and counts", "writes one row"))
+        self.assertEqual(
+            (d["name"], d["inputs"], d["outputs"], d["dry_run"], d["write"]),
+            ("demo", ["a page"], ["status", "n"], "reads and counts", "writes one row"),
+        )
 
     def test_the_two_codes_are_registered_and_the_module_imports_nothing_from_lifeos(self):
         self.assertIn("STAGE_CONTRACT_OUTPUT_MISSING", codes.CODES)
         self.assertIn("STAGE_CONTRACT_INCOMPLETE", codes.CODES)
         import ast
         import pathlib
+
         tree = ast.parse(pathlib.Path(sc.__file__).read_text())
-        self.assertEqual([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) and "lifeos" in (getattr(n, "module", "") or "")], [])
+        self.assertEqual(
+            [
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.Import, ast.ImportFrom)) and "lifeos" in (getattr(n, "module", "") or "")
+            ],
+            [],
+        )
 
 
 if __name__ == "__main__":

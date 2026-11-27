@@ -1,6 +1,7 @@
 """Shared fakes for the API clients' network calls: patch urllib.request.urlopen with a function that returns
 Response(...) or raises http_error(...).
 """
+
 import io
 import json
 import urllib.error
@@ -31,8 +32,7 @@ class Response:
 
 
 def http_error(request, code, body=b"secret body text", headers=None):
-    """An HTTPError carrying a body and the URL, so tests can prove neither leaks into the client's fixed error code.
-    """
+    """An HTTPError carrying a body and the URL, so tests can prove neither leaks into the client's fixed error code."""
     message = Message()
     for key, value in (headers or {}).items():
         message[key] = value

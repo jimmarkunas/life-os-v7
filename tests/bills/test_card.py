@@ -1,4 +1,5 @@
 """the Bills card renders the saved snapshot into the one 'Bills: This Week' callout."""
+
 import copy
 import inspect
 import pathlib
@@ -15,17 +16,35 @@ from tests.kit.notion import BillsRegions
 
 TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 4, 12, 30, tzinfo=TZ)
-ENV = {"BILLS_CARD_BLOCK_ID": "bills-callout", "CALENDAR_CARD_BLOCK_ID": "calendar-callout", "JIRA_CARD_BLOCK_ID": "jira-callout"}
+ENV = {
+    "BILLS_CARD_BLOCK_ID": "bills-callout",
+    "CALENDAR_CARD_BLOCK_ID": "calendar-callout",
+    "JIRA_CARD_BLOCK_ID": "jira-callout",
+}
 
 
 def row(name, due, next_due, *, paid=False, status="Active", cycle="Monthly", amount=30.0):
-    return {"page_id": f"p-{name}", "Name": name, "Status": status, "Cycle": cycle, "Paid": paid, "Due Date": due, "Next Due": next_due,
-            "Last Paid": None, "Costs per Cycle": amount, "Last Observed Amount": amount}
+    return {
+        "page_id": f"p-{name}",
+        "Name": name,
+        "Status": status,
+        "Cycle": cycle,
+        "Paid": paid,
+        "Due Date": due,
+        "Next Due": next_due,
+        "Last Paid": None,
+        "Costs per Cycle": amount,
+        "Last Observed Amount": amount,
+    }
 
 
 # The four rows left in the live Bill Tracker on 2026-10-04: never marked Paid, so legitimately overdue, plus.
-STALE_FOUR = [row("Best Buy Card", "2026-09-09", "2026-10-09"), row("Google Store", "2026-09-10", "2026-10-10"),
-              row("IKEA Project Card", "2026-09-11", "2026-10-11", amount=None), row("HEB Visa", "2026-09-13", "2026-10-13")]
+STALE_FOUR = [
+    row("Best Buy Card", "2026-09-09", "2026-10-09"),
+    row("Google Store", "2026-09-10", "2026-10-10"),
+    row("IKEA Project Card", "2026-09-11", "2026-10-11", amount=None),
+    row("HEB Visa", "2026-09-13", "2026-10-13"),
+]
 
 
 def saved(rows, taken="2026-10-04T12:10:00-05:00"):
@@ -39,8 +58,12 @@ def lines(blocks):
 class RenderTests(unittest.TestCase):
     def test_window_is_today_through_today_plus_seven_from_the_chicago_date_not_september(self):
         """Jim's rule: the same boundary as the Bills view's native 'one week from now' filter."""
-        rows = [row("Today Bill", "2026-10-04", "2026-10-04"), row("Oct 10 Bill", "2026-10-10", "2026-10-10"), row("Oct 11 Bill", "2026-10-11", "2026-10-11"),
-                row("Oct 12 Bill", "2026-10-12", "2026-10-12")]
+        rows = [
+            row("Today Bill", "2026-10-04", "2026-10-04"),
+            row("Oct 10 Bill", "2026-10-10", "2026-10-10"),
+            row("Oct 11 Bill", "2026-10-11", "2026-10-11"),
+            row("Oct 12 Bill", "2026-10-12", "2026-10-12"),
+        ]
         overdue, due = card._window(rows, NOW.date())
         self.assertEqual(sorted(r["Name"] for r in due), ["Oct 10 Bill", "Oct 11 Bill", "Today Bill"])
         self.assertNotIn("Oct 12 Bill", [r["Name"] for r in due])
@@ -49,7 +72,9 @@ class RenderTests(unittest.TestCase):
         self.assertIn("3 due through one week from now", lines(blocks)[0])
         self.assertEqual(counts["due_window"], 3)
         self.assertNotIn("due_7d", counts)
-        later_overdue, later_due = card._window(rows, date(2026, 12, 20))  # another day: the window moves, nothing is stored
+        later_overdue, later_due = card._window(
+            rows, date(2026, 12, 20)
+        )  # another day: the window moves, nothing is stored
         self.assertEqual(later_due, [])
         self.assertEqual(len(later_overdue), 4)
 
@@ -62,7 +87,9 @@ class RenderTests(unittest.TestCase):
     def test_the_four_unpaid_september_rows_stay_overdue_and_are_not_advanced(self):
         before = copy.deepcopy(STALE_FOUR)
         overdue, _ = card._window(STALE_FOUR, NOW.date())
-        self.assertEqual([r["Name"] for r in overdue], ["Best Buy Card", "Google Store", "IKEA Project Card", "HEB Visa"])
+        self.assertEqual(
+            [r["Name"] for r in overdue], ["Best Buy Card", "Google Store", "IKEA Project Card", "HEB Visa"]
+        )
         blocks, counts = card.render(saved(STALE_FOUR), now=NOW)
         self.assertIn("4 overdue", lines(blocks)[0])
         self.assertEqual(counts["overdue"], 4)
@@ -75,10 +102,15 @@ class RenderTests(unittest.TestCase):
         self.assertNotIn("Best Buy", lines(blocks)[0])
 
     def test_fresh_snapshot_shows_updated_time_and_the_current_window(self):
-        rows = STALE_FOUR + [row("Water", "2026-10-06", "2026-10-06", amount=45.0), row("Power", "2026-10-08", "2026-10-08", amount=30.0)]
+        rows = STALE_FOUR + [
+            row("Water", "2026-10-06", "2026-10-06", amount=45.0),
+            row("Power", "2026-10-08", "2026-10-08", amount=30.0),
+        ]
         blocks, counts = card.render(saved(rows), now=NOW)
         head = lines(blocks)[0]
-        self.assertEqual(card.heading_text(saved(rows), False), "Bills: This Week (10/4 · 12:10 PM CT)")  # the stamp is in the heading
+        self.assertEqual(
+            card.heading_text(saved(rows), False), "Bills: This Week (10/4 · 12:10 PM CT)"
+        )  # the stamp is in the heading
         self.assertNotIn("Updated", head)
         self.assertIn("2 due through one week from now", head)
         self.assertIn("$75 known", head)
@@ -88,13 +120,23 @@ class RenderTests(unittest.TestCase):
     def test_stale_snapshot_is_labelled_stale_with_its_own_timestamp_never_current(self):
         blocks, counts = card.render(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), stale=True, now=NOW)
         head = lines(blocks)[0]
-        self.assertEqual(card.heading_text(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), True), "Bills: This Week (STALE · last accepted 10/4 · 5:00 AM CT)")
+        self.assertEqual(
+            card.heading_text(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), True),
+            "Bills: This Week (STALE · last accepted 10/4 · 5:00 AM CT)",
+        )
         self.assertNotIn("Updated", head)
         self.assertEqual(counts["status"], "stale")
 
     def test_missing_or_incomplete_snapshot_fails_closed(self):
-        for bad in (None, {}, saved([]), {"schema": 2, "taken_at": "2026-10-04T12:00:00-05:00", "rows": [row("A", None, None)]},
-                    saved([row("A", None, None)], taken="garbage"), saved([{"Name": "A"}]), saved([dict(row("A", None, None), Paid="yes")])):
+        for bad in (
+            None,
+            {},
+            saved([]),
+            {"schema": 2, "taken_at": "2026-10-04T12:00:00-05:00", "rows": [row("A", None, None)]},
+            saved([row("A", None, None)], taken="garbage"),
+            saved([{"Name": "A"}]),
+            saved([dict(row("A", None, None), Paid="yes")]),
+        ):
             with self.assertRaises(card.CardError, msg=str(bad)) as caught:
                 card.render(bad, now=NOW)
             self.assertEqual(str(caught.exception), "BILLS_CARD_SNAPSHOT_INVALID")
@@ -112,32 +154,55 @@ class RenderTests(unittest.TestCase):
         self.assertIsNone(card._amount(row("X", None, None, amount=None)))
 
     def test_paid_overdue_and_unsupported_rows_are_not_counted(self):
-        rows = [row("Paid Row", "2026-09-01", "2026-10-05", paid=True), row("Lifetime", "2026-09-01", "2026-10-05", cycle="Lifetime"),
-                row("Inactive", "2026-09-01", "2026-10-05", status="Inactive"), row("Real", "2026-10-05", "2026-10-05")]
+        rows = [
+            row("Paid Row", "2026-09-01", "2026-10-05", paid=True),
+            row("Lifetime", "2026-09-01", "2026-10-05", cycle="Lifetime"),
+            row("Inactive", "2026-09-01", "2026-10-05", status="Inactive"),
+            row("Real", "2026-10-05", "2026-10-05"),
+        ]
         overdue, due = card._window(rows, NOW.date())
         self.assertEqual((overdue, [r["Name"] for r in due]), ([], ["Real"]))
 
 
 class WriteTests(unittest.TestCase):
     def run_card(self, notion, rows=STALE_FOUR, **kwargs):
-        return card.run(0, kwargs.pop("live", True), environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(rows)), **kwargs)
+        return card.run(
+            0,
+            kwargs.pop("live", True),
+            environ=ENV,
+            client=notion,
+            now=NOW,
+            connect=lambda: BillsSnapshotDB(saved(rows)),
+            **kwargs,
+        )
 
     def test_live_write_replaces_only_the_text_and_leaves_the_interactive_table_in_place(self):
         notion = BillsRegions()
-        calendar_before, jira_before, dcc_before = (notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout"))
+        calendar_before, jira_before, dcc_before = (
+            notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout")
+        )
         view_before = dict(next(k for k in notion.children["bills-callout"] if k["id"] == "bills-view-old"))
         counts = self.run_card(notion)
         kids = notion.children["bills-callout"]
         self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")  # the heading block itself is kept
-        self.assertEqual(report_region.plain(kids[0]), "Bills: This Week (10/4 · 12:10 PM CT)")  # the stamp is in the heading
-        self.assertTrue(report_region.plain(kids[1]).startswith("4 bills due"))  # the summary sits right under the heading
+        self.assertEqual(
+            report_region.plain(kids[0]), "Bills: This Week (10/4 · 12:10 PM CT)"
+        )  # the stamp is in the heading
+        self.assertTrue(
+            report_region.plain(kids[1]).startswith("4 bills due")
+        )  # the summary sits right under the heading
         self.assertEqual(kids[2]["id"], "bills-view-old")
         self.assertEqual(kids[2], view_before)
         self.assertNotIn("last accepted 9/14", "\n".join(lines(kids)))
         self.assertEqual((counts["blocks_written"], counts["removed"]), (1, 0))
-        self.assertEqual((notion.full_tree("calendar-callout"), notion.full_tree("jira-callout"), notion.full_tree("dcc-callout")),
-                         (calendar_before, jira_before, dcc_before))
-        self.assertEqual({p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")}, {"bills-status-old", "heading-bills-callout"})
+        self.assertEqual(
+            (notion.full_tree("calendar-callout"), notion.full_tree("jira-callout"), notion.full_tree("dcc-callout")),
+            (calendar_before, jira_before, dcc_before),
+        )
+        self.assertEqual(
+            {p.split("/")[2] for m, p in notion.log if m in ("APPEND", "DELETE", "PATCH")},
+            {"bills-status-old", "heading-bills-callout"},
+        )
         self.assertFalse(any(p == f"/blocks/{notion.page_id}/children" for _, p in notion.log))
 
     def test_dry_run_writes_nothing_and_missing_config_is_not_an_error(self):
@@ -145,12 +210,25 @@ class WriteTests(unittest.TestCase):
         counts = self.run_card(notion, live=False)
         self.assertEqual(counts["status"], "fresh")
         self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE", "PATCH")], [])
-        self.assertEqual(card.run(0, True, environ={}, client=notion, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR)))["status"], "not_configured")
+        self.assertEqual(
+            card.run(0, True, environ={}, client=notion, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR)))["status"],
+            "not_configured",
+        )
 
     def test_stale_snapshot_is_written_as_stale(self):
         notion = BillsRegions()
-        card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))
-        self.assertEqual(report_region.plain(notion.children["bills-callout"][0]), "Bills: This Week (STALE · last accepted 10/4 · 5:00 AM CT)")
+        card.run(
+            0,
+            True,
+            environ=ENV,
+            client=notion,
+            now=NOW,
+            connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")),
+        )
+        self.assertEqual(
+            report_region.plain(notion.children["bills-callout"][0]),
+            "Bills: This Week (STALE · last accepted 10/4 · 5:00 AM CT)",
+        )
 
     def test_tracker_link_is_preserved_and_wrong_target_refuses_before_writing(self):
         notion = BillsRegions()
@@ -159,13 +237,22 @@ class WriteTests(unittest.TestCase):
         for env in ({**ENV, "BILLS_CARD_BLOCK_ID": "calendar-callout"}, {**ENV, "BILLS_CARD_BLOCK_ID": "jira-callout"}):
             fresh = BillsRegions()
             with self.assertRaises(card.CardError) as caught:
-                card.run(0, True, environ=env, client=fresh, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR)))
+                card.run(
+                    0, True, environ=env, client=fresh, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR))
+                )
             self.assertEqual(str(caught.exception), "BILLS_CARD_NOT_OWNED")
             self.assertEqual([m for m, _ in fresh.log if m in ("APPEND", "DELETE")], [])
 
     def test_a_database_view_a_database_or_a_page_in_the_callout_is_never_deleted_or_moved(self):
-        for extra in ({"id": "real-db", "type": "child_database", "has_children": False, "child_database": {"title": "Bill Tracker"}},
-                      {"id": "a-page", "type": "child_page", "has_children": False, "child_page": {"title": "Notes"}}):
+        for extra in (
+            {
+                "id": "real-db",
+                "type": "child_database",
+                "has_children": False,
+                "child_database": {"title": "Bill Tracker"},
+            },
+            {"id": "a-page", "type": "child_page", "has_children": False, "child_page": {"title": "Notes"}},
+        ):
             notion = BillsRegions(extra_kid=extra)
             self.run_card(notion)
             kept = [k["id"] for k in notion.children["bills-callout"][2:]]
@@ -185,7 +272,11 @@ class WriteTests(unittest.TestCase):
         before = notion.full_tree("jira-callout")
 
         def buggy_writer(client, *rest):
-            client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
+            client.call(
+                "PATCH",
+                f"/blocks/{foreign}",
+                {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}},
+            )
 
         with mock.patch.object(report_region, "_write_in_place", buggy_writer):
             with self.assertRaises(card.CardError) as caught:
@@ -200,7 +291,9 @@ class WriteTests(unittest.TestCase):
             notion = BillsRegions()
             env = {k: v for k, v in ENV.items() if k != missing}
             with self.assertRaises(card.CardError) as caught:
-                card.run(0, True, environ=env, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR)))
+                card.run(
+                    0, True, environ=env, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR))
+                )
             self.assertEqual(str(caught.exception), "BILLS_PROTECTED_REGION_UNAVAILABLE")
             self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
 
@@ -212,22 +305,30 @@ class RuntimePathTests(unittest.TestCase):
 
     def test_the_cli_stage_points_at_the_card_and_the_whole_path_runs_from_the_saved_snapshot(self):
         from lifeos import run as runner
+
         self.assertEqual(runner.STAGES["bills-card"].target, ("lifeos.bills.card", "run"))
         notion = BillsRegions()
         database = BillsSnapshotDB(saved(STALE_FOUR))
         counts = card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: database)
         self.assertEqual(counts["status"], "fresh")
-        self.assertEqual([c for c in database.sql if c.startswith(("INSERT", "UPDATE", "DELETE"))], [])  # the card never writes the snapshot either
+        self.assertEqual(
+            [c for c in database.sql if c.startswith(("INSERT", "UPDATE", "DELETE"))], []
+        )  # the card never writes the snapshot either
 
     def test_the_bills_job_runs_paid_then_snapshot_then_card_and_waits_for_no_other_card(self):
         try:
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        doc = yaml.safe_load((pathlib.Path(card.__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())
+        doc = yaml.safe_load(
+            (pathlib.Path(card.__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text()
+        )
         job = doc["jobs"]["bills"]
         runs = [step.get("run", "") for step in job["steps"]]
-        order = [next(i for i, r in enumerate(runs) if f"lifeos.run {stage}" in r) for stage in ("bills-paid", "bills-snapshot", "bills-card")]
+        order = [
+            next(i for i, r in enumerate(runs) if f"lifeos.run {stage}" in r)
+            for stage in ("bills-paid", "bills-snapshot", "bills-card")
+        ]
         self.assertEqual(order, sorted(order))
         self.assertEqual(set(job["needs"]), {"gate"})
         self.assertTrue(next(s for s in job["steps"] if s.get("id") == "bcard")["continue-on-error"])
@@ -254,7 +355,13 @@ class OwnershipAndSourceTests(unittest.TestCase):
 
     def test_the_card_never_writes_the_bill_tracker_or_advances_a_due_date(self):
         source = inspect.getsource(card)
-        for banned in ("update_page_properties", "query_data_source", "NOTION_BILLS_TOKEN", "Due Date\":", "Last Paid\":"):
+        for banned in (
+            "update_page_properties",
+            "query_data_source",
+            "NOTION_BILLS_TOKEN",
+            "Due Date\":",
+            "Last Paid\":",
+        ):
             self.assertNotIn(banned, source)
 
     def test_paid_processing_still_belongs_to_paid_py(self):

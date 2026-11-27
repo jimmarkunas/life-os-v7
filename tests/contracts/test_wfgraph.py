@@ -1,6 +1,7 @@
 """tools/wfgraph.py proves a workflow refactor changed no behaviour: the lean steps inline back to the old ones, and any
 real difference shows.
 """
+
 import contextlib
 import io
 import pathlib
@@ -79,7 +80,9 @@ class Graph(unittest.TestCase):
         self.assertNotEqual(wfgraph.graph(OLD), wfgraph.graph(NEW.replace("echo go", "echo gone")))
 
     def test_a_dropped_compare_or_a_changed_wait_shows_in_the_graph(self):
-        self.assertNotEqual(wfgraph.graph(OLD), wfgraph.graph(NEW.replace("          doppler_compare: ${{ secrets.D }}\n", "")))
+        self.assertNotEqual(
+            wfgraph.graph(OLD), wfgraph.graph(NEW.replace("          doppler_compare: ${{ secrets.D }}\n", ""))
+        )
         self.assertNotEqual(wfgraph.graph(OLD), wfgraph.graph(NEW.replace('"300"', '"200"')))
 
     def test_the_working_tree_graph_equals_itself(self):

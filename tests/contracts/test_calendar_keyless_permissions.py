@@ -39,7 +39,9 @@ class CalendarKeyless(unittest.TestCase):
                 self.assertRegex(text, CALENDAR_READER, (workflow, job))
 
     def test_the_retired_key_is_loaded_nowhere(self):
-        offenders = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*.yml") if "GCAL_SERVICE_ACCOUNT_JSON" in p.read_text()]
+        offenders = [
+            str(p.relative_to(ROOT)) for p in ROOT.rglob("*.yml") if "GCAL_SERVICE_ACCOUNT_JSON" in p.read_text()
+        ]
         self.assertEqual(offenders, [])
 
 

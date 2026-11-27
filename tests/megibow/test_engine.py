@@ -9,7 +9,14 @@ TODAY = NOW.date()
 
 
 def ctx(**kw):
-    base = {"self": {"jim@example.com"}, "known": {"lensa"}, "excluded": set(), "overrides": {}, "contacts": {}, "sent_to": {}}
+    base = {
+        "self": {"jim@example.com"},
+        "known": {"lensa"},
+        "excluded": set(),
+        "overrides": {},
+        "contacts": {},
+        "sent_to": {},
+    }
     base.update(kw)
     return base
 
@@ -19,8 +26,20 @@ def msg(i, to, sent=NOW, subject="hello", bulk=False):
 
 
 def ev(uid, emails, start, created, title="Intro", response="accepted", **kw):
-    e = {"uid": uid, "occ": f"{uid}@{start.isoformat()}", "created": created, "start": start, "end": start + timedelta(hours=1), "title": title, "preview": "",
-         "cancelled": False, "all_day": False, "my_response": response, "attendees": [{"email": a, "response": "accepted"} for a in emails], "bridged": False}
+    e = {
+        "uid": uid,
+        "occ": f"{uid}@{start.isoformat()}",
+        "created": created,
+        "start": start,
+        "end": start + timedelta(hours=1),
+        "title": title,
+        "preview": "",
+        "cancelled": False,
+        "all_day": False,
+        "my_response": response,
+        "attendees": [{"email": a, "response": "accepted"} for a in emails],
+        "bridged": False,
+    }
     e.update(kw)
     return e
 
@@ -49,7 +68,12 @@ class Messages(unittest.TestCase):
         self.assertEqual((o["status"], o["activity"]), (C.COUNTED, C.OUTREACH))
 
     def test_exclusions(self):
-        for m in (msg("a", ["noreply@lensa.com"]), msg("b", ["jim@example.com"]), msg("c", ["pat@lensa.com"], bulk=True), msg("d", ["pat@jobright.ai"], subject="invoice")):
+        for m in (
+            msg("a", ["noreply@lensa.com"]),
+            msg("b", ["jim@example.com"]),
+            msg("c", ["pat@lensa.com"], bulk=True),
+            msg("d", ["pat@jobright.ai"], subject="invoice"),
+        ):
             self.assertEqual(C.message(m, ctx())["status"], C.EXCLUDED)
 
     def test_plausible_goes_to_review(self):
@@ -58,7 +82,9 @@ class Messages(unittest.TestCase):
 
     def test_override_applies(self):
         o = C.message(msg("m2", ["lee@jobright.ai"], subject="career"), ctx())
-        done = C.message(msg("m2", ["lee@jobright.ai"], subject="career"), ctx(overrides={o["key"]: "Count as Outreach"}))
+        done = C.message(
+            msg("m2", ["lee@jobright.ai"], subject="career"), ctx(overrides={o["key"]: "Count as Outreach"})
+        )
         self.assertEqual((done["status"], done["activity"]), (C.COUNTED, C.OUTREACH))
         gone = C.message(msg("m2", ["lee@jobright.ai"], subject="career"), ctx(overrides={o["key"]: "Exclude"}))
         self.assertEqual(gone["status"], C.EXCLUDED)
@@ -99,17 +125,30 @@ class Events(unittest.TestCase):
         self.assertEqual((o[1]["status"], o[1]["reason"]), (C.REVIEW, "occurrence"))
 
     def test_company_recruiter_networking(self):
-        sent = {"pat@lensa.com": [NOW - timedelta(hours=1)], "rec@lensa.com": [NOW - timedelta(hours=1)], "sam@jobright.ai": [NOW - timedelta(hours=1)]}
+        sent = {
+            "pat@lensa.com": [NOW - timedelta(hours=1)],
+            "rec@lensa.com": [NOW - timedelta(hours=1)],
+            "sam@jobright.ai": [NOW - timedelta(hours=1)],
+        }
         company = self.run_event(ev("c1", ["pat@lensa.com"], self.start, NOW - timedelta(days=3)), ctx(sent_to=sent))
         self.assertEqual(company[1]["activity"], C.COMPANY)
-        recruiter = self.run_event(ev("c2", ["rec@lensa.com"], self.start, NOW - timedelta(days=3), title="Recruiter screen"), ctx(sent_to=sent))
+        recruiter = self.run_event(
+            ev("c2", ["rec@lensa.com"], self.start, NOW - timedelta(days=3), title="Recruiter screen"),
+            ctx(sent_to=sent),
+        )
         self.assertEqual(recruiter[1]["activity"], C.RECRUITER)
-        net = self.run_event(ev("c3", ["sam@jobright.ai"], self.start, NOW - timedelta(days=3), title="Networking coffee chat"), ctx(sent_to=sent))
+        net = self.run_event(
+            ev("c3", ["sam@jobright.ai"], self.start, NOW - timedelta(days=3), title="Networking coffee chat"),
+            ctx(sent_to=sent),
+        )
         self.assertEqual(net[1]["activity"], C.NETWORKING)
 
     def test_ambiguous_contact_type(self):
         sent = {"sam@jobright.ai": [NOW - timedelta(hours=1)]}
-        o = self.run_event(ev("c4", ["sam@jobright.ai"], self.start, NOW - timedelta(days=3), title="Job opportunity chat"), ctx(sent_to=sent))
+        o = self.run_event(
+            ev("c4", ["sam@jobright.ai"], self.start, NOW - timedelta(days=3), title="Job opportunity chat"),
+            ctx(sent_to=sent),
+        )
         self.assertEqual(o[1]["reason"], "contact_type")
 
     def test_future_call_not_counted(self):
@@ -134,7 +173,16 @@ class Projection(unittest.TestCase):
         self.assertEqual(rows[0][-1], "Oct 5 (current)")
 
     def test_current_week_moves_down(self):
-        out = [{"status": C.COUNTED, "activity": C.OUTREACH, "week": date(2026, 10, 5), "reason": "", "key": "k1", "candidate": None}]
+        out = [
+            {
+                "status": C.COUNTED,
+                "activity": C.OUTREACH,
+                "week": date(2026, 10, 5),
+                "reason": "",
+                "key": "k1",
+                "candidate": None,
+            }
+        ]
         self.assertEqual(P.project(out, TODAY)["cumulative"][C.OUTREACH], 1)
         self.assertEqual(P.project([], TODAY)["cumulative"][C.OUTREACH], 0)
 
@@ -173,7 +221,9 @@ class Warnings(unittest.TestCase):
         self.assertIn("last accepted counts retained", out[0])
         self.assertNotIn("Review queue", out[0])
         self.assertNotIn("unresolved", out[0])
-        self.assertEqual(W.evaluate(counts(), self.base, self.thursday, 0, degraded=True, unresolved=5), [W.SOURCE_UNAVAILABLE])
+        self.assertEqual(
+            W.evaluate(counts(), self.base, self.thursday, 0, degraded=True, unresolved=5), [W.SOURCE_UNAVAILABLE]
+        )
 
     def test_two_or_more_unresolved_items_point_to_the_review_queue_one_does_not(self):
         self.assertIn(W.EVIDENCE, W.evaluate(counts(), self.base, self.thursday, 3, unresolved=2))
@@ -203,11 +253,28 @@ if __name__ == "__main__":
 class HistoryTests(unittest.TestCase):
     def test_the_weeks_before_the_cutover_are_jims_recorded_numbers_and_never_counted_twice(self):
         from lifeos.megibow import history
-        out = [{"status": C.COUNTED, "activity": C.RECRUITER, "week": date(2026, 9, 21), "reason": "", "key": "k", "candidate": None}]  # V7 saw one
+
+        out = [
+            {
+                "status": C.COUNTED,
+                "activity": C.RECRUITER,
+                "week": date(2026, 9, 21),
+                "reason": "",
+                "key": "k",
+                "candidate": None,
+            }
+        ]  # V7 saw one
         legacy = {"Outreach": 20, "Scheduled": 13, "Networking Calls": 11, "Recruiter Calls": 36, "Company Calls": 15}
-        p = P.project(out, date(2026, 10, 6), frozen={}, legacy=legacy, cutover=date(2026, 10, 5), history=history.WEEKS)
-        self.assertEqual(p["counts"][date(2026, 9, 21)]["Recruiter Calls"], 3)  # his number, not V7's reading of the mailbox
-        self.assertEqual(p["counts"][date(2026, 8, 17)], {"Outreach": 4, "Scheduled": 0, "Networking Calls": 1, "Recruiter Calls": 5, "Company Calls": 4})
+        p = P.project(
+            out, date(2026, 10, 6), frozen={}, legacy=legacy, cutover=date(2026, 10, 5), history=history.WEEKS
+        )
+        self.assertEqual(
+            p["counts"][date(2026, 9, 21)]["Recruiter Calls"], 3
+        )  # his number, not V7's reading of the mailbox
+        self.assertEqual(
+            p["counts"][date(2026, 8, 17)],
+            {"Outreach": 4, "Scheduled": 0, "Networking Calls": 1, "Recruiter Calls": 5, "Company Calls": 4},
+        )
         self.assertEqual(P.total(p["cumulative"]), 95)
         self.assertEqual(p["cumulative"]["Recruiter Calls"], 36)
         rows = R.table(p)
@@ -218,7 +285,10 @@ class HistoryTests(unittest.TestCase):
 
     def test_the_history_adds_up_to_the_sheets_weekly_totals_and_a_stale_frozen_week_is_ignored(self):
         from lifeos.megibow import history
+
         self.assertEqual([sum(w.values()) for _, w in sorted(history.WEEKS.items())], [14, 13, 5, 7, 8, 6, 3])
         stale = {date(2026, 9, 28): {a: 9 for a in C.ACTIVITIES}}  # frozen earlier from V7's reading
-        p = P.project([], date(2026, 10, 6), frozen=stale, legacy=None, cutover=date(2026, 10, 5), history=history.WEEKS)
+        p = P.project(
+            [], date(2026, 10, 6), frozen=stale, legacy=None, cutover=date(2026, 10, 5), history=history.WEEKS
+        )
         self.assertEqual(sum(p["counts"][date(2026, 9, 28)].values()), 3)

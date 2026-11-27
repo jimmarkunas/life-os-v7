@@ -9,7 +9,12 @@ from tests.kit.shared import SqlLog
 
 URL = "https://careers.example.com/en/job/example-city/senior-program-manager/159/101596083584"
 NOW = datetime(2026, 10, 26, 15, 0, tzinfo=ZoneInfo("America/Chicago"))
-BASE = {"MANUAL_JOB_URL": URL, "MANUAL_JOB_COMPANY": "ExampleCo", "MANUAL_JOB_TITLE": "Senior Program Manager", "MANUAL_JOB_ROUND_DAY": "2026-10-13"}
+BASE = {
+    "MANUAL_JOB_URL": URL,
+    "MANUAL_JOB_COMPANY": "ExampleCo",
+    "MANUAL_JOB_TITLE": "Senior Program Manager",
+    "MANUAL_JOB_ROUND_DAY": "2026-10-13",
+}
 
 
 Cursor = SqlLog
@@ -24,7 +29,9 @@ def go(environ, live=False, cursor=None, **kw):
         return {"blocked": 0, "why": {"parent_create_allowed": 1}}
 
     with patch.object(mj.stage, "run", fake_stage):
-        counts = mj.run(40, live, environ={**BASE, **environ}, client=object(), now=NOW, connect=lambda: cursor, context=object())
+        counts = mj.run(
+            40, live, environ={**BASE, **environ}, client=object(), now=NOW, connect=lambda: cursor, context=object()
+        )
     return counts, seen, cursor
 
 
@@ -33,8 +40,11 @@ class ManualJob(unittest.TestCase):
         counts, seen, cursor = go({})
         self.assertEqual((counts["job"], counts["failed"], seen["live"]), ("new", 0, False))
         self.assertEqual([kind for kind, _ in cursor.sql], ["SELECT"])
-        (parent, query), = seen["evidence"]
-        self.assertEqual((parent.company, parent.role, query.interview_date, query.ordinal, query.stable_job_key), ("ExampleCo", "Senior Program Manager", "2026-10-13", 1, identity.url_hash(URL)))
+        ((parent, query),) = seen["evidence"]
+        self.assertEqual(
+            (parent.company, parent.role, query.interview_date, query.ordinal, query.stable_job_key),
+            ("ExampleCo", "Senior Program Manager", "2026-10-13", 1, identity.url_hash(URL)),
+        )
 
     def test_a_held_job_is_present_and_a_live_run_adds_a_new_one_resolved_in_the_recruiter_lane(self):
         self.assertEqual(go({}, cursor=Cursor(held=True))[0]["job"], "present")
@@ -52,17 +62,22 @@ class ManualJob(unittest.TestCase):
 
     def test_a_request_message_link_makes_a_pending_round_and_every_bad_input_is_a_fixed_code(self):
         _, seen, _ = go({"MANUAL_JOB_ROUND_DAY": "", "MANUAL_JOB_REQUEST_URL": "https://mail.example.com/t/1"})
-        (_, query), = seen["evidence"]
+        ((_, query),) = seen["evidence"]
         self.assertEqual((query.interview_date, query.source), (None, "https://mail.example.com/t/1"))
-        for label, change, code in (("no title", {"MANUAL_JOB_TITLE": ""}, "MANUAL_JOB_IDENTITY_MISSING"), ("http link", {"MANUAL_JOB_URL": "http://careers.example.com/job/1"}, "MANUAL_JOB_LINK_INVALID"),
-                                    ("bad day", {"MANUAL_JOB_ROUND_DAY": "10/13/2026"}, "MANUAL_JOB_DAY_INVALID"), ("bad request", {"MANUAL_JOB_REQUEST_URL": "mail"}, "MANUAL_JOB_REQUEST_INVALID"),
-                                    ("no round evidence", {"MANUAL_JOB_ROUND_DAY": ""}, "MANUAL_JOB_ROUND_EVIDENCE_MISSING")):
+        for label, change, code in (
+            ("no title", {"MANUAL_JOB_TITLE": ""}, "MANUAL_JOB_IDENTITY_MISSING"),
+            ("http link", {"MANUAL_JOB_URL": "http://careers.example.com/job/1"}, "MANUAL_JOB_LINK_INVALID"),
+            ("bad day", {"MANUAL_JOB_ROUND_DAY": "10/13/2026"}, "MANUAL_JOB_DAY_INVALID"),
+            ("bad request", {"MANUAL_JOB_REQUEST_URL": "mail"}, "MANUAL_JOB_REQUEST_INVALID"),
+            ("no round evidence", {"MANUAL_JOB_ROUND_DAY": ""}, "MANUAL_JOB_ROUND_EVIDENCE_MISSING"),
+        ):
             counts, seen, cursor = go(change)
             self.assertEqual((counts["why"], counts["failed"], seen, cursor.sql), ({code: 1}, 1, {}, []), label)
 
     def test_a_store_failure_stops_before_the_interview_write_and_logs_no_text(self):
         def boom():
             raise RuntimeError("db host example.com")
+
         with patch.object(mj.stage, "run") as writer:
             counts = mj.run(40, False, environ=BASE, client=object(), now=NOW, connect=boom, context=object())
         self.assertEqual((counts["why"], writer.call_count), ({"MANUAL_JOB_STORE_FAILED": 1}, 0))

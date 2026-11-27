@@ -1,6 +1,7 @@
 """the Honcho v3 client against a scripted opener: no network, the token never appears in a repr or an error, spending is
 armed per message, tenants are.
 """
+
 import io
 import json
 import pathlib
@@ -32,7 +33,14 @@ class Opener:
         self.log, self.replies, self.error = [], list(replies or []), error
 
     def __call__(self, req, timeout=None):
-        self.log.append((req.get_method(), req.full_url, json.loads(req.data) if req.data else None, req.get_header("Authorization")))
+        self.log.append(
+            (
+                req.get_method(),
+                req.full_url,
+                json.loads(req.data) if req.data else None,
+                req.get_header("Authorization"),
+            )
+        )
         if self.error:
             raise self.error
         return Answer(json.dumps(self.replies.pop(0) if self.replies else {}).encode())
@@ -79,14 +87,21 @@ class Limits(unittest.TestCase):
             h.probe_oversize_message()
 
     def test_the_volume_is_the_measured_text_of_the_messages_and_the_conclusions(self):
-        h, _ = make(replies=[{"items": [{"content": "a" * 100}, {"content": "b" * 50}]}, {"items": [{"content": "c" * 25}]}])
+        h, _ = make(
+            replies=[{"items": [{"content": "a" * 100}, {"content": "b" * 50}]}, {"items": [{"content": "c" * 25}]}]
+        )
         self.assertEqual(h.volume_chars(), 175)
 
     def test_conclusions_are_created_in_one_call_under_the_tenants_own_peer_and_the_session(self):
         h, op = make()
-        h.create_conclusions([{"content": "FAKE-REQ-001: x", "tenant": "alpha"}, {"content": "FAKE-REQ-101: y", "tenant": "beta"}])
+        h.create_conclusions(
+            [{"content": "FAKE-REQ-001: x", "tenant": "alpha"}, {"content": "FAKE-REQ-101: y", "tenant": "beta"}]
+        )
         rows = op.log[0][2]["conclusions"]
-        self.assertEqual([(r["observer_id"], r["observed_id"], r["session_id"]) for r in rows], [("t-alpha", "t-alpha", "s1"), ("t-beta", "t-beta", "s1")])
+        self.assertEqual(
+            [(r["observer_id"], r["observed_id"], r["session_id"]) for r in rows],
+            [("t-alpha", "t-alpha", "s1"), ("t-beta", "t-beta", "s1")],
+        )
 
 
 class Calls(unittest.TestCase):
@@ -95,7 +110,10 @@ class Calls(unittest.TestCase):
         h.create_workspace()
         method, url, body, auth = op.log[0]
         self.assertEqual((method, url.endswith("/v3/workspaces"), body["id"]), ("POST", True, "um-t2-fixture-v1"))
-        self.assertEqual(body["configuration"], {"reasoning": {"enabled": False}, "dream": {"enabled": False}, "summary": {"enabled": False}})
+        self.assertEqual(
+            body["configuration"],
+            {"reasoning": {"enabled": False}, "dream": {"enabled": False}, "summary": {"enabled": False}},
+        )
         self.assertEqual(auth, "Bearer " + TOKEN)
 
     def test_only_armed_messages_carry_the_reasoning_switch_and_all_carry_the_fixture_id(self):
@@ -109,18 +127,34 @@ class Calls(unittest.TestCase):
         self.assertEqual((off["metadata"], on["metadata"]), ({"source_ref": "FAKE-REQ-001"},) * 2)
 
     def test_queue_idle_needs_nothing_pending_or_running(self):
-        for q, idle in (({"pending_work_units": 0, "in_progress_work_units": 0}, True), ({"pending_work_units": 1, "in_progress_work_units": 0}, False), ({"pending_work_units": 0, "in_progress_work_units": 1}, False)):
+        for q, idle in (
+            ({"pending_work_units": 0, "in_progress_work_units": 0}, True),
+            ({"pending_work_units": 1, "in_progress_work_units": 0}, False),
+            ({"pending_work_units": 0, "in_progress_work_units": 1}, False),
+        ):
             h, _ = make(replies=[q])
             self.assertEqual(h.queue_idle(), idle)
 
     def test_flags_are_set_for_reasoning_and_dream_and_summaries_stay_off(self):
         h, op = make()
         h.set_flags(True, True)
-        self.assertEqual(op.log[0][2]["configuration"], {"reasoning": {"enabled": True}, "dream": {"enabled": True}, "summary": {"enabled": False}})
+        self.assertEqual(
+            op.log[0][2]["configuration"],
+            {"reasoning": {"enabled": True}, "dream": {"enabled": True}, "summary": {"enabled": False}},
+        )
         self.assertEqual(op.log[0][0], "PUT")
 
     def test_recall_maps_through_the_source_message_then_the_quoted_id_and_a_tenant_uses_its_own_peer(self):
-        h, op = make(replies=[[{"content": "about a thing", "source_message_ids": ["m1"]}, {"content": "see FAKE-DEC-002 for it"}, {"content": "no id here"}], {"metadata": {"source_ref": "FAKE-REQ-001"}}])
+        h, op = make(
+            replies=[
+                [
+                    {"content": "about a thing", "source_message_ids": ["m1"]},
+                    {"content": "see FAKE-DEC-002 for it"},
+                    {"content": "no id here"},
+                ],
+                {"metadata": {"source_ref": "FAKE-REQ-001"}},
+            ]
+        )
         items = h.recall("what", "beta", 5)
         self.assertEqual([i["source_ref"] for i in items], ["FAKE-REQ-001", "FAKE-DEC-002", None])
         self.assertEqual(op.log[0][2]["filters"], {"observed_id": "t-beta"})
@@ -128,8 +162,15 @@ class Calls(unittest.TestCase):
     def test_a_dream_is_finished_only_when_a_new_run_exists_and_the_queue_is_idle(self):
         h, op = make(replies=[{"items": []}, {}])
         h.schedule_dream()
-        self.assertEqual(op.log[1][2], {"observer": "t-alpha", "observed": "t-alpha", "dream_type": "omni", "session_id": "s1"})
-        h2, _ = make(replies=[{"items": [{"id": "r1", "status": "success"}]}, {"pending_work_units": 0, "in_progress_work_units": 0}])
+        self.assertEqual(
+            op.log[1][2], {"observer": "t-alpha", "observed": "t-alpha", "dream_type": "omni", "session_id": "s1"}
+        )
+        h2, _ = make(
+            replies=[
+                {"items": [{"id": "r1", "status": "success"}]},
+                {"pending_work_units": 0, "in_progress_work_units": 0},
+            ]
+        )
         h2.dream_scheduled_at_runs = 0
         self.assertTrue(h2.dream_finished())
         h3, _ = make(replies=[{"items": []}, {"pending_work_units": 0, "in_progress_work_units": 0}])

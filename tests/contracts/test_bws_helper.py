@@ -1,4 +1,5 @@
 """the Bitwarden helper program comes from a saved, fingerprint-checked copy"""
+
 import glob
 import hashlib
 import os
@@ -74,7 +75,10 @@ class CompositeAction(unittest.TestCase):
         self.doc = yaml.safe_load(self.text)
 
     def test_cache_actions_are_pinned_to_a_commit_and_the_key_holds_no_secret(self):
-        self.assertEqual(re.findall(r"uses:\s*(actions/cache/\w+)@(\S+)", self.text), [("actions/cache/restore", CACHE_COMMIT), ("actions/cache/save", CACHE_COMMIT)])
+        self.assertEqual(
+            re.findall(r"uses:\s*(actions/cache/\w+)@(\S+)", self.text),
+            [("actions/cache/restore", CACHE_COMMIT), ("actions/cache/save", CACHE_COMMIT)],
+        )
         for key in re.findall(r"^\s*key:\s*(.+)$", self.text, re.M):
             self.assertEqual(key, "bws-helper-3.0.1-${{ hashFiles('.github/actions/bws-helper/helper.sha256') }}")
         self.assertNotIn("secrets.", self.text)
@@ -106,10 +110,22 @@ def run_fetch(dest, url, fingerprint, wait="30", pause="1"):
         out = os.path.join(tmp, "out")
         with open(sha_file, "w", encoding="utf-8") as handle:
             handle.write(fingerprint + "\n")
-        env = {"PATH": os.environ["PATH"], "BWS_DEST": dest, "BWS_SHA256_FILE": sha_file, "BWS_URL": url, "BWS_WAIT_SECONDS": wait,
-               "BWS_FIRST_PAUSE": pause, "BWS_SLEEP_CMD": "true", "GITHUB_OUTPUT": out}
-        done = subprocess.run(["bash", os.path.join(ACTION, "fetch.sh")], env=env, capture_output=True, text=True, timeout=60)
-        source = [line for line in (_read(out).splitlines() if os.path.exists(out) else []) if line.startswith("source=")]
+        env = {
+            "PATH": os.environ["PATH"],
+            "BWS_DEST": dest,
+            "BWS_SHA256_FILE": sha_file,
+            "BWS_URL": url,
+            "BWS_WAIT_SECONDS": wait,
+            "BWS_FIRST_PAUSE": pause,
+            "BWS_SLEEP_CMD": "true",
+            "GITHUB_OUTPUT": out,
+        }
+        done = subprocess.run(
+            ["bash", os.path.join(ACTION, "fetch.sh")], env=env, capture_output=True, text=True, timeout=60
+        )
+        source = [
+            line for line in (_read(out).splitlines() if os.path.exists(out) else []) if line.startswith("source=")
+        ]
         return done, source
 
 

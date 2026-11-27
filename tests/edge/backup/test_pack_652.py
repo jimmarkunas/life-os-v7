@@ -1,4 +1,5 @@
 """pack, run on a fixture (a fake root, a fake systemctl, a fake dry proof)."""
+
 import hashlib
 import os
 import stat
@@ -33,15 +34,26 @@ class Fixture:
         self.host.parent.mkdir(parents=True)
         self.host.write_bytes(OLD)
         self.host.chmod(0o644)
-        (self.tmp / "systemctl").write_text('#!/bin/bash\n[ -e "$FAKE_RUNNING" ] && echo active || { echo inactive; exit 3; }\n')
+        (self.tmp / "systemctl").write_text(
+            '#!/bin/bash\n[ -e "$FAKE_RUNNING" ] && echo active || { echo inactive; exit 3; }\n'
+        )
         (self.tmp / "systemctl").chmod(0o755)
         (self.tmp / "dry").write_text("#!/bin/bash\necho '%s'\n" % proof)
         (self.tmp / "dry").chmod(0o755)
         self.running = self.tmp / "running"
-        self.env = dict(os.environ, IN_ROOT=str(self.tmp / "root"), IN_PY=sys.executable, IN_SYSTEMCTL=str(self.tmp / "systemctl"), IN_DRY=str(self.tmp / "dry"), FAKE_RUNNING=str(self.running))
+        self.env = dict(
+            os.environ,
+            IN_ROOT=str(self.tmp / "root"),
+            IN_PY=sys.executable,
+            IN_SYSTEMCTL=str(self.tmp / "systemctl"),
+            IN_DRY=str(self.tmp / "dry"),
+            FAKE_RUNNING=str(self.running),
+        )
 
     def run(self, *args, script=None):
-        return subprocess.run(["bash", str(script or self.script), *args], env=self.env, capture_output=True, text=True, timeout=60)
+        return subprocess.run(
+            ["bash", str(script or self.script), *args], env=self.env, capture_output=True, text=True, timeout=60
+        )
 
 
 class PackTests(unittest.TestCase):
@@ -105,11 +117,22 @@ class PackTests(unittest.TestCase):
 
     def test_the_pack_builds_passes_the_runners_check_and_declares_the_installed_file_for_restore(self):
         out = Path(self.t.name) / "pack"
-        subprocess.run([sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(
+            [sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True
+        )
         manifest = runner.load_manifest(str(out))
-        self.assertEqual((manifest["steps"], manifest["files"], manifest["services"]), (["steps/10-install.sh"], ["/opt/lifeos-offsite/offsite_backup.py"], []))
-        self.assertEqual((out / "files/offsite_backup.py").read_bytes(), (ROOT / "lifeos/edge/backup/offsite_backup.py").read_bytes())
-        done = subprocess.run([sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)], capture_output=True, text=True)
+        self.assertEqual(
+            (manifest["steps"], manifest["files"], manifest["services"]),
+            (["steps/10-install.sh"], ["/opt/lifeos-offsite/offsite_backup.py"], []),
+        )
+        self.assertEqual(
+            (out / "files/offsite_backup.py").read_bytes(), (ROOT / "lifeos/edge/backup/offsite_backup.py").read_bytes()
+        )
+        done = subprocess.run(
+            [sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)],
+            capture_output=True,
+            text=True,
+        )
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertIn("PACK ok LIFE-652 steps=1 restore_files=1 restore_services=0", done.stdout)
 

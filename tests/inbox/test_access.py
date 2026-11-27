@@ -1,4 +1,5 @@
 """(synthetic): two separately scoped fake agents read the same fake source through the existing grant check"""
+
 import os
 import tempfile
 import unittest
@@ -31,24 +32,48 @@ class Access(unittest.TestCase):
         self.assertEqual((result.decision, result.reason, len(result.rows)), ("allow", "ok", 1))
         self.assertEqual(self.source.calls, ["cred:jira:personal"])
         receipt = self.ledger.access_receipts("agent-personal")[0]
-        self.assertEqual((receipt["principal_id"], receipt["source"], receipt["workspace"], receipt["account"], receipt["decision"], receipt["outcome"]),
-                         ("agent-personal", "jira", "personal", "jim-personal", "allow", "ok"))
+        self.assertEqual(
+            (
+                receipt["principal_id"],
+                receipt["source"],
+                receipt["workspace"],
+                receipt["account"],
+                receipt["decision"],
+                receipt["outcome"],
+            ),
+            ("agent-personal", "jira", "personal", "jim-personal", "allow", "ok"),
+        )
 
     def test_the_other_agent_is_denied_before_any_read_and_still_gets_a_receipt(self):
         self.read(self.personal, "r1")
         denied = self.read(self.bytalos, "r2")
         self.assertEqual((denied.decision, denied.reason, denied.rows), ("deny", "no_grant", ()))
         self.assertEqual(len(self.source.calls), 1)  # only the first agent's read reached the source
-        self.assertEqual([(r["principal_id"], r["decision"], r["reason"]) for r in self.ledger.access_receipts("agent-bytalos")], [("agent-bytalos", "deny", "no_grant")])
+        self.assertEqual(
+            [(r["principal_id"], r["decision"], r["reason"]) for r in self.ledger.access_receipts("agent-bytalos")],
+            [("agent-bytalos", "deny", "no_grant")],
+        )
         self.assertEqual(len(self.ledger.access_receipts("agent-personal")), 1)  # receipts are per principal
 
     def test_wrong_workspace_wrong_account_revoked_expired_and_wrong_action_all_deny_without_reading(self):
         cases = {
             "wrong_workspace": (self.personal, F.FakeSource("jira", "bytalos"), "no_grant"),
             "wrong_account": (self.personal, F.FakeSource("jira", "personal", account="other-account"), "no_grant"),
-            "revoked": (agent("a-rev", workspaces=("personal",), sources=("jira",), revoked=(("jira", "personal"),)), self.source, "grant_revoked"),
-            "expired": (agent("a-exp", workspaces=("personal",), sources=("jira",), expires=F.NOW - timedelta(minutes=1)), self.source, "grant_expired"),
-            "view_not_granted": (agent("a-act", workspaces=("personal",), sources=("jira",), actions={"jira": {"open"}}), self.source, "action_not_granted"),
+            "revoked": (
+                agent("a-rev", workspaces=("personal",), sources=("jira",), revoked=(("jira", "personal"),)),
+                self.source,
+                "grant_revoked",
+            ),
+            "expired": (
+                agent("a-exp", workspaces=("personal",), sources=("jira",), expires=F.NOW - timedelta(minutes=1)),
+                self.source,
+                "grant_expired",
+            ),
+            "view_not_granted": (
+                agent("a-act", workspaces=("personal",), sources=("jira",), actions={"jira": {"open"}}),
+                self.source,
+                "action_not_granted",
+            ),
             "tgp": (self.personal, F.FakeSource("jira", "tgp"), "workspace_not_released"),
             "unknown": (self.personal, F.FakeSource("jira", "elsewhere"), "unknown_scope"),
         }
@@ -57,7 +82,12 @@ class Access(unittest.TestCase):
                 result = self.read(who, f"deny-{name}", source=source)
                 self.assertEqual((result.decision, result.reason, result.rows), ("deny", reason, ()))
                 self.assertEqual(source.calls, [])
-                self.assertEqual({r["request_id"]: r["reason"] for r in self.ledger.access_receipts(who.principal_id)}[f"deny-{name}"], reason)
+                self.assertEqual(
+                    {r["request_id"]: r["reason"] for r in self.ledger.access_receipts(who.principal_id)}[
+                        f"deny-{name}"
+                    ],
+                    reason,
+                )
 
     def test_a_repeated_request_id_is_a_replay_and_never_reads_again_even_after_a_restart(self):
         self.read(self.personal, "r1")
@@ -78,6 +108,7 @@ class Access(unittest.TestCase):
     def test_if_the_receipt_cannot_be_written_nothing_is_read(self):
         def unavailable():
             raise OSError("down")
+
         with self.assertRaises(LedgerError):
             access.read_source(Ledger(unavailable), self.personal, self.source, F.NOW, "r1")
         self.assertEqual(self.source.calls, [])

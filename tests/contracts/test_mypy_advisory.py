@@ -1,6 +1,7 @@
 """the type checker (mypy) is ADVISORY on lifeos/platform, except for the 42 modules in mypy-blocking.txt, where a type
 error fails the pull request.
 """
+
 import ast
 import re
 import unittest
@@ -12,7 +13,18 @@ except ImportError:  # PyYAML is a test-only dependency
     yaml = None
 
 ROOT = Path(__file__).resolve().parents[2]
-TYPED = ("names", "tinyfish", "http", "alerts", "runtime", "snapshot_store", "notion_ids", "jira", "outlook", "ledger_body")  # the ten chosen by import count
+TYPED = (
+    "names",
+    "tinyfish",
+    "http",
+    "alerts",
+    "runtime",
+    "snapshot_store",
+    "notion_ids",
+    "jira",
+    "outlook",
+    "ledger_body",
+)  # the ten chosen by import count
 
 
 class Configured(unittest.TestCase):
@@ -20,13 +32,17 @@ class Configured(unittest.TestCase):
         text = (ROOT / "mypy.ini").read_text()
         self.assertEqual(re.findall(r"^\[([^\]]+)\]", text, flags=re.M), ["mypy"])
         self.assertRegex(text, r"(?m)^files = lifeos/platform$")
-        self.assertNotRegex(text, r"(?m)^(strict|disallow_\w+|warn_return_any|check_untyped_defs)\s*=\s*True")  # lenient mode: no strict flags yet
+        self.assertNotRegex(
+            text, r"(?m)^(strict|disallow_\w+|warn_return_any|check_untyped_defs)\s*=\s*True"
+        )  # lenient mode: no strict flags yet
 
     def test_mypy_and_its_dependencies_are_pinned_exactly_and_hashed_in_the_test_lock(self):
         pin = re.search(r"^mypy==(\S+)$", (ROOT / "requirements-test.txt").read_text(), flags=re.M)
         self.assertIsNotNone(pin)
         lock = (ROOT / "requirements-test.lock").read_text()
-        block = re.search(r"^mypy==%s \\\n((?:\s+--hash=sha256:[0-9a-f]{64}\s*\\?\n?)+)" % re.escape(pin.group(1)), lock, flags=re.M)
+        block = re.search(
+            r"^mypy==%s \\\n((?:\s+--hash=sha256:[0-9a-f]{64}\s*\\?\n?)+)" % re.escape(pin.group(1)), lock, flags=re.M
+        )
         self.assertIsNotNone(block, "the lock has no hashed mypy entry at the pinned version")
         for dependency in ("mypy_extensions", "pathspec", "typing_extensions", "librt"):
             self.assertRegex(lock, r"(?m)^%s==\S+ \\" % dependency)
@@ -104,12 +120,17 @@ class TenModulesAreTyped(unittest.TestCase):
                 if isinstance(node, ast.ImportFrom) and node.module in ("typing", "collections.abc", "__future__"):
                     continue
                 if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("lifeos"):
-                    self.assertTrue((ROOT / (node.module.replace(".", "/") + ".py")).is_file() or (ROOT / node.module.replace(".", "/")).is_dir(), (module, node.module))
+                    self.assertTrue(
+                        (ROOT / (node.module.replace(".", "/") + ".py")).is_file()
+                        or (ROOT / node.module.replace(".", "/")).is_dir(),
+                        (module, node.module),
+                    )
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class BlockingSet(unittest.TestCase):
     """every other module stays advisory."""
+
     LISTED = [line for line in (ROOT / "mypy-blocking.txt").read_text().splitlines() if line.strip()]
 
     def test_the_blocking_list_is_the_42_approved_platform_modules_sorted_unique_and_present(self):
@@ -120,7 +141,9 @@ class BlockingSet(unittest.TestCase):
             self.assertTrue((ROOT / path).is_file(), path)
         self.assertNotIn("lifeos/platform/codes.py", self.LISTED)
         for name in TYPED:
-            self.assertIn(f"lifeos/platform/{name}.py", self.LISTED, name)  # the ten fully annotated modules are all blocking
+            self.assertIn(
+                f"lifeos/platform/{name}.py", self.LISTED, name
+            )  # the ten fully annotated modules are all blocking
 
     def test_the_blocking_step_fails_the_job_runs_exactly_the_list_and_comes_after_the_unit_tests(self):
         job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]

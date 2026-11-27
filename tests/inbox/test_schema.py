@@ -1,4 +1,5 @@
 """(synthetic): the DDL proposal is the ledger's own schema, and the read-only check reports flags only."""
+
 import unittest
 
 from lifeos.inbox import apply_schema, ledger, schema
@@ -7,8 +8,23 @@ from lifeos.inbox import apply_schema, ledger, schema
 class Cursor:
     """Answers the five statements the check runs, from a canned server."""
 
-    def __init__(self, version="8.0.36", row_format="dynamic", tables=(), grants=("GRANT SELECT, INSERT, UPDATE, CREATE ON `x`.* TO `u`@`%`",), refuse=()):
-        self.version, self.row_format, self.tables, self.grants, self.refuse, self.sql, self.rows = version, row_format, tables, grants, refuse, [], []
+    def __init__(
+        self,
+        version="8.0.36",
+        row_format="dynamic",
+        tables=(),
+        grants=("GRANT SELECT, INSERT, UPDATE, CREATE ON `x`.* TO `u`@`%`",),
+        refuse=(),
+    ):
+        self.version, self.row_format, self.tables, self.grants, self.refuse, self.sql, self.rows = (
+            version,
+            row_format,
+            tables,
+            grants,
+            refuse,
+            [],
+            [],
+        )
 
     def execute(self, sql):
         self.sql.append(sql)
@@ -31,8 +47,7 @@ class Cursor:
 
 
 class Server(Cursor):
-    """A canned server that also takes the CREATE statements and answers SHOW COLUMNS and COUNT for the tables it holds.
-    """
+    """A canned server that also takes the CREATE statements and answers SHOW COLUMNS and COUNT for the tables it holds."""
 
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -59,10 +74,17 @@ class Apply(unittest.TestCase):
     def test_apply_creates_the_four_tables_and_reads_them_back(self):
         server = Server()
         result = apply_schema.apply(server)
-        self.assertEqual((result["created"], result["verified"], result["rows"]), (sorted(schema.TABLES), True, {t: 0 for t in schema.TABLES}))
+        self.assertEqual(
+            (result["created"], result["verified"], result["rows"]),
+            (sorted(schema.TABLES), True, {t: 0 for t in schema.TABLES}),
+        )
         self.assertEqual(result["columns"], schema.COLUMNS)
-        self.assertEqual([s for s in server.sql if s.startswith("CREATE")], schema.plan())  # exactly the planned DDL, nothing else is changed
-        self.assertFalse([s for s in server.sql if s.split()[0] in ("DROP", "ALTER", "DELETE", "UPDATE", "INSERT", "TRUNCATE")])
+        self.assertEqual(
+            [s for s in server.sql if s.startswith("CREATE")], schema.plan()
+        )  # exactly the planned DDL, nothing else is changed
+        self.assertFalse(
+            [s for s in server.sql if s.split()[0] in ("DROP", "ALTER", "DELETE", "UPDATE", "INSERT", "TRUNCATE")]
+        )
 
     def test_apply_refuses_a_server_that_is_not_ready_or_already_has_a_table(self):
         with self.assertRaises(apply_schema.SchemaError) as caught:
@@ -75,13 +97,20 @@ class Apply(unittest.TestCase):
     def test_a_dry_run_through_the_stage_creates_nothing(self):
         server = Server()
         from unittest import mock
+
         connection = mock.MagicMock()
         connection.__enter__.return_value.cursor.return_value.__enter__.return_value = server
-        with mock.patch.object(apply_schema.db, "connect", return_value=connection), mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": ""}):
+        with (
+            mock.patch.object(apply_schema.db, "connect", return_value=connection),
+            mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": ""}),
+        ):
             result = apply_schema.apply_stage(0, True)
         self.assertEqual((result["dry_run"], result["check"]["ready"]), (True, True))
         self.assertFalse([s for s in server.sql if s.startswith("CREATE")])
-        with mock.patch.object(apply_schema.db, "connect", return_value=connection), mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": "APPLY"}):
+        with (
+            mock.patch.object(apply_schema.db, "connect", return_value=connection),
+            mock.patch.dict("os.environ", {"SCHEMA_CONFIRM": "APPLY"}),
+        ):
             applied = apply_schema.apply_stage(0, False)
         self.assertTrue(applied["verified"])
 
@@ -94,7 +123,10 @@ class Schema(unittest.TestCase):
 
     def test_a_ready_server_reports_true_flags_and_nothing_else(self):
         result = schema.check(Cursor())
-        self.assertEqual((result["server"], result["version"], result["row_format"], result["tables_present"], result["ready"]), ("mysql", "8.0", "dynamic", [], True))
+        self.assertEqual(
+            (result["server"], result["version"], result["row_format"], result["tables_present"], result["ready"]),
+            ("mysql", "8.0", "dynamic", [], True),
+        )
         self.assertEqual(result["grants"], {"CREATE": True, "SELECT": True, "INSERT": True, "UPDATE": True})
         self.assertNotIn("x", repr(result))
 
@@ -104,7 +136,9 @@ class Schema(unittest.TestCase):
         no_create = schema.check(Cursor(grants=("GRANT SELECT, INSERT, UPDATE ON `x`.* TO `u`@`%`",)))
         self.assertEqual((no_create["grants"]["CREATE"], no_create["ready"]), (False, False))
         present = schema.check(Cursor(tables=("v7_inbox_events", "v7_other")))
-        self.assertEqual(present["tables_present"], ["v7_inbox_events"])  # only this schema's own table names are reported
+        self.assertEqual(
+            present["tables_present"], ["v7_inbox_events"]
+        )  # only this schema's own table names are reported
         everything = schema.check(Cursor(grants=("GRANT ALL PRIVILEGES ON `x`.* TO `u`@`%`",)))
         self.assertTrue(everything["ready"])
 

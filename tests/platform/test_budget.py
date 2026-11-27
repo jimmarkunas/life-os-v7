@@ -1,4 +1,5 @@
 """every stage has a time budget"""
+
 import contextlib
 import io
 import json
@@ -12,7 +13,10 @@ from lifeos.jobs import tick
 from lifeos.jobs.fit import cloud
 from lifeos.platform import budget
 
-TABLE = {"default_seconds": 600, "stages": {"slow": {"seconds": 5, "required": True}, "quiet": {"seconds": 7, "required": False}}}
+TABLE = {
+    "default_seconds": 600,
+    "stages": {"slow": {"seconds": 5, "required": True}, "quiet": {"seconds": 7, "required": False}},
+}
 
 
 class BudgetTable(unittest.TestCase):
@@ -23,7 +27,19 @@ class BudgetTable(unittest.TestCase):
 
     def test_over_budget_counts_carry_only_the_fixed_code_and_numbers(self):
         counts, code = budget.over_budget(5, 5.7, True)
-        self.assertEqual((counts, code), ({"stage_budget_exceeded": 1, "code": "STAGE_BUDGET_EXCEEDED", "budget_seconds": 5, "elapsed_seconds": 5, "required": True}, 1))
+        self.assertEqual(
+            (counts, code),
+            (
+                {
+                    "stage_budget_exceeded": 1,
+                    "code": "STAGE_BUDGET_EXCEEDED",
+                    "budget_seconds": 5,
+                    "elapsed_seconds": 5,
+                    "required": True,
+                },
+                1,
+            ),
+        )
         self.assertEqual(budget.over_budget(5, 5.7, False)[1], 0)  # an optional stage lets the run pass
 
 
@@ -34,7 +50,7 @@ class Guard(unittest.TestCase):
             with budget.guard(0.05):
                 try:
                     time.sleep(2)
-                except Exception:                                                              # noqa: BLE001 - the stage's own handler: the alarm is a BaseException and passes through
+                except Exception:  # noqa: BLE001 - the stage's own handler: the alarm is a BaseException and passes through
                     ran.append("swallowed")
                 finally:
                     ran.append("finally ran")
@@ -64,8 +80,12 @@ class RunMain(unittest.TestCase):
 
     def go(self, name, required):
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.dict(run.STAGES, {name: lambda limit, live: time.sleep(3)}), mock.patch.object(budget, "budget_for", return_value=(0.05, required)), \
-                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with (
+            mock.patch.dict(run.STAGES, {name: lambda limit, live: time.sleep(3)}),
+            mock.patch.object(budget, "budget_for", return_value=(0.05, required)),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
             code = run.main([name])
         return code, out.getvalue(), err.getvalue()
 
@@ -83,7 +103,10 @@ class RunMain(unittest.TestCase):
 
     def test_a_stage_within_its_budget_runs_exactly_as_before(self):
         out = io.StringIO()
-        with mock.patch.dict(run.STAGES, {"quick-stage": lambda limit, live: {"done": 1}}), contextlib.redirect_stdout(out):
+        with (
+            mock.patch.dict(run.STAGES, {"quick-stage": lambda limit, live: {"done": 1}}),
+            contextlib.redirect_stdout(out),
+        ):
             self.assertEqual(run.main(["quick-stage"]), 0)
         self.assertEqual(json.loads(out.getvalue().split(": ", 1)[1].splitlines()[0]), {"done": 1})
 

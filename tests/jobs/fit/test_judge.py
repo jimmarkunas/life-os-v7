@@ -1,6 +1,7 @@
 """Fit v2 envelope: the representative synthetic set, the static baseline beside a PROVISIONAL v2 outcome, and every way
 the capability's answer can be.
 """
+
 from datetime import date
 import json
 import unittest
@@ -13,7 +14,10 @@ TODAY = date(2026, 10, 1)
 PAD = " Our teams value clear writing, steady delivery and honest status updates." * 6
 JOBS = {}
 JOBS["A clear keyword match"] = ("Technical Program Manager", "Northwind Commerce", GOOD)
-JOBS["B paraphrased delivery lead"] = ("Delivery Lead, Platform Programs", "Contoso Retail", """About the role
+JOBS["B paraphrased delivery lead"] = (
+    "Delivery Lead, Platform Programs",
+    "Contoso Retail",
+    """About the role
 You will shepherd our largest cross-team initiatives from kickoff to launch.
 
 Responsibilities
@@ -26,8 +30,13 @@ Requirements
 • 10+ years leading complex multi-team technology initiatives
 • Track record of shipping enterprise systems on schedule and budget
 • Clear written and verbal communication with executives
-""" + PAD)
-JOBS["C adjacent implementation role"] = ("Implementation Manager, ERP Rollouts", "Fabrikam Systems", """About the role
+"""
+    + PAD,
+)
+JOBS["C adjacent implementation role"] = (
+    "Implementation Manager, ERP Rollouts",
+    "Fabrikam Systems",
+    """About the role
 Lead customer ERP rollouts end to end.
 
 Responsibilities
@@ -39,8 +48,13 @@ Requirements
 • 5+ years of implementation or consulting experience
 • Hands-on ERP configuration experience
 • Experience with payment providers
-""" + PAD)
-JOBS["D junior title, keywords stuffed"] = ("Data Entry Clerk", "Adventure Works", """About the role
+"""
+    + PAD,
+)
+JOBS["D junior title, keywords stuffed"] = (
+    "Data Entry Clerk",
+    "Adventure Works",
+    """About the role
 Entry-level support role.
 
 Responsibilities
@@ -50,8 +64,13 @@ Responsibilities
 Requirements
 • 1+ years of ERP data entry
 • Familiarity with NetSuite and payments
-""" + PAD)
-JOBS["E hands-on engineering mismatch"] = ("Staff Software Engineer, Payments", "Tailspin Pay", """About the role
+"""
+    + PAD,
+)
+JOBS["E hands-on engineering mismatch"] = (
+    "Staff Software Engineer, Payments",
+    "Tailspin Pay",
+    """About the role
 Build our payment processing services.
 
 Responsibilities
@@ -63,9 +82,14 @@ Requirements
 • 8+ years of professional software engineering in Java or Go
 • Deep experience with distributed systems and Kubernetes
 • Experience integrating Stripe is a plus
-""" + PAD)
+"""
+    + PAD,
+)
 JOBS["F title only"] = ("Technical Program Manager", "Litware", "")
-JOBS["G senior product, integration platform"] = ("Senior Product Manager, Integrations Platform", "Proseware", """About the role
+JOBS["G senior product, integration platform"] = (
+    "Senior Product Manager, Integrations Platform",
+    "Proseware",
+    """About the role
 Own the roadmap for our partner integrations platform.
 
 Responsibilities
@@ -77,9 +101,14 @@ Requirements
 • 8+ years of product management experience
 • Experience with ERP or CMS integrations
 • Strong cross-functional leadership
-""" + PAD)
+"""
+    + PAD,
+)
 JOBS["H excluded domain"] = ("Clinical Program Manager", "Wingtip Health", GOOD)
-JOBS["I program manager, unrelated domain"] = ("Program Manager, Events", "Humongous Events", """About the role
+JOBS["I program manager, unrelated domain"] = (
+    "Program Manager, Events",
+    "Humongous Events",
+    """About the role
 Plan and run our annual conference series.
 
 Responsibilities
@@ -91,8 +120,13 @@ Requirements
 • 5+ years of event program management experience
 • Strong vendor negotiation skills
 • Ability to travel
-""" + PAD)
-JOBS["J exec stretch"] = ("Vice President, Transformation", "Trey Research", """About the role
+"""
+    + PAD,
+)
+JOBS["J exec stretch"] = (
+    "Vice President, Transformation",
+    "Trey Research",
+    """About the role
 Lead enterprise transformation across 40 countries.
 
 Responsibilities
@@ -104,8 +138,13 @@ Requirements
 • 18+ years leading global transformation
 • Must have led an organisation of 150+ people
 • Deep ERP experience
-""" + PAD)
-JOBS["K paraphrase, no profile vocabulary"] = ("Rollout Captain, Merchant Onboarding", "Initech Commerce", """About the role
+"""
+    + PAD,
+)
+JOBS["K paraphrase, no profile vocabulary"] = (
+    "Rollout Captain, Merchant Onboarding",
+    "Initech Commerce",
+    """About the role
 Get new merchants live on our platform, smoothly and on a date.
 
 Responsibilities
@@ -117,8 +156,13 @@ Responsibilities
 Requirements
 • 6+ years launching enterprise customers onto a software platform
 • Comfortable explaining technical constraints to non-technical owners
-""" + PAD)
-JOBS["L solutions architect, adjacent craft"] = ("Solutions Architect, Commerce", "Globex Cloud", """About the role
+"""
+    + PAD,
+)
+JOBS["L solutions architect, adjacent craft"] = (
+    "Solutions Architect, Commerce",
+    "Globex Cloud",
+    """About the role
 Design reference architectures for our commerce customers.
 
 Responsibilities
@@ -130,7 +174,9 @@ Requirements
 • 8+ years designing enterprise integrations
 • Deep knowledge of ERP and payment platforms
 • Hands-on experience with APIs and event-driven design
-""" + PAD)
+"""
+    + PAD,
+)
 
 # PROVISIONAL, not approved: case -> (static baseline decision, a stand-in capability answer, the (score.
 PROVISIONAL = {
@@ -168,9 +214,16 @@ class RepresentativeSet(unittest.TestCase):
             self.assertEqual((got.score, got.decision), want, name)
 
     def test_the_provisional_outcomes_differ_from_the_static_decision_in_three_cases(self):
-        flips = [n for n, (title, company, text) in JOBS.items()
-                 if evaluate(title, company, text, PROFILE, TODAY).decision != PROVISIONAL[n][2][1] and PROVISIONAL[n][0] != "Unscorable"]
-        self.assertEqual(sorted(flips), ["J exec stretch", "K paraphrase, no profile vocabulary", "L solutions architect, adjacent craft"])
+        flips = [
+            n
+            for n, (title, company, text) in JOBS.items()
+            if evaluate(title, company, text, PROFILE, TODAY).decision != PROVISIONAL[n][2][1]
+            and PROVISIONAL[n][0] != "Unscorable"
+        ]
+        self.assertEqual(
+            sorted(flips),
+            ["J exec stretch", "K paraphrase, no profile vocabulary", "L solutions architect, adjacent craft"],
+        )
 
 
 class Envelope(unittest.TestCase):
@@ -191,17 +244,34 @@ class Envelope(unittest.TestCase):
         self.assertIsNone(judge.accept("not json at all", base, "x", sent).score)  # the answer is not even read
 
     def test_unusable_answers_fail_closed(self):
-        for bad in ("", "nonsense", "[]", "null", answer(101), answer(-1), answer(72.5), json.dumps({"score": True, "rationale": "x", "confidence": "low"}),
-                    json.dumps({"score": "80", "rationale": "x", "confidence": "low"}), answer(80, confidence="certain"), json.dumps({"score": 80, "confidence": "low"}),
-                    json.dumps({"score": 80, "rationale": 5, "confidence": "low"}), json.dumps({"score": 80, "rationale": "x", "confidence": "low", "model": "other"}), None):
+        for bad in (
+            "",
+            "nonsense",
+            "[]",
+            "null",
+            answer(101),
+            answer(-1),
+            answer(72.5),
+            json.dumps({"score": True, "rationale": "x", "confidence": "low"}),
+            json.dumps({"score": "80", "rationale": "x", "confidence": "low"}),
+            answer(80, confidence="certain"),
+            json.dumps({"score": 80, "confidence": "low"}),
+            json.dumps({"score": 80, "rationale": 5, "confidence": "low"}),
+            json.dumps({"score": 80, "rationale": "x", "confidence": "low", "model": "other"}),
+            None,
+        ):
             self.assertIsNone(judge.accept(bad, self.base, self.title, self.sent), repr(bad))
 
     def test_the_rationale_is_bounded_and_single_line(self):
         got = judge.accept(answer(80, "line one\n\n  line two " + "x" * 400), self.base, self.title, self.sent)
         self.assertEqual((len(got.rationale), "\n" in got.rationale), (300, False))
 
-    def test_the_request_carries_title_description_and_profile_but_no_benefits_pay_or_place_under_their_own_headings(self):
-        text = self.text + "\nBenefits\nSalary range 150,000 to 180,000 USD\nLocation\nAustin, Texas onsite three days\n"
+    def test_the_request_carries_title_description_and_profile_but_no_benefits_pay_or_place_under_their_own_headings(
+        self,
+    ):
+        text = (
+            self.text + "\nBenefits\nSalary range 150,000 to 180,000 USD\nLocation\nAustin, Texas onsite three days\n"
+        )
         sent = sent_for(self.title, text)
         self.assertEqual(sorted(sent), ["description", "profile", "title"])
         self.assertIn("steering forum", sent["description"])
@@ -209,41 +279,77 @@ class Envelope(unittest.TestCase):
         self.assertNotIn("Austin", sent["description"])
 
     def test_pay_place_and_work_mode_stated_inside_a_retained_section_are_removed_before_egress(self):
-        text = self.text.replace("• Run the weekly steering forum and publish decisions",
-                                 "• Run the weekly steering forum and publish decisions\n• This is a hybrid role based in Austin, Texas, three days a week in the office\n"
-                                 "• Coordinate remote engineering teams across time zones. Salary range $150,000 to $180,000 plus a 401(k) match\n"
-                                 "• Track benefits realization for each program; Relocation assistance is available") \
-                          .replace("• Clear written and verbal communication with executives", "• Clear written and verbal communication with executives\n• Must be authorized to work in the US; visa sponsorship is not offered")
+        text = self.text.replace(
+            "• Run the weekly steering forum and publish decisions",
+            "• Run the weekly steering forum and publish decisions\n• This is a hybrid role based in Austin, Texas, three days a week in the office\n"
+            "• Coordinate remote engineering teams across time zones. Salary range $150,000 to $180,000 plus a 401(k) match\n"
+            "• Track benefits realization for each program; Relocation assistance is available",
+        ).replace(
+            "• Clear written and verbal communication with executives",
+            "• Clear written and verbal communication with executives\n• Must be authorized to work in the US; visa sponsorship is not offered",
+        )
         description = sent_for(self.title, text)["description"]
-        for leaked in ("hybrid", "Austin", "three days", "Salary", "$150,000", "401(k)", "Relocation", "visa", "authorized to work"):
+        for leaked in (
+            "hybrid",
+            "Austin",
+            "three days",
+            "Salary",
+            "$150,000",
+            "401(k)",
+            "Relocation",
+            "visa",
+            "authorized to work",
+        ):
             self.assertNotIn(leaked, description, leaked)
         for kept in ("steering forum", "remote engineering teams", "benefits realization", "10+ years leading complex"):
             self.assertIn(kept, description, kept)  # legitimate responsibilities survive
 
     def test_a_posting_that_is_mostly_policy_statements_sends_nothing(self):
-        text = "Responsibilities\n" + "\n".join(f"• Salary range ${n}0,000, hybrid in Austin, 401(k) and health insurance" for n in range(1, 12)) + "\n"
+        text = (
+            "Responsibilities\n"
+            + "\n".join(
+                f"• Salary range ${n}0,000, hybrid in Austin, 401(k) and health insurance" for n in range(1, 12)
+            )
+            + "\n"
+        )
         self.assertGreater(len(text), 300)
         self.assertIsNone(sent_for(self.title, text))
 
     def test_a_title_carrying_work_mode_or_place_is_cleaned_before_egress(self):
-        for raw, kept in (("Technical Program Manager — Remote US", "Technical Program Manager"), ("Product Manager (Hybrid, Chicago)", "Product Manager"),
-                          ("Program Manager | Onsite | Austin", "Program Manager"), ("Technical Program Manager, Remote US", "Technical Program Manager"),
-                          ("Remote Delivery Lead", "Delivery Lead"), ("Senior Manager, Operations and Implementation", "Senior Manager, Operations and Implementation")):
+        for raw, kept in (
+            ("Technical Program Manager — Remote US", "Technical Program Manager"),
+            ("Product Manager (Hybrid, Chicago)", "Product Manager"),
+            ("Program Manager | Onsite | Austin", "Program Manager"),
+            ("Technical Program Manager, Remote US", "Technical Program Manager"),
+            ("Remote Delivery Lead", "Delivery Lead"),
+            ("Senior Manager, Operations and Implementation", "Senior Manager, Operations and Implementation"),
+        ):
             self.assertEqual(sent_for(raw, self.text)["title"], kept, raw)
 
     def test_commuting_and_residency_requirements_without_a_place_keyword_are_removed(self):
-        text = self.text.replace("• Run the weekly steering forum and publish decisions", "• Run the weekly steering forum and publish decisions\n• Must commute to Chicago every Monday\n• Candidates must reside near the hub")
+        text = self.text.replace(
+            "• Run the weekly steering forum and publish decisions",
+            "• Run the weekly steering forum and publish decisions\n• Must commute to Chicago every Monday\n• Candidates must reside near the hub",
+        )
         description = sent_for(self.title, text)["description"]
         for leaked in ("commute", "Chicago", "reside"):
             self.assertNotIn(leaked, description, leaked)
         self.assertIn("steering forum", description)
 
     def test_the_structured_location_is_removed_from_the_title_and_from_clauses(self):
-        for title, location, kept in (("Product Manager, Chicago", "Chicago, IL", "Product Manager"), ("Product Manager Chicago", "Chicago, Illinois", "Product Manager"),
-                                      ("Product Manager, Chicago", None, "Product Manager"), ("Delivery Lead, Platform Programs", None, "Delivery Lead"),
-                                      ("Product Manager, Chicago, IL", "Chicago, IL", "Product Manager"), ("Senior Manager, Operations and Implementation", None, "Senior Manager, Operations and Implementation")):
+        for title, location, kept in (
+            ("Product Manager, Chicago", "Chicago, IL", "Product Manager"),
+            ("Product Manager Chicago", "Chicago, Illinois", "Product Manager"),
+            ("Product Manager, Chicago", None, "Product Manager"),
+            ("Delivery Lead, Platform Programs", None, "Delivery Lead"),
+            ("Product Manager, Chicago, IL", "Chicago, IL", "Product Manager"),
+            ("Senior Manager, Operations and Implementation", None, "Senior Manager, Operations and Implementation"),
+        ):
             self.assertEqual(sent_for(title, self.text, location)["title"], kept, (title, location))
-        text = self.text.replace("• Run the weekly steering forum and publish decisions", "• Run the weekly steering forum and publish decisions\n• Partner with the Chicago hub")
+        text = self.text.replace(
+            "• Run the weekly steering forum and publish decisions",
+            "• Run the weekly steering forum and publish decisions\n• Partner with the Chicago hub",
+        )
         self.assertNotIn("Chicago", sent_for(self.title, text, "Chicago, IL")["description"])
         self.assertIn("Chicago hub", sent_for(self.title, text, None)["description"])
 
@@ -256,35 +362,57 @@ class Envelope(unittest.TestCase):
         unseparated in the title fails closed.
         """
         self.assertNotIn("RESIDUAL LIMIT", judge.__doc__)
-        for title, location in (("Senior Technical Program Manager London", "Remote - United States"), ("Product Manager Chicago", None),
-                                ("Program Manager Toronto", "Remote"), ("Delivery Lead Berlin", ""), ("TPM California", None)):
+        for title, location in (
+            ("Senior Technical Program Manager London", "Remote - United States"),
+            ("Product Manager Chicago", None),
+            ("Program Manager Toronto", "Remote"),
+            ("Delivery Lead Berlin", ""),
+            ("TPM California", None),
+        ):
             self.assertIsNone(sent_for(title, self.text, location), title)
             self.assertTrue(judge.title_place(judge.request_title(title, location)), title)
-        for title in ("Senior Technical Program Manager", "Global Program Manager", "Product Owner, Platform", "Technical Program Manager - London"):
+        for title in (
+            "Senior Technical Program Manager",
+            "Global Program Manager",
+            "Product Owner, Platform",
+            "Technical Program Manager - London",
+        ):
             sent = sent_for(title, self.text, "Remote - United States")
             self.assertIsNotNone(sent, title)
             self.assertFalse(judge.title_place(sent["title"]), title)
 
-    BOILERPLATE = ("About the Role\nWe are a mission-driven company reimagining how teams everywhere collaborate. Our culture rewards curiosity, kindness and bold ideas, and our customers "
-                   "span every industry and continent. Join a passionate group that celebrates wins together, learns from every setback and believes the best work happens when people feel they belong "
-                   "and are trusted to do their best work every single day.\n")
+    BOILERPLATE = (
+        "About the Role\nWe are a mission-driven company reimagining how teams everywhere collaborate. Our culture rewards curiosity, kindness and bold ideas, and our customers "
+        "span every industry and continent. Join a passionate group that celebrates wins together, learns from every setback and believes the best work happens when people feel they belong "
+        "and are trusted to do their best work every single day.\n"
+    )
 
     def test_long_generic_company_text_without_role_evidence_is_not_scorable(self):
-        for text in (self.BOILERPLATE, self.BOILERPLATE.replace("About the Role", "About the Company"), self.BOILERPLATE + "\nResponsibilities\n• Support the team\n"):
+        for text in (
+            self.BOILERPLATE,
+            self.BOILERPLATE.replace("About the Role", "About the Company"),
+            self.BOILERPLATE + "\nResponsibilities\n• Support the team\n",
+        ):
             self.assertGreater(len(text), 300)
             sent = sent_for("Program Manager", text)
             self.assertIsNone(sent)
-            got = judge.accept(answer(90), evaluate("Program Manager", "Initech", text, PROFILE, TODAY), "Program Manager", sent)
+            got = judge.accept(
+                answer(90), evaluate("Program Manager", "Initech", text, PROFILE, TODAY), "Program Manager", sent
+            )
             self.assertEqual((got.score, got.decision), (None, "Unscorable"))
 
-    NARRATIVE = ("About the role\nGet merchants live, smoothly and on a date.\n\nWhat you'll do\n• Take each merchant from signed contract to first live order\n"
-                 "• Keep a tracker the whole group trusts and flag slips early\n• Hold a weekly call with every merchant champion\n"
-                 "• Explain slips, reset expectations and protect the next launch\n• Write plain status notes that close loops before anyone has to ask\n"
-                 "• Keep the next three launches warm so nobody waits on a handoff\n")
+    NARRATIVE = (
+        "About the role\nGet merchants live, smoothly and on a date.\n\nWhat you'll do\n• Take each merchant from signed contract to first live order\n"
+        "• Keep a tracker the whole group trusts and flag slips early\n• Hold a weekly call with every merchant champion\n"
+        "• Explain slips, reset expectations and protect the next launch\n• Write plain status notes that close loops before anyone has to ask\n"
+        "• Keep the next three launches warm so nobody waits on a handoff\n"
+    )
 
     def test_a_substantive_paraphrased_description_is_judged_even_when_the_static_scorer_recognises_nothing(self):
         base = evaluate("Launch Captain", "Initech", self.NARRATIVE, PROFILE, TODAY)
-        self.assertEqual((base.score, base.decision), (None, "Unscorable"))  # static vocabulary limit: nothing recognised
+        self.assertEqual(
+            (base.score, base.decision), (None, "Unscorable")
+        )  # static vocabulary limit: nothing recognised
         sent = sent_for("Launch Captain", self.NARRATIVE)
         self.assertIsNotNone(sent)
         got = judge.accept(answer(79), base, "Launch Captain", sent)

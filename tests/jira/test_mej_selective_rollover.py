@@ -1,4 +1,5 @@
 """the gated MEJ selective rollover, synthetic only."""
+
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +13,12 @@ from tests.kit.http import Response
 
 TZ = ZoneInfo("America/Chicago")
 ROOT = Path(__file__).resolve().parents[2]
-ENV = {"JIRA_BASE_URL": "https://example.invalid", "JIRA_EMAIL": "synthetic-user", "JIRA_API_TOKEN": "synthetic-token", "JIRA_BOARDS": "MEJ:38"}
+ENV = {
+    "JIRA_BASE_URL": "https://example.invalid",
+    "JIRA_EMAIL": "synthetic-user",
+    "JIRA_API_TOKEN": "synthetic-token",
+    "JIRA_BOARDS": "MEJ:38",
+}
 
 
 class MejFake(FakeJira):
@@ -52,7 +58,15 @@ class MejFake(FakeJira):
             if sub:
                 parent = self.subtasks[key]
                 held = {k: s for items in self.members.values() for k, s in items.items()}
-                f["parent"] = ({"key": parent, "fields": {"status": {"name": held[parent]}}} if parent in held else {"key": parent}) if parent else None
+                f["parent"] = (
+                    (
+                        {"key": parent, "fields": {"status": {"name": held[parent]}}}
+                        if parent in held
+                        else {"key": parent}
+                    )
+                    if parent
+                    else None
+                )
             if self.sprint_field is not None:
                 f["sprint"] = {"id": self.sprint_field}
             rows.append({"key": key, "fields": f})
@@ -62,7 +76,11 @@ class MejFake(FakeJira):
         self.log.append("backlog")
         if self.backlog_fail:
             raise self.backlog_fail
-        moving = [k for k in list(keys) + [c for c, parent in self.subtasks.items() if parent in keys] if not (self.leave_child and k in self.subtasks)]
+        moving = [
+            k
+            for k in list(keys) + [c for c, parent in self.subtasks.items() if parent in keys]
+            if not (self.leave_child and k in self.subtasks)
+        ]
         for items in self.members.values():
             for key in moving:
                 if key in items and key not in self.drop:
@@ -100,8 +118,16 @@ def fresh(types=None, subtasks=None, extra=(), **kw):
     """Source sprint 1 with an approved Task (M-1) and its child (M-2), an unapproved Task (M-3) and its child (M-4), a
     finite weekly occurrence (M-5) and a.
     """
-    issues = [("MEJ-1", 1, "To Do"), ("MEJ-2", 1, "To Do"), ("MEJ-3", 1, "In Progress"), ("MEJ-4", 1, "To Do"), ("MEJ-5", 1, "To Do"),
-              ("MEJ-6", 1, "To Do"), ("MEJ-7", 1, "Done"), *extra]
+    issues = [
+        ("MEJ-1", 1, "To Do"),
+        ("MEJ-2", 1, "To Do"),
+        ("MEJ-3", 1, "In Progress"),
+        ("MEJ-4", 1, "To Do"),
+        ("MEJ-5", 1, "To Do"),
+        ("MEJ-6", 1, "To Do"),
+        ("MEJ-7", 1, "Done"),
+        *extra,
+    ]
     subs = {"MEJ-2": "MEJ-1", "MEJ-4": "MEJ-3", "MEJ-6": "MEJ-7"}
     subs.update(subtasks or {})
     return MejFake(week(), issues, subtasks=subs, types=types, **kw)
@@ -111,23 +137,42 @@ class GateOffByDefault(unittest.TestCase):
     def test_the_gate_is_off_unless_a_caller_passes_it_and_no_caller_does(self):
         users = [str(p.relative_to(ROOT)) for p in (ROOT / "lifeos").rglob("*.py") if "mej_selective" in p.read_text()]
         self.assertEqual(users, ["lifeos/jira/rollover.py"])
-        self.assertEqual([], [str(p) for p in (ROOT / ".github").rglob("*") if p.is_file() and "mej_selective" in p.read_text(errors="ignore")])
+        self.assertEqual(
+            [],
+            [
+                str(p)
+                for p in (ROOT / ".github").rglob("*")
+                if p.is_file() and "mej_selective" in p.read_text(errors="ignore")
+            ],
+        )
 
     def test_mej_with_the_gate_off_carries_everything_unfinished_exactly_as_main_does(self):
         a, b = fresh(), fresh()
-        explicit_none = rollover.run(1, True, environ=ENV, client=a, now=at(5, 6), sleep=lambda s: None, mej_selective=None)
+        explicit_none = rollover.run(
+            1, True, environ=ENV, client=a, now=at(5, 6), sleep=lambda s: None, mej_selective=None
+        )
         default = rollover.run(1, True, environ=ENV, client=b, now=at(5, 6), sleep=lambda s: None)
         self.assertEqual(explicit_none, default)
         self.assertEqual(a.log, b.log)
         self.assertEqual(a.log, ["create", "move", "closed", "active"])
         self.assertNotIn("backlog", a.log)
-        self.assertEqual(sorted(a.members[a.next_id]), ["MEJ-1", "MEJ-2", "MEJ-3", "MEJ-4", "MEJ-5"])  # everything unfinished moves
+        self.assertEqual(
+            sorted(a.members[a.next_id]), ["MEJ-1", "MEJ-2", "MEJ-3", "MEJ-4", "MEJ-5"]
+        )  # everything unfinished moves
         self.assertEqual(default["stranded"], 1)
 
     def test_the_same_gate_on_another_project_changes_nothing(self):
         env = {**ENV, "JIRA_BOARDS": "AAA:11"}
         a, b = fresh(), fresh()
-        with_gate = rollover.run(1, True, environ=env, client=a, now=at(5, 6), sleep=lambda s: None, mej_selective=config(["MEJ-1"], backlog=None))
+        with_gate = rollover.run(
+            1,
+            True,
+            environ=env,
+            client=a,
+            now=at(5, 6),
+            sleep=lambda s: None,
+            mej_selective=config(["MEJ-1"], backlog=None),
+        )
         without = rollover.run(1, True, environ=env, client=b, now=at(5, 6), sleep=lambda s: None)
         self.assertEqual(with_gate, without)
         self.assertEqual(a.log, b.log)
@@ -149,7 +194,9 @@ class SelectiveCarry(unittest.TestCase):
         target = client.members[client.next_id]
         self.assertEqual(sorted(target), ["MEJ-1", "MEJ-2"])  # the approved Task with its child, once
         self.assertEqual(client.backlog, {"MEJ-3", "MEJ-4", "MEJ-5"})
-        self.assertEqual((out["carried"], out["backlogged"], out["stranded"], out["finite_missed"], out["closed"]), (2, 3, 1, 1, 1))
+        self.assertEqual(
+            (out["carried"], out["backlogged"], out["stranded"], out["finite_missed"], out["closed"]), (2, 3, 1, 1, 1)
+        )
         self.assertEqual(client.sprints_by_id[1]["state"], "closed")
 
     def test_a_finite_weekly_occurrence_is_never_copied_never_carried_and_never_marked_done(self):
@@ -166,7 +213,10 @@ class SelectiveCarry(unittest.TestCase):
     def test_the_dry_run_previews_the_split_and_writes_nothing(self):
         client = fresh()
         out = self.go(client, finite=["MEJ-5"], live=False)
-        self.assertEqual((out["would_carry"], out["would_backlog"], out["would_strand"], out["selective"], out["writes"]), (2, 3, 1, 1, 0))
+        self.assertEqual(
+            (out["would_carry"], out["would_backlog"], out["would_strand"], out["selective"], out["writes"]),
+            (2, 3, 1, 1, 0),
+        )
         self.assertEqual(client.log, [])
 
     def test_an_empty_backlog_need_does_not_need_the_primitive(self):
@@ -184,8 +234,17 @@ class RosterAndInventory(unittest.TestCase):
         self.assertEqual([entry for entry in client.log if entry in ("closed", "active", "backlog", "move")], [])
 
     def test_an_incomplete_or_ambiguous_roster_fails_closed_before_any_write(self):
-        for cfg in (config(["MEJ-1"], consent=""), config(["MEJ-1"], consent=None), config(["MEJ-1", "MEJ-1"]), config(["MEJ-99"]),
-                    config(["JFM-1"]), config(["MEJ-2"]), config(["MEJ-%d" % n for n in range(1, 60)]), {"roster": "MEJ-1", "consent": "x"}, {"consent": "x"}):
+        for cfg in (
+            config(["MEJ-1"], consent=""),
+            config(["MEJ-1"], consent=None),
+            config(["MEJ-1", "MEJ-1"]),
+            config(["MEJ-99"]),
+            config(["JFM-1"]),
+            config(["MEJ-2"]),
+            config(["MEJ-%d" % n for n in range(1, 60)]),
+            {"roster": "MEJ-1", "consent": "x"},
+            {"consent": "x"},
+        ):
             self.refuses(fresh(), "JIRA_MEJ_ROSTER_INVALID", cfg)
 
     def test_unapproved_work_with_no_proven_backlog_refuses_close(self):
@@ -230,17 +289,27 @@ class BacklogFailures(unittest.TestCase):
         with self.assertRaisesRegex(JiraError, code):
             run(client, True, at(5, 6), config(["MEJ-1"], finite), sleep=slept.append)
         self.assertNotIn("closed", client.log)
-        self.assertNotIn("active", client.log[client.log.index("move") + 1:] if "move" in client.log else [])
+        self.assertNotIn("active", client.log[client.log.index("move") + 1 :] if "move" in client.log else [])
         return slept
 
     def test_a_403_429_or_timeout_on_the_move_fails_closed(self):
-        for failure in (JiraError("JIRA_HTTP_403"), JiraError("JIRA_HTTP_429"), TimeoutError("synthetic"), OSError("synthetic")):
+        for failure in (
+            JiraError("JIRA_HTTP_403"),
+            JiraError("JIRA_HTTP_429"),
+            TimeoutError("synthetic"),
+            OSError("synthetic"),
+        ):
             client = fresh(backlog_fail=failure)
             self.refuses(client, "JIRA_MEJ_BACKLOG_FAILED")
             self.assertEqual(client.backlog, set())
 
     def test_a_failing_or_unreadable_backlog_readback_fails_closed(self):
-        for failure in (JiraError("JIRA_HTTP_403"), JiraError("JIRA_HTTP_429"), TimeoutError("synthetic"), ValueError("shape")):
+        for failure in (
+            JiraError("JIRA_HTTP_403"),
+            JiraError("JIRA_HTTP_429"),
+            TimeoutError("synthetic"),
+            ValueError("shape"),
+        ):
             self.refuses(fresh(read_fail=failure), "JIRA_MEJ_BACKLOG_FAILED")
 
     def test_a_partial_result_is_retried_once_then_refuses_close(self):
@@ -255,7 +324,9 @@ class BacklogFailures(unittest.TestCase):
         out = run(client, True, at(5, 6), config(["MEJ-1"], ["MEJ-5"]), sleep=slept.append)
         self.assertEqual(slept, [15])
         self.assertEqual(out["closed"], 1)
-        self.assertEqual(sorted(client.members[client.next_id]), ["MEJ-1", "MEJ-2"])  # carried once even though the plan ran twice
+        self.assertEqual(
+            sorted(client.members[client.next_id]), ["MEJ-1", "MEJ-2"]
+        )  # carried once even though the plan ran twice
         self.assertEqual(client.log.count("closed"), 1)
 
 
@@ -285,7 +356,9 @@ class RestartRecovery(unittest.TestCase):
 
 class CadenceAndBoundaries(unittest.TestCase):
     def test_a_14_day_sprint_still_needs_its_staged_target_with_the_gate_on(self):
-        long_sprint = sprint(1, "active", datetime(2026, 9, 21, tzinfo=TZ), datetime(2026, 10, 4, 23, 59, 59, tzinfo=TZ))
+        long_sprint = sprint(
+            1, "active", datetime(2026, 9, 21, tzinfo=TZ), datetime(2026, 10, 4, 23, 59, 59, tzinfo=TZ)
+        )
         client = MejFake([long_sprint], [("MEJ-1", 1, "To Do")])
         with self.assertRaisesRegex(JiraError, "JIRA_TARGET_NOT_STAGED"):
             run(client, True, at(5, 6), config(["MEJ-1"]))
@@ -297,15 +370,37 @@ class CadenceAndBoundaries(unittest.TestCase):
         rollover.run(1, True, environ=ENV, client=off, now=at(5, 6), sleep=lambda s: None)
         made_on = [s for i, s in on.sprints_by_id.items() if i not in (1,)][0]
         made_off = [s for i, s in off.sprints_by_id.items() if i not in (1,)][0]
-        self.assertEqual({k: made_on[k] for k in ("name", "startDate", "endDate")}, {k: made_off[k] for k in ("name", "startDate", "endDate")})
+        self.assertEqual(
+            {k: made_on[k] for k in ("name", "startDate", "endDate")},
+            {k: made_off[k] for k in ("name", "startDate", "endDate")},
+        )
 
     def test_the_clock_change_reuses_the_staged_sprint_and_never_duplicates_it(self):
-        first = sprint(1, "active", datetime(2026, 10, 26, tzinfo=TZ), datetime(2026, 11, 1, 23, 30, tzinfo=TZ), "MEJ Sprint 1")
-        for start, end in (("2026-11-02T05:00:00.000Z", "2026-11-09T04:30:00.000Z"), ("2026-11-02T06:00:00.000Z", "2026-11-09T05:30:00.000Z")):
+        first = sprint(
+            1, "active", datetime(2026, 10, 26, tzinfo=TZ), datetime(2026, 11, 1, 23, 30, tzinfo=TZ), "MEJ Sprint 1"
+        )
+        for start, end in (
+            ("2026-11-02T05:00:00.000Z", "2026-11-09T04:30:00.000Z"),
+            ("2026-11-02T06:00:00.000Z", "2026-11-09T05:30:00.000Z"),
+        ):
             client = MejFake([first], [("MEJ-1", 1, "To Do")])
-            client.sprints_by_id[2] = {"id": 2, "state": "future", "name": "MEJ Sprint 2", "startDate": start, "endDate": end}
-            out = rollover.run(1, True, environ=ENV, client=client, now=datetime(2026, 11, 2, 0, 5, tzinfo=TZ), sleep=lambda s: None, auto=True,
-                               mej_selective=config(["MEJ-1"], backlog=client))
+            client.sprints_by_id[2] = {
+                "id": 2,
+                "state": "future",
+                "name": "MEJ Sprint 2",
+                "startDate": start,
+                "endDate": end,
+            }
+            out = rollover.run(
+                1,
+                True,
+                environ=ENV,
+                client=client,
+                now=datetime(2026, 11, 2, 0, 5, tzinfo=TZ),
+                sleep=lambda s: None,
+                auto=True,
+                mej_selective=config(["MEJ-1"], backlog=client),
+            )
             self.assertNotIn("create", client.log)
             self.assertEqual((out["closed"], out["carried"]), (1, 1))
             self.assertEqual(sum(1 for s in client.sprints_by_id.values() if s["state"] != "closed"), 1)
@@ -324,14 +419,21 @@ class Primitive(unittest.TestCase):
         def fake(request, timeout=0):
             calls.append((request.method, request.full_url.split("example.invalid")[1], request.data))
             return Response(b'{"issues": [], "isLast": true, "total": 0, "values": []}')
+
         client = Jira("https://example.invalid", "e", "t", sleep=lambda s: None)
         with patch("urllib.request.urlopen", side_effect=fake):
             client.move_to_backlog(["MEJ-%d" % n for n in range(1, 61)])
             client.backlog_issues(38, "statusCategory != Done", "summary")
-        self.assertEqual([c[0:2] for c in calls[:2]], [("POST", "/rest/agile/1.0/backlog/issue")] * 2)  # 60 keys go in two bounded batches
+        self.assertEqual(
+            [c[0:2] for c in calls[:2]], [("POST", "/rest/agile/1.0/backlog/issue")] * 2
+        )  # 60 keys go in two bounded batches
         self.assertTrue(calls[2][1].startswith("/rest/agile/1.0/board/38/backlog"))
-        sources = [str(p.relative_to(ROOT)) for p in (ROOT / "lifeos").rglob("*.py") if "move_to_backlog" in p.read_text()]
-        self.assertEqual(sorted(sources), ["lifeos/jira/rollover.py", "lifeos/jira/writers.py", "lifeos/platform/jira.py"])
+        sources = [
+            str(p.relative_to(ROOT)) for p in (ROOT / "lifeos").rglob("*.py") if "move_to_backlog" in p.read_text()
+        ]
+        self.assertEqual(
+            sorted(sources), ["lifeos/jira/rollover.py", "lifeos/jira/writers.py", "lifeos/platform/jira.py"]
+        )
 
 
 if __name__ == "__main__":

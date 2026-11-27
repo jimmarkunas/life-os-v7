@@ -1,6 +1,7 @@
 """(REQ-85 T4): the Aura pilot's guard rails, with no database: every statement is a fixed template that carries the
 label and the namespace, anything.
 """
+
 import importlib.util
 import json
 import pathlib
@@ -56,7 +57,9 @@ class Templates(unittest.TestCase):
             self.assertNotRegex(text, r"\b(CREATE|MERGE|DELETE|SET|REMOVE|DROP)\b", name)
 
     def test_relationship_types_are_a_closed_list(self):
-        self.assertEqual(set(pilot.REL_TYPES.values()), {"IMPLEMENTS", "VERIFIES", "BLOCKS", "SUPERSEDES", "DERIVED_FROM"})
+        self.assertEqual(
+            set(pilot.REL_TYPES.values()), {"IMPLEMENTS", "VERIFIES", "BLOCKS", "SUPERSEDES", "DERIVED_FROM"}
+        )
         self.assertTrue({e["type"] for e in DOC["edges"]} <= set(pilot.REL_TYPES))
 
 
@@ -78,7 +81,11 @@ class Scope(unittest.TestCase):
     def test_an_unknown_namespace_and_free_text_are_refused_before_anything_is_sent(self):
         d = FakeDriver()
         sc = pilot.Scoped(d, "db1")
-        for bad in (lambda: sc.read("all_nodes", "another-ns"), lambda: sc.run_cypher("MATCH (n) DETACH DELETE n"), lambda: sc.run_cypher("MATCH (n) RETURN n")):
+        for bad in (
+            lambda: sc.read("all_nodes", "another-ns"),
+            lambda: sc.run_cypher("MATCH (n) DETACH DELETE n"),
+            lambda: sc.run_cypher("MATCH (n) RETURN n"),
+        ):
             with self.assertRaises(pilot.Refused):
                 bad()
         self.assertEqual(d.log, [])
@@ -110,17 +117,40 @@ class Exclusions(unittest.TestCase):
     rows = staticmethod(lambda *ids: [{"id": i} for i in ids])
 
     def test_a_revoked_edge_and_a_stale_record_are_reported_excluded_only_when_the_filter_removed_them(self):
-        r = pilot.exclusions(self.rows("FAKE-REQ-002"), self.rows("FAKE-REQ-002", "FAKE-REQ-001"), self.rows(), self.rows("FAKE-TASK-002"))
+        r = pilot.exclusions(
+            self.rows("FAKE-REQ-002"),
+            self.rows("FAKE-REQ-002", "FAKE-REQ-001"),
+            self.rows(),
+            self.rows("FAKE-TASK-002"),
+        )
         self.assertEqual((r["revoked_edge_excluded"], r["stale_record_excluded"]), (True, True))
 
     def test_it_says_false_when_the_filter_let_them_through(self):
-        r = pilot.exclusions(self.rows("FAKE-REQ-002", "FAKE-REQ-001"), self.rows("FAKE-REQ-002", "FAKE-REQ-001"), self.rows("FAKE-TASK-002"), self.rows("FAKE-TASK-002"))
+        r = pilot.exclusions(
+            self.rows("FAKE-REQ-002", "FAKE-REQ-001"),
+            self.rows("FAKE-REQ-002", "FAKE-REQ-001"),
+            self.rows("FAKE-TASK-002"),
+            self.rows("FAKE-TASK-002"),
+        )
         self.assertEqual((r["revoked_edge_excluded"], r["stale_record_excluded"]), (False, False))
 
 
 class Arm(unittest.TestCase):
     def test_the_aura_graph_arm_answers_a_lookup_and_a_dependency_case_through_read_templates_only(self):
-        rows = [dict(id=s["id"], tenant=s["tenant"], kind=s["kind"], title=s["title"], text=s["text"], revision=s["revision"], status=s["status"], superseded_by=s["superseded_by"]) for s in DOC["sources"] if s["tenant"] == "alpha"]
+        rows = [
+            dict(
+                id=s["id"],
+                tenant=s["tenant"],
+                kind=s["kind"],
+                title=s["title"],
+                text=s["text"],
+                revision=s["revision"],
+                status=s["status"],
+                superseded_by=s["superseded_by"],
+            )
+            for s in DOC["sources"]
+            if s["tenant"] == "alpha"
+        ]
 
         class Sc:
             def __init__(self):
@@ -129,6 +159,7 @@ class Arm(unittest.TestCase):
             def read(self, name, ns, **p):
                 self.log.append(name)
                 return rows if name == "tenant_nodes" else [{"id": "FAKE-REQ-001"}]
+
         sc = Sc()
         arm = pilot.AuraGraph(sc)
         ids, calls = arm.answer("alpha", "What does the offline export bundle requirement say?")
@@ -141,7 +172,14 @@ class Arm(unittest.TestCase):
 class Hygiene(unittest.TestCase):
     def test_the_script_holds_no_credential_and_names_secrets_only_by_their_item_names(self):
         text = (ROOT / "tools" / "um_aura_pilot.py").read_text()
-        self.assertEqual(set(pilot.NAMES.values()), {"lifeos/edge/NEO4J_AURA_FREE_URI", "lifeos/edge/NEO4J_AURA_FREE_USERNAME", "lifeos/edge/NEO4J_AURA_FREE_PASSWORD"})
+        self.assertEqual(
+            set(pilot.NAMES.values()),
+            {
+                "lifeos/edge/NEO4J_AURA_FREE_URI",
+                "lifeos/edge/NEO4J_AURA_FREE_USERNAME",
+                "lifeos/edge/NEO4J_AURA_FREE_PASSWORD",
+            },
+        )
         self.assertIsNone(re.search(r"neo4j\+s://\S+|databases\.neo4j\.io|BWS_ACCESS_TOKEN\s*=\s*['\"]\w{8}", text))
 
     def test_import_writes_nodes_once_and_every_edge_batch_carries_its_tenant(self):

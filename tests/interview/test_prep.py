@@ -12,8 +12,14 @@ from tests.interview.test_notion import ENV, block
 
 def legacy_round_page(view, query, parent_id, identity, prep=None):
     """The round layout written before (top-level sections, 'Derived' last)"""
-    head = lambda label: {"object": "block", "type": "heading_2", "heading_2": {"rich_text": [{"type": "text", "text": {"content": label}}]}}
-    return [template.fold(notion.MARKERS["round"], identity)] + [head(x) for x in ("Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived")]
+    head = lambda label: {
+        "object": "block",
+        "type": "heading_2",
+        "heading_2": {"rich_text": [{"type": "text", "text": {"content": label}}]},
+    }
+    return [template.fold(notion.MARKERS["round"], identity)] + [
+        head(x) for x in ("Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived")
+    ]
 
 
 def setUpModule():
@@ -43,14 +49,19 @@ class PrepFake(WritableFake):
 
 
 class InputTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def test_validation_normalization_hash_order_and_render(self):
-        for value in (PrepEvidence(), PrepEvidence(focus=("  ",)), PrepEvidence(focus=("x" * 501,)),
-                      PrepEvidence(focus=tuple(str(i) for i in range(6)))):
+        for value in (
+            PrepEvidence(),
+            PrepEvidence(focus=("  ",)),
+            PrepEvidence(focus=("x" * 501,)),
+            PrepEvidence(focus=tuple(str(i) for i in range(6))),
+        ):
             with self.assertRaises((ValueError, OverflowError)):
                 prep.normalize(value)
         normalized = prep.normalize(PrepEvidence(focus=(" First ", "First", "Second"), questions=("Q2", "Q1")))
@@ -63,11 +74,12 @@ class InputTests(unittest.TestCase):
 
 
 class PrepTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     def apply(self, client, query, data, live=True):
         return prep.apply(client, ENV, PARENT, query, data, live, RunContext.start(60))
 
@@ -119,9 +131,11 @@ class PrepTests(unittest.TestCase):
         protected = notion.protected_snapshot(client, round_id)
         calls = []
         original = client.call
+
         def record(method, path, body=None):
             calls.append(path)
             return original(method, path, body)
+
         client.call = record
         result = self.apply(client, query, PrepEvidence(focus=("Input",)))
         self.assertEqual(result["code"], "derived_conflict")
@@ -133,13 +147,23 @@ class PrepTests(unittest.TestCase):
     def test_ordinal_carry_forward_merges_only_pressure_and_questions(self):
         client = PrepFake()
         parent_id, previous_id, previous_query = machine_round(client, ordinal=1)
-        old = PrepEvidence(focus=("Old focus",), strongest_evidence=("Old proof",),
-                           pressure_points=("Old risk", "Shared risk"), questions=("Old question",))
-        self.assertEqual(prep.apply(client, ENV, PARENT, previous_query, old, True, RunContext.start(60))["code"], "derived_created")
+        old = PrepEvidence(
+            focus=("Old focus",),
+            strongest_evidence=("Old proof",),
+            pressure_points=("Old risk", "Shared risk"),
+            questions=("Old question",),
+        )
+        self.assertEqual(
+            prep.apply(client, ENV, PARENT, previous_query, old, True, RunContext.start(60))["code"], "derived_created"
+        )
         current_query = RoundQuery(True, "2026-10-02", ordinal=3)
         create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
-        current = PrepEvidence(focus=("Current focus",), strongest_evidence=("Current proof",),
-                               pressure_points=("Current risk", "Shared risk"), questions=("Current question",))
+        current = PrepEvidence(
+            focus=("Current focus",),
+            strongest_evidence=("Current proof",),
+            pressure_points=("Current risk", "Shared risk"),
+            questions=("Current question",),
+        )
         result = self.apply(client, current_query, current)
         self.assertEqual(result["code"], "derived_created")
         heading, payload = notion.derived_blocks(client, "created-3")
@@ -165,16 +189,48 @@ class PrepTests(unittest.TestCase):
         prior_id, prior_query = self._date_round(client, parent_id, "2026-10-01", "Prior One")
         latest_id, latest_query = self._date_round(client, parent_id, "2026-10-03", "Prior Latest")
         later_id, _ = self._date_round(client, parent_id, "2026-10-05", "Later Date")
-        prep.apply(client, ENV, PARENT, prior_query, PrepEvidence(pressure_points=("Older",)), True, RunContext.start(60))
-        prep.apply(client, ENV, PARENT, latest_query, PrepEvidence(pressure_points=("Latest Earlier",)), True, RunContext.start(60))
+        prep.apply(
+            client, ENV, PARENT, prior_query, PrepEvidence(pressure_points=("Older",)), True, RunContext.start(60)
+        )
+        prep.apply(
+            client,
+            ENV,
+            PARENT,
+            latest_query,
+            PrepEvidence(pressure_points=("Latest Earlier",)),
+            True,
+            RunContext.start(60),
+        )
         same_id, _ = self._date_round(client, parent_id, "2026-10-02", "Same Date")
-        client.blocks[same_id + "-block-0"][1] = block(create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Same Date")))
-        prep.apply(client, ENV, PARENT, RoundQuery(True, "2026-10-04", interviewer="Same Date"), PrepEvidence(pressure_points=("Same",)), True, RunContext.start(60))
-        prep.apply(client, ENV, PARENT, RoundQuery(True, "2026-10-05", interviewer="Later Date"), PrepEvidence(pressure_points=("Later",)), True, RunContext.start(60))
+        client.blocks[same_id + "-block-0"][1] = block(
+            create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Same Date"))
+        )
+        prep.apply(
+            client,
+            ENV,
+            PARENT,
+            RoundQuery(True, "2026-10-04", interviewer="Same Date"),
+            PrepEvidence(pressure_points=("Same",)),
+            True,
+            RunContext.start(60),
+        )
+        prep.apply(
+            client,
+            ENV,
+            PARENT,
+            RoundQuery(True, "2026-10-05", interviewer="Later Date"),
+            PrepEvidence(pressure_points=("Later",)),
+            True,
+            RunContext.start(60),
+        )
         current_id, _ = self._date_round(client, parent_id, "2026-10-06", "Current")
-        client.blocks[current_id + "-block-0"][1] = block(create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Current")))
+        client.blocks[current_id + "-block-0"][1] = block(
+            create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Current"))
+        )
         current_query = RoundQuery(True, "2026-10-04", interviewer="Current", explicit_child_page_id=current_id)
-        result = prep.apply(client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60))
+        result = prep.apply(
+            client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60)
+        )
         self.assertEqual(result["code"], "derived_created")
         _, payload = notion.derived_blocks(client, current_id)
         values = [notion.text(b) for b in payload]
@@ -188,13 +244,19 @@ class PrepTests(unittest.TestCase):
         parent_id = machine_parent(client)
         first_id, first_query = self._date_round(client, parent_id, "2026-10-02", "Prior A")
         second_id, second_query = self._date_round(client, parent_id, "2026-10-03", "Prior B")
-        client.blocks[first_id + "-block-0"][1] = block(create.identity_text(RoundQuery(True, "2026-10-03", interviewer="Prior A")))
+        client.blocks[first_id + "-block-0"][1] = block(
+            create.identity_text(RoundQuery(True, "2026-10-03", interviewer="Prior A"))
+        )
         prep.apply(client, ENV, PARENT, first_query, PrepEvidence(pressure_points=("A",)), True, RunContext.start(60))
         prep.apply(client, ENV, PARENT, second_query, PrepEvidence(pressure_points=("B",)), True, RunContext.start(60))
         current_id, _ = self._date_round(client, parent_id, "2026-10-05", "Current")
-        client.blocks[current_id + "-block-0"][1] = block(create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Current")))
+        client.blocks[current_id + "-block-0"][1] = block(
+            create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Current"))
+        )
         current_query = RoundQuery(True, "2026-10-04", interviewer="Current", explicit_child_page_id=current_id)
-        result = prep.apply(client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60))
+        result = prep.apply(
+            client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60)
+        )
         self.assertEqual(result["code"], "derived_created")
         _, payload = notion.derived_blocks(client, current_id)
         values = [notion.text(b) for b in payload]
@@ -204,9 +266,11 @@ class PrepTests(unittest.TestCase):
     def test_rejects_oversized_caps_and_returns_counts_only(self):
         client = PrepFake()
         _, _, query = machine_round(client)
-        for evidence, code in ((PrepEvidence(focus=("x" * 501,)), "prep_too_large"),
-                               (PrepEvidence(questions=("q",) * 6), "prep_too_large"),
-                               (PrepEvidence(questions=(" ",)), "prep_invalid")):
+        for evidence, code in (
+            (PrepEvidence(focus=("x" * 501,)), "prep_too_large"),
+            (PrepEvidence(questions=("q",) * 6), "prep_too_large"),
+            (PrepEvidence(questions=(" ",)), "prep_invalid"),
+        ):
             result = self.apply(client, query, evidence)
             self.assertEqual(result["code"], code)
             self.assertEqual(result["writes"], 0)
@@ -219,7 +283,9 @@ class PrepTests(unittest.TestCase):
         result = self.apply(client, query, PrepEvidence(focus=(private,)))
         self.assertEqual(set(result), {"writes_planned", "writes", "code"})
         self.assertNotIn(private, json.dumps(result))
-        self.assertFalse(any("/jobs/" in path or "Live Notes" in path or "Raw Notes" in path for _, path in client.calls))
+        self.assertFalse(
+            any("/jobs/" in path or "Live Notes" in path or "Raw Notes" in path for _, path in client.calls)
+        )
 
     def test_marker_requires_canonical_paragraph_and_valid_hash(self):
         client = PrepFake()
@@ -227,17 +293,21 @@ class PrepTests(unittest.TestCase):
         normalized = prep.normalize(PrepEvidence(focus=("A",)))
         marker = prep.render(normalized)[0]
         canonical = notion.text(marker)
-        for kind, text, expected in (("paragraph", canonical, "marker"),
-                                     ("heading_3", canonical, "conflict"),
-                                     ("bulleted_list_item", canonical, "conflict"),
-                                     ("paragraph", prep.DERIVED_PREFIX + "z" * 64 + ";" + prep.digest(normalized), "conflict"),
-                                     ("paragraph", prep.DERIVED_PREFIX + prep.digest(normalized) + ";" + "z" * 64, "conflict")):
+        for kind, text, expected in (
+            ("paragraph", canonical, "marker"),
+            ("heading_3", canonical, "conflict"),
+            ("bulleted_list_item", canonical, "conflict"),
+            ("paragraph", prep.DERIVED_PREFIX + "z" * 64 + ";" + prep.digest(normalized), "conflict"),
+            ("paragraph", prep.DERIVED_PREFIX + prep.digest(normalized) + ";" + "z" * 64, "conflict"),
+        ):
             with self.subTest(kind=kind, text=text[-8:]):
                 marker_block = copy.deepcopy(marker)
                 marker_block["type"] = kind
                 marker_block[kind] = marker_block.pop("paragraph")
                 marker_block[kind]["rich_text"][0]["text"]["content"] = text
-                client.blocks[page_id] = client.blocks[page_id][:payload_at(client, page_id)] + [marker_block] + prep.render(normalized)[1:]
+                client.blocks[page_id] = (
+                    client.blocks[page_id][: payload_at(client, page_id)] + [marker_block] + prep.render(normalized)[1:]
+                )
                 state, _, _ = prep._read_derived(client, page_id)
                 self.assertEqual(state, expected)
 
@@ -253,13 +323,17 @@ class PrepTests(unittest.TestCase):
     def test_carry_uses_existing_scan_and_fetches_only_winning_owner(self):
         client = PrepFake()
         parent_id, prior_id, prior_query = machine_round(client, ordinal=1)
-        prep.apply(client, ENV, PARENT, prior_query, PrepEvidence(pressure_points=("Prior",)), True, RunContext.start(60))
+        prep.apply(
+            client, ENV, PARENT, prior_query, PrepEvidence(pressure_points=("Prior",)), True, RunContext.start(60)
+        )
         current = Child("current", parent_id, interview_date="2026-10-02", ordinal=2, identity_valid=True)
         prior = Child(prior_id, parent_id, interview_date="2026-10-01", ordinal=1, identity_valid=True)
         children = Scan((prior, current), True)
-        with patch("lifeos.interview.notion.child_scan", side_effect=AssertionError("rescan")), \
-             patch("lifeos.interview.notion.explicit_child", side_effect=AssertionError("identity refetch")), \
-             patch("lifeos.interview.notion.ownership", wraps=notion.ownership) as ownership:
+        with (
+            patch("lifeos.interview.notion.child_scan", side_effect=AssertionError("rescan")),
+            patch("lifeos.interview.notion.explicit_child", side_effect=AssertionError("identity refetch")),
+            patch("lifeos.interview.notion.ownership", wraps=notion.ownership) as ownership,
+        ):
             inherited = prep._carry(client, children, current, RunContext.start(60))
         self.assertEqual(inherited["pressure_points"], ["Prior"])
         ownership.assert_called_once_with(client, prior_id, "round")
@@ -273,12 +347,22 @@ class PrepTests(unittest.TestCase):
             ({"writes_planned": 0, "writes": 0, "code": "derived_match"}, 2, 2),
         ]
         for outcome, expected_calls, evidence_count in cases:
-            with self.subTest(code=outcome["code"]), patch("lifeos.interview.prep.apply", return_value=outcome) as apply_prep:
-                result = stage.run(5, True, environ=ENV, client=client,
-                    prep_evidence=[(PARENT, ROUND, PrepEvidence(focus=("A",)))] * evidence_count)
+            with (
+                self.subTest(code=outcome["code"]),
+                patch("lifeos.interview.prep.apply", return_value=outcome) as apply_prep,
+            ):
+                result = stage.run(
+                    5,
+                    True,
+                    environ=ENV,
+                    client=client,
+                    prep_evidence=[(PARENT, ROUND, PrepEvidence(focus=("A",)))] * evidence_count,
+                )
                 self.assertEqual(apply_prep.call_count, expected_calls)
                 if outcome["code"] == "derived_conflict":
-                    self.assertEqual((result["blocked"], result["why"]["derived_conflict"], result["writes"]), (1, 1, 0))
+                    self.assertEqual(
+                        (result["blocked"], result["why"]["derived_conflict"], result["writes"]), (1, 1, 0)
+                    )
                 elif outcome["code"] == "derived_readback_failed":
                     self.assertEqual((result["blocked"], result["why"]["derived_readback_failed"]), (1, 1))
                 else:
@@ -289,8 +373,9 @@ class PrepTests(unittest.TestCase):
         machine_parent(client)
         outcome = {"writes_planned": 0, "writes": 0, "code": "derived_allowed"}
         with patch("lifeos.interview.prep.apply", return_value=outcome) as apply_prep:
-            result = stage.run(1, False, environ=ENV, client=client,
-                prep_evidence=[(PARENT, ROUND, PrepEvidence(focus=("A",)))] * 2)
+            result = stage.run(
+                1, False, environ=ENV, client=client, prep_evidence=[(PARENT, ROUND, PrepEvidence(focus=("A",)))] * 2
+            )
         self.assertEqual(apply_prep.call_count, 1)
         self.assertEqual((result["why"]["pipeline_incomplete"], result["blocked"]), (1, 1))
 
@@ -302,13 +387,17 @@ class PrepTests(unittest.TestCase):
             self.assertEqual(self.apply(client, query, evidence, False)["code"], "derived_allowed")
         original = notion.protected_snapshot
         events = []
+
         def snapshot(*args):
             events.append("snapshot")
             return original(*args)
+
         append = notion.append_children
+
         def write(*args):
             events.append("append")
             return append(*args)
+
         with patch("lifeos.interview.notion.protected_snapshot", side_effect=snapshot):
             with patch("lifeos.interview.notion.append_children", side_effect=write):
                 self.assertEqual(self.apply(client, query, evidence)["code"], "derived_created")
@@ -320,8 +409,10 @@ class PrepTests(unittest.TestCase):
     def test_missing_live_protected_snapshot_prevents_append(self):
         client = PrepFake()
         _, _, query = machine_round(client)
-        with patch("lifeos.interview.notion.protected_snapshot", return_value=None), \
-             patch("lifeos.interview.notion.append_children") as append:
+        with (
+            patch("lifeos.interview.notion.protected_snapshot", return_value=None),
+            patch("lifeos.interview.notion.append_children") as append,
+        ):
             result = self.apply(client, query, PrepEvidence(focus=("A",)))
         self.assertEqual((result["code"], result["writes"]), ("readback_protected_missing", 0))
         append.assert_not_called()
@@ -332,13 +423,19 @@ class PrepTests(unittest.TestCase):
         current_query = RoundQuery(True, "2026-10-02", ordinal=3)
         create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
         current = PrepEvidence(pressure_points=("Current risk",))
-        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")  # nothing to inherit yet
+        self.assertEqual(
+            self.apply(client, current_query, current)["code"], "derived_created"
+        )  # nothing to inherit yet
         old = PrepEvidence(pressure_points=("Old risk",), questions=("Old question",))
         prep.apply(client, ENV, PARENT, previous_query, old, True, RunContext.start(60))  # earlier round prepared later
         calls = len(client.calls)
         self.assertEqual(self.apply(client, current_query, current)["code"], "derived_match")
-        self.assertNotIn(("GET", f"/blocks/{previous_id}/children?page_size=100"), client.calls[calls:])  # never reads its Derived
-        self.assertEqual(self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict")
+        self.assertNotIn(
+            ("GET", f"/blocks/{previous_id}/children?page_size=100"), client.calls[calls:]
+        )  # never reads its Derived
+        self.assertEqual(
+            self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict"
+        )
 
     def test_replay_requires_exact_current_evidence_hash(self):
         variants = (
@@ -354,8 +451,15 @@ class PrepTests(unittest.TestCase):
             with self.subTest(original=original, replay=replay):
                 client = PrepFake()
                 _, prior_id, prior_query = machine_round(client, ordinal=1)
-                prep.apply(client, ENV, PARENT, prior_query,
-                           PrepEvidence(pressure_points=("B", "Inherited")), True, RunContext.start(60))
+                prep.apply(
+                    client,
+                    ENV,
+                    PARENT,
+                    prior_query,
+                    PrepEvidence(pressure_points=("B", "Inherited")),
+                    True,
+                    RunContext.start(60),
+                )
                 current_query = RoundQuery(True, "2026-10-02", ordinal=3)
                 create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
                 self.assertEqual(self.apply(client, current_query, original)["code"], "derived_created")
@@ -392,12 +496,20 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")
         client.blocks[previous_id].append(block("changed previous derived"))
         calls = len(client.calls)
-        with patch("lifeos.interview.prep._carry", side_effect=AssertionError("carry on replay")), \
-             patch("lifeos.interview.notion.protected_snapshot", side_effect=AssertionError("snapshot on replay")):
+        with (
+            patch("lifeos.interview.prep._carry", side_effect=AssertionError("carry on replay")),
+            patch("lifeos.interview.notion.protected_snapshot", side_effect=AssertionError("snapshot on replay")),
+        ):
             self.assertEqual(self.apply(client, current_query, current)["code"], "derived_match")
-            self.assertEqual(self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict")
-        self.assertFalse(any(method == "GET" and path == f"/blocks/{previous_id}/children?page_size=100"
-                             for method, path in client.calls[calls:]))
+            self.assertEqual(
+                self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict"
+            )
+        self.assertFalse(
+            any(
+                method == "GET" and path == f"/blocks/{previous_id}/children?page_size=100"
+                for method, path in client.calls[calls:]
+            )
+        )
 
     def test_payload_tampering_fails_full_hash_commitment(self):
         client = PrepFake()
@@ -405,8 +517,11 @@ class PrepTests(unittest.TestCase):
         evidence = PrepEvidence(focus=("Original",))
         self.assertEqual(self.apply(client, query, evidence)["code"], "derived_created")
         heading, payload = notion.derived_blocks(client, round_id)
-        item_index = next(i for i, block_value in enumerate(client.blocks[round_id])
-                          if block_value.get("type") == "bulleted_list_item")
+        item_index = next(
+            i
+            for i, block_value in enumerate(client.blocks[round_id])
+            if block_value.get("type") == "bulleted_list_item"
+        )
         client.blocks[round_id][item_index] = block("Tampered", "bulleted_list_item")
         result = self.apply(client, query, evidence)
         self.assertEqual((result["code"], result["writes"]), ("derived_conflict", 0))
@@ -416,10 +531,12 @@ class PrepTests(unittest.TestCase):
             client = PrepFake()
             _, _, query = machine_round(client)
             real, start = notion.explicit_child, len(client.calls)
+
             def fail_after_append(c, page_id, _client=client, _error=error, _start=start, _real=real):
                 if any(method == "PATCH" for method, _ in _client.calls[_start:]):
                     raise _error
                 return _real(c, page_id)
+
             with patch("lifeos.interview.notion.explicit_child", side_effect=fail_after_append):
                 result = self.apply(client, query, PrepEvidence(focus=("A",)))
             self.assertEqual((result["code"], result["writes"]), ("derived_readback_failed", 1))
@@ -430,11 +547,12 @@ class PrepTests(unittest.TestCase):
 
 
 class DerivedScanTests(unittest.TestCase):
-
     def setUp(self):
         from tests.jobs.fakes_jobsdb import claim_store  # the Ledger creators claim in an in-memory store
+
         _claims, _stop = claim_store()
         self.addCleanup(_stop)
+
     class Pages:
         def __init__(self, pages):
             self.pages, self.calls = pages, 0
@@ -449,10 +567,15 @@ class DerivedScanTests(unittest.TestCase):
         return {"type": kind, kind: {"rich_text": [{"plain_text": label, "text": {"content": label}}]}}
 
     def bullet(self, label):
-        return {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [{"plain_text": label, "text": {"content": label}}]}}
+        return {
+            "type": "bulleted_list_item",
+            "bulleted_list_item": {"rich_text": [{"plain_text": label, "text": {"content": label}}]},
+        }
 
     def test_large_notes_do_not_exhaust_the_scan_and_are_dropped_unread(self):
-        notes = [[self.bullet("private note") for _ in range(100)] for _ in range(60)]  # 60 pages, beyond the 40-call scan budget
+        notes = [
+            [self.bullet("private note") for _ in range(100)] for _ in range(60)
+        ]  # 60 pages, beyond the 40-call scan budget
         client = self.Pages([[self.heading("Live Notes")]] + notes + [[self.heading("Derived"), self.bullet("x")]])
         heading, payload = notion.derived_blocks(client, "p")
         self.assertEqual((notion.text(heading), [notion.text(b) for b in payload]), ("Derived", ["x"]))

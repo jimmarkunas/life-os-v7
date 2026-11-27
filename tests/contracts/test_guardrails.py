@@ -1,4 +1,5 @@
 """Guardrails ported from the proven V1-V5 behaviour as assertions, not machinery."""
+
 import inspect
 from pathlib import Path
 import re
@@ -18,9 +19,12 @@ CODE = [p for p in (ROOT / "lifeos").rglob("*.py")]
 def strings_and_code(path):
     """Source with docstrings and comments removed, so a rule about code is not tripped by prose."""
     import ast
+
     tree = ast.parse(path.read_text())
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)) and ast.get_docstring(node, clean=False):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)) and ast.get_docstring(
+            node, clean=False
+        ):
             node.body = node.body[1:] or [ast.Pass()]
     return ast.unparse(tree)
 
@@ -30,14 +34,24 @@ class HumanStateIsNeverDestroyed(unittest.TestCase):
         users = {p.name: p.read_text() for p in CODE if '"in_trash": True' in p.read_text()}
         self.assertEqual(sorted(users), ["agent_inbox.py", "audit.py", "connections.py", "reset.py", "retention.py"])
         self.assertLess(users["audit.py"].index("guard.protection"), users["audit.py"].index('"in_trash": True'))
-        self.assertLess(users["reset.py"].index("_no_total(r)"), users["reset.py"].index('"in_trash": True'))  # Amazon Orders: only a row with no Grand Total
-        self.assertLess(users["retention.py"].index("hiring_pipeline.handoff_for"), users["retention.py"].index('"in_trash": True'))
+        self.assertLess(
+            users["reset.py"].index("_no_total(r)"), users["reset.py"].index('"in_trash": True')
+        )  # Amazon Orders: only a row with no Grand Total
+        self.assertLess(
+            users["retention.py"].index("hiring_pipeline.handoff_for"), users["retention.py"].index('"in_trash": True')
+        )
         self.assertLess(users["connections.py"].index("RETIRED = "), users["connections.py"].index('"in_trash": True'))
-        self.assertLess(users["agent_inbox.py"].index("archive_not_a_test_row"), users["agent_inbox.py"].index('"in_trash": True'))
+        self.assertLess(
+            users["agent_inbox.py"].index("archive_not_a_test_row"), users["agent_inbox.py"].index('"in_trash": True')
+        )
 
     def test_retention_only_ever_selects_unapplied_undecided_rows(self):
         text = str(retention.query_filter(__import__("datetime").datetime(2026, 10, 1), "US Remote"))
-        flt = {f["property"]: f for f in retention.query_filter(__import__("datetime").datetime(2026, 10, 1), "US Remote")["and"] if "property" in f}
+        flt = {
+            f["property"]: f
+            for f in retention.query_filter(__import__("datetime").datetime(2026, 10, 1), "US Remote")["and"]
+            if "property" in f
+        }
         self.assertEqual(flt["Applied"]["checkbox"], {"equals": False})
         self.assertEqual(flt["Applied On"]["date"], {"is_empty": True})
         self.assertEqual(flt["Saturn Decision"]["select"], {"is_empty": True})
@@ -46,6 +60,7 @@ class HumanStateIsNeverDestroyed(unittest.TestCase):
         class Dead:
             def call(self, *a, **k):
                 raise NotionError("NOTION_HTTP_500")
+
         self.assertEqual(guard.protection(Dead(), "p", "X", "Y"), guard.UNREADABLE)
 
 
@@ -57,6 +72,7 @@ class AuditBehaviour(unittest.TestCase):
     def run_audit(self, page_props, target=None):
         from unittest import mock
         from tests.kit.db import FakeConn
+
         trashed, writes = [], []
         target_props = target if target is not None else {n: {"type": k} for n, k in ledger.REQUIRED.items()}
 
@@ -75,9 +91,19 @@ class AuditBehaviour(unittest.TestCase):
 
         conn = FakeConn(handler=lambda sql, args, cur: writes.append(sql.split()[0]))
         served = []
-        conn.cur.fetchall = lambda: [] if served else (served.append(1) or [(1, "PUBLISHED", "https://x.example/jobs/1", "page1", "x", "Acme", "Program Manager")])
-        with mock.patch.object(audit.store, "connect", return_value=conn), mock.patch.object(audit.store, "ensure_schema"), \
-                mock.patch.object(audit.notion_client, "Client", return_value=Client()):
+        conn.cur.fetchall = lambda: (
+            []
+            if served
+            else (
+                served.append(1)
+                or [(1, "PUBLISHED", "https://x.example/jobs/1", "page1", "x", "Acme", "Program Manager")]
+            )
+        )
+        with (
+            mock.patch.object(audit.store, "connect", return_value=conn),
+            mock.patch.object(audit.store, "ensure_schema"),
+            mock.patch.object(audit.notion_client, "Client", return_value=Client()),
+        ):
             counts = audit.run(10, True, environ={})
         return counts, trashed, [w for w in writes if w in ("UPDATE", "DELETE")]
 
@@ -86,16 +112,20 @@ class AuditBehaviour(unittest.TestCase):
         self.assertEqual((len(trashed), counts["demoted"]), (1, 1))
 
     def test_every_protected_state_blocks_the_trash_and_the_demotion(self):
-        cases = {"applied": {**self.FULL, "Applied": {"checkbox": True}},
-                 "applied_on": {**self.FULL, "Applied On": {"date": {"start": "2026-09-15"}}},
-                 "saturn_decision": {**self.FULL, "Saturn Decision": {"select": {"name": "Pursue"}}},
-                 "unreadable": None,
-                 "missing_property": {"Applied": {"checkbox": False}}}
+        cases = {
+            "applied": {**self.FULL, "Applied": {"checkbox": True}},
+            "applied_on": {**self.FULL, "Applied On": {"date": {"start": "2026-09-15"}}},
+            "saturn_decision": {**self.FULL, "Saturn Decision": {"select": {"name": "Pursue"}}},
+            "unreadable": None,
+            "missing_property": {"Applied": {"checkbox": False}},
+        }
         for why, props in cases.items():
             with self.subTest(why):
                 counts, trashed, writes = self.run_audit(props)
                 self.assertEqual((trashed, writes, counts["demoted"]), ([], [], 0))
-                self.assertEqual(counts["protected"], {"unreadable" if why in ("unreadable", "missing_property") else why: 1})
+                self.assertEqual(
+                    counts["protected"], {"unreadable" if why in ("unreadable", "missing_property") else why: 1}
+                )
 
     def test_a_wrong_target_blocks_everything(self):
         counts, trashed, writes = self.run_audit(self.FULL, target={"Job": {"type": "title"}})
@@ -104,7 +134,11 @@ class AuditBehaviour(unittest.TestCase):
 
 class NoLegacyLifecycleAuthority(unittest.TestCase):
     def test_no_code_reads_or_writes_the_legacy_fields(self):
-        bad = [p.name for p in CODE if re.search(r"['\"](Lifecycle|Liveness)['\"]", strings_and_code(p)) and p.name != "publish.py"]
+        bad = [
+            p.name
+            for p in CODE
+            if re.search(r"['\"](Lifecycle|Liveness)['\"]", strings_and_code(p)) and p.name != "publish.py"
+        ]
         self.assertEqual(bad, [])
         # publish only ever writes Liveness = Live on a fresh page (a Ledger schema requirement), never reads it back.
         self.assertNotIn('"Lifecycle"', strings_and_code(ROOT / "lifeos/jobs/publish.py"))
@@ -148,7 +182,13 @@ class ProductionTargetIdentity(unittest.TestCase):
 class SourcesAreAccountedFor(unittest.TestCase):
     def test_a_failed_board_is_never_zero_and_never_a_removal(self):
         listing = lister.Listing(lister.FAILED, reason="rate_limited")
-        out = web.plan({"id": "x", "kind": "greenhouse", "company": "X"}, listing, {"1": ("h", "INGESTED")}, __import__("datetime").datetime(2026, 10, 1), 10)
+        out = web.plan(
+            {"id": "x", "kind": "greenhouse", "company": "X"},
+            listing,
+            {"1": ("h", "INGESTED")},
+            __import__("datetime").datetime(2026, 10, 1),
+            10,
+        )
         self.assertEqual((out.status, out.removed, out.items), ("FAILED", [], []))
 
     def test_removed_needs_a_complete_listing(self):
@@ -156,13 +196,24 @@ class SourcesAreAccountedFor(unittest.TestCase):
 
     def test_a_run_accounts_for_every_due_source(self):
         from datetime import datetime
+
         sources = [{"id": f"s{i}", "kind": "greenhouse", "company": "C", "tier": "employer"} for i in range(3)]
-        listings = {"s0": lister.Listing(lister.COMPLETE, []), "s1": lister.Listing(lister.FAILED, reason="network"), "s2": lister.Listing(lister.COMPLETE, [])}
+        listings = {
+            "s0": lister.Listing(lister.COMPLETE, []),
+            "s1": lister.Listing(lister.FAILED, reason="network"),
+            "s2": lister.Listing(lister.COMPLETE, []),
+        }
 
         class Repo:
-            def states(self, ids): return {}
-            def items(self, sid): return {}
-            def commit(self, *a, **k): pass
+            def states(self, ids):
+                return {}
+
+            def items(self, sid):
+                return {}
+
+            def commit(self, *a, **k):
+                pass
+
         counts = web.run(10, False, datetime(2026, 10, 1), lambda s: listings[s["id"]], Repo(), sources)
         self.assertEqual(counts["due"], counts["complete"] + counts["failed"])
 
@@ -170,24 +221,45 @@ class SourcesAreAccountedFor(unittest.TestCase):
 class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
     def test_a_disabled_lane_can_never_admit_or_become_visible(self):
         off = lanes.LanePolicy("Skilled Worker", "UK", "£", route="Skilled Worker", enabled=False)
-        facts = lanes.Facts(fit=90, market="UK", work_mode="onsite", route={"Skilled Worker": lanes.POSITIVE}, geography=lanes.POSITIVE,
-                            posted=__import__("datetime").date(2026, 10, 1))
+        facts = lanes.Facts(
+            fit=90,
+            market="UK",
+            work_mode="onsite",
+            route={"Skilled Worker": lanes.POSITIVE},
+            geography=lanes.POSITIVE,
+            posted=__import__("datetime").date(2026, 10, 1),
+        )
         self.assertEqual(lanes.qualify(off, facts, facts.posted).status, lanes.DISABLED)
         results, visible = lanes.qualify_all(facts, facts.posted, {"Skilled Worker": off})
         self.assertEqual((results, visible), ({}, None))
 
     def test_exactly_one_recurring_scheduler(self):
-        scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
-        self.assertEqual(sorted(scheduled), ["capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"])  # the watchdog only raises an alert
+        scheduled = [
+            p.name
+            for p in (ROOT / ".github/workflows").glob("*.y*ml")
+            if re.search(r"^\s*schedule:", p.read_text(), re.M)
+        ]
+        self.assertEqual(
+            sorted(scheduled), ["capacity-card.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"]
+        )  # the watchdog only raises an alert
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)
         loader = safety.index("bws-load")
-        self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))  # loaded before any safety command
-        self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")  # no new trigger or runtime path
+        self.assertTrue(
+            all(
+                loader < safety.index(f"lifeos.run {stage}")
+                for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")
+            )
+        )  # loaded before any safety command
+        self.assertNotRegex(
+            safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):"
+        )  # no new trigger or runtime path
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
-        self.assertLess(watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch"))  # loaded before the first step that needs it
+        self.assertLess(
+            watchdog.index("bws-load"), watchdog.index("lifeos.platform.gate --watch")
+        )  # loaded before the first step that needs it
         # BitwardenConsumerTests (test_workflow.py) holds the loader and credential rules and.
 
     def test_machine_input_universes_load_and_the_ready_subset_is_inside_them(self):
@@ -207,11 +279,13 @@ class ExcludedPagesAreCleared(unittest.TestCase):
     """With the Fit gate on, a published page whose lane decision is EXCLUDE is trashed (never when a human pursuit may
     exist) and never published again.
     """
+
     FULL = {"Applied": {"checkbox": False}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}}
 
     def run_audit(self, page_props, gated=True):
         from unittest import mock
         from tests.kit.db import FakeConn
+
         trashed, writes = [], []
         target_props = {n: {"type": k} for n, k in ledger.REQUIRED.items()}
 
@@ -229,8 +303,11 @@ class ExcludedPagesAreCleared(unittest.TestCase):
         conn = FakeConn(handler=lambda sql, args, cur: writes.append(sql))
         batches = iter([[], [(7, "PUBLISHED", "https://x.example/jobs/7", "page7", None, "Acme", "Program Manager")]])
         conn.cur.fetchall = lambda: next(batches, [])
-        with mock.patch.object(audit.store, "connect", return_value=conn), mock.patch.object(audit.store, "ensure_schema"), \
-                mock.patch.object(audit.notion_client, "Client", return_value=Client()):
+        with (
+            mock.patch.object(audit.store, "connect", return_value=conn),
+            mock.patch.object(audit.store, "ensure_schema"),
+            mock.patch.object(audit.notion_client, "Client", return_value=Client()),
+        ):
             counts = audit.run(10, True, environ={"V7_FIT_GATE": "true"} if gated else {})
         return counts, trashed, [w for w in writes if w.split()[0] in ("UPDATE", "DELETE")]
 
@@ -241,7 +318,10 @@ class ExcludedPagesAreCleared(unittest.TestCase):
         self.assertFalse(any("DELETE" in w for w in writes))  # the ledger hash and the description stay
 
     def test_applied_or_decided_pages_are_never_trashed(self):
-        for props in ({**self.FULL, "Applied": {"checkbox": True}}, {**self.FULL, "Saturn Decision": {"select": {"name": "Apply"}}}):
+        for props in (
+            {**self.FULL, "Applied": {"checkbox": True}},
+            {**self.FULL, "Saturn Decision": {"select": {"name": "Apply"}}},
+        ):
             counts, trashed, writes = self.run_audit(props)
             self.assertEqual((trashed, writes, counts.get("excluded_cleared", 0)), ([], [], 0))
 
@@ -258,22 +338,39 @@ class InterviewJobIsIsolated(unittest.TestCase):
     def block(self):
         text = wftext.text(ROOT / ".github/workflows/hourly.yml")
         start = text.index("\n  interview:\n")
-        return text[start:text.index("\n  report:\n")]
+        return text[start : text.index("\n  report:\n")]
 
     def test_no_jobs_secret_reaches_the_interview_job(self):
         block = self.block()
-        for name in ("NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "GMAIL_OAUTH_CLIENT_SECRET", "TINYFISH_API_KEY", "LIFEOS_ACQ_DB_PASSWORD", "FIT_PROFILE_JSON"):
+        for name in (
+            "NOTION_API_TOKEN",
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "TINYFISH_API_KEY",
+            "LIFEOS_ACQ_DB_PASSWORD",
+            "FIT_PROFILE_JSON",
+        ):
             self.assertIn(f'{name}: ""', block, name)
         self.assertNotIn("secrets.NOTION_API_TOKEN", block)
         self.assertNotIn("secrets.NOTION_INTERVIEW_TOKEN", block)
         self.assertIn("steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN", block)
-        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON", "V7_RUNTIME_CONFIG_SOURCE_ID"})  # and no other Jobs value reaches this job
+        self.assertEqual(
+            set(re.findall(r"outputs\.(\w+)", block)),
+            {
+                "NOTION_INTERVIEW_TOKEN",
+                "INTERVIEW_ACCEPTANCE_JSON",
+                "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON",
+                "V7_RUNTIME_CONFIG_SOURCE_ID",
+            },
+        )  # and no other Jobs value reaches this job
 
     def test_dispatch_only_and_failure_is_a_warning(self):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
         self.assertNotIn("\n    continue-on-error:", block)
-        self.assertEqual(block.count("continue-on-error: true") - block.count("actions/doppler-load"), 5)  # the four steps plus the address loader
+        self.assertEqual(
+            block.count("continue-on-error: true") - block.count("actions/doppler-load"), 5
+        )  # the four steps plus the address loader
         self.assertIn("::warning", block)
 
 
@@ -282,8 +379,11 @@ class DecisionIndexTests(unittest.TestCase):
 
     def test_every_decision_heading_is_in_the_index(self):
         from pathlib import Path
+
         docs = Path(__file__).resolve().parents[2] / "docs"
-        heads = [line[3:].strip() for line in (docs / "DECISIONS.md").read_text().splitlines() if line.startswith("## D")]
+        heads = [
+            line[3:].strip() for line in (docs / "DECISIONS.md").read_text().splitlines() if line.startswith("## D")
+        ]
         index = (docs / "DECISIONS_INDEX.md").read_text()
         missing = [h for h in heads if "- " + h not in index]
         self.assertEqual(missing, [])
@@ -295,11 +395,13 @@ class DecisionNumberTests(unittest.TestCase):
     def test_no_decision_number_is_used_twice(self):
         from pathlib import Path
         from lifeos.sources.devtools import decisions
+
         docs = Path(__file__).resolve().parents[2] / "docs"
         self.assertEqual(decisions.duplicates((docs / "DECISIONS.md").read_text()), {})
         self.assertEqual(decisions.duplicates((docs / "DECISIONS_INDEX.md").read_text(), decisions.INDEX_ENTRY), {})
 
     def test_the_check_itself_catches_a_planted_duplicate(self):
         from lifeos.sources.devtools import decisions
+
         planted = "## D10 — One\n\n## D10 amendment — fine\n\n## D10 — Two\n"
         self.assertEqual(decisions.duplicates(planted), {10: ["One", "Two"]})

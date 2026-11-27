@@ -9,7 +9,13 @@ NOW = dt.datetime(2026, 11, 15, 12, 0, tzinfo=dt.timezone.utc)
 
 def run(number, conclusion, event="schedule", hours_ago=0):
     when = (NOW - dt.timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return {"id": number, "event": event, "conclusion": conclusion, "status": "completed" if conclusion else "in_progress", "created_at": when}
+    return {
+        "id": number,
+        "event": event,
+        "conclusion": conclusion,
+        "status": "completed" if conclusion else "in_progress",
+        "created_at": when,
+    }
 
 
 class Hub:
@@ -32,7 +38,9 @@ class Hub:
         if route == "issues" and method == "GET":
             return list(self.issues.get(parse_qs(query).get("labels", [""])[0], []))
         if route == "issues" and method == "POST":
-            self.issues.setdefault(body["labels"][0], []).append({"number": self.next, "labels": [{"name": name} for name in body["labels"]]})
+            self.issues.setdefault(body["labels"][0], []).append(
+                {"number": self.next, "labels": [{"name": name} for name in body["labels"]]}
+            )
             self.next += 1
             return {}
         if route.startswith("issues/") and method == "PATCH":
@@ -55,12 +63,27 @@ def _check(hub, pushes):
 class Signal(unittest.TestCase):
     def test_a_red_newest_scheduled_run_opens_and_a_pass_after_it_recovers_by_the_workflows_own_count(self):
         self.assertIs(gate.scheduled_signal([run(2, "failure"), run(1, "success", hours_ago=5)], 1), True)
-        self.assertIs(gate.scheduled_signal([run(3, "success"), run(2, "failure", hours_ago=5)], 1), False)  # the weekly check: one pass closes it
-        self.assertIsNone(gate.scheduled_signal([run(3, "success"), run(2, "failure", hours_ago=5)], 3))  # the watchdog: three passes
-        self.assertIs(gate.scheduled_signal([run(5, "success"), run(4, "success", hours_ago=1), run(3, "success", hours_ago=2)], 3), False)
+        self.assertIs(
+            gate.scheduled_signal([run(3, "success"), run(2, "failure", hours_ago=5)], 1), False
+        )  # the weekly check: one pass closes it
+        self.assertIsNone(
+            gate.scheduled_signal([run(3, "success"), run(2, "failure", hours_ago=5)], 3)
+        )  # the watchdog: three passes
+        self.assertIs(
+            gate.scheduled_signal(
+                [run(5, "success"), run(4, "success", hours_ago=1), run(3, "success", hours_ago=2)], 3
+            ),
+            False,
+        )
 
     def test_cancelled_skipped_unfinished_and_manual_runs_never_count(self):
-        runs = [run(9, "cancelled"), run(8, None), run(7, "skipped"), run(6, "failure", event="workflow_dispatch"), run(5, "success", hours_ago=9)]
+        runs = [
+            run(9, "cancelled"),
+            run(8, None),
+            run(7, "skipped"),
+            run(6, "failure", event="workflow_dispatch"),
+            run(5, "success", hours_ago=9),
+        ]
         self.assertIsNone(gate.scheduled_signal(runs, 3))
         self.assertIs(gate.scheduled_signal(runs, 1), False)
         self.assertIsNone(gate.scheduled_signal([], 1))
@@ -70,18 +93,26 @@ class Signal(unittest.TestCase):
 
 class Pages(unittest.TestCase):
     def test_one_page_when_red_none_for_the_second_red_run_one_recovered_push(self):
-        pushes, hub = [], Hub({"safety.yml": [run(1, "failure", hours_ago=24 * 7)], "watchdog.yml": [run(50, "success")]})
+        pushes, hub = (
+            [],
+            Hub({"safety.yml": [run(1, "failure", hours_ago=24 * 7)], "watchdog.yml": [run(50, "success")]}),
+        )
         first = _check(hub, pushes)
         self.assertEqual(first["changes"]["safety.yml"], "opened")
         self.assertEqual([(p[2], p[3]) for p in pushes], [("page", "scheduled_red_safety")])
         self.assertIn("safety", pushes[0][0])  # the alert names the workflow
-        hub.runs["safety.yml"] = [run(2, "failure"), run(1, "failure", hours_ago=24 * 7)]  # it fails again on the next scheduled run
+        hub.runs["safety.yml"] = [
+            run(2, "failure"),
+            run(1, "failure", hours_ago=24 * 7),
+        ]  # it fails again on the next scheduled run
         _check(hub, pushes)
         self.assertEqual(len(pushes), 1)  # no second push
         hub.runs["safety.yml"] = [run(3, "success"), run(2, "failure", hours_ago=24 * 7)]  # then it passes
         third = _check(hub, pushes)
         self.assertEqual(third["changes"]["safety.yml"], "closed")
-        self.assertEqual([(p[2], p[3]) for p in pushes], [("page", "scheduled_red_safety"), ("info", "scheduled_recovered_safety")])
+        self.assertEqual(
+            [(p[2], p[3]) for p in pushes], [("page", "scheduled_red_safety"), ("info", "scheduled_recovered_safety")]
+        )
         _check(hub, pushes)
         self.assertEqual(len(pushes), 2)  # recovered stays recovered
 
@@ -92,16 +123,27 @@ class Pages(unittest.TestCase):
         hub.runs["watchdog.yml"] = [run(11, "success"), run(10, "success", hours_ago=1), run(9, "failure", hours_ago=2)]
         _check(hub, pushes)
         self.assertEqual(len(pushes), 1)  # two passes are not enough
-        hub.runs["watchdog.yml"] = [run(12, "success"), run(11, "success", hours_ago=1), run(10, "success", hours_ago=2), run(9, "failure", hours_ago=3)]
+        hub.runs["watchdog.yml"] = [
+            run(12, "success"),
+            run(11, "success", hours_ago=1),
+            run(10, "success", hours_ago=2),
+            run(9, "failure", hours_ago=3),
+        ]
         _check(hub, pushes)
         self.assertEqual([p[3] for p in pushes], ["scheduled_red_watchdog", "scheduled_recovered_watchdog"])
 
     def test_a_failed_run_whose_own_alert_already_pushed_is_not_paged_twice(self):
-        steps = [{"name": "Phone alert", "conclusion": "success"}, {"name": "Fail the run when a check failed", "conclusion": "failure"}]
+        steps = [
+            {"name": "Phone alert", "conclusion": "success"},
+            {"name": "Fail the run when a check failed", "conclusion": "failure"},
+        ]
         pushes, hub = [], Hub({"safety.yml": [run(7, "failure")], "watchdog.yml": []}, jobs={7: [{"steps": steps}]})
         _check(hub, pushes)
         self.assertEqual((pushes, hub.issues), ([], {}))
-        early = [{"name": "Load the database, Fit and push values from Bitwarden", "conclusion": "failure"}, {"name": "Phone alert", "conclusion": "skipped"}]
+        early = [
+            {"name": "Load the database, Fit and push values from Bitwarden", "conclusion": "failure"},
+            {"name": "Phone alert", "conclusion": "skipped"},
+        ]
         pushes, hub = [], Hub({"safety.yml": [run(8, "failure")], "watchdog.yml": []}, jobs={8: [{"steps": early}]})
         _check(hub, pushes)
         self.assertEqual([p[3] for p in pushes], ["scheduled_red_safety"])

@@ -1,6 +1,7 @@
 """the vendored Bitwarden wrapper runs only the checked helper program, never downloads or builds anything, and passes
 the helper's output.
 """
+
 import os
 import pathlib
 import shutil
@@ -11,19 +12,32 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ACTION = ROOT / ".github" / "actions" / "sm-action"
 NODE = shutil.which("node")
-TRIPLE = {("linux", "x64"): "x86_64-unknown-linux-gnu", ("linux", "arm64"): "aarch64-unknown-linux-gnu", ("darwin", "x64"): "x86_64-apple-darwin", ("darwin", "arm64"): "aarch64-apple-darwin"}
+TRIPLE = {
+    ("linux", "x64"): "x86_64-unknown-linux-gnu",
+    ("linux", "arm64"): "aarch64-unknown-linux-gnu",
+    ("darwin", "x64"): "x86_64-apple-darwin",
+    ("darwin", "arm64"): "aarch64-apple-darwin",
+}
 
 
 def run_wrapper(source, helper_script):
     """Copy a wrapper into a temp folder with a fixture helper where the wrapper looks for it"""
-    arch = subprocess.run([NODE, "-p", "process.platform+' '+process.arch"], capture_output=True, text=True).stdout.split()
+    arch = subprocess.run(
+        [NODE, "-p", "process.platform+' '+process.arch"], capture_output=True, text=True
+    ).stdout.split()
     with tempfile.TemporaryDirectory() as tmp:
         (pathlib.Path(tmp) / "index.js").write_text(source)
         if helper_script is not None:
             helper = pathlib.Path(tmp, "target", TRIPLE[tuple(arch)], "release", "sm-action")
             helper.parent.mkdir(parents=True)
             helper.write_text(helper_script)
-        return subprocess.run([NODE, str(pathlib.Path(tmp) / "index.js")], capture_output=True, text=True, timeout=30, env={"PATH": os.environ["PATH"], "INPUT_SECRETS": "x > FIXTURE"})
+        return subprocess.run(
+            [NODE, str(pathlib.Path(tmp) / "index.js")],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={"PATH": os.environ["PATH"], "INPUT_SECRETS": "x > FIXTURE"},
+        )
 
 
 @unittest.skipIf(NODE is None, "node not installed")
@@ -34,7 +48,9 @@ class VendoredWrapperTests(unittest.TestCase):
         helper = "#!/bin/sh\necho '::add-mask::FIXTURE-SECRET-VALUE'\necho \"seen:$INPUT_SECRETS\"\n"
         done = run_wrapper(self.source, helper)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout.splitlines(), ["::add-mask::FIXTURE-SECRET-VALUE", "seen:x > FIXTURE"])  # masked before anything else, inputs handed through
+        self.assertEqual(
+            done.stdout.splitlines(), ["::add-mask::FIXTURE-SECRET-VALUE", "seen:x > FIXTURE"]
+        )  # masked before anything else, inputs handed through
         swallowed = run_wrapper(self.source.replace('stdio: "inherit"', 'stdio: "ignore"'), helper)
         self.assertNotIn("::add-mask::FIXTURE-SECRET-VALUE", swallowed.stdout)
 

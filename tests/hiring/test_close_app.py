@@ -1,6 +1,7 @@
 """S2 (Career): the Close Opportunity application, driven the way the Edge gate calls it, against the synthetic Ledger
 and Notes stand-ins already used.
 """
+
 import ast
 import html
 import importlib
@@ -71,11 +72,15 @@ class Harness:
             secrets["reader"] = close_gate.ReadOnly(both)
         else:
             secrets["notion"], secrets["after"] = TOKEN, self.after
+
         def factory(cfg):
             assert method != "GET", "GET must not build a writing client"
             return both
 
-        with mock.patch.object(close_app, "_now", lambda: now or self.clock), mock.patch.object(close_app, "Client", factory):
+        with (
+            mock.patch.object(close_app, "_now", lambda: now or self.clock),
+            mock.patch.object(close_app, "Client", factory),
+        ):
             status, ctype, body, extra = close_app.handle(req, who, secrets)
         return status, body.decode(), ctype
 
@@ -95,8 +100,21 @@ class Harness:
         """the Close screen is retired"""
         both = Both(self.world)
         rec = D.route(D.rows(D.ledger_pages(both)), {"action": D.ACTION, "id": pid})
-        done = D.confirm_rejected(both, {"action": D.ACTION, "confirmed": True, "id": pid, "company": rec["company"], "role": rec["role"], "reason": notes or outcome, "outcome": outcome,
-                                         "op": "test-" + D._page_id(pid)[:12] + outcome[:3].lower()}, True, self.clock)
+        done = D.confirm_rejected(
+            both,
+            {
+                "action": D.ACTION,
+                "confirmed": True,
+                "id": pid,
+                "company": rec["company"],
+                "role": rec["role"],
+                "reason": notes or outcome,
+                "outcome": outcome,
+                "op": "test-" + D._page_id(pid)[:12] + outcome[:3].lower(),
+            },
+            True,
+            self.clock,
+        )
         assert done["verified"] is True, done
         return 200, "", "text/html"
 
@@ -123,7 +141,13 @@ class Contract(unittest.TestCase):
                 continue
             seen.add(path)
             for node in ast.walk(ast.parse((ROOT / path).read_text())):
-                mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module] + [f"{node.module}.{a.name}" for a in node.names] if isinstance(node, ast.ImportFrom) and node.module else []
+                mods = (
+                    [a.name for a in node.names]
+                    if isinstance(node, ast.Import)
+                    else [node.module] + [f"{node.module}.{a.name}" for a in node.names]
+                    if isinstance(node, ast.ImportFrom) and node.module
+                    else []
+                )
                 for mod in (m for m in mods if m.startswith("lifeos")):
                     parts = mod.split(".")
                     for n in range(1, len(parts) + 1):
@@ -138,7 +162,11 @@ class Contract(unittest.TestCase):
     def test_the_release_verifier_and_the_installed_service_use_the_relocated_callable_handler(self):
         self.assertEqual(rel.APP, "lifeos/sources/apps/close_app.py")
         self.assertIn("lifeos/sources/__init__.py", rel.EDGE)
-        unit = next(line for line in (ROOT / "lifeos/edge/oracle/install-close.sh").read_text().splitlines() if line.startswith("ExecStart="))
+        unit = next(
+            line
+            for line in (ROOT / "lifeos/edge/oracle/install-close.sh").read_text().splitlines()
+            if line.startswith("ExecStart=")
+        )
         self.assertIn("from lifeos.sources.apps.close_app import handle; sys.exit(close_gate.main(handle))", unit)
         self.assertNotIn("lifeos.sources.close_app", unit)
         self.assertNotIn("lifeos.hiring.close_app", unit)
@@ -163,8 +191,14 @@ class Contract(unittest.TestCase):
             for name in ("close_app", "close_screen"):
                 self.assertNotIn(name, text, path.name)
         from lifeos import run as entry
+
         self.assertFalse([n for n, s in entry.STAGES.items() if "close_" in str(getattr(s, "target", ""))])
 
     def test_the_budget_and_the_files(self):
-        lines = sum(1 for p in ("lifeos/sources/apps/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
+        lines = sum(
+            1
+            for p in ("lifeos/sources/apps/close_app.py", "lifeos/hiring/close_screen.py")
+            for line in (ROOT / p).read_text().splitlines()
+            if line.strip()
+        )
         self.assertLessEqual(lines, 330)  # E05 Mark Complete lives here too

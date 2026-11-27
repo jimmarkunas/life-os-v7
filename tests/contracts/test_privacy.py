@@ -1,4 +1,5 @@
 """CI guard for the public-repo privacy rule (docs/PRIVACY.md)."""
+
 import pathlib
 import re
 import subprocess
@@ -7,9 +8,18 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
 # Vendor/synthetic domains that may appear in sender-matching rules and fixtures.
-ALLOWED_EMAIL_DOMAINS = {"example.com", "life-os-gmail-508407.iam.gserviceaccount.com", "lensa.com", "jobright.ai", "linkedin.com", "user.dice.com",
-                         "lensa.com.evil.example",
-                         "connect.dice.com", "recruiter.dice.com", "jobs.reed.co.uk"}
+ALLOWED_EMAIL_DOMAINS = {
+    "example.com",
+    "life-os-gmail-508407.iam.gserviceaccount.com",
+    "lensa.com",
+    "jobright.ai",
+    "linkedin.com",
+    "user.dice.com",
+    "lensa.com.evil.example",
+    "connect.dice.com",
+    "recruiter.dice.com",
+    "jobs.reed.co.uk",
+}
 SECRET_SHAPES = {
     "google client secret": re.compile(r"GOCSPX-[A-Za-z0-9_-]{10,}"),
     "google refresh token": re.compile(r"\b1//[A-Za-z0-9_-]{30,}"),
@@ -21,7 +31,10 @@ SECRET_SHAPES = {
     "google client id": re.compile(r"\b\d{9,}-[a-z0-9]{20,}\.apps\.googleusercontent\.com"),
 }
 # live Notion page and data-source ids stay out of the repo
-NOTION_URL = re.compile(r"(?:notion\.(?:so|com)/(?:[\w-]+/)*[\w-]*?|collection://)([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})\b", re.I)
+NOTION_URL = re.compile(
+    r"(?:notion\.(?:so|com)/(?:[\w-]+/)*[\w-]*?|collection://)([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})\b",
+    re.I,
+)
 ID_LITERAL = re.compile(r"""["']([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})["']""", re.I)
 NOT_NOTION_IDS = {"lifeos/probe.py", "lifeos/platform/alert_store.py"}  # public job ids from vendor sites
 
@@ -55,22 +68,42 @@ def unapproved_email_counts(files):
 class PrivacyGuard(unittest.TestCase):
     def test_no_unapproved_emails(self):
         # The failure message names only files and counts.
-        self.assertEqual(unapproved_email_counts(tracked_text_files()), {}, "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)")
+        self.assertEqual(
+            unapproved_email_counts(tracked_text_files()),
+            {},
+            "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)",
+        )
 
     def test_negative_control_a_planted_address_is_caught_and_never_printed(self):
         """prove the guard fires on a personal-looking address AND that its failure output holds none of the value."""
         local, domain = "planted" + "." + "person", "gmail" + "." + "com"
         planted = [("fake/file.txt", "contact: " + local + "@" + domain + " for details\n")]
-        self.assertEqual(unapproved_email_counts(planted), {"fake/file.txt": 1})  # caught (gmail is not on the allowlist)
+        self.assertEqual(
+            unapproved_email_counts(planted), {"fake/file.txt": 1}
+        )  # caught (gmail is not on the allowlist)
         with self.assertRaises(AssertionError) as caught:
-            self.assertEqual(unapproved_email_counts(planted), {}, "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)")
+            self.assertEqual(
+                unapproved_email_counts(planted),
+                {},
+                "email address outside the allowlist in the files above (counts only; see docs/PRIVACY.md)",
+            )
         shown = str(caught.exception)
         self.assertIn("fake/file.txt", shown)  # the file is named, so a human can find it
         for piece in (local, domain, local + "@" + domain, "@"):
             self.assertNotIn(piece, shown)  # none of the matched value is in the failure text
 
     def test_allowed_domains_do_not_include_personal_mail(self):
-        for personal in ("gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "yahoo.com", "proton.me", "protonmail.com"):
+        for personal in (
+            "gmail.com",
+            "googlemail.com",
+            "outlook.com",
+            "hotmail.com",
+            "live.com",
+            "icloud.com",
+            "yahoo.com",
+            "proton.me",
+            "protonmail.com",
+        ):
             self.assertNotIn(personal, ALLOWED_EMAIL_DOMAINS)
 
     def test_no_secret_shaped_strings(self):
@@ -98,11 +131,12 @@ class ClockFormatTests(unittest.TestCase):
     def test_no_24_hour_display_time_in_the_code(self):
         import pathlib
         import re
+
         root = pathlib.Path(__file__).resolve().parents[2] / "lifeos"
         bad = []
         for path in root.rglob("*.py"):
             for number, line in enumerate(path.read_text().splitlines(), 1):
                 for match in re.finditer(r"%[Hk]:%M", line):
-                    if line[max(0, match.start() - 1):match.start()] != "T":
+                    if line[max(0, match.start() - 1) : match.start()] != "T":
                         bad.append(f"{path.relative_to(root)}:{number}")
         self.assertEqual(bad, [])

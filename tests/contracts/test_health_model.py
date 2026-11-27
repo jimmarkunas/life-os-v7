@@ -1,6 +1,7 @@
 """the health model document lists every alert, and the alert gateway is the only sender and refuses a push with no state
 key.
 """
+
 import io
 import contextlib
 import pathlib
@@ -20,7 +21,11 @@ class HealthModelDocument(unittest.TestCase):
     def test_every_registered_alert_is_in_the_table_with_its_severity(self):
         rows = self.rows()
         for key, spec in alert_registry.REGISTRY.items():
-            self.assertEqual(rows.get(key), spec.severity.upper(), f"{key} is missing from docs/platform/health-model.md or its severity differs")
+            self.assertEqual(
+                rows.get(key),
+                spec.severity.upper(),
+                f"{key} is missing from docs/platform/health-model.md or its severity differs",
+            )
 
     def test_the_table_lists_nothing_that_is_not_registered(self):
         self.assertEqual(sorted(set(self.rows()) - set(alert_registry.REGISTRY)), [])
@@ -41,9 +46,15 @@ class TheGatewayIsTheOnlySender(unittest.TestCase):
             text = path.read_text()
             if relative == "lifeos/platform/alerts.py":
                 continue
-            if re.search(r"alerts\.ntfy\(|alerts\._post\(|(?<![\w.])ntfy\(", text) or ("ntfy.sh" in text and relative != self.READER):
+            if re.search(r"alerts\.ntfy\(|alerts\._post\(|(?<![\w.])ntfy\(", text) or (
+                "ntfy.sh" in text and relative != self.READER
+            ):
                 offenders.append(relative)
-        self.assertEqual(offenders, [], "a push must go through alerts.push, alerts.deliver or `alerts push --key` (the alert gateway)")
+        self.assertEqual(
+            offenders,
+            [],
+            "a push must go through alerts.push, alerts.deliver or `alerts push --key` (the alert gateway)",
+        )
         self.assertNotIn("method=\"POST\"", (ROOT / self.READER).read_text().split("ntfy.sh")[1][:400])
 
     def test_the_command_refuses_a_push_with_no_state_key(self):

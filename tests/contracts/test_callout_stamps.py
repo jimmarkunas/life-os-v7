@@ -1,6 +1,7 @@
 """every Daily Report card shows when it was last updated IN ITS HEADING, in Central Time, WITH THE DATE: `<Title> (11/13
 · 3:31 PM CT)`.
 """
+
 import datetime as dt
 import pathlib
 import re
@@ -31,12 +32,13 @@ def oracle_heading():
     return f"{oracle.TITLE} ({ct_stamp.when(NOW)})"
 
 
-
-
 # region (or card name) -> (the card's title, a function returning the heading the card writes for a fixed time)
 HEADINGS = {
     router.JIRA_REGION: (router.JIRA_REGION, lambda: jira.heading_text(NOW)),
-    router.CALENDAR_REGION: (router.CALENDAR_REGION, lambda: agenda._heading_text({"taken_at": NOW.isoformat()}, False)),
+    router.CALENDAR_REGION: (
+        router.CALENDAR_REGION,
+        lambda: agenda._heading_text({"taken_at": NOW.isoformat()}, False),
+    ),
     router.BILLS_REGION: (router.BILLS_REGION, lambda: bills.heading_text({"taken_at": NOW.isoformat()}, False)),
     router.AMAZON_REGION: (router.AMAZON_REGION, lambda: amazon.heading_text(NOW)),
     router.MAIL_ALERTS_REGION: (router.MAIL_ALERTS_REGION, lambda: physmail.heading_text(NOW)),
@@ -74,29 +76,51 @@ class EveryCardHeadingShowsWhenItWasUpdated(unittest.TestCase):
             with self.subTest(region=region):
                 heading = render()
                 self.assertRegex(heading, heading_form(title), heading)
-                self.assertEqual(len(re.findall(r"\d{1,2}:\d{2} [AP]M", heading)), 1, "the time is shown once: " + heading)  # never a second time (the old `mail:...)
+                self.assertEqual(
+                    len(re.findall(r"\d{1,2}:\d{2} [AP]M", heading)), 1, "the time is shown once: " + heading
+                )  # never a second time (the old `mail:...)
                 self.assertNotIn("mail:", heading)
                 self.assertNotRegex(heading, r"\b(UTC|CST|CDT|GMT)\b")  # always "CT", never a zone name or UTC
 
     def test_every_router_region_has_a_rule_so_a_new_card_cannot_skip_the_stamp(self):
         covered = set(HEADINGS) | set(EXEMPT)
-        self.assertEqual(sorted(set(router.OWNERS) - covered), [], "a region has no heading rule: add it to HEADINGS (or EXEMPT, with the reason) in this test")
+        self.assertEqual(
+            sorted(set(router.OWNERS) - covered),
+            [],
+            "a region has no heading rule: add it to HEADINGS (or EXEMPT, with the reason) in this test",
+        )
 
     def test_the_degraded_stale_and_unread_forms_keep_the_title_and_the_date_and_clock_in_the_heading(self):
         self.assertEqual(jira.heading_text(NOW, NOW), "JIRA Execution (STALE · last accepted 11/12 · 1:35 PM CT)")
         self.assertEqual(amazon.heading_text(NOW, True), "Amazon Orders (DEGRADED at 11/12 · 1:35 PM CT)")
         self.assertEqual(physmail.heading_text(NOW, True), "Mail Alerts (DEGRADED at 11/12 · 1:35 PM CT)")
-        self.assertEqual(bills.heading_text({"taken_at": NOW.isoformat()}, True), "Bills: This Week (STALE · last accepted 11/12 · 1:35 PM CT)")
-        self.assertEqual(agenda._heading_text({"taken_at": NOW.isoformat()}, True), "Calendar (STALE · last accepted 11/12 · 1:35 PM CT)")
+        self.assertEqual(
+            bills.heading_text({"taken_at": NOW.isoformat()}, True),
+            "Bills: This Week (STALE · last accepted 11/12 · 1:35 PM CT)",
+        )
+        self.assertEqual(
+            agenda._heading_text({"taken_at": NOW.isoformat()}, True),
+            "Calendar (STALE · last accepted 11/12 · 1:35 PM CT)",
+        )
         self.assertTrue(megibow.status(NOW, degraded=True).startswith("MegIBOW (DEGRADED at 11/12 · 1:35 PM CT)"))
-        self.assertEqual(oracle_heading().split(" (")[1][:len("11/12 · 1:35 PM CT")], "11/12 · 1:35 PM CT")
+        self.assertEqual(oracle_heading().split(" (")[1][: len("11/12 · 1:35 PM CT")], "11/12 · 1:35 PM CT")
 
     def test_one_formatter_builds_the_stamp_for_every_form_and_a_new_year_and_zone_are_right(self):
-        self.assertEqual(ct_stamp.when(dt.datetime(2026, 11, 13, 21, 31, tzinfo=dt.timezone.utc)), "11/13 · 3:31 PM CT")  # UTC in, Central out
-        self.assertEqual(ct_stamp.when(dt.datetime(2026, 7, 4, 17, 5, tzinfo=dt.timezone.utc)), "7/4 · 12:05 PM CT")  # CDT, no leading zero on the day or the hour
-        self.assertEqual(ct_stamp.when(dt.datetime(2026, 11, 13, 0, 5)), "11/13 · 12:05 AM CT")  # a naive moment is already Central
-        self.assertEqual(ct_stamp.when(dt.datetime(2026, 11, 13, 12, 0, tzinfo=ZoneInfo("America/Chicago"))), "11/13 · 12:00 PM CT")
-        self.assertEqual(ct_stamp.when(dt.datetime(2026, 1, 5, 9, 7, tzinfo=ZoneInfo("America/Chicago"))), "1/5 · 9:07 AM CT")  # month and day with no leading zero, no year
+        self.assertEqual(
+            ct_stamp.when(dt.datetime(2026, 11, 13, 21, 31, tzinfo=dt.timezone.utc)), "11/13 · 3:31 PM CT"
+        )  # UTC in, Central out
+        self.assertEqual(
+            ct_stamp.when(dt.datetime(2026, 7, 4, 17, 5, tzinfo=dt.timezone.utc)), "7/4 · 12:05 PM CT"
+        )  # CDT, no leading zero on the day or the hour
+        self.assertEqual(
+            ct_stamp.when(dt.datetime(2026, 11, 13, 0, 5)), "11/13 · 12:05 AM CT"
+        )  # a naive moment is already Central
+        self.assertEqual(
+            ct_stamp.when(dt.datetime(2026, 11, 13, 12, 0, tzinfo=ZoneInfo("America/Chicago"))), "11/13 · 12:00 PM CT"
+        )
+        self.assertEqual(
+            ct_stamp.when(dt.datetime(2026, 1, 5, 9, 7, tzinfo=ZoneInfo("America/Chicago"))), "1/5 · 9:07 AM CT"
+        )  # month and day with no leading zero, no year
         self.assertEqual(ct_stamp.when(NOW), "11/12 · 1:35 PM CT")
         self.assertFalse(hasattr(ct_stamp, "updated"), "the word Updated is gone: one formatter, `when`")
 
@@ -104,8 +128,16 @@ class EveryCardHeadingShowsWhenItWasUpdated(unittest.TestCase):
         """no card flashes DEGRADED or STALE after the deploy: the stamp reads the same in the new form and in both older
         ones.
         """
-        for text, expected in (("Calendar (11/13 · 3:31 PM CT)", (11, 13, 3, 31, "PM")), ("Updated 1/5 · 12:05 AM CT · x", (1, 5, 12, 5, "AM")), ("Updated Nov 13 · 3:31 PM CT", (11, 13, 3, 31, "PM")),
-                               ("Calendar (Updated 1:18 PM CT)", (None, None, 1, 18, "PM")), ("Updated Foo 13 · 3:31 PM CT", None), ("13/2 · 3:31 PM CT", None), ("no stamp here", None), ("", None)):
+        for text, expected in (
+            ("Calendar (11/13 · 3:31 PM CT)", (11, 13, 3, 31, "PM")),
+            ("Updated 1/5 · 12:05 AM CT · x", (1, 5, 12, 5, "AM")),
+            ("Updated Nov 13 · 3:31 PM CT", (11, 13, 3, 31, "PM")),
+            ("Calendar (Updated 1:18 PM CT)", (None, None, 1, 18, "PM")),
+            ("Updated Foo 13 · 3:31 PM CT", None),
+            ("13/2 · 3:31 PM CT", None),
+            ("no stamp here", None),
+            ("", None),
+        ):
             self.assertEqual(ct_stamp.read(text), expected, text)
 
     def test_no_card_builds_a_stamp_without_the_shared_formatter(self):
@@ -121,19 +153,45 @@ class EveryCardHeadingShowsWhenItWasUpdated(unittest.TestCase):
                 continue
             for number, line in enumerate(path.read_text().splitlines(), 1):
                 code = line.split("  # ")[0]
-                if (spoken.search(code) and "ct_stamp." not in code) or (by_hand.search(code) and "ct_stamp." not in code):
+                if (spoken.search(code) and "ct_stamp." not in code) or (
+                    by_hand.search(code) and "ct_stamp." not in code
+                ):
                     offenders.append(f"{rel}:{number}")
         self.assertEqual(offenders, [], "build the stamp with lifeos.platform.ct_stamp.when")
 
     def test_the_hand_built_stamp_this_test_hunts_is_caught(self):
-        for wrong in ('return f"{TITLE} (Updated {now.strftime(\'%-I:%M %p\')} CT)"', 'f"DEGRADED at {clock}"', 'x = f"last accepted {taken}"'):
-            self.assertTrue(re.search(r"(?:Updated|DEGRADED at|last accepted|Redrawn) ?\{|%-?I:%M %p[^\n]*\bCT[\"'\)\}]", wrong), wrong)
+        for wrong in (
+            'return f"{TITLE} (Updated {now.strftime(\'%-I:%M %p\')} CT)"',
+            'f"DEGRADED at {clock}"',
+            'x = f"last accepted {taken}"',
+        ):
+            self.assertTrue(
+                re.search(r"(?:Updated|DEGRADED at|last accepted|Redrawn) ?\{|%-?I:%M %p[^\n]*\bCT[\"'\)\}]", wrong),
+                wrong,
+            )
 
     def test_the_negative_controls_the_old_and_wrong_forms_are_caught(self):
         form = heading_form("Mail Alerts")
         self.assertRegex("Mail Alerts (11/12 · 1:35 PM CT)", form)
-        for wrong in ("Mail Alerts (Updated 11/12 · 1:35 PM CT)", "Mail Alerts (Nov 12 · 1:35 PM CT)", "Mail Alerts (Updated Nov 12 · 1:35 PM CT)", "Mail Alerts (11/12/2026 · 1:35 PM CT)", "Mail Alerts (01/12 · 1:35 PM CT)", "Mail Alerts (1/12 · 01:35 PM CT)", "Mail Alerts (Updated 1:35 PM CT)", "Mail Alerts (Updated Nov 12 1:35 PM CT)", "Mail Alerts (Updated Nov 12, 1:35 PM CT)", "Mail Alerts (11/12 · 1:35 PM CT, mail: new mail 1:35 PM CT)", "Mail Alerts", "Updated 1:35 PM CT · 11 waiting", "Mail Alerts (Updated 1:35 PM CT, mail: new mail 1:35 PM CT)", "Mail Alerts · Updated 1:35 PM CT",
-                      "Mail Alerts (Updated 1:35 PM CST)", "Mail Alerts (Updated 1:35 PM UTC)", "Mail Alerts (Last refreshed 1:35 PM CT)"):
+        for wrong in (
+            "Mail Alerts (Updated 11/12 · 1:35 PM CT)",
+            "Mail Alerts (Nov 12 · 1:35 PM CT)",
+            "Mail Alerts (Updated Nov 12 · 1:35 PM CT)",
+            "Mail Alerts (11/12/2026 · 1:35 PM CT)",
+            "Mail Alerts (01/12 · 1:35 PM CT)",
+            "Mail Alerts (1/12 · 01:35 PM CT)",
+            "Mail Alerts (Updated 1:35 PM CT)",
+            "Mail Alerts (Updated Nov 12 1:35 PM CT)",
+            "Mail Alerts (Updated Nov 12, 1:35 PM CT)",
+            "Mail Alerts (11/12 · 1:35 PM CT, mail: new mail 1:35 PM CT)",
+            "Mail Alerts",
+            "Updated 1:35 PM CT · 11 waiting",
+            "Mail Alerts (Updated 1:35 PM CT, mail: new mail 1:35 PM CT)",
+            "Mail Alerts · Updated 1:35 PM CT",
+            "Mail Alerts (Updated 1:35 PM CST)",
+            "Mail Alerts (Updated 1:35 PM UTC)",
+            "Mail Alerts (Last refreshed 1:35 PM CT)",
+        ):
             self.assertNotRegex(wrong, form, wrong)
 
 

@@ -1,13 +1,17 @@
 """A synthetic Notion block tree for the floating Hiring Pipeline region and the page digest: GET block, GET children,
 PATCH a block's own content.
 """
+
 from copy import deepcopy
 
 from lifeos.platform.notion_client import NotionError
 
 
 def rich(text, link=None):
-    part = {"plain_text": text, "text": {"content": text, "link": {"url": link} if link else None}}  # Notion reports "link": null on plain text
+    part = {
+        "plain_text": text,
+        "text": {"content": text, "link": {"url": link} if link else None},
+    }  # Notion reports "link": null on plain text
     return [part]
 
 
@@ -20,7 +24,16 @@ class Tree:
 
     def add(self, block_id, kind, parent, content=None, text=None, index=None, **extra):
         body = content if content is not None else ({"rich_text": rich(text)} if text is not None else {})
-        block = {"id": block_id, "type": kind, "has_children": False, "parent": {"type": "page_id", "page_id": parent} if parent in self.pages else {"type": "block_id", "block_id": parent}, kind: body, **extra}
+        block = {
+            "id": block_id,
+            "type": kind,
+            "has_children": False,
+            "parent": {"type": "page_id", "page_id": parent}
+            if parent in self.pages
+            else {"type": "block_id", "block_id": parent},
+            kind: body,
+            **extra,
+        }
         self.blocks[block_id] = block
         siblings = self.kids.setdefault(parent, [])
         siblings.insert(len(siblings) if index is None else index, block_id)
@@ -29,7 +42,12 @@ class Tree:
         return block
 
     def row(self, row_id, table, cells):
-        return self.add(row_id, "table_row", table, content={"cells": [rich(*c) if isinstance(c, tuple) else rich(c) for c in cells]})
+        return self.add(
+            row_id,
+            "table_row",
+            table,
+            content={"cells": [rich(*c) if isinstance(c, tuple) else rich(c) for c in cells]},
+        )
 
     def table(self, table_id, parent, rows, width=4, header=True, index=None):
         self.add(table_id, "table", parent, content={"table_width": width, "has_column_header": header}, index=index)
@@ -58,10 +76,26 @@ class Tree:
             if kind not in body:
                 raise AssertionError("a block keeps its type")
             if kind == "table_row":
-                block[kind] = {"cells": [[{"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}, **({"annotations": r["annotations"]} if "annotations" in r else {})}
-                                          for r in cell] for cell in body[kind]["cells"]]}
+                block[kind] = {
+                    "cells": [
+                        [
+                            {
+                                "plain_text": r["text"]["content"],
+                                "text": {"link": None, **r["text"]},
+                                **({"annotations": r["annotations"]} if "annotations" in r else {}),
+                            }
+                            for r in cell
+                        ]
+                        for cell in body[kind]["cells"]
+                    ]
+                }
             else:
-                block[kind] = {**block[kind], "rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
+                block[kind] = {
+                    **block[kind],
+                    "rich_text": [
+                        {"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]
+                    ],
+                }
             self._tripped(method, path)
             return deepcopy(block)
         if method == "DELETE" and len(parts) == 2:
@@ -91,7 +125,11 @@ class Tree:
         """
         self.n += 1
         kind = child["type"]
-        part = lambda r: {"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}, **({"annotations": r["annotations"]} if "annotations" in r else {})}
+        part = lambda r: {
+            "plain_text": r["text"]["content"],
+            "text": {"link": None, **r["text"]},
+            **({"annotations": r["annotations"]} if "annotations" in r else {}),
+        }
         if kind == "table_row":
             block = self.add(f"new-{self.n}", kind, parent, content={"cells": []}, index=index)
             block[kind]["cells"] = [[part(r) for r in cell] for cell in child[kind]["cells"]]

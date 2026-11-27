@@ -30,7 +30,9 @@ class RetryTests(unittest.TestCase):
         side = list(failures) + [Ok()]
         with mock.patch("urllib.request.urlopen", side_effect=side), mock.patch("time.sleep") as slept:
             try:
-                return g._request("GET", "https://gmail.googleapis.com/gmail/v1/users/me/messages/1"), [c.args[0] for c in slept.call_args_list]
+                return g._request("GET", "https://gmail.googleapis.com/gmail/v1/users/me/messages/1"), [
+                    c.args[0] for c in slept.call_args_list
+                ]
             except gmail.GmailError as e:
                 return str(e), [c.args[0] for c in slept.call_args_list]
 

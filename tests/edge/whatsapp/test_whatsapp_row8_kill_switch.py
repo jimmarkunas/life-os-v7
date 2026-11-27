@@ -1,6 +1,7 @@
 """the WhatsApp kill switch, run on a fixture (a fake systemctl for both managers and a fake session folder under a temp
 dir, through the script's.
 """
+
 import os
 import stat
 import subprocess
@@ -41,9 +42,16 @@ def kill_works(script, fx):
     fx.reset()
     done = run_script(script, fx.env)
     quarantine = list((fx.root / "var/lib/lifeos-runner/quarantine").glob("whatsapp-*"))
-    return (done.returncode == 0 and not fx.new_state.exists() and not fx.old_state.exists() and len(quarantine) == 1
-            and stat.S_IMODE(quarantine[0].stat().st_mode) == 0o700 and (quarantine[0] / "new_state/auth/creds.json").read_text() == SECRET
-            and not any(fx.fake.glob("system/*-lifeos-wa-attention.*")) and not any(fx.fake.glob("user/*")))
+    return (
+        done.returncode == 0
+        and not fx.new_state.exists()
+        and not fx.old_state.exists()
+        and len(quarantine) == 1
+        and stat.S_IMODE(quarantine[0].stat().st_mode) == 0o700
+        and (quarantine[0] / "new_state/auth/creds.json").read_text() == SECRET
+        and not any(fx.fake.glob("system/*-lifeos-wa-attention.*"))
+        and not any(fx.fake.glob("user/*"))
+    )
 
 
 class Fixture:
@@ -55,11 +63,19 @@ class Fixture:
             path = Path(tmp) / ("systemctl-" + name)
             path.write_text(FAKE_SYSTEMCTL.replace("$KS_WHO", name))
             path.chmod(0o755)
-        self.env = dict(os.environ, KS_ROOT=str(self.root), KS_SYSTEMCTL=str(Path(tmp) / "systemctl-system"), KS_USER_SYSTEMCTL=str(Path(tmp) / "systemctl-user"), KS_FAKE=str(self.fake), KS_STAMP="1")
+        self.env = dict(
+            os.environ,
+            KS_ROOT=str(self.root),
+            KS_SYSTEMCTL=str(Path(tmp) / "systemctl-system"),
+            KS_USER_SYSTEMCTL=str(Path(tmp) / "systemctl-user"),
+            KS_FAKE=str(self.fake),
+            KS_STAMP="1",
+        )
         self.reset()
 
     def reset(self):
         import shutil
+
         for path in (self.root, self.fake):
             shutil.rmtree(path, ignore_errors=True)
         for state in (self.new_state, self.old_state):
@@ -80,7 +96,9 @@ class KillSwitchTests(unittest.TestCase):
         self.fx = Fixture(self.tmp.name)
 
     def snapshot(self):
-        return sorted(str(p.relative_to(self.tmp.name)) for p in Path(self.tmp.name).rglob("*") if "systemctl-" not in p.name)
+        return sorted(
+            str(p.relative_to(self.tmp.name)) for p in Path(self.tmp.name).rglob("*") if "systemctl-" not in p.name
+        )
 
     def test_it_stops_and_disables_the_units_and_moves_the_session_into_a_700_quarantine_in_well_under_a_minute(self):
         start = time.monotonic()
@@ -88,7 +106,15 @@ class KillSwitchTests(unittest.TestCase):
         elapsed = time.monotonic() - start
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertLess(elapsed, 10)
-        for want in ("lifeos_wa_attention_socket=ok", "lifeos_wa_attention_service=ok", "old_user_unit=ok", "openclaw=skipped_manual", "session_new_state=ok", "session_old_state=ok", "quarantine_mode=700"):
+        for want in (
+            "lifeos_wa_attention_socket=ok",
+            "lifeos_wa_attention_service=ok",
+            "old_user_unit=ok",
+            "openclaw=skipped_manual",
+            "session_new_state=ok",
+            "session_old_state=ok",
+            "quarantine_mode=700",
+        ):
             self.assertIn("READBACK " + want, done.stdout)
         q = self.fx.root / "var/lib/lifeos-runner/quarantine"
         self.assertEqual(stat.S_IMODE(q.stat().st_mode), 0o700)
@@ -103,7 +129,13 @@ class KillSwitchTests(unittest.TestCase):
         done = run_script(SCRIPT, self.fx.env)
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertEqual(self.snapshot(), after_first)
-        for want in ("lifeos_wa_attention_socket=skipped", "lifeos_wa_attention_service=skipped", "old_user_unit=skipped", "session_new_state=skipped", "session_old_state=skipped"):
+        for want in (
+            "lifeos_wa_attention_socket=skipped",
+            "lifeos_wa_attention_service=skipped",
+            "old_user_unit=skipped",
+            "session_new_state=skipped",
+            "session_old_state=skipped",
+        ):
             self.assertIn("READBACK " + want, done.stdout)
 
     def test_dry_run_changes_nothing(self):
@@ -113,7 +145,9 @@ class KillSwitchTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
         self.assertIn("READBACK session_new_state=would_move", done.stdout)
         self.assertIn("READBACK lifeos_wa_attention_service=would_stop_disable", done.stdout)
-        self.assertTrue(self.fx.new_state.exists() and (self.fx.fake / "system/active-lifeos-wa-attention.service").exists())
+        self.assertTrue(
+            self.fx.new_state.exists() and (self.fx.fake / "system/active-lifeos-wa-attention.service").exists()
+        )
 
     def test_a_script_that_skips_the_move_fails_the_check(self):
         self.assertTrue(kill_works(SCRIPT, self.fx))
@@ -125,10 +159,16 @@ class KillSwitchTests(unittest.TestCase):
 
     def test_the_pack_builds_and_passes_the_runners_own_check_and_declares_no_restore(self):
         out = Path(self.tmp.name) / "pack"
-        subprocess.run([sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(
+            [sys.executable, str(PACK / "build_pack.py"), str(out)], cwd=ROOT, check=True, capture_output=True
+        )
         manifest = runner.load_manifest(str(out))
         self.assertEqual((manifest["steps"], manifest["files"], manifest["services"]), (["steps/10-kill.sh"], [], []))
-        done = subprocess.run([sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)], capture_output=True, text=True)
+        done = subprocess.run(
+            [sys.executable, str(ROOT / "lifeos" / "edge" / "runner" / "runner.py"), "check", str(out)],
+            capture_output=True,
+            text=True,
+        )
         self.assertEqual(done.returncode, 0, done.stdout)
 
 

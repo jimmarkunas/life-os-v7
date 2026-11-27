@@ -1,6 +1,7 @@
 """The quick local gate: `python -m tests.quickselect run --base BASE` runs, in parallel processes, the tests a push most
 often needs: every contract.
 """
+
 import ast
 import functools
 import os
@@ -19,14 +20,22 @@ HUB_CLOSURE = 40
 
 
 def changed_files(base, root=ROOT):
-    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=ACMRD", base, "HEAD"], cwd=root, capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=ACMRD", base, "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     return [line for line in out.splitlines() if line]
 
 
 def importers(dotted_name, stem, root=ROOT):
     """Test modules whose text names the production module (`lifeos.pkg.stem`, or `from lifeos.pkg import stem`)."""
     package = dotted_name.rsplit(".", 1)[0]
-    pattern = re.compile(r"\b%s\b|from\s+%s\s+import[^\n]*\b%s\b" % (re.escape(dotted_name), re.escape(package), re.escape(stem)))
+    pattern = re.compile(
+        r"\b%s\b|from\s+%s\s+import[^\n]*\b%s\b" % (re.escape(dotted_name), re.escape(package), re.escape(stem))
+    )
     found = set()
     for path in pathlib.Path(root, "tests").rglob("test_*.py"):
         try:
@@ -154,16 +163,22 @@ def quick_targets(changed, root=ROOT):
     known = testindex.module_set(root)
     targets = set(testindex.contract_modules(root)) | {m for m in testindex.REPO_WIDE if m in known}
     modules = lifeos_modules(root)
-    changed_modules = {path[:-3].replace("/", ".") for path in changed if path.startswith("lifeos/") and path.endswith(".py") and pathlib.Path(path).name != "__init__.py"}
+    changed_modules = {
+        path[:-3].replace("/", ".")
+        for path in changed
+        if path.startswith("lifeos/") and path.endswith(".py") and pathlib.Path(path).name != "__init__.py"
+    }
     targets |= reaching_tests({m for m in changed_modules if m in modules}, root)
     for path in changed:
-        if not path.endswith(".py") and (path.startswith(("lifeos/", "tests/", "tools/", "docs/", ".github/")) or "/" not in path):
+        if not path.endswith(".py") and (
+            path.startswith(("lifeos/", "tests/", "tools/", "docs/", ".github/")) or "/" not in path
+        ):
             targets |= data_readers(path, root)
         p = pathlib.Path(path)
         if path.startswith("tests/") and p.name.startswith("test_") and (pathlib.Path(root) / path).is_file():
             targets.add(testindex.dotted(path))
         elif path.startswith("lifeos/") and path.endswith(".py") and p.name != "__init__.py":
-            rel = path[len("lifeos/"):]
+            rel = path[len("lifeos/") :]
             package = rel.split("/")[0] if "/" in rel else None
             stem = p.stem
             dotted_name = path[:-3].replace("/", ".")
@@ -194,7 +209,11 @@ def run(modules, jobs):
     for group in groups:
         log = tempfile.NamedTemporaryFile("w+", delete=False, suffix=".log")
         logs.append(log.name)
-        procs.append(subprocess.Popen([python, "-m", "unittest", *group], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env))
+        procs.append(
+            subprocess.Popen(
+                [python, "-m", "unittest", *group], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env
+            )
+        )
     status = 0
     for proc in procs:
         status = proc.wait() or status
@@ -202,13 +221,23 @@ def run(modules, jobs):
     for name in logs:
         os.unlink(name)
     ran = sum(int(m.group(1)) for text in texts for m in re.finditer(r"^Ran (\d+) tests?", text, re.M))
-    failing = sorted({re.sub(r" \(.*", "", line) for text in texts for line in text.splitlines() if line.startswith(("FAIL:", "ERROR:"))})
+    failing = sorted(
+        {
+            re.sub(r" \(.*", "", line)
+            for text in texts
+            for line in text.splitlines()
+            if line.startswith(("FAIL:", "ERROR:"))
+        }
+    )
     if status:
         for text in texts:
             print(text[-3000:])
     for name in failing:
         print("test.sh: failing: " + name)
-    print("test.sh: %d tests ran, exit %d, %d s (quick: %d modules in %d processes; CI runs the full suite)" % (ran, status, round(time.perf_counter() - started), len(modules), len(groups)))
+    print(
+        "test.sh: %d tests ran, exit %d, %d s (quick: %d modules in %d processes; CI runs the full suite)"
+        % (ran, status, round(time.perf_counter() - started), len(modules), len(groups))
+    )
     return status
 
 

@@ -1,6 +1,7 @@
 """the numbers behind the `suite-timing` workflow (manual, no secrets): N full-suite runs on N fresh runners at once,
 then one report job that prints.
 """
+
 import datetime as dt
 import json
 import math
@@ -24,7 +25,13 @@ def stats(values):
     ordered = sorted(values)
     middle = len(ordered) // 2
     median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
-    return {"runs": len(ordered), "min": ordered[0], "median": median, "p95": percentile(ordered, 95), "max": ordered[-1]}
+    return {
+        "runs": len(ordered),
+        "min": ordered[0],
+        "median": median,
+        "p95": percentile(ordered, 95),
+        "max": ordered[-1],
+    }
 
 
 def _moment(text):
@@ -49,14 +56,19 @@ def report(rows, limit=LIMIT):
     seconds = [r["seconds"] for r in rows if r.get("seconds") is not None]
     lines = ["| run | suite s | shard seconds |", "|---|---|---|"]
     for row in sorted(rows, key=lambda r: r["run"]):
-        lines.append(f"| {row['run']} | {row['seconds']} | {', '.join(f'{k}: {v:.0f}' for k, v in sorted(row.get('shards', {}).items()))} |")
+        lines.append(
+            f"| {row['run']} | {row['seconds']} | {', '.join(f'{k}: {v:.0f}' for k, v in sorted(row.get('shards', {}).items()))} |"
+        )
     if not seconds:
         return "\n".join(lines + ["", "no run finished the suite"]), False
     summary = stats(seconds)
     spread = [max(r["shards"].values()) - min(r["shards"].values()) for r in rows if len(r.get("shards", {})) > 1]
-    lines += ["", f"suite seconds over {summary['runs']} runs: min {summary['min']}, median {summary['median']:g}, p95 {summary['p95']}, max {summary['max']} (limit {limit}).",
-              f"shard spread (slowest minus fastest) per run: {', '.join(f'{s:.0f}' for s in spread) or 'not available here (each timing job prints its own shard seconds in its log)'}.",
-              "These runs started together on separate runners: they measure runner-to-runner spread in one minute, not ten different hours."]
+    lines += [
+        "",
+        f"suite seconds over {summary['runs']} runs: min {summary['min']}, median {summary['median']:g}, p95 {summary['p95']}, max {summary['max']} (limit {limit}).",
+        f"shard spread (slowest minus fastest) per run: {', '.join(f'{s:.0f}' for s in spread) or 'not available here (each timing job prints its own shard seconds in its log)'}.",
+        "These runs started together on separate runners: they measure runner-to-runner spread in one minute, not ten different hours.",
+    ]
     return "\n".join(lines), summary["max"] < limit
 
 
@@ -75,7 +87,13 @@ def main():
     for job in jobs:
         found = re.fullmatch(r"timing \((\d+)\)", job["name"])
         if found:
-            rows.append({"run": int(found.group(1)), "seconds": step_seconds(job), "shards": shard_times(_gh(f"repos/{repo}/actions/jobs/{job['id']}/logs", required=False))})
+            rows.append(
+                {
+                    "run": int(found.group(1)),
+                    "seconds": step_seconds(job),
+                    "shards": shard_times(_gh(f"repos/{repo}/actions/jobs/{job['id']}/logs", required=False)),
+                }
+            )
     text, ok = report(rows)
     print(text)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

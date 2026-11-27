@@ -55,7 +55,9 @@ class LinkedInDescriptionTests(unittest.TestCase):
         self.assertIsNone(jd.linkedin_description("<html><body><p>Join or sign in</p></body></html>"))
         self.assertIsNone(jd.linkedin_description(""))
         self.assertIsNone(jd.linkedin_description(None))
-        self.assertEqual(jd.linkedin_description('<div class="show-more-less-html__markup"></div><p>Join or sign in</p>'), "")
+        self.assertEqual(
+            jd.linkedin_description('<div class="show-more-less-html__markup"></div><p>Join or sign in</p>'), ""
+        )
 
     def test_an_unclosed_void_tag_inside_the_element_does_not_end_it_early(self):
         page = '<div class="show-more-less-html__markup"><p>Line one<br>Line two</p><p>Line three</p></div><p>After</p>'

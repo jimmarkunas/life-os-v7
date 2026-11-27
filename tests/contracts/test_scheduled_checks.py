@@ -1,6 +1,7 @@
 """every workflow with a `cron:` trigger is in docs/platform/scheduled-checks.md and is either checked by the central
 scheduled check in.
 """
+
 import pathlib
 import re
 import unittest
@@ -21,7 +22,9 @@ def scheduled_workflows():
 
 class ScheduledChecksContract(unittest.TestCase):
     def test_every_scheduled_workflow_is_checked_or_named_as_covered(self):
-        missing = [w for w in scheduled_workflows() if w not in gate.SCHEDULED_WORKFLOWS and w not in gate.SCHEDULED_COVERED]
+        missing = [
+            w for w in scheduled_workflows() if w not in gate.SCHEDULED_WORKFLOWS and w not in gate.SCHEDULED_COVERED
+        ]
         self.assertFalse(missing, f"add to gate.SCHEDULED_WORKFLOWS or SCHEDULED_COVERED: {missing}")
 
     def test_every_scheduled_workflow_is_in_the_doc_table(self):

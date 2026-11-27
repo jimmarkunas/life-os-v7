@@ -1,4 +1,5 @@
 """the five cutover rows are registered, default off and fail closed."""
+
 import unittest
 from pathlib import Path
 
@@ -33,7 +34,18 @@ class FailClosed(unittest.TestCase):
         self.assertEqual(switches.snapshot({}), {n: False for n in switches.SWITCHES})
 
     def test_only_exactly_on_turns_a_switch_on(self):
-        for value, want in (("on", True), (" ON ", True), ("On", True), ("off", False), ("", False), ("true", False), ("1", False), ("yes", False), ("on please", False), (None, False)):
+        for value, want in (
+            ("on", True),
+            (" ON ", True),
+            ("On", True),
+            ("off", False),
+            ("", False),
+            ("true", False),
+            ("1", False),
+            ("yes", False),
+            ("on please", False),
+            (None, False),
+        ):
             self.assertEqual(switches.on("V3_WEEK_VIEW", {"V3_WEEK_VIEW": value}), want, repr(value))
 
     def test_an_unknown_name_is_never_on(self):

@@ -1,4 +1,5 @@
 """merged branches are archived (one tag per PR, read back) and deleted only when safe"""
+
 import io
 import json
 import os
@@ -17,8 +18,14 @@ REPO = "jimmarkunas/life-os-v7"
 
 
 def event(number=401, branch="claude/x", sha="a" * 40, merged=True, fork=False):
-    return {"pull_request": {"number": number, "merged": merged, "head": {"ref": branch, "sha": sha, "repo": {"full_name": "someone/fork" if fork else REPO}},
-                             "base": {"repo": {"full_name": REPO}}}}
+    return {
+        "pull_request": {
+            "number": number,
+            "merged": merged,
+            "head": {"ref": branch, "sha": sha, "repo": {"full_name": "someone/fork" if fork else REPO}},
+            "base": {"repo": {"full_name": REPO}},
+        }
+    }
 
 
 class GitHub:
@@ -28,7 +35,7 @@ class GitHub:
         self.heads, self.open_prs, self.deleted, self.calls = dict(heads or {}), list(open_prs), [], []
 
     def __call__(self, req, timeout=None):
-        method, path = req.get_method(), req.full_url[len(branches.API):]
+        method, path = req.get_method(), req.full_url[len(branches.API) :]
         self.calls.append((method, path))
         if method == "DELETE":
             self.deleted.append(path)
@@ -56,6 +63,7 @@ class Archive(unittest.TestCase):
             if pushed:
                 raise pushed
             return "ARCHIVED"
+
         out = branches.archive(ev or event(), ENV, opener=gh, push=push)
         return out, record
 
@@ -99,7 +107,9 @@ class PushTag(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        git = lambda *a, cwd=self.tmp: subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True, check=True).stdout   # noqa: E731
+        git = lambda *a, cwd=self.tmp: (
+            subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True, check=True).stdout
+        )  # noqa: E731
         self.archive = os.path.join(self.tmp, "archive.git")
         git("init", "-q", "--bare", self.archive)
         work = os.path.join(self.tmp, "v7")
@@ -133,20 +143,40 @@ class PushTag(unittest.TestCase):
 
 
 class Report(unittest.TestCase):
-    BRANCHES = [{"name": "main", "last": NOW}, {"name": "docs/old", "last": NOW - timedelta(days=20)}, {"name": "claude/fresh", "last": NOW - timedelta(days=2)},
-                {"name": "claude/life41-edge-fixtures", "last": NOW - timedelta(days=8)}]
+    BRANCHES = [
+        {"name": "main", "last": NOW},
+        {"name": "docs/old", "last": NOW - timedelta(days=20)},
+        {"name": "claude/fresh", "last": NOW - timedelta(days=2)},
+        {"name": "claude/life41-edge-fixtures", "last": NOW - timedelta(days=8)},
+    ]
 
     def test_stale_branches_are_listed_oldest_first_with_their_open_pr(self):
         rows = branches.stale(self.BRANCHES, [{"number": 191, "branch": "docs/old"}], NOW)
-        self.assertEqual([(r["branch"], r["pr"], r["idle_days"], r["stale"], r["kept"]) for r in rows],
-                         [("docs/old", 191, 20, True, False), ("claude/life41-edge-fixtures", None, 8, True, True), ("claude/fresh", None, 2, False, False)])
+        self.assertEqual(
+            [(r["branch"], r["pr"], r["idle_days"], r["stale"], r["kept"]) for r in rows],
+            [
+                ("docs/old", 191, 20, True, False),
+                ("claude/life41-edge-fixtures", None, 8, True, True),
+                ("claude/fresh", None, 2, False, False),
+            ],
+        )
         text = branches.lines(rows, NOW)
-        self.assertEqual(text[0], "Mon, 10/26 · 8:37 AM CT · 3 branches besides main · 1 with an open PR · 2 idle 7+ days")
-        self.assertEqual(text[1:], ["PR #191 · docs/old · idle 20 days", "no PR · claude/life41-edge-fixtures · idle 8 days · kept on purpose"])
+        self.assertEqual(
+            text[0], "Mon, 10/26 · 8:37 AM CT · 3 branches besides main · 1 with an open PR · 2 idle 7+ days"
+        )
+        self.assertEqual(
+            text[1:],
+            [
+                "PR #191 · docs/old · idle 20 days",
+                "no PR · claude/life41-edge-fixtures · idle 8 days · kept on purpose",
+            ],
+        )
 
     def test_nothing_stale_says_so(self):
-        self.assertEqual(branches.lines(branches.stale([{"name": "main", "last": NOW}], [], NOW), NOW)[1:],
-                         ["Nothing stale. Merged branches are archived and removed automatically."])
+        self.assertEqual(
+            branches.lines(branches.stale([{"name": "main", "last": NOW}], [], NOW), NOW)[1:],
+            ["Nothing stale. Merged branches are archived and removed automatically."],
+        )
 
 
 class ReviewPage(AgendaRegions):
@@ -156,9 +186,13 @@ class ReviewPage(AgendaRegions):
 
     def __init__(self):
         super().__init__()
-        self.children = {"review-page": [{"id": "protocol", "type": "callout", "has_children": True, "callout": {}},
-                                         {"id": "reviews-db", "type": "child_database", "has_children": False, "child_database": {}}],
-                         "protocol": [self._paragraph("Purpose: the weekly control loop")]}
+        self.children = {
+            "review-page": [
+                {"id": "protocol", "type": "callout", "has_children": True, "callout": {}},
+                {"id": "reviews-db", "type": "child_database", "has_children": False, "child_database": {}},
+            ],
+            "protocol": [self._paragraph("Purpose: the weekly control loop")],
+        }
         self.metas = {"protocol": self.children["review-page"][0]}
 
     def call(self, method, path, body=None):
@@ -170,7 +204,11 @@ class ReviewPage(AgendaRegions):
             heading = spec["callout"]["children"][0]
             self.children["review-page"].append(callout)
             self.metas["repo-callout"] = callout
-            self.children["repo-callout"] = [self._text_block("repo-heading", heading["type"], heading[heading["type"]]["rich_text"][0]["text"]["content"])]
+            self.children["repo-callout"] = [
+                self._text_block(
+                    "repo-heading", heading["type"], heading[heading["type"]]["rich_text"][0]["text"]["content"]
+                )
+            ]
             return {"results": [callout]}
         return super().call(method, path, body)
 
@@ -179,12 +217,22 @@ class OwnedCallout(unittest.TestCase):
     def test_the_first_live_run_installs_the_callout_at_the_end_and_writes_it_and_jims_content_is_untouched(self):
         page = ReviewPage()
         before = [dict(b) for b in page.children["review-page"]], [dict(b) for b in page.children["protocol"]]
-        self.assertEqual(branches.write_region(page, "review-page", ["status line", "PR #191 · docs/old · idle 20 days"], live=True), "WRITTEN")
+        self.assertEqual(
+            branches.write_region(page, "review-page", ["status line", "PR #191 · docs/old · idle 20 days"], live=True),
+            "WRITTEN",
+        )
         self.assertEqual([b["id"] for b in page.children["review-page"]], ["protocol", "reviews-db", "repo-callout"])
-        self.assertEqual([report_region.plain(b) for b in page.children["repo-callout"]], [router.REPO_REGION, "status line", "PR #191 · docs/old · idle 20 days"])
+        self.assertEqual(
+            [report_region.plain(b) for b in page.children["repo-callout"]],
+            [router.REPO_REGION, "status line", "PR #191 · docs/old · idle 20 days"],
+        )
         self.assertEqual((page.children["review-page"][:2], page.children["protocol"]), before)
-        branches.write_region(page, "review-page", ["new status"], live=True)  # the next week rewrites the same callout in place
-        self.assertEqual([report_region.plain(b) for b in page.children["repo-callout"]], [router.REPO_REGION, "new status"])
+        branches.write_region(
+            page, "review-page", ["new status"], live=True
+        )  # the next week rewrites the same callout in place
+        self.assertEqual(
+            [report_region.plain(b) for b in page.children["repo-callout"]], [router.REPO_REGION, "new status"]
+        )
         self.assertEqual(sum(1 for m, _ in page.log if m == "INSTALL"), 1)
 
     def test_a_dry_run_installs_and_writes_nothing(self):
@@ -206,6 +254,7 @@ class JimsPageIsProtected(unittest.TestCase):
             out = real(client, *a, **k)
             client.children["protocol"].append(client._paragraph("something changed Jim's protocol"))
             return out
+
         with mock.patch.object(report_region, "replace_text", meddling):
             with self.assertRaises(branches.BranchError) as ctx:
                 branches.write_region(page, "review-page", ["status two"], live=True)
@@ -217,6 +266,7 @@ class RealClient(unittest.TestCase):
 
     def test_the_report_builds_the_real_notion_client_from_the_cards_token_alone(self):
         from lifeos.platform.notion_client import Client, NotionError
+
         client = branches.writer({"NOTION_JIRA_TOKEN": "secret-token"})
         self.assertIsInstance(client, Client)
         self.assertEqual(client.token, "secret-token")
@@ -228,10 +278,12 @@ class PushRefusal(unittest.TestCase):
     """Each refusal now has its own code."""
 
     def test_each_refusal_is_named_and_git_says_nothing_else(self):
-        cases = {"remote: refusing to allow a Personal Access Token to create or update workflow `.github/workflows/x.yml` without `workflow` scope":
-                 "ARCHIVE_PUSH_NEEDS_WORKFLOWS_PERMISSION",
-                 "remote: Permission to jimmarkunas/life-os-automation.git denied to jimmarkunas.\nfatal: unable to access: The requested URL returned error: 403": "ARCHIVE_PUSH_FORBIDDEN",
-                 " ! [rejected]        x -> x (already exists)": "ARCHIVE_PUSH_REJECTED",
-                 "fatal: something else": "ARCHIVE_PUSH_FAILED", "": "ARCHIVE_PUSH_FAILED"}
+        cases = {
+            "remote: refusing to allow a Personal Access Token to create or update workflow `.github/workflows/x.yml` without `workflow` scope": "ARCHIVE_PUSH_NEEDS_WORKFLOWS_PERMISSION",
+            "remote: Permission to jimmarkunas/life-os-automation.git denied to jimmarkunas.\nfatal: unable to access: The requested URL returned error: 403": "ARCHIVE_PUSH_FORBIDDEN",
+            " ! [rejected]        x -> x (already exists)": "ARCHIVE_PUSH_REJECTED",
+            "fatal: something else": "ARCHIVE_PUSH_FAILED",
+            "": "ARCHIVE_PUSH_FAILED",
+        }
         for stderr, code in cases.items():
             self.assertEqual(branches.push_refusal(stderr), code, stderr)

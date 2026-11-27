@@ -1,4 +1,5 @@
 """test helpers that more than one test module (often in another domain) uses."""
+
 import os
 import time
 from lifeos.jobs import private_report as pr
@@ -14,6 +15,7 @@ full_width.WAIT = 0
 
 class FakeStore:
     """A dict standing in for the private snapshot store (report key -> snapshot)."""
+
     def __init__(self):
         self.rows = {}
 
@@ -36,10 +38,18 @@ class FakeClient:
     """Just enough Notion: the ledger's data source -> database -> page chain, search, page create (with its table
     children), and block children.
     """
+
     source = "s" * 32
 
     def __init__(self, parent=PARENT, existing=None, fail=False, lose_rows=0):
-        self.parent, self.existing, self.fail, self.lose_rows, self.writes, self.blocks = parent, existing, fail, lose_rows, [], {}
+        self.parent, self.existing, self.fail, self.lose_rows, self.writes, self.blocks = (
+            parent,
+            existing,
+            fail,
+            lose_rows,
+            [],
+            {},
+        )
 
     def call(self, method, path, body=None):
         if self.fail:
@@ -55,7 +65,11 @@ class FakeClient:
         if path == "/search":
             raise AssertionError("D250: a private report is never found by a Notion search")
         if path.startswith("/pages/"):
-            return self.existing.get(path.split("/")[2], {"archived": False}) if isinstance(self.existing, dict) else {"archived": False}
+            return (
+                self.existing.get(path.split("/")[2], {"archived": False})
+                if isinstance(self.existing, dict)
+                else {"archived": False}
+            )
         base = path.split("?")[0]
         return {"results": self.blocks.get(base.split("/")[2], []), "has_more": False}
 
@@ -71,7 +85,9 @@ class FakeClient:
         self.writes.append((method, path, body))
         if method == "POST" and path == "/pages":
             assert body.get("template") and "children" not in body, "D16.1: a page without the Full Width template"
-            self.blocks["page1"] = [{"id": "filler", "type": "paragraph", "has_children": False, "paragraph": {"rich_text": []}}]
+            self.blocks["page1"] = [
+                {"id": "filler", "type": "paragraph", "has_children": False, "paragraph": {"rich_text": []}}
+            ]
             return {"id": "page1"}
         if method == "PATCH" and path.startswith("/pages/"):
             return {}
@@ -85,27 +101,53 @@ class FakeClient:
         return {"results": []}
 
 
-PM_BODY = ("<h2>Responsibilities</h2><ul><li>Own the program roadmap and drive delivery across multiple teams</li><li>Lead integration of NetSuite with the storefront and payment providers</li>"
-           "<li>Report to executive stakeholders on a global enterprise program</li></ul><h2>Requirements</h2><ul><li>8+ years of experience in program management delivering enterprise software</li>"
-           "<li>Experience with NetSuite, Stripe and Contentful</li><li>Strong communication skills</li></ul>") * 2
+PM_BODY = (
+    "<h2>Responsibilities</h2><ul><li>Own the program roadmap and drive delivery across multiple teams</li><li>Lead integration of NetSuite with the storefront and payment providers</li>"
+    "<li>Report to executive stakeholders on a global enterprise program</li></ul><h2>Requirements</h2><ul><li>8+ years of experience in program management delivering enterprise software</li>"
+    "<li>Experience with NetSuite, Stripe and Contentful</li><li>Strong communication skills</li></ul>"
+) * 2
 
 
-ENGINEER_BODY = ("<h2>Responsibilities</h2><ul><li>Write production Java and Go services that process card payments</li><li>Design database schemas and stay on call for the platform</li>"
-                 "<li>Review code and mentor engineers</li></ul><h2>Requirements</h2><ul><li>8+ years of professional software engineering in Java or Go</li>"
-                 "<li>Deep experience with distributed systems and Kubernetes</li></ul>") * 2
+ENGINEER_BODY = (
+    "<h2>Responsibilities</h2><ul><li>Write production Java and Go services that process card payments</li><li>Design database schemas and stay on call for the platform</li>"
+    "<li>Review code and mentor engineers</li></ul><h2>Requirements</h2><ul><li>8+ years of professional software engineering in Java or Go</li>"
+    "<li>Deep experience with distributed systems and Kubernetes</li></ul>"
+) * 2
 
 
-CARD = ('<a href="https://jobright.ai/jobs/info/{id}?utm_source=1&imp_id=SYNTH"><span>{company}</span><span>Software &amp; Services</span><span>· Mid Level</span><span>89</span><span>%</span>'
-        '<span>{title}</span><span>$120K/yr - $150K/yr</span><span>Remote, US</span><span>5+ referrals</span><span>34 minutes ago</span></a>')
+CARD = (
+    '<a href="https://jobright.ai/jobs/info/{id}?utm_source=1&imp_id=SYNTH"><span>{company}</span><span>Software &amp; Services</span><span>· Mid Level</span><span>89</span><span>%</span>'
+    '<span>{title}</span><span>$120K/yr - $150K/yr</span><span>Remote, US</span><span>5+ referrals</span><span>34 minutes ago</span></a>'
+)
 
 
 VACANCIES = {
     "v1": ("Acme", "Senior Program Manager", "https://careers.acme.example/jobs/senior-program-manager-1001", PM_BODY),
-    "v2": ("Globex", "Technical Program Manager", "https://careers.globex.example/jobs/technical-program-manager-2002", PM_BODY),
-    "v3": ("Initech", "Software Engineer", "https://careers.initech.example/jobs/software-engineer-3003", ENGINEER_BODY),
-    "v4": ("Umbrella", "Senior Program Manager", "https://careers.acme.example/jobs/senior-program-manager-1001", PM_BODY),
+    "v2": (
+        "Globex",
+        "Technical Program Manager",
+        "https://careers.globex.example/jobs/technical-program-manager-2002",
+        PM_BODY,
+    ),
+    "v3": (
+        "Initech",
+        "Software Engineer",
+        "https://careers.initech.example/jobs/software-engineer-3003",
+        ENGINEER_BODY,
+    ),
+    "v4": (
+        "Umbrella",
+        "Senior Program Manager",
+        "https://careers.acme.example/jobs/senior-program-manager-1001",
+        PM_BODY,
+    ),
     "v5": ("Hooli", "Delivery Lead Program Manager", "https://careers.hooli.example/jobs/delivery-lead-5005", PM_BODY),
-    "v6": ("Wayne", "Technical Program Manager", "https://careers.wayne.example/jobs/technical-program-manager-6006", PM_BODY),
+    "v6": (
+        "Wayne",
+        "Technical Program Manager",
+        "https://careers.wayne.example/jobs/technical-program-manager-6006",
+        PM_BODY,
+    ),
 }
 
 
@@ -117,6 +159,7 @@ class Mailbox:
     """A stateful Gmail: labels per message, and the three search shapes the stages use (label:, -label:, in:inbox,
     from:, newer_than:).
     """
+
     def __init__(self, messages):
         self.messages, self.labels, self.log = messages, {i: {"INBOX"} for i in messages}, []
 
@@ -129,7 +172,9 @@ class Mailbox:
         out = []
         for i, (sender, _, received) in self.messages.items():
             have = self.labels[i]
-            if any(t.startswith("label:") and t[6:] not in have for t in tokens) or any(t.startswith("-label:") and t[7:] in have for t in tokens):
+            if any(t.startswith("label:") and t[6:] not in have for t in tokens) or any(
+                t.startswith("-label:") and t[7:] in have for t in tokens
+            ):
                 continue
             if "in:inbox" in tokens and "INBOX" not in have:
                 continue

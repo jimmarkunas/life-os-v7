@@ -17,7 +17,11 @@ COPIES = ["ch-whatsapp", "ch-telegram"]  # a push is tagged for the copies it is
 
 
 def stream(*events):
-    return io.BytesIO(b"".join(json.dumps({"tags": COPIES, **e} if e.get("event") == "message" else e).encode() + b"\n" for e in events))
+    return io.BytesIO(
+        b"".join(
+            json.dumps({"tags": COPIES, **e} if e.get("event") == "message" else e).encode() + b"\n" for e in events
+        )
+    )
 
 
 class Stream:
@@ -34,7 +38,10 @@ class StateDir(unittest.TestCase):
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
-        for patch in (mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))):
+        for patch in (
+            mock.patch.object(fa, "STATE", self.dir),
+            mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id")),
+        ):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -48,14 +55,25 @@ class StateDir(unittest.TestCase):
 
 class ForwardTests(StateDir):
     def test_text_carries_the_redacted_alert_with_an_icon_by_priority(self):
-        self.assertEqual(fa.text({"title": "2 texts need you", "message": "Open Messages", "priority": 5}), "🚨 2 texts need you\nOpen Messages")
-        self.assertEqual(fa.text({"message": "Mail Alerts degraded", "priority": 3}), "🔔 LIFE OS\nMail Alerts degraded")
+        self.assertEqual(
+            fa.text({"title": "2 texts need you", "message": "Open Messages", "priority": 5}),
+            "🚨 2 texts need you\nOpen Messages",
+        )
+        self.assertEqual(
+            fa.text({"message": "Mail Alerts degraded", "priority": 3}), "🔔 LIFE OS\nMail Alerts degraded"
+        )
         self.assertLessEqual(len(fa.text({"title": "x", "message": "y" * 5000})), fa.MAX_TEXT)
 
     def test_only_message_events_are_forwarded_and_the_last_id_resumes_the_stream(self):
         sent = []
-        opener = Stream(stream({"event": "open"}, {"event": "keepalive", "id": "k1"}, {"event": "message", "id": "a1", "title": "One"},
-                               {"event": "message", "id": "a2", "title": "Two"}))
+        opener = Stream(
+            stream(
+                {"event": "open"},
+                {"event": "keepalive", "id": "k1"},
+                {"event": "message", "id": "a1", "title": "One"},
+                {"event": "message", "id": "a2", "title": "Two"},
+            )
+        )
         fa.follow("topic", "+15550100001", opener, lambda to, body: sent.append((to, body)) or True)
         self.assertEqual([b for _, b in sent], ["🔔 One", "🔔 Two"])
         self.assertEqual(fa.last_id(), "a2")
@@ -66,13 +84,24 @@ class ForwardTests(StateDir):
 
     def test_a_failed_send_is_not_remembered_so_it_is_retried(self):
         fa.remember("a0")
-        fa.follow("topic", "+15550100001", Stream(stream({"event": "message", "id": "a1", "title": "One"})), lambda to, body: False)
+        fa.follow(
+            "topic",
+            "+15550100001",
+            Stream(stream({"event": "message", "id": "a1", "title": "One"})),
+            lambda to, body: False,
+        )
         self.assertEqual(fa.last_id(), "a0")
 
     def test_each_channel_keeps_its_own_position(self):
         one = stream({"event": "message", "id": "a1", "title": "One"})
         fa.follow("topic", "+447700900001", Stream(one), lambda to, body: True, channel="whatsapp")
-        fa.follow("topic", "123456789", Stream(stream({"event": "message", "id": "a1", "title": "One"})), lambda to, body: False, channel="telegram")
+        fa.follow(
+            "topic",
+            "123456789",
+            Stream(stream({"event": "message", "id": "a1", "title": "One"})),
+            lambda to, body: False,
+            channel="telegram",
+        )
         self.assertEqual((fa.last_id("whatsapp"), fa.last_id("telegram")), ("a1", None))  # Telegram retries
 
     def test_the_recipient_must_be_exactly_one_allowlisted_number(self):
@@ -81,6 +110,7 @@ class ForwardTests(StateDir):
             with open(path, "w") as f:
                 json.dump({"channels": {channel: {"allowFrom": allow}}}, f)
             return path
+
         self.assertEqual(fa.recipient(cfg(["123456789"], "telegram"), "telegram"), "123456789")
         self.assertIsNone(fa.recipient(cfg(["123456789", "987654321"], "telegram"), "telegram"))
         self.assertIsNone(fa.recipient(cfg(["@someone"], "telegram"), "telegram"))
@@ -89,23 +119,29 @@ class ForwardTests(StateDir):
         self.assertIsNone(fa.recipient(cfg([])))
 
 
-
 def done(code, stdout="", stderr=""):
     import subprocess
+
     return subprocess.CompletedProcess([], code, stdout=stdout, stderr=stderr)
 
 
 def result(**fields):  # the shape of OpenClaw 2026.9.9 buildMessageCliJson
-    return json.dumps({"action": "send", "channel": "telegram", "dryRun": False, "handledBy": "plugin", "payload": {}, **fields}, indent=2)
+    return json.dumps(
+        {"action": "send", "channel": "telegram", "dryRun": False, "handledBy": "plugin", "payload": {}, **fields},
+        indent=2,
+    )
 
 
 DELIVERED_EXIT_1 = done(1, result(messageId="131"))  # the flood signature: delivered, then exit 1
 OK = done(0, result(messageId="m1"))
-REFUSED = done(1, result(ok=False, error="Message send suppressed: policy.", deliveryStatus="suppressed"))  # proven never sent
+REFUSED = done(
+    1, result(ok=False, error="Message send suppressed: policy.", deliveryStatus="suppressed")
+)  # proven never sent
 
 
 class Relay:
     """A sender built on the real send with a scripted CLI: counts every CLI run."""
+
     def __init__(self, *results):
         self.results, self.runs = list(results), []
 
@@ -125,7 +161,10 @@ class Polling(StateDir):
 
     def setUp(self):
         super().setUp()
-        self.cache = [{"event": "message", "id": "a1", "title": "V7 domain jobs failed"}, {"event": "message", "id": "a2", "title": "Second"}]
+        self.cache = [
+            {"event": "message", "id": "a1", "title": "V7 domain jobs failed"},
+            {"event": "message", "id": "a2", "title": "Second"},
+        ]
 
     def poll(self, relay, channel="telegram", times=1, cache=None):
         for _ in range(times):
@@ -133,7 +172,7 @@ class Polling(StateDir):
             seen = list(cache or self.cache)
             if since:  # ntfy returns only what follows `since`
                 ids = [e["id"] for e in seen]
-                seen = seen[ids.index(since) + 1:] if since in ids else seen
+                seen = seen[ids.index(since) + 1 :] if since in ids else seen
             fa.follow("topic", "123456789", Stream(stream(*seen)), relay.sender(channel), channel=channel)
 
 
@@ -147,27 +186,51 @@ class ReplaySafetyTests(Polling):
         cases = [
             ((1, result(messageId="131")), (fa.DELIVERED, "message_id")),  # exit 1 with an authoritative message id
             ((0, result(messageId="m1")), (fa.DELIVERED, "message_id")),
-            ((1, "noise\n" + result(ok=False, error="partial", deliveryStatus="partial_failed", sentBeforeError=True)), (fa.DELIVERED, "sent_before_error")),
-            ((1, result(ok=False, error="x", deliveryStatus="failed", sentBeforeError=True)), (fa.DELIVERED, "sent_before_error")),
+            (
+                (
+                    1,
+                    "noise\n"
+                    + result(ok=False, error="partial", deliveryStatus="partial_failed", sentBeforeError=True),
+                ),
+                (fa.DELIVERED, "sent_before_error"),
+            ),
+            (
+                (1, result(ok=False, error="x", deliveryStatus="failed", sentBeforeError=True)),
+                (fa.DELIVERED, "sent_before_error"),
+            ),
             ((0, result(payload={"deliveryStatus": "sent"})), (fa.DELIVERED, "status_sent")),
-            ((1, REFUSED.stdout), (fa.NOT_DELIVERED, "suppressed_before_send")),  # confirmed pre-send refusal: the only retry
-            ((0, result(ok=False, error="send failed", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),  # exit 0 contradicting an explicit failure
-            ((1, result(ok=False, error="closed after send", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),  # post-send failure, no id
+            (
+                (1, REFUSED.stdout),
+                (fa.NOT_DELIVERED, "suppressed_before_send"),
+            ),  # confirmed pre-send refusal: the only retry
+            (
+                (0, result(ok=False, error="send failed", deliveryStatus="failed")),
+                (fa.AMBIGUOUS, "failed_unproven"),
+            ),  # exit 0 contradicting an explicit failure
+            (
+                (1, result(ok=False, error="closed after send", deliveryStatus="failed")),
+                (fa.AMBIGUOUS, "failed_unproven"),
+            ),  # post-send failure, no id
             ((1, result(ok=False, error="generic")), (fa.AMBIGUOUS, "failed_unproven")),
             ((0, result()), (fa.AMBIGUOUS, "no_delivery_evidence")),  # exit 0 alone is not delivery evidence
             ((0, result(payload={"status": "delivery_queued", "delivered": False})), (fa.AMBIGUOUS, "gateway_queued")),
             ((0, result(dryRun=True, messageId="x")), (fa.AMBIGUOUS, "not_a_send_result")),
-            ((0, ""), (fa.AMBIGUOUS, "no_result")), ((1, "Error: gateway rejected"), (fa.AMBIGUOUS, "no_result")), ((1, "{not json"), (fa.AMBIGUOUS, "no_result")),
+            ((0, ""), (fa.AMBIGUOUS, "no_result")),
+            ((1, "Error: gateway rejected"), (fa.AMBIGUOUS, "no_result")),
+            ((1, "{not json"), (fa.AMBIGUOUS, "no_result")),
         ]
         for (code, stdout), want in cases:
             self.assertEqual(fa.classify(code, stdout), want, (code, stdout[:60]))
 
     def test_send_uses_json_and_a_timeout_is_ambiguous_and_a_missing_cli_is_not_delivered(self):
         import subprocess
+
         relay = Relay(OK)
         self.assertEqual(fa.send("123", "hi", run=relay, channel="telegram"), (fa.DELIVERED, "message_id", 0))
         self.assertIn("--json", relay.runs[0])
-        self.assertEqual(fa.send("123", "hi", run=Relay(subprocess.TimeoutExpired("openclaw", 90)))[:2], (fa.AMBIGUOUS, "timeout"))
+        self.assertEqual(
+            fa.send("123", "hi", run=Relay(subprocess.TimeoutExpired("openclaw", 90)))[:2], (fa.AMBIGUOUS, "timeout")
+        )
         self.assertEqual(fa.send("123", "hi", run=Relay(FileNotFoundError()))[:2], (fa.NOT_DELIVERED, "not_started"))
 
     def test_the_flood_case_delivered_but_exit_1_is_sent_once_however_often_the_relay_polls(self):
@@ -181,7 +244,10 @@ class ReplaySafetyTests(Polling):
         relay = Relay(done(1, "", "Error: gateway closed"))  # no result at all
         self.poll(relay, times=20)
         self.assertEqual(len(relay.runs), 2)
-        self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()], [("a1", fa.AMBIGUOUS, "no_result"), ("a2", fa.AMBIGUOUS, "no_result")])
+        self.assertEqual(
+            [(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()],
+            [("a1", fa.AMBIGUOUS, "no_result"), ("a2", fa.AMBIGUOUS, "no_result")],
+        )
 
     def test_an_explicit_failure_is_retried_a_bounded_number_of_times_in_order_then_given_up(self):
         relay = Relay(REFUSED)
@@ -189,7 +255,13 @@ class ReplaySafetyTests(Polling):
         self.assertEqual(len(relay.runs), 2 * fa.MAX_ATTEMPTS)
         self.assertEqual(fa.last_id("telegram"), "a2")
         outcomes = [(d["id"], d["outcome"]) for d in self.diagnostics()]
-        self.assertEqual(outcomes, [("a1", fa.NOT_DELIVERED)] * 3 + [("a1", fa.GAVE_UP)] + [("a2", fa.NOT_DELIVERED)] * 3 + [("a2", fa.GAVE_UP)])
+        self.assertEqual(
+            outcomes,
+            [("a1", fa.NOT_DELIVERED)] * 3
+            + [("a1", fa.GAVE_UP)]
+            + [("a2", fa.NOT_DELIVERED)] * 3
+            + [("a2", fa.GAVE_UP)],
+        )
 
     def test_a_transient_failure_then_success_delivers_once_and_keeps_order(self):
         relay = Relay(REFUSED, OK, OK)
@@ -204,7 +276,10 @@ class ReplaySafetyTests(Polling):
         self.assertEqual(len(relay.runs), 2)
         fresh = importlib.util.module_from_spec(spec)  # a restarted relay: new process state, same files
         spec.loader.exec_module(fresh)
-        with mock.patch.object(fresh, "STATE", self.dir), mock.patch.object(fresh, "LAST", os.path.join(self.dir, "last-id")):
+        with (
+            mock.patch.object(fresh, "STATE", self.dir),
+            mock.patch.object(fresh, "LAST", os.path.join(self.dir, "last-id")),
+        ):
             again = Relay(DELIVERED_EXIT_1)
             urls = Stream(stream())
             fresh.follow("topic", "123456789", urls, again.sender(), channel="telegram")
@@ -218,7 +293,9 @@ class ReplaySafetyTests(Polling):
         after = Relay(OK)
         self.poll(after)
         self.assertEqual(len(after.runs), 1)
-        self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()][:1], [("a1", fa.AMBIGUOUS, "interrupted")])
+        self.assertEqual(
+            [(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()][:1], [("a1", fa.AMBIGUOUS, "interrupted")]
+        )
         self.assertEqual(fa.last_id("telegram"), "a2")
 
     def test_channels_keep_separate_positions_and_attempts(self):
@@ -242,7 +319,6 @@ class ReplaySafetyTests(Polling):
         self.assertNotIn("domain jobs", open(os.path.join(self.dir, fa.DIAGNOSTICS)).read())  # never the alert text
 
 
-
 class CorruptStateFailsClosedTests(Polling):
     """Career TL review 5576359134: saved state that EXISTS but is unreadable or invalid holds that channel (no poll, no
     send, no 10-minute fallback, one.
@@ -260,10 +336,18 @@ class CorruptStateFailsClosedTests(Polling):
             f.write(data)
 
     def test_invalid_or_unreadable_attempts_hold_the_channel_with_zero_sends(self):
-        bad = ["{not json", "[]", json.dumps({"id": "a1", "count": 1}), json.dumps({"id": "a1", "count": "1", "pending": True}),
-               json.dumps({"id": "a1", "count": 0, "pending": False}), json.dumps({"id": "a1", "count": 99, "pending": False}),
-               json.dumps({"id": "a1", "count": 1, "pending": "yes"}), json.dumps({"id": "a/1", "count": 1, "pending": True}),
-               json.dumps({"id": "a1", "count": 1, "pending": True, "extra": 1}), b"\xff\xfe"]
+        bad = [
+            "{not json",
+            "[]",
+            json.dumps({"id": "a1", "count": 1}),
+            json.dumps({"id": "a1", "count": "1", "pending": True}),
+            json.dumps({"id": "a1", "count": 0, "pending": False}),
+            json.dumps({"id": "a1", "count": 99, "pending": False}),
+            json.dumps({"id": "a1", "count": 1, "pending": "yes"}),
+            json.dumps({"id": "a/1", "count": 1, "pending": True}),
+            json.dumps({"id": "a1", "count": 1, "pending": True, "extra": 1}),
+            b"\xff\xfe",
+        ]
         for data in bad:
             self.setUp()
             fa.remember("a0", "telegram")
@@ -271,7 +355,9 @@ class CorruptStateFailsClosedTests(Polling):
             urls, runs = self.held()
             self.assertEqual((urls, runs), ([], []), data)  # no poll, no send attempt
             self.assertEqual(fa.last_id("telegram"), "a0", data)
-            self.assertEqual([(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_attempts")], data)
+            self.assertEqual(
+                [(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_attempts")], data
+            )
         self.setUp()
         os.mkdir(os.path.join(self.dir, "attempts-telegram"))  # unreadable (a directory where the file should be)
         self.assertEqual(self.held(), ([], []))
@@ -282,7 +368,9 @@ class CorruptStateFailsClosedTests(Polling):
             self.write("last-id-telegram", data)
             urls, runs = self.held()
             self.assertEqual((urls, runs), ([], []), data)
-            self.assertEqual([(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_cursor")], data)
+            self.assertEqual(
+                [(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_cursor")], data
+            )
         self.setUp()
         os.mkdir(os.path.join(self.dir, "last-id-telegram"))
         self.assertEqual(self.held(), ([], []))
@@ -301,7 +389,9 @@ class CorruptStateFailsClosedTests(Polling):
 
     def test_valid_saved_state_still_works(self):
         fa.remember("a0", "telegram")
-        fa._write_attempts("telegram", {"id": "a1", "count": 1, "pending": False})  # a proven refusal last time: retried now
+        fa._write_attempts(
+            "telegram", {"id": "a1", "count": 1, "pending": False}
+        )  # a proven refusal last time: retried now
         relay = Relay(OK)
         self.poll(relay)
         self.assertEqual((len(relay.runs), fa.last_id("telegram"), fa.attempts("telegram")), (2, "a2", {}))
@@ -312,7 +402,10 @@ class ChannelTagTests(StateDir):
 
     def follow(self, tags, channel):
         sent = []
-        events = [{"event": "message", "id": "m0001", "title": "One", "tags": tags}, {"event": "message", "id": "m0002", "title": "Two", "tags": tags}]
+        events = [
+            {"event": "message", "id": "m0001", "title": "One", "tags": tags},
+            {"event": "message", "id": "m0002", "title": "Two", "tags": tags},
+        ]
         fa.follow("topic", "x", Stream(stream(*events)), lambda to, body: sent.append(body) or True, channel=channel)
         return sent
 
@@ -328,7 +421,13 @@ class ChannelTagTests(StateDir):
 
     def test_a_missing_tags_field_counts_as_untagged(self):
         sent = []
-        fa.follow("topic", "x", Stream(io.BytesIO(json.dumps({"event": "message", "id": "m0001", "title": "One"}).encode() + b"\n")), lambda to, body: sent.append(body) or True, channel="whatsapp")
+        fa.follow(
+            "topic",
+            "x",
+            Stream(io.BytesIO(json.dumps({"event": "message", "id": "m0001", "title": "One"}).encode() + b"\n")),
+            lambda to, body: sent.append(body) or True,
+            channel="whatsapp",
+        )
         self.assertEqual(sent, [])
 
 
@@ -381,7 +480,14 @@ class HourlyCapTests(StateDir):
         sent = {"whatsapp": [], "telegram": []}
         for channel in sent:
             events = [{"event": "message", "id": f"m{i:04d}", "title": f"A{i}"} for i in range(fa.RELAY_CAP)]
-            fa.follow("topic", "x", Stream(stream(*events)), lambda to, body, c=channel: sent[c].append(body) or True, channel=channel, now=lambda: self.HOUR + 1)
+            fa.follow(
+                "topic",
+                "x",
+                Stream(stream(*events)),
+                lambda to, body, c=channel: sent[c].append(body) or True,
+                channel=channel,
+                now=lambda: self.HOUR + 1,
+            )
         self.assertEqual([len(sent["whatsapp"]), len(sent["telegram"])], [fa.RELAY_CAP, fa.RELAY_CAP])
 
     def test_an_unreadable_rate_file_holds_the_channel_instead_of_lifting_the_cap(self):
@@ -398,7 +504,14 @@ class HourlyCapTests(StateDir):
         def sender(to, body):
             seen.append(json.load(open(os.path.join(self.dir, "rate-whatsapp")))["count"])
             return (fa.DELIVERED, "message_id", 0)
-        fa.follow("topic", "x", Stream(stream({"event": "message", "id": "m0001", "title": "A"})), sender, now=lambda: self.HOUR + 1)
+
+        fa.follow(
+            "topic",
+            "x",
+            Stream(stream({"event": "message", "id": "m0001", "title": "A"})),
+            sender,
+            now=lambda: self.HOUR + 1,
+        )
         self.assertEqual(seen, [1])
 
 
@@ -427,8 +540,16 @@ class TopicRereadAndQuietTests(StateDir):
 
     def cycle(self, advance=0, resolve=None):
         self.clock[0] += advance
-        fa.step(self.state, now=lambda: self.clock[0], resolve=resolve or (lambda: self.secret[0]), lookup=lambda channel: "+15550100001",
-                poll=lambda name, to, sender, channel: fa.follow(name, to, self.opener, sender, channel, now=lambda: self.clock[0]), send_to=lambda to, body, channel: self.sender(to, body))
+        fa.step(
+            self.state,
+            now=lambda: self.clock[0],
+            resolve=resolve or (lambda: self.secret[0]),
+            lookup=lambda channel: "+15550100001",
+            poll=lambda name, to, sender, channel: fa.follow(
+                name, to, self.opener, sender, channel, now=lambda: self.clock[0]
+            ),
+            send_to=lambda to, body, channel: self.sender(to, body),
+        )
 
     def test_a_changed_topic_is_picked_up_within_the_refresh_period_and_the_missed_copies_go_out(self):
         self.topics["new-topic"] = [{"event": "message", "id": "m0001", "title": "Missed"}]
@@ -477,7 +598,9 @@ class TopicRereadAndQuietTests(StateDir):
 
     def test_a_message_of_any_kind_resets_the_quiet_clock_even_when_it_is_not_forwarded(self):
         self.cycle()
-        self.topics["old-topic"] = [{"event": "message", "id": "m0001", "title": "FYI", "tags": ["information_source"]}]  # untagged: nothing is sent
+        self.topics["old-topic"] = [
+            {"event": "message", "id": "m0001", "title": "FYI", "tags": ["information_source"]}
+        ]  # untagged: nothing is sent
         self.cycle(advance=fa.QUIET_AFTER - 10)
         self.topics["old-topic"] = []
         self.cycle(advance=fa.QUIET_AFTER - 10)  # still inside a period counted from that message

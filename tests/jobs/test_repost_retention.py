@@ -45,8 +45,12 @@ class PurgeTests(unittest.TestCase):
         d = lambda n: self.TODAY - timedelta(days=n)
         self.assertIsNone(retention.action(d(29), None, False, None, self.TODAY))  # inside 30 days
         self.assertEqual(retention.action(d(30), None, False, None, self.TODAY), "retire")
-        self.assertEqual(retention.action(None, d(45), False, None, self.TODAY), "retire")  # First Surfaced when no Posting Date
-        self.assertEqual(retention.action(d(60), d(2), False, None, self.TODAY), "retire")  # the employer date wins over First Surfaced
+        self.assertEqual(
+            retention.action(None, d(45), False, None, self.TODAY), "retire"
+        )  # First Surfaced when no Posting Date
+        self.assertEqual(
+            retention.action(d(60), d(2), False, None, self.TODAY), "retire"
+        )  # the employer date wins over First Surfaced
         self.assertIsNone(retention.action(d(2), d(60), False, None, self.TODAY))
         self.assertIsNone(retention.action(None, None, False, None, self.TODAY))  # no date: never retire on a guess
 
@@ -75,9 +79,15 @@ class TombstoneTests(unittest.TestCase):
         retired = NOW - timedelta(days=10)
         cursor = FakeCursor(script={"SELECT": (retired,)})
         self.assertTrue(tombstone.blocked(cursor, "k", "f", None, NOW))
-        self.assertTrue(tombstone.blocked(FakeCursor(script={"SELECT": (retired,)}), "k", "f", retired.date() - timedelta(days=3), NOW))
+        self.assertTrue(
+            tombstone.blocked(
+                FakeCursor(script={"SELECT": (retired,)}), "k", "f", retired.date() - timedelta(days=3), NOW
+            )
+        )
         again = FakeCursor(script={"SELECT": (retired,)})
-        self.assertFalse(tombstone.blocked(again, "k", "f", NOW.date(), NOW))  # posted after the retirement: genuinely new
+        self.assertFalse(
+            tombstone.blocked(again, "k", "f", NOW.date(), NOW)
+        )  # posted after the retirement: genuinely new
         self.assertIn("DELETE", again.verbs())
         self.assertFalse(tombstone.blocked(FakeCursor(), "k", "f", None, NOW))  # no tombstone
 
@@ -88,9 +98,22 @@ class TombstoneTests(unittest.TestCase):
 
     def test_intake_skips_a_tombstoned_vacancy(self):
         from lifeos.jobs import intake
+
         cursor = FakeCursor(script={"SELECT": (NOW - timedelta(days=5),)})
-        job = {"url": "https://x.example/j/1", "status": "NEW", "title": "T", "company": "C", "location": "L", "salary": None,
-               "source": "s", "provider": "p", "lane": "US Remote", "age_days": None, "received": NOW, "provider_score": None}
+        job = {
+            "url": "https://x.example/j/1",
+            "status": "NEW",
+            "title": "T",
+            "company": "C",
+            "location": "L",
+            "salary": None,
+            "source": "s",
+            "provider": "p",
+            "lane": "US Remote",
+            "age_days": None,
+            "received": NOW,
+            "provider_score": None,
+        }
         key, is_new = intake.add_job(cursor, job, NOW)
         self.assertFalse(is_new)
         self.assertNotIn("INSERT", cursor.verbs())

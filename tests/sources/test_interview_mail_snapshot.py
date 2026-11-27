@@ -1,6 +1,7 @@
 """Interview OS reads its mail early (a read-only step beside the tick) and the late Interview job uses that snapshot
 only when it is current and.
 """
+
 import contextlib
 import io
 import json
@@ -19,14 +20,23 @@ UTC = timezone.utc
 TICK = datetime(2026, 11, 22, 12, 7, tzinfo=UTC)  # the tick started at 12:07 UTC
 TAKEN = TICK + timedelta(minutes=4)  # its early read began four minutes later
 NOW = TICK + timedelta(minutes=30)  # the late run
-RECORDS = [mail(subject="Schedule your interview - ExampleCo Program Manager", received="2026-11-20T15:00:00Z"),
-           outreach(url="https://example.test/thread/lead", received="2026-11-21T09:00:00Z", extra="Requisition 777777."),
-           {**mail(subject="Newsletter"), "provider": "outlook", "id": "acct:1", "received": "2026-11-22T11:00:00Z", "folder": "JUNK"}]
+RECORDS = [
+    mail(subject="Schedule your interview - ExampleCo Program Manager", received="2026-11-20T15:00:00Z"),
+    outreach(url="https://example.test/thread/lead", received="2026-11-21T09:00:00Z", extra="Requisition 777777."),
+    {
+        **mail(subject="Newsletter"),
+        "provider": "outlook",
+        "id": "acct:1",
+        "received": "2026-11-22T11:00:00Z",
+        "folder": "JUNK",
+    },
+]
 STARTED = TICK.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Frozen(datetime):
     """ev.run reads the clock once"""
+
     @classmethod
     def now(cls, tz=None):
         return NOW.astimezone(tz) if tz else NOW
@@ -83,6 +93,7 @@ def read_of(records=RECORDS, down=0, detail=DETAIL):
         seconds.update({"gmail": 2.0, "outlook_1": 0.1})
         got.update(detail)
         return list(records), down
+
     return read
 
 
@@ -96,12 +107,23 @@ class Judge(unittest.TestCase):
         self.assertEqual(snap.judge(self.row(), TICK, NOW, 14), "used")
 
     def test_no_row_a_stale_row_a_wrong_hour_row_an_incomplete_row_or_another_window_is_never_used(self):
-        for kw, why in (({"taken_at": TICK - timedelta(hours=1), "tick_hour": snap.hour_key(TICK - timedelta(hours=1))}, "stale"),  # the previous tick's read
-                        ({"taken_at": TICK - timedelta(minutes=3), "tick_hour": snap.hour_key(TICK - timedelta(minutes=3))}, "stale"),  # just outside the grace
-                        ({"tick_hour": snap.hour_key(TAKEN - timedelta(hours=1))}, "wrong_hour"),  # a row filed under another hour
-                        ({"complete": False}, "incomplete"),
-                        ({"days": 30}, "days"),
-                        ({"taken_at": NOW + timedelta(minutes=5), "tick_hour": snap.hour_key(NOW + timedelta(minutes=5))}, "future")):
+        for kw, why in (
+            (
+                {"taken_at": TICK - timedelta(hours=1), "tick_hour": snap.hour_key(TICK - timedelta(hours=1))},
+                "stale",
+            ),  # the previous tick's read
+            (
+                {"taken_at": TICK - timedelta(minutes=3), "tick_hour": snap.hour_key(TICK - timedelta(minutes=3))},
+                "stale",
+            ),  # just outside the grace
+            ({"tick_hour": snap.hour_key(TAKEN - timedelta(hours=1))}, "wrong_hour"),  # a row filed under another hour
+            ({"complete": False}, "incomplete"),
+            ({"days": 30}, "days"),
+            (
+                {"taken_at": NOW + timedelta(minutes=5), "tick_hour": snap.hour_key(NOW + timedelta(minutes=5))},
+                "future",
+            ),
+        ):
             self.assertEqual(snap.judge(self.row(**kw), TICK, NOW, 14), why, kw)
         self.assertEqual(snap.judge(None, TICK, NOW, 14), "none")
 
@@ -166,6 +188,7 @@ class EarlyStep(unittest.TestCase):
 
         def broken(*args):
             raise RuntimeError("boom with a subject line")
+
         counts = self.go(db, read=broken)
         self.assertEqual((counts["snapshot"], db.rows, db.sql), ("not_saved", {}, []))
         self.assertNotIn("subject", json.dumps(counts))  # a fixed code, never the error's text
@@ -179,12 +202,14 @@ class EarlyStep(unittest.TestCase):
 
     def test_it_writes_nothing_to_notion_or_the_ledger_and_touches_only_its_own_table(self):
         db = Db()
-        with patch.object(ev.notion, "make_client", side_effect=AssertionError("Notion")), \
-             patch.object(ev.stage, "run", side_effect=AssertionError("writer")), \
-             patch.object(ev.pipeline, "read_applied", side_effect=AssertionError("Ledger")), \
-             patch.object(ev, "lead_row", side_effect=AssertionError("Ledger row")), \
-             patch.object(ev, "lead_job", side_effect=AssertionError("Jobs store")), \
-             patch.object(ev.streaks, "save", side_effect=AssertionError("streaks")):
+        with (
+            patch.object(ev.notion, "make_client", side_effect=AssertionError("Notion")),
+            patch.object(ev.stage, "run", side_effect=AssertionError("writer")),
+            patch.object(ev.pipeline, "read_applied", side_effect=AssertionError("Ledger")),
+            patch.object(ev, "lead_row", side_effect=AssertionError("Ledger row")),
+            patch.object(ev, "lead_job", side_effect=AssertionError("Jobs store")),
+            patch.object(ev.streaks, "save", side_effect=AssertionError("streaks")),
+        ):
             self.go(db)
         self.assertTrue(db.sql)
         self.assertTrue(all("v7_interview_mail" in sql for sql in db.sql), db.sql)  # nothing but its own table
@@ -201,7 +226,10 @@ class LateRun(unittest.TestCase):
 
     def run_late(self, db, started, read=None, records=None):
         environ = {**ENV, "TICK_STARTED": started}
-        with patch.object(ev, "datetime", Frozen), patch.object(ev, "read_mail", side_effect=read or (lambda *a, **k: (list(RECORDS), 0))) as spy:
+        with (
+            patch.object(ev, "datetime", Frozen),
+            patch.object(ev, "read_mail", side_effect=read or (lambda *a, **k: (list(RECORDS), 0))) as spy,
+        ):
             counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=records, environ=environ, connect=db)()
         return counts, got, spy
 
@@ -230,11 +258,18 @@ class LateRun(unittest.TestCase):
         started, taken = self.fresh_tick()
         today_counts, today, _ = self.run_late(Db(), "")
         old = taken - timedelta(hours=2)
-        cases = {"stale": saved(Db(), taken=old), "incomplete": saved(Db(), taken=taken, complete=False), "days": saved(Db(), taken=taken, days=30),
-                 "none": Db(), "store": Db(down=True)}
+        cases = {
+            "stale": saved(Db(), taken=old),
+            "incomplete": saved(Db(), taken=taken, complete=False),
+            "days": saved(Db(), taken=taken, days=30),
+            "none": Db(),
+            "store": Db(down=True),
+        }
         for why, db in cases.items():
             counts, got, spy = self.run_late(db, started)
-            self.assertEqual((spy.call_count, counts["mail_snapshot"]), (1, why), why)  # the full read ran, and the reason is a fixed code
+            self.assertEqual(
+                (spy.call_count, counts["mail_snapshot"]), (1, why), why
+            )  # the full read ran, and the reason is a fixed code
             self.assertEqual(self.output(counts), self.output(today_counts), why)
             self.assertEqual(got["evidence"], today["evidence"], why)
 
@@ -255,8 +290,19 @@ class LateRun(unittest.TestCase):
     def test_a_dry_run_with_a_longer_window_reads_for_itself(self):
         started, taken = self.fresh_tick()
         environ = {**ENV, "TICK_STARTED": started, "INTERVIEW_MAIL_DAYS": "30"}
-        with patch.object(ev, "datetime", Frozen), patch.object(ev, "read_mail", return_value=(list(RECORDS), 0)) as spy:
-            counts, _ = Run(parents=(), kids={}, roster=[APPLIED], records=None, environ=environ, live=False, connect=saved(Db(), taken=taken))()
+        with (
+            patch.object(ev, "datetime", Frozen),
+            patch.object(ev, "read_mail", return_value=(list(RECORDS), 0)) as spy,
+        ):
+            counts, _ = Run(
+                parents=(),
+                kids={},
+                roster=[APPLIED],
+                records=None,
+                environ=environ,
+                live=False,
+                connect=saved(Db(), taken=taken),
+            )()
         self.assertEqual((spy.call_count, counts["mail_snapshot"]), (1, "days"))
 
     def test_the_snapshots_unreadable_messages_feed_the_same_counts_as_a_read_that_found_them(self):
@@ -264,7 +310,11 @@ class LateRun(unittest.TestCase):
         detail = {"gmail": {**DETAIL["gmail"], "unreadable": {"m-1": "GMAIL_MESSAGE_INCOMPLETE"}}}
         db = saved(Db(), taken=taken, detail=detail)
         counts, _, _ = self.run_late(db, started)
-        read_counts, _, _ = self.run_late(Db(), "", read=lambda environ, now, gmail, outlook, days, seconds, got: (got.update(detail), (list(RECORDS), 0))[1])
+        read_counts, _, _ = self.run_late(
+            Db(),
+            "",
+            read=lambda environ, now, gmail, outlook, days, seconds, got: (got.update(detail), (list(RECORDS), 0))[1],
+        )
         self.assertEqual(counts["mail_causes"], read_counts["mail_causes"])
 
 
@@ -272,6 +322,7 @@ class Wiring(unittest.TestCase):
     def test_the_early_stage_is_registered_and_not_required(self):
         from lifeos import run
         from lifeos.platform import budget
+
         self.assertEqual(run.STAGES["interview-mail"].target, ("lifeos.sources.interview.mail_snapshot", "stage"))
         self.assertNotIn("interview-mail-shadow", run.STAGES)
         self.assertFalse(budget.budget_for("interview-mail")[1])  # a failed early read never fails the run

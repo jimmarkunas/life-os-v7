@@ -1,4 +1,5 @@
 import dataclasses
+
 """LIFE-88 / LIFE-46: the approved UI 3c and UI 4 trees, written in stages, reconciled from source changes, never touching
 Jim's notes, child pages or another job's page. Everything here is synthetic."""
 import copy
@@ -99,17 +100,11 @@ UI4 = """0:toggle ⚙️ LIFE OS · Source Health [color=gray]
 3:heading_3 Navigation""".split("\n")
 
 
-
-
-
-
 def pane(client, round_id, title):
     columns = [b for b in client.blocks[round_id] if b["type"] == "column_list"][0]["id"]
     left = client.blocks[client.blocks[columns][0]["id"]]
     tab = [b for b in left if b["type"] == "tab"][0]["id"]
     return [b for b in client.blocks[tab] if notion.text(b) == title][0]["id"]
-
-
 
 
 class FillerSim(Sim):
@@ -127,33 +122,56 @@ class FillerSim(Sim):
             self.template_page = out["id"]
             if self.lands == "before":
                 self.blocks[out["id"]].insert(0, block(""))
-        if method == "PATCH" and path.endswith("/children") and self.lands == "after" and self.template_page and path.split("/")[2] == self.template_page:
+        if (
+            method == "PATCH"
+            and path.endswith("/children")
+            and self.lands == "after"
+            and self.template_page
+            and path.split("/")[2] == self.template_page
+        ):
             self.lands = "done"
             self.blocks[self.template_page].insert(0, block(""))
         return out
 
 
-
-
 class Layout(unittest.TestCase):
     def test_both_pages_are_the_approved_trees(self):
-        current = opportunity((view.Round("r1", 1, None, None),), compensation="$90/hr", work_mode="Remote", apply_url="https://jobs.example.com/1")
+        current = opportunity(
+            (view.Round("r1", 1, None, None),),
+            compensation="$90/hr",
+            work_mode="Remote",
+            apply_url="https://jobs.example.com/1",
+        )
         self.assertEqual(notion.outline(notion.as_nodes(template.opportunity_page(current, TODAY))), UI3C)
-        self.assertEqual(notion.outline(notion.as_nodes(template.round_page(current, RoundQuery(True, None, None, 1), "p", "id"))), UI4)
+        self.assertEqual(
+            notion.outline(notion.as_nodes(template.round_page(current, RoundQuery(True, None, None, 1), "p", "id"))),
+            UI4,
+        )
 
     def test_staged_writes_respect_notion_nesting_and_read_back_identical(self):
         client, page_id = written(opportunity(compensation="$90/hr"))
-        self.assertEqual(notion.outline(notion.read_tree(client, page_id, [500]))[:-1], UI3C)  # + the Interview 1 child page
+        self.assertEqual(
+            notion.outline(notion.read_tree(client, page_id, [500]))[:-1], UI3C
+        )  # + the Interview 1 child page
         self.assertNotIn("PLACEHOLDER", str(client.blocks))
-        round_id = notion.write_tree(client, page_id, template.round_page(opportunity(), RoundQuery(True, None, None, 1), page_id, "id"), title="Interview 1")
+        round_id = notion.write_tree(
+            client,
+            page_id,
+            template.round_page(opportunity(), RoundQuery(True, None, None, 1), page_id, "id"),
+            title="Interview 1",
+        )
         self.assertEqual(notion.outline(notion.read_tree(client, round_id, [500])), UI4)
-        self.assertEqual([b["type"] for b in client.blocks[round_id]], ["toggle", "callout", "column_list"])  # no empty placeholder left
+        self.assertEqual(
+            [b["type"] for b in client.blocks[round_id]], ["toggle", "callout", "column_list"]
+        )  # no empty placeholder left
         self.assertIsNotNone(notion.protected_snapshot(client, round_id))
 
     def test_new_pages_are_created_from_the_full_width_template_then_filled(self):
         client = Sim()
         blocks = create.rendered(opportunity(), tail=None)[0]
-        page_id = notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH)
+        page_id = notion.write_tree(
+            client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH
+        )
         self.assertEqual(client.posts[-1]["template"], {"type": "template_id", "template_id": notion.FULL_WIDTH})
         self.assertNotIn("children", client.posts[-1])  # Notion takes no children with a template
         self.assertEqual(notion.outline(notion.read_tree(client, page_id, [500])), UI3C)
@@ -166,7 +184,9 @@ class Layout(unittest.TestCase):
         for lands in ("before", "after"):
             client = FillerSim(lands)
             blocks = create.rendered(opportunity(), tail=None)[0]
-            page_id = notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH)
+            page_id = notion.write_tree(
+                client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH
+            )
             top = client.blocks[page_id]
             self.assertNotEqual((top[0]["type"], notion.text(top[0])), ("paragraph", ""), lands)
             self.assertEqual(notion.readback(client, page_id, "active", "opportunity"), "readback_ok", lands)
@@ -183,15 +203,31 @@ class Layout(unittest.TestCase):
         self.assertEqual([notion.text(b) for b in client.blocks["p"]], ["", "fold"])
 
     def test_values_come_from_the_view_and_missing_sources_say_so(self):
-        current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"), view.Round("r1", 1, "2026-10-01", None)),
-                              compensation="$90/hr", work_mode="Remote", apply_url="https://jobs.example.com/1", fit_summary="ERP programs")
+        current = opportunity(
+            (view.Round("r2", 2, "2026-11-02", "Pat Example"), view.Round("r1", 1, "2026-10-01", None)),
+            compensation="$90/hr",
+            work_mode="Remote",
+            apply_url="https://jobs.example.com/1",
+            fit_summary="ERP programs",
+        )
         with patch.object(create, "today", return_value=TODAY):
             client, page_id = written(current)
         shown = texts(client, page_id)
-        for value in ("$90/hr (Job Ledger)", "Remote (Job Ledger)", "ERP programs (LIFE OS fit summary)", "Pat Example",
-                      "2026-11-02 · Calendar event not verified", "Prepare for Interview 2 on 2026-11-02.", "Original posting ↗",
-                      "No separately verified contacts", "No verified recruiters or coordinators", "Mark Complete · unavailable",
-                      "Employment Type", "Not verified", "Calendar: not connected to LIFE OS yet"):
+        for value in (
+            "$90/hr (Job Ledger)",
+            "Remote (Job Ledger)",
+            "ERP programs (LIFE OS fit summary)",
+            "Pat Example",
+            "2026-11-02 · Calendar event not verified",
+            "Prepare for Interview 2 on 2026-11-02.",
+            "Original posting ↗",
+            "No separately verified contacts",
+            "No verified recruiters or coordinators",
+            "Mark Complete · unavailable",
+            "Employment Type",
+            "Not verified",
+            "Calendar: not connected to LIFE OS yet",
+        ):
             self.assertIn(value, "\n".join(shown))
         for invented in ("ExampleCo Inc", "Rituraj", "Smartsheet", "$58", "QA preview", "sandbox"):
             self.assertNotIn(invented, "\n".join(shown))
@@ -199,7 +235,11 @@ class Layout(unittest.TestCase):
 
     def test_the_injected_clock_decides_the_action_before_on_and_after_the_interview_date(self):
         current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"),))
-        for clock, upcoming in (("2026-10-20", True), ("2026-11-02", True), ("2026-11-03", False)):  # before, same day, after
+        for clock, upcoming in (
+            ("2026-10-20", True),
+            ("2026-11-02", True),
+            ("2026-11-03", False),
+        ):  # before, same day, after
             with self.subTest(clock=clock), patch.object(create, "today", return_value=clock):
                 shown = "\n".join(texts(*written(current)))
             self.assertEqual("Prepare for Interview 2 on 2026-11-02." in shown, upcoming)
@@ -209,51 +249,92 @@ class Layout(unittest.TestCase):
     def test_a_recruiter_lead_page_says_to_reply_or_close_and_any_other_job_keeps_the_degraded_action(self):
         lead = dataclasses.replace(opportunity(), stable_job_key="recruiter-acme-program-manager", ledger="not_linked")
         label, action, due, link, basis = view.primary_action(lead, TODAY)
-        self.assertEqual((label, due, basis), ("PRIMARY ACTION", "No verified deadline", "derived from the linked recruiter message"))
+        self.assertEqual(
+            (label, due, basis), ("PRIMARY ACTION", "No verified deadline", "derived from the linked recruiter message")
+        )
         self.assertIn("Reply to the recruiter", action)
         self.assertEqual(link, lead.request_url)
         self.assertEqual(view.primary_action(opportunity(), TODAY)[0], "DEGRADED · NO VERIFIED ACTION")
 
     def test_d15_order_and_no_invented_primary_action(self):
-        rounds = (view.Round("past", 1, "2026-10-01", None), view.Round("pending", 3, None, None), view.Round("next", 2, "2026-10-25", None),
-                  view.Round("later", 4, "2026-11-30", None))
+        rounds = (
+            view.Round("past", 1, "2026-10-01", None),
+            view.Round("pending", 3, None, None),
+            view.Round("next", 2, "2026-10-25", None),
+            view.Round("later", 4, "2026-11-30", None),
+        )
         self.assertEqual([r.page_id for r in view.sort_rounds(rounds, TODAY)], ["next", "later", "pending", "past"])
         self.assertEqual(view.primary_action(opportunity(), TODAY)[0], "DEGRADED · NO VERIFIED ACTION")
-        self.assertEqual(view.primary_action(opportunity((view.Round("p", 1, None, None),)), TODAY)[1:3],
-                         ("Confirm a time for Interview 1 with the recruiter.", "No verified deadline"))
+        self.assertEqual(
+            view.primary_action(opportunity((view.Round("p", 1, None, None),)), TODAY)[1:3],
+            ("Confirm a time for Interview 1 with the recruiter.", "No verified deadline"),
+        )
 
     def test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page(self):
         """E10: an accepted invite is shown as source-backed"""
         accepted = opportunity((view.Round("r1", 1, "2026-11-02", None, "accepted"),))
         self.assertEqual(view.stage(accepted, TODAY), ("Interview 1 scheduled", "2026-11-02"))
-        self.assertEqual(view.primary_action(accepted, TODAY)[1:], ("Prepare for Interview 1 on 2026-11-02.", "2026-11-02", None, "from the accepted Calendar invite"))
+        self.assertEqual(
+            view.primary_action(accepted, TODAY)[1:],
+            ("Prepare for Interview 1 on 2026-11-02.", "2026-11-02", None, "from the accepted Calendar invite"),
+        )
         shown = "\n".join(texts(*written(accepted)))
-        for value in ("2026-11-02 · accepted Calendar invite", "Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details not verified"):
+        for value in (
+            "2026-11-02 · accepted Calendar invite",
+            "Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details not verified",
+        ):
             self.assertIn(value, shown)
         joined = "\n".join(texts(*written(opportunity((view.Round("r1", 1, "2026-11-02", None, "accepted", True),)))))
-        self.assertIn("Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details on 1 accepted round page(s)", joined)
+        self.assertIn(
+            "Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details on 1 accepted round page(s)",
+            joined,
+        )
         cancelled = opportunity((view.Round("r1", 1, "2026-11-02", None, "cancelled"),))
         self.assertEqual(view.stage(cancelled, TODAY), ("Interview 1 cancelled in Calendar", "Unavailable"))
         label, action, due, link, basis = view.primary_action(cancelled, TODAY)
-        self.assertEqual((action, due, link, basis), ("Ask the recruiter whether Interview 1 moves to a new time.", "No verified deadline", REQUEST,
-                                                      "derived from the cancelled Calendar invite"))
+        self.assertEqual(
+            (action, due, link, basis),
+            (
+                "Ask the recruiter whether Interview 1 moves to a new time.",
+                "No verified deadline",
+                REQUEST,
+                "derived from the cancelled Calendar invite",
+            ),
+        )
         shown = "\n".join(texts(*written(cancelled)))
         self.assertIn("2026-11-02 · cancelled in Calendar", shown)
         self.assertNotIn("Prepare for Interview 1", shown)
-        later = (view.Round("r2", 2, "2026-11-09", None, "accepted"), view.Round("r1", 1, "2026-11-02", None, "cancelled"))
-        self.assertEqual([r.page_id for r in view.sort_rounds(later, TODAY)], ["r2", "r1"])  # a cancelled round never sorts as upcoming
-        self.assertEqual(view.stage(opportunity(view.sort_rounds(later, TODAY)), TODAY), ("Interview 2 scheduled", "2026-11-09"))
+        later = (
+            view.Round("r2", 2, "2026-11-09", None, "accepted"),
+            view.Round("r1", 1, "2026-11-02", None, "cancelled"),
+        )
+        self.assertEqual(
+            [r.page_id for r in view.sort_rounds(later, TODAY)], ["r2", "r1"]
+        )  # a cancelled round never sorts as upcoming
+        self.assertEqual(
+            view.stage(opportunity(view.sort_rounds(later, TODAY)), TODAY), ("Interview 2 scheduled", "2026-11-09")
+        )
 
     def test_e10_only_a_dated_round_page_s_own_logistics_is_read_and_an_unreadable_one_stays_not_verified(self):
         calls = []
+
         def fake(client, page_id):
             calls.append(page_id)
             if page_id == "old-layout":
                 raise NotionError("INTERVIEW_ROUND_LAYOUT")
-            return {"dated": ("abc123def456", False, ("https://meet.example.com/x", None)), "gone": ("abc123def456", True, ("https://meet.example.com/x", None)),
-                    "no-ref": (None, False, None)}[page_id]
-        rounds = (view.Round("pending", 1, None, None), view.Round("dated", 2, "2026-11-02", None), view.Round("gone", 3, "2026-11-09", None),
-                  view.Round("no-ref", 4, "2026-11-16", None), view.Round("old-layout", 5, "2026-11-23", None))
+            return {
+                "dated": ("abc123def456", False, ("https://meet.example.com/x", None)),
+                "gone": ("abc123def456", True, ("https://meet.example.com/x", None)),
+                "no-ref": (None, False, None),
+            }[page_id]
+
+        rounds = (
+            view.Round("pending", 1, None, None),
+            view.Round("dated", 2, "2026-11-02", None),
+            view.Round("gone", 3, "2026-11-09", None),
+            view.Round("no-ref", 4, "2026-11-16", None),
+            view.Round("old-layout", 5, "2026-11-23", None),
+        )
         with patch.object(create, "round_logistics", fake):
             got = view.with_calendar(object(), rounds)
         self.assertEqual([r.calendar for r in got], [None, "accepted", "cancelled", None, None])
@@ -262,18 +343,27 @@ class Layout(unittest.TestCase):
 
     def test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded(self):
         """E10: Recruiters & Coordinators lists the rows linked by the exact request message"""
-        linked = dataclasses.replace(opportunity(), recruiters=(("Pat Example", "Staffing Example Inc", "https://mail.google.com/mail/u/0/#all/abc"),),
-                                     recruiters_state="linked")
+        linked = dataclasses.replace(
+            opportunity(),
+            recruiters=(("Pat Example", "Staffing Example Inc", "https://mail.google.com/mail/u/0/#all/abc"),),
+            recruiters_state="linked",
+        )
         client, page_id = written(linked)
         shown = "\n".join(texts(client, page_id))
-        for value in ("Pat Example", "Recruiter · Staffing Example Inc", "Latest thread ↗",
-                      "Recruiter email threads: 1 thread(s) linked from the Recruiters database by this job's exact request message"):
+        for value in (
+            "Pat Example",
+            "Recruiter · Staffing Example Inc",
+            "Latest thread ↗",
+            "Recruiter email threads: 1 thread(s) linked from the Recruiters database by this job's exact request message",
+        ):
             self.assertIn(value, shown)
         self.assertIn("https://mail.google.com/mail/u/0/#all/abc", str(client.blocks))
         self.assertNotIn("No verified recruiters or coordinators", shown)
         unreadable = "\n".join(texts(*written(dataclasses.replace(opportunity(), recruiters_state="unreadable"))))
         self.assertIn("Recruiter email threads: DEGRADED · Recruiters source unreadable this run", unreadable)
-        self.assertIn("DEGRADED · Recruiters source unreadable this run", unreadable.split("Recruiters & Coordinators")[1])
+        self.assertIn(
+            "DEGRADED · Recruiters source unreadable this run", unreadable.split("Recruiters & Coordinators")[1]
+        )
         none = "\n".join(texts(*written(dataclasses.replace(opportunity(), recruiters_state="none"))))
         self.assertIn("Recruiter email threads: no Recruiters row for this job's exact request message", none)
         self.assertIn("No verified recruiters or coordinators", none)
@@ -282,39 +372,84 @@ class Layout(unittest.TestCase):
         client = WritableFake()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
         files = lambda *f: {"type": "files", "files": list(f)}
-        built = {"name": "Built.pdf", "type": "file", "file": {"url": "https://files.example/built", "expiry_time": "2026-10-24T19:00:00Z"}}
-        sent = {"name": "Jim Resume ExampleCo.pdf", "type": "file", "file": {"url": "https://files.example/sent?sig=1", "expiry_time": "2026-10-24T19:00:00Z"}}
+        built = {
+            "name": "Built.pdf",
+            "type": "file",
+            "file": {"url": "https://files.example/built", "expiry_time": "2026-10-24T19:00:00Z"},
+        }
+        sent = {
+            "name": "Jim Resume ExampleCo.pdf",
+            "type": "file",
+            "file": {"url": "https://files.example/sent?sig=1", "expiry_time": "2026-10-24T19:00:00Z"},
+        }
         drive = {"name": "Résumé (Drive)", "type": "external", "external": {"url": "https://drive.example/r"}}
         key = {"Stable Job Key": rich("exampleco-pm-1"), "Resume": files(built)}
-        cases = (({}, (), "not_connected"), ({view.SUBMITTED: rich("x")}, (), "not_connected"), ({view.SUBMITTED: files()}, (), "not_recorded"),
-                 ({view.SUBMITTED: files(sent, drive, {"name": " ", "type": "external", "external": {"url": "https://x"}},
-                                         {"name": "Plain", "type": "external", "external": {"url": "http://insecure"}},
-                                         {"name": "Typo", "type": "external", "external": {"url": "https://drive.example/a b"}},
-                                         {"name": "Odd", "type": "external", "external": "https://x"}, "not-a-file", {"name": 7})},
-                  (("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r"), ("Plain", None), ("Typo", None), ("Odd", None)), "recorded"))
+        cases = (
+            ({}, (), "not_connected"),
+            ({view.SUBMITTED: rich("x")}, (), "not_connected"),
+            ({view.SUBMITTED: files()}, (), "not_recorded"),
+            (
+                {
+                    view.SUBMITTED: files(
+                        sent,
+                        drive,
+                        {"name": " ", "type": "external", "external": {"url": "https://x"}},
+                        {"name": "Plain", "type": "external", "external": {"url": "http://insecure"}},
+                        {"name": "Typo", "type": "external", "external": {"url": "https://drive.example/a b"}},
+                        {"name": "Odd", "type": "external", "external": "https://x"},
+                        "not-a-file",
+                        {"name": 7},
+                    )
+                },
+                (
+                    ("Jim Resume ExampleCo.pdf", None),
+                    ("Résumé (Drive)", "https://drive.example/r"),
+                    ("Plain", None),
+                    ("Typo", None),
+                    ("Odd", None),
+                ),
+                "recorded",
+            ),
+        )
         for extra, resume, state in cases:
             client.pages["row"] = {"properties": {**key, **extra}}
             facts = view.ledger_facts(client, "row", "exampleco-pm-1")[1]
-            self.assertEqual((facts["resume"], facts["resume_state"]), (resume, state), extra)  # the built Resume column is never the proof
-        recorded = dataclasses.replace(opportunity(compensation="$90/hr"), resume=(("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r")),
-                                       resume_state="recorded")
+            self.assertEqual(
+                (facts["resume"], facts["resume_state"]), (resume, state), extra
+            )  # the built Resume column is never the proof
+        recorded = dataclasses.replace(
+            opportunity(compensation="$90/hr"),
+            resume=(("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r")),
+            resume_state="recorded",
+        )
         client, page_id = written(recorded)
         shown = "\n".join(texts(client, page_id))
         self.assertIn("Submitted résumé — Jim Resume ExampleCo.pdf (Job Ledger)", shown)
-        self.assertIn("Submitted résumé and sent materials: 2 submitted résumé file(s) on the exact Job Ledger row", shown)
-        self.assertLess(shown.index("Submitted résumé — Jim Resume"), shown.index("Forms, portal answers and Drive files"))  # listed first in Materials Sent
+        self.assertIn(
+            "Submitted résumé and sent materials: 2 submitted résumé file(s) on the exact Job Ledger row", shown
+        )
+        self.assertLess(
+            shown.index("Submitted résumé — Jim Resume"), shown.index("Forms, portal answers and Drive files")
+        )  # listed first in Materials Sent
         self.assertIn("https://www.notion.so/row", str(client.blocks))  # an uploaded file opens from its row
         self.assertIn("https://drive.example/r", str(client.blocks))
         self.assertNotIn("files.example", str(client.blocks))  # an expiring file URL is never written
-        for state, says in (("not_recorded", "not recorded on the Job Ledger row"), ("not_connected", "the Job Ledger has no Submitted Résumé field"),
-                            (None, "unavailable · the exact Job Ledger row is not verified this run")):
-            shown = "\n".join(texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), resume_state=state))))
+        for state, says in (
+            ("not_recorded", "not recorded on the Job Ledger row"),
+            ("not_connected", "the Job Ledger has no Submitted Résumé field"),
+            (None, "unavailable · the exact Job Ledger row is not verified this run"),
+        ):
+            shown = "\n".join(
+                texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), resume_state=state)))
+            )
             self.assertIn(says, shown.split("Materials Sent")[1])
             self.assertNotIn("File link not yet verified", shown)
 
     def test_e14_the_page_links_manage_on_the_close_screen_only_once_it_exists(self):
         base = "https://close.example.ts.net:47443"
-        with_page = dataclasses.replace(opportunity(compensation="$90/hr"), page_id="a" * 8 + "-" + "b" * 24, close_base=base)
+        with_page = dataclasses.replace(
+            opportunity(compensation="$90/hr"), page_id="a" * 8 + "-" + "b" * 24, close_base=base
+        )
         client, page_id = written(with_page)
         self.assertIn(f"{base}/manage?o={'a' * 8}{'b' * 24}", str(client.blocks))
         self.assertIn("Manage ↗", "\n".join(texts(client, page_id)))
@@ -322,16 +457,24 @@ class Layout(unittest.TestCase):
             self.assertNotIn("/manage?", str(written(missing)[0].blocks))
 
     def test_e10_the_jobs_network_leads_fill_linkedin_contacts_and_unknown_is_degraded(self):
-        linked = dataclasses.replace(opportunity(compensation="$90/hr"), contacts=(("Pat Example", "Former colleague at ExampleCo"),), contacts_state="linked")
+        linked = dataclasses.replace(
+            opportunity(compensation="$90/hr"),
+            contacts=(("Pat Example", "Former colleague at ExampleCo"),),
+            contacts_state="linked",
+        )
         shown = "\n".join(texts(*written(linked)))
         self.assertIn("Pat Example", shown.split("LinkedIn Contacts")[1])
         self.assertIn("Former colleague at ExampleCo", shown)
         self.assertIn("LinkedIn contacts: 1 Network lead(s) from the job's Ledger page", shown)
         self.assertNotIn("No separately verified contacts", shown)
-        bad = "\n".join(texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), contacts_state="unreadable"))))
+        bad = "\n".join(
+            texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), contacts_state="unreadable")))
+        )
         self.assertIn("LinkedIn contacts: DEGRADED · Network leads unreadable this run", bad)
         self.assertIn("DEGRADED · Network leads unreadable this run", bad.split("LinkedIn Contacts")[1])
-        none = "\n".join(texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), contacts_state="none"))))
+        none = "\n".join(
+            texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), contacts_state="none")))
+        )
         self.assertIn("LinkedIn contacts: no Network leads on the job's Ledger page", none)
         unlinked = "\n".join(texts(*written(opportunity())))
         self.assertIn("LinkedIn contacts: not connected (no exact Job Ledger row)", unlinked)
@@ -339,8 +482,14 @@ class Layout(unittest.TestCase):
     def test_ledger_facts_only_from_the_exact_row(self):
         client = WritableFake()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
-        client.pages["row"] = {"properties": {"Stable Job Key": rich("exampleco-pm-1"), "Compensation": rich("$90/hr"),
-                                              "Location / Work Mode": rich("Remote"), "Apply URL": {"type": "url", "url": "https://jobs.example.com/1"}}}
+        client.pages["row"] = {
+            "properties": {
+                "Stable Job Key": rich("exampleco-pm-1"),
+                "Compensation": rich("$90/hr"),
+                "Location / Work Mode": rich("Remote"),
+                "Apply URL": {"type": "url", "url": "https://jobs.example.com/1"},
+            }
+        }
         self.assertEqual(view.ledger_facts(client, "row", "exampleco-pm-1")[1]["compensation"], "$90/hr")
         self.assertEqual(view.ledger_facts(client, "row", "other-job"), ("mismatch", {}))
         self.assertEqual(view.ledger_facts(client, "missing", "exampleco-pm-1"), ("unreadable", {}))
@@ -349,7 +498,9 @@ class Layout(unittest.TestCase):
 
 class Reconcile(unittest.TestCase):
     def protected(self, client, page_id):
-        return notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"]
+        return notion.human_tail(client, page_id), [
+            b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"
+        ]
 
     def test_replay_writes_nothing_and_a_source_change_updates_the_same_page(self):
         client, page_id = written()
@@ -372,16 +523,29 @@ class Reconcile(unittest.TestCase):
 
     def test_renaming_a_linked_page_is_not_an_edit(self):
         client, page_id = written(opportunity((view.Round("round-1", 1, None, None),)))
-        runs = [r for blocks in client.blocks.values() for b in blocks if b["type"] == "table_row" for cell in b["table_row"]["cells"]
-                for r in cell if r.get("type") == "mention"]
+        runs = [
+            r
+            for blocks in client.blocks.values()
+            for b in blocks
+            if b["type"] == "table_row"
+            for cell in b["table_row"]["cells"]
+            for r in cell
+            if r.get("type") == "mention"
+        ]
         self.assertEqual(len(runs), 1)
         runs[0]["plain_text"] = "Interview 1 (renamed by Jim)"
-        self.assertEqual(create.refresh(client, page_id, opportunity((view.Round("round-1", 1, None, None),)), True, {"writes": 0}),
-                         "parent_unchanged")
+        self.assertEqual(
+            create.refresh(client, page_id, opportunity((view.Round("round-1", 1, None, None),)), True, {"writes": 0}),
+            "parent_unchanged",
+        )
 
     def test_a_human_edit_another_job_or_an_unknown_layout_stops_without_writing(self):
         """it is preserved and repaired (tests/interview/test_repair.py)."""
-        for mode, code in (("job", "identity_mismatch"), ("legacy", "parent_legacy_layout"), ("notes", "parent_unrecognized")):
+        for mode, code in (
+            ("job", "identity_mismatch"),
+            ("legacy", "parent_legacy_layout"),
+            ("notes", "parent_unrecognized"),
+        ):
             with self.subTest(mode=mode):
                 client, page_id = written()
                 current = opportunity(compensation="$95/hr")
@@ -389,7 +553,9 @@ class Reconcile(unittest.TestCase):
                     current = view.Opportunity("Other", "Role", "other-job", None, None, "not_linked", None, "root")
                 if mode == "legacy":
                     fold = client.blocks[page_id][0]
-                    client.blocks[fold["id"]] = [b for b in client.blocks[fold["id"]] if not create.RENDER.fullmatch(notion.text(b))]
+                    client.blocks[fold["id"]] = [
+                        b for b in client.blocks[fold["id"]] if not create.RENDER.fullmatch(notion.text(b))
+                    ]
                 if mode == "notes":
                     client.blocks[page_id].append(block(notion.JIM_NOTES, "heading_2", "second-notes"))
                 before, start = copy.deepcopy(client.blocks), len(client.calls)
@@ -399,15 +565,23 @@ class Reconcile(unittest.TestCase):
 
     def test_a_ui_3b_page_migrates_only_when_authorized_and_keeps_jims_notes(self):
         client = Sim()
-        client.blocks["old"] = [template.fold(notion.MARKERS["opportunity"]), block("Canonical opportunity parent", "callout", "c"),
-                                block("old machine text", id="o"), block(notion.LEGACY_NOTES, "heading_2", "jh"),
-                                block("Your space", "callout", "jc"), block("Live Notes", "heading_2", "ln"), block("mine", id="m"),
-                                {"id": "r1", "type": "child_page", "child_page": {"title": "Interview 1"}}]
+        client.blocks["old"] = [
+            template.fold(notion.MARKERS["opportunity"]),
+            block("Canonical opportunity parent", "callout", "c"),
+            block("old machine text", id="o"),
+            block(notion.LEGACY_NOTES, "heading_2", "jh"),
+            block("Your space", "callout", "jc"),
+            block("Live Notes", "heading_2", "ln"),
+            block("mine", id="m"),
+            {"id": "r1", "type": "child_page", "child_page": {"title": "Interview 1"}},
+        ]
         client.blocks["old"][0] = dict(client.blocks["old"][0], id="f", has_children=True)
         client.blocks["f"] = [block(notion.MARKERS["opportunity"], id="fm")]
         tail = notion.human_tail(client, "old")
         self.assertEqual(create.refresh(client, "old", opportunity(), True, {"writes": 0}), "parent_legacy_layout")
-        self.assertEqual(create.refresh(client, "old", opportunity(), True, {"writes": 0}, migrate=True), "parent_refreshed")
+        self.assertEqual(
+            create.refresh(client, "old", opportunity(), True, {"writes": 0}, migrate=True), "parent_refreshed"
+        )
         self.assertEqual(notion.human_tail(client, "old"), tail)
         self.assertEqual([b["id"] for b in client.blocks["old"]][-4:], ["jc", "ln", "m", "r1"])
         self.assertEqual(notion.text([b for b in client.blocks["old"] if b["id"] == "jh"][0]), notion.JIM_NOTES)
@@ -415,6 +589,7 @@ class Reconcile(unittest.TestCase):
 
 class ReadbackValues(unittest.TestCase):
     """finalize accepts a page only when every machine-written value reads back, not just its shape."""
+
     def page(self):
         client = Sim()
         current = opportunity((view.Round("round-1", 1, None, None),), compensation="$90/hr")
@@ -445,7 +620,9 @@ class ReadbackValues(unittest.TestCase):
         client, page_id, current, blocks = self.page()
         for blocks_ in client.blocks.values():
             for b in blocks_:
-                for r in (b.get(b["type"]) or {}).get("rich_text", []) + [r for c in (b.get("table_row") or {}).get("cells", []) for r in c]:
+                for r in (b.get(b["type"]) or {}).get("rich_text", []) + [
+                    r for c in (b.get("table_row") or {}).get("cells", []) for r in c
+                ]:
                     if r.get("type") == "mention":
                         r["plain_text"] = "Interview 1"  # Notion shows a mention by the page's title
                 if b["type"] == "callout" and (b["callout"].get("icon") or {}).get("type") == "external":
@@ -458,8 +635,12 @@ class ReadbackValues(unittest.TestCase):
         self.assertNotIn("Interviewing", shown(opportunity()))
         pending = (view.Round("r1", 1, None, None),)
         self.assertIn("PRIMARY ACTION · derived from the linked interview request", shown(opportunity(pending)))
-        unlinked = view.Opportunity("ExampleCo", "Program Manager", "exampleco-pm-1", None, None, "not_linked", None, "root", rounds=pending)
-        self.assertIn("DEGRADED · derived from the interview page; the request message is not connected", shown(unlinked))
+        unlinked = view.Opportunity(
+            "ExampleCo", "Program Manager", "exampleco-pm-1", None, None, "not_linked", None, "root", rounds=pending
+        )
+        self.assertIn(
+            "DEGRADED · derived from the interview page; the request message is not connected", shown(unlinked)
+        )
         self.assertNotIn("source-backed", shown(unlinked))
 
 
@@ -468,9 +649,13 @@ class TranscriptPage(unittest.TestCase):
         client = Sim()
         client.blocks["opp"] = []
         query = RoundQuery(True, None, None, 1)
-        round_id = notion.write_tree(client, "opp", template.round_page(opportunity(), query, "opp", "id"), title="Interview 1")
+        round_id = notion.write_tree(
+            client, "opp", template.round_page(opportunity(), query, "opp", "id"), title="Interview 1"
+        )
         if transcript is not None:
-            client.blocks[round_id].append({"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}})
+            client.blocks[round_id].append(
+                {"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}}
+            )
             client.blocks["ft"] = [block(transcript, id="ft-1")]
         return client, round_id
 
@@ -486,13 +671,23 @@ class TranscriptPage(unittest.TestCase):
         before = notion.protected_snapshot(client, round_id)
         out = {"writes": 0}
         self.assertEqual(create.link_transcript(client, round_id, True, out), "transcript_linked")
-        self.assertEqual(self.lines(client, round_id), ["Transcript: Full Transcript page exists but is not an accepted transcript",
-                                                        "Full Transcript page: Exists — not an accepted transcript · "])
+        self.assertEqual(
+            self.lines(client, round_id),
+            [
+                "Transcript: Full Transcript page exists but is not an accepted transcript",
+                "Full Transcript page: Exists — not an accepted transcript · ",
+            ],
+        )
         runs = [r for bs in client.blocks.values() for b in bs for r in (b.get(b["type"]) or {}).get("rich_text", [])]
-        self.assertIn({"type": "mention", "mention": {"type": "page", "page": {"id": "ft"}}}, runs)  # the line links the page
+        self.assertIn(
+            {"type": "mention", "mention": {"type": "page", "page": {"id": "ft"}}}, runs
+        )  # the line links the page
         self.assertEqual(notion.protected_snapshot(client, round_id), before)
         self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_unchanged")
-        self.assertEqual(client.blocks["ft"], [block(create.TRANSCRIPT_MARKER + "placeholder — paste the Granola export here", id="ft-1")])  # never edited
+        self.assertEqual(
+            client.blocks["ft"],
+            [block(create.TRANSCRIPT_MARKER + "placeholder — paste the Granola export here", id="ft-1")],
+        )  # never edited
         client, round_id = self.round(create.ACCEPTED + "synthetic-import-1")
         self.assertEqual(create.transcript_state(client, round_id), ("accepted", "ft"))
         create.link_transcript(client, round_id, True, {})
@@ -500,7 +695,9 @@ class TranscriptPage(unittest.TestCase):
 
     def test_a_hand_made_page_titled_full_transcript_without_the_marker_is_not_found(self):
         client, round_id = self.round("Jim's own notes, no machine marker")
-        self.assertEqual(create.transcript_state(client, round_id), ("absent", None))  # 05: recognised by marker, never by title
+        self.assertEqual(
+            create.transcript_state(client, round_id), ("absent", None)
+        )  # 05: recognised by marker, never by title
 
     def test_two_full_transcript_pages_are_ambiguous_and_write_nothing(self):
         client, round_id = self.round(create.TRANSCRIPT_MARKER + "placeholder")
@@ -514,19 +711,34 @@ class TranscriptPage(unittest.TestCase):
 class PreparationTab(unittest.TestCase):
     def setUp(self):
         self.client = Sim()
-        self.client.blocks["active"].append({"id": "opp", "type": "child_page", "child_page": {"title": "ExampleCo — Program Manager"}})
+        self.client.blocks["active"].append(
+            {"id": "opp", "type": "child_page", "child_page": {"title": "ExampleCo — Program Manager"}}
+        )
         self.client.pages["opp"] = page("ExampleCo — Program Manager", "active")
         current = view.Opportunity("ExampleCo", "Program Manager", None, None, None, "not_linked", None, "root")
         blocks = create.rendered(current, tail=None)[0]
         self.client.blocks["opp"] = []
         notion.write_tree(self.client, "opp", blocks)
         self.query = RoundQuery(True, "2026-10-28", ordinal=1)
-        self.round = notion.write_tree(self.client, "opp", template.round_page(current, self.query, "opp", create.identity_text(self.query)), title="Interview 1")
+        self.round = notion.write_tree(
+            self.client,
+            "opp",
+            template.round_page(current, self.query, "opp", create.identity_text(self.query)),
+            title="Interview 1",
+        )
         self.client.pages[self.round] = page("Interview 1", "opp")
         self.client.blocks[pane(self.client, self.round, "Live Notes")].append(block("my live note", id="live-note"))
 
     def apply(self, evidence, live=True):
-        return prep.apply(self.client, ENV, ParentQuery("ExampleCo", "Program Manager"), self.query, evidence, live, RunContext.start(60))
+        return prep.apply(
+            self.client,
+            ENV,
+            ParentQuery("ExampleCo", "Program Manager"),
+            self.query,
+            evidence,
+            live,
+            RunContext.start(60),
+        )
 
     def test_prepare_tab_written_once_then_matched_and_notes_untouched(self):
         before = notion.protected_snapshot(self.client, self.round)
@@ -536,8 +748,13 @@ class PreparationTab(unittest.TestCase):
         self.assertEqual(self.apply(evidence)["code"], "derived_match")
         self.assertEqual(self.apply(PrepEvidence(focus=("Different",)))["code"], "derived_conflict")
         shown = "\n".join(texts(self.client, self.round))
-        for value in ("Delivery recovery", "What does success look like?", "Preparation: accepted source-grounded preparation",
-                      "Objective (derived): See Prepare.", "my live note"):
+        for value in (
+            "Delivery recovery",
+            "What does success look like?",
+            "Preparation: accepted source-grounded preparation",
+            "Objective (derived): See Prepare.",
+            "my live note",
+        ):
             self.assertIn(value, shown)
         self.assertEqual(notion.protected_snapshot(self.client, self.round), before)
         self.assertEqual(notion.outline(notion.read_tree(self.client, self.round, [500])), UI4)
@@ -550,25 +767,44 @@ class PreparationTab(unittest.TestCase):
 
 
 class QaAcceptanceRun(unittest.TestCase):
-    """The probe's QA proof against a simulated workspace: real-shaped evidence pages, writes only under the QA parent.
-    """
+    """The probe's QA proof against a simulated workspace: real-shaped evidence pages, writes only under the QA parent."""
+
     def workspace(self):
         client = Sim()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
-        client.pages[ui_probe.LEDGER_ROW] = {"properties": {"Company": rich("ExampleCo"), "Job": {"type": "title", "title": [{"plain_text": "Program Manager"}]},
-                                                            "Stable Job Key": rich("exampleco-pm-1"), "Compensation": rich("$90/hr")}}
+        client.pages[ui_probe.LEDGER_ROW] = {
+            "properties": {
+                "Company": rich("ExampleCo"),
+                "Job": {"type": "title", "title": [{"plain_text": "Program Manager"}]},
+                "Stable Job Key": rich("exampleco-pm-1"),
+                "Compensation": rich("$90/hr"),
+            }
+        }
         client.pages[ui_probe.ROUND_PAGE] = page("Interview 1", "production")
-        client.blocks[ui_probe.ROUND_PAGE] = [block(notion.MARKERS["round"]), block(create.identity_text(RoundQuery(True, None, None, 1)))]
-        client.blocks[ui_probe.QA_PARENT] = [{"id": "human-qa", "type": "child_page", "child_page": {"title": "Smartsheet notes"}}]
-        for approved, blocks in ((ui_probe.UI3C, template.opportunity_page(opportunity(), TODAY)),
-                                 (ui_probe.UI4, template.round_page(opportunity(), RoundQuery(True, None, None, 1), "p", "i"))):
+        client.blocks[ui_probe.ROUND_PAGE] = [
+            block(notion.MARKERS["round"]),
+            block(create.identity_text(RoundQuery(True, None, None, 1))),
+        ]
+        client.blocks[ui_probe.QA_PARENT] = [
+            {"id": "human-qa", "type": "child_page", "child_page": {"title": "Smartsheet notes"}}
+        ]
+        for approved, blocks in (
+            (ui_probe.UI3C, template.opportunity_page(opportunity(), TODAY)),
+            (ui_probe.UI4, template.round_page(opportunity(), RoundQuery(True, None, None, 1), "p", "i")),
+        ):
             client.blocks[approved] = []
             notion.write_tree(client, approved, blocks)
         original = client.call
+
         def tracked(method, path, body=None):
-            if method == "POST" and body["parent"]["page_id"] not in (ui_probe.QA_PARENT,) and not str(body["parent"]["page_id"]).startswith("created-"):
+            if (
+                method == "POST"
+                and body["parent"]["page_id"] not in (ui_probe.QA_PARENT,)
+                and not str(body["parent"]["page_id"]).startswith("created-")
+            ):
                 raise AssertionError("write outside QA")
             return original(method, path, body)
+
         client.call = tracked
         return client
 
@@ -576,17 +812,27 @@ class QaAcceptanceRun(unittest.TestCase):
         client = self.workspace()
         production = copy.deepcopy([client.blocks[ui_probe.ROUND_PAGE], client.pages[ui_probe.LEDGER_ROW]])
         first = ui_probe._render(client)
-        self.assertEqual((first["create"], first["replay"], first["source_b"], first["protected_after_b"]),
-                         ("readback_ok", "parent_unchanged", "parent_refreshed", "unchanged"))
-        self.assertEqual((first["transcript_state"], first["transcript_link"], first["transcript_replay"]),
-                         ("unverified", "transcript_linked", "transcript_unchanged"))
-        self.assertEqual((first["wrong_job"], first["wrong_job_page"], first["rounds_seen"], first["ledger"]),
-                         ("identity_mismatch", "unchanged", 1, "linked"))
-        self.assertEqual(first["compare_ui3c"][-1:], ["+ 0:child_page"])  # the approved preview has no interview child yet
+        self.assertEqual(
+            (first["create"], first["replay"], first["source_b"], first["protected_after_b"]),
+            ("readback_ok", "parent_unchanged", "parent_refreshed", "unchanged"),
+        )
+        self.assertEqual(
+            (first["transcript_state"], first["transcript_link"], first["transcript_replay"]),
+            ("unverified", "transcript_linked", "transcript_unchanged"),
+        )
+        self.assertEqual(
+            (first["wrong_job"], first["wrong_job_page"], first["rounds_seen"], first["ledger"]),
+            ("identity_mismatch", "unchanged", 1, "linked"),
+        )
+        self.assertEqual(
+            first["compare_ui3c"][-1:], ["+ 0:child_page"]
+        )  # the approved preview has no interview child yet
         self.assertEqual(first["compare_ui4"], ["+ 0:child_page"])
         second = ui_probe._render(client)
-        self.assertEqual((second["source_a"], second["replay"], second["source_b"], second["protected_after_b"]),
-                         ("parent_refreshed", "parent_unchanged", "parent_refreshed", "unchanged"))
+        self.assertEqual(
+            (second["source_a"], second["replay"], second["source_b"], second["protected_after_b"]),
+            ("parent_refreshed", "parent_unchanged", "parent_refreshed", "unchanged"),
+        )
         titles = [b["child_page"]["title"] for b in client.blocks[ui_probe.QA_PARENT] if b["type"] == "child_page"]
         self.assertEqual(sorted(titles), sorted(["Smartsheet notes", ui_probe.RENDER_TITLE, ui_probe.CONTROL_TITLE]))
         self.assertEqual(production, [client.blocks[ui_probe.ROUND_PAGE], client.pages[ui_probe.LEDGER_ROW]])

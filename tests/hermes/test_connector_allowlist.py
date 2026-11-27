@@ -1,4 +1,5 @@
 """the connector-allowlist plugin and its deploy script."""
+
 import importlib.util
 import os
 import shutil
@@ -48,7 +49,9 @@ class Check(unittest.TestCase):
 
     def test_manage_connections_is_limited_to_allowed_connectors_in_every_shape(self):
         for action in ("display", "status", "connect", "reconnect", "rename"):
-            self.assertIsNone(ca.check("manage_connections", {"action": action, "connectors": ["notion"]}, NOTION), action)
+            self.assertIsNone(
+                ca.check("manage_connections", {"action": action, "connectors": ["notion"]}, NOTION), action
+            )
             self.blocked("manage_connections", {"action": action, "connectors": ["plaid"]})
         self.assertIsNone(ca.check("manage_connections", {"connectors": "Notion"}, NOTION))
         self.assertIsNone(ca.check("manage_connections", {"connectors": {"name": "notion", "alias": "work"}}, NOTION))
@@ -62,8 +65,19 @@ class Check(unittest.TestCase):
         self.blocked("manage_connections", {"action": "authorize", "connectors": [{"name": "anything", "mcp": True}]})
 
     def test_an_unreadable_manage_connections_call_is_blocked(self):
-        for args in (None, {}, {"connectors": []}, {"connectors": None}, {"connectors": 5}, {"connectors": [5]},
-                     {"connectors": [{}]}, {"connectors": [{"name": ""}]}, {"connectors": [None]}, "notion", []):
+        for args in (
+            None,
+            {},
+            {"connectors": []},
+            {"connectors": None},
+            {"connectors": 5},
+            {"connectors": [5]},
+            {"connectors": [{}]},
+            {"connectors": [{"name": ""}]},
+            {"connectors": [None]},
+            "notion",
+            [],
+        ):
             self.blocked("manage_connections", args)
 
     def test_the_message_names_the_allowed_list_and_suggests_no_workaround(self):
@@ -74,9 +88,16 @@ class Check(unittest.TestCase):
 
 
 class McpTools(unittest.TestCase):
-
     def test_every_mcp_tool_is_blocked_unless_its_server_is_listed(self):
-        for tool in ("mcp__todoist__find-projects", "mcp__robinhood__place_order", "mcp__robinhood__list_resources", "MCP__Todoist__X", "mcp__", "mcp____x", "mcp__notion__x"):
+        for tool in (
+            "mcp__todoist__find-projects",
+            "mcp__robinhood__place_order",
+            "mcp__robinhood__list_resources",
+            "MCP__Todoist__X",
+            "mcp__",
+            "mcp____x",
+            "mcp__notion__x",
+        ):
             out = ca.check(tool, {}, NOTION)
             self.assertEqual(out["action"], "block", tool)
             self.assertIn("MCP server", out["message"], tool)
@@ -89,7 +110,9 @@ class McpTools(unittest.TestCase):
         self.assertEqual(ca.check("mcp__robinhood__x", {}, allowed)["action"], "block")
         self.assertEqual(ca.check("mcp__todoist2__x", {}, allowed)["action"], "block")
         self.assertEqual(ca.check("mcp__todois__x", {}, allowed)["action"], "block")
-        self.assertEqual(ca.check("connectors__todoist__x", {}, allowed)["action"], "block")  # a connector is not an MCP server
+        self.assertEqual(
+            ca.check("connectors__todoist__x", {}, allowed)["action"], "block"
+        )  # a connector is not an MCP server
 
     def test_a_connector_name_never_allows_an_mcp_server_and_the_reverse(self):
         self.assertEqual(ca.check("mcp__notion__x", {}, frozenset({"notion"}))["action"], "block")
@@ -109,6 +132,7 @@ class McpTools(unittest.TestCase):
 
         def boom(*_a, **_k):
             raise RuntimeError("x")
+
         ca.check = boom
         self.assertEqual(ca._on_pre_tool_call(tool_name="mcp__robinhood__x", args={})["action"], "block")
 
@@ -130,7 +154,9 @@ class Loading(unittest.TestCase):
 
     def test_bad_lines_are_ignored_not_trusted(self):
         path = self.write("notion\n*\nall\n../x\nplaid robinhood\n$(x)\n\n")
-        self.assertEqual(ca.load_allowed(path), frozenset({"notion", "all"}))  # 'all' is just a name here, never a wildcard
+        self.assertEqual(
+            ca.load_allowed(path), frozenset({"notion", "all"})
+        )  # 'all' is just a name here, never a wildcard
         self.blocked_wildcard()
 
     def blocked_wildcard(self):
@@ -156,7 +182,9 @@ class Hook(unittest.TestCase):
         self.addCleanup(setattr, ca, "ALLOWLIST", old)
         ca.load_allowed.__defaults__ = (path,)
         self.addCleanup(setattr, ca.load_allowed, "__defaults__", (old,))
-        self.assertIsNotNone(ca._on_pre_tool_call(tool_name="connectors__notion__X", args={}))  # no file: nothing allowed
+        self.assertIsNotNone(
+            ca._on_pre_tool_call(tool_name="connectors__notion__X", args={})
+        )  # no file: nothing allowed
         with open(path, "w") as handle:
             handle.write("notion\n")
         self.assertIsNone(ca._on_pre_tool_call(tool_name="connectors__notion__X", args={}, task_id="t", session_id="s"))
@@ -169,6 +197,7 @@ class Hook(unittest.TestCase):
 
         def boom(*_a, **_k):
             raise RuntimeError("x")
+
         ca.check = boom
         self.assertEqual(ca._on_pre_tool_call(tool_name="connectors__notion__X", args={})["action"], "block")
         self.assertEqual(ca._on_pre_tool_call(tool_name="manage_connections", args={})["action"], "block")
@@ -180,6 +209,7 @@ class Hook(unittest.TestCase):
         class Ctx:
             def register_hook(self, name, callback, **_):
                 seen.append((name, callback))
+
         ca.register(Ctx())
         self.assertEqual([n for n, _ in seen], ["pre_tool_call"])
         self.assertIs(seen[0][1], ca._on_pre_tool_call)
@@ -195,7 +225,16 @@ class Files(unittest.TestCase):
         self.assertEqual(sorted(n for n in os.listdir(PLUGIN) if n != "__pycache__"), ["__init__.py", "plugin.yaml"])
         with open(os.path.join(PLUGIN, "__init__.py")) as handle:
             code = handle.read()
-        for banned in ("import os, sys", "subprocess", "socket", "urllib", "requests", "eval(", "exec(", "open(path, \"w"):
+        for banned in (
+            "import os, sys",
+            "subprocess",
+            "socket",
+            "urllib",
+            "requests",
+            "eval(",
+            "exec(",
+            "open(path, \"w",
+        ):
             self.assertNotIn(banned, code, banned)
 
 
@@ -265,9 +304,14 @@ class Deploy(unittest.TestCase):
         self.assertIn("ROLLBACK librarian/allowlist.txt", out)
 
     def test_bad_arguments_are_refused_before_anything_is_written(self):
-        for kwargs, needle in (({"profile": ""}, "--profile NAME is required"), ({"profile": "../x"}, "--profile NAME is required"),
-                               ({"allow": ""}, "--allow NAMES is required"), ({"allow": "notion,*"}, "is not an allowed name"),
-                               ({"allow": "notion,$(x)"}, "is not an allowed name"), ({"profile": "nosuch"}, "no profile folder")):
+        for kwargs, needle in (
+            ({"profile": ""}, "--profile NAME is required"),
+            ({"profile": "../x"}, "--profile NAME is required"),
+            ({"allow": ""}, "--allow NAMES is required"),
+            ({"allow": "notion,*"}, "is not an allowed name"),
+            ({"allow": "notion,$(x)"}, "is not an allowed name"),
+            ({"profile": "nosuch"}, "no profile folder"),
+        ):
             status, out = self.run_script("--apply", "--backup", self.backup, **kwargs)
             self.assertEqual(status, 1, (kwargs, out))
             self.assertIn(needle, out)
@@ -310,11 +354,17 @@ class AllProfiles(unittest.TestCase):
 
     def config(self, name, enabled, disabled=()):
         with open(os.path.join(self.pdir(name), "config.yaml"), "w") as handle:
-            handle.write("model:\n  default: x\nplugins:\n  clone_timeout_seconds: 300\n  enabled:\n" + "".join("    - %s\n" % e for e in enabled)
-                         + ("  disabled:\n" + "".join("    - %s\n" % d for d in disabled) if disabled else "  disabled: []\n") + "agent:\n  x: 1\n")
+            handle.write(
+                "model:\n  default: x\nplugins:\n  clone_timeout_seconds: 300\n  enabled:\n"
+                + "".join("    - %s\n" % e for e in enabled)
+                + ("  disabled:\n" + "".join("    - %s\n" % d for d in disabled) if disabled else "  disabled: []\n")
+                + "agent:\n  x: 1\n"
+            )
 
     def run_script(self, script, *args):
-        done = subprocess.run(["bash", os.path.join(self.pack, script), "--home", self.home, *args], capture_output=True, text=True)
+        done = subprocess.run(
+            ["bash", os.path.join(self.pack, script), "--home", self.home, *args], capture_output=True, text=True
+        )
         return done.returncode, done.stdout + done.stderr
 
     def deploy(self, *args):
@@ -335,9 +385,11 @@ class AllProfiles(unittest.TestCase):
         self.assertEqual(sorted(rows), sorted(PROFILES + ("main",)))
         self.assertEqual(rows["main"], ["ALL"])
         for name, allowed in rows.items():
-            for item in ([] if allowed == ["ALL"] else allowed):
+            for item in [] if allowed == ["ALL"] else allowed:
                 self.assertRegex(item, r"^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$", name)
-                self.assertNotIn(item, ("robinhood", "plaid", "paypal", "mcp:robinhood"), name)  # nothing financial by default
+                self.assertNotIn(
+                    item, ("robinhood", "plaid", "paypal", "mcp:robinhood"), name
+                )  # nothing financial by default
 
     def test_all_defaults_to_a_dry_run_and_writes_nothing(self):
         status, out = self.deploy()
@@ -363,7 +415,9 @@ class AllProfiles(unittest.TestCase):
         with open(os.path.join(self.pdir("developer"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "mcp:lifeos-buzz\n")  # developer: only the governed LIFE OS MCP
         with open(os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
-            self.assertEqual(handle.read(), "notion\nmcp:lifeos-buzz\n")  # the librarian may use the governed LIFE OS MCP
+            self.assertEqual(
+                handle.read(), "notion\nmcp:lifeos-buzz\n"
+            )  # the librarian may use the governed LIFE OS MCP
         self.assertNotIn("       hermes plugins enable connector-allowlist", out)  # main is never enabled
         for name in PROFILES:
             self.assertIn("hermes --profile %s plugins enable connector-allowlist" % name, out)
@@ -381,7 +435,9 @@ class AllProfiles(unittest.TestCase):
         with open(table) as handle:
             text = handle.read()
         with open(table, "w") as handle:
-            handle.write(text.replace("research: notion, mcp:lifeos-buzz", "research: notion, mcp:lifeos-buzz, mcp:todoist"))
+            handle.write(
+                text.replace("research: notion, mcp:lifeos-buzz", "research: notion, mcp:lifeos-buzz, mcp:todoist")
+            )
         status, out = self.deploy("--apply", "--backup", os.path.join(self.tmp, "b2"))
         self.assertEqual(status, 0, out)
         self.assertIn("1 file(s) would change", out)
@@ -394,8 +450,13 @@ class AllProfiles(unittest.TestCase):
     def test_a_bad_table_is_refused_before_anything_is_written(self):
         table = os.path.join(self.pack, "connector-allowlists.txt")
         os.makedirs(os.path.join(self.home, "profiles", "extra"))
-        for line, needle in (("extra: notion, *\n", "is not an allowed name"), ("no colon here\n", "bad table line"), ("../x: notion\n", "is not a profile name"),
-                             ("writer: notion\n", "listed twice"), ("ghost: notion\n", "no profile folder")):
+        for line, needle in (
+            ("extra: notion, *\n", "is not an allowed name"),
+            ("no colon here\n", "bad table line"),
+            ("../x: notion\n", "is not a profile name"),
+            ("writer: notion\n", "listed twice"),
+            ("ghost: notion\n", "no profile folder"),
+        ):
             with open(os.path.join(HERMES, "connector-allowlists.txt")) as handle:
                 text = handle.read()
             with open(table, "w") as handle:
@@ -410,7 +471,9 @@ class AllProfiles(unittest.TestCase):
         status, out = self.run_script("deploy_plugin.sh", "--all", "--profile", "librarian")
         self.assertEqual(status, 1, out)
         self.assertIn("cannot be combined", out)
-        status, out = self.run_script("deploy_plugin.sh", "--profile", "main", "--allow", "none", "--apply", "--backup", self.backup)
+        status, out = self.run_script(
+            "deploy_plugin.sh", "--profile", "main", "--allow", "none", "--apply", "--backup", self.backup
+        )
         self.assertEqual(status, 0, out)
         with open(os.path.join(self.home, "plugins", "connector-allowlist", "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "")
@@ -461,13 +524,18 @@ class AllProfiles(unittest.TestCase):
         self.config("writer", ["connector-allowlist"], disabled=["connector-allowlist"])
         with open(os.path.join(self.pdir("research"), "plugins", "connector-allowlist", "__init__.py"), "a") as handle:
             handle.write("# tampered\n")
-        with open(os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt"), "w") as handle:
+        with open(
+            os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt"), "w"
+        ) as handle:
             handle.write("notion\nmcp:robinhood\n")
         status, out = self.run_script("check_profiles.sh")
         self.assertEqual(status, 1, out)
         self.assertIn("writer: FAIL; plugin is in plugins.disabled", out)
         self.assertIn("research: FAIL; __init__.py differs from the repo", out)
-        self.assertIn("librarian: FAIL; allowlist.txt holds [mcp:robinhood notion] but the table says [mcp:lifeos-buzz notion]", out)
+        self.assertIn(
+            "librarian: FAIL; allowlist.txt holds [mcp:robinhood notion] but the table says [mcp:lifeos-buzz notion]",
+            out,
+        )
         self.assertIn("main: OK (not limited", out)
 
     def test_the_auditor_fails_when_a_table_profile_has_no_folder_and_writes_nothing(self):

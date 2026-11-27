@@ -2,11 +2,21 @@ import unittest
 
 from lifeos.interview import granola_match as gm
 
+
 def addr(user, domain):
     return user + "@" + domain
 
 
-ROW = gm.Round("page-1", "2026-10-13", "Becton Dickinson", "Senior Technical Program Manager", "Dana Reyes", "REQ-4471", "bd.com", "insightglobal.com")
+ROW = gm.Round(
+    "page-1",
+    "2026-10-13",
+    "Becton Dickinson",
+    "Senior Technical Program Manager",
+    "Dana Reyes",
+    "REQ-4471",
+    "bd.com",
+    "insightglobal.com",
+)
 
 
 def meeting(mid="m1", start="2026-10-13T17:30:00Z", title="", description="", attendees=()):
@@ -51,7 +61,9 @@ class Match(unittest.TestCase):
         self.assertEqual(out, {"m1": ("MATCH", "page-1")})
 
     def test_the_wrong_day_never_matches_however_strong_the_signals(self):
-        out = gm.match([meeting(start="2026-10-14T17:30:00Z", title="Becton Dickinson", attendees=[addr("pat", "bd.com")])], [ROW])
+        out = gm.match(
+            [meeting(start="2026-10-14T17:30:00Z", title="Becton Dickinson", attendees=[addr("pat", "bd.com")])], [ROW]
+        )
         self.assertEqual(out["m1"][0], "MATCH_NONE")
 
     def test_no_signal_is_no_match(self):
@@ -63,7 +75,13 @@ class Match(unittest.TestCase):
         self.assertEqual(out["m1"], ("MATCH_MANY_ROUNDS", None))
 
     def test_two_meetings_matching_one_round_is_ambiguous(self):
-        out = gm.match([meeting("m1", title="Becton Dickinson a"), meeting("m2", "2026-10-13T19:00:00Z", title="Becton Dickinson b")], [ROW])
+        out = gm.match(
+            [
+                meeting("m1", title="Becton Dickinson a"),
+                meeting("m2", "2026-10-13T19:00:00Z", title="Becton Dickinson b"),
+            ],
+            [ROW],
+        )
         self.assertEqual({k: v[0] for k, v in out.items()}, {"m1": "MATCH_MANY_MEETINGS", "m2": "MATCH_MANY_MEETINGS"})
 
     def test_an_unreadable_time_is_a_fixed_code(self):
@@ -75,9 +93,15 @@ class Explain(unittest.TestCase):
         near = gm.Round("p2", "2026-10-13", "Other Co", "Chief Whatever", addr("pat", "x.test"), "", "", "")
         far = gm.Round("p3", "2026-10-14", "Becton Dickinson", "Senior Technical Program Manager", "", "", "", "")
         out = gm.explain(meeting(title="Becton Dickinson follow-up"), [ROW, near, far])
-        self.assertEqual(out, {"rounds_on_day": 2, "signal_company": 1, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0})
+        self.assertEqual(
+            out,
+            {"rounds_on_day": 2, "signal_company": 1, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0},
+        )
 
     def test_no_rounds_on_the_day_is_all_zero_and_carries_no_text(self):
         out = gm.explain(meeting(title="Becton Dickinson"), [])
-        self.assertEqual(out, {"rounds_on_day": 0, "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0})
+        self.assertEqual(
+            out,
+            {"rounds_on_day": 0, "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0},
+        )
         self.assertNotIn("Becton", str(out))
