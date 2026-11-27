@@ -4,6 +4,7 @@ For every Ledger row whose Hiring Decision is set: fill Decision On when empty (
 line when none exists for the decision (op `hand-<page id>-<decision>`, so a repeat is a no-op), and set Freshness
 Status to Closed. Hiring Decision itself is never changed; a row with all three is untouched. Each write is read back.
 Dry run unless live. Counts and fixed codes only."""
+
 import json
 import re
 
@@ -38,7 +39,17 @@ def plan(page, now):
         out[DECISION_ON] = {"date": {"start": now.date().isoformat()}}
     new = history
     if not any(e.get("outcome") == decision or e.get("op") == _op(page["id"], decision) for e in log):
-        line = json.dumps({"op": _op(page["id"], decision), "action": "hand-set", "at": now.isoformat(timespec="seconds"), "reason": REASON, "outcome": decision}, separators=(",", ":"), sort_keys=True)
+        line = json.dumps(
+            {
+                "op": _op(page["id"], decision),
+                "action": "hand-set",
+                "at": now.isoformat(timespec="seconds"),
+                "reason": REASON,
+                "outcome": decision,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
         new = f"{history}\n{line}" if history else line
         if len(new) > D.HISTORY_MAX:
             raise D.fail("HISTORY_FULL")
@@ -51,8 +62,18 @@ def plan(page, now):
 def run(client, live, now):
     counts = {"decided": 0, "would_sync": 0, "synced": 0, "failed": 0}
     try:
-        pages = [row for page in query(client, None, {"page_size": 100, "filter": {"property": D.DECISION, "select": {"is_not_empty": True}}}, D.fail, incomplete="LEDGER_INCOMPLETE", limit=MAX_PAGES)
-                 for row in page["results"]]
+        pages = [
+            row
+            for page in query(
+                client,
+                None,
+                {"page_size": 100, "filter": {"property": D.DECISION, "select": {"is_not_empty": True}}},
+                D.fail,
+                incomplete="LEDGER_INCOMPLETE",
+                limit=MAX_PAGES,
+            )
+            for row in page["results"]
+        ]
     except NotionError:
         counts["failed"] += 1
         return counts

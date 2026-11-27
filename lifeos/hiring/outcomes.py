@@ -5,6 +5,7 @@ the pipeline to read; it never closes anything itself, and stores only the row k
 flag. Matching is deterministic (company words in order in sender name, subject, domain or body start, after the
 opportunity's last evidence); ambiguous messages are counted, never guessed. Failure is per source: an `unread` source
 keeps what the other sources hold and any outcome already accepted."""
+
 import json
 import os
 import re
@@ -25,15 +26,41 @@ BODY_CHARS = 3000
 REJECTED, OFFER = "REJECTED", "OFFER"
 UNREAD_NAME = re.compile(r"Gmail|Outlook [a-z0-9_-]{1,24}")
 
-REJECT = re.compile("|".join((
-    r"\bnot (?:be )?moving forward\b", r"\bwill not be (?:proceeding|continuing|advancing|moving)\b", r"\bwon'?t be (?:moving|proceeding|continuing)\b",
-    r"\b(?:move|moving|proceed|proceeding|go|going)\s+forward with (?:other|another|different)\b", r"\bpursu(?:e|ing) (?:other|another) (?:candidate|applicant|individual)s?\b",
-    r"\bdecided not to (?:move|proceed|go) forward\b", r"\bregret to inform\b", r"\bnot (?:been )?selected\b", r"\bposition (?:has been|was) filled\b", r"\bunable to (?:offer|move forward|proceed)\b",
-    r"\bdecided (?:not )?to (?:move|proceed|go) (?:forward )?with (?:other|another|different)\b", r"\bother candidates? (?:whose|who|that) (?:experience|background|qualifications|skills)\b")), re.I)
-AUTOMATED = re.compile(r"(?i)no-?reply|do-?not-?reply|auto|confirm|notif|alert|news|digest|market|ship|order|store|update|mailer|bounce|jobs?\b|careers?|talent"
-                       r"|recruit|\bhr\b|info|support|team|hello|help|account|security|billing|service|apply|applicant|candidate|receipt|deal|offer|promo|reward|email|mail"
-                       r"|deliver|notice|payment|message|return|reply|event|survey|calendar|invite|refund|order")
-OFFERED = re.compile("|".join((r"\bpleased to (?:offer|extend)\b", r"\boffer of employment\b", r"\bextend(?:ing)? (?:you )?an? (?:formal )?offer\b", r"\boffer letter\b")), re.I)
+REJECT = re.compile(
+    "|".join(
+        (
+            r"\bnot (?:be )?moving forward\b",
+            r"\bwill not be (?:proceeding|continuing|advancing|moving)\b",
+            r"\bwon'?t be (?:moving|proceeding|continuing)\b",
+            r"\b(?:move|moving|proceed|proceeding|go|going)\s+forward with (?:other|another|different)\b",
+            r"\bpursu(?:e|ing) (?:other|another) (?:candidate|applicant|individual)s?\b",
+            r"\bdecided not to (?:move|proceed|go) forward\b",
+            r"\bregret to inform\b",
+            r"\bnot (?:been )?selected\b",
+            r"\bposition (?:has been|was) filled\b",
+            r"\bunable to (?:offer|move forward|proceed)\b",
+            r"\bdecided (?:not )?to (?:move|proceed|go) (?:forward )?with (?:other|another|different)\b",
+            r"\bother candidates? (?:whose|who|that) (?:experience|background|qualifications|skills)\b",
+        )
+    ),
+    re.I,
+)
+AUTOMATED = re.compile(
+    r"(?i)no-?reply|do-?not-?reply|auto|confirm|notif|alert|news|digest|market|ship|order|store|update|mailer|bounce|jobs?\b|careers?|talent"
+    r"|recruit|\bhr\b|info|support|team|hello|help|account|security|billing|service|apply|applicant|candidate|receipt|deal|offer|promo|reward|email|mail"
+    r"|deliver|notice|payment|message|return|reply|event|survey|calendar|invite|refund|order"
+)
+OFFERED = re.compile(
+    "|".join(
+        (
+            r"\bpleased to (?:offer|extend)\b",
+            r"\boffer of employment\b",
+            r"\bextend(?:ing)? (?:you )?an? (?:formal )?offer\b",
+            r"\boffer letter\b",
+        )
+    ),
+    re.I,
+)
 
 
 class OutcomeError(NotionError):
@@ -69,18 +96,53 @@ def mentions(message, company):
 
 def role_in(message, role):
     words = set(names.tokens(role))
-    return bool(words) and words <= set(names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}"))
+    return bool(words) and words <= set(
+        names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}")
+    )
 
 
-MODIFIERS = {"senior", "sr", "junior", "jr", "lead", "principal", "staff", "associate", "head", "chief", "group", "director", "vp", "assistant", "deputy", "executive", "global", "regional", "i", "ii", "iii", "iv", "1", "2", "3"}
+MODIFIERS = {
+    "senior",
+    "sr",
+    "junior",
+    "jr",
+    "lead",
+    "principal",
+    "staff",
+    "associate",
+    "head",
+    "chief",
+    "group",
+    "director",
+    "vp",
+    "assistant",
+    "deputy",
+    "executive",
+    "global",
+    "regional",
+    "i",
+    "ii",
+    "iii",
+    "iv",
+    "1",
+    "2",
+    "3",
+}
 
 
 def exact_role(message, role):
     """The role's own words appear together, in order, with no seniority word or level number touching them."""
-    want, text = names.tokens(role), names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}")
+    want, text = (
+        names.tokens(role),
+        names.tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}"),
+    )
     n = len(want)
-    return n > 0 and any(text[i:i + n] == want and (i == 0 or text[i - 1] not in MODIFIERS) and (i + n == len(text) or text[i + n] not in MODIFIERS)
-                         for i in range(len(text) - n + 1))
+    return n > 0 and any(
+        text[i : i + n] == want
+        and (i == 0 or text[i - 1] not in MODIFIERS)
+        and (i + n == len(text) or text[i + n] not in MODIFIERS)
+        for i in range(len(text) - n + 1)
+    )
 
 
 def _since(row):
@@ -108,7 +170,12 @@ def find(messages, roster):
         if row is None:
             stats[why] += 1
             continue
-        found[row["key"]] = {"kind": kind, "received": at.astimezone(timezone.utc).isoformat(), "match": why, "exact": why == "role" and exact_role(message, row["role"])}
+        found[row["key"]] = {
+            "kind": kind,
+            "received": at.astimezone(timezone.utc).isoformat(),
+            "match": why,
+            "exact": why == "role" and exact_role(message, row["role"]),
+        }
     return found, stats
 
 
@@ -136,8 +203,12 @@ def _own_domain(domain, company):
 def _person(message, company):
     words = re.findall(r"[a-z]+", (message.get("sender_name") or "").lower())
     local = (message.get("sender_address") or "").partition("@")[0].lower()
-    return (2 <= len(words) <= 4 and not set(words) & set(names.tokens(company)) and not any(AUTOMATED.search(w) for w in words)
-            and any(len(w) >= 3 and w in local for w in words))
+    return (
+        2 <= len(words) <= 4
+        and not set(words) & set(names.tokens(company))
+        and not any(AUTOMATED.search(w) for w in words)
+        and any(len(w) >= 3 and w in local for w in words)
+    )
 
 
 def contacts(messages, roster):
@@ -149,8 +220,16 @@ def contacts(messages, roster):
     for message in sorted(messages, key=_received):
         local, _, domain = (message.get("sender_address") or "").partition("@")
         marked = message.get("markers") or {}
-        if (message.get("folder") != "INBOX" or not local or not domain or "@" in domain or AUTOMATED.search(local)
-                or marked.get("bulk") or marked.get("auto") or marked.get("noreply")):
+        if (
+            message.get("folder") != "INBOX"
+            or not local
+            or not domain
+            or "@" in domain
+            or AUTOMATED.search(local)
+            or marked.get("bulk")
+            or marked.get("auto")
+            or marked.get("noreply")
+        ):
             continue
         at = _received(message)
         row, _ = attribute(message, roster, at)
@@ -179,32 +258,70 @@ def load(connection):
         stored = STORE.load(connection, KEY)
     if stored is None:
         return {}, None, {}, []
-    if (stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict) or not isinstance(stored.get("contacts", {}), dict)
-            or not isinstance(stored.get("unread", []), list)):
+    if (
+        stored.get("schema") != SCHEMA_V
+        or not isinstance(stored.get("outcomes"), dict)
+        or not isinstance(stored.get("contacts", {}), dict)
+        or not isinstance(stored.get("unread", []), list)
+    ):
         raise fail("STORE_INVALID")
-    return stored["outcomes"], stored.get("scanned_at"), stored.get("contacts", {}), [n for n in stored.get("unread", []) if isinstance(n, str) and UNREAD_NAME.fullmatch(n)]
+    return (
+        stored["outcomes"],
+        stored.get("scanned_at"),
+        stored.get("contacts", {}),
+        [n for n in stored.get("unread", []) if isinstance(n, str) and UNREAD_NAME.fullmatch(n)],
+    )
 
 
 def _roster(prior):
-    return [{"key": r["key"], "company": r["company"], "role": r["role"], "event_start": r.get("event_start"), "applied_on": r.get("applied_on")}
-            for r in (prior or {}).get("rows") or [] if r.get("key") and r.get("company")]
+    return [
+        {
+            "key": r["key"],
+            "company": r["company"],
+            "role": r["role"],
+            "event_start": r.get("event_start"),
+            "applied_on": r.get("applied_on"),
+        }
+        for r in (prior or {}).get("rows") or []
+        if r.get("key") and r.get("company")
+    ]
 
 
 def _terms(roster):
-    quoted = sorted({'"' + re.sub(r'["\\]', "", row["company"]).strip() + '"' for row in roster if len(row["company"].strip()) >= 3})
+    quoted = sorted(
+        {'"' + re.sub(r'["\\]', "", row["company"]).strip() + '"' for row in roster if len(row["company"].strip()) >= 3}
+    )
     return "(" + " OR ".join(quoted) + ")" if quoted else ""
 
 
 def _merge(prior, new, newest):
-    return {**prior, **{key: value for key, value in new.items() if key not in prior or newest(value) >= newest(prior[key])}}
+    return {
+        **prior,
+        **{key: value for key, value in new.items() if key not in prior or newest(value) >= newest(prior[key])},
+    }
 
 
 def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, connection=None, now=None):
-    import contextlib                                              # noqa: PLC0415
-    from lifeos.platform import db                                 # noqa: PLC0415
+    import contextlib  # noqa: PLC0415
+    from lifeos.platform import db  # noqa: PLC0415
+
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    counts = {"status": "not_due", "roster": 0, "window_days": 0, "messages": 0, "unreadable": 0, "sources_failed": 0, "outcome_messages": 0, "matched": 0,
-              "rejected": 0, "offers": 0, "ambiguous": 0, "unmatched": 0, "contacts": 0, "saved": 0}
+    counts = {
+        "status": "not_due",
+        "roster": 0,
+        "window_days": 0,
+        "messages": 0,
+        "unreadable": 0,
+        "sources_failed": 0,
+        "outcome_messages": 0,
+        "matched": 0,
+        "rejected": 0,
+        "offers": 0,
+        "ambiguous": 0,
+        "unmatched": 0,
+        "contacts": 0,
+        "saved": 0,
+    }
     with contextlib.ExitStack() as stack:
         conn = connection if connection is not None else stack.enter_context(db.connect())
         prior = hiring_snapshot.load(conn)
@@ -249,17 +366,37 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
         counts["messages"], counts["sources_failed"] = len(records), failed
         outcomes, stats = find(records, roster)
         heard = contacts(records, roster)
-        counts.update(stats, matched=len(outcomes), rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED), offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER), contacts=len(heard))
-        if failed == 1 + len(accounts):                          # no source could be listed: save nothing, keep the last accepted outcomes
+        counts.update(
+            stats,
+            matched=len(outcomes),
+            rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED),
+            offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER),
+            contacts=len(heard),
+        )
+        if failed == 1 + len(accounts):  # no source could be listed: save nothing, keep the last accepted outcomes
             counts["status"] = "degraded"
             print("hiring-outcomes:", json.dumps(counts, sort_keys=True))
             raise fail("DEGRADED_SOURCE_INCOMPLETE")
         counts["status"] = "partial" if unread else "fresh"
-        if unread:                                                # a source not read in full never yields a trustworthy "no outcome": keep what was accepted, add what was found
+        if unread:  # a source not read in full never yields a trustworthy "no outcome": keep what was accepted, add what was found
             counts["unread"] = list(dict.fromkeys(unread))
-            outcomes, heard = _merge(accepted, outcomes, lambda o: o.get("received", "")), _merge(accepted_contacts, heard, str)
+            outcomes, heard = (
+                _merge(accepted, outcomes, lambda o: o.get("received", "")),
+                _merge(accepted_contacts, heard, str),
+            )
         if live:
-            STORE.save_verified(conn, KEY, {"schema": SCHEMA_V, "taken_at": now.isoformat(), "scanned_at": now.isoformat(), "outcomes": outcomes, "contacts": heard,
-                                            "unread": counts.get("unread", [])}, fail)
+            STORE.save_verified(
+                conn,
+                KEY,
+                {
+                    "schema": SCHEMA_V,
+                    "taken_at": now.isoformat(),
+                    "scanned_at": now.isoformat(),
+                    "outcomes": outcomes,
+                    "contacts": heard,
+                    "unread": counts.get("unread", []),
+                },
+                fail,
+            )
             counts["saved"] = 1
     return counts
