@@ -1,0 +1,1429 @@
+{
+ "bars": {
+  "absent_abstention": 1.0,
+  "exact_overall": 0.9
+ },
+ "note": "Fresh held-out acceptance sets for the final feasibility test. Fabricated. Written and hashed before any gate code and before any query; each set is run at most once against a frozen configuration. H2 is only used if the configuration chosen on dev fails H1.",
+ "registry": {
+  "dependency_cases": [],
+  "edges": [],
+  "grants": {
+   "alpha": [
+    "read"
+   ],
+   "beta": [
+    "read"
+   ]
+  },
+  "messages": [
+   {
+    "id": "FAKE-MSG-101",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-102",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-103",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-104",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-105",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-106",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-107",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-108",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-109",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-110",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-111",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-112",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-113",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-114",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-115",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-116",
+    "tenant": "beta"
+   },
+   {
+    "id": "FAKE-MSG-117",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-118",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-119",
+    "tenant": "alpha"
+   },
+   {
+    "id": "FAKE-MSG-120",
+    "tenant": "beta"
+   }
+  ],
+  "questions": [],
+  "sources": [
+   {
+    "at": "2026-03-01",
+    "authority": "memory",
+    "id": "FAKE-HLD-001",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-101"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "theme",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey prefers dark mode in the editor.",
+    "title": "Editor theme"
+   },
+   {
+    "at": "2026-03-02",
+    "authority": "memory",
+    "id": "FAKE-HLD-002",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-102"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "standup",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team holds stand-up at nine thirty each weekday.",
+    "title": "Stand-up time"
+   },
+   {
+    "at": "2026-03-03",
+    "authority": "memory",
+    "id": "FAKE-HLD-003",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-103"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "invoice",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey wants invoices sent as PDF files.",
+    "title": "Invoice format"
+   },
+   {
+    "at": "2026-02-01",
+    "authority": "memory",
+    "id": "FAKE-HLD-004",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-104"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "stale",
+    "subject": "deploy-day",
+    "superseded_by": "FAKE-HLD-005",
+    "tenant": "alpha",
+    "text": "The alpha team decided to deploy on Thursdays.",
+    "title": "Deploy day"
+   },
+   {
+    "at": "2026-03-10",
+    "authority": "memory",
+    "id": "FAKE-HLD-005",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-105"
+    ],
+    "refs": [],
+    "revision": "r2",
+    "status": "current",
+    "subject": "deploy-day",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team now deploys on Wednesdays.",
+    "title": "Deploy day"
+   },
+   {
+    "at": "2026-03-04",
+    "authority": "memory",
+    "id": "FAKE-HLD-006",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-106"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "report-day",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Dana likes weekly reports delivered on Fridays.",
+    "title": "Report day"
+   },
+   {
+    "at": "2026-03-05",
+    "authority": "memory",
+    "id": "FAKE-HLD-007",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-107"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "planning-drink",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey prefers tea over coffee during planning.",
+    "title": "Planning drink"
+   },
+   {
+    "at": "2026-03-06",
+    "authority": "memory",
+    "id": "FAKE-HLD-008",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-108"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "revoked",
+    "subject": "reminders",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey wants phone reminders for deadlines.",
+    "title": "Reminders"
+   },
+   {
+    "at": "2026-03-07",
+    "authority": "memory",
+    "id": "FAKE-HLD-009",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-109"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "one-on-one",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey keeps the weekly one on one with Morgan on Tuesdays at ten.",
+    "title": "One on one"
+   },
+   {
+    "at": "2026-03-08",
+    "authority": "memory",
+    "id": "FAKE-HLD-010",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-110"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "review-mode",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team reviews code in pairs.",
+    "title": "Code review"
+   },
+   {
+    "at": "2026-03-09",
+    "authority": "memory",
+    "id": "FAKE-HLD-011",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-111"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "contact-formal",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey prefers email for formal requests.",
+    "title": "Formal contact"
+   },
+   {
+    "at": "2026-03-09",
+    "authority": "memory",
+    "id": "FAKE-HLD-012",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-112"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "contact-quick",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey prefers chat for quick questions.",
+    "title": "Quick contact"
+   },
+   {
+    "at": "2026-03-11",
+    "authority": "memory",
+    "id": "FAKE-HLD-013",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-113"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "desk",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey prefers standing desks in the office.",
+    "title": "Desk"
+   },
+   {
+    "at": "2026-02-02",
+    "authority": "memory",
+    "id": "FAKE-HLD-014",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-114"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "stale",
+    "subject": "label-color",
+    "superseded_by": "FAKE-HLD-015",
+    "tenant": "alpha",
+    "text": "The alpha team chose the red label for urgent tickets.",
+    "title": "Urgent label"
+   },
+   {
+    "at": "2026-03-12",
+    "authority": "memory",
+    "id": "FAKE-HLD-015",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-115"
+    ],
+    "refs": [],
+    "revision": "r2",
+    "status": "current",
+    "subject": "label-color",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team now uses the green label for urgent tickets.",
+    "title": "Urgent label"
+   },
+   {
+    "at": "2026-03-13",
+    "authority": "memory",
+    "id": "FAKE-HLD-016",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-116"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "budget-format",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Dana wants budget summaries in spreadsheet form.",
+    "title": "Budget format"
+   },
+   {
+    "at": "2026-03-14",
+    "authority": "memory",
+    "id": "FAKE-HLD-017",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-117"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "commit-style",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey likes short commit messages under fifty characters.",
+    "title": "Commit style"
+   },
+   {
+    "at": "2026-03-15",
+    "authority": "memory",
+    "id": "FAKE-HLD-018",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-118"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "retro-cadence",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "The alpha team decided to hold retros every second Friday.",
+    "title": "Retro cadence"
+   },
+   {
+    "at": "2026-03-16",
+    "authority": "memory",
+    "id": "FAKE-HLD-019",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-119"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "revoked",
+    "subject": "agenda",
+    "superseded_by": null,
+    "tenant": "alpha",
+    "text": "Casey wants a printed agenda before every meeting.",
+    "title": "Agenda"
+   },
+   {
+    "at": "2026-03-17",
+    "authority": "memory",
+    "id": "FAKE-HLD-020",
+    "kind": "preference",
+    "provenance": [
+     "FAKE-MSG-120"
+    ],
+    "refs": [],
+    "revision": "r1",
+    "status": "current",
+    "subject": "client-meeting",
+    "superseded_by": null,
+    "tenant": "beta",
+    "text": "Dana prefers video calls for client meetings.",
+    "title": "Client meetings"
+   }
+  ],
+  "tenants": [
+   "alpha",
+   "beta"
+  ],
+  "version": 1
+ },
+ "seed": {
+  "facts": [
+   "FAKE-HLD-001",
+   "FAKE-HLD-002",
+   "FAKE-HLD-003",
+   "FAKE-HLD-004",
+   "FAKE-HLD-005",
+   "FAKE-HLD-006",
+   "FAKE-HLD-007",
+   "FAKE-HLD-008",
+   "FAKE-HLD-009",
+   "FAKE-HLD-010",
+   "FAKE-HLD-011",
+   "FAKE-HLD-012",
+   "FAKE-HLD-013",
+   "FAKE-HLD-014",
+   "FAKE-HLD-015",
+   "FAKE-HLD-016",
+   "FAKE-HLD-017",
+   "FAKE-HLD-018",
+   "FAKE-HLD-019",
+   "FAKE-HLD-020"
+  ],
+  "max_rows": 24,
+  "tombstones": [
+   {
+    "by": "FAKE-HLD-005",
+    "of": "FAKE-HLD-004",
+    "why": "superseded"
+   },
+   {
+    "by": "FAKE-HLD-015",
+    "of": "FAKE-HLD-014",
+    "why": "superseded"
+   },
+   {
+    "by": null,
+    "of": "FAKE-HLD-008",
+    "why": "revoked"
+   },
+   {
+    "by": null,
+    "of": "FAKE-HLD-019",
+    "why": "revoked"
+   }
+  ]
+ },
+ "sets": {
+  "H1": [
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-001",
+       "sources": [
+        "FAKE-MSG-101"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-01",
+    "kind": "paraphrase",
+    "query": "Which color scheme does Casey like for coding?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-001",
+       "sources": [
+        "FAKE-MSG-101"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-02",
+    "kind": "paraphrase",
+    "query": "Does Casey like dark mode?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-002",
+       "sources": [
+        "FAKE-MSG-102"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-03",
+    "kind": "paraphrase",
+    "query": "When does the alpha team hold its daily sync?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-002",
+       "sources": [
+        "FAKE-MSG-102"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-04",
+    "kind": "paraphrase",
+    "query": "What time are the morning stand-ups for the alpha team?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-003",
+       "sources": [
+        "FAKE-MSG-103"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-05",
+    "kind": "paraphrase",
+    "query": "How does Casey want invoices delivered?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-003",
+       "sources": [
+        "FAKE-MSG-103"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-06",
+    "kind": "paraphrase",
+    "query": "Does Casey want invoices as PDF or Word?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-005",
+       "sources": [
+        "FAKE-MSG-105"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-07",
+    "kind": "correction",
+    "query": "Which day does the alpha team ship releases now?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-005",
+       "sources": [
+        "FAKE-MSG-105"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-08",
+    "kind": "correction",
+    "query": "Has the deployment day changed, and to what?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-006",
+       "sources": [
+        "FAKE-MSG-106"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-09",
+    "kind": "paraphrase",
+    "query": "When does Dana want the weekly reports?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-006",
+       "sources": [
+        "FAKE-MSG-106"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-10",
+    "kind": "paraphrase",
+    "query": "Which weekday does Dana like to receive reports?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-007",
+       "sources": [
+        "FAKE-MSG-107"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-11",
+    "kind": "paraphrase",
+    "query": "What does Casey like to drink in planning sessions?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-007",
+       "sources": [
+        "FAKE-MSG-107"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-12",
+    "kind": "paraphrase",
+    "query": "Tea or coffee for Casey in planning?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-009",
+       "sources": [
+        "FAKE-MSG-109"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-13",
+    "kind": "paraphrase",
+    "query": "When is Casey's one on one with Morgan?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-009",
+       "sources": [
+        "FAKE-MSG-109"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-14",
+    "kind": "paraphrase",
+    "query": "Which weekday and hour is the Morgan one on one?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-010",
+       "sources": [
+        "FAKE-MSG-110"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-15",
+    "kind": "paraphrase",
+    "query": "How does the alpha team do code reviews?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-010",
+       "sources": [
+        "FAKE-MSG-110"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H1-16",
+    "kind": "paraphrase",
+    "query": "Does the alpha team review code alone or together?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-011",
+       "sources": [
+        "FAKE-MSG-111"
+       ]
+      },
+      {
+       "ref": "FAKE-HLD-012",
+       "sources": [
+        "FAKE-MSG-112"
+       ]
+      }
+     ],
+     "unordered": true
+    },
+    "id": "H1-17",
+    "kind": "multi_answer",
+    "query": "How does Casey like to be contacted?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-011",
+       "sources": [
+        "FAKE-MSG-111"
+       ]
+      },
+      {
+       "ref": "FAKE-HLD-012",
+       "sources": [
+        "FAKE-MSG-112"
+       ]
+      }
+     ],
+     "unordered": true
+    },
+    "id": "H1-18",
+    "kind": "multi_answer",
+    "query": "Which channels does Casey prefer for messages?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-19",
+    "kind": "revoked",
+    "query": "Does Casey want phone reminders?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-20",
+    "kind": "revoked",
+    "query": "How should reminders reach Casey?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-21",
+    "kind": "hard_negative",
+    "query": "What does Casey prefer to eat during planning?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-22",
+    "kind": "hard_negative",
+    "query": "How long are the alpha team's daily stand-ups?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-23",
+    "kind": "hard_negative",
+    "query": "Which format does Casey want for receipts?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-24",
+    "kind": "hard_negative",
+    "query": "What does Dana want in monthly reports?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-25",
+    "kind": "hard_negative",
+    "query": "Where does the alpha team hold code reviews?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-26",
+    "kind": "absent",
+    "query": "Which airline does Casey fly?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-27",
+    "kind": "absent",
+    "query": "What is the alpha team's lunch order?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-28",
+    "kind": "tenant_isolation",
+    "query": "When does Dana want the weekly reports?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-29",
+    "kind": "tenant_isolation",
+    "query": "How does Casey like to be contacted?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-30",
+    "kind": "absent",
+    "query": "What is Casey's favorite movie?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H1-31",
+    "kind": "hard_negative",
+    "query": "Which room does the alpha team use for stand-ups?",
+    "tenant": "alpha"
+   }
+  ],
+  "H2": [
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-013",
+       "sources": [
+        "FAKE-MSG-113"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-01",
+    "kind": "paraphrase",
+    "query": "What kind of desk does Casey like?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-013",
+       "sources": [
+        "FAKE-MSG-113"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-02",
+    "kind": "paraphrase",
+    "query": "Does Casey like to sit or stand at work?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-015",
+       "sources": [
+        "FAKE-MSG-115"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-03",
+    "kind": "correction",
+    "query": "Which color label marks urgent tickets now?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-015",
+       "sources": [
+        "FAKE-MSG-115"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-04",
+    "kind": "correction",
+    "query": "Did the urgent ticket label change, and to what?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-016",
+       "sources": [
+        "FAKE-MSG-116"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-05",
+    "kind": "paraphrase",
+    "query": "In what form does Dana want budget summaries?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-016",
+       "sources": [
+        "FAKE-MSG-116"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-06",
+    "kind": "paraphrase",
+    "query": "Does Dana want budget summaries as a spreadsheet or a document?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-017",
+       "sources": [
+        "FAKE-MSG-117"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-07",
+    "kind": "paraphrase",
+    "query": "How long should Casey's commit messages be?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-017",
+       "sources": [
+        "FAKE-MSG-117"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-08",
+    "kind": "paraphrase",
+    "query": "What style of commit message does Casey like?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-018",
+       "sources": [
+        "FAKE-MSG-118"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-09",
+    "kind": "paraphrase",
+    "query": "How often does the alpha team hold retros?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-018",
+       "sources": [
+        "FAKE-MSG-118"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-10",
+    "kind": "paraphrase",
+    "query": "Which day of the week are the retros?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-020",
+       "sources": [
+        "FAKE-MSG-120"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-11",
+    "kind": "paraphrase",
+    "query": "How does Dana like to meet clients?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-020",
+       "sources": [
+        "FAKE-MSG-120"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-12",
+    "kind": "paraphrase",
+    "query": "Phone or video for Dana's client meetings?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-013",
+       "sources": [
+        "FAKE-MSG-113"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-13",
+    "kind": "paraphrase",
+    "query": "What office furniture does Casey prefer?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-015",
+       "sources": [
+        "FAKE-MSG-115"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-14",
+    "kind": "correction",
+    "query": "Which label color do urgent tickets get?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": false,
+     "answers": [
+      {
+       "ref": "FAKE-HLD-018",
+       "sources": [
+        "FAKE-MSG-118"
+       ]
+      }
+     ],
+     "unordered": false
+    },
+    "id": "H2-15",
+    "kind": "paraphrase",
+    "query": "How frequent are retrospectives for the alpha team?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-16",
+    "kind": "revoked",
+    "query": "Does Casey want a printed agenda?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-17",
+    "kind": "revoked",
+    "query": "What paper material does Casey want before meetings?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-18",
+    "kind": "hard_negative",
+    "query": "What size of desk does Casey like?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-19",
+    "kind": "hard_negative",
+    "query": "Who attends the alpha team retros?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-20",
+    "kind": "hard_negative",
+    "query": "How often does Dana want client meetings?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-21",
+    "kind": "hard_negative",
+    "query": "What label color did the alpha team use for low priority tickets?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-22",
+    "kind": "hard_negative",
+    "query": "How detailed should Dana's budget summaries be?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-23",
+    "kind": "hard_negative",
+    "query": "Which message length does Casey allow for chat?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-24",
+    "kind": "hard_negative",
+    "query": "What does Casey want to eat at retros?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-25",
+    "kind": "absent",
+    "query": "Which airline does Casey prefer?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-26",
+    "kind": "absent",
+    "query": "What is the alpha team's holiday schedule?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-27",
+    "kind": "absent",
+    "query": "What does Dana want for lunch meetings?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-28",
+    "kind": "tenant_isolation",
+    "query": "How does Dana like to meet clients?",
+    "tenant": "alpha"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-29",
+    "kind": "tenant_isolation",
+    "query": "What label color marks urgent tickets?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-30",
+    "kind": "tenant_isolation",
+    "query": "How often does the alpha team hold retros?",
+    "tenant": "beta"
+   },
+   {
+    "expect": {
+     "abstain": true,
+     "answers": [],
+     "unordered": false
+    },
+    "id": "H2-31",
+    "kind": "absent",
+    "query": "When is the next release?",
+    "tenant": "alpha"
+   }
+  ]
+ },
+ "version": 1,
+ "workspace": "um-t7-heldout-v1"
+}
