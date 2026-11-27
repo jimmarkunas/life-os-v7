@@ -6,7 +6,7 @@
     "product": "https://example.com/notion-found-by-title",
     "jobs": "https://example.com/notion-found-by-title",
     "work": "https://jimmarkunas.atlassian.net/browse/LIFE-47",
-    "development_policy": "https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md",
+    "development_policy": "https://github.com/jimmarkunas/life-os-v7/blob/main/docs/life-os-development-policy.md",
     "note": "This JSON is a deterministic IMPLEMENTATION PROJECTION of existing Notion product decisions and Jim's current instruction; it does not supersede product authority or Jira delivery state."
   },
   "evidence_quality": {

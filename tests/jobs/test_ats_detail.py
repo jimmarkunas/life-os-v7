@@ -115,7 +115,7 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(
             read("https://jobs.ashbyhq.com/acme/gone-2", {"job-board/acme": (200, board)}), {"closed": True}
         )
-        single = {"title": "PM", "descriptionHtml": "<p>one</p>", "publishedAt": "2026-09-25"}  # V2's per-job endpoint
+        single = {"title": "PM", "descriptionHtml": "<p>one</p>", "publishedAt": "2026-09-25"}  # the retired system's per-job endpoint
         job = read(
             "https://jobs.ashbyhq.com/acme/abcdef-12345/application", {"job-postings/abcdef-12345": (200, single)}
         )

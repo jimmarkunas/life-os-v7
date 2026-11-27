@@ -38,7 +38,7 @@ Out of scope: sending, replying, filing or deleting mail; ordering anything; scr
 | Private storage | `lifeos/platform/db.py`, `snapshot_store.py`, `lifeos/jobs/store.py`, `lifeos/jira/store.py` | Hostinger MySQL through an SSH tunnel. Domain-owned tables are an established pattern; `ensure_schema` creates and migrates. |
 | Alerts | `lifeos/platform/alerts.py` | Counts-only alerts with ntfy push; state in `v7_alerts`. No delivery detector yet. |
 | Scheduling | `lifeos/run.py`, `.github/workflows/domains.yml` | One `lazy(...)` line per stage. Domain jobs run after each hourly tick and see only their own secrets (enforced by `tests/contracts/test_workflow.py`). `hourly.yml` is at the 25-input limit; `domains.yml` is not. |
-| Carrier tracking | nowhere | Not in V7, V2 or V1. V1's Amazon contract says never to persist "tracking tokens". |
+| Carrier tracking | nowhere | Not in V7 or the retired systems. The retired system's Amazon contract says never to persist "tracking tokens". |
 
 ## 3. Gap analysis
 
@@ -282,7 +282,7 @@ Settled: USPS is in the carrier list; Jim holds active UPS and FedEx accounts; h
 3. **Shipper account: Jim thinks so, unconfirmed.** UPS's developer application is tied to one. The test happens at D0: creating the application asks which shipper account to link; if his account is not one, UPS offers to create one (free to open per the report; unconfirmed). Nothing to do before then.
 4. **Free aggregator fallback.** Allow Ship24's free plan (10 shipments or 100 calls a month, no overage) as a fallback for a carrier with no direct access? It sends those tracking numbers to a third party. Recommended: not now; revisit if DHL is declined and DHL packages matter.
 5. **Region ownership: settled (Jim, October 5): V7 fills the Deliveries box.** One region or two is still open: a new "Deliveries" callout next to Amazon (recommended for now, because the Amazon card went live recently), or merge both into one later.
-6. **Tracking numbers in private storage: settled (Jim, October 5): yes, private database only.** V1's production contract says never to persist "tracking tokens"; the clarifying edit belongs to `life-os-automation`, is **not made**, and is on hold with the other contract changes.
+6. **Tracking numbers in private storage: settled (Jim, October 5): yes, private database only.** The retired system's production contract says never to persist "tracking tokens"; the clarifying edit belongs to the retired system's repository, is **not made**, and is on hold with the other contract changes.
 7. **Which Outlook accounts feed Deliveries** (personal only, or also work).
 8. **Approve the Hostinger tables** in section 10 (a schema change under V7's rules): two tables, asked for only after the D1 census says D2 is worth building.
 9. **Closure thresholds.** Accept or change the proposed NOT_FOUND (about 7 days) and STALE (about 21 days) windows, and the 7-day display and 30-day purge.

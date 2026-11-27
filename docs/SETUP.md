@@ -12,7 +12,7 @@ Step 1 needs only the first three. The rest are needed by later steps.
 | `LIFEOS_ACQ_SSH_PRIVATE_KEY`, `LIFEOS_ACQ_DB_PASSWORD` | step 2 |
 | `JOBRIGHT_EMAIL`, `JOBRIGHT_PASSWORD` | step 7 only |
 
-The Gmail refresh token must include the `gmail.modify` scope (V2's did).
+The Gmail refresh token must include the `gmail.modify` scope (the retired system's did).
 
 ## Hostinger settings (also SECRETS, not variables)
 GitHub variables are **not masked in logs**, and this repo is public, so every Hostinger setting is a secret:
@@ -56,7 +56,7 @@ V7's existing scheduled Jira rollover follows each board's **Jira start/end date
 
 For a new board, add its `PROJECTKEY:boardid` entry to the existing **JIRA_BOARDS GitHub Actions secret** (no new scheduler or workflow). Use `:readonly` until its initial sprint state, issue carry policy and roadmap have been reviewed. When there is no prior expired sprint, V7 can activate exactly one current `future` sprint at its scheduled start. If an expired sprint is still `future` alongside an already-due subsequent sprint, V7 **does not silently activate the latter or move the former's work**. Reconcile the expired sprint and its unfinished work explicitly in Jira first, then remove `:readonly` to opt the board into automatic rollover. Preserve Jira as the scheduling authority and do not edit or create future sprint dates from code.
 
-**Validation:** run the existing `domains.yml` manual Jira `rollover` mode with `live` unticked (dry-run and no Jira writes). Check the expected existing sprint IDs, issue counts, and status, then enable only after review. The next scheduled V7 tick performs the same fail-closed operation. The retired ChatGPT LIFE OS Daily Runs and older life-os-automation workflows must not be re-enabled.
+**Validation:** run the existing `domains.yml` manual Jira `rollover` mode with `live` unticked (dry-run and no Jira writes). Check the expected existing sprint IDs, issue counts, and status, then enable only after review. The next scheduled V7 tick performs the same fail-closed operation. The retired ChatGPT LIFE OS Daily Runs and older workflows of the retired system must not be re-enabled.
 
 Add these four as Actions **secrets** (never variables: this repo is public): `JIRA_BASE_URL` (your Atlassian site address, https://...), `JIRA_EMAIL`, `JIRA_API_TOKEN` (a Jira API token for that account), and `JIRA_BOARDS` (comma-separated `PROJECTKEY:boardid`; add `:all` after a board id to triage every non-Epic item, e.g. `AAA:5,BBB:38:all`; add `:readonly` for a team board you want in the report but not rolled over automatically, e.g. `CCC:60:readonly`). Boards may share a filter: V7 picks each project's own sprint by its name starting with the project key, and carries every unfinished item in a closing sprint forward whichever project it belongs to. Then run the workflow by hand with `jira_snapshot` or `jira_rollover` ticked and **Actually move mail** unticked: both are read-only dry runs and print counts only.
 
