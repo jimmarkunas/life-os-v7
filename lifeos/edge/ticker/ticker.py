@@ -7,6 +7,7 @@ alert switches are read each run from Bitwarden via the `bwsalerts` credential (
 with a fixed code). `dry` checks credentials and variables and does nothing else. Credentials come only from
 systemd: `github` and `ntfy`. Output is one JSON line (command, fixed code, HTTP status); no token, topic or job
 data. Stdlib only."""
+
 import json
 import os
 import shutil
@@ -48,8 +49,17 @@ def credential(name, environ=None):
 
 
 def _request(path, token, method="GET", body=None):
-    return urllib.request.Request(f"{API}/{path}", method=method, data=json.dumps(body).encode() if body is not None else None, headers={
-        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-ticker"})
+    return urllib.request.Request(
+        f"{API}/{path}",
+        method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "lifeos-ticker",
+        },
+    )
 
 
 def _status(request, opener):
@@ -59,7 +69,7 @@ def _status(request, opener):
             return response.status, (json.loads(raw) if raw else None)
     except urllib.error.HTTPError as error:
         return error.code, None
-    except Exception:                                               # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None, None
 
 
@@ -67,8 +77,9 @@ def too_soon(token, opener=urllib.request.urlopen, now=None):
     """True when the workflow gate would cancel this tick (another started within GATE_MIN_GAP_MINUTES); a failed read
     is False.
     """
-    import datetime as dt                                          # noqa: PLC0415
-    from lifeos.platform import gate                               # noqa: PLC0415
+    import datetime as dt  # noqa: PLC0415
+    from lifeos.platform import gate  # noqa: PLC0415
+
     status, body = _status(_request(f"repos/{REPO}/actions/workflows/hourly.yml/runs?per_page=15", token), opener)
     if status != 200 or not isinstance(body, dict) or not isinstance(body.get("workflow_runs"), list):
         return False
@@ -77,15 +88,31 @@ def too_soon(token, opener=urllib.request.urlopen, now=None):
     if status not in (200, 404):
         return False
     try:
-        return gate.decide(body["workflow_runs"], now or dt.datetime.now(dt.timezone.utc), None, gate.min_gap({"GATE_MIN_GAP_MINUTES": raw})) == "skip"
-    except Exception:                                              # noqa: BLE001
+        return (
+            gate.decide(
+                body["workflow_runs"],
+                now or dt.datetime.now(dt.timezone.utc),
+                None,
+                gate.min_gap({"GATE_MIN_GAP_MINUTES": raw}),
+            )
+            == "skip"
+        )
+    except Exception:  # noqa: BLE001
         return False
 
 
 def tick(token, opener=urllib.request.urlopen):
     if too_soon(token, opener):
         return "TICK_SKIPPED", 200
-    status, _ = _status(_request(f"repos/{REPO}/actions/workflows/hourly.yml/dispatches", token, "POST", {"ref": "main", "inputs": {"tick": "true"}}), opener)
+    status, _ = _status(
+        _request(
+            f"repos/{REPO}/actions/workflows/hourly.yml/dispatches",
+            token,
+            "POST",
+            {"ref": "main", "inputs": {"tick": "true"}},
+        ),
+        opener,
+    )
     if status is None:
         return "TICK_NETWORK", None
     if status == 204:
@@ -99,7 +126,7 @@ def variables(store):
     """
     try:
         return {name: str(value) for name, value in store().items() if name in VARIABLES}, 200
-    except Exception:                                               # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None, None
 
 
@@ -116,12 +143,23 @@ def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, syn
     if percent is None:
         return None
     if sync is None:
-        from lifeos.platform import gate                           # noqa: PLC0415
+        from lifeos.platform import gate  # noqa: PLC0415
+
         sync = gate.sync_incident
-    return sync(DISK_LABEL, DISK_TITLE, f"The Hermes disk image on lifeos-edge-01 is {percent}% full (alarm at {limit}%). Free space or grow the image before it fills; "
-                "LIFE-301 has the plan. This issue closes itself when usage drops below the limit.", percent >= limit,
-                ("Hermes disk 80% full", f"The Hermes disk image is {percent}% full.", "info", "hermes_disk_full"),
-                ("Hermes disk back under 80%", "The Hermes disk image is below the limit again.", "info", "hermes_disk_full_recovered"))
+    return sync(
+        DISK_LABEL,
+        DISK_TITLE,
+        f"The Hermes disk image on lifeos-edge-01 is {percent}% full (alarm at {limit}%). Free space or grow the image before it fills; "
+        "LIFE-301 has the plan. This issue closes itself when usage drops below the limit.",
+        percent >= limit,
+        ("Hermes disk 80% full", f"The Hermes disk image is {percent}% full.", "info", "hermes_disk_full"),
+        (
+            "Hermes disk back under 80%",
+            "The Hermes disk image is below the limit again.",
+            "info",
+            "hermes_disk_full_recovered",
+        ),
+    )
 
 
 def stall_incident(path=STALL_FILE, exists=os.path.exists, sync=None):
@@ -129,13 +167,24 @@ def stall_incident(path=STALL_FILE, exists=os.path.exists, sync=None):
     is gone.
     """
     if sync is None:
-        from lifeos.platform import gate                           # noqa: PLC0415
+        from lifeos.platform import gate  # noqa: PLC0415
+
         sync = gate.sync_incident
     stalled = bool(exists(path))
-    sync(STALL_LABEL, STALL_TITLE, "The Close service release timer on lifeos-edge-01 has found no green main head for over 2 hours, so no screen change is being deployed. Check the pr-tests run "
-         "on main's head commit (red or missing). Nothing is broken on the VM; the live tree stays as it is. This issue closes itself when a green head deploys.", stalled,
-         ("Close release stalled", "No green main head for over 2 hours; screen changes are not deploying. Open the deploy-stalled issue.", "info", "deploy_stalled"),
-         ("Close release moving again", "A green main head deployed.", "info", "deploy_stalled_recovered"))
+    sync(
+        STALL_LABEL,
+        STALL_TITLE,
+        "The Close service release timer on lifeos-edge-01 has found no green main head for over 2 hours, so no screen change is being deployed. Check the pr-tests run "
+        "on main's head commit (red or missing). Nothing is broken on the VM; the live tree stays as it is. This issue closes itself when a green head deploys.",
+        stalled,
+        (
+            "Close release stalled",
+            "No green main head for over 2 hours; screen changes are not deploying. Open the deploy-stalled issue.",
+            "info",
+            "deploy_stalled",
+        ),
+        ("Close release moving again", "A green main head deployed.", "info", "deploy_stalled_recovered"),
+    )
     return stalled
 
 
@@ -144,14 +193,31 @@ def proof_unreadable_incident(path=PROOF_FILE, exists=os.path.exists, sync=None)
     release-paused flag.
     """
     if sync is None:
-        from lifeos.platform import gate                           # noqa: PLC0415
+        from lifeos.platform import gate  # noqa: PLC0415
+
         sync = gate.sync_incident
     unreadable = bool(exists(path))
-    sync(PROOF_LABEL, PROOF_TITLE, "The Close release timer on lifeos-edge-01 could not read the release-paused flag on GitHub (a network error, a rate limit or an answer it does not understand), so it is "
-         "deploying nothing: an unknown state never deploys. Nothing is broken on the VM; the live tree stays as it is. You do nothing: this lifts by itself on the next timer run (every 15 minutes) "
-         "that can read the flag, and this issue then closes itself. If it stays open for more than an hour, check that GitHub is reachable from lifeos-edge-01.", unreadable,
-         ("Close releases not deploying", "The release timer cannot read the release-paused flag, so nothing deploys. It lifts by itself when GitHub is readable again.", "page", "release_pause_unreadable"),
-         ("Close releases can deploy again", "The release timer can read the release-paused flag again.", "info", "release_pause_unreadable_recovered"), remind=False)
+    sync(
+        PROOF_LABEL,
+        PROOF_TITLE,
+        "The Close release timer on lifeos-edge-01 could not read the release-paused flag on GitHub (a network error, a rate limit or an answer it does not understand), so it is "
+        "deploying nothing: an unknown state never deploys. Nothing is broken on the VM; the live tree stays as it is. You do nothing: this lifts by itself on the next timer run (every 15 minutes) "
+        "that can read the flag, and this issue then closes itself. If it stays open for more than an hour, check that GitHub is reachable from lifeos-edge-01.",
+        unreadable,
+        (
+            "Close releases not deploying",
+            "The release timer cannot read the release-paused flag, so nothing deploys. It lifts by itself when GitHub is readable again.",
+            "page",
+            "release_pause_unreadable",
+        ),
+        (
+            "Close releases can deploy again",
+            "The release timer can read the release-paused flag again.",
+            "info",
+            "release_pause_unreadable_recovered",
+        ),
+        remind=False,
+    )
     return unreadable
 
 
@@ -175,12 +241,13 @@ def read_unit_state(unit, run=None, listdir=None, base=SYSTEMD_DIR):
 
 
 def drift_module():
-    from lifeos.platform import drift                              # noqa: PLC0415
+    from lifeos.platform import drift  # noqa: PLC0415
+
     return drift
 
 
 def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, unit_state=None, rows=None):
-    from lifeos.platform import drift                              # noqa: PLC0415
+    from lifeos.platform import drift  # noqa: PLC0415
 
     def expected_for(path):
         status, body = _status(_request(f"repos/{REPO}/contents/{path}?ref=main", token), opener)
@@ -205,19 +272,32 @@ def drift_incident(token, opener=urllib.request.urlopen, sync=None, read=None, u
     if signal is not None:
         counts, drifted = drift.summary(rows)
         if sync is None:
-            from lifeos.platform import gate                       # noqa: PLC0415
+            from lifeos.platform import gate  # noqa: PLC0415
+
             sync = gate.sync_incident
-        sync(DRIFT_LABEL, DRIFT_TITLE, "A file installed on lifeos-edge-01 no longer matches main, or its unit is not running. Differing: " + ", ".join(drifted or ["none"]) +
-             ". A merge does not update the VM; show Jim the files and the install command, and install only with his yes. This issue closes itself when every surface matches.", signal,
-             ("Oracle files differ from main", f"{len(drifted)} installed surface(s) differ from main. Open the deploy-drift issue.", "info", "deploy_drift"),
-             ("Oracle files match main", "Every checked surface matches main again.", "info", "deploy_drift_recovered"))
+        sync(
+            DRIFT_LABEL,
+            DRIFT_TITLE,
+            "A file installed on lifeos-edge-01 no longer matches main, or its unit is not running. Differing: "
+            + ", ".join(drifted or ["none"])
+            + ". A merge does not update the VM; show Jim the files and the install command, and install only with his yes. This issue closes itself when every surface matches.",
+            signal,
+            (
+                "Oracle files differ from main",
+                f"{len(drifted)} installed surface(s) differ from main. Open the deploy-drift issue.",
+                "info",
+                "deploy_drift",
+            ),
+            ("Oracle files match main", "Every checked surface matches main again.", "info", "deploy_drift_recovered"),
+        )
     return rows
 
 
 def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, sync=None, logs=None, now=None):
     """One dry proof run per Close release (platform/release_proof.py); pages when a proof fails. Never raises."""
-    import datetime as dt                                          # noqa: PLC0415
-    from lifeos.platform import gate, release_proof as proof      # noqa: PLC0415
+    import datetime as dt  # noqa: PLC0415
+    from lifeos.platform import gate, release_proof as proof  # noqa: PLC0415
+
     api = api or gate._api
     now = now or dt.datetime.now(dt.timezone.utc)
 
@@ -231,17 +311,22 @@ def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, syn
     def failing_code(run_id):
         try:
             return proof.failing_code_in((logs or gate._logs)(run_id, 30_000_000))
-        except Exception:                                          # noqa: BLE001
+        except Exception:  # noqa: BLE001
             return ""
 
     try:
         deployed, previous = manifest(RELEASE_MANIFEST), manifest(RELEASE_PREVIOUS)
         records = api(f"issues?state=open&labels={proof.RECORD_LABEL}&per_page=1")
         entries = proof.parse_record(records[0].get("body")) if records else []
-        listed = api(f"actions/workflows/{proof.PROOF_WORKFLOW}/runs?event=workflow_dispatch&per_page=30").get("workflow_runs") or []
+        listed = (
+            api(f"actions/workflows/{proof.PROOF_WORKFLOW}/runs?event=workflow_dispatch&per_page=30").get(
+                "workflow_runs"
+            )
+            or []
+        )
         runs = [r for r in listed if r.get("display_title") == proof.PROOF_TITLE]
         paused = bool(api(f"issues?state=open&labels={proof.FLAG_LABEL}&per_page=1"))
-    except Exception:                                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return proof.UNREADABLE
     if deployed is None:
         return proof.UNREADABLE
@@ -249,8 +334,12 @@ def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, syn
     entries = list(decision.entries)
     if decision.dispatch is not None:
         try:
-            api(f"actions/workflows/{proof.PROOF_WORKFLOW}/dispatches", "POST", {"ref": "main", "inputs": proof.PROOF_INPUTS})
-        except Exception:                                          # noqa: BLE001
+            api(
+                f"actions/workflows/{proof.PROOF_WORKFLOW}/dispatches",
+                "POST",
+                {"ref": "main", "inputs": proof.PROOF_INPUTS},
+            )
+        except Exception:  # noqa: BLE001
             entries = [e for e in entries if e is not decision.dispatch]
     body = proof.render_record(entries)
     try:
@@ -260,18 +349,41 @@ def release_proof(token, opener=urllib.request.urlopen, api=None, read=None, syn
         elif entries:
             api("labels", "POST", {"name": proof.RECORD_LABEL, "color": "0e8a16"})
             api("issues", "POST", {"title": proof.RECORD_TITLE, "body": body, "labels": [proof.RECORD_LABEL]})
-    except Exception:                                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     if decision.flag is not None:
         sync = sync or gate.sync_incident
         failed = decision.failed or next((e for e in entries if e.status == proof.FAIL), None)
-        title, text = proof.failure_text(failed) if failed else ("Release proof failed", "A proof run failed after a Close release.")
-        good_title, good_text = proof.recovered_text(decision.recovered) if decision.recovered else ("Release proof passed", "A proof run passed; Close releases resume.")
+        title, text = (
+            proof.failure_text(failed)
+            if failed
+            else ("Release proof failed", "A proof run failed after a Close release.")
+        )
+        good_title, good_text = (
+            proof.recovered_text(decision.recovered)
+            if decision.recovered
+            else ("Release proof passed", "A proof run passed; Close releases resume.")
+        )
         try:
-            sync(proof.FLAG_LABEL, title, text, decision.flag, (title, text, "page", proof.FAILED_KEY), (good_title, good_text, "info", proof.RECOVERED_KEY))
-        except Exception:                                          # noqa: BLE001
+            sync(
+                proof.FLAG_LABEL,
+                title,
+                text,
+                decision.flag,
+                (title, text, "page", proof.FAILED_KEY),
+                (good_title, good_text, "info", proof.RECOVERED_KEY),
+            )
+        except Exception:  # noqa: BLE001
             return "flag_not_synced"
-    return "dispatched" if decision.dispatch is not None else "failed" if decision.failed else "recovered" if decision.recovered else "ok"
+    return (
+        "dispatched"
+        if decision.dispatch is not None
+        else "failed"
+        if decision.failed
+        else "recovered"
+        if decision.recovered
+        else "ok"
+    )
 
 
 def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None, store=None):
@@ -282,33 +394,34 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, d
     environ.update(found)
     environ.update({"GITHUB_TOKEN": token, "GITHUB_REPOSITORY": REPO, "NTFY_TOPIC": topic})
     if run is None:
-        from lifeos.platform import gate                           # noqa: PLC0415
+        from lifeos.platform import gate  # noqa: PLC0415
+
         run = gate.watch
         disk = disk or disk_incident
     try:
         run(checkin=False)
-    except Exception:                                               # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return "TICKER_WATCH_FAILED", None
     if disk:
         try:
             disk()
-        except Exception as error:                                  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             print(f"ticker: disk check failed ({type(error).__name__})")
         try:
             drift_incident(token, opener)
-        except Exception as error:                                  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             print(f"ticker: drift check failed ({type(error).__name__})")
         try:
             stall_incident()
-        except Exception as error:                                  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             print(f"ticker: stall check failed ({type(error).__name__})")
         try:
             proof_unreadable_incident()
-        except Exception as error:                                  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             print(f"ticker: proof flag check failed ({type(error).__name__})")
         try:
             release_proof(token, opener)
-        except Exception as error:                                  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             print(f"ticker: release proof check failed ({type(error).__name__})")
     return "WATCH_DONE", None
 
@@ -325,8 +438,9 @@ def main(argv=None, opener=urllib.request.urlopen, run=None, environ=None):
     bws = credential("bwsalerts", environ)
     store = None
     if bws:
-        from lifeos.platform import alert_store                     # noqa: PLC0415
-        store = lambda: alert_store.read(bws, environ=environ)      # noqa: E731
+        from lifeos.platform import alert_store  # noqa: PLC0415
+
+        store = lambda: alert_store.read(bws, environ=environ)  # noqa: E731
     if not token or (command != "tick" and not (topic and store)):
         code, status = "TICKER_NO_CREDENTIAL", None
     elif command == "tick":

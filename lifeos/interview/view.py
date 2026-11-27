@@ -2,6 +2,7 @@
 
 Built only from canonical evidence. A source not connected is `None`, rendered as not verified; nothing is guessed.
 The submitted resume comes only from the row's human-owned Submitted Résumé field."""
+
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,8 +10,14 @@ from lifeos.platform import notion_text
 from lifeos.platform.notion_client import NotionError
 from .identity import valid_date
 
-UNCONNECTED = ("Calendar", "Recruiter email threads", "LinkedIn contacts", "Submitted résumé and sent materials",
-               "Original job description", "Interview transcripts")
+UNCONNECTED = (
+    "Calendar",
+    "Recruiter email threads",
+    "LinkedIn contacts",
+    "Submitted résumé and sent materials",
+    "Original job description",
+    "Interview transcripts",
+)
 SUBMITTED = "Submitted Résumé"
 # Hand-set hold and next-action line formats; duplicated in lifeos.hiring.models and lifeos.hiring.decision, held equal by a contract test.
 HAND_SET = "LIFE OS Hand-Set"
@@ -81,13 +88,28 @@ def ledger_facts(client, page_id, stable_job_key):
     except NotionError:
         return "unreadable", {}
     props = row.get("properties") or {}
-    if row.get("archived") or row.get("in_trash") or not stable_job_key or _plain(props.get("Stable Job Key")) != stable_job_key:
+    if (
+        row.get("archived")
+        or row.get("in_trash")
+        or not stable_job_key
+        or _plain(props.get("Stable Job Key")) != stable_job_key
+    ):
         return "mismatch", {}
     resume, resume_state = submitted_resume(props)
-    hand = tuple(t for t in (_plain(props.get(HAND_SET)) or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t))
-    return "linked", {"compensation": _plain(props.get("Compensation")), "work_mode": _plain(props.get("Location / Work Mode")),
-                      "apply_url": _plain(props.get("Apply URL")), "fit_summary": _plain(props.get("Why It Fits")),
-                      "resume": resume, "resume_state": resume_state, "hand_ledger": hand}
+    hand = tuple(
+        t
+        for t in (_plain(props.get(HAND_SET)) or "").splitlines()
+        if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t)
+    )
+    return "linked", {
+        "compensation": _plain(props.get("Compensation")),
+        "work_mode": _plain(props.get("Location / Work Mode")),
+        "apply_url": _plain(props.get("Apply URL")),
+        "fit_summary": _plain(props.get("Why It Fits")),
+        "resume": resume,
+        "resume_state": resume_state,
+        "hand_ledger": hand,
+    }
 
 
 def submitted_resume(props):
@@ -107,12 +129,16 @@ def submitted_resume(props):
 
 
 def rounds_of(children):
-    return tuple(Round(c.page_id, c.ordinal, c.interview_date, c.interviewer, created=getattr(c, "created", None)) for c in getattr(children, "items", ())
-                 if c.identity_valid is True or c.legacy)
+    return tuple(
+        Round(c.page_id, c.ordinal, c.interview_date, c.interviewer, created=getattr(c, "created", None))
+        for c in getattr(children, "items", ())
+        if c.identity_valid is True or c.legacy
+    )
 
 
 def with_calendar(client, rounds):
     from .create import round_logistics
+
     out = []
     for r in rounds:
         state, meeting = None, None
@@ -122,7 +148,17 @@ def with_calendar(client, rounds):
             except NotionError:
                 ref, cancelled = None, False
             state = ("cancelled" if cancelled else "accepted") if ref else None
-        out.append(Round(r.page_id, r.ordinal, r.date, r.interviewer, state, state == "accepted" and meeting is not None, r.created))
+        out.append(
+            Round(
+                r.page_id,
+                r.ordinal,
+                r.date,
+                r.interviewer,
+                state,
+                state == "accepted" and meeting is not None,
+                r.created,
+            )
+        )
     return tuple(out)
 
 
@@ -132,55 +168,105 @@ def _live(r):
 
 def sort_rounds(rounds, today):
     """Upcoming confirmed interviews (nearest first), then Scheduling Pending, then past (most recent first)."""
+
     def key(r):
-        number = r.ordinal if type(r.ordinal) is int else 10 ** 6
+        number = r.ordinal if type(r.ordinal) is int else 10**6
         if valid_date(r.date) and r.date >= today and _live(r):
             return (0, r.date, number, r.page_id)
         if not valid_date(r.date):
             return (1, "", number, r.page_id)
-        return (2, "".join(chr(0x7f - ord(c)) for c in r.date), number, r.page_id)
+        return (2, "".join(chr(0x7F - ord(c)) for c in r.date), number, r.page_id)
+
     return tuple(sorted(rounds, key=key))
 
 
 def opportunity(client, parent_query, query, pipeline_id, children=None, today="1970-01-01"):
     state, facts = ledger_facts(client, query.ledger_page_id, query.stable_job_key)
     request = (query.source or "").strip()
-    return Opportunity(parent_query.company.strip(), parent_query.role.strip(), query.stable_job_key, query.requisition,
-                       query.ledger_page_id if state == "linked" else None, state,
-                       request if request.startswith("https://") else None, pipeline_id,
-                       rounds=sort_rounds(with_calendar(client, rounds_of(children)), today),
-                       recruiters=tuple(getattr(query, "recruiters", ()) or ()), recruiters_state=getattr(query, "recruiters_state", None),
-                       contacts=tuple(getattr(query, "contacts", ()) or ()) if state == "linked" else (), contacts_state=getattr(query, "contacts_state", None) if state == "linked" else None,
-                       sent_mail=tuple(getattr(query, "sent_mail", ()) or ()), sent_mail_state=getattr(query, "sent_mail_state", None), **facts)
+    return Opportunity(
+        parent_query.company.strip(),
+        parent_query.role.strip(),
+        query.stable_job_key,
+        query.requisition,
+        query.ledger_page_id if state == "linked" else None,
+        state,
+        request if request.startswith("https://") else None,
+        pipeline_id,
+        rounds=sort_rounds(with_calendar(client, rounds_of(children)), today),
+        recruiters=tuple(getattr(query, "recruiters", ()) or ()),
+        recruiters_state=getattr(query, "recruiters_state", None),
+        contacts=tuple(getattr(query, "contacts", ()) or ()) if state == "linked" else (),
+        contacts_state=getattr(query, "contacts_state", None) if state == "linked" else None,
+        sent_mail=tuple(getattr(query, "sent_mail", ()) or ()),
+        sent_mail_state=getattr(query, "sent_mail_state", None),
+        **facts,
+    )
 
 
 def primary_action(view, today):
     """One primary action from verified evidence -> (label, action, due, source_url, basis); `basis` says what it
     rests on."""
     if not view.rounds and view.request_url and (view.stable_job_key or "").startswith("recruiter-"):
-        return "PRIMARY ACTION", "Reply to the recruiter's message, or close this lead.", "No verified deadline", view.request_url, "derived from the linked recruiter message"
+        return (
+            "PRIMARY ACTION",
+            "Reply to the recruiter's message, or close this lead.",
+            "No verified deadline",
+            view.request_url,
+            "derived from the linked recruiter message",
+        )
     for r in view.rounds:
         if not valid_date(r.date):
             name = f"Interview {r.ordinal}" if r.ordinal else "the next interview"
-            basis = ("derived from the linked interview request" if view.request_url
-                     else "DEGRADED · derived from the interview page; the request message is not connected")
-            return "PRIMARY ACTION", f"Confirm a time for {name} with the recruiter.", "No verified deadline", view.request_url, basis
+            basis = (
+                "derived from the linked interview request"
+                if view.request_url
+                else "DEGRADED · derived from the interview page; the request message is not connected"
+            )
+            return (
+                "PRIMARY ACTION",
+                f"Confirm a time for {name} with the recruiter.",
+                "No verified deadline",
+                view.request_url,
+                basis,
+            )
     upcoming = [r for r in view.rounds if valid_date(r.date) and r.date >= today and _live(r)]
     if upcoming:
         r = upcoming[0]
-        return ("PRIMARY ACTION", f"Prepare for Interview {r.ordinal or ''} on {r.date}.".replace("  ", " "), r.date, None,
-                "from the accepted Calendar invite" if r.calendar == "accepted" else "derived from the interview page's date; Calendar not verified")
+        return (
+            "PRIMARY ACTION",
+            f"Prepare for Interview {r.ordinal or ''} on {r.date}.".replace("  ", " "),
+            r.date,
+            None,
+            "from the accepted Calendar invite"
+            if r.calendar == "accepted"
+            else "derived from the interview page's date; Calendar not verified",
+        )
     if view.rounds and view.rounds[0].calendar == "cancelled":
         r = view.rounds[0]
         name = f"Interview {r.ordinal}" if r.ordinal else "the interview"
-        return ("PRIMARY ACTION", f"Ask the recruiter whether {name} moves to a new time.", "No verified deadline", view.request_url,
-                "derived from the cancelled Calendar invite")
-    return ("DEGRADED · NO VERIFIED ACTION", "Verify the latest interview outcome and any recruiter follow-up; those sources are "
-            "not connected yet, so no next action is shown as current.", "Unverified", None, "source evidence incomplete")
+        return (
+            "PRIMARY ACTION",
+            f"Ask the recruiter whether {name} moves to a new time.",
+            "No verified deadline",
+            view.request_url,
+            "derived from the cancelled Calendar invite",
+        )
+    return (
+        "DEGRADED · NO VERIFIED ACTION",
+        "Verify the latest interview outcome and any recruiter follow-up; those sources are "
+        "not connected yet, so no next action is shown as current.",
+        "Unverified",
+        None,
+        "source evidence incomplete",
+    )
 
 
 def _latest(view, pattern):
-    found = [(datetime.fromisoformat(m.group(2)), i, m) for i, m in enumerate(map(pattern.fullmatch, view.hand_ledger + view.hand)) if m]
+    found = [
+        (datetime.fromisoformat(m.group(2)), i, m)
+        for i, m in enumerate(map(pattern.fullmatch, view.hand_ledger + view.hand))
+        if m
+    ]
     return max(found, key=lambda f: f[:2])[2] if found else None
 
 
@@ -210,18 +296,31 @@ def _created(value):
 
 def evidence_since(view, since):
     """The first round page created after `since` -> (aware datetime, what), or None."""
-    found = sorted((t, f"Interview {r.ordinal} page added" if r.ordinal else "an interview page added")
-                   for r in view.rounds if (t := _created(r.created)) is not None and since is not None and t > since)
+    found = sorted(
+        (t, f"Interview {r.ordinal} page added" if r.ordinal else "an interview page added")
+        for r in view.rounds
+        if (t := _created(r.created)) is not None and since is not None and t > since
+    )
     return found[0] if found else None
 
 
 def sent_material(view):
     """Sent material recorded on Manage, oldest first, each op once, none removed -> [(kind, text, url, datetime)]."""
     found, seen = [], {m.group(3) for m in map(UNSENT_LINE.fullmatch, view.hand_ledger + view.hand) if m}
-    for m in sorted(filter(None, map(SENT_LINE.fullmatch, view.hand_ledger + view.hand)), key=lambda m: datetime.fromisoformat(m.group(2))):
+    for m in sorted(
+        filter(None, map(SENT_LINE.fullmatch, view.hand_ledger + view.hand)),
+        key=lambda m: datetime.fromisoformat(m.group(2)),
+    ):
         if m.group(3) not in seen:
             seen.add(m.group(3))
-            found.append((m.group(1), m.group(5).strip(), None if m.group(4) == "none" else m.group(4), datetime.fromisoformat(m.group(2))))
+            found.append(
+                (
+                    m.group(1),
+                    m.group(5).strip(),
+                    None if m.group(4) == "none" else m.group(4),
+                    datetime.fromisoformat(m.group(2)),
+                )
+            )
     return found
 
 
@@ -244,9 +343,17 @@ def stage(view, today):
     elif upcoming:
         current = f"Interview {upcoming[0].ordinal} scheduled" if upcoming[0].ordinal else "Interview scheduled"
     elif past and not _live(past[0]):
-        current = f"Interview {past[0].ordinal} cancelled in Calendar" if past[0].ordinal else "Interview cancelled in Calendar"
+        current = (
+            f"Interview {past[0].ordinal} cancelled in Calendar"
+            if past[0].ordinal
+            else "Interview cancelled in Calendar"
+        )
     elif past:
-        current = f"Interview {past[0].ordinal} date passed · outcome not verified" if past[0].ordinal else "Interview date passed"
+        current = (
+            f"Interview {past[0].ordinal} date passed · outcome not verified"
+            if past[0].ordinal
+            else "Interview date passed"
+        )
     else:
         current = "No interview pages yet"
     return current, (upcoming[0].date if upcoming else "Unavailable")

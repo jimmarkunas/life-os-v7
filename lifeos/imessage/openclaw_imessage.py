@@ -12,6 +12,7 @@ Each sends one fixed request over the tailnet to the Mac Mini's Tailscale Serve 
 object. A late, oversized, malformed, stale or off-contract reply is never passed on: the result is a fixed state
 with its reason in `health` and no counts or messages, never a zero or exception text. Message text is untrusted
 data. Read only; nothing is written, logged or kept. Stdlib only; no stderr."""
+
 import json
 import os
 import re
@@ -30,15 +31,37 @@ TIMEOUT = 10
 MAX_AGE = timedelta(seconds=120)
 MAX_SKEW = timedelta(seconds=60)
 HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED")
-MESSAGE_KEYS = {"ref", "chat", "sent_at", "from_me", "sender", "group", "chat_name", "service", "unread", "edited", "attachment", "text", "text_truncated"}
+MESSAGE_KEYS = {
+    "ref",
+    "chat",
+    "sent_at",
+    "from_me",
+    "sender",
+    "group",
+    "chat_name",
+    "service",
+    "unread",
+    "edited",
+    "attachment",
+    "text",
+    "text_truncated",
+}
 LEVELS = ("INFORMATIONAL", "ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
 PAGE_SIZE, MAX_PAGES, SCAN_SECONDS = 50, 40, 30
 PAGE_KEYS = {"channel", "health", "sync", "observed_at", "source", "messages", "contacts", "limit", "more", "cursor"}
 
 
 def unavailable(health, now):
-    return {"channel": "imessage", "attention": "UNKNOWN", "count": None, "count_reliable": False, "health": health, "sync": "UNVERIFIED",
-            "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"), "source": SOURCE}
+    return {
+        "channel": "imessage",
+        "attention": "UNKNOWN",
+        "count": None,
+        "count_reliable": False,
+        "health": health,
+        "sync": "UNVERIFIED",
+        "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "source": SOURCE,
+    }
 
 
 def endpoint(path=ENDPOINT):
@@ -81,10 +104,19 @@ def _envelope(data, now, limit):
         reply = json.loads(data)
         result = reply["result"]
         state = result["structuredContent"]
-        ok = (set(reply) == {"jsonrpc", "id", "result"} and reply["jsonrpc"] == "2.0" and reply["id"] == 1
-              and set(result) == {"content", "structuredContent", "isError"} and isinstance(state, dict)
-              and result["content"] == [{"type": "text", "text": json.dumps(state)}] and result["isError"] is (state.get("health") != "CURRENT")
-              and state.get("channel") == "imessage" and state.get("source") == SOURCE and state.get("sync") == "UNVERIFIED" and state.get("health") in HEALTH)
+        ok = (
+            set(reply) == {"jsonrpc", "id", "result"}
+            and reply["jsonrpc"] == "2.0"
+            and reply["id"] == 1
+            and set(result) == {"content", "structuredContent", "isError"}
+            and isinstance(state, dict)
+            and result["content"] == [{"type": "text", "text": json.dumps(state)}]
+            and result["isError"] is (state.get("health") != "CURRENT")
+            and state.get("channel") == "imessage"
+            and state.get("source") == SOURCE
+            and state.get("sync") == "UNVERIFIED"
+            and state.get("health") in HEALTH
+        )
         observed = _when(state["observed_at"]) if ok else None
     except (ValueError, KeyError, TypeError, AttributeError):
         return None, "DEGRADED"
@@ -99,10 +131,17 @@ def validate(data, now):
     state, refused = _envelope(data, now, MAX_REPLY)
     if refused:
         return unavailable(refused, now)
-    if (set(state) != KEYS or state["count"] is not None or state["count_reliable"] is not False
-            or state["attention"] not in (("NEEDS_ATTENTION", "UNKNOWN") if state["health"] == "CURRENT" else ("UNKNOWN",))):
+    if (
+        set(state) != KEYS
+        or state["count"] is not None
+        or state["count_reliable"] is not False
+        or state["attention"] not in (("NEEDS_ATTENTION", "UNKNOWN") if state["health"] == "CURRENT" else ("UNKNOWN",))
+    ):
         return unavailable("DEGRADED", now)
-    return {k: state[k] for k in ("channel", "attention", "count", "count_reliable", "health", "sync", "observed_at", "source")}
+    return {
+        k: state[k]
+        for k in ("channel", "attention", "count", "count_reliable", "health", "sync", "observed_at", "source")
+    }
 
 
 def _nonneg(v):
@@ -110,42 +149,107 @@ def _nonneg(v):
 
 
 def _counts_ok(c):
-    pair = lambda p: isinstance(p, dict) and set(p) == {"messages", "conversations"} and _nonneg(p["messages"]) and _nonneg(p["conversations"])
-    return (isinstance(c, dict) and set(c) == {"unread", "unread_messages_by_service_all_time", "unread_conversations_all_time"}
-            and isinstance(c["unread"], dict) and set(c["unread"]) == {"all_time", "last_7_days", "last_24_hours"} and all(pair(p) for p in c["unread"].values())
-            and isinstance(c["unread_messages_by_service_all_time"], dict) and len(c["unread_messages_by_service_all_time"]) <= 10
-            and all(isinstance(k, str) and len(k) <= 40 and _nonneg(v) for k, v in c["unread_messages_by_service_all_time"].items())
-            and isinstance(c["unread_conversations_all_time"], dict) and set(c["unread_conversations_all_time"]) == {"group", "direct"}
-            and all(_nonneg(v) for v in c["unread_conversations_all_time"].values()))
+    pair = lambda p: (
+        isinstance(p, dict)
+        and set(p) == {"messages", "conversations"}
+        and _nonneg(p["messages"])
+        and _nonneg(p["conversations"])
+    )
+    return (
+        isinstance(c, dict)
+        and set(c) == {"unread", "unread_messages_by_service_all_time", "unread_conversations_all_time"}
+        and isinstance(c["unread"], dict)
+        and set(c["unread"]) == {"all_time", "last_7_days", "last_24_hours"}
+        and all(pair(p) for p in c["unread"].values())
+        and isinstance(c["unread_messages_by_service_all_time"], dict)
+        and len(c["unread_messages_by_service_all_time"]) <= 10
+        and all(
+            isinstance(k, str) and len(k) <= 40 and _nonneg(v)
+            for k, v in c["unread_messages_by_service_all_time"].items()
+        )
+        and isinstance(c["unread_conversations_all_time"], dict)
+        and set(c["unread_conversations_all_time"]) == {"group", "direct"}
+        and all(_nonneg(v) for v in c["unread_conversations_all_time"].values())
+    )
 
 
 def _message_ok(m):
     text_ok = lambda v, n: v is None or (isinstance(v, str) and len(v) <= n)
     sender = m.get("sender") if isinstance(m, dict) else None
-    return (isinstance(m, dict) and set(m) == MESSAGE_KEYS and re.fullmatch(r"m[1-9][0-9]*", str(m["ref"])) and re.fullmatch(r"c[1-9][0-9]*", str(m["chat"]))
-            and isinstance(m["from_me"], bool) and isinstance(m["group"], bool) and isinstance(m["unread"], bool) and isinstance(m["edited"], bool)
-            and isinstance(m["attachment"], bool) and isinstance(m["text_truncated"], bool) and text_ok(m["text"], 2000) and text_ok(m["chat_name"], 200)
-            and isinstance(m["service"], str) and len(m["service"]) <= 40 and _when(m["sent_at"]) is not None
-            and ((m["from_me"] and sender is None) or (not m["from_me"] and isinstance(sender, dict) and set(sender) == {"handle", "name"}
-                                                         and text_ok(sender["handle"], 200) and text_ok(sender["name"], 200))))
+    return (
+        isinstance(m, dict)
+        and set(m) == MESSAGE_KEYS
+        and re.fullmatch(r"m[1-9][0-9]*", str(m["ref"]))
+        and re.fullmatch(r"c[1-9][0-9]*", str(m["chat"]))
+        and isinstance(m["from_me"], bool)
+        and isinstance(m["group"], bool)
+        and isinstance(m["unread"], bool)
+        and isinstance(m["edited"], bool)
+        and isinstance(m["attachment"], bool)
+        and isinstance(m["text_truncated"], bool)
+        and text_ok(m["text"], 2000)
+        and text_ok(m["chat_name"], 200)
+        and isinstance(m["service"], str)
+        and len(m["service"]) <= 40
+        and _when(m["sent_at"]) is not None
+        and (
+            (m["from_me"] and sender is None)
+            or (
+                not m["from_me"]
+                and isinstance(sender, dict)
+                and set(sender) == {"handle", "name"}
+                and text_ok(sender["handle"], 200)
+                and text_ok(sender["name"], 200)
+            )
+        )
+    )
 
 
 def _content(data, now, kind, extra, limit):
     state, refused = _envelope(data, now, MAX_CONTENT_REPLY)
-    base = {"channel": "imessage", "health": refused, "sync": "UNVERIFIED", "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-            "source": SOURCE}
+    base = {
+        "channel": "imessage",
+        "health": refused,
+        "sync": "UNVERIFIED",
+        "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "source": SOURCE,
+    }
     if refused:
         return dict(base, **{kind: None})
     try:
         if kind == "counts":
-            ok = (set(state) == {"channel", "health", "sync", "observed_at", "source", "counts", "count_reliable", "definitions", "limitation"}
-                  and state["count_reliable"] is False and isinstance(state["definitions"], dict) and isinstance(state["limitation"], str)
-                  and (_counts_ok(state["counts"]) if state["health"] == "CURRENT" else state["counts"] is None))
+            ok = (
+                set(state)
+                == {
+                    "channel",
+                    "health",
+                    "sync",
+                    "observed_at",
+                    "source",
+                    "counts",
+                    "count_reliable",
+                    "definitions",
+                    "limitation",
+                }
+                and state["count_reliable"] is False
+                and isinstance(state["definitions"], dict)
+                and isinstance(state["limitation"], str)
+                and (_counts_ok(state["counts"]) if state["health"] == "CURRENT" else state["counts"] is None)
+            )
         else:
             msgs = state.get("messages")
-            ok = (set(state) == {"channel", "health", "sync", "observed_at", "source", "messages", "contacts", "limit"} | set(extra)
-                  and all(state[k] == v for k, v in extra.items()) and state["limit"] == limit and state["contacts"] in ("CURRENT", "UNAVAILABLE", "NOT_NEEDED")
-                  and (isinstance(msgs, list) and len(msgs) <= limit and all(_message_ok(m) for m in msgs) if state["health"] == "CURRENT" else msgs is None))
+            ok = (
+                set(state)
+                == {"channel", "health", "sync", "observed_at", "source", "messages", "contacts", "limit"} | set(extra)
+                and all(state[k] == v for k, v in extra.items())
+                and state["limit"] == limit
+                and state["contacts"] in ("CURRENT", "UNAVAILABLE", "NOT_NEEDED")
+                and (
+                    isinstance(msgs, list) and len(msgs) <= limit and all(_message_ok(m) for m in msgs)
+                    if state["health"] == "CURRENT"
+                    else msgs is None
+                )
+            )
     except (ValueError, KeyError, TypeError, AttributeError):
         ok = False
     if not ok:
@@ -156,18 +260,35 @@ def _content(data, now, kind, extra, limit):
 # Urgency: fixed patterns over the message and up to two earlier ones of its conversation; ambiguous is flagged
 # `review`, not promoted. TIME_CRITICAL alone may break quiet hours, so it needs an emergency signal from a known
 # contact in a direct conversation (or an urgent same-day deadline from one).
-EMERGENCY = re.compile(r"(?i:\b(emergency|911|ambulance|hospital|urgent care|accident|injured|bleeding|police|fire department|"
-                       r"call me (now|asap|immediately|right away)|pick up (the|your) phone|answer (the|your) phone)\b)|\bER\b")
+EMERGENCY = re.compile(
+    r"(?i:\b(emergency|911|ambulance|hospital|urgent care|accident|injured|bleeding|police|fire department|"
+    r"call me (now|asap|immediately|right away)|pick up (the|your) phone|answer (the|your) phone)\b)|\bER\b"
+)
 URGENT = re.compile(r"\b(urgent(ly)?|asap|right now|immediately|as soon as possible)\b", re.I)
-TODAY = re.compile(r"\b(today|tonight|this (morning|afternoon|evening)|in (an|one|\d+) (hours?|minutes?|mins?)|by (noon|eod|end of (the )?day)|"
-                   r"(by|before|until|no later than) \d{1,2}(:\d{2})?\s*(am|pm)?)\b", re.I)
-DEADLINE = re.compile(r"\b(deadline|due|expires?|expiring|(by|before|until|no later than) (tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
-                      r"next week|\d{1,2}/\d{1,2}))\b", re.I)
-INTERVIEW = re.compile(r"\b(interview|recruiter|hiring manager|phone screen|offer letter|background check|"
-                       r"(schedule|set up|book) (a |an )?(call|time|meeting|chat|interview)|your availability|are you (free|available))\b", re.I)
-ASKS = re.compile(r"\?|\b(can you|could you|would you|please|need (you|your)|let me know|confirm|sign|pay|send me|call me|text me|get back to me)\b", re.I)
-AUTOMATED = re.compile(r"\b((verification|security|login|one-time|confirmation) code|code is \d{4,8}|\d{4,8} is your|do not share|reply stop|text stop|"
-                       r"unsubscribe|msg&data rates)\b", re.I)
+TODAY = re.compile(
+    r"\b(today|tonight|this (morning|afternoon|evening)|in (an|one|\d+) (hours?|minutes?|mins?)|by (noon|eod|end of (the )?day)|"
+    r"(by|before|until|no later than) \d{1,2}(:\d{2})?\s*(am|pm)?)\b",
+    re.I,
+)
+DEADLINE = re.compile(
+    r"\b(deadline|due|expires?|expiring|(by|before|until|no later than) (tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+    r"next week|\d{1,2}/\d{1,2}))\b",
+    re.I,
+)
+INTERVIEW = re.compile(
+    r"\b(interview|recruiter|hiring manager|phone screen|offer letter|background check|"
+    r"(schedule|set up|book) (a |an )?(call|time|meeting|chat|interview)|your availability|are you (free|available))\b",
+    re.I,
+)
+ASKS = re.compile(
+    r"\?|\b(can you|could you|would you|please|need (you|your)|let me know|confirm|sign|pay|send me|call me|text me|get back to me)\b",
+    re.I,
+)
+AUTOMATED = re.compile(
+    r"\b((verification|security|login|one-time|confirmation) code|code is \d{4,8}|\d{4,8} is your|do not share|reply stop|text stop|"
+    r"unsubscribe|msg&data rates)\b",
+    re.I,
+)
 
 
 def classify(msg, context=()):
@@ -204,8 +325,12 @@ def classify(msg, context=()):
     if not text:
         review, reasons = True, reasons + ["no_text"]
     who = sender.get("name") or handle or "the sender"
-    action = {"TIME_CRITICAL": "Call or reply to %s now." % who, "ACTION_REQUIRED": "Reply to %s; there is a request with a deadline or scheduling." % who,
-              "ATTENTION": "Read and reply to %s when convenient." % who, "INFORMATIONAL": "No action needed."}[level]
+    action = {
+        "TIME_CRITICAL": "Call or reply to %s now." % who,
+        "ACTION_REQUIRED": "Reply to %s; there is a request with a deadline or scheduling." % who,
+        "ATTENTION": "Read and reply to %s when convenient." % who,
+        "INFORMATIONAL": "No action needed.",
+    }[level]
     if review:
         action = "Check this one yourself: the signals are ambiguous. " + action
     return {"level": level, "reasons": reasons, "review": review, "next_action": action}
@@ -214,22 +339,32 @@ def classify(msg, context=()):
 def verdicts(msgs):
     out = []
     for i, m in enumerate(msgs):
-        earlier = [x.get("text") for x in msgs[i + 1:] if x["chat"] == m["chat"]][:2]
+        earlier = [x.get("text") for x in msgs[i + 1 :] if x["chat"] == m["chat"]][:2]
         out.append((m, classify(m, earlier)))
     return out
 
 
 def urgent(recent):
     if recent.get("messages") is None:
-        return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source")} | {"hours": recent.get("hours"), "summary": None, "flagged": None}
+        return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source")} | {
+            "hours": recent.get("hours"),
+            "summary": None,
+            "flagged": None,
+        }
     summary, flagged = {level: 0 for level in LEVELS}, []
     for m, verdict in verdicts(recent["messages"]):
         summary[verdict["level"]] += 1
         if verdict["level"] != "INFORMATIONAL" or verdict["review"]:
-            flagged.append({k: m[k] for k in ("ref", "chat", "sent_at", "sender", "group", "chat_name", "unread", "text")} | verdict)
+            flagged.append(
+                {k: m[k] for k in ("ref", "chat", "sent_at", "sender", "group", "chat_name", "unread", "text")}
+                | verdict
+            )
     order = {level: n for n, level in enumerate(reversed(LEVELS))}
     flagged.sort(key=lambda f: (order[f["level"]], f["sent_at"]), reverse=False)
-    return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source", "hours")} | {"summary": summary, "flagged": flagged}
+    return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source", "hours")} | {
+        "summary": summary,
+        "flagged": flagged,
+    }
 
 
 def _recent(data, now, hours, view=lambda recent: recent):
@@ -244,7 +379,12 @@ FORMS = {
     "counts": ("()", lambda n: b"counts\n", MAX_CONTENT_REPLY, lambda d, now, n: _content(d, now, "counts", {}, None)),
     "recent": (HOURS, lambda n: b"recent %d\n" % n, MAX_CONTENT_REPLY, _recent),
     "urgent": (HOURS, lambda n: b"recent %d\n" % n, MAX_CONTENT_REPLY, lambda d, now, n: _recent(d, now, n, urgent)),
-    "conversation": (r"\0c?([1-9][0-9]{0,8})", lambda n: b"conversation %d\n" % n, MAX_CONTENT_REPLY, lambda d, now, n: _content(d, now, "messages", {"chat": "c%d" % n}, 20)),
+    "conversation": (
+        r"\0c?([1-9][0-9]{0,8})",
+        lambda n: b"conversation %d\n" % n,
+        MAX_CONTENT_REPLY,
+        lambda d, now, n: _content(d, now, "messages", {"chat": "c%d" % n}, 20),
+    ),
 }
 
 
@@ -270,13 +410,24 @@ def _page(data, now):
         return None, state.get("health")
     try:
         msgs, cur = state["messages"], state["cursor"]
-        ok = (set(state) == PAGE_KEYS and state["limit"] == PAGE_SIZE and isinstance(state["more"], bool) and state["contacts"] in ("CURRENT", "UNAVAILABLE", "NOT_NEEDED")
-              and isinstance(msgs, list) and len(msgs) <= PAGE_SIZE and all(_message_ok(m) and not m["from_me"] for m in msgs)
-              and (not state["more"] or len(msgs) == PAGE_SIZE)
-              and [_when(m["sent_at"]) for m in msgs] == sorted(_when(m["sent_at"]) for m in msgs))
+        ok = (
+            set(state) == PAGE_KEYS
+            and state["limit"] == PAGE_SIZE
+            and isinstance(state["more"], bool)
+            and state["contacts"] in ("CURRENT", "UNAVAILABLE", "NOT_NEEDED")
+            and isinstance(msgs, list)
+            and len(msgs) <= PAGE_SIZE
+            and all(_message_ok(m) and not m["from_me"] for m in msgs)
+            and (not state["more"] or len(msgs) == PAGE_SIZE)
+            and [_when(m["sent_at"]) for m in msgs] == sorted(_when(m["sent_at"]) for m in msgs)
+        )
         if ok and msgs:
-            ok = (isinstance(cur, dict) and set(cur) == {"date", "rowid"} and all(isinstance(cur[k], int) and not isinstance(cur[k], bool) and cur[k] > 0 for k in cur)
-                  and msgs[-1]["ref"] == "m%d" % cur["rowid"])
+            ok = (
+                isinstance(cur, dict)
+                and set(cur) == {"date", "rowid"}
+                and all(isinstance(cur[k], int) and not isinstance(cur[k], bool) and cur[k] > 0 for k in cur)
+                and msgs[-1]["ref"] == "m%d" % cur["rowid"]
+            )
         elif ok:
             ok = cur is None and not state["more"]
     except (ValueError, KeyError, TypeError):
@@ -292,8 +443,14 @@ def scan(hours, now=None, path=ENDPOINT, fetcher=fetch, clock=time.monotonic, to
     """
     now = now or datetime.now(timezone.utc)
     today = today or (lambda: datetime.now(timezone.utc))
-    out = {"health": "DEGRADED", "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"), "messages": [], "pages": 0,
-           "complete": False, "truncated": False}
+    out = {
+        "health": "DEGRADED",
+        "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "messages": [],
+        "pages": 0,
+        "complete": False,
+        "truncated": False,
+    }
     try:
         host, port = endpoint(path)
     except (OSError, ValueError):
@@ -317,8 +474,11 @@ def scan(hours, now=None, path=ENDPOINT, fetcher=fetch, clock=time.monotonic, to
             out["observed_at"] = state["observed_at"]
         refs = [m["ref"] for m in state["messages"]]
         cur = state["cursor"]
-        if (len(set(refs)) != len(refs) or seen & set(refs)
-                or (cur is not None and last is not None and (cur["date"], cur["rowid"]) <= last)):
+        if (
+            len(set(refs)) != len(refs)
+            or seen & set(refs)
+            or (cur is not None and last is not None and (cur["date"], cur["rowid"]) <= last)
+        ):
             break
         seen |= set(refs)
         msgs += state["messages"]
@@ -334,7 +494,9 @@ def scan(hours, now=None, path=ENDPOINT, fetcher=fetch, clock=time.monotonic, to
 def main(argv):
     result = run(argv)
     if result is None:
-        sys.stdout.write("usage: openclaw-imessage attention | counts | recent [--hours 1-72] | conversation <ref> | urgent [--hours 1-72]\n")
+        sys.stdout.write(
+            "usage: openclaw-imessage attention | counts | recent [--hours 1-72] | conversation <ref> | urgent [--hours 1-72]\n"
+        )
         return 2
     sys.stdout.write(json.dumps(result) + "\n")
     return 0

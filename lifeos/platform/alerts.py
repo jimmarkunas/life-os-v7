@@ -7,6 +7,7 @@ switch and caps a process at SEND_CAP pushes. Text is redacted before it leaves.
 
 CLI for jobs with no database; exits 1 when the push was not accepted:
     python -m lifeos.platform.alerts push --severity page --title T --body B"""
+
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 from dataclasses import dataclass
@@ -100,17 +101,31 @@ def reset_flood() -> None:
     _flood.update(sent=0, paused=False)
 
 
-COPY_TAGS = {"telegram": "ch-telegram", "whatsapp": "ch-whatsapp"}  # the Oracle relay forwards a copy only when its tag is on the push
+COPY_TAGS = {
+    "telegram": "ch-telegram",
+    "whatsapp": "ch-whatsapp",
+}  # the Oracle relay forwards a copy only when its tag is on the push
 
 
-def _post(topic: str, title: str, body: str, severity: str, post: Callable[..., Any] | None = None, channels: Iterable[str] | None = None) -> bool:
+def _post(
+    topic: str,
+    title: str,
+    body: str,
+    severity: str,
+    post: Callable[..., Any] | None = None,
+    channels: Iterable[str] | None = None,
+) -> bool:
     """`channels` (None = all) says which of ntfy / telegram / whatsapp this push is for. Without the phone it goes
     out at the lowest priority: relay only, no wake.
     """
     tags = [t for t in (TAGS.get(severity, ""),) if t] + [COPY_TAGS[c] for c in (channels or ()) if c in COPY_TAGS]
     priority = "min" if channels is not None and "ntfy" not in channels else PRIORITY.get(severity, "default")
-    request = urllib.request.Request(f"https://ntfy.sh/{topic}", data=(body or title).encode(), method="POST", headers={
-        "Title": title.encode("ascii", "replace").decode(), "Priority": priority, "Tags": ",".join(tags)})
+    request = urllib.request.Request(
+        f"https://ntfy.sh/{topic}",
+        data=(body or title).encode(),
+        method="POST",
+        headers={"Title": title.encode("ascii", "replace").decode(), "Priority": priority, "Tags": ",".join(tags)},
+    )
     try:
         with (post or urllib.request.urlopen)(request, timeout=15) as response:
             return 200 <= response.status < 300
@@ -118,7 +133,14 @@ def _post(topic: str, title: str, body: str, severity: str, post: Callable[..., 
         return False
 
 
-def ntfy(topic: str, title: str, body: str, severity: str, post: Callable[..., Any] | None = None, channels: Iterable[str] | None = None) -> bool:
+def ntfy(
+    topic: str,
+    title: str,
+    body: str,
+    severity: str,
+    post: Callable[..., Any] | None = None,
+    channels: Iterable[str] | None = None,
+) -> bool:
     """The one gateway to the phone (ntfy). -> True when accepted; never raises. Nothing is sent (False) while alerts
     are off, muted or past SEND_CAP; the first push past the cap sends ONE "alerts paused: flood" notice.
     """
@@ -127,7 +149,13 @@ def ntfy(topic: str, title: str, body: str, severity: str, post: Callable[..., A
     if _flood["sent"] >= SEND_CAP:
         if not _flood["paused"]:
             _flood["paused"] = True
-            _post(topic, "Alerts paused: flood", f"More than {SEND_CAP} alerts in one run. The rest were held back; the run's log has the counts.", INFO, post)
+            _post(
+                topic,
+                "Alerts paused: flood",
+                f"More than {SEND_CAP} alerts in one run. The rest were held back; the run's log has the counts.",
+                INFO,
+                post,
+            )
         return False
     _flood["sent"] += 1
     return _post(topic, title, body, severity, post, channels)
@@ -143,10 +171,19 @@ def push(key: str, title: str, body: str, topic: str | None = None, post: Callab
     chosen = alert_settings.channels(key)
     if spec is None or not chosen:
         return False
-    return ntfy((topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(), redact.redact(title), redact.redact(body), spec.severity, post, chosen)
+    return ntfy(
+        (topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(),
+        redact.redact(title),
+        redact.redact(body),
+        spec.severity,
+        post,
+        chosen,
+    )
 
 
-def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None, failed_keys: set[str] | None = None) -> dict[str, int]:
+def deliver(
+    plan: Plan, topic: str, send: Callable[..., bool] | None = None, failed_keys: set[str] | None = None
+) -> dict[str, int]:
     sent = failed = skipped = 0
     failed_keys = set() if failed_keys is None else failed_keys
     for kind, item in plan.notify:
@@ -159,7 +196,7 @@ def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None, fai
         if send is None and not chosen:
             skipped += 1  # every channel is off: handled, not failed
             continue
-        if (send(topic, title, body, severity) if send else ntfy(topic, title, body, severity, channels=chosen)):
+        if send(topic, title, body, severity) if send else ntfy(topic, title, body, severity, channels=chosen):
             sent += 1
         else:
             failed += 1
@@ -170,7 +207,11 @@ def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None, fai
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["push"])
-    parser.add_argument("--key", required=True, help="the registered alert this push is (lifeos/platform/alert_registry.py); its severity comes from there")
+    parser.add_argument(
+        "--key",
+        required=True,
+        help="the registered alert this push is (lifeos/platform/alert_registry.py); its severity comes from there",
+    )
     parser.add_argument("--severity", choices=[PAGE, INFO], default=None, help="only for --key test_push")
     parser.add_argument("--title", required=True)
     parser.add_argument("--body", default="")
@@ -190,7 +231,9 @@ def main(argv: list[str] | None = None) -> int:
     if not chosen:
         print(json.dumps({"push": "no_channel"}))
         return 0
-    ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), severity, channels=chosen)
+    ok = ntfy(
+        os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), severity, channels=chosen
+    )
     print(json.dumps({"push": "sent" if ok else "not_sent"}))
     return 0 if ok else 1
 

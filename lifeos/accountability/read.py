@@ -1,6 +1,7 @@
 """Read-only Jira reads (GET only) for the V3 accountability regions.
 
 A quarter counts only tasks open now or completed inside it. Ticket text goes to Notion only, never to a log."""
+
 import json
 import os
 import re
@@ -43,7 +44,10 @@ def jql_url(site, jql):
 def search(jira, jql, fields):
     out, token = [], None
     for _ in range(MAX_PAGES):
-        data = jira.get("/rest/api/3/search/jql", {"jql": jql, "fields": fields, "maxResults": PAGE, **({"nextPageToken": token} if token else {})})
+        data = jira.get(
+            "/rest/api/3/search/jql",
+            {"jql": jql, "fields": fields, "maxResults": PAGE, **({"nextPageToken": token} if token else {})},
+        )
         issues = data.get("issues") if isinstance(data, dict) else None
         if not isinstance(issues, list):
             raise JiraError("ACCOUNTABILITY_JIRA_BAD_PAGE")
@@ -100,7 +104,10 @@ def person_of(key):
 
 def epics(jira, year, n):
     found = search(jira, f'issuetype = Epic AND labels = "{label(year, n)}" ORDER BY key ASC', EPIC_FIELDS)
-    return [{"key": i["key"], "lane": lane((i.get("fields") or {}).get("summary")), "person": person_of(i["key"])} for i in found]
+    return [
+        {"key": i["key"], "lane": lane((i.get("fields") or {}).get("summary")), "person": person_of(i["key"])}
+        for i in found
+    ]
 
 
 def _counts(children, first, last):
@@ -126,8 +133,11 @@ def _counts(children, first, last):
 def _mej_project_goals(jira, quarter_keys):
     if not quarter_keys:
         return {}
-    projects = search(jira, 'project = MEJ AND issuetype = Epic AND labels = "mej-project" ORDER BY key ASC',
-                      "issuetype,issuelinks,labels")
+    projects = search(
+        jira,
+        'project = MEJ AND issuetype = Epic AND labels = "mej-project" ORDER BY key ASC',
+        "issuetype,issuelinks,labels",
+    )
     out = {}
     for project in projects:
         found = set()
@@ -161,7 +171,9 @@ def _first_verified_done(jira, key, current_done_status_id=None):
                 if not isinstance(item, dict) or (item.get("fieldId") != "status" and item.get("field") != "status"):
                     continue
                 to_name = (item.get("toString") or "").strip().casefold()
-                if to_name != "done" and (not current_done_status_id or str(item.get("to")) != str(current_done_status_id)):
+                if to_name != "done" and (
+                    not current_done_status_id or str(item.get("to")) != str(current_done_status_id)
+                ):
                     continue
                 try:
                     stamp = datetime.fromisoformat(change["created"])
@@ -197,11 +209,22 @@ def _frozen_mej_membership(first, manifest=None, project="MEJ"):
         row = (row["boards"] or {}).get(project) if isinstance(row["boards"], dict) else None
     elif project != "MEJ":
         row = None
-    if not isinstance(row, dict) or row.get("approved") is not True or not row.get("baseline_id") or not row.get("approval_ref") or not isinstance(row.get("tasks"), dict):
+    if (
+        not isinstance(row, dict)
+        or row.get("approved") is not True
+        or not row.get("baseline_id")
+        or not row.get("approval_ref")
+        or not isinstance(row.get("tasks"), dict)
+    ):
         raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     for key, assignment in row["tasks"].items():
         pattern = project + r"-\d+"
-        if not re.fullmatch(pattern, key) or not isinstance(assignment, dict) or not re.fullmatch(pattern, str(assignment.get("parent") or "")) or not re.fullmatch(pattern, str(assignment.get("goal") or "")):
+        if (
+            not re.fullmatch(pattern, key)
+            or not isinstance(assignment, dict)
+            or not re.fullmatch(pattern, str(assignment.get("parent") or ""))
+            or not re.fullmatch(pattern, str(assignment.get("goal") or ""))
+        ):
             raise JiraError("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED")
     return row["tasks"]
 
@@ -262,7 +285,9 @@ def unparented(jira, project, epic_keys, *, mej_metric_version=None):
     if project == "MEJ" and mej_metric_version == "v2":
         allowed.update(_mej_project_goals(jira, allowed))
     count = 0
-    for issue in search(jira, f"project = {project} AND issuetype != Epic AND statusCategory != Done", "parent,issuetype"):
+    for issue in search(
+        jira, f"project = {project} AND issuetype != Epic AND statusCategory != Done", "parent,issuetype"
+    ):
         fields = issue.get("fields") or {}
         if (fields.get("issuetype") or {}).get("subtask"):
             continue
@@ -274,8 +299,14 @@ def unparented(jira, project, epic_keys, *, mej_metric_version=None):
 def _row(issue, **extra):
     fields = issue.get("fields") or {}
     status = fields.get("status") or {}
-    return {"key": issue["key"], "summary": fields.get("summary") or "", "status": status.get("name") or "Unknown", "due": fields.get("duedate"),
-            "done": (status.get("statusCategory") or {}).get("key") == "done", **extra}
+    return {
+        "key": issue["key"],
+        "summary": fields.get("summary") or "",
+        "status": status.get("name") or "Unknown",
+        "due": fields.get("duedate"),
+        "done": (status.get("statusCategory") or {}).get("key") == "done",
+        **extra,
+    }
 
 
 V3_WEEK_FIELDS = WEEK_FIELDS + ",parent,labels"
@@ -292,7 +323,11 @@ def _v3_week(jira, project, today, monday):
     tail = " ORDER BY duedate ASC, key ASC"
     standard = f"project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory != Done AND "
     sprint = "(sprint in openSprints())"
-    everything = search(jira, f"project = {project} AND issuetype != Epic AND statusCategory != Done AND {sprint}" + tail, V3_WEEK_FIELDS)
+    everything = search(
+        jira,
+        f"project = {project} AND issuetype != Epic AND statusCategory != Done AND {sprint}" + tail,
+        V3_WEEK_FIELDS,
+    )
     commitments = [i for i in everything if not _is_subtask(i)]
     keys = {i["key"] for i in commitments}
     subtasks, elsewhere = {}, 0
@@ -309,10 +344,22 @@ def _v3_week(jira, project, today, monday):
     rows = [_row(i) for i in outside]
     blocked = [r for r in rows if r["status"].lower() == "blocked"]
     overdue = [r for r in rows if r["status"].lower() != "blocked" and r["due"] and r["due"] < today.isoformat()]
-    done = search(jira, f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', V3_WEEK_FIELDS)
-    return {"v3": True, "open": [_row(i) for i in commitments], "subtasks": subtasks, "subtasks_elsewhere": elsewhere,
-            "blocked": blocked, "overdue": overdue, "done": [_row(i, labels=list((i.get("fields") or {}).get("labels") or [])) for i in done],
-            "jql": standard + sprint, "outside_jql": standard + outside_clause}
+    done = search(
+        jira,
+        f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC',
+        V3_WEEK_FIELDS,
+    )
+    return {
+        "v3": True,
+        "open": [_row(i) for i in commitments],
+        "subtasks": subtasks,
+        "subtasks_elsewhere": elsewhere,
+        "blocked": blocked,
+        "overdue": overdue,
+        "done": [_row(i, labels=list((i.get("fields") or {}).get("labels") or [])) for i in done],
+        "jql": standard + sprint,
+        "outside_jql": standard + outside_clause,
+    }
 
 
 def week(jira, project, today, mej_task_focus=False, v3_week_view=False):
@@ -332,10 +379,18 @@ def week(jira, project, today, mej_task_focus=False, v3_week_view=False):
         due = search(jira, base + due_clause + tail, WEEK_FIELDS)
         active_keys = {i["key"] for i in active}
         outside = [i for i in due if i["key"] not in active_keys]
-        done = search(jira, f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', WEEK_FIELDS)
-        return {"open": [_row(i) for i in active], "outside": [_row(i) for i in outside],
-                "done": [_row(i) for i in done], "jql": base + clause,
-                "outside_jql": base + due_clause + ' AND (sprint not in openSprints() OR sprint is EMPTY)'}
+        done = search(
+            jira,
+            f'project = {project} AND issuetype != Epic AND issuetype != Sub-task AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC',
+            WEEK_FIELDS,
+        )
+        return {
+            "open": [_row(i) for i in active],
+            "outside": [_row(i) for i in outside],
+            "done": [_row(i) for i in done],
+            "jql": base + clause,
+            "outside_jql": base + due_clause + ' AND (sprint not in openSprints() OR sprint is EMPTY)',
+        }
 
     base = f"project = {project} AND issuetype != Epic AND statusCategory != Done AND "
     clause = f'(sprint in openSprints() OR duedate <= "{sunday}")'
@@ -346,7 +401,11 @@ def week(jira, project, today, mej_task_focus=False, v3_week_view=False):
             raise
         clause = f'(statusCategory = "In Progress" OR duedate <= "{sunday}")'
         found = search(jira, base + clause + tail, WEEK_FIELDS)
-    done = search(jira, f'project = {project} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC', WEEK_FIELDS)
+    done = search(
+        jira,
+        f'project = {project} AND issuetype != Epic AND statusCategory = Done AND statusCategoryChangedDate >= "{monday}" ORDER BY key ASC',
+        WEEK_FIELDS,
+    )
     return {"open": [_row(i) for i in found], "done": [_row(i) for i in done], "jql": base + clause}
 
 

@@ -2,6 +2,7 @@
 
 Each job is created once and its page id stored. With V7_FIT_GATE=true only ADMIT / REVIEW jobs publish.
 """
+
 import os
 
 from lifeos.jobs import classify, meta, lanes, ledger, store
@@ -10,8 +11,12 @@ from lifeos.jobs.identity import aggregator_twin, norm, url_key, vacancy_id
 from lifeos.platform import ledger_claim, limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
-SECTIONS = (("summary", "Summary"), ("responsibilities", "Responsibilities"), ("requirements", "Requirements"),
-            ("qualifications", "Qualifications"))
+SECTIONS = (
+    ("summary", "Summary"),
+    ("responsibilities", "Responsibilities"),
+    ("requirements", "Requirements"),
+    ("qualifications", "Qualifications"),
+)
 
 
 _now = store.now
@@ -30,13 +35,17 @@ def same_opening(cursor, job_id, company, title, url=None, location=None):
     short, mine = len(norm(title).split()) < 3, vacancy_id(url)
     if short and mine is None:
         return None
-    cursor.execute("SELECT id, final_apply_url, location_text FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
-                   " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) ORDER BY id", (job_id, company, title))
+    cursor.execute(
+        "SELECT id, final_apply_url, location_text FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
+        " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) ORDER BY id",
+        (job_id, company, title),
+    )
     rows = cursor.fetchall()
     if short:
         return next((row[0] for row in rows if vacancy_id(row[1]) == mine), None)
     return next((row[0] for row in rows if vacancy_id(row[1]) == mine), None) or next(
-        (row[0] for row in rows if aggregator_twin(url, location, row[1], row[2], AGGREGATOR)), None)
+        (row[0] for row in rows if aggregator_twin(url, location, row[1], row[2], AGGREGATOR)), None
+    )
 
 
 AGGREGATOR = lambda url: classify.apply_kind(url) == "aggregator"  # noqa: E731 - the one host rule, shared with the audit
@@ -56,21 +65,40 @@ def properties(row):
         "Company": {"rich_text": rich_text(row["company"] or "")},
         "Apply URL": {"url": row["url"]},
         "Source Provider": {"rich_text": rich_text(provider)},
-        "Source Types": {"multi_select": [{"name": provider}] + [{"name": flag} for kind, flag in (("easy_apply", "Easy Apply"), ("aggregator", "Aggregator Link")) if row.get("apply_kind") == kind]},
+        "Source Types": {
+            "multi_select": [{"name": provider}]
+            + [
+                {"name": flag}
+                for kind, flag in (("easy_apply", "Easy Apply"), ("aggregator", "Aggregator Link"))
+                if row.get("apply_kind") == kind
+            ]
+        },
         "Stable Job Key": {"rich_text": rich_text(row["key"])},
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},
         "Liveness": {"select": {"name": "Live"}},
-        "Visible Lane": {"select": {"name": meta.VISIBLE_LANE_LABEL.get(lanes.lane_for(row["lane"]), lanes.lane_for(row["lane"]))}},
-        "Eligible Lanes": {"multi_select": [{"name": n} for n in (row.get("eligible") or [lanes.lane_for(row["lane"])])]},
+        "Visible Lane": {
+            "select": {"name": meta.VISIBLE_LANE_LABEL.get(lanes.lane_for(row["lane"]), lanes.lane_for(row["lane"]))}
+        },
+        "Eligible Lanes": {
+            "multi_select": [{"name": n} for n in (row.get("eligible") or [lanes.lane_for(row["lane"])])]
+        },
         "Admission Status": {"select": {"name": lanes.ADMISSION_LABEL.get(row.get("admission"), "Passed / Review")}},
     }
     if row.get("admission") == lanes.REVIEW and row.get("admission_reason"):
         props["Review Reason"] = {"rich_text": rich_text(row["admission_reason"])}
     if row.get("work_mode") in ("remote", "hybrid", "onsite", "unknown"):
         props["Work Mode"] = {"select": {"name": row["work_mode"].capitalize()}}
-    props.update(meta.properties(row.get("location"), row.get("salary"), row.get("text"), row.get("route"),
-                                 ",".join(row.get("eligible") or []), lanes.lane_for(row["lane"])))
+    props.update(
+        meta.properties(
+            row.get("location"),
+            row.get("salary"),
+            row.get("text"),
+            row.get("route"),
+            ",".join(row.get("eligible") or []),
+            lanes.lane_for(row["lane"]),
+        )
+    )
     if row.get("posted"):
         props["Posting Date"] = {"date": {"start": row["posted"].isoformat()}}
     if row.get("fit") is not None:
@@ -82,9 +110,20 @@ def properties(row):
 
 def existing_page(client, key):
     """The Ledger page id holding this Stable Job Key, or None; two matches or an unreadable answer raise."""
-    found = client.call("POST", f"/data_sources/{client.source}/query", {"filter": {"property": "Stable Job Key", "rich_text": {"equals": key}}, "page_size": 2}).get("results")
-    if found is None or not isinstance(found, list) or len(found) > 1 or any(not isinstance(page, dict) or not page.get("id") for page in found):
-        raise NotionError("ledger_key_ambiguous" if isinstance(found, list) and len(found) > 1 else "ledger_lookup_unreadable")
+    found = client.call(
+        "POST",
+        f"/data_sources/{client.source}/query",
+        {"filter": {"property": "Stable Job Key", "rich_text": {"equals": key}}, "page_size": 2},
+    ).get("results")
+    if (
+        found is None
+        or not isinstance(found, list)
+        or len(found) > 1
+        or any(not isinstance(page, dict) or not page.get("id") for page in found)
+    ):
+        raise NotionError(
+            "ledger_key_ambiguous" if isinstance(found, list) and len(found) > 1 else "ledger_lookup_unreadable"
+        )
     return found[0]["id"] if found else None
 
 
@@ -97,7 +136,8 @@ def adopted(pages):
 
 def _listed(client, keys, counts):
     """The Ledger pages for these keys; None on an unreadable answer (publish then looks up per key)."""
-    from lifeos.jobs import readback                                                  # noqa: PLC0415
+    from lifeos.jobs import readback  # noqa: PLC0415
+
     keys = list(dict.fromkeys(k for k in keys if k))
     if not keys:
         return {}
@@ -141,21 +181,28 @@ def _store_seed(connection, urls):
     with connection.cursor() as cursor:
         cursor.execute("DELETE FROM v7_ledger_urls WHERE source='seed'")
         for start in range(0, len(rows), 500):
-            cursor.executemany("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,%s,%s)",
-                               rows[start:start + 500])
+            cursor.executemany(
+                "INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,%s,%s)",
+                rows[start : start + 500],
+            )
     return release_in_ledger(connection)
 
 
 def release_in_ledger(connection):
     """Jobs set aside as `in_ledger` whose URL is gone from the remembered URLs go back to READY. -> count."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT id, final_apply_url FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL")
+        cursor.execute(
+            "SELECT id, final_apply_url FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL"
+        )
         held = cursor.fetchall()
         cursor.execute("SELECT url_hash FROM v7_ledger_urls")
         known = {row[0] for row in cursor.fetchall()}
         free = [row[0] for row in held if url_key(row[1]) not in known]
         for job_id in free:
-            cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='released_ledger', updated_at=%s WHERE id=%s AND status='DUPLICATE'", (_now(), job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET status='READY', unresolved_reason='released_ledger', updated_at=%s WHERE id=%s AND status='DUPLICATE'",
+                (_now(), job_id),
+            )
     return len(free)
 
 
@@ -169,20 +216,31 @@ def order(rows, n, hour=0):
     The first n // MAIL_SHARE places go to the strongest non-`web:*` rows; the last n // FAIR_SHARE are the oldest of
     the rest. Under four places, the oldest gets one only when the clock hour is a multiple of four.
     """
-    ranked = sorted(rows, key=lambda r: ({"ADMIT": 0, "REVIEW": 1}.get(r[1], 2), -(r[2] if r[2] is not None else -1), -(r[3] or r[4].date()).toordinal(), r[4], r[0]))
+    ranked = sorted(
+        rows,
+        key=lambda r: (
+            {"ADMIT": 0, "REVIEW": 1}.get(r[1], 2),
+            -(r[2] if r[2] is not None else -1),
+            -(r[3] or r[4].date()).toordinal(),
+            r[4],
+            r[0],
+        ),
+    )
     fair = n // FAIR_SHARE or int(n > 0 and hour % FAIR_SHARE == 0)
-    mail = [r for r in ranked if not str(r[5] if len(r) > 5 else "").startswith("web:")][:n // MAIL_SHARE]
+    mail = [r for r in ranked if not str(r[5] if len(r) > 5 else "").startswith("web:")][: n // MAIL_SHARE]
     taken = {r[0] for r in mail}
-    first = mail + [r for r in ranked if r[0] not in taken][:max(n - fair - len(mail), 0)]
+    first = mail + [r for r in ranked if r[0] not in taken][: max(n - fair - len(mail), 0)]
     ranked = mail + [r for r in ranked if r[0] not in taken]
-    rest = sorted(ranked[len(first):], key=lambda r: (r[4], r[0]))
-    return [r[0] for r in first + rest[:n - len(first)]]
+    rest = sorted(ranked[len(first) :], key=lambda r: (r[4], r[0]))
+    return [r[0] for r in first + rest[: n - len(first)]]
 
 
 def _pick(connection, limit, gated=False, hour=None, stats=None):
     """-> (rows, known ids); `stats` receives waiting and ready_unpublished counts."""
-    base = (" FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
-            " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else ""))
+    base = (
+        " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
+        " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else "")
+    )
     with connection.cursor() as cursor:
         cursor.execute("SELECT j.id, f.admission, f.score, j.posted_date, j.first_seen, j.source" + base)
         eligible = [tuple(r) for r in cursor.fetchall()]
@@ -199,7 +257,12 @@ def _pick(connection, limit, gated=False, hour=None, stats=None):
         cursor.execute(
             "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
             " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind, f.lane, f.eligible, j.location_text, j.route_evidence"
-            + base + " AND j.id IN (" + ",".join(["%s"] * len(ids)) + ")", tuple(ids))
+            + base
+            + " AND j.id IN ("
+            + ",".join(["%s"] * len(ids))
+            + ")",
+            tuple(ids),
+        )
         by_id = {row[0]: row for row in cursor.fetchall()}
         rows = [by_id[i] for i in ids if i in by_id]
         known = set()
@@ -214,10 +277,15 @@ def release_kept_in_ledger(connection):
     """A keep-list role set aside as `in_ledger` goes back to READY. -> count."""
     released = 0
     with connection.cursor() as cursor:
-        cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL")
+        cursor.execute(
+            "SELECT id, company, title FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL"
+        )
         for job_id, company, title in cursor.fetchall():
             if lanes.on_keep_list(company, title):
-                cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='released_keep_list', updated_at=%s WHERE id=%s AND status='DUPLICATE'", (_now(), job_id))
+                cursor.execute(
+                    "UPDATE v7_jobs SET status='READY', unresolved_reason='released_keep_list', updated_at=%s WHERE id=%s AND status='DUPLICATE'",
+                    (_now(), job_id),
+                )
                 released += 1
     return released
 
@@ -225,7 +293,17 @@ def release_kept_in_ledger(connection):
 def run(limit, live, environ=os.environ):
     gated = environ.get("V7_FIT_GATE") == "true"
     """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
-    counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0, "claim_won": 0, "claim_held": 0, "claim_readbacks": 0}
+    counts = {
+        "picked": 0,
+        "created": 0,
+        "duplicate": 0,
+        "failed": 0,
+        "seeded": 0,
+        "calls": 0,
+        "claim_won": 0,
+        "claim_held": 0,
+        "claim_readbacks": 0,
+    }
     claimant = ledger_claim.who("publish")
     client = Client(environ)
     counts["target"] = ledger.OK if not live else ledger.verify(client)
@@ -249,20 +327,52 @@ def run(limit, live, environ=os.environ):
     counts["waiting"], counts["ready_unpublished"] = stats.get("waiting", 0), stats.get("ready_unpublished", 0)
     counts["picked_not_board"] = sum(1 for r in rows if not str(r[5] or "").startswith("web:"))
     listed = _listed(client, [r[1] for r in rows if r[0] not in known], counts) if live else None
-    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible, location, route) in rows:
+    for (
+        job_id,
+        key,
+        title,
+        company,
+        url,
+        source,
+        provider,
+        lane,
+        first_seen,
+        posted,
+        summary,
+        resp,
+        req,
+        qual,
+        full,
+        fit,
+        fit_line,
+        admission,
+        admission_reason,
+        work_mode,
+        salary,
+        apply_kind,
+        fit_lane,
+        eligible,
+        location,
+        route,
+    ) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
                 with store.connect() as connection, connection.cursor() as cursor:
-                    cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', unresolved_reason='in_ledger', "
-                                   "updated_at=%s WHERE id=%s", (_now(), job_id))
+                    cursor.execute(
+                        "UPDATE v7_jobs SET status='DUPLICATE', unresolved_reason='in_ledger', "
+                        "updated_at=%s WHERE id=%s",
+                        (_now(), job_id),
+                    )
             continue
         if live:
             with store.connect() as connection, connection.cursor() as cursor:
                 original = same_opening(cursor, job_id, company, title, url, location)
                 if original:
-                    cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",
-                                   (original, _now(), job_id))
+                    cursor.execute(
+                        "UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",
+                        (original, _now(), job_id),
+                    )
                     counts["duplicate"] += 1
                     continue
         if not live:
@@ -271,13 +381,27 @@ def run(limit, live, environ=os.environ):
         desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
         if not any((summary, resp, req, qual)):
             desc["summary"] = (full or "")[:6000]
-        row = {"title": title, "company": company, "url": url, "source": source, "provider": provider, "lane": lane,
-               "key": key,
-               "first_seen": ledger.ct_day(first_seen), "posted": posted,
-               "fit": fit, "fit_line": fit_line,
-               "admission": admission if gated else None, "admission_reason": admission_reason if gated else None,
-               "work_mode": work_mode, "salary": salary, "apply_kind": apply_kind,
-               "location": location, "route": route, "text": full}
+        row = {
+            "title": title,
+            "company": company,
+            "url": url,
+            "source": source,
+            "provider": provider,
+            "lane": lane,
+            "key": key,
+            "first_seen": ledger.ct_day(first_seen),
+            "posted": posted,
+            "fit": fit,
+            "fit_line": fit_line,
+            "admission": admission if gated else None,
+            "admission_reason": admission_reason if gated else None,
+            "work_mode": work_mode,
+            "salary": salary,
+            "apply_kind": apply_kind,
+            "location": location,
+            "route": route,
+            "text": full,
+        }
         if gated and fit_lane:
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
@@ -306,15 +430,21 @@ def run(limit, live, environ=os.environ):
         # only the read-back sets verified_at
         synced = created and fit is not None
         with store.connect() as connection, connection.cursor() as cursor:  # record at once so a crash cannot duplicate
-            cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s, fit_synced_at=%s, meta_v=%s, ledger_claim_by=NULL, ledger_claim_at=NULL WHERE id=%s",
-                           (page_id, _now(), _now() if synced else None, meta.META_VERSION if synced else None, job_id))
-            cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
-                           (url_key(url), _now()))
+            cursor.execute(
+                "UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s, fit_synced_at=%s, meta_v=%s, ledger_claim_by=NULL, ledger_claim_at=NULL WHERE id=%s",
+                (page_id, _now(), _now() if synced else None, meta.META_VERSION if synced else None, job_id),
+            )
+            cursor.execute(
+                "INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
+                (url_key(url), _now()),
+            )
         counts["created"] += 1
-    from lifeos.jobs import fit_sync                                                 # noqa: PLC0415
+    from lifeos.jobs import fit_sync  # noqa: PLC0415
+
     counts["fit_sync"] = fit_sync.run(client, live, gated)
     if live:
-        from lifeos.jobs import readback                                              # noqa: PLC0415
+        from lifeos.jobs import readback  # noqa: PLC0415
+
         counts["readback"] = readback.run(client, live)
         counts["failed"] += counts["readback"].get("failed", 0)
     counts["calls"] = client.calls

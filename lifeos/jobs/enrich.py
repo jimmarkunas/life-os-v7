@@ -4,6 +4,7 @@ Description order: ATS API (Greenhouse, Lever) -> JobPosting JSON-LD -> page tex
 EXCLUDED_STALE | back to NEW (page does not match the job) | pending with a fixed reason. Plain HTTP only. Counts
 only.
 """
+
 from datetime import date, datetime, timedelta, timezone
 import html as htmllib
 import json
@@ -16,8 +17,11 @@ from lifeos.jobs import ats_detail, jd, jsonld, lanes, quality, store
 from lifeos.platform.http import fetch
 
 TRIED_REASON = "description_empty_tf"
-CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
-                         r"posting (has )?expired|this job has expired|not accepting applications", re.I)
+CLOSED_TEXT = re.compile(
+    r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
+    r"posting (has )?expired|this job has expired|not accepting applications",
+    re.I,
+)
 
 
 _now = store.now
@@ -42,8 +46,11 @@ def _api_job(url):
     if host.endswith("greenhouse.io"):
         board = (re.search(r"(?:^|&)for=([^&]+)", parts.query) or [None, segs[0] if segs else ""])[1]
         ident = (re.search(r"(?:^|&)token=(\d+)", parts.query) or [None, None])[1] or next(
-            (s for s in reversed(segs) if s.isdigit()), None)
-        data = _board_json(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{ident}") if board and ident else None
+            (s for s in reversed(segs) if s.isdigit()), None
+        )
+        data = (
+            _board_json(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{ident}") if board and ident else None
+        )
         if data is None or data is GONE:
             return data
         posted = str(data.get("first_published") or data.get("updated_at") or "")[:10]
@@ -54,9 +61,14 @@ def _api_job(url):
             return data
         created = data.get("createdAt")
         posted = datetime.fromtimestamp(created / 1000, timezone.utc).date().isoformat() if created else ""
-        lists = "".join(f"<h3>{x.get('text') or ''}</h3><ul>{x.get('content') or ''}</ul>" for x in (data.get("lists") or []))
-        return {"title": data.get("text"), "html": (data.get("description") or "") + lists + (data.get("additional") or ""),
-                "posted": posted}
+        lists = "".join(
+            f"<h3>{x.get('text') or ''}</h3><ul>{x.get('content') or ''}</ul>" for x in (data.get("lists") or [])
+        )
+        return {
+            "title": data.get("text"),
+            "html": (data.get("description") or "") + lists + (data.get("additional") or ""),
+            "posted": posted,
+        }
     return None
 
 
@@ -68,7 +80,9 @@ def _parse_date(value):
 
 
 def _title_ok(want, *found, strict=False):
-    tokens = [t for t in _joined(re.sub(r"\([^)]*\)", " ", want or "")).split() if len(t) > 2] or [t for t in _joined(want).split() if len(t) > 2]
+    tokens = [t for t in _joined(re.sub(r"\([^)]*\)", " ", want or "")).split() if len(t) > 2] or [
+        t for t in _joined(want).split() if len(t) > 2
+    ]
     hay = _joined(" ".join(f for f in (found[:1] if strict else found) if f))
     return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= (0.8 if strict else 0.6)
 
@@ -80,7 +94,11 @@ def _joined(text):
 def _greenhouse_embed(url, html):
     job = re.search(r"[?&]gh_jid=(\d+)", url)
     board = re.search(r"greenhouse\.io/[^\"'\s<>]*?[?&;]for=([A-Za-z0-9_-]+)", html or "")
-    return f"https://boards.greenhouse.io/embed/job_app?for={board.group(1)}&token={job.group(1)}" if job and board else None
+    return (
+        f"https://boards.greenhouse.io/embed/job_app?for={board.group(1)}&token={job.group(1)}"
+        if job and board
+        else None
+    )
 
 
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
@@ -95,12 +113,18 @@ def board_of(source):
 def board_job_url(board, url):
     kind, slug = board
     if kind == "greenhouse":
-        ident = re.search(r"[?&](?:gh_jid|token)=(\d+)", url or "") or re.search(r"/(\d{6,})(?:[/?#]|$)", urlsplit(url or "").path + "/")
+        ident = re.search(r"[?&](?:gh_jid|token)=(\d+)", url or "") or re.search(
+            r"/(\d{6,})(?:[/?#]|$)", urlsplit(url or "").path + "/"
+        )
         return f"https://boards.greenhouse.io/{slug}/jobs/{ident.group(1)}" if ident else None
     ident = UUID.search(url or "")
     if not ident:
         return None
-    return f"https://jobs.lever.co/{slug}/{ident.group(0)}" if kind == "lever" else f"https://jobs.ashbyhq.com/{slug}/{ident.group(0)}"
+    return (
+        f"https://jobs.lever.co/{slug}/{ident.group(0)}"
+        if kind == "lever"
+        else f"https://jobs.ashbyhq.com/{slug}/{ident.group(0)}"
+    )
 
 
 def _title_words_in(want, html):
@@ -128,7 +152,11 @@ def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
     if api:
         text_source = api.get("plain") or api["html"]
         desc = jd.describe(text_source, is_html=not api.get("plain"))
-        found_title, posted, source_kind = api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api"
+        found_title, posted, source_kind = (
+            api.get("title") or desc["full_text"][:300],
+            _parse_date(api.get("posted")),
+            "ats_api",
+        )
         valid_through = None
     else:
         page = fetch(url, timeout=15, max_hops=6)
@@ -145,13 +173,25 @@ def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
             api = _api_job(embedded)
             if api and not api.get("closed"):
                 desc = jd.describe(api["html"], is_html=True)
-                return finish(title, desc, api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api", None, lane, strict, first_party,
-                              thin_ok=bool(board))
+                return finish(
+                    title,
+                    desc,
+                    api.get("title") or desc["full_text"][:300],
+                    _parse_date(api.get("posted")),
+                    "ats_api",
+                    None,
+                    lane,
+                    strict,
+                    first_party,
+                    thin_ok=bool(board),
+                )
         result = parse_html(url, title, page.html, lane, strict, first_party)
         if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
             result["apply_kind"] = "easy_apply"
         return result
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party, thin_ok=bool(board))
+    return finish(
+        title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party, thin_ok=bool(board)
+    )
 
 
 def parse_html(url, title, html, lane=None, strict=False, first_party=False):
@@ -174,7 +214,12 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
         found_title = jd.linkedin_title(html) or found_title
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
-    if first_party and result.get("outcome") == "mismatch" and not result.get("reason") and _title_words_in(title, html) >= 0.8:
+    if (
+        first_party
+        and result.get("outcome") == "mismatch"
+        and not result.get("reason")
+        and _title_words_in(title, html) >= 0.8
+    ):
         result = finish(title, desc, title, posted, source_kind, valid_through, lane, False, first_party)
         if result.get("outcome") in ("ready", "stale"):
             result["proof"] = "page_text"
@@ -187,7 +232,18 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
     return result
 
 
-def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False, first_party=False, thin_ok=False):
+def finish(
+    title,
+    desc,
+    found_title,
+    posted,
+    source_kind,
+    valid_through,
+    lane=None,
+    strict=False,
+    first_party=False,
+    thin_ok=False,
+):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
@@ -195,15 +251,29 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
         return {"outcome": "mismatch", "reason": "jd_" + problem}
     if problem == "thin" and not (thin_ok or (first_party and lanes.lane_for(lane) == "Scale-Up")):
         return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
-    if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else "", strict=strict):
+    if not _title_ok(
+        title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else "", strict=strict
+    ):
         return {"outcome": "mismatch"}
     today = _now().date()
     if valid_through and valid_through < today:
         return {"outcome": "closed"}
     max_age = lanes.first_party_age(lane) if first_party else lanes.POLICIES[lanes.lane_for(lane)].max_age_days
     if posted and max_age is not None and (today - posted) > timedelta(days=max_age):
-        return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
-    return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
+        return {
+            "outcome": "stale",
+            "posted": posted,
+            "description": desc,
+            "source_kind": source_kind,
+            **({"proof": "title"} if strict else {}),
+        }
+    return {
+        "outcome": "ready",
+        "posted": posted,
+        "description": desc,
+        "source_kind": source_kind,
+        **({"proof": "title"} if strict else {}),
+    }
 
 
 TRUST = {"employer": 1, "aggregator": 2, "newsletter": 3, "email": 4}
@@ -241,8 +311,18 @@ def save_description(cursor, job_id, result, now=None):
         " source_kind=VALUES(source_kind), full_text=VALUES(full_text), summary=VALUES(summary),"
         " responsibilities=VALUES(responsibilities), requirements=VALUES(requirements),"
         " qualifications=VALUES(qualifications), fingerprint=VALUES(fingerprint), fetched_at=VALUES(fetched_at)",
-        (job_id, result["source_kind"], d["full_text"], d["summary"], d["responsibilities"], d["requirements"],
-         d["qualifications"], d["fingerprint"], now or _now()))
+        (
+            job_id,
+            result["source_kind"],
+            d["full_text"],
+            d["summary"],
+            d["responsibilities"],
+            d["requirements"],
+            d["qualifications"],
+            d["fingerprint"],
+            now or _now(),
+        ),
+    )
 
 
 def save(connection, job_id, result):
@@ -254,35 +334,66 @@ def save(connection, job_id, result):
             if result.get("apply_kind"):
                 cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
             if result.get("company"):
-                cursor.execute("UPDATE v7_jobs SET company=%s WHERE id=%s AND company REGEXP %s", (result["company"][:200], job_id, BOARD_HOST_COMPANY))
+                cursor.execute(
+                    "UPDATE v7_jobs SET company=%s WHERE id=%s AND company REGEXP %s",
+                    (result["company"][:200], job_id, BOARD_HOST_COMPANY),
+                )
             if result.get("location"):
-                cursor.execute("UPDATE v7_jobs SET location_text=%s WHERE id=%s AND (location_text IS NULL OR location_text='')", (result["location"][:2000], job_id))
+                cursor.execute(
+                    "UPDATE v7_jobs SET location_text=%s WHERE id=%s AND (location_text IS NULL OR location_text='')",
+                    (result["location"][:2000], job_id),
+                )
             cursor.execute("SELECT posted_date, posted_source FROM v7_jobs WHERE id=%s", (job_id,))
             known = cursor.fetchone() or (None, None)
-            posted, source = accepted_date(_as_date(known[0]), known[1], result.get("posted"), result.get("posted_source") or "employer")
+            posted, source = accepted_date(
+                _as_date(known[0]), known[1], result.get("posted"), result.get("posted_source") or "employer"
+            )
             age = (now.date() - posted).days if posted else None
-            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
-                           "posted_age_days=COALESCE(%s, posted_age_days), link_proof=COALESCE(%s, link_proof), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
-                           ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted, source,
-                            result.get("final_url") or None, age, result.get("proof"), now, job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
+                "posted_age_days=COALESCE(%s, posted_age_days), link_proof=COALESCE(%s, link_proof), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
+                (
+                    "READY" if outcome == "ready" else "EXCLUDED_STALE",
+                    posted,
+                    source,
+                    result.get("final_url") or None,
+                    age,
+                    result.get("proof"),
+                    now,
+                    job_id,
+                ),
+            )
         elif outcome == "closed":
-            cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
-                           (now, job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
+                (now, job_id),
+            )
         elif outcome == "linkedin_page":
-            cursor.execute("SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (result["url"], job_id))
+            cursor.execute(
+                "SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (result["url"], job_id)
+            )
             if cursor.fetchone():
-                cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, updated_at=%s WHERE id=%s", ("dup_of_final_url", now, job_id))
+                cursor.execute(
+                    "UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, updated_at=%s WHERE id=%s",
+                    ("dup_of_final_url", now, job_id),
+                )
             else:
-                cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='aggregator', link_proof=NULL, unresolved_reason=NULL, updated_at=%s WHERE id=%s",
-                               (result["url"], now, job_id))
+                cursor.execute(
+                    "UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='aggregator', link_proof=NULL, unresolved_reason=NULL, updated_at=%s WHERE id=%s",
+                    (result["url"], now, job_id),
+                )
         elif outcome == "mismatch":
-            cursor.execute("UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, link_proof=NULL, "
-                           "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",
-                           (limits.RESOLVE_MAX_ATTEMPTS, (result.get("reason") or "link_mismatch")[:100], now, job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, link_proof=NULL, "
+                "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",
+                (limits.RESOLVE_MAX_ATTEMPTS, (result.get("reason") or "link_mismatch")[:100], now, job_id),
+            )
         else:
-            cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, enrich_attempts=enrich_attempts+1, "
-                           "status=IF(enrich_attempts>=%s,'HOLD',status), updated_at=%s WHERE id=%s",
-                           ((result.get("reason") or "blocked")[:100], limits.ENRICH_MAX_ATTEMPTS, now, job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET unresolved_reason=%s, enrich_attempts=enrich_attempts+1, "
+                "status=IF(enrich_attempts>=%s,'HOLD',status), updated_at=%s WHERE id=%s",
+                ((result.get("reason") or "blocked")[:100], limits.ENRICH_MAX_ATTEMPTS, now, job_id),
+            )
 
 
 DAILY_SLOT = "MOD(CRC32(id), 24) = HOUR(UTC_TIMESTAMP())"
@@ -295,7 +406,9 @@ def _first_party_over_age(now):
         if days is None:
             continue
         rows = [name] + [alias for alias, target in lanes.LANE_ALIAS.items() if target == name]
-        clauses.append("(lane IN (" + ", ".join(["%s"] * len(rows)) + ") AND posted_date IS NOT NULL AND posted_date < %s)")
+        clauses.append(
+            "(lane IN (" + ", ".join(["%s"] * len(rows)) + ") AND posted_date IS NOT NULL AND posted_date < %s)"
+        )
         params += rows + [(now - timedelta(days=days)).date()]
     return ("", []) if not clauses else (" AND NOT (" + " OR ".join(clauses) + ")", params)
 
@@ -305,25 +418,38 @@ def relink_first_party(cursor, now=None):
     the link test. -> count.
     """
     now = now or _now()
-    cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND (resolve_attempts < %s OR status='HOLD') AND "
-                   "((status='NEW' AND resolve_attempts < %s AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason IN ('link_mismatch', 'no_job_id', 'listing_url') OR unresolved_reason LIKE 'Fit %% below 72')) OR "
-                   "(status='HOLD' AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('link_mismatch', 'jd_listing', 'jd_template')) AND " + DAILY_SLOT + ")) LIMIT 500",
-                   (limits.RESOLVE_MAX_ATTEMPTS, limits.RESOLVE_MAX_ATTEMPTS))
+    cursor.execute(
+        "SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND (resolve_attempts < %s OR status='HOLD') AND "
+        "((status='NEW' AND resolve_attempts < %s AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason IN ('link_mismatch', 'no_job_id', 'listing_url') OR unresolved_reason LIKE 'Fit %% below 72')) OR "
+        "(status='HOLD' AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('link_mismatch', 'jd_listing', 'jd_template')) AND "
+        + DAILY_SLOT
+        + ")) LIMIT 500",
+        (limits.RESOLVE_MAX_ATTEMPTS, limits.RESOLVE_MAX_ATTEMPTS),
+    )
     ids = []
     for job_id, url in cursor.fetchall():
         problem = quality.link_problem(url)
         if problem is None or problem in quality.AMBIGUOUS:
             ids.append((job_id, url, "unproven" if problem else None))
     for job_id, url, proof in ids:
-        cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', link_proof=%s, unresolved_reason=NULL, enrich_attempts=0, resolve_attempts=LEAST(resolve_attempts, %s), updated_at=%s WHERE id=%s",
-                       (url, proof, limits.RESOLVE_MAX_ATTEMPTS - 1, now, job_id))
-    cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason=NULL, enrich_attempts=LEAST(enrich_attempts, %s), updated_at=%s WHERE status='HOLD' AND final_apply_url IS NOT NULL"
-                   " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('jd_thin', 'description_empty', 'description_empty_tf'))"
-                   " AND " + DAILY_SLOT, (limits.ENRICH_MAX_ATTEMPTS - 1, now))
+        cursor.execute(
+            "UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', link_proof=%s, unresolved_reason=NULL, enrich_attempts=0, resolve_attempts=LEAST(resolve_attempts, %s), updated_at=%s WHERE id=%s",
+            (url, proof, limits.RESOLVE_MAX_ATTEMPTS - 1, now, job_id),
+        )
+    cursor.execute(
+        "UPDATE v7_jobs SET status='RESOLVED', unresolved_reason=NULL, enrich_attempts=LEAST(enrich_attempts, %s), updated_at=%s WHERE status='HOLD' AND final_apply_url IS NOT NULL"
+        " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('jd_thin', 'description_empty', 'description_empty_tf'))"
+        " AND " + DAILY_SLOT,
+        (limits.ENRICH_MAX_ATTEMPTS - 1, now),
+    )
     reread = int(cursor.rowcount or 0)
     aged, params = _first_party_over_age(now)
-    cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
-                   " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL" + aged, (now, *params))
+    cursor.execute(
+        "UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
+        " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL"
+        + aged,
+        (now, *params),
+    )
     return len(ids) + reread + int(cursor.rowcount or 0)
 
 
@@ -372,8 +498,11 @@ def run(limit, live, drain=False):
             with connection.cursor() as cursor:
                 relinked = relink_first_party(cursor)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source, link_proof, source_url FROM v7_jobs WHERE status='RESOLVED' "
-                           "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
+            cursor.execute(
+                "SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source, link_proof, source_url FROM v7_jobs WHERE status='RESOLVED' "
+                "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s",
+                (limit,),
+            )
             fetched = [tuple(r) for r in cursor.fetchall()]
     rows = [r[:5] for r in fetched]
     lane_of = {r[0]: r[5] for r in fetched}
@@ -386,13 +515,20 @@ def run(limit, live, drain=False):
         url = quality.canonical_job_url(url)
         target = url
         if kind == "easy_apply" or "linkedin.com" in (urlsplit(url).hostname or ""):
-            from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - the public guest page carries the JD
+            from lifeos.jobs.resolve.aggregators import li_apply  # noqa: PLC0415 - the public guest page carries the JD
+
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         try:
-            result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id), lanes.first_party_source(source_of.get(job_id)),
-                               board_of(source_of.get(job_id)))
-        except Exception as error:                                   # noqa: BLE001 - one unreadable page never stops the batch
+            result = read_page(
+                target,
+                title,
+                lane_of.get(job_id),
+                proof_of.get(job_id),
+                lanes.first_party_source(source_of.get(job_id)),
+                board_of(source_of.get(job_id)),
+            )
+        except Exception as error:  # noqa: BLE001 - one unreadable page never stops the batch
             result = {"outcome": "blocked", "reason": "read_" + type(error).__name__.lower()[:30]}
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
             result["reason"] = TRIED_REASON
@@ -406,7 +542,14 @@ def run(limit, live, drain=False):
         results = [(job_id, r) for job_id, r in results if r["outcome"] != "blocked"]
         counts["left_for_hourly"] = len(left)
     else:
-        _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"}, {i for i, src in source_of.items() if lanes.first_party_source(src)})
+        _fallback(
+            results,
+            rows,
+            counts,
+            lane_of,
+            {i for i, p in proof_of.items() if p == "unproven"},
+            {i for i, src in source_of.items() if lanes.first_party_source(src)},
+        )
         url_of = {job_id: quality.canonical_job_url(url) for job_id, url, _, _, _ in rows}
         for job_id, result in results:
             result.setdefault("final_url", url_of[job_id])
@@ -426,12 +569,18 @@ def linkedin_page(results, source_of, page_of):
     """A LinkedIn row whose employer link failed the title match takes its own LinkedIn posting for Enrich to prove
     next. -> count.
     """
-    from lifeos.jobs.resolve.aggregators import li_apply                    # noqa: PLC0415
+    from lifeos.jobs.resolve.aggregators import li_apply  # noqa: PLC0415
+
     switched = 0
     for job_id, result in results:
         own = page_of.get(job_id) or ""
-        if (result["outcome"] != "mismatch" or result.get("reason") or not str(source_of.get(job_id) or "").startswith("linkedin")
-                or li_apply.is_linkedin(result.get("final_url") or "") or not (li_apply.is_linkedin(own) and li_apply.job_id(own))):
+        if (
+            result["outcome"] != "mismatch"
+            or result.get("reason")
+            or not str(source_of.get(job_id) or "").startswith("linkedin")
+            or li_apply.is_linkedin(result.get("final_url") or "")
+            or not (li_apply.is_linkedin(own) and li_apply.job_id(own))
+        ):
             continue
         result.update(outcome="linkedin_page", url="https://www.linkedin.com/jobs/view/" + li_apply.job_id(own))
         switched += 1
@@ -470,7 +619,7 @@ def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_
     counts["fallback_attempted"] = min(allowed, len(blocked))
     pacer, done = usage.Pacer(), 0
     for start in range(0, allowed, limits.TINYFISH_FETCH_BATCH):
-        batch = blocked[start:min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
+        batch = blocked[start : min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
         asked = {i: ats_detail.workday_cxs_url(titles[results[i][0]][0]) for i in batch}
         urls = [asked[i] or titles[results[i][0]][0] for i in batch]
         pacer.wait()
@@ -486,12 +635,36 @@ def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_
             job = ats_detail.parse_workday(text) if asked[i] and text else None
             if job:
                 desc = jd.describe(job["html"], is_html=True)
-                _swap(results, counts, i, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
-                                                 _parse_date(job["posted"]), "ats_api", None, (lane_of or {}).get(job_id),
-                                                 _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
+                _swap(
+                    results,
+                    counts,
+                    i,
+                    finish(
+                        titles[job_id][1],
+                        desc,
+                        job["title"] or desc["full_text"][:300],
+                        _parse_date(job["posted"]),
+                        "ats_api",
+                        None,
+                        (lane_of or {}).get(job_id),
+                        _strict(job_id, titles, unproven_ids),
+                        job_id in first_party_ids,
+                    ),
+                )
             elif text:
-                _swap(results, counts, i, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id),
-                                                     _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
+                _swap(
+                    results,
+                    counts,
+                    i,
+                    parse_html(
+                        url,
+                        titles[job_id][1],
+                        text,
+                        (lane_of or {}).get(job_id),
+                        _strict(job_id, titles, unproven_ids),
+                        job_id in first_party_ids,
+                    ),
+                )
                 _mark_tried(results[i][1])
             else:
                 _mark_tried(results[i][1])

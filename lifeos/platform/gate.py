@@ -3,6 +3,7 @@ hour and this gate keeps the cadence at about one run per hour. Counts only; no 
 
 The watchdog owns the incident record (one GitHub issue per kind) and pushes first; an unaccepted push leaves the
 label `push-pending` for the next run."""
+
 import datetime as dt
 import importlib
 import io
@@ -39,13 +40,17 @@ DOMAINS_TITLE = "domains (after tick)"
 def is_tick_event(environ):
     """True for a domains run that belongs to a tick (the workflow_run after it, or its early prep-job run)."""
     return environ.get("GITHUB_EVENT_NAME") == "workflow_run" or environ.get("DOMAINS_PHASE") == "tick"
+
+
 PENDING = "push-pending"
 REMIND_HOURS = 3
 CONFLICT_RUNS_MAX = 30
 CONFLICT_BYTES_MAX = 40_000_000
 CONFLICT_SECONDS_MAX = 90
 CONFLICT_COUNT_FROM = dt.datetime(2026, 11, 15, 6, 5, tzinfo=dt.timezone.utc)  # older conflicts are not counted
-CONFLICT_CODE = re.compile(r"NOTION_HTTP_409|[A-Z0-9_]*PAGE_WALK_NOTION_HTTP_404|PROTECTED_REGION_CHANGED|NOTION_HTTP_429")
+CONFLICT_CODE = re.compile(
+    r"NOTION_HTTP_409|[A-Z0-9_]*PAGE_WALK_NOTION_HTTP_404|PROTECTED_REGION_CHANGED|NOTION_HTTP_429"
+)
 JOB_LOG = re.compile(r"\d+_(.+)\.txt")
 CONFLICT_CODES = ("NOTION_HTTP_409", "PAGE_WALK_NOTION_HTTP_404", "PROTECTED_REGION_CHANGED")
 RATE_LIMIT_CODE = "NOTION_HTTP_429"
@@ -55,9 +60,11 @@ CONFLICT_UNAVAILABLE = "WRITE_CONFLICT_COUNT_UNAVAILABLE"
 CONFLICT_RULE = "rule: any write conflict moves the Daily Report writers to the full chain (option A, LIFE-688)"
 
 SCHEDULED_WORKFLOWS = {"safety.yml": 1, "watchdog.yml": 3}
-SCHEDULED_COVERED = {"hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them",
-                     "v3-pages.yml": "its stages are continue-on-error and only warn (LIFE-730), so the run does not go red from a stage; no second alert",
-                     "capacity-card.yml": "its one stage is continue-on-error and only warns, so the run does not go red from it; no second alert (LIFE-793)"}
+SCHEDULED_COVERED = {
+    "hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them",
+    "v3-pages.yml": "its stages are continue-on-error and only warn (LIFE-730), so the run does not go red from a stage; no second alert",
+    "capacity-card.yml": "its one stage is continue-on-error and only warns, so the run does not go red from it; no second alert (LIFE-793)",
+}
 SCHEDULED_OWN_ALERT = {"safety.yml": "Phone alert"}
 SCHEDULED_RUNS_READ = 8
 SCHEDULED_RED_FAMILY, SCHEDULED_OK_FAMILY = "scheduled_red", "scheduled_recovered"
@@ -136,7 +143,14 @@ WAIT_MINUTES = 25
 
 
 def active(runs, current_id, title, now=None):
-    return [r for r in runs if r["id"] != current_id and r.get("status") in ACTIVE and r.get("display_title") == title and not (now is not None and stuck(r, now))]
+    return [
+        r
+        for r in runs
+        if r["id"] != current_id
+        and r.get("status") in ACTIVE
+        and r.get("display_title") == title
+        and not (now is not None and stuck(r, now))
+    ]
 
 
 def ahead(runs, current_id, title, created, now=None):
@@ -162,7 +176,11 @@ def stale(runs, now, current_id, minutes=STALE_MINUTES):
 
 
 def finished_ticks(runs):
-    done = [run for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")]
+    done = [
+        run
+        for run in runs
+        if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")
+    ]
     return sorted(done, key=lambda run: run.get("updated_at") or run.get("created_at") or "", reverse=True)
 
 
@@ -182,8 +200,13 @@ def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
     if passes(runs):
         return False
     cutoff = now - dt.timedelta(hours=window_hours)
-    failed = sum(1 for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") == "failure"
-                 and (_t(run.get("updated_at") or run.get("created_at")) or cutoff) > cutoff)
+    failed = sum(
+        1
+        for run in runs
+        if run.get("display_title") == TICK_TITLE
+        and run.get("conclusion") == "failure"
+        and (_t(run.get("updated_at") or run.get("created_at")) or cutoff) > cutoff
+    )
     if failed >= FAIL_OPEN:
         return True
     return False if failed == 0 else None
@@ -191,7 +214,11 @@ def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
 
 def last_tick_passed(runs):
     """True when the newest finished tick succeeded: the failing incident stays open but is not re-paged."""
-    finished = [run for run in runs if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")]
+    finished = [
+        run
+        for run in runs
+        if run.get("display_title") == TICK_TITLE and run.get("conclusion") in ("success", "failure")
+    ]
     newest = max(finished, key=lambda run: run.get("updated_at") or run.get("created_at") or "", default=None)
     return bool(newest) and newest.get("conclusion") == "success"
 
@@ -203,9 +230,10 @@ def digest_due(now):
 def _ct(moment):
     try:
         from zoneinfo import ZoneInfo  # noqa: PLC0415
+
         local = moment.astimezone(ZoneInfo("America/Chicago"))
         return f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'} CT"
-    except Exception:                                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return f"{moment.hour}:{moment.minute:02d} UTC"
 
 
@@ -222,11 +250,20 @@ def checkin_decision(now, watchdog_runs, own_id=None):
         if run.get("name") != "watchdog" or str(run.get("id")) == str(own_id):
             continue
         started = _t(run.get("run_started_at") or run.get("created_at"))
-        if started and started >= start and now >= started and (run.get("status") != "completed" or run.get("conclusion") == "success"):
+        if (
+            started
+            and started >= start
+            and now >= started
+            and (run.get("status") != "completed" or run.get("conclusion") == "success")
+        ):
             return False, "", None
     if in_window:
         return True, "", None
-    return True, f" Sent late: GitHub did not start the watchdog in the {_ct(start)} window; this is the first run today, at {_ct(now)}.", None
+    return (
+        True,
+        f" Sent late: GitHub did not start the watchdog in the {_ct(start)} window; this is the first run today, at {_ct(now)}.",
+        None,
+    )
 
 
 def coverage(observed, window_hours=24):
@@ -235,27 +272,45 @@ def coverage(observed, window_hours=24):
 
 def health(runs, domain_runs, now, window_hours=24, late=(), conflicts=""):
     cutoff = now - dt.timedelta(hours=window_hours)
-    recent = [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("conclusion") in ("success", "failure")
-              and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff]
+    recent = [
+        r
+        for r in runs
+        if r.get("display_title") == TICK_TITLE
+        and r.get("conclusion") in ("success", "failure")
+        and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff
+    ]
     failed = sum(1 for r in recent if r["conclusion"] == "failure")
     good = [r for r in recent if r["conclusion"] == "success"]
     since = int((now - max(_t(r["updated_at"]) for r in good)).total_seconds() // 60) if good else None
-    domains = sum(1 for r in domain_runs if r.get("display_title") == DOMAINS_TITLE and r.get("conclusion") == "failure"
-                  and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff)
+    domains = sum(
+        1
+        for r in domain_runs
+        if r.get("display_title") == DOMAINS_TITLE
+        and r.get("conclusion") == "failure"
+        and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff
+    )
     ok = failed == 0 and domains == 0 and since is not None and since < 90
     last = "no good run" if since is None else f"last good run {since} min ago"
-    return (f"V7 daily check: {'OK' if ok else 'DEGRADED'}",
-            f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s). "
-            f"Coverage: {len(recent)} of {window_hours} expected, {coverage(len(recent), window_hours)[2]} missed."
-            + (f" Late or missing scheduled jobs ({len(late)}): {', '.join(late)}." if late else "")
-            + (f" {conflicts}" if conflicts else ""))
+    return (
+        f"V7 daily check: {'OK' if ok else 'DEGRADED'}",
+        f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s). "
+        f"Coverage: {len(recent)} of {window_hours} expected, {coverage(len(recent), window_hours)[2]} missed."
+        + (f" Late or missing scheduled jobs ({len(late)}): {', '.join(late)}." if late else "")
+        + (f" {conflicts}" if conflicts else ""),
+    )
 
 
 def _api(path, method="GET", body=None):
-    request = urllib.request.Request(f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/{path}", method=method,
-                                     data=json.dumps(body).encode() if body is not None else None,
-                                     headers={"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json",
-                                              "X-GitHub-Api-Version": "2022-11-28"})
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/{path}",
+        method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
     with urllib.request.urlopen(request, timeout=30) as response:
         raw = response.read()
         return json.loads(raw) if raw else {}
@@ -267,8 +322,14 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _logs(run_id, limit):
-    request = urllib.request.Request(f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/logs",
-                                     headers={"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"})
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/logs",
+        headers={
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
     try:
         urllib.request.build_opener(_NoRedirect).open(request, timeout=30)
         raise ValueError(CONFLICT_LOGS_UNREADABLE)
@@ -307,9 +368,26 @@ def write_conflicts(domain_runs, now, logs=None, clock=time.monotonic, window_ho
     cutoff = now - dt.timedelta(hours=window_hours)
     clipped = bool(count_from) and count_from > cutoff
     cutoff = count_from if clipped else cutoff
-    runs = sorted((r for r in domain_runs if r.get("conclusion") in ("success", "failure") and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff),
-                  key=lambda r: r.get("created_at") or "", reverse=True)[:CONFLICT_RUNS_MAX]
-    out = {"runs": len(runs), "read": 0, "unreadable": 0, "capped": False, "conflicts": {}, "rate_limits": {}, "codes": {}, "since": count_from if clipped else None}
+    runs = sorted(
+        (
+            r
+            for r in domain_runs
+            if r.get("conclusion") in ("success", "failure")
+            and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff
+        ),
+        key=lambda r: r.get("created_at") or "",
+        reverse=True,
+    )[:CONFLICT_RUNS_MAX]
+    out = {
+        "runs": len(runs),
+        "read": 0,
+        "unreadable": 0,
+        "capped": False,
+        "conflicts": {},
+        "rate_limits": {},
+        "codes": {},
+        "since": count_from if clipped else None,
+    }
     started, left = clock(), [CONFLICT_BYTES_MAX]
 
     def one(run):
@@ -319,6 +397,7 @@ def write_conflicts(domain_runs, now, logs=None, clock=time.monotonic, window_ho
         data = logs(run["id"], left[0])
         left[0] -= len(data)
         return conflict_codes_in(data)
+
     done = isolate.run_items(runs, one, code_of=lambda error: CONFLICT_LOGS_UNREADABLE)
     out["unreadable"] = len(done.failures)
     for _, found in done.results:
@@ -338,10 +417,20 @@ def conflict_line(result):
 
     def by_job(counts):
         return ", ".join(f"{job} {n}" for job, n in sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
     n, m = sum(result["conflicts"].values()), sum(result["rate_limits"].values())
-    text = f"Notion write conflicts in the last 24 h: {n}" + (f" ({by_job(result['conflicts'])})" if n else "") + f"; rate limits: {m}" + (f" ({by_job(result['rate_limits'])})" if m else "") + "."
-    notes = ([f"{CONFLICT_LOGS_UNREADABLE} for {result['unreadable']} of {result['runs']} runs"] if result["unreadable"] else []) \
-        + ([f"{CONFLICT_CAP_REACHED} after {result['read']} of {result['runs']} runs"] if result["capped"] else [])
+    text = (
+        f"Notion write conflicts in the last 24 h: {n}"
+        + (f" ({by_job(result['conflicts'])})" if n else "")
+        + f"; rate limits: {m}"
+        + (f" ({by_job(result['rate_limits'])})" if m else "")
+        + "."
+    )
+    notes = (
+        [f"{CONFLICT_LOGS_UNREADABLE} for {result['unreadable']} of {result['runs']} runs"]
+        if result["unreadable"]
+        else []
+    ) + ([f"{CONFLICT_CAP_REACHED} after {result['read']} of {result['runs']} runs"] if result["capped"] else [])
     if notes:
         text += " Count incomplete: " + "; ".join(notes) + "."
     if result.get("since"):
@@ -351,6 +440,7 @@ def conflict_line(result):
 
 def _push(title, body, severity, key):
     from lifeos.platform import alerts  # noqa: PLC0415
+
     return alerts.push(key, title, body)
 
 
@@ -385,7 +475,9 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
             return "closed"
         retried = None
         for issue in issues:
-            if signal is not False and PENDING in [(item.get("name") if isinstance(item, dict) else item) for item in issue.get("labels", [])]:
+            if signal is not False and PENDING in [
+                (item.get("name") if isinstance(item, dict) else item) for item in issue.get("labels", [])
+            ]:
                 if push(*open_push):
                     _api(f"issues/{issue['number']}/labels/{PENDING}", "DELETE")
                 retried = "retried"
@@ -393,7 +485,13 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
                 age = _hours_open(issue, now)
                 still = f"{open_push[1]} Still open after {age} h." if age is not None else open_push[1]
                 if push(f"Still open: {open_push[0]}", still, *open_push[2:]):
-                    _api(f"issues/{issue['number']}/comments", "POST", {"body": f"Reminder pushed to the phone (open {age} h). The next one follows after {REMIND_HOURS} quiet hours."})
+                    _api(
+                        f"issues/{issue['number']}/comments",
+                        "POST",
+                        {
+                            "body": f"Reminder pushed to the phone (open {age} h). The next one follows after {REMIND_HOURS} quiet hours."
+                        },
+                    )
                 retried = "reminded"
         return retried
     except Exception as error:
@@ -402,8 +500,15 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
 
 
 def scheduled_signal(runs, passes):
-    finished = sorted((r for r in runs if r.get("event", "schedule") == "schedule" and r.get("conclusion") in SCHEDULED_FAILED + ("success",)),
-                      key=lambda r: r.get("created_at") or "", reverse=True)
+    finished = sorted(
+        (
+            r
+            for r in runs
+            if r.get("event", "schedule") == "schedule" and r.get("conclusion") in SCHEDULED_FAILED + ("success",)
+        ),
+        key=lambda r: r.get("created_at") or "",
+        reverse=True,
+    )
     if not finished:
         return None
     if finished[0]["conclusion"] in SCHEDULED_FAILED:
@@ -418,25 +523,46 @@ def _own_alert_fired(workflow, runs, api):
         return False
     newest = max(failed, key=lambda r: r.get("created_at") or "")
     jobs = api(f"actions/runs/{newest['id']}/jobs").get("jobs") or []
-    return any(item.get("name") == step and item.get("conclusion") == "success" for job in jobs for item in job.get("steps") or [])
+    return any(
+        item.get("name") == step and item.get("conclusion") == "success"
+        for job in jobs
+        for item in job.get("steps") or []
+    )
 
 
 def scheduled_checks(now, push=None, api=None):
     api, out = api or _api, {"changes": {}, "unreadable": []}
     for workflow, passes in SCHEDULED_WORKFLOWS.items():
         try:
-            runs = api(f"actions/workflows/{workflow}/runs?event=schedule&per_page={SCHEDULED_RUNS_READ}")["workflow_runs"]
+            runs = api(f"actions/workflows/{workflow}/runs?event=schedule&per_page={SCHEDULED_RUNS_READ}")[
+                "workflow_runs"
+            ]
             signal = scheduled_signal(runs, passes)
             if signal is True and _own_alert_fired(workflow, runs, api):
                 signal = None
             name = workflow.removesuffix(".yml")
             word = name.replace("-", "_")
             out["changes"][workflow] = sync_incident(
-                f"scheduled-red-{name}", f"V7 scheduled workflow red: {name}",
-                f"The newest scheduled run of the {name} workflow ({workflow}) failed. Open the Actions tab. This issue closes itself when its last {passes} finished scheduled run(s) passed.", signal,
-                (f"V7 scheduled workflow failed: {name}", f"The scheduled {name} workflow failed on its newest run. Open the Actions tab.", "page", health_model.state_key(SCHEDULED_RED_FAMILY, word)),
-                (f"V7 scheduled workflow recovered: {name}", f"The {name} workflow's scheduled runs pass again.", "info", health_model.state_key(SCHEDULED_OK_FAMILY, word)),
-                push, now, remind=False)
+                f"scheduled-red-{name}",
+                f"V7 scheduled workflow red: {name}",
+                f"The newest scheduled run of the {name} workflow ({workflow}) failed. Open the Actions tab. This issue closes itself when its last {passes} finished scheduled run(s) passed.",
+                signal,
+                (
+                    f"V7 scheduled workflow failed: {name}",
+                    f"The scheduled {name} workflow failed on its newest run. Open the Actions tab.",
+                    "page",
+                    health_model.state_key(SCHEDULED_RED_FAMILY, word),
+                ),
+                (
+                    f"V7 scheduled workflow recovered: {name}",
+                    f"The {name} workflow's scheduled runs pass again.",
+                    "info",
+                    health_model.state_key(SCHEDULED_OK_FAMILY, word),
+                ),
+                push,
+                now,
+                remind=False,
+            )
         except Exception:  # noqa:
             out["unreadable"].append(workflow)
     return out
@@ -448,19 +574,56 @@ def watch(now=None, push=None, checkin=True):
     reaped = reap(runs, now)
     is_stale, fail_signal, stuck_signal = stalled(runs, now, 0), failing(runs, now), reaper_alerts(reaped)
     changes = [
-        sync_incident(LABEL, ISSUE_TITLE, "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
-                      "or a stage is failing. Open the Actions tab. This issue closes itself when the last 3 hourly runs have passed.", is_stale,
-                      ("V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.", "page", "pipeline_stalled"),
-                      ("V7 pipeline recovered", "The last 3 hourly runs passed.", "info", "pipeline_stalled_recovered"), push, now),
-        sync_incident(FAIL_LABEL, FAIL_TITLE, "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
-                      "This issue closes itself when the last 3 hourly runs have passed (or after 24 hours with no failed run).", fail_signal,
-                      ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
-                      ("V7 hourly runs recovered", "The last 3 hourly runs passed.", "info", "pipeline_failing_recovered"), push, now, remind=not last_tick_passed(runs)),
-        sync_incident(STUCK_LABEL, STUCK_TITLE, "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and the prep job's own timeout ends a run that is still going, so this run is stuck "
-                      "(it happened on Nov 11 2026 and GitHub refused every cancel). The watchdog asks GitHub to cancel it; this issue opens only when GitHub refuses or the run survives the cancel. Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
-                      "report it to GitHub support. This issue closes itself when no tick run is stuck.", stuck_signal,
-                      ("V7 tick run stuck", "An hourly tick run has had no conclusion for over 40 minutes. Later ticks still run. Open the Actions tab.", "info", "tick_run_stuck"),
-                      ("V7 stuck tick run cleared", "No hourly tick run is stuck.", "info", "tick_run_stuck_recovered"), push, now),
+        sync_incident(
+            LABEL,
+            ISSUE_TITLE,
+            "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
+            "or a stage is failing. Open the Actions tab. This issue closes itself when the last 3 hourly runs have passed.",
+            is_stale,
+            (
+                "V7 pipeline stalled",
+                "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.",
+                "page",
+                "pipeline_stalled",
+            ),
+            ("V7 pipeline recovered", "The last 3 hourly runs passed.", "info", "pipeline_stalled_recovered"),
+            push,
+            now,
+        ),
+        sync_incident(
+            FAIL_LABEL,
+            FAIL_TITLE,
+            "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
+            "This issue closes itself when the last 3 hourly runs have passed (or after 24 hours with no failed run).",
+            fail_signal,
+            (
+                "V7 hourly runs failing repeatedly",
+                "3+ failed runs in 24 hours. Open the Actions tab.",
+                "page",
+                "pipeline_failing",
+            ),
+            ("V7 hourly runs recovered", "The last 3 hourly runs passed.", "info", "pipeline_failing_recovered"),
+            push,
+            now,
+            remind=not last_tick_passed(runs),
+        ),
+        sync_incident(
+            STUCK_LABEL,
+            STUCK_TITLE,
+            "An hourly tick run has been queued or running for more than 40 minutes. A real tick takes 5 to 20 minutes and the prep job's own timeout ends a run that is still going, so this run is stuck "
+            "(it happened on Nov 11 2026 and GitHub refused every cancel). The watchdog asks GitHub to cancel it; this issue opens only when GitHub refuses or the run survives the cancel. Later ticks are not blocked: the gate and the ticker ignore it. Open the Actions tab; if the run cannot be cancelled, "
+            "report it to GitHub support. This issue closes itself when no tick run is stuck.",
+            stuck_signal,
+            (
+                "V7 tick run stuck",
+                "An hourly tick run has had no conclusion for over 40 minutes. Later ticks still run. Open the Actions tab.",
+                "info",
+                "tick_run_stuck",
+            ),
+            ("V7 stuck tick run cleared", "No hourly tick run is stuck.", "info", "tick_run_stuck_recovered"),
+            push,
+            now,
+        ),
     ]
     scheduled = scheduled_checks(now, push)
     sent, checkin_note, checkin_code = None, "", None
@@ -491,7 +654,11 @@ def watch(now=None, push=None, checkin=True):
         title, body = health(runs, domain_runs, now, late=late, conflicts=conflict_text)
         body += checkin_note
         sent = (push or _push)(title, body, "info", "daily_check")
-    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}" + (f" {SCHEDULED_UNREADABLE}={','.join(scheduled['unreadable'])}" if scheduled["unreadable"] else "") + (f" {checkin_code}" if checkin_code else ""))
+    print(
+        f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent} reaper={reaped['found']}/{len(reaped['cancelled'])}/{len(reaped['refused'])}/{len(reaped['still_stuck'])}"
+        + (f" {SCHEDULED_UNREADABLE}={','.join(scheduled['unreadable'])}" if scheduled["unreadable"] else "")
+        + (f" {checkin_code}" if checkin_code else "")
+    )
     return 0
 
 
@@ -499,6 +666,7 @@ def main():
     if "--watch" in sys.argv:
         return watch()
     import time
+
     current = int(os.environ["GITHUB_RUN_ID"])
     created = _api(f"actions/runs/{current}")["created_at"]
 
@@ -518,6 +686,7 @@ def main():
     if verdict == "skip":
         _api(f"actions/runs/{current}/cancel", "POST")
         import time
+
         time.sleep(90)
     return 0
 

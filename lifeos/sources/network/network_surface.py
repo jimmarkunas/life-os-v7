@@ -5,6 +5,7 @@ resolve to one published Ledger page. Per dirty page: prove it is the canonical 
 company ticks from the owned block, recompute the leads (five at most), create, replace, leave or remove the block,
 read it back and prove nothing outside it changed. Any failed step is counted and the run ends DEGRADED. `limit`
 bounds pages per run."""
+
 # Block pages are re-read on a rotation (ticks live in the block); settled no-block pages get a small sweep.
 import json
 import os
@@ -26,15 +27,19 @@ DEFAULT_PAGES = 300
 
 def _read(connection, now):
     with connection.cursor() as cursor, fixed(Exception, NetworkError, "NETWORK_MATCH_READ_FAILED"):
-        cursor.execute("SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified, s.id, s.company_name, p.display_name, p.url_key FROM v7_network_positions s "
-                       "JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'")
+        cursor.execute(
+            "SELECT s.person_id, s.company_key, s.title, s.position_state, s.last_verified, s.id, s.company_name, p.display_name, p.url_key FROM v7_network_positions s "
+            "JOIN v7_network_people p ON p.id = s.person_id WHERE p.status='ACTIVE'"
+        )
         roster = cursor.fetchall()
-        cursor.execute("SELECT j.dedupe_key, j.notion_page_id, j.company, j.title, f.admission FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
-                       "WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL")
+        cursor.execute(
+            "SELECT j.dedupe_key, j.notion_page_id, j.company, j.title, f.admission FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
+            "WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL"
+        )
         jobs = cursor.fetchall()
     try:
         pipeline = network_leads.hiring_snapshot.load(connection)
-    except Exception:                                                  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pipeline = None
     return roster, jobs, pipeline
 
@@ -45,7 +50,17 @@ def _day(value):
 
 def resolve_targets(jobs, pipeline, now):
     pursuit, status = network_leads.targets([], pipeline, now)
-    surfaced, counts = {}, {"pursuit_source": status, "targets_admitted": 0, "targets_pursuit_resolved": 0, "applied_no_safe_surface": 0, "interview_no_safe_surface": 0, "pursuit_ambiguous": 0}
+    surfaced, counts = (
+        {},
+        {
+            "pursuit_source": status,
+            "targets_admitted": 0,
+            "targets_pursuit_resolved": 0,
+            "applied_no_safe_surface": 0,
+            "interview_no_safe_surface": 0,
+            "pursuit_ambiguous": 0,
+        },
+    )
     for key, page, company, title, admission in jobs:
         if admission == "ADMIT":
             surfaced[key] = (page, company or "", title or "", {network_leads.ADMITTED_JOB})
@@ -86,7 +101,7 @@ def _leads(company, title, index, details, today, aliases, dismissed, key, honou
     shown = [d for d in (_display(l, details, today) for l in found) if d]
     if honour_dismissals:
         shown = [d for d in shown if (key, d["person_id"], d["evidence_hash"]) not in dismissed]
-    return (shown[:match.MAX_LEADS] if shortlist else shown), ckey
+    return (shown[: match.MAX_LEADS] if shortlist else shown), ckey
 
 
 def _decisions(owned, full, job_key, ckey):
@@ -148,7 +163,7 @@ def _queue_state(surfaced, others, wanted, state, budget, now):
 
 
 def run(limit, live, environ=os.environ, connection=None, client=None, now=None, today=None):
-    now = (now or datetime.now(timezone.utc))
+    now = now or datetime.now(timezone.utc)
     today = today or now.date()
     if connection is not None:
         return _run(limit, live, environ, connection, client, now, today)
@@ -177,15 +192,36 @@ def _run(limit, live, environ, connection, client, now, today):
     roster, jobs, pipeline = _read(connection, now)
     if not roster:
         raise NetworkError("NETWORK_NO_ROSTER")
-    index = match.build_index([(pid, ckey, title, state, _day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
-    details = {posid: (name, url, cname, title, _day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
+    index = match.build_index(
+        [(pid, ckey, title, state, _day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster]
+    )
+    details = {
+        posid: (name, url, cname, title, _day(verified))
+        for pid, ckey, title, state, verified, posid, cname, name, url in roster
+    }
     surfaced, others, counts = resolve_targets(jobs, pipeline, now)
     index_n, count_n = shard_of(environ)
     if count_n > 1:
         surfaced = {k: v for k, v in surfaced.items() if int(k[:8], 16) % count_n == index_n}
         others = [o for o in others if int(o[0][:8], 16) % count_n == index_n]
-    counts.update({"live": bool(live), "roster_positions": len(roster), "published_pages": len(jobs), "pages_read": 0, "pages_deferred": 0, "with_leads": 0, "blocks": {}, "ticks_dismiss": 0,
-                   "ticks_same_company": 0, "ticks_stale": 0, "guard_failed": {}, "failed": 0, "degraded": False, "pages_unread": 0})
+    counts.update(
+        {
+            "live": bool(live),
+            "roster_positions": len(roster),
+            "published_pages": len(jobs),
+            "pages_read": 0,
+            "pages_deferred": 0,
+            "with_leads": 0,
+            "blocks": {},
+            "ticks_dismiss": 0,
+            "ticks_same_company": 0,
+            "ticks_stale": 0,
+            "guard_failed": {},
+            "failed": 0,
+            "degraded": False,
+            "pages_unread": 0,
+        }
+    )
     if counts["pursuit_source"] == "unavailable":
         counts["degraded"] = True
     if live:
@@ -209,21 +245,49 @@ def _run(limit, live, environ, connection, client, now, today):
         counts["degraded"] = True
         counts["guard_failed"]["ledger_target"] = counts["guard_failed"].get("ledger_target", 0) + 1
         return _finish(counts)
-    wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0])
-              for k, (page, company, title, classes) in surfaced.items()}
+    wanted = {
+        k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0])
+        for k, (page, company, title, classes) in surfaced.items()
+    }
     state, counts["state_table"] = store.load_page_state(connection)
     edits, counts["edit_table"] = store.load_page_edits(connection) if counts["state_table"] else ({}, False)
     checked = store.load_page_checked(connection)[0] if counts["state_table"] else {}
     queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
     recorded, seen_edits = {}, {}
-    clean = {k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")}
-    skip = Skip(edits, clean, seen_edits, now, checked) if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off" else None
+    clean = {
+        k for k in (q[0] for q in queue) if counts["state_table"] and k in state and state[k][1] == wanted.get(k, "")
+    }
+    skip = (
+        Skip(edits, clean, seen_edits, now, checked)
+        if (environ.get("NETWORK_SURFACE_SKIP") or "on").strip().lower() != "off"
+        else None
+    )
     timing = Timing(notion)
     for key, page, company, title, target in queue:
         began = timing.start()
         label = "failed"
         try:
-            label = _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, recorded, skip) or "none"
+            label = (
+                _page(
+                    notion,
+                    connection,
+                    key,
+                    page,
+                    company,
+                    title,
+                    target,
+                    index,
+                    details,
+                    today,
+                    aliases,
+                    dismissed,
+                    live,
+                    counts,
+                    recorded,
+                    skip,
+                )
+                or "none"
+            )
         except (NotionError, NetworkError) as error:
             counts["failed"] += 1
             counts["degraded"] = True
@@ -242,6 +306,7 @@ def _run(limit, live, environ, connection, client, now, today):
 
 class Timing:
     """Seconds and Notion calls per page and per outcome; no page id, title or content."""
+
     def __init__(self, notion, clock=time.monotonic):
         self.notion, self.clock, self.began = notion, clock, clock()
         self.by_label, self.slowest = {}, 0.0
@@ -260,9 +325,17 @@ class Timing:
     def report(self):
         pages = sum(r[0] for r in self.by_label.values())
         calls = sum(r[2] for r in self.by_label.values())
-        return {"seconds": round(self.clock() - self.began, 1), "pages": pages, "notion_calls": calls, "calls_per_page": round(calls / pages, 1) if pages else 0,
-                "slowest_page_seconds": round(self.slowest, 1), "gap_seconds": limits.NOTION_GAP_SECONDS,
-                "by_outcome": {k: {"pages": r[0], "seconds": round(r[1], 1), "calls": r[2]} for k, r in sorted(self.by_label.items())}}
+        return {
+            "seconds": round(self.clock() - self.began, 1),
+            "pages": pages,
+            "notion_calls": calls,
+            "calls_per_page": round(calls / pages, 1) if pages else 0,
+            "slowest_page_seconds": round(self.slowest, 1),
+            "gap_seconds": limits.NOTION_GAP_SECONDS,
+            "by_outcome": {
+                k: {"pages": r[0], "seconds": round(r[1], 1), "calls": r[2]} for k, r in sorted(self.by_label.items())
+            },
+        }
 
 
 FLUSH_EVERY = 25
@@ -293,12 +366,19 @@ class Skip:
     Untouched: the time recorded after the proof equals the page's time now, or none was recorded and the page's
     time is older than the proof by LEGACY_MARGIN_SECONDS. A page edited within SETTLE_SECONDS, or with any doubt
     (no proof, a different or unreadable time, a proof older than MAX_AGE_HOURS), is read in full."""
+
     SETTLE_SECONDS = 180
     LEGACY_MARGIN_SECONDS = 1800
     MAX_AGE_HOURS = 168
 
     def __init__(self, edits, clean, seen, now, checked=None):
-        self.edits, self.clean, self.seen, self.now, self.checked = edits or {}, clean or set(), seen, now, checked or {}
+        self.edits, self.clean, self.seen, self.now, self.checked = (
+            edits or {},
+            clean or set(),
+            seen,
+            now,
+            checked or {},
+        )
 
     @staticmethod
     def _when(value):
@@ -345,7 +425,24 @@ class Skip:
 WRITES = ("created", "replaced", "converged", "removed")
 
 
-def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, recorded=None, skip=None):
+def _page(
+    notion,
+    connection,
+    key,
+    page_id,
+    company,
+    title,
+    target,
+    index,
+    details,
+    today,
+    aliases,
+    dismissed,
+    live,
+    counts,
+    recorded=None,
+    skip=None,
+):
     page = notion.call("GET", f"/pages/{page_id}")
     edited = page.get("last_edited_time")
     if skip is not None and live:
@@ -374,7 +471,9 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
             recorded[key] = (page_id, "")
             _note_edit(notion, skip, key, page_id, action, edited)
         return action
-    full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)
+    full, ckey = _leads(
+        company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False
+    )
     new_dismissals, new_aliases, stale = _decisions(owned, full, key, ckey)
     counts["ticks_dismiss"] += len(new_dismissals)
     counts["ticks_same_company"] += len(new_aliases)

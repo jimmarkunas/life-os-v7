@@ -4,6 +4,7 @@ One Notion database ("Agent Inbox list"); `send(...)` adds a row with Status New
 Snoozed or Promoted. A write targets only the data source with that title (found by search). Subject, details and link
 are checked for secrets, personal data and synthetic hosts; one sender may add at most RATE_PER_HOUR rows an hour and
 the same key never adds a second row. Output is counts and fixed reason words only."""
+
 import hashlib
 import re
 from datetime import datetime, time, timedelta, timezone
@@ -22,7 +23,13 @@ MERGED_LABELS = ("This week", "FYI", "Snoozed")
 URGENCY = ("Now", "Today", "This week", "FYI")
 WORKSPACES = ("Personal", "Bytalos")
 STATUSES = ("New", "Done", "Dismissed", "Snoozed", "Promoted")
-TILES = (("Now", "New", "Now"), ("Today", "New", "Today"), ("This week", "New", "This week"), ("FYI", "New", "FYI"), ("Snoozed", "Snoozed", None))
+TILES = (
+    ("Now", "New", "Now"),
+    ("Today", "New", "Today"),
+    ("This week", "New", "This week"),
+    ("FYI", "New", "FYI"),
+    ("Snoozed", "Snoozed", None),
+)
 SUBJECT_MAX, DETAILS_MAX, FROM_MAX, LINK_MAX, KEY_MAX = 160, 1500, 60, 500, 64
 RATE_PER_HOUR = 20
 CT = ZoneInfo("America/Chicago")
@@ -30,11 +37,28 @@ DETAILS_LINE_MAX, BODY_BLOCKS_MAX, CELL_MAX = 120, 90, 300
 
 _FROM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:/-]{0,59}$")
 _KEY = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
-_SECRET = re.compile("|".join((
-    r"nsec1[0-9a-z]{20,}", r"ghp_[A-Za-z0-9]{20,}", r"gh[ousr]_[A-Za-z0-9]{20,}", r"github_pat_[A-Za-z0-9_]{20,}", r"sk-[A-Za-z0-9_-]{20,}", r"AKIA[0-9A-Z]{16}", r"xox[abprs]-[A-Za-z0-9-]{10,}",
-    r"-----BEGIN [A-Z ]*PRIVATE KEY", r"ATATT[A-Za-z0-9_=-]{20,}", r"eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}\.", r"\b[A-Fa-f0-9]{40,}\b", r"(?i:bearer\s+[A-Za-z0-9._~+/=-]{20,})",
-    r"(?i:(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S{8,})")))
-_PERSONAL = re.compile("|".join((r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", r"\b\d{3}-\d{2}-\d{4}\b", r"\b(?:\d[ -]?){13,16}\b")))
+_SECRET = re.compile(
+    "|".join(
+        (
+            r"nsec1[0-9a-z]{20,}",
+            r"ghp_[A-Za-z0-9]{20,}",
+            r"gh[ousr]_[A-Za-z0-9]{20,}",
+            r"github_pat_[A-Za-z0-9_]{20,}",
+            r"sk-[A-Za-z0-9_-]{20,}",
+            r"AKIA[0-9A-Z]{16}",
+            r"xox[abprs]-[A-Za-z0-9-]{10,}",
+            r"-----BEGIN [A-Z ]*PRIVATE KEY",
+            r"ATATT[A-Za-z0-9_=-]{20,}",
+            r"eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}\.",
+            r"\b[A-Fa-f0-9]{40,}\b",
+            r"(?i:bearer\s+[A-Za-z0-9._~+/=-]{20,})",
+            r"(?i:(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S{8,})",
+        )
+    )
+)
+_PERSONAL = re.compile(
+    "|".join((r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", r"\b\d{3}-\d{2}-\d{4}\b", r"\b(?:\d[ -]?){13,16}\b"))
+)
 _SYNTHETIC_HOST = re.compile(r"(^|\.)(test|invalid|example|localhost)$|^example\.(com|org|net)$")
 
 
@@ -102,8 +126,16 @@ def normalize(item, now=None):
     if workspace not in WORKSPACES:
         raise InboxError("workspace_invalid")
     given = _due(item.get("due"))
-    out = {"from": sender, "subject": subject, "urgency": urgency, "workspace": workspace, "due": given or due_for(urgency, now or datetime.now(timezone.utc)), "due_given": bool(given),
-           "link": _link(item.get("link")), "details": _text(item.get("details"), DETAILS_MAX, "details")}
+    out = {
+        "from": sender,
+        "subject": subject,
+        "urgency": urgency,
+        "workspace": workspace,
+        "due": given or due_for(urgency, now or datetime.now(timezone.utc)),
+        "due_given": bool(given),
+        "link": _link(item.get("link")),
+        "details": _text(item.get("details"), DETAILS_MAX, "details"),
+    }
     key = str(item.get("key") or "").strip()
     if key and not _KEY.match(key):
         raise InboxError("key_invalid")
@@ -121,7 +153,7 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 def _spans(text):
     out, last = [], 0
     for found in list(_BOLD.finditer(text)) + [None]:
-        plain = text[last:found.start() if found else len(text)]
+        plain = text[last : found.start() if found else len(text)]
         if plain:
             out.append({"type": "text", "text": {"content": plain[:1900]}})
         if found:
@@ -135,13 +167,17 @@ def gist(details):
         words = re.sub(r"^\s*(?:#{1,3}\s+|[-*]\s+|\d+\.\s+)", "", line.replace("**", "")).strip()
         if words and not re.fullmatch(r"[\s|:-]+", words):
             words = " · ".join(c.strip() for c in words.split("|") if c.strip())
-            return words if len(words) <= DETAILS_LINE_MAX else words[:DETAILS_LINE_MAX - 1].rstrip() + "…"
+            return words if len(words) <= DETAILS_LINE_MAX else words[: DETAILS_LINE_MAX - 1].rstrip() + "…"
     return ""
 
 
 def _row(cells, width):
     cells = [c.strip()[:CELL_MAX] for c in cells][:width]
-    return {"object": "block", "type": "table_row", "table_row": {"cells": [_spans(c) for c in cells + [""] * (width - len(cells))]}}
+    return {
+        "object": "block",
+        "type": "table_row",
+        "table_row": {"cells": [_spans(c) for c in cells + [""] * (width - len(cells))]},
+    }
 
 
 def body_blocks(details):
@@ -153,7 +189,13 @@ def body_blocks(details):
             i += 1
             continue
         if not blocks:
-            blocks.append({"object": "block", "type": "callout", "callout": {"rich_text": _spans(line), "icon": {"type": "emoji", "emoji": "📌"}}})
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "callout",
+                    "callout": {"rich_text": _spans(line), "icon": {"type": "emoji", "emoji": "📌"}},
+                }
+            )
         elif line.count("|") >= 1 and " | " in f" {line} ":
             rows = []
             while i < len(lines) and "|" in lines[i]:
@@ -162,15 +204,40 @@ def body_blocks(details):
                     rows.append(cells)
                 i += 1
             width = max(len(r) for r in rows)
-            blocks.append({"object": "block", "type": "table", "table": {"table_width": width, "has_column_header": True, "has_row_header": False, "children": [_row(r, width) for r in rows[:30]]}})
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "table",
+                    "table": {
+                        "table_width": width,
+                        "has_column_header": True,
+                        "has_row_header": False,
+                        "children": [_row(r, width) for r in rows[:30]],
+                    },
+                }
+            )
             continue
         elif re.match(r"^#{1,2}\s+", line):
             kind = "heading_2" if line.startswith("# ") else "heading_3"
-            blocks.append({"object": "block", "type": kind, kind: {"rich_text": _spans(re.sub(r"^#{1,2}\s+", "", line))}})
+            blocks.append(
+                {"object": "block", "type": kind, kind: {"rich_text": _spans(re.sub(r"^#{1,2}\s+", "", line))}}
+            )
         elif re.match(r"^[-*]\s+", line):
-            blocks.append({"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _spans(re.sub(r"^[-*]\s+", "", line))}})
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "bulleted_list_item",
+                    "bulleted_list_item": {"rich_text": _spans(re.sub(r"^[-*]\s+", "", line))},
+                }
+            )
         elif re.match(r"^\d+\.\s+", line):
-            blocks.append({"object": "block", "type": "numbered_list_item", "numbered_list_item": {"rich_text": _spans(re.sub(r"^\d+\.\s+", "", line))}})
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "numbered_list_item",
+                    "numbered_list_item": {"rich_text": _spans(re.sub(r"^\d+\.\s+", "", line))},
+                }
+            )
         else:
             blocks.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": _spans(line)}})
         i += 1
@@ -183,7 +250,9 @@ def replace_body(client, page_id, details):
         return
     cursor = None
     while True:
-        page = client.call("GET", f"/blocks/{page_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else ""))
+        page = client.call(
+            "GET", f"/blocks/{page_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else "")
+        )
         for old in page.get("results", []):
             client.call("DELETE", f"/blocks/{old['id']}")
         if not page.get("has_more"):
@@ -193,8 +262,15 @@ def replace_body(client, page_id, details):
 
 
 def properties(item):
-    props = {"Subject": {"title": [{"type": "text", "text": {"content": item["subject"]}}]}, "From": _rich(item["from"]), "Workspace": {"select": {"name": item["workspace"]}},
-             "Urgency": {"select": {"name": item["urgency"]}}, "Status": {"select": {"name": "New"}}, "Key": _rich(item["key"]), "Details": _rich(gist(item["details"]))}
+    props = {
+        "Subject": {"title": [{"type": "text", "text": {"content": item["subject"]}}]},
+        "From": _rich(item["from"]),
+        "Workspace": {"select": {"name": item["workspace"]}},
+        "Urgency": {"select": {"name": item["urgency"]}},
+        "Status": {"select": {"name": "New"}},
+        "Key": _rich(item["key"]),
+        "Details": _rich(gist(item["details"])),
+    }
     if item["due"]:
         props["Due"] = {"date": {"start": item["due"]}}
     if item["link"]:
@@ -207,8 +283,17 @@ def _plain_title(rich):
 
 
 def locate(client):
-    found = notion_pages.search_all(client, DB_TITLE, "data_source", InboxError, incomplete="inbox_not_found", capped="inbox_not_found")
-    hits = [r for r in found if r.get("object") == "data_source" and not r.get("in_trash") and not r.get("archived") and _plain_title(r.get("title")) == DB_TITLE]
+    found = notion_pages.search_all(
+        client, DB_TITLE, "data_source", InboxError, incomplete="inbox_not_found", capped="inbox_not_found"
+    )
+    hits = [
+        r
+        for r in found
+        if r.get("object") == "data_source"
+        and not r.get("in_trash")
+        and not r.get("archived")
+        and _plain_title(r.get("title")) == DB_TITLE
+    ]
     if len(hits) != 1:
         raise InboxError("inbox_not_found" if not hits else "inbox_ambiguous")
     return str(hits[0]["id"])
@@ -237,7 +322,12 @@ def send(client, item, now=None, source=None):
     now = now or datetime.now(timezone.utc)
     item = normalize(item, now)
     source = source or locate(client)
-    matched = client.query_data_source(source, {"page_size": 2, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}).get("results") or []
+    matched = (
+        client.query_data_source(
+            source, {"page_size": 2, "filter": {"property": "Key", "rich_text": {"equals": item["key"]}}}
+        ).get("results")
+        or []
+    )
     if matched:
         if len(matched) != 1 or not matched[0].get("id"):
             raise InboxError("duplicate_key_ambiguous")
@@ -247,28 +337,57 @@ def send(client, item, now=None, source=None):
             raise InboxError("key_other_sender")
         props = properties(item)
         props.pop("Status")
-        if not item["due_given"] and ((matched[0].get("properties", {}).get("Due") or {}).get("date") or {}).get("start"):
+        if not item["due_given"] and ((matched[0].get("properties", {}).get("Due") or {}).get("date") or {}).get(
+            "start"
+        ):
             props.pop("Due", None)  # a resend keeps an existing Due
         client.call_once("PATCH", f"/pages/{matched[0]['id']}", {"properties": props})
         replace_body(client, matched[0]["id"], item["details"])
         return {"updated": 1}
     since = (now - timedelta(hours=1)).isoformat()
-    recent = _count(client, source, [{"property": "From", "rich_text": {"equals": item["from"]}}, {"timestamp": "created_time", "created_time": {"after": since}}], cap_pages=1)
+    recent = _count(
+        client,
+        source,
+        [
+            {"property": "From", "rich_text": {"equals": item["from"]}},
+            {"timestamp": "created_time", "created_time": {"after": since}},
+        ],
+        cap_pages=1,
+    )
     if recent >= RATE_PER_HOUR:
         raise InboxError("rate_limited")
-    client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source}, "properties": properties(item), **({"children": body_blocks(item["details"])} if item["details"] else {})})
+    client.call_once(
+        "POST",
+        "/pages",
+        {
+            "parent": {"type": "data_source_id", "data_source_id": source},
+            "properties": properties(item),
+            **({"children": body_blocks(item["details"])} if item["details"] else {}),
+        },
+    )
     return {"created": 1}
 
 
 def fill_missing_due(client, source, now=None, statuses=("New",), cap=40):
     """Give every open row with an urgency but no Due the one its urgency means at its Received time -> {"filled", "left"}."""
     out, cursor = {"filled": 0, "left": 0}, None
-    flt = {"and": [{"or": [_select("Status", st) for st in statuses]} if len(statuses) > 1 else _select("Status", statuses[0]), {"property": "Due", "date": {"is_empty": True}}]}
+    flt = {
+        "and": [
+            {"or": [_select("Status", st) for st in statuses]} if len(statuses) > 1 else _select("Status", statuses[0]),
+            {"property": "Due", "date": {"is_empty": True}},
+        ]
+    }
     for _ in range(5):
-        page = client.query_data_source(source, {"page_size": 100, "filter": flt, **({"start_cursor": cursor} if cursor else {})})
+        page = client.query_data_source(
+            source, {"page_size": 100, "filter": flt, **({"start_cursor": cursor} if cursor else {})}
+        )
         for row in page.get("results", ()):
             urgency = ((row.get("properties", {}).get("Urgency") or {}).get("select") or {}).get("name") or ""
-            made = due_for(urgency, datetime.fromisoformat(row["created_time"].replace("Z", "+00:00"))) if urgency in URGENCY and row.get("created_time") else ""
+            made = (
+                due_for(urgency, datetime.fromisoformat(row["created_time"].replace("Z", "+00:00")))
+                if urgency in URGENCY and row.get("created_time")
+                else ""
+            )
             if not made:
                 out["left"] += 1
             elif out["filled"] < cap:
@@ -282,13 +401,18 @@ def fill_missing_due(client, source, now=None, statuses=("New",), cap=40):
 
 def counts(client, source=None):
     source = source or locate(client)
-    return {label: _count(client, source, [_select("Status", status)] + ([_select("Urgency", urgency)] if urgency else [])) for label, status, urgency in TILES}
+    return {
+        label: _count(client, source, [_select("Status", status)] + ([_select("Urgency", urgency)] if urgency else []))
+        for label, status, urgency in TILES
+    }
 
 
 def _children(client, block_id):
     out, cursor = [], None
     while True:
-        page = client.call("GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else ""))
+        page = client.call(
+            "GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else "")
+        )
         out += page.get("results", [])
         if not page.get("has_more"):
             return out
@@ -330,9 +454,17 @@ def _merged_row(client, page_id):
                     head = _words(kids[0])
                     if head.startswith("Now") and "Today" in head:
                         boxes.append((block, kids[0], None))
-                    elif len(kids) > 1 and kids[1].get("type") == "paragraph" and COUNTER_LINE.fullmatch(_words(kids[1]).strip()):
+                    elif (
+                        len(kids) > 1
+                        and kids[1].get("type") == "paragraph"
+                        and COUNTER_LINE.fullmatch(_words(kids[1]).strip())
+                    ):
                         boxes.append((block, kids[0], kids[1]))
-                    elif len(kids) > 1 and kids[1].get("type") == "paragraph" and _words(kids[1]).strip() in MERGED_LABELS:
+                    elif (
+                        len(kids) > 1
+                        and kids[1].get("type") == "paragraph"
+                        and _words(kids[1]).strip() in MERGED_LABELS
+                    ):
                         tiles.setdefault(_words(kids[1]).strip(), []).append((block["id"], kids[0], kids[1]))
                 if depth < 3:
                     scan(kids, depth + 1)
@@ -370,7 +502,9 @@ def _parent_page(client, source):
 def locate_page(client, source=None):
     """The live page titled MERGED_TITLE with the merged tile row, else the one titled PAGE_TITLE with the old tile row; none or several is a fixed refusal."""
     merged = []
-    for page in notion_pages.search_all(client, MERGED_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"):
+    for page in notion_pages.search_all(
+        client, MERGED_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"
+    ):
         if _live_titled(page, (MERGED_TITLE,)) and _merged_row(client, page["id"]):
             merged.append(page["id"])
     if merged:
@@ -382,7 +516,9 @@ def locate_page(client, source=None):
         if parent:
             return parent
     holders = []
-    for page in notion_pages.search_all(client, PAGE_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"):
+    for page in notion_pages.search_all(
+        client, PAGE_TITLE, "page", InboxError, incomplete="page_not_found", capped="page_not_found"
+    ):
         if not _live_titled(page, (PAGE_TITLE,)):
             continue
         try:
@@ -396,7 +532,13 @@ def locate_page(client, source=None):
 
 
 def _line_key(rich):
-    return [(piece.get("plain_text") or (piece.get("text") or {}).get("content", ""), piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url") or "") for piece in rich]
+    return [
+        (
+            piece.get("plain_text") or (piece.get("text") or {}).get("content", ""),
+            piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url") or "",
+        )
+        for piece in rich
+    ]
 
 
 def _set_counter(client, box, heading, line, now, today):
@@ -410,13 +552,24 @@ def _set_counter(client, box, heading, line, now, today):
     text = f"Now {now} · Today {today}"
     rich = [{"type": "text", "text": {"content": text}, "annotations": {"color": "gray"}}]
     if line is None:
-        client.call_once("PATCH", f"/blocks/{box['id']}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}]})
+        client.call_once(
+            "PATCH",
+            f"/blocks/{box['id']}/children",
+            {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}]},
+        )
         changed += 1
-    elif _words(line) != text or any(p.get("annotations", {}).get("color") != "gray" for p in (line.get("paragraph") or {}).get("rich_text") or ()):
+    elif _words(line) != text or any(
+        p.get("annotations", {}).get("color") != "gray" for p in (line.get("paragraph") or {}).get("rich_text") or ()
+    ):
         client.update_block(line["id"], "paragraph", rich)
         changed += 1
     keep = {heading["id"], (line or {}).get("id")}
-    for extra in [b for b in _children(client, box["id"]) if b["id"] not in keep and not (line is None and b.get("type") == "paragraph" and COUNTER_LINE.fullmatch(_words(b).strip()))]:
+    for extra in [
+        b
+        for b in _children(client, box["id"])
+        if b["id"] not in keep
+        and not (line is None and b.get("type") == "paragraph" and COUNTER_LINE.fullmatch(_words(b).strip()))
+    ]:
         client.call_once("DELETE", f"/blocks/{extra['id']}")
         changed += 1
     return changed
@@ -432,7 +585,9 @@ def recount_page(client, page_id=None, source=None):
         changed = _set_counter(client, box, heading, line, numbers["Now"], numbers["Today"])
         for label, (_, number_block, label_block) in zip(MERGED_LABELS, tiles, strict=True):
             if _words(number_block) != str(numbers[label]):
-                client.update_block(number_block["id"], "heading_3", [{"type": "text", "text": {"content": str(numbers[label])}}])
+                client.update_block(
+                    number_block["id"], "heading_3", [{"type": "text", "text": {"content": str(numbers[label])}}]
+                )
                 changed += 1
         return {"tiles": 4, "tiles_changed": changed, "layout": "merged"}
     tiles = _tiles(client, page_id)
@@ -443,7 +598,11 @@ def recount_page(client, page_id=None, source=None):
             client.update_block(number_block["id"], "heading_3", [{"type": "text", "text": {"content": want}}])
             changed += 1
         if _words(label_block) != label:
-            client.update_block(label_block["id"], "paragraph", [{"type": "text", "text": {"content": label}, "annotations": {"bold": True}}])
+            client.update_block(
+                label_block["id"],
+                "paragraph",
+                [{"type": "text", "text": {"content": label}, "annotations": {"bold": True}}],
+            )
             changed += 1
     return {"tiles": len(TILES), "tiles_changed": changed}
 
@@ -458,7 +617,9 @@ def archive_keys(client, keys, source=None):
     source = source or locate(client)
     done = 0
     for key in keys:
-        for row in client.query_data_source(source, {"page_size": 5, "filter": {"property": "Key", "rich_text": {"equals": key}}}).get("results", ()):
+        for row in client.query_data_source(
+            source, {"page_size": 5, "filter": {"property": "Key", "rich_text": {"equals": key}}}
+        ).get("results", ()):
             client.call_once("PATCH", f"/pages/{row['id']}", {"in_trash": True})
             done += 1
     return done

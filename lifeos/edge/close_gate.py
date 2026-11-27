@@ -7,6 +7,7 @@ duplicate header or chunked body; POST same-origin, form-encoded). GET gets a re
 Refusals are fixed statuses; nothing is logged. The `bwsalerts` credential reaches the app only for /alerts. A refresh
 the app asked for after a POST is one GitHub workflow_dispatch made with the optional `github` credential, which the
 app never sees."""
+
 import json
 import os
 import subprocess
@@ -19,20 +20,34 @@ from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions"
-REFRESH = {"hiring": {"refresh": "hiring", "live": "true"},
-           "recruiters": {"refresh": "recruiters", "live": "true"}}
+REFRESH = {"hiring": {"refresh": "hiring", "live": "true"}, "recruiters": {"refresh": "recruiters", "live": "true"}}
 WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
-REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
+REASONS = {
+    200: "OK",
+    303: "See Other",
+    400: "Bad Request",
+    403: "Forbidden",
+    405: "Method Not Allowed",
+    409: "Conflict",
+    500: "Internal Server Error",
+}
 # same-origin, never no-referrer: no-referrer makes browsers send `Origin: null` on the form POST, which is refused
-SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Connection", "close"))
+SAFE = (
+    ("Cache-Control", "no-store"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("X-Frame-Options", "DENY"),
+    ("Connection", "close"),
+)
 REFERRER = "same-origin"
 CSP = "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
 # Only the Manage hub may load Google's Drive picker and sign-in; the page itself is never framed.
-PICKER_CSP = ("default-src 'self'; script-src 'self' https://apis.google.com https://accounts.google.com; frame-src https://docs.google.com https://drive.google.com "
-              "https://accounts.google.com https://content.googleapis.com; connect-src 'self' https://accounts.google.com https://www.googleapis.com https://content.googleapis.com; "
-              "img-src 'self' data: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; "
-              "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+PICKER_CSP = (
+    "default-src 'self'; script-src 'self' https://apis.google.com https://accounts.google.com; frame-src https://docs.google.com https://drive.google.com "
+    "https://accounts.google.com https://content.googleapis.com; connect-src 'self' https://accounts.google.com https://www.googleapis.com https://content.googleapis.com; "
+    "img-src 'self' data: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; "
+    "frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
+)
 PICKER_PATHS = ("/manage",)
 # Google checks the picker's API key against the page's address, so only the Manage hub sends its origin (never the path).
 PICKER_REFERRER = "strict-origin-when-cross-origin"
@@ -92,7 +107,11 @@ def read_request(stream):
         return None
     body = ep.read_exact(stream, int(size)) if int(size) else b""
     path, _, query = parts[1].partition("?")
-    return None if body is None else {"method": parts[0], "path": path, "query": dict(parse_qsl(query)), "headers": headers, "body": body}
+    return (
+        None
+        if body is None
+        else {"method": parts[0], "path": path, "query": dict(parse_qsl(query)), "headers": headers, "body": body}
+    )
 
 
 def admitted(req, policy):
@@ -108,7 +127,11 @@ def admitted(req, policy):
 
 
 def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=(), csp=CSP, referrer=REFERRER):
-    head = [f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}", f"Content-Type: {ctype}", f"Content-Length: {len(body)}"]
+    head = [
+        f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}",
+        f"Content-Type: {ctype}",
+        f"Content-Length: {len(body)}",
+    ]
     head += [f"{k}: {v}" for k, v in (*SAFE, ("Referrer-Policy", referrer), ("Content-Security-Policy", csp), *extra)]
     out.write(("\r\n".join(head) + "\r\n\r\n").encode("latin-1") + body)
     out.flush()
@@ -116,11 +139,22 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=(), 
 
 def refresh(token, wants, opener=urllib.request.urlopen):
     """One workflow_dispatch per refresh the app asked for, unless a run is already waiting in the repository (a second would replace it). Best effort -> codes, for tests."""
+
     def call(method, path, body=None):
-        req = urllib.request.Request(API + path, None if body is None else json.dumps(body).encode(), method=method, headers={
-            "Authorization": "Bearer " + token.decode(), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-close"})
+        req = urllib.request.Request(
+            API + path,
+            None if body is None else json.dumps(body).encode(),
+            method=method,
+            headers={
+                "Authorization": "Bearer " + token.decode(),
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "lifeos-close",
+            },
+        )
         with opener(req, timeout=10) as response:
             return json.loads(response.read() or b"{}")
+
     done = []
     for name in dict.fromkeys(w for w in wants if isinstance(w, str) and w in REFRESH):
         try:
@@ -129,12 +163,21 @@ def refresh(token, wants, opener=urllib.request.urlopen):
                 continue
             call("POST", "/workflows/domains.yml/dispatches", {"ref": "main", "inputs": REFRESH[name]})
             done.append("dispatched")
-        except Exception:                                                  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             done.append("failed")
     return done
 
 
-def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
+def main(
+    app,
+    stdin=None,
+    stdout=None,
+    lookup=ep.whois,
+    uid=ep.loopback_peer_uid,
+    policy_path=POLICY,
+    creds=None,
+    client=notion_client,
+):
     """app(req, who, secrets) -> (status, content type, body bytes, extra headers). secrets: GET {"link", "reader", "config"}; POST {"link", "notion", "config", "after", "gdrive"?}."""
     stdin, stdout = stdin or sys.stdin.buffer, stdout or sys.stdout.buffer
     try:
@@ -167,12 +210,18 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         gdrive = b""
     bws_path = os.path.join(creds, "bwsalerts")
     try:
-        bwsalerts = open(bws_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(bws_path) else b""
+        bwsalerts = (
+            open(bws_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(bws_path) else b""
+        )
     except OSError:
         bwsalerts = b""
     picker_path = os.path.join(creds, "picker")
     try:
-        picker = json.loads(open(picker_path, "rb").read()) if req["method"] == "GET" and req["path"] in PICKER_PATHS and os.path.isfile(picker_path) else None
+        picker = (
+            json.loads(open(picker_path, "rb").read())
+            if req["method"] == "GET" and req["path"] in PICKER_PATHS and os.path.isfile(picker_path)
+            else None
+        )
     except (OSError, ValueError):
         picker = None
     after = []
@@ -190,8 +239,10 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
                 secrets["gdrive"] = gdrive
         if bwsalerts:
             secrets["bwsalerts"] = bwsalerts
-        status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
-    except Exception:                                                      # noqa: BLE001
+        status, ctype, body, extra = app(
+            {**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets
+        )
+    except Exception:  # noqa: BLE001
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
     hub = req["method"] == "GET" and req["path"] in PICKER_PATHS and status == 200 and ctype.startswith("text/html")
     respond(stdout, status, body, ctype, extra, PICKER_CSP if hub else CSP, PICKER_REFERRER if hub else REFERRER)

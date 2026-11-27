@@ -3,6 +3,7 @@
 Evidence, never inference: an opportunity page names its job and request message, a round page supplies the round
 identity, and an accepted Calendar event adds a round only when its title states the number. Anything else is a
 fixed code for that item. Writes need INTERVIEW_OS_WRITER=v7, else a dry run."""
+
 import os
 import re
 import time
@@ -34,14 +35,21 @@ TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
 REQUEST = "Request message ↗"
 LEAD_LANE = "Recruiter"
-HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)")
+HEADLINE_AT = re.compile(
+    r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)"
+)
 STAGE_SECONDS = 720
 HELD_BLOCKS = ("human_page",)  # a hand-written page is never written to: `permanent`, not `failed`
 LEADS_PER_RUN = 5
-ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
-                  r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
+ASKS = re.compile(
+    r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
+    r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b",
+    re.I,
+)
 URL = re.compile(r"https?://[^\s<>\"')\]]+")
-REQ = re.compile(r"\b(?:req(?:uisition)?|job|ref(?:erence)?)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*([A-Z]{0,4}[-_]?\d{4,10})\b", re.I)
+REQ = re.compile(
+    r"\b(?:req(?:uisition)?|job|ref(?:erence)?)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*([A-Z]{0,4}[-_]?\d{4,10})\b", re.I
+)
 
 
 def ordinal(title):
@@ -57,7 +65,9 @@ def _links(client, blocks, context, depth=0):
             if run.get("plain_text") == REQUEST and isinstance(url, str) and url.startswith("https://"):
                 yield url
         if block.get("has_children") and block.get("type") != "child_page" and depth < 6:
-            yield from _links(client, notion.children(client, block["id"], [notion.MAX_CALLS], context), context, depth + 1)
+            yield from _links(
+                client, notion.children(client, block["id"], [notion.MAX_CALLS], context), context, depth + 1
+            )
 
 
 def facts(client, page_id, context):
@@ -76,9 +86,18 @@ KEY_TEXT = re.compile(r"Stable Job Key\s+([a-z0-9][a-z0-9-]*)", re.I)
 def legacy_facts(client, page_id, context):
     """(Stable Job Key, request URL or None) of an older-layout machine page: exactly one key, else None."""
     machine, lines, _ = create.machine_region(client, page_id, context)
-    if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or len(machine) < 2 or not notion.text(machine[1]).startswith("Canonical opportunity parent"):
+    if (
+        machine is None
+        or not lines
+        or not notion.is_marker(notion.text(lines[0]), "opportunity")
+        or len(machine) < 2
+        or not notion.text(machine[1]).startswith("Canonical opportunity parent")
+    ):
         return None
-    stack, keys = list(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], {b.get("id") for b in machine[:1]})), set()
+    stack, keys = (
+        list(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], {b.get("id") for b in machine[:1]})),
+        set(),
+    )
     while stack:
         node = stack.pop()
         keys.update(m.lower() for m in KEY_TEXT.findall(node.get("text") or ""))
@@ -97,7 +116,11 @@ def matches(records, roster):
     found, codes = {}, []
     for message in sorted(records, key=lambda m: m["received"]):
         text = f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}"
-        named = [r for r in roster if outcomes.mentions(message, r["company"])] if ASKS.search(text) and not outcomes.kind_of(text) else []
+        named = (
+            [r for r in roster if outcomes.mentions(message, r["company"])]
+            if ASKS.search(text) and not outcomes.kind_of(text)
+            else []
+        )
         by_role = [r for r in named if outcomes.role_in(message, r["role"])]
         if len({tuple(tokens(r["company"])) for r in named}) > 1 or len(by_role) > 1:
             codes.append("request_ambiguous")
@@ -110,7 +133,7 @@ def matches(records, roster):
 def headline_company(message):
     text = str(message.get("body") or "")
     cut = classify.RELAY_FOOTER.search(text)
-    for line in (text[:cut.start()] if cut else text)[:1500].splitlines():
+    for line in (text[: cut.start()] if cut else text)[:1500].splitlines():
         found = classify.HEADLINE.match(line.strip()) if len(line) <= 260 else None
         at = HEADLINE_AT.search(found.group("headline")) if found else None
         if at:
@@ -138,7 +161,19 @@ def lead_of(message):
     None. Company: the client, else the recruiter's, else the sender's headline employer."""
     shape, reason, evidence = classify.classify(message)
     verdict, found = qualify.qualify(message, shape, reason, evidence)
-    company = (found["client"] or found["company"] or ((headline_company(message) or f"LinkedIn · {found['person']}") if shape == classify.HUMAN_NAMED_RELAY else "")) if verdict == "CANDIDATE" else ""
+    company = (
+        (
+            found["client"]
+            or found["company"]
+            or (
+                (headline_company(message) or f"LinkedIn · {found['person']}")
+                if shape == classify.HUMAN_NAMED_RELAY
+                else ""
+            )
+        )
+        if verdict == "CANDIDATE"
+        else ""
+    )
     if not (company and found["role"] and str(message.get("url", "")).startswith("https://")):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
@@ -155,9 +190,23 @@ def window(environ, live):
 
 def lead_job(company, role, link, message, now, connect=store.connect):
     """Enter a recruiter's posting link into Jobs OS like any job; True when the job is new."""
-    received = datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    received = (
+        datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00"))
+        .astimezone(ZoneInfo("UTC"))
+        .replace(tzinfo=None)
+    )
     with connect() as connection, connection.cursor() as cursor:
-        return manual_job.enter(cursor, link, company, role, "recruiter", "Recruiter outreach", received, now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None), "ats")[1]
+        return manual_job.enter(
+            cursor,
+            link,
+            company,
+            role,
+            "recruiter",
+            "Recruiter outreach",
+            received,
+            now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None),
+            "ats",
+        )[1]
 
 
 def lead_row(writer, company, role, key, url, today):
@@ -176,23 +225,63 @@ def lead_row(writer, company, role, key, url, today):
     if publish.existing_page(writer, key):
         ledger_claim.release(key, claimant)
         return "present"
-    page = writer.create(publish.properties({"title": role, "company": company, "url": url, "provider": "Recruiter outreach", "lane": LEAD_LANE, "key": key, "first_seen": today,
-                                             "eligible": [LEAD_LANE], "admission": lanes.ADMIT}), [])
+    page = writer.create(
+        publish.properties(
+            {
+                "title": role,
+                "company": company,
+                "url": url,
+                "provider": "Recruiter outreach",
+                "lane": LEAD_LANE,
+                "key": key,
+                "first_seen": today,
+                "eligible": [LEAD_LANE],
+                "admission": lanes.ADMIT,
+            }
+        ),
+        [],
+    )
     props = writer.call("GET", f"/pages/{page}").get("properties") or {}
-    if view._plain(props.get("Stable Job Key")) != key or ((props.get("Visible Lane") or {}).get("select") or {}).get("name") != LEAD_LANE:
+    if (
+        view._plain(props.get("Stable Job Key")) != key
+        or ((props.get("Visible Lane") or {}).get("select") or {}).get("name") != LEAD_LANE
+    ):
         raise NotionError("lead_row_readback")
     ledger_claim.release(key, claimant)
     return "created"
 
 
-def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None, reuse=None):
+def read_mail(
+    environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None, reuse=None
+):
     """-> (records, count of sources not read in full). Read only. `seconds` and `detail`, when given, are filled with
     timings and counts; `reuse` ({Gmail message id: record}) makes Gmail read only the rest."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
     gmail_timing = {} if detail is not None else None
-    reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True, **({"reuse": reuse} if reuse else {})))]
-    for number, (label, account) in enumerate(outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ), 1):
-        reads.append((f"outlook_{number}", lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1)))
+    reads = [
+        (
+            "gmail",
+            lambda: mail.gmail_records(
+                gmail or Gmail.from_env(),
+                now,
+                limit=limit,
+                days=days,
+                workers=MAIL_WORKERS,
+                timing=gmail_timing,
+                heal=True,
+                **({"reuse": reuse} if reuse else {}),
+            ),
+        )
+    ]
+    for number, (label, account) in enumerate(
+        outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ), 1
+    ):
+        reads.append(
+            (
+                f"outlook_{number}",
+                lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1),
+            )
+        )
     for name, read in reads:
         began = time.monotonic()
         try:
@@ -216,21 +305,42 @@ def recruiter_threads(environ, evidence, recruiters=None):
     if not urls:
         return evidence, False
     if recruiters is None:
-        if not ((environ.get("NOTION_RECRUITERS_TOKEN") or "").strip() and (environ.get("NOTION_RECRUITERS_DATA_SOURCE_ID") or "").strip()):
+        if not (
+            (environ.get("NOTION_RECRUITERS_TOKEN") or "").strip()
+            and (environ.get("NOTION_RECRUITERS_DATA_SOURCE_ID") or "").strip()
+        ):
             return evidence, False
-        recruiters = Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+        recruiters = Client(
+            environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID"
+        )
     found = {}
     try:
         for url in urls:
-            page = recruiters.query_data_source(None, {"page_size": 20, "filter": {"property": "Source URL", "url": {"equals": url}}})
-            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or page.get("has_more") is not False:
+            page = recruiters.query_data_source(
+                None, {"page_size": 20, "filter": {"property": "Source URL", "url": {"equals": url}}}
+            )
+            if (
+                not isinstance(page, dict)
+                or not isinstance(page.get("results"), list)
+                or page.get("has_more") is not False
+            ):
                 raise NotionError("RECRUITERS_QUERY_INCOMPLETE")
             rows = [r for r in map(recruiters_store.read, page["results"]) if r["source_url"] == url]
             found[url] = tuple(sorted({(r["person"].strip(), r["company"].strip(), r["source_url"]) for r in rows}))
     except NotionError:  # unknown is never "no recruiter"
-        return [(p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q) for p, q in evidence], True
-    return [(p, replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none") if q.source in found else q)
-            for p, q in evidence], False
+        return [
+            (p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q)
+            for p, q in evidence
+        ], True
+    return [
+        (
+            p,
+            replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none")
+            if q.source in found
+            else q,
+        )
+        for p, q in evidence
+    ], False
 
 
 GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,32})")
@@ -261,9 +371,17 @@ def sent_mail(environ, evidence, gmail=None, report=None):
 
     def read_thread(thread):
         try:
-            return thread, tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), None
+            return (
+                thread,
+                tuple(
+                    (at.isoformat(timespec="seconds"), subject)
+                    for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]
+                ),
+                None,
+            )
         except GmailError as error:
             return thread, None, error
+
     if len(threads) > 1:
         first = [read_thread(threads[0])]
         with ThreadPoolExecutor(max_workers=MAIL_WORKERS) as pool:
@@ -293,6 +411,7 @@ CONTACTS_SHOWN = 5
 def network_contacts(client, evidence, context=None, seconds=60):
     """Attach each request's job page Network Leads, at most CONTACTS_SHOWN, as (name, why) -> (evidence, failed?)."""
     from lifeos.network import surface as network
+
     out, failed, seen = [], False, {}
     clock = context or RunContext.start(seconds)
     for p, q in evidence:
@@ -313,13 +432,34 @@ def network_contacts(client, evidence, context=None, seconds=60):
     return out, failed
 
 
-def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None, connect=None):
+def run(
+    limit,
+    live,
+    environ=os.environ,
+    client=None,
+    calendar=None,
+    now=None,
+    ledger_rows=None,
+    context=None,
+    ledger=None,
+    records=None,
+    gmail=None,
+    outlook_accounts=None,
+    writer=None,
+    recruiters=None,
+    connect=None,
+):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():
         from lifeos.sources.proofs import interview_journey_proof
+
         return interview_journey_proof.run(environ, live, now=now, client=client)
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
     injected = context
-    context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
+    context, now, client = (
+        context or RunContext.start(120),
+        (now or datetime.now(TZ)).astimezone(TZ),
+        client or notion.make_client(environ),
+    )
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
     why, evidence, ready, where, permanent = {}, [], {}, {}, {}
     mail_seconds, mail_detail = {}, {}
@@ -340,7 +480,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     def queue(company, role, job, url, rows, date, who, number, requisition=None, ref=None, meeting=None):
         made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
         if made.code == "ready":
-            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref, meeting=meeting)))
+            evidence.append(
+                (made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref, meeting=meeting))
+            )
         else:
             flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
@@ -351,7 +493,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
 
     def conversion(company, role, how):
         convert[how] += 1
-        evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, None, stable_job_key=mint(company, role))))
+        evidence.append(
+            (ParentQuery(company, role), RoundQuery(True, None, None, None, stable_job_key=mint(company, role)))
+        )
 
     for parent, company, role in titles:
         if not (company.strip() and role.strip()):
@@ -368,13 +512,21 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         if page is None:
             try:
                 tops = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
-                has_notes = any(b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES for b in tops)
+                has_notes = any(
+                    b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES for b in tops
+                )
             except Exception:  # noqa: BLE001
                 has_notes = True
             legacy = legacy_facts(client, parent.page_id, context) if has_notes and named else None
             if legacy and legacy[0]:
                 try:
-                    ready[parent.page_id] = (company, role, *legacy, notion.child_scan(client, parent.page_id, context), read_rows(company))
+                    ready[parent.page_id] = (
+                        company,
+                        role,
+                        *legacy,
+                        notion.child_scan(client, parent.page_id, context),
+                        read_rows(company),
+                    )
                     convert["migrate"] += 1
                 except Exception:  # noqa: BLE001
                     flag("ledger_unreadable")
@@ -386,17 +538,29 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("job_key_missing")
         else:
             try:
-                ready[parent.page_id] = (company, role, *page, notion.child_scan(client, parent.page_id, context), read_rows(company))
+                ready[parent.page_id] = (
+                    company,
+                    role,
+                    *page,
+                    notion.child_scan(client, parent.page_id, context),
+                    read_rows(company),
+                )
             except Exception:  # noqa: BLE001
                 flag("ledger_unreadable")
     lap("page_reads")
     events, gone = [], []
     try:
         cancelled = []
+
         def keep(event, into):
             at = hiring.match_event(event["title"], [{"company": c, "role": r} for _, c, r in titles])[0]
-            if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
+            if (
+                at is not None
+                and hiring.event_kind(event["title"]) in ("interview", "hiring_manager")
+                and titles[at][0].page_id in ready
+            ):
                 into.append((titles[at][0].page_id, event))
+
         for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now, cancelled):
             keep(event, events)
         for event in cancelled:
@@ -425,7 +589,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     confirms, moves, cancels = {}, {}, {}
     for page_id, event in events:
         company, role, job, url, kids, rows = ready[page_id]
-        held, number, day, ref = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10], reference(event["id"])
+        held, number, day, ref = (
+            [c for c in kids.items if c.identity_valid is True],
+            ordinal(event["title"]),
+            event["start"][:10],
+            reference(event["id"]),
+        )
         joining = event.get("meeting")
         if not kids.complete:
             flag("child_scan_incomplete")
@@ -437,7 +606,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif len(linked := [c for c in held if c.interview_date and calendar_of(c)[0] == ref]) == 1:
             moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add((day, joining))
         elif number is None:
-            flag("round_identity_incomplete", "calendar_event_pending_round" if any(c.interview_date is None for c in held) else "calendar_event_no_ordinal")
+            flag(
+                "round_identity_incomplete",
+                "calendar_event_pending_round"
+                if any(c.interview_date is None for c in held)
+                else "calendar_event_no_ordinal",
+            )
         elif any(c.ordinal == number for c in held):
             flag("round_conflict")
         else:
@@ -452,44 +626,99 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         if len(found) > 1:
             flag("calendar_event_ambiguous", "calendar_event_pending_round")
             continue
-        (day, ref, joining), = found
+        ((day, ref, joining),) = found
         pending = [c for c in kids.items if c.identity_valid is True][0]
-        evidence.append((ParentQuery(company, role), RoundQuery(True, day, pending.interviewer, 1, explicit_child_page_id=pending.page_id, stable_job_key=job,
-                                                                source=url, calendar_ref=ref, meeting=joining)))
+        evidence.append(
+            (
+                ParentQuery(company, role),
+                RoundQuery(
+                    True,
+                    day,
+                    pending.interviewer,
+                    1,
+                    explicit_child_page_id=pending.page_id,
+                    stable_job_key=job,
+                    source=url,
+                    calendar_ref=ref,
+                    meeting=joining,
+                ),
+            )
+        )
     for child_id, (page_id, child, days) in moves.items():
         company, role, job, url, kids, rows = ready[page_id]
         if len(days) > 1 or child_id in cancels:
             flag("calendar_event_ambiguous", "calendar_event_moved")
             continue
         day, joining = days.pop()
-        evidence.append((ParentQuery(company, role), RoundQuery(True, day, child.interviewer, child.ordinal, explicit_child_page_id=child_id, stable_job_key=job,
-                                                                source=url, calendar_ref=calendar_of(child)[0], meeting=joining)))
+        evidence.append(
+            (
+                ParentQuery(company, role),
+                RoundQuery(
+                    True,
+                    day,
+                    child.interviewer,
+                    child.ordinal,
+                    explicit_child_page_id=child_id,
+                    stable_job_key=job,
+                    source=url,
+                    calendar_ref=calendar_of(child)[0],
+                    meeting=joining,
+                ),
+            )
+        )
     for child_id, (page_id, child) in cancels.items():
         if child_id in moves:
             continue
         company, role, job, url, kids, rows = ready[page_id]
-        evidence.append((ParentQuery(company, role), RoundQuery(True, child.interview_date, child.interviewer, child.ordinal, explicit_child_page_id=child_id,
-                                                                stable_job_key=job, source=url, calendar_ref=calendar_of(child)[0], cancelled=True)))
+        evidence.append(
+            (
+                ParentQuery(company, role),
+                RoundQuery(
+                    True,
+                    child.interview_date,
+                    child.interviewer,
+                    child.ordinal,
+                    explicit_child_page_id=child_id,
+                    stable_job_key=job,
+                    source=url,
+                    calendar_ref=calendar_of(child)[0],
+                    cancelled=True,
+                ),
+            )
+        )
     lap("round_reads")
     roster = []
     try:
-        ledger = ledger or Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
+        ledger = ledger or Client(
+            environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID"
+        )
         roster = pipeline.read_applied(ledger)
     except Exception:  # noqa: BLE001
         flag("ledger_unreadable")
     lap("ledger_roster")
-    pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
-                if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
+    pursuits = [
+        {"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True}
+        for p, c, r in titles
+        if c.strip()
+        and r.strip()
+        and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)
+    ]
     snapshot_why = None
     if records is None:
         began = time.monotonic()
-        taken = snapshots.take(environ, now, window(environ, live), connect) if gmail is None and outlook_accounts is None else {"why": "no_tick"}
+        taken = (
+            snapshots.take(environ, now, window(environ, live), connect)
+            if gmail is None and outlook_accounts is None
+            else {"why": "no_tick"}
+        )
         if taken["why"] == "used":
             records, down = taken["records"], taken["down"]
             mail_detail.update(taken["detail"])
             mail_seconds["snapshot"] = round(time.monotonic() - began, 1)
         else:
-            records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
+            records, down = read_mail(
+                environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail
+            )
         snapshot_why = None if taken["why"] == "no_tick" else taken["why"]
         if down:
             flag("mail_unavailable")  # a source read in part is never a trustworthy "no request"
@@ -507,9 +736,15 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         except Exception:  # noqa: BLE001
             flag("ledger_unreadable")
             continue
-        page = next((v for v in ready.values() if same_company(v[0], row["company"]) and same_role(v[1], row["role"])), None)
+        page = next(
+            (v for v in ready.values() if same_company(v[0], row["company"]) and same_role(v[1], row["role"])), None
+        )
         _, _, page_job, page_url, page_kids, _ = page or (None,) * 6
-        states = {p.active for p, c, r in ((p, *split_title(p.title)) for p in scan.items) if same_company(c, row["company"]) and same_role(r, row["role"])}
+        states = {
+            p.active
+            for p, c, r in ((p, *split_title(p.title)) for p in scan.items)
+            if same_company(c, row["company"]) and same_role(r, row["role"])
+        }
         if states == {False}:
             retired_skips += 1
             continue
@@ -523,11 +758,32 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             if page_url != message["url"]:
                 flag("round_identity_incomplete", "applied_row_other_request")
         elif not page or page_kids.complete:
-            queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
-                  None, None, None, req)
+            queue(
+                row["company"],
+                row["role"],
+                key,
+                message["url"],
+                [
+                    {
+                        "page_id": row["id"],
+                        "company": row["company"],
+                        "role": row["role"],
+                        "stable_job_key": key,
+                        "requisition": None,
+                    }
+                ],
+                None,
+                None,
+                None,
+                req,
+            )
     lap("ledger_requests")
     pursuit_requests, handled = 0, set()
-    outreach = {m["url"] for m in records or [] if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")}
+    outreach = {
+        m["url"]
+        for m in records or []
+        if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")
+    }
     for row, message, req in leads:
         page = ready.get(row["id"].split(":", 1)[1])
         if page is None:
@@ -576,11 +832,19 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         link = posting_link(source)
         if not link:
             try:
-                same = [r for r in read_rows(company) if same_company(r.get("company") or "", company) and same_role(r.get("role") or "", role)]
+                same = [
+                    r
+                    for r in read_rows(company)
+                    if same_company(r.get("company") or "", company) and same_role(r.get("role") or "", role)
+                ]
             except Exception:  # noqa: BLE001
                 flag("ledger_unreadable")
                 continue
-            held = [r for r in same if r.get("stable_job_key") == key or (r.get("requisition") and squash(r["requisition"]) == squash(req))]
+            held = [
+                r
+                for r in same
+                if r.get("stable_job_key") == key or (r.get("requisition") and squash(r["requisition"]) == squash(req))
+            ]
             if len(held) > 1 or (same and not held):
                 flag("identity_conflict", "lead_requisition")
                 continue
@@ -594,7 +858,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             except Exception:  # noqa: BLE001
                 flag("lead_row_failed")
                 continue
-        evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, 1, source=url, requisition=req, stable_job_key=key)))
+        evidence.append(
+            (
+                ParentQuery(company, role),
+                RoundQuery(True, None, None, 1, source=url, requisition=req, stable_job_key=key),
+            )
+        )
     leads_refresh = []
     for company, role, job, url, kids, ledger_rows_of in ready.values():
         held = [c for c in kids.items if c.identity_valid is True]
@@ -602,9 +871,20 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
-        elif not kids.items and job:  # a keyed machine page with no rounds is refreshed from its key, never given a round
-            leads_refresh.append((ParentQuery(company, role), RoundQuery(True, None, None, None, source=url, stable_job_key=job, refresh_only=True)))
-    evidence += [item for item in leads_refresh if (item[0].company, item[0].role) not in {(p.company, p.role) for p, _ in evidence}]
+        elif (
+            not kids.items and job
+        ):  # a keyed machine page with no rounds is refreshed from its key, never given a round
+            leads_refresh.append(
+                (
+                    ParentQuery(company, role),
+                    RoundQuery(True, None, None, None, source=url, stable_job_key=job, refresh_only=True),
+                )
+            )
+    evidence += [
+        item
+        for item in leads_refresh
+        if (item[0].company, item[0].role) not in {(p.company, p.role) for p, _ in evidence}
+    ]
     lap("decisions")
     evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
     lap("recruiters")
@@ -623,13 +903,24 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     runs = {streaks.label(thread): (before or {}).get(streaks.label(thread), 0) + 1 for thread in unreadable}
     for thread, cause in sorted(unreadable.items()):
         if thread.startswith("message:"):
-            flag("mail_message_unreadable", stays=cause in STILL_UNREADABLE or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
+            flag(
+                "mail_message_unreadable",
+                stays=cause in STILL_UNREADABLE or runs[streaks.label(thread)] > streaks.FAILED_RUNS,
+            )
             continue
         flag("sent_mail_unreadable", stays=cause == "http_404" or runs[streaks.label(thread)] > streaks.FAILED_RUNS)
         causes[cause] = causes.get(cause, 0) + 1
     kept = not reads or not live or streaks.save(runs, before, connect)
     lap("sent_mail")
-    counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS), roster=True)
+    counts = stage.run(
+        limit,
+        live,
+        environ,
+        client=client,
+        evidence=evidence,
+        context=injected or RunContext.start(STAGE_SECONDS),
+        roster=True,
+    )
     lap("writer")
     if where:
         counts["where"] = where
@@ -642,12 +933,26 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     if (before is None or not kept) and any(cause != "http_404" for cause in causes):
         counts["streak_store"] = "unavailable"
     held = {code: counts["blocked_why"][code] for code in HELD_BLOCKS if counts.get("blocked_why", {}).get(code)}
-    counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
+    counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = (
+        {**counts["why"], **why},
+        counts_requests,
+        len(fresh),
+        made_rows,
+        made_jobs,
+    )
     counts["leads_this_run"] = len(chosen)
     counts["lead_review"] = review
     counts["convert"] = convert
     if sweep.mode(environ) and scan.complete:
-        counts["sweep"] = sweep.run(environ, live, client, scan, mint, lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0], context=RunContext.start(sweep.SWEEP_SECONDS))
+        counts["sweep"] = sweep.run(
+            environ,
+            live,
+            client,
+            scan,
+            mint,
+            lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0],
+            context=RunContext.start(sweep.SWEEP_SECONDS),
+        )
     counts["lead_requests"] = {}
     counts["pursuit_requests"] = pursuit_requests
     counts["retired_skipped"] = retired_skips
@@ -655,7 +960,13 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
     counts["permanent"] = {**permanent, **held}
-    counts["failed"] = sum(why.values()) - sum(permanent.values()) + counts["blocked"] - sum(held.values()) + counts.get("sweep", {}).get("failed", 0)
+    counts["failed"] = (
+        sum(why.values())
+        - sum(permanent.values())
+        + counts["blocked"]
+        - sum(held.values())
+        + counts.get("sweep", {}).get("failed", 0)
+    )
     lap("after_writer")
     counts["mail_gmail"] = mail_detail.get("gmail") or {}
     counts["mail_seconds"] = mail_seconds

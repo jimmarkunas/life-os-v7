@@ -5,6 +5,7 @@ pages only: an unapplied job with no Saturn Decision, 30+ days old and NOT_PROTE
 tombstoned. A job on its employer's own board is retired only once a complete board listing lacks it. Counts only.
 
 """
+
 from datetime import date, timedelta
 import os
 
@@ -29,14 +30,20 @@ _now = store.now
 def query_filter(cutoff, lane):
     """Unapplied, no Saturn Decision, our lane, old by Posting Date or First Surfaced (`action` re-checks)."""
     day = cutoff.date().isoformat()
-    return {"and": [
-        {"property": "Applied", "checkbox": {"equals": False}},
-        {"property": "Applied On", "date": {"is_empty": True}},
-        {"property": "Saturn Decision", "select": {"is_empty": True}},
-        {"property": "Visible Lane", "select": {"equals": lane}},
-        {"or": [{"property": "Posting Date", "date": {"before": day}},
-                {"property": "First Surfaced", "date": {"before": day}}]},
-    ]}
+    return {
+        "and": [
+            {"property": "Applied", "checkbox": {"equals": False}},
+            {"property": "Applied On", "date": {"is_empty": True}},
+            {"property": "Saturn Decision", "select": {"is_empty": True}},
+            {"property": "Visible Lane", "select": {"equals": lane}},
+            {
+                "or": [
+                    {"property": "Posting Date", "date": {"before": day}},
+                    {"property": "First Surfaced", "date": {"before": day}},
+                ]
+            },
+        ]
+    }
 
 
 def age_days(posted, first_surfaced, today):
@@ -74,8 +81,11 @@ def purge_database(live, now):
         counts["job_rows"] = cursor.fetchone()[0]
         if live:
             cursor.execute("DELETE d " + old_descriptions, descriptions)
-            cursor.execute("DELETE s FROM v7_job_sources s JOIN v7_jobs j ON j.id=s.job_id WHERE j.first_seen < %s"
-                           " AND (j.notion_page_id IS NULL OR j.status='PURGED')", jobs)
+            cursor.execute(
+                "DELETE s FROM v7_job_sources s JOIN v7_jobs j ON j.id=s.job_id WHERE j.first_seen < %s"
+                " AND (j.notion_page_id IS NULL OR j.status='PURGED')",
+                jobs,
+            )
             cursor.execute("DELETE FROM v7_jobs WHERE " + old_jobs, jobs)
             counts["tombstones_expired"] = tombstone.expire(cursor, now)
     return counts
@@ -90,7 +100,10 @@ def candidates(client, now, lane):
     """(page id, Posting Date, First Surfaced, lane) of one lane from the filtered query, up to MAX_PAGES pages."""
     found, cursor = [], None
     for _ in range(MAX_PAGES):
-        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=retire_days(lane)[0]), lane)}
+        body = {
+            "page_size": limits.NOTION_PAGE_SIZE,
+            "filter": query_filter(now - timedelta(days=retire_days(lane)[0]), lane),
+        }
         if cursor:
             body["start_cursor"] = cursor
         try:
@@ -98,7 +111,9 @@ def candidates(client, now, lane):
         # name the lane and detail: a bare HTTP 400 hides the request
         except notion_client.NotionError as error:
             tag = lane if lane in KNOWN_LANES else "other"
-            raise notion_client.NotionError(" ".join(part for part in (str(error), f"lane={tag}", error.detail) if part)) from None
+            raise notion_client.NotionError(
+                " ".join(part for part in (str(error), f"lane={tag}", error.detail) if part)
+            ) from None
         for page in data.get("results", []):
             props = page.get("properties") or {}
             found.append((page["id"], _date(props.get("Posting Date")), _date(props.get("First Surfaced")), lane))
@@ -109,7 +124,17 @@ def candidates(client, now, lane):
 
 
 def purge_notion(live, now, environ=None):
-    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "kept_open": 0, "lanes": 0, "handoff": "not_configured", "target": ledger.OK}
+    counts = {
+        "candidates": 0,
+        "ours": 0,
+        "retired": 0,
+        "failed": 0,
+        "protected": 0,
+        "kept_open": 0,
+        "lanes": 0,
+        "handoff": "not_configured",
+        "target": ledger.OK,
+    }
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
     counts["target"] = ledger.verify(client)
     if counts["target"] != ledger.OK:
@@ -134,14 +159,19 @@ def purge_notion(live, now, environ=None):
     with store.connect() as connection, connection.cursor() as cursor:
         ours, open_on_board = {}, set()
         for page_id, posted, first, lane in pages:
-            cursor.execute("SELECT id, dedupe_key, fuzzy_key, company, title, source FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
+            cursor.execute(
+                "SELECT id, dedupe_key, fuzzy_key, company, title, source FROM v7_jobs WHERE notion_page_id=%s",
+                (page_id,),
+            )
             row = cursor.fetchone()
             if not row:
                 continue
             ours[page_id] = (row[:5], posted, first, lane)
             if lanes.first_party_source(row[5]) and _lane_age(lane) is None:
                 # open on its own board unless a complete listing marks it REMOVED
-                cursor.execute("SELECT SUM(state='CURRENT'), SUM(state='REMOVED') FROM v7_source_items WHERE job_id=%s", (row[0],))
+                cursor.execute(
+                    "SELECT SUM(state='CURRENT'), SUM(state='REMOVED') FROM v7_source_items WHERE job_id=%s", (row[0],)
+                )
                 current, removed = cursor.fetchone() or (0, 0)
                 if int(current or 0) > 0 or int(removed or 0) == 0:
                     open_on_board.add(page_id)
@@ -188,8 +218,11 @@ def _markers(cursor):
 
 
 def _mark(cursor, key, now):
-    cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,'info','RESOLVED',%s,%s,NULL) "
-                   "ON DUPLICATE KEY UPDATE status='RESOLVED', last_seen=VALUES(last_seen)", (key, now, now))
+    cursor.execute(
+        "INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,'info','RESOLVED',%s,%s,NULL) "
+        "ON DUPLICATE KEY UPDATE status='RESOLVED', last_seen=VALUES(last_seen)",
+        (key, now, now),
+    )
 
 
 def incomplete(notion):
@@ -213,7 +246,9 @@ def run(live, environ=None, now=None, force=None):
                 _mark(cursor, TRY_KEY, now)
     result = {"database": purge_database(live, now), "notion": purge_notion(live, now, environ)}
     if incomplete(result["notion"]):
-        raise notion_client.NotionError(f"PURGE_INCOMPLETE target={result['notion'].get('target')} handoff={result['notion'].get('handoff')}")
+        raise notion_client.NotionError(
+            f"PURGE_INCOMPLETE target={result['notion'].get('target')} handoff={result['notion'].get('handoff')}"
+        )
     if live:
         with store.connect() as connection, connection.cursor() as cursor:
             _mark(cursor, OK_KEY, now)
