@@ -1,7 +1,6 @@
 """LIFE-1003 (REQ-85 T2): the spending model for the isolated Honcho experiment. Pure arithmetic, no network.
 
-The shared meter (lifeos/edge/honcho/meter_proxy.py) has one cap for everything, so without a change to it the experiment's own $0.50 ceiling can only be kept by construction: spending is ARMED in steps, each step has a worst-case
-exposure computed here, and a step is armed only when (actual spend so far) + (that exposure) + (the dream's exposure) fits the ceiling. A crash of the guard then leaves only a step already inside the bound.
+The hardened meter (lifeos/edge/honcho/meter_proxy.py) owns hard enforcement: while the experiment's scope stands it reserves the vendor-documented maximum of each request against the scope's cap, so spend plus open reservations never pass the cap. This model does not prove a cap and no check here replaces the meter. It only decides what the guard arms: spending is ARMED in steps, each step's modeled worst-case exposure is computed here, and a step is armed only when (actual scope spend so far) + (that exposure) + (the dream's exposure) fits the ceiling, and one more request can still be admitted (one reservation fits). A refusal by the meter ends the step; completion is not guaranteed.
 Every parameter below was read from the installed Honcho v3.6.1 image (Nov 26 2026, read-only) and names its source:
   DERIVER_OUT 2500        deriver.py:158 `max_output_tokens or settings.LLM.DEFAULT_MAX_TOKENS` (2500); the provider enforces max_tokens.
   DERIVER_IN 25000        deriver.py:194 passes `max_input_tokens=settings.DERIVER.MAX_INPUT_TOKENS` (25000) to the call.
@@ -24,8 +23,11 @@ DREAM_ATTEMPTS = {
     "strict": 9,
 }  # a dream is retried only when run_dream itself raises (a failed specialist is caught inside it): 1 in the modeled profile, queue x SDK in the strict one
 DREAM_ATTEMPTS_QUEUE = 3  # the queue's own limit, reported beside the profiles
-CEILING = 0.50
-TRIP = 0.40  # the live brake (extra to the arming rule)
+CEILING = 2.00  # the approved experiment scope; the meter's scope cap must equal it
+SCOPE_CAP = CEILING
+TRIP = 0.80  # the live brake: disarm and stop at this scope spend, below the meter's own refusal line
+# The meter reserves the documented maximum of a request, about $1.02 at max_tokens 8192, one request at a time here (Honcho runs one deriver worker and the dream specialists in sequence); a request is admitted only while spend + reservation <= cap. Pinned to the meter by a test.
+RESERVATION_MAX = 1.02048
 TRANCHE = 3  # messages armed at a time
 EXPLICIT_MAX = 45  # below Honcho's threshold of 50, so no automatic dream can ever become due
 CHECK_DELTA = 0.0001
@@ -58,6 +60,11 @@ def dream_worst(attempts=None, profile="modeled"):
     return (DREAM_ATTEMPTS[profile] if attempts is None else attempts) * dream_attempt_worst()
 
 
+def admissible(scope_spent, cap=SCOPE_CAP):
+    """True while one more request's reservation still fits the scope: the most actual spend at which the meter can still admit a call."""
+    return scope_spent + RESERVATION_MAX <= cap + 1e-12
+
+
 def can_arm(spent_delta, exposure, still_to_come, ceiling=CEILING):
     """True when everything already paid, this step's worst case and the worst case of the steps still planned fit the ceiling."""
     return spent_delta >= 0 and spent_delta + exposure + still_to_come <= ceiling + 1e-12
@@ -77,5 +84,7 @@ def numbers(messages=20):
         "dream_queue_3_attempts_usd": round(dream_worst(DREAM_ATTEMPTS_QUEUE), 4),
         "dream_strict_usd": round(dream_worst(profile="strict"), 4),
         "ceiling_usd": CEILING,
+        "reservation_max_usd": RESERVATION_MAX,
+        "admission_limit_usd": round(SCOPE_CAP - RESERVATION_MAX, 5),
         "trip_usd": TRIP,
     }

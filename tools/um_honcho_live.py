@@ -1,7 +1,7 @@
 """LIFE-1003 (REQ-85 T2): the live entry point, behind a fail-closed gate. Importing this file does nothing; running it without every condition below prints one fixed word and exits non-zero BEFORE any object is built, any token is
 used or any call is made. The gate is not a release: the release is the ticket (Agent Go on LIFE-1003 and Jim's two items); it only makes sure a stray run cannot spend.
 Gate (all must hold): `--live`; UM_T2_RELEASE equals the exact string `RELEASED-LIFE-1003:um-t2-fixture-v1`; the host is lifeos-edge-01; the Honcho URL is loopback; UM_T2_TOKEN is a workspace-scoped token for exactly
-`um-t2-fixture-v1` (claim `w`), not admin (`ad`), with no narrower claim, valid for at least five more minutes and no more than two hours; and no admin token is present in the environment."""
+`um-t2-fixture-v1` (claim `w`), not admin (`ad`), with no narrower claim, valid for at least five more minutes and no more than two hours; no admin token is present in the environment; and UM_T2_SCOPE names the meter's experiment scope (the guard checks it against the meter's own health document)."""
 
 import argparse
 import base64
@@ -54,6 +54,8 @@ def gate(live, env, host, now, url=HONCHO_URL):
         return False, "url_not_loopback"
     if env.get("HONCHO_ADMIN_JWT") or env.get("HONCHO_ADMIN_TOKEN"):
         return False, "admin_token_present"
+    if not env.get("UM_T2_SCOPE"):
+        return False, "scope_id_missing"
     token = env.get("UM_T2_TOKEN") or ""
     c = claims(token)
     if not token or c is None:
@@ -70,9 +72,10 @@ class MeterHttp:
     def __init__(self, url=METER_URL, opener=urllib.request.urlopen):
         self.url, self.opener = url, opener
 
-    def spent(self):
+    def reading(self):
+        """The meter's whole /health document (monthly spend, blocked, scope); the guard validates it."""
         with self.opener(self.url, timeout=3) as answer:
-            return float(json.loads(answer.read())["spent_usd"])
+            return json.loads(answer.read())
 
 
 class RealClock:
@@ -107,7 +110,7 @@ def main(argv=None, env=None, host=None, now=None, builder=build):
     honcho, meter, db, graph, clock, driver = builder(env)
     try:
         doc = json.loads(pilot.um.CORPUS.read_text())
-        ev = pilot.run_pilot(honcho, meter, db, doc, graph, clock, seed=args.seed)
+        ev = pilot.run_pilot(honcho, meter, db, doc, graph, clock, seed=args.seed, scope_id=env.get("UM_T2_SCOPE"))
     finally:
         getattr(driver, "close", lambda: None)()
     pathlib.Path(args.evidence).write_text(json.dumps(ev, indent=1, default=str))
