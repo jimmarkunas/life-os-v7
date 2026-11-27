@@ -1,9 +1,8 @@
-"""LIFE-975 step 4d: the System callout's table (sixteen rows, five columns, fixed order) as pure functions of the readings and `now`; no network, no clock of its own."""
-# Jim's wireframe "Daily Report System callout" (approved Nov 25 2026). It merges the old Oracle Cloud card, the AI Capacity card and the System health database.
-# Bars: filled = share used for budgets and capacity, share healthy for Services / Backup / Connections, days left out of 7 for sign-ins. Green while fine; orange at 70% used or 2 days left;
-# red at 90% used, 1 day left, a service down or a connection failing; the empty part is gray. Status: a green OK, or a short red reason (STALE since ..., DOWN, EXPIRES ..., NEAR LIMIT, <SOURCE> DOWN).
-# A row is stale when its reading is more than two hours old or could not be had this run; the page's previous Usage / Reading / Resets are then kept and the row says `STALE since <when>`
-# (the earliest time the page already showed it stale, else the previous run's time). Counts, numbers and fixed words only.
+"""The System callout's table (sixteen rows, five columns) as pure functions of the readings and `now`."""
+# Bars: filled = share used (budgets, capacity), share healthy (Services / Backup / Connections) or days left of
+# 7 (sign-ins). Orange at 70% used or 2 days left; red at 90%, 1 day left, a service down or a connection
+# failing. A row is stale when its reading is over two hours old or missing: the page's previous values are kept
+# and the status says `STALE since <when>`.
 import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -14,8 +13,8 @@ from lifeos.platform import credit_window, honcho_status
 TZ = ZoneInfo("America/Chicago")
 BAR = 10
 STALE_AFTER = timedelta(hours=2)
-ORANGE_AT, RED_AT = 70, 90                       # percent used
-SIGNIN_DAYS = 7                                  # a sign-in bar is the days left out of this many
+ORANGE_AT, RED_AT = 70, 90
+SIGNIN_DAYS = 7
 HEADER = ("System", "Usage", "Reading", "Resets / expires", "Status")
 LABELS = ("Oracle · Memory", "Oracle · Disk", "Oracle · CPU (24 h avg)", "Oracle · Cores", "Oracle · Cost", "Oracle · Services", "Honcho · Backup",
           "Codex · 5-hour", "Codex · Week", "Anthropic · Promo credit", "Honcho · Monthly cap", "OpenRouter · Key budget", "Cloud Fit · Daily guard",
@@ -25,24 +24,21 @@ STALE_WORDS = re.compile(r"STALE since (.+?)(?: ·|$)")
 
 
 def when(moment, now):
-    """`2:02 PM` for a time today (Central), `Nov 16` for an earlier day."""
     moment, now = moment.astimezone(TZ), now.astimezone(TZ)
     return f"{moment.hour % 12 or 12}:{moment.minute:02d} {'AM' if moment.hour < 12 else 'PM'}" if moment.date() == now.date() else f"{moment.strftime('%b')} {moment.day}"
 
 
 def day_time(moment):
-    """`Tue Nov 24, 4:10 PM` (Central; the heading carries the CT)."""
     moment = moment.astimezone(TZ)
     return f"{moment.strftime('%a %b')} {moment.day}, {moment.hour % 12 or 12}:{moment.minute:02d} {'AM' if moment.hour < 12 else 'PM'}"
 
 
 def short_day_time(moment):
-    """`Nov 24, 3:30 AM` (Central; the backup line has no weekday)."""
     return day_time(moment).split(" ", 1)[1]
 
 
 def reset_of(iso, now, label=None):
-    """A provider's reset time (ISO) as `Tue Nov 24, 4:10 PM`; one already past rolls forward by whole windows (5 hours, 7 days) so the table never shows a time that has gone by."""
+    """A provider's reset time (ISO) as `Tue Nov 24, 4:10 PM`; one already past rolls forward by whole windows."""
     if not iso:
         return "—"
     try:
@@ -66,13 +62,11 @@ def colour_days(days):
 
 
 def bar(filled, colour):
-    """-> segments [(text, colour)]: `filled` blocks (of ten) in `colour`, the rest gray."""
     filled = min(BAR, max(0, int(filled + 0.5)))
     return [(text, c) for text, c in (("█" * filled, colour), ("█" * (BAR - filled), "gray")) if text]
 
 
 def blocks_of(share):
-    """Blocks filled for a 0 to 100 share: rounded, but any non-zero share shows at least one block."""
     return max(1, round(share / 100 * BAR)) if share > 0 else 0
 
 
@@ -81,7 +75,6 @@ def used_bar(pct):
 
 
 class Row:
-    """One table row before the stale rule: `have` False means the reading could not be had this run."""
 
     def __init__(self, label, usage=None, reading="—", resets="—", reason=None, as_of=None, have=True):
         self.label, self.usage, self.reading, self.resets, self.reason, self.as_of, self.have = label, usage or [("█" * BAR, "gray")], reading, resets, reason, as_of, have
@@ -109,7 +102,7 @@ def _capacity_rows(stats, as_of, now):
     else:
         total = a1["used"] + a1["available"]
         share = a1["used"] / total * 100 if total else 100
-        colour = "orange" if a1["available"] == 0 else colour_used(share)             # 4 of 4 has no headroom: orange, with a green OK (Jim's rule)
+        colour = "orange" if a1["available"] == 0 else colour_used(share)
         rows.append(Row(LABELS[3], bar(blocks_of(share), colour), f"{a1['used']} of {total} in use", "—", None, as_of))
     if cost is None:
         rows.append(Row(LABELS[4], have=False))
@@ -181,7 +174,8 @@ def _budget_rows(stats, stats_at, limits, limits_at, now):
 
 
 def connections_row(summary, now):
-    """summary: None (the System health database could not be read) or {"total", "connected", "down": [names], "off": n, "stale_since": datetime or None}."""
+    """summary: None (System health database unreadable) or {"total", "connected", "down": [names], "off": n,
+    "stale_since": ...}."""
     if summary is None:
         return Row(LABELS[13], have=False)
     total, connected, down = summary["total"], summary["connected"], summary["down"]
@@ -214,7 +208,8 @@ def signin_rows(limits, limits_at, now):
 
 
 def readings(stats, stats_at, limits, limits_at, connections, now):
-    """-> the sixteen Rows in the fixed order. `stats`: the validated `oracle1` readings or None; `limits`: Oracle's `limits` reading (Codex read once) or None."""
+    """-> the sixteen Rows in fixed order. `stats`: validated `oracle1` readings or None; `limits`: Oracle's
+    `limits` or None."""
     rows = _capacity_rows(stats, stats_at, now) + _budget_rows(stats, stats_at, limits, limits_at, now) + [connections_row(connections, now)] + signin_rows(limits, limits_at, now)
     for row in rows:
         if row.as_of is not None and row.as_of.tzinfo is None:
@@ -223,7 +218,6 @@ def readings(stats, stats_at, limits, limits_at, connections, now):
 
 
 def previous_of(table):
-    """The page's current table -> {label: (usage segments, reading, resets, status text)}; `table`: the 17 rows' cells as lists of (text, colour or None) segments per cell."""
     out = {}
     for cells in table[1:]:
         if len(cells) == 5:
@@ -233,7 +227,8 @@ def previous_of(table):
 
 
 def finish(rows, previous, previous_stamp, now):
-    """Rows -> the 17 table rows (header first) as lists of five segment lists, applying the stale rule. `previous_stamp`: the time the page last said it was written (a datetime) or None."""
+    """Rows -> the 17 table rows (header first), applying the stale rule. `previous_stamp`: when the page last said
+    it was written, or None."""
     out = [[[(h, "bold")] for h in HEADER]]
     for row in rows:
         old = previous.get(row.label)

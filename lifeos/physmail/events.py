@@ -1,8 +1,9 @@
-"""Pure extraction of the two accepted Physical Mail notice shapes (MAIL-1.2). Read-only evidence: nothing here touches Gmail.
+"""Pure extraction of the two accepted Physical Mail notice shapes. Nothing here touches Gmail.
 
-`New Mail` (an arrival notice with an item count) and `Completed Action Requests` (one or more lines naming a mail number and a verb: Scan, Shred, Recycle,
-Forward). Anything else from the vendor is IGNORED and counted. Unknown, empty or contradictory evidence is REVIEW with a fixed reason and no guessed identity.
-The vendor address is built with chr(64) so no location-identifying literal enters the public repository (privacy test)."""
+`New Mail` (arrival notice with an item count) and `Completed Action Requests` (lines naming a mail number and a
+verb). Anything else from the vendor is IGNORED; unknown or contradictory evidence is REVIEW with a fixed
+reason. The vendor address is built with chr(64) so no location-identifying literal enters the public
+repository."""
 import re
 from datetime import datetime, timezone
 from email.utils import getaddresses
@@ -11,7 +12,8 @@ from urllib.parse import urlsplit
 _AT = chr(64)
 DOMAIN = "anytimemailbox" + ".com"
 SENDER_QUERY = "from:" + DOMAIN
-FEDEX_SENDER = "TrackingUpdates" + _AT + "fedex" + ".com"                       # the update FedEx sends when Jim follows a shipment (built apart so no literal address is in the repository text)
+# built apart so no literal address is in the repository text
+FEDEX_SENDER = "TrackingUpdates" + _AT + "fedex" + ".com"
 FEDEX_SUBJECT = re.compile(r"^\s*(?:re\s*:\s*)?online\s+fedex\s+tracking\s*-\s*(\d{10,22})\s*$", re.I)
 FEDEX_ACTIVITY = re.compile(r"^\s*\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*[ap]m\s+(.+?)\s*$", re.I)
 NEW_MAIL = re.compile(r"^\s*(?:re\s*:\s*)?new\s+mail\b", re.I)
@@ -53,7 +55,6 @@ def _received(value):
 
 
 def _portal(body):
-    """The first https link on the vendor's own domain (private state only), or None."""
     for found in URL.findall(body or ""):
         host = (urlsplit(found).hostname or "").lower()
         if host == DOMAIN or host.endswith("." + DOMAIN):
@@ -92,11 +93,11 @@ def extract(message):
         actions, bad = [], None
         for line in body.splitlines():
             if line.strip().lower().startswith("https://"):
-                continue                                                       # a link target the HTML reader appended, never an action line
+                continue
             verbs = {VERBS[w] for w in re.findall(r"[a-z]+", line.lower()) if w in VERBS}
             numbers = {m for m in MAIL_NO.findall(line)}
             if not numbers and not (verbs and BULLET.match(line)):
-                continue                                                       # prose, not an action line
+                continue
             if len(numbers) != 1:
                 bad = bad or ("ID_MISSING" if not numbers else "ID_AMBIGUOUS")
             elif len(verbs) != 1:
@@ -112,8 +113,7 @@ def extract(message):
 
 
 def _shipment(message):
-    """A FedEx follow-the-shipment update -> {"kind": "SHIPMENT", id, at, number, state, delivered}. The tracking number is the subject's; the state is the newest activity row (what FedEx last recorded), and
-    `delivered` is true only when that row says Delivered. Any other FedEx mail is IGNORED."""
+    """A FedEx follow-the-shipment update -> {"kind": "SHIPMENT", id, at, number, state, delivered}."""
     message_id, body, subject, at = message.get("id"), message.get("body_text"), message.get("subject"), _received(message.get("received_at"))
     found = FEDEX_SUBJECT.match(subject) if isinstance(subject, str) else None
     if not found:

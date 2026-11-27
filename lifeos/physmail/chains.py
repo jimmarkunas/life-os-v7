@@ -1,7 +1,7 @@
-"""Per-mail-number lifecycle fold (MAIL-1.2). Pure and order-independent: the events of one mail number are sorted by time, then folded.
+"""Per-mail-number lifecycle fold. Pure and order-independent: events are sorted by time, then folded.
 
-SHRED and RECYCLE are DONE and absorbing; FORWARD is WAITING_FOR_TRACKING (tracking is MAIL-2.1, not here); SCAN is OPEN and non-terminal. Contradictory
-evidence (Shred plus Recycle, Forward with Shred or Recycle in either order, any action after DONE) is REVIEW and never guessed away."""
+SHRED and RECYCLE are DONE and absorbing; FORWARD is WAITING_FOR_TRACKING; SCAN is OPEN. Contradictory evidence
+(Shred plus Recycle, Forward with Shred or Recycle, any action after DONE) is REVIEW."""
 OPEN, WAITING, DONE, REVIEW = "OPEN", "WAITING_FOR_TRACKING", "DONE", "REVIEW"
 TERMINAL = {"SHRED", "RECYCLE"}
 

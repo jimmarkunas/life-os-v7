@@ -1,8 +1,8 @@
-"""Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report (MAIL-1.2). V7 owns this region exclusively (router.OWNERS).
+"""Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report.
 
-The card only READS the stored state (the row `stage` wrote and read back) and writes the text of the one callout `MAIL_ALERTS_CARD_BLOCK_ID` names; it never touches another
-region and never reacquires the source. Missing, stale, failed or unaccepted evidence renders DEGRADED and keeps the last accepted state visible: it is never shown as
-"none" or zero. Write and read-back go through `report_region.replace_text`. Counts only; fixed codes."""
+Only READS the stored state and writes the text of the callout `MAIL_ALERTS_CARD_BLOCK_ID` names. Missing, stale
+or failed evidence renders DEGRADED and keeps the last accepted state visible, never "none" or zero. Write and
+read-back go through `report_region.replace_text`."""
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -17,7 +17,7 @@ from .stage import KEY, STORE
 TZ = ZoneInfo("America/Chicago")
 TITLE = router.MAIL_ALERTS_REGION
 MODULE = router.OWNERS[TITLE]
-STALE_HOURS = 6                                    # the pipeline is hourly: no accepted evidence for six hours is stale
+STALE_HOURS = 6  # the pipeline is hourly: no accepted evidence for six hours is stale
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 
@@ -45,11 +45,10 @@ def _local(now):
     return (now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ))
 
 
-MAX_ITEMS = 30                                      # a pile longer than this ends with a "+N more" line: the heading's count is always the whole pile
+MAX_ITEMS = 30
 
 
 def _item(parts):
-    """One native bulleted line: [(text, bold, link)]."""
     rich = []
     for text, bold, link in parts:
         for piece in rich_text(text):
@@ -70,7 +69,6 @@ def _https(value):
 
 
 def _label(text):
-    """A bold group label (a paragraph, so the bullets under it stay a plain list)."""
     return _block("paragraph", [{**piece, "annotations": {"bold": True}} for piece in rich_text(text)])
 
 
@@ -79,13 +77,12 @@ def _muted(text):
 
 
 def _origin(value):
-    """The mailbox page itself (the notice's own login link, stripped to the host): where Jim goes to act on a piece."""
     link = _https(value)
     return f"https://{urlsplit(link).netloc}/" if link else None
 
 
 def _line(piece, portal, now):
-    """-> one active piece as a short bullet: bold mail number, then only what differs from its group (the group label carries the shared next action). Forward completed is never shown as delivered."""
+    """-> one active piece as a short bullet: bold mail number, then only what differs from its group."""
     number, status, when = piece["number"], piece["status"], _day(piece["at"])
     head = (f"#{number}", True, None)
     if status == chains.REVIEW:
@@ -108,12 +105,12 @@ GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
 
 
 def heading_text(now, degraded=False):
-    """LIFE-609: the update time shares the heading, like Calendar: "Mail Alerts (11/13 · 2:30 PM CT)"; a card that cannot show current mail says "Mail Alerts (DEGRADED at 11/13 · 2:30 PM CT)"."""
+    """The update time shares the heading: "Mail Alerts (11/13 · 2:30 PM CT)", or "(DEGRADED at ...)"."""
     return f"{TITLE} ({'DEGRADED at ' + ct_stamp.when(now) if degraded else ct_stamp.when(now)})"
 
 
 def render(stored, now, sync_failed=False):
-    """-> (blocks, counts). Pure. The first line (the counts the Command Center reads; the update time is in the heading) comes first; then one native line per active piece."""
+    """-> (blocks, counts). Pure. The first line is the counts the Command Center reads."""
     now = _local(now)
     if stored is None:
         return ([_paragraph("Physical Mail starting state unknown · nothing accepted yet")],

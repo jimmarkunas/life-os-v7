@@ -1,7 +1,7 @@
 """Outlook stages: `auth` signs one mailbox in once, `probe` is a read-only health check that prints counts only.
 
-`auth` uses the device code; it is read-only by default and `write` also asks to move mail into a folder. The token goes straight into the private database, never into a secret or a log.
-Imports only the platform."""
+`auth` uses the device code; read-only by default, `write` also asks to move mail. The token goes straight into
+the private database, never a secret or log. Imports only the platform."""
 import hashlib
 import os
 import time
@@ -28,7 +28,6 @@ def _client_id(environ):
 
 
 def fingerprint(factory, client_id, refresh_token):
-    """A one-way id for the mailbox (its inbox's immutable id, hashed): tells two mailboxes apart without any address."""
     inbox = factory(client_id, refresh_token).get("/me/mailFolders/inbox", {"$select": "id"}).get("id")
     if not inbox:
         raise OutlookError("OUTLOOK_NO_MAILBOX_ID")
@@ -36,12 +35,12 @@ def fingerprint(factory, client_id, refresh_token):
 
 
 def auth(limit, live, environ=os.environ, connect=None, client_factory=None, replace=False, write=False, sleep=time.sleep, clock=time.monotonic, say=lambda line: print(line, flush=True)):
-    """Needs `live`: signing in is the one thing that must be saved, so a dry run only checks the configuration."""
+    """Needs `live`: the sign-in must be saved, so a dry run only checks the configuration."""
     label, client_id = _label(environ), _client_id(environ)
     if not live:
         return {"account": 1, "signed_in": 0}
     started = device_start(client_id, write)
-    # The sign-in code is single-use, short-lived and useless without the account's own password; it is the one thing printed.
+    # The sign-in code is single-use and short-lived; it is the one thing printed.
     say(f"OUTLOOK SIGN-IN: open {started.get('verification_uri')} and enter code {started.get('user_code')}")
     reply = device_wait(client_id, started, sleep=sleep, clock=clock)
     who = fingerprint(client_factory or Outlook, client_id, reply["refresh_token"])
@@ -59,7 +58,7 @@ def auth(limit, live, environ=os.environ, connect=None, client_factory=None, rep
 
 
 def probe(limit, live, environ=os.environ, connect=None, client_factory=None, now=None):
-    """Counts only: for each signed-in account, how many inbox messages arrived in the last 7 days and how many are unread."""
+    """Counts only: per signed-in account, inbox messages from the last 7 days and how many are unread."""
     client_id = _client_id(environ)
     now = now or datetime.now(timezone.utc)
     since = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -75,7 +74,7 @@ def probe(limit, live, environ=os.environ, connect=None, client_factory=None, no
                 messages = client.messages("inbox", since)
             except OutlookError as error:
                 out["failed"] += 1
-                code = f"{error}@{position}"                         # position, never the label or address
+                code = f"{error}@{position}"
                 out["why"][code] = out["why"].get(code, 0) + 1
                 continue
             out["ok"] += 1

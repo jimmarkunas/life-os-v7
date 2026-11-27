@@ -1,9 +1,7 @@
-"""NET-1b identity and position classification. Pure: rows in, plain records and counts out; nothing is read from or written to anywhere.
+"""Identity and position classification. Pure: rows in, plain records and counts out.
 
-A person exists only when identity is deterministic: a valid, unique LinkedIn profile address. A row with no address is HELD (counted, never guessed or dropped), a row whose
-address is not a profile address is REJECTED, and rows that share one profile address are HELD together (conflicting evidence is never silently resolved).
-A person's position is independent of the person: a usable employer gives one, a blank or non-employer company gives none. The title may be blank (stored as NULL).
-Email is never read here, so it can never be stored."""
+A person exists only when identity is deterministic: a valid, unique LinkedIn profile address. No address is
+HELD, a non-profile address is REJECTED, rows sharing an address are HELD together. Email is never read."""
 from collections import Counter
 import hashlib
 
@@ -15,8 +13,8 @@ def person_key(url_key):
 
 
 def classify(rows, malformed=0):
-    """-> {people: [record sorted by url_key], source_rows, ambiguous_held, rejected, positions}. record: url_key, name, connected_on, company_key, company_name, title (None or text).
-    company_key is None when the person has no usable employer."""
+    """-> {people: [record sorted by url_key], source_rows, ambiguous_held, rejected, positions}. company_key is
+    None without a usable employer."""
     keys = [parse.url_key(r["url"]) for r in rows]
     shared = Counter(k for k in keys if k)
     people, held, rejected = [], 0, malformed
@@ -40,7 +38,6 @@ def classify(rows, malformed=0):
 
 
 def batch_key(plan, exported):
-    """The identity of the batch consumed: the observation date and every (person, employer, title) it carries. The same file always has the same key."""
     digest = hashlib.sha256(f"roster|{exported}|{plan['ambiguous_held']}|{plan['rejected']}".encode())
     for p in plan["people"]:
         digest.update(f"|{p['url_key']}|{p['company_key']}|{p['title']}".encode())
@@ -48,5 +45,4 @@ def batch_key(plan, exported):
 
 
 def material_hash(url_key, company_key, title, source_kind, observed):
-    """One position as observed on one date: a person who returns to an earlier employer still gets a new row."""
     return hashlib.sha256(f"{url_key}|{company_key}|{title or ''}|{source_kind}|{observed}".encode()).hexdigest()
