@@ -176,8 +176,8 @@ class Table(unittest.TestCase):
         self.assertEqual(
             table(notion, "jim"),
             [
-                ["Lane", "Progress", "Done / all", "New count (preview)", "Status"],
-                ["Career", "██████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"],
+                ["Lane", "Progress", "Done / all", "Status"],
+                ["Career", "██████", "1 / 2", "NEEDS Q1 MEMBER LIST"],
             ],
         )
         order = notion.kids["b-jim-goals"]
@@ -185,7 +185,7 @@ class Table(unittest.TestCase):
             [notion.blocks[k]["type"] for k in order[2:]], ["table", "paragraph", "toggle"]
         )  # lanes, note and toggle kept
         self.assertEqual(notion.text("b-jim-goals-h"), "Quarterly Goals & Review — Jim · Q4 2026")
-        self.assertEqual(notion.blocks[order[2]]["table"]["table_width"], 5)
+        self.assertEqual(notion.blocks[order[2]]["table"]["table_width"], 4)
         self.assertEqual(notion.text("fx-body"), "keep me")
         self.assertEqual(notion.text("fixed-st"), "Not updated yet")
         link = notion.blocks[notion.kids[order[2]][1]]["table_row"]["cells"][0][0]["href"]
@@ -207,38 +207,38 @@ class Table(unittest.TestCase):
         )
         jim, matt = table(notion, "jim"), table(notion, "matt")
         self.assertEqual(jim[0], matt[0])
-        self.assertEqual(jim[1], ["Career", "██████", "1 / 3", "1 / 2", "OK"])
-        self.assertEqual(matt[1][3:], ["1 / 1", "OK"])
+        self.assertEqual(jim[1], ["Career", "██████", "1 / 3", "OK"])
+        self.assertEqual(matt[1][2:], ["1 / 1", "OK"])
 
     def test_jfm_without_its_own_list_reads_needs_q1_member_list_in_red_even_when_mej_is_approved(self):
         frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}})
         _, notion, _ = run_goals([kid("JFM-20", "JFM-9", True), kid("MEJ-20", "MEJ-2", True)], membership=frozen)
-        self.assertEqual(table(notion, "jim")[1][3:], ["—", "NEEDS Q1 MEMBER LIST"])
-        self.assertEqual(table(notion, "matt")[1][3:], ["1 / 1", "OK"])
+        self.assertEqual(table(notion, "jim")[1][3:], ["NEEDS Q1 MEMBER LIST"])
+        self.assertEqual(table(notion, "matt")[1][2:], ["1 / 1", "OK"])
 
     def test_matt_needs_the_q1_member_list_while_none_is_approved_and_legacy_stays_official(self):
         _, notion, _ = run_goals(
             [kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")], membership={"schema_version": 1, "quarters": {}}
         )
-        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "1 / 2", "NEEDS Q1 MEMBER LIST"])
         status = notion.blocks[
             notion.kids[next(k for k in notion.kids["b-matt-goals"] if notion.blocks[k]["type"] == "table")][1]
-        ]["table_row"]["cells"][4][0]
+        ]["table_row"]["cells"][3][0]
         self.assertEqual(status["annotations"]["color"], "red")
 
-    def test_an_approved_list_shows_the_v2_count_beside_the_official_legacy_count(self):
+    def test_an_approved_list_shows_only_the_official_count_and_an_ok_status(self):
         frozen = approved(
             {"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-2"}, "MEJ-21": {"parent": "MEJ-2", "goal": "MEJ-2"}}
         )
         _, notion, _ = run_goals(
             [kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2"), kid("MEJ-22", "MEJ-2", True)], membership=frozen
         )
-        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "2 / 3", "1 / 2", "OK"])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "2 / 3", "OK"])
 
     def test_a_drifted_list_reads_data_missing_in_red(self):
         frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-99"}})
         _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True)], membership=frozen)
-        self.assertEqual(table(notion, "matt")[1][3:], ["—", "DATA MISSING"])
+        self.assertEqual(table(notion, "matt")[1][3:], ["DATA MISSING"])
 
     def test_a_failing_v2_read_never_fails_the_stage_or_hides_the_legacy_figures(self):
         with mock.patch.object(
@@ -249,7 +249,7 @@ class Table(unittest.TestCase):
             ),
         ):
             out, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True)])
-        self.assertEqual(table(notion, "matt")[1][2:], ["1 / 1", "—", "DATA MISSING"])
+        self.assertEqual(table(notion, "matt")[1][2:], ["1 / 1", "DATA MISSING"])
 
     def test_a_second_run_writes_nothing_and_a_dry_run_writes_nothing(self):
         kids = [kid("JFM-20", "JFM-9", True)]
@@ -268,6 +268,19 @@ class Table(unittest.TestCase):
         run_goals([kid("JFM-20", "JFM-9", True), kid("JFM-21", "JFM-9")], notion=notion)
         rows = {k for k in notion.writes if k.startswith("n") and notion.blocks[k]["type"] == "table_row"}
         self.assertEqual(len(rows), 1)
+
+    def test_the_retired_five_column_table_is_replaced_by_the_four_column_one(self):
+        _, notion, _ = run_goals([kid("JFM-20", "JFM-9", True)])
+        old = next(k for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "table")
+        notion.blocks[old]["table"]["table_width"] = 5
+        for row_id in notion.kids[old]:
+            notion.blocks[row_id]["table_row"]["cells"].insert(3, [notion.blocks[row_id]["table_row"]["cells"][0][0]])
+        out, notion, _ = run_goals([kid("JFM-20", "JFM-9", True)], notion=notion)
+        tables = [k for k in notion.kids["b-jim-goals"] if notion.blocks[k]["type"] == "table"]
+        self.assertEqual([notion.blocks[k]["table"]["table_width"] for k in tables], [4])
+        self.assertNotIn(old, tables)
+        self.assertEqual(table(notion, "jim")[0], ["Lane", "Progress", "Done / all", "Status"])
+        self.assertGreater(out["jim"]["changed"], 0)
 
     def test_a_table_of_another_width_is_refused(self):
         notion = board()
@@ -311,8 +324,8 @@ class Render(unittest.TestCase):
         with contextlib.redirect_stdout(out), mock.patch("socket.socket", side_effect=AssertionError("network")):
             self.assertEqual(preview.main(["--synthetic"]), 0)
         text = out.getvalue()
-        self.assertIn("██████ · 5 / 26 · — · NEEDS Q1 MEMBER LIST", text)
-        self.assertIn("██████ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
+        self.assertIn("██████ · 5 / 26 · NEEDS Q1 MEMBER LIST", text)
+        self.assertIn("██████ · 12 / 29 · NEEDS Q1 MEMBER LIST", text)
 
     def test_any_other_argument_is_refused(self):
         with contextlib.redirect_stdout(io.StringIO()):

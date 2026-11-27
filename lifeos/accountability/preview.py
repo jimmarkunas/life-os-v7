@@ -1,8 +1,7 @@
 """The v2 quarterly preview inside the Quarterly Goals & Review blocks.
 
-OFF BY DEFAULT; legacy (v1) figures stay official. With V2_QUARTER_SHADOW exactly "on" the goals table gains New
-count (preview) and Status columns: the v2 count when an approved frozen quarter list exists, else a dash and a red
-reason. A v2 problem never fails the goals stage."""
+OFF BY DEFAULT; legacy (v1) figures stay official. With V2_QUARTER_SHADOW exactly "on" the goals table gains a Status
+column: OK when the v2 read worked, else a red reason; the v2 count is computed but not shown until it is promoted. A v2 problem never fails the goals stage."""
 
 import re
 import sys
@@ -37,22 +36,21 @@ def reading(jira, person, mine, first, last):
 
 
 def cells(found, view):
-    """-> {lane: [progress, done / all, new count, status]}, cells [(text, link, bold, color)]. `found` is [(lane,
+    """-> {lane: [progress, done / all, status]}, cells [(text, link, bold, color)]. `found` is [(lane,
     done, all, epic key)]."""
     out = {}
     for lane, done, total, key in found:
         if not view["applies"]:
-            new, status = DASH, ("OK", render.GREEN)
+            status = ("OK", render.GREEN)
         elif view["counts"] is None:
-            new, status = DASH, ((NEEDS if view["code"] == NOT_APPROVED else MISSING), render.RED)
+            status = ((NEEDS if view["code"] == NOT_APPROVED else MISSING), render.RED)
         elif view["counts"][key] is None:
-            new, status = DASH, (GAP, render.RED)
+            status = (GAP, render.RED)
         else:
-            new, status = render.goal_cell(*view["counts"][key]), ("OK", render.GREEN)
+            status = ("OK", render.GREEN)
         out[lane] = [
             render.bar(done, total),
             [(render.goal_cell(done, total), None, False, None)],
-            [(new, None, False, None)],
             [(status[0], None, False, status[1])],
         ]
     return out
