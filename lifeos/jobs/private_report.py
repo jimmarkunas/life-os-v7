@@ -1,14 +1,14 @@
-"""A private report goes to a private Notion page, never into a log (LIFE-121).
+"""A private report goes to a private Notion page, never into a log.
 
-The runner writes the table straight to Notion as a child of Jim's private Reports page; the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing.
-One page per title: a page that already exists is left untouched (delete it in Notion to write a fresh one). Nothing is encoded, encrypted or copied out of Notion."""
-# LIFE-121 (Jim, Oct 26).
+The table is written to Notion as a child of the owner's private Reports page; the log carries counts and fixed codes
+only. Dry run unless live. One page per title: an existing page is left untouched (delete it to write a fresh one).
+"""
 
 from lifeos.platform.notion_ids import notion_id
 from lifeos.platform import full_width, limits, stored_pages
 from lifeos.platform.notion_client import NotionError, rich_text
 
-ROWS_PER_TABLE = 90                      # a table's children are capped at 100 per request; one header row plus these
+ROWS_PER_TABLE = 90
 
 
 def _fail(counts, code):
@@ -17,7 +17,8 @@ def _fail(counts, code):
     return counts
 
 
-REPORTS_PAGE = notion_id("REPORTS_PAGE")          # Jim's private "Reports" page (shared with the Jobs integration, Oct 27 2026); an id is not a secret
+# the private "Reports" page; an id is not a secret
+REPORTS_PAGE = notion_id("REPORTS_PAGE")
 
 
 def _cell(text, link=False):
@@ -50,19 +51,22 @@ def _children(client, block):
         cursor = page.get("next_cursor")
 
 
-# The private-store helpers (find a report's stored page id, remember a new one) live in lifeos/platform/stored_pages.py: this module used to carry a byte-identical copy of them (LIFE-526).
 
 
 def publish(client, title, header, rows, live, links=(), intro=(), key=None, connect=None):
-    """-> counts: {"rows", "page": "dry" | "new" | "present", "failed", "why"}. Write only when live; read back the row count before reporting 'new'.
-    `intro` (LIFE-212): summary lines written as ONE paragraph above the tables. `key` (LIFE-369): a fixed report key; when given, the page id is kept in the private store under it, so a second run finds
-    the first page by that id and leaves it alone (delete the page in Notion to write a fresh one). Without a key (a dated, always-new report) there is nothing to look up."""
+    """-> counts: {"rows", "page": "dry" | "new" | "present", "failed", "why"}.
+
+    Write only when live; read back the row count before reporting 'new'. `intro`: summary lines written as ONE
+    paragraph above the tables. `key`: a fixed report key; when given, the page id is kept in the private store under
+    it, so a second run leaves the first page alone. Without a key (a dated, always-new report) there is nothing to
+    look up.
+    """
     counts = {"rows": len(rows), "page": "dry", "failed": 0, "why": {}}
     try:
         parent = REPORTS_PAGE
         if key:
             if connect is None:
-                from lifeos.jobs import store                                      # noqa: PLC0415  the Jobs private store, only when a report is keyed
+                from lifeos.jobs import store  # noqa: PLC0415 - the Jobs private store, only when a report is keyed
                 connect = store.connect
             if stored_pages.find(client, connect, key, live):
                 counts["page"] = "present"
@@ -72,7 +76,7 @@ def publish(client, title, header, rows, live, links=(), intro=(), key=None, con
         blocks = ([{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text("\n".join(intro))}}] if intro else []) + tables(header, rows, links)
         if len(blocks) > limits.NOTION_MAX_CHILD_BLOCKS - 1:
             return _fail(counts, "PRIVATE_REPORT_TOO_LARGE")
-        page = full_width.create_page(client, parent, title, blocks)                                  # D16.1: a full width page, from the template
+        page = full_width.create_page(client, parent, title, blocks)
         written = sum(len(_children(client, t["id"])) - 1 for t in _children(client, page["id"]) if t.get("type") == "table")
         if written != len(rows):
             return _fail(counts, "PRIVATE_REPORT_READBACK_MISMATCH")

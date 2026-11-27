@@ -31,7 +31,8 @@ def job_posting(html):
 
 
 def hiring_organization(posting):
-    """The employer named by the posting's hiringOrganization (a name or an object with a name), cleaned, else None."""
+    """The employer named by the posting's hiringOrganization (a name or an object with a name), cleaned, else None.
+    """
     org = (posting or {}).get("hiringOrganization")
     if isinstance(org, list):
         org = org[0] if org else None
@@ -41,7 +42,10 @@ def hiring_organization(posting):
 
 
 def location(posting):
-    """The place(s) the posting's jobLocation names ("London, GB"), joined with " | ", else None. A string or an object, one or several (D111)."""
+    """The place(s) the posting's jobLocation names ("London, GB"), joined with " | ", else None.
+
+    A string or an object, one or several.
+    """
     places = (posting or {}).get("jobLocation")
     if places is None:
         return None
@@ -84,8 +88,10 @@ DESCRIPTION_KEYS = {"description", "jobdescription", "job_description", "descrip
 
 
 def embedded_description(html, minimum=200):
-    """Longest description-like string in the page's embedded Next.js data (the tier V2 uses between JSON-LD and plain
-    text), or None. Server-rendered career sites often carry the whole posting here even when the visible page is a shell."""
+    """Longest description-like string in the page's embedded Next.js data, or None.
+
+    Server-rendered career sites often carry the whole posting here even when the visible page is a shell.
+    """
     match = NEXT_DATA.search(html or "")
     if not match:
         return None

@@ -7,7 +7,8 @@ from lifeos.platform.db import StoreError, connect          # noqa: F401 - the j
 
 
 def now():
-    """The one UTC clock (naive) of the jobs stages; each stage keeps it as `_now` so a test can pin that stage alone."""
+    """The one UTC clock (naive) of the jobs stages; each stage keeps it as `_now` so a test can pin that stage alone.
+    """
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
@@ -132,10 +133,9 @@ SCHEMA = (
         fingerprint CHAR(64) NOT NULL,
         payload MEDIUMBLOB NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-    mail_checkpoint.CREATE,                                                  # LIFE-906: the Amazon retention checkpoint (what an old mail's read concluded)
+    mail_checkpoint.CREATE,
 )
 TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_meeting_catalog", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync", "v7_interview_mail", "v7_mail_checkpoint")
-# Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
     ("v7_jobs", "meta_v", "SMALLINT NULL", None),
@@ -148,12 +148,13 @@ COLUMNS = (
     ("v7_jobs", "provider_score", "SMALLINT NULL", None),
     ("v7_jobs", "posted_date", "DATE NULL", None),
     ("v7_jobs", "posted_source", "VARCHAR(16) NULL", None),
-    ("v7_jobs", "link_proof", "VARCHAR(16) NULL", None),          # NULL: the link shape is sound. unproven: ambiguous shape awaiting its title proof. title: proven by the page
+    # NULL: sound link shape. unproven: ambiguous shape awaiting its title proof. title: proven by the page
+    ("v7_jobs", "link_proof", "VARCHAR(16) NULL", None),
     ("v7_jobs", "resolve_attempts", "SMALLINT NOT NULL DEFAULT 0", None),
     ("v7_jobs", "seen_count", "INT NOT NULL DEFAULT 1", None),
     ("v7_jobs", "repost_of", "BIGINT NULL", None),
     ("v7_jobs", "enrich_attempts", "SMALLINT NOT NULL DEFAULT 0", None),
-    ("v7_jobs", "recovered_at", "DATETIME NULL", None),           # D185: when a HOLD job was given its one recovery attempt (NULL: never)
+    ("v7_jobs", "recovered_at", "DATETIME NULL", None),
     ("v7_jobs", "lane", "VARCHAR(24) NOT NULL DEFAULT 'Newsletter'", None),
     ("v7_jobs", "provider", "VARCHAR(40) NULL", None),
     ("v7_jobs", "ghost_flag", "TINYINT NOT NULL DEFAULT 0", None),
@@ -166,7 +167,7 @@ COLUMNS = (
     ("v7_job_fit", "admission_reason", "VARCHAR(80) NULL", None),
     ("v7_job_fit", "work_mode", "VARCHAR(8) NULL", None),
     ("v7_job_fit", "lane", "VARCHAR(24) NULL", None),
-    # LIFE-41 cloud-Fit shadow (D214): private, nullable, written only by lifeos.jobs.fit.cloud; the static Fit write never touches them
+    # Cloud-Fit shadow: private, nullable, written only by lifeos.jobs.fit.cloud.
     ("v7_job_fit", "cloud_status", "VARCHAR(10) NULL", None),
     ("v7_job_fit", "cloud_reason", "VARCHAR(48) NULL", None),
     ("v7_job_fit", "cloud_score", "SMALLINT NULL", None),
@@ -178,11 +179,11 @@ COLUMNS = (
     ("v7_job_fit", "cloud_jd_fingerprint", "CHAR(64) NULL", None),
     ("v7_job_fit", "cloud_at", "DATETIME NULL", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
-    # D216 (LIFE-76 PR 2): a board's cache validators and how many reads in a row found it unchanged
+    # A board's cache validators and how many reads in a row found it unchanged.
     ("v7_sources", "etag", "VARCHAR(200) NULL", None),
     ("v7_sources", "last_modified", "VARCHAR(64) NULL", None),
     ("v7_sources", "unchanged_runs", "SMALLINT NOT NULL DEFAULT 0", None),
-    # LIFE-903 (Jim, D1, Nov 22 2026): the cross-process claim every Ledger creator takes before it creates a row (lifeos/jobs/ledger_claim.py). Rollback: ALTER TABLE v7_jobs DROP COLUMN ledger_claim_by, DROP COLUMN ledger_claim_at
+    # The cross-process claim every Ledger creator takes before it creates a row.
     ("v7_jobs", "ledger_claim_by", "VARCHAR(64) NULL", None),
     ("v7_jobs", "ledger_claim_at", "DATETIME NULL", None),
 )
@@ -193,7 +194,7 @@ def existing_v7_tables(connection):
         return {row[0] for row in cursor.fetchall()}
 
 
-# D104: Revolut lists every office alphabetically, so 'London' fell past character 200 and the job was judged 'market not UK'.
+# Revolut lists every office alphabetically, so 'London' fell past character 200: the column is widened.
 WIDEN = (("v7_jobs", "location_text", 2000),)
 
 
@@ -210,11 +211,14 @@ def _key_present(cursor, table, key):
 
 
 def _alter(cursor, statement, present):
-    """Run one additive ALTER. A parallel lane that added the same column or key first (MySQL 1060 / 1061) is not a failure, but only
-    when `present()` then confirms the column or key exists; anything else, or a collision that leaves it missing, is raised."""
+    """Run one additive ALTER.
+
+    A parallel lane that added the same column or key first (MySQL 1060 / 1061) is not a failure, but only when
+    `present()` then confirms it exists; anything else, or a collision that leaves it missing, is raised.
+    """
     try:
         cursor.execute(statement)
-    except Exception as error:                                            # pymysql's OperationalError: the server code is its first argument
+    except Exception as error:
         if not (error.args and error.args[0] in (1060, 1061) and present()):
             raise
 
@@ -230,7 +234,7 @@ def ensure_schema(connection):
                 _alter(cursor, f"ALTER TABLE {table} ADD COLUMN {column} {ddl}", lambda cursor=cursor, table=table, column=column: _column_present(cursor, table, column))
                 if index:
                     _alter(cursor, f"ALTER TABLE {table} {index}", lambda cursor=cursor, table=table, index=index: _key_present(cursor, table, index.split()[2]))
-    with connection.cursor() as cursor:                                   # D104: a column that was created too narrow is widened once
+    with connection.cursor() as cursor:
         for table, column, width in WIDEN:
             cursor.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "
                            "AND table_name = %s AND column_name = %s", (table, column))

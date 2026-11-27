@@ -1,7 +1,6 @@
 """Find a job on its employer's public ATS board by company + title (+ location). Plain HTTP, no login, no browser.
 
-Used when an aggregator hides the employer link (LinkedIn external-apply, Lensa). Precision first: an exact normalized
-title match, location-checked when several match; ambiguous or absent -> None (the job stays pending, never guessed).
+Precision first: an exact normalized title match, location-checked when several match; ambiguous or absent -> None.
 """
 import difflib
 import json
@@ -15,7 +14,7 @@ SUFFIX = {"inc", "llc", "ltd", "corp", "corporation", "company", "co", "the", "g
           "technology", "solutions", "services", "limited", "plc", "gmbh", "lp", "llp", "usa", "us"}
 KINDS = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee", "bamboohr", "breezy", "pinpoint")
 SUBDOMAIN_KINDS = ("recruitee", "bamboohr", "breezy", "pinpoint")
-SMARTRECRUITERS_PAGES = 5      # 100 postings per page; big employers have several hundred
+SMARTRECRUITERS_PAGES = 5
 
 
 def norm(text):
@@ -41,7 +40,7 @@ def _json(url):
 def board(kind, slug):
     """[(title, url, location_text)] from a public board API; [] when the board does not exist."""
     if kind in SUBDOMAIN_KINDS and not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", slug):
-        return []                                  # not a valid hostname label: no such board
+        return []
     if kind == "greenhouse":
         data = _json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
         return [(j.get("title"), j.get("absolute_url"), (j.get("location") or {}).get("name"))
@@ -68,7 +67,7 @@ def board(kind, slug):
         data = _json(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
         return [(j.get("title"), f"https://apply.workable.com/{slug}/j/{j['shortcode']}/" if j.get("shortcode") else j.get("url"),
                  " ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])))
-                for j in (data or {}).get("jobs", [])]            # the account in the URL is what lets enrich read it later
+                for j in (data or {}).get("jobs", [])]
     if kind == "recruitee":
         data = _json(f"https://{slug}.recruitee.com/api/offers/")
         return [(j.get("title"), j.get("careers_url"), " ".join(filter(None, [j.get("city"), j.get("country")])))
@@ -122,9 +121,9 @@ _REMOTE_WORD = re.compile(r"\b(?:fully\s+|100%\s+)?remote\b|\bwork from home\b",
 
 
 def title_variants(title):
-    """The title as written first, then the same role without the noise aggregators add: a `| Company | Location` tail, a `(Remote)`-style parenthetical
-    (only those: `(ICU)` changes the role and stays), and the word Remote. Exact-equality matching still decides, so this only removes words that never
-    change the role."""
+    """The title as written first, then the same role without noise aggregators add: a `| Company | Location` tail, a
+    `(Remote)`-style parenthetical (not `(ICU)`, which changes the role), and the word Remote.
+    """
     raw = " ".join((title or "").split())
     head = raw.split(" | ")[0]
     unparenthesised = _NOISE_PAREN.sub(" ", head)
@@ -145,7 +144,7 @@ def why(jobs, title, location):
 
 def _why_one(jobs, want, location):
     same = [j for j in jobs if norm(j[1]) == want]
-    if not same:                                   # near-exact only (punctuation/level words aside), and unique
+    if not same:
         close = [j for j in jobs if difflib.SequenceMatcher(None, norm(j[1]), want).ratio() >= 0.93]
         same = close if len(close) == 1 else []
     if not same:

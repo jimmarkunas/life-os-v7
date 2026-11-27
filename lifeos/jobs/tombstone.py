@@ -1,6 +1,8 @@
 """Suppression tombstones (machine state only): the minimum identity kept 90 days after a canonical job is retired.
 
-Stops the same stale or reposted vacancy from being immediately recreated. A vacancy provably newer than the retirement (a later posting date) may re-enter."""
+Stops the same stale or reposted vacancy from being immediately recreated. A vacancy provably newer than the
+retirement (a later posting date) may re-enter.
+"""
 from datetime import timedelta
 
 TTL_DAYS = 90
@@ -14,7 +16,8 @@ def blocked(cursor, key, fuzzy, posted, now):
         return False
     retired = row[0]
     if posted and retired and posted > (retired.date() if hasattr(retired, "date") else retired):
-        cursor.execute("DELETE FROM v7_tombstones WHERE dedupe_key=%s OR fuzzy_key=%s", (key, fuzzy))      # genuinely relisted: re-enter
+        # genuinely relisted: re-enter
+        cursor.execute("DELETE FROM v7_tombstones WHERE dedupe_key=%s OR fuzzy_key=%s", (key, fuzzy))
         return False
     cursor.execute("UPDATE v7_tombstones SET hits=hits+1 WHERE dedupe_key=%s OR fuzzy_key=%s", (key, fuzzy))
     return True

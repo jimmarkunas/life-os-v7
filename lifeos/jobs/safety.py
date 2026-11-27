@@ -1,12 +1,13 @@
-"""SAFE-1.1: two fixed weekly checks that need the real database, plus the saved representative Fit set. Counts and fixed codes only.
+"""Two weekly checks that need the real database, plus the saved Fit set. Counts and fixed codes only.
 
-`sql-smoke`: every SQL statement written as a plain string in `lifeos/` is run through `EXPLAIN` on the real Hostinger database with the real PyMySQL driver (the
-unit tests use SQLite and fake cursors, which cannot catch MySQL-only syntax, a renamed column or a stray `%`). EXPLAIN plans and never executes, so nothing is
-read or written. A statement is reported as module:line:MySQL error number; a missing table is counted apart (a table the first live run has not created yet).
+`sql-smoke`: every SQL string in `lifeos/` is run through `EXPLAIN` on the real database with the real PyMySQL driver
+(unit tests use SQLite, which cannot catch MySQL-only syntax or a renamed column). EXPLAIN never executes. A statement
+is reported as module:line:MySQL error number; a missing table is counted apart.
 
-`fit-capture` / `fit-golden`: `fit_golden.json` is a saved set of real jobs (store ids only) with the Fit and lane decision each had on the capture date. `fit-golden`
-re-scores exactly those jobs with today's rules and the private profile and reports how many decisions changed: run it after any rule change (a flip is either the
-intended effect of the change, to be re-captured in the same PR, or a regression). `fit-capture` prints a fresh set to save."""
+`fit-capture` / `fit-golden`: `fit_golden.json` is a saved set of real jobs (store ids only) with the Fit and lane
+decision each had on the capture date. `fit-golden` re-scores them with today's rules and reports how many decisions
+changed: run it after any rule change. `fit-capture` prints a fresh set to save.
+"""
 import ast
 import json
 import os
@@ -18,7 +19,7 @@ GOLDEN = Path(__file__).with_name("fit_golden.json")
 ROOT = Path(__file__).resolve().parents[1]
 VERBS = ("SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE")
 PER_DECISION = {"Go": 25, "No-Go": 25, "Unscorable": 5}
-SKIP_TABLE_ERRORS = {1146}                      # table does not exist
+SKIP_TABLE_ERRORS = {1146}
 SKIP_FILES = {"probe.py", "safety.py"}
 
 
@@ -27,7 +28,7 @@ class SafetyError(RuntimeError):
 
 
 def _text(node):
-    """The string a node spells, or None: plain constants and `+` joins of constants (the way statements are written here)."""
+    """The string a node spells, or None: plain constants and `+` joins of constants."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -44,13 +45,15 @@ def statements(root=ROOT):
             continue
         tree = ast.parse(path.read_text())
         inner = {id(child) for node in ast.walk(tree) if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add)
-                 for child in (node.left, node.right)}                               # a join is reported once, as a whole
-        inner |= {id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values}   # LIFE-634: the pieces of an f-string are not statements (their tail is cut at the `{...}`)
+                 for child in (node.left, node.right)}
+        # the pieces of an f-string are not statements
+        inner |= {id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values}
         for node in ast.walk(tree):
             if id(node) in inner:
                 continue
             text = _text(node)
-            if text and re.match(r"(%s)\b" % "|".join(VERBS), text.lstrip(), re.I) and "v7_" in text:      # LIFE-732: a whole word, so prose like "replaces v7_x with ..." is not a statement
+            # a whole word, so prose like "replaces v7_x with ..." is not a statement
+            if text and re.match(r"(%s)\b" % "|".join(VERBS), text.lstrip(), re.I) and "v7_" in text:
                 found.append((str(path.relative_to(root.parent)), node.lineno, " ".join(text.split())))
     return found
 
@@ -60,12 +63,14 @@ def _placeholders(sql):
 
 
 def _params(sql):
-    """One value per placeholder; a placeholder written `IN %s` takes a tuple, which the driver expands to `(1)` as the code relies on."""
+    """One value per placeholder; `IN %s` takes a tuple, which the driver expands to `(1)`."""
     return tuple((1,) if m.group(1) else 1 for m in re.finditer(r"(\bIN\s+)?%s", sql.replace("%%", ""), re.I))
 
 
 def _fragment(sql):
-    """A statement the code finishes at run time (`... IN (` plus a joined list of placeholders) cannot be planned as written."""
+    """A statement the code finishes at run time (`... IN (` plus a joined list of placeholders) cannot be planned as
+    written.
+    """
     return sql.count("(") != sql.count(")")
 
 
