@@ -1,4 +1,4 @@
-"""No tracked file names the retired V1 repository or the retired V2 runtime (LIFE-1072).
+"""No tracked file names the retired repository or the retired runtime.
 
 The old names sent agents to the wrong repository. The needles are built from fragments so this file does not
 contain them itself. ALLOWED lists any file that may still hold one (by path, with the reason); it is empty on purpose.
@@ -41,7 +41,7 @@ class NoRetiredRepoReferences(unittest.TestCase):
         files = {
             "a.md": "see " + NEEDLES[0] + "/main",
             "b.py": "import " + NEEDLES[2],
-            "c.txt": "Life-OS-V2",
+            "c.txt": NEEDLES[1].upper(),
             "d.md": "ok",
         }
         found = hits(sorted(files), files.get)
