@@ -1,6 +1,7 @@
-"""A stage declared through a contract: name, inputs, the counts it always returns (outputs), what a dry run does and
-what a live run changes. Called like a stage function, `contract(limit, live, **kw)`: it checks the returned counts
-are a dict carrying every declared output key, else fails with STAGE_CONTRACT_OUTPUT_MISSING.
+"""A stage declared through a contract: inputs, guaranteed output counts, dry-run and live behaviour.
+
+Called like a stage function, `contract(limit, live, **kw)`: it checks the returned counts are a dict carrying every
+declared output key, else fails with STAGE_CONTRACT_OUTPUT_MISSING.
 """
 from dataclasses import dataclass
 from typing import Any, Callable

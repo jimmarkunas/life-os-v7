@@ -1,5 +1,6 @@
-"""Bounded execution primitives: a deadline and a run id. Not a workflow engine; one run at a time is the workflow's
-concurrency group.
+"""Bounded execution primitives: a deadline and a run id.
+
+Not a workflow engine; one run at a time is the workflow's concurrency group.
 """
 from __future__ import annotations
 

@@ -1,5 +1,7 @@
-"""Hard spending and rate guard for TinyFish: only the FREE Fetch API is called. Free limits are 150 URLs/min and 1,000
-URLs/day; stay under both and count every URL sent.
+"""Hard spending and rate guard for TinyFish.
+
+Only the FREE Fetch API is called. Free limits are 150 URLs/min and 1,000 URLs/day; stay under both and count every
+URL sent.
 """
 from datetime import datetime, timezone
 import time

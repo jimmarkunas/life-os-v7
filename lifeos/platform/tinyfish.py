@@ -1,5 +1,6 @@
-"""TinyFish Fetch API client (real-browser fetch with anti-bot); key from the TINYFISH_API_KEY secret. Only counts and
-categories are logged (public repo).
+"""TinyFish Fetch API client (real-browser fetch with anti-bot).
+
+The key comes from the TINYFISH_API_KEY secret. Logs counts and categories only.
 """
 from collections.abc import Sequence
 from typing import Any

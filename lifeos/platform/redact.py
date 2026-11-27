@@ -1,5 +1,6 @@
-"""Public-safe redaction. Meeting credentials (passcode, meeting id, join token) never reach logs, summaries or derived
-context.
+"""Public-safe redaction.
+
+Meeting credentials (passcode, meeting id, join token) never reach logs, summaries or derived context.
 """
 from collections.abc import Iterable, Mapping
 import re

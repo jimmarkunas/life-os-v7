@@ -1,7 +1,9 @@
-"""Every job that starts on a clock: schedule and last run in Central Time, and a state of on time, late, missing, not
-due or unknown (`GITHUB_REPOSITORY=owner/name python -m lifeos.platform.scheduled_jobs`). Jobs and tolerances are data
-(scheduled_jobs.json; a contract test fails when a workflow schedule or systemd timer has no row). A job that leaves
-no trace in public run history (Oracle timers, launchd) is `unknown`.
+"""Every job that starts on a clock: schedule and last run in Central Time, and a state.
+
+States: on time, late, missing, not due, unknown. Run `GITHUB_REPOSITORY=owner/name python -m
+lifeos.platform.scheduled_jobs`. Jobs and tolerances are data (scheduled_jobs.json; a contract test fails when a
+workflow schedule or systemd timer has no row). A job that leaves no trace in public run history (Oracle timers,
+launchd) is `unknown`.
 """
 import datetime as dt
 import json

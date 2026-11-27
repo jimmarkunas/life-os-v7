@@ -1,5 +1,7 @@
-"""Whether the tick's hourly run ran its pipeline (its `finish` job ran). Writes ran=true|false|unknown to
-$GITHUB_OUTPUT; the workflow treats unknown as true, since the guarded steps are bounded and repeat harmlessly.
+"""Whether the tick's hourly run ran its pipeline (its `finish` job ran).
+
+Writes ran=true|false|unknown to $GITHUB_OUTPUT; the workflow treats unknown as true, since the guarded steps are
+bounded and repeat harmlessly.
 """
 import os
 import sys

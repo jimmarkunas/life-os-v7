@@ -1,4 +1,5 @@
-"""The stage manifest: lifeos/platform/stages.json, one entry per stage, is the only hand-written stage metadata.
+"""The stage manifest: lifeos/platform/stages.json, the only hand-written stage metadata.
+
 tools/regen.py renders the rest from it (stage_budgets.json and the stage rows of docs/platform/timeouts.md and
 stage-isolation.md); `sh tools/preflight.sh` adds a default entry for a stage that has none.
 """

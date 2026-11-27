@@ -1,6 +1,7 @@
-"""The one list of job sources (source_registry.json); a new source is its module, its test and one object there. At
-import time `lifeos/run.py` adds the stage (exit 1 with the row's `partial_failure` code when counts carry `failed >
-0`), `lifeos/jobs/tick.py` its tick step after the step `after` names, and `lifeos/platform/codes.py` its codes.
+"""The one list of job sources (source_registry.json): a new source is its module, its test and one object there.
+
+At import time `lifeos/run.py` adds the stage (exit 1 with the row's `partial_failure` code when counts carry `failed
+> 0`), `lifeos/jobs/tick.py` its tick step after the step `after` names, and `lifeos/platform/codes.py` its codes.
 `tests/contracts/test_source_registry.py` fails for a stage under lifeos/sources/ that is neither registered nor on
 its "not yet migrated" list.
 """

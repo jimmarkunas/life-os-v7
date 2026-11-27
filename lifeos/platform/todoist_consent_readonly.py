@@ -1,6 +1,7 @@
-"""Read-only Todoist sign-in helper: one link, the reply caught on loopback, the token written only to a pipe. Scope
-`data:read` only; a reply with a refresh token is refused and nothing is written (refresh tokens rotate hourly, which
-a read-only Bitwarden item cannot follow).
+"""Read-only Todoist sign-in helper: one link, the reply caught on loopback, the token written only to a pipe.
+
+Scope `data:read` only; a reply with a refresh token is refused and nothing is written (refresh tokens rotate hourly,
+which a read-only Bitwarden item cannot follow).
   python3 -m lifeos.platform.todoist_consent_readonly | pbcopy
 """
 import getpass

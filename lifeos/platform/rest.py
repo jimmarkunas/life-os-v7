@@ -1,5 +1,7 @@
-"""One retrying JSON call for the API clients. The caller builds a fresh Request per attempt (so a refreshed token is
-used); transient HTTP codes and network errors back off 2s, 4s, 8s; every failure becomes the client's own fixed code.
+"""One retrying JSON call for the API clients.
+
+The caller builds a fresh Request per attempt (so a refreshed token is used); transient HTTP codes and network errors
+back off 2s, 4s, 8s; every failure becomes the client's own fixed code.
 """
 import json
 import urllib.error

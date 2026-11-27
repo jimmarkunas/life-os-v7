@@ -1,7 +1,8 @@
-"""Canonical source lookup for the governed MCP: a GitHub file or Notion page with revision and freshness, and an agent
-lookup. Read only; authorization is the gate's. Failures are fixed words (unknown_source, stale_source,
-source_unavailable, output_has_secret, bad_request, plus the directory's own); an unwired fetcher is
-`source_unavailable`.
+"""Canonical source lookup for the governed MCP: a GitHub file or Notion page, and an agent lookup.
+
+Results carry revision and freshness. Read only; authorization is the gate's. Failures are fixed words
+(unknown_source, stale_source, source_unavailable, output_has_secret, bad_request, plus the directory's own); an
+unwired fetcher is `source_unavailable`.
 """
 import base64
 import json

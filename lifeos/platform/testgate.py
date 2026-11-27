@@ -1,7 +1,9 @@
-"""Should the hourly unit-tests job re-run the tests? Not when this exact commit already has a recent green `pr-tests`
-push run on main. FAIL CLOSED: a failed lookup, no run, a newer non-green run, a run too old or a SHA that is not a
-full commit id means the tests RUN. python -m lifeos.platform.testgate (env: GITHUB_SHA, GITHUB_REPOSITORY,
-GITHUB_TOKEN; writes skip=true|false to $GITHUB_OUTPUT)
+"""Whether the hourly unit-tests job may skip re-running the tests.
+
+It skips only when this exact commit already has a recent green `pr-tests` push run on main. FAIL CLOSED: a failed
+lookup, no run, a newer non-green run, a run too old or a SHA that is not a full commit id means the tests RUN.
+`python -m lifeos.platform.testgate` (env: GITHUB_SHA, GITHUB_REPOSITORY, GITHUB_TOKEN) writes skip=true|false to
+$GITHUB_OUTPUT.
 """
 import datetime as dt
 import json

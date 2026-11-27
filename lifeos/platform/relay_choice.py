@@ -1,6 +1,7 @@
-"""BUZZ_RELAY=hosted|pilot: whether the governed MCP service also serves the private relay pilot. hosted (the default,
-also when empty) serves only the community relays; anything else is refused, so a typo never falls back to a different
-relay.
+"""BUZZ_RELAY=hosted|pilot: whether the governed MCP service also serves the private relay pilot.
+
+hosted (the default, also when empty) serves only the community relays; anything else is refused, so a typo never
+falls back to a different relay.
 """
 
 # tailnet only; the relay does not accept loopback

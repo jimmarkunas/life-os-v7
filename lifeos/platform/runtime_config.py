@@ -1,6 +1,8 @@
-"""The Runtime Configuration data source reader, addressed by V7_RUNTIME_CONFIG_SOURCE_ID, never by title: V7's one
-settings source. Rows: Name, Value, Kind (address | switch), Revision, Active; two active rows for a name apply
-neither. Reuses settings.py's allowlist, refusals and shadow rule. Counts and names only; never raises.
+"""The Runtime Configuration data source reader: V7's one settings source, addressed by ID, never by title.
+
+The ID is V7_RUNTIME_CONFIG_SOURCE_ID. Rows: Name, Value, Kind (address | switch), Revision, Active; two active rows
+for a name apply neither. Reuses settings.py's allowlist, refusals and shadow rule. Counts and names only; never
+raises.
 """
 import os
 import re

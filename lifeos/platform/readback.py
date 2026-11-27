@@ -1,5 +1,6 @@
-"""After a write, READ again (up to `attempts` times, `pause` seconds apart) until what is read matches, since Notion may
-briefly show the old state. Never repeats a write.
+"""The one read-back wait: after a write, READ again until what is read matches.
+
+Up to `attempts` reads, `pause` seconds apart, since Notion may briefly show the old state. Never repeats a write.
 """
 import time
 

@@ -1,7 +1,8 @@
-"""The Command Center's `Runs OK today` card: hourly ticks today (America/Chicago midnight on) that finished without a
-failure, from GitHub's run history. A tick is a completed, non-cancelled `hourly.yml` run titled `tick`; it FAILED if
-it or a follow-on run (`domains (after tick)`, `recruiters.yml`, `capacity-card.yml`) failed. Unreadable history is
-`unverified`, never a healthy count.
+"""The Command Center's `Runs OK today` card: hourly ticks today that finished without a failure.
+
+Today is America/Chicago midnight on, from GitHub's run history. A tick is a completed, non-cancelled `hourly.yml` run
+titled `tick`; it FAILED if it or a follow-on run (`domains (after tick)`, `recruiters.yml`, `capacity-card.yml`)
+failed. Unreadable history is `unverified`, never a healthy count.
 """
 import datetime as dt
 import json

@@ -1,6 +1,7 @@
-"""The private Buzz relay pilot as one more community of the governed MCP service (BUZZ_RELAY=pilot|hosted). hosted adds
-nothing; pilot gives each identity with its own pilot key (BUZZ_KEY_<IDENTITY>_PILOT) access to the pilot address and
-the channels in BUZZ_PILOT_CHANNEL. Returns the identities that now reach the pilot; a bad setting raises
+"""The private Buzz relay pilot as one more community of the governed MCP service (BUZZ_RELAY=pilot|hosted).
+
+hosted adds nothing; pilot gives each identity with its own pilot key (BUZZ_KEY_<IDENTITY>_PILOT) access to the pilot
+address and the channels in BUZZ_PILOT_CHANNEL. A bad setting raises
 ValueError(<setting name>), never a value.
 """
 import re

@@ -1,7 +1,9 @@
-"""A proof run after every deploy (docs/platform/release-proof.md). Pure: the clock, files and GitHub are passed in. Each
-new deploy commit gets one dry quick run of hourly.yml (`PROOF_INPUTS`), recorded in one GitHub issue
-(`RECORD_LABEL`). A failure raises ONE PAGE alert and opens the pause flag (an open issue labelled `FLAG_LABEL`, read
-by the release timer); while paused, a new proof starts at most every `REPROOF_MINUTES` on main's head.
+"""A proof run after every deploy (docs/platform/release-proof.md).
+
+Pure: the clock, files and GitHub are passed in. Each new deploy commit gets one dry quick run of hourly.yml
+(`PROOF_INPUTS`), recorded in one GitHub issue (`RECORD_LABEL`). A failure raises ONE PAGE alert and opens the pause
+flag (an open issue labelled `FLAG_LABEL`, read by the release timer); while paused, a new proof starts at most every
+`REPROOF_MINUTES` on main's head.
 """
 import dataclasses
 import datetime as dt

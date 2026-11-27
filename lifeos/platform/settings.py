@@ -1,7 +1,8 @@
-"""V7's settings come from the Notion Runtime Configuration source; counts and names only, never a value. Only MOVABLE
-names are read; SAFETY names are refused. Shadow rule: Notion fills only a name the step declares empty (`X: ${{
-vars.X }}` with X deleted); held names are compared. Never raises: an unreadable source leaves the environment as it
-was, or uses the last accepted map from the private store.
+"""V7's settings, read from the Notion Runtime Configuration source; counts and names only, never a value.
+
+Only MOVABLE names are read; SAFETY names are refused. Shadow rule: Notion fills only a name the step declares empty
+(`X: ${{ vars.X }}` with X deleted); held names are compared. Never raises: an unreadable source leaves the
+environment as it was, or uses the last accepted map from the private store.
 """
 import os
 import re

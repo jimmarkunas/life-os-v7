@@ -1,6 +1,7 @@
-"""One policy-controlled read that two client identities call for the same Jira source. Pure: no network, store or cache.
-Only the injected `fetch` (host broker side) uses a grant's credential. Validate, decide, write the receipt, then
-read: no receipt, no read.
+"""One policy-controlled read that two client identities call for the same Jira source.
+
+Pure: no network, store or cache. Only the injected `fetch` (host broker side) uses a grant's credential. Validate,
+decide, write the receipt, then read: no receipt, no read.
 """
 import hashlib
 import re

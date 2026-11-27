@@ -1,5 +1,7 @@
-"""Remember the id of a Notion page V7 created under a fixed key in the private store, and read it back by id, never by
-searching a title. An archived or missing page means "write afresh". A dry run never creates the table.
+"""Remember the id of a Notion page V7 created, under a fixed key in the private store.
+
+Read it back by id, never by searching a title. An archived or missing page means "write afresh". A dry run never
+creates the table.
 """
 from datetime import datetime, timezone
 

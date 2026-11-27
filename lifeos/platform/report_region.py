@@ -1,6 +1,8 @@
-"""Write one V7-owned callout on the Daily Report safely. The caller owns one region (router.OWNERS): this module checks
-the block is a callout led by that region's heading, inserts new text under it, removes only the old plain text and
-re-reads. `fail(code)` builds the caller's error type; codes carry no content.
+"""Write one V7-owned callout on the Daily Report safely.
+
+The caller owns one region (router.OWNERS): this module checks the block is a callout led by that region's heading,
+inserts new text under it, removes only the old plain text and re-reads. `fail(code)` builds the caller's error type;
+codes carry no content.
 """
 import hashlib
 import json

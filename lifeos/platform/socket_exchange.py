@@ -1,6 +1,7 @@
-"""One request to an Oracle service over a plain socket (the fit1 and gran1 frames), read to the server's close. Only the
-connect is retried; once sent, the request is never resent (a timeout is the caller's fixed code; any other socket
-error after the send returns b""). No half-close: Tailscale Serve drops the connection on a FIN.
+"""One request to an Oracle service over a plain socket (the fit1 and gran1 frames), read to the server's close.
+
+Only the connect is retried; once sent, the request is never resent (a timeout is the caller's fixed code; any other
+socket error after the send returns b""). No half-close: Tailscale Serve drops the connection on a FIN.
 """
 import socket
 import time

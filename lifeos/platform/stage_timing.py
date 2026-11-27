@@ -1,6 +1,7 @@
-"""One `stage_timing` JSON line per stage (begin and end CT, elapsed and waiting seconds, item count, outcome) to stderr,
-and appended to STAGE_TIMING_FILE when set. Waiting seconds = wait for the services' slots before the stage's budget
-plus its own thread's wait in read_slots. An unknown item count is null, never zero.
+"""One `stage_timing` JSON line per stage: begin and end (CT), elapsed and waiting seconds, item count, outcome.
+
+Written to stderr, and appended to STAGE_TIMING_FILE when set. Waiting seconds = wait for the services' slots before
+the stage's budget plus its own thread's wait in read_slots. An unknown item count is null, never zero.
 """
 import datetime as dt
 import json

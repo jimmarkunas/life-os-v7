@@ -1,6 +1,8 @@
-"""Whether this tick's early domain jobs were already started. `python3 -m lifeos.platform.phase` writes
-early_covered=true|false|unknown to $GITHUB_OUTPUT. Only a clear false lets the after-tick run do the early jobs;
-unknown skips them, since two runs writing the same pages is worse than one skipped hour.
+"""Whether this tick's early domain jobs were already started.
+
+`python3 -m lifeos.platform.phase` writes early_covered=true|false|unknown to $GITHUB_OUTPUT. Only a clear false lets
+the after-tick run do the early jobs; unknown skips them, since two runs writing the same pages is worse than one
+skipped hour.
 """
 import datetime as dt
 import os

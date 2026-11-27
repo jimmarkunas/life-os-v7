@@ -1,5 +1,6 @@
-"""The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: the three outcome words and strict
-ownership of Daily Report regions. Fixed codes only.
+"""The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task.
+
+The three outcome words and strict ownership of Daily Report regions. Fixed codes only.
 """
 PASS, NO_ACTION, DEGRADED = "PASS", "NO_ACTION", "DEGRADED"
 
