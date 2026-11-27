@@ -1,22 +1,14 @@
 """the live entry point's gate fails closed."""
 import base64
-import importlib.util
 import json
 import pathlib
-import sys
 import unittest
+from tests.kit.tool_modules import load_tool
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
-def load(name):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, ROOT / "tools" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+load = load_tool
 
 
 live = load("um_honcho_live")

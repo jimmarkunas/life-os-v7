@@ -7,6 +7,7 @@ from pathlib import Path
 from lifeos.inbox import inbox, sources
 from lifeos.inbox.model import InboxError
 from tests.inbox import fixtures as F
+from tests.kit.readers import opener
 
 APPROVED, TGP = "p-prog", "p-client"
 FORBIDDEN = ("complete_task", "close_task", "add_task", "update_task", "delete_task", "create_task", "post", "put", "request", "update", "delete", "insert", "TodoistAPI", "Client", "from_env")
@@ -20,16 +21,6 @@ def task(id="t1", project="proj-a", completed=False, due=None):
 def asana(gid="a1", projects=(APPROVED,), assignee="u-jim", completed=False):
     return {"gid": gid, "permalink_url": f"https://work.example.test/{gid}", "name": f"{F.SAME_TITLE} {F.CANARY}", "completed": completed, "assignee": {"gid": assignee} if assignee else None,
             "projects": [{"gid": p} for p in projects], "modified_at": "2026-11-14T19:30:00.000Z", "due_on": "2026-11-16"}
-
-
-def opener(rows, error=None):
-    def open_reader(credential_ref):
-        def read(*args):
-            if error:
-                raise error
-            return rows
-        return read
-    return open_reader
 
 
 def todoist(workspace="personal", rows=None, error=None, projects=("proj-a",)):
