@@ -179,6 +179,22 @@ def run_aura_pass(sc, ns, doc):
     return out
 
 
+class AuraGraph:
+    """The graph arm for um_baseline: answers lookups and dependency cases from the Aura fixtures (read-only templates, one namespace)."""
+
+    def __init__(self, scoped, ns=NAMESPACES[0]):
+        self.sc, self.ns = scoped, ns
+
+    def answer(self, tenant, text):
+        rows = self.sc.read("tenant_nodes", self.ns, tenant=tenant)
+        world = um.World({"sources": [dict(r, refs=[]) for r in rows], "edges": []})
+        ids, lookups = um.answer_direct(world, tenant, text)
+        return ids, 1 + lookups
+
+    def deps(self, case):
+        return deps_aura(self.sc, self.ns, case)
+
+
 def load_secrets(env_file="~/.config/bws/openclaw.env"):
     """Oracle only: the machine-account token is read from its file into this process, `bws` lists the project, and only the three named values are kept. Nothing is printed."""
     token = ""

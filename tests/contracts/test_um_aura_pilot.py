@@ -116,6 +116,26 @@ class Exclusions(unittest.TestCase):
         self.assertEqual((r["revoked_edge_excluded"], r["stale_record_excluded"]), (False, False))
 
 
+class Arm(unittest.TestCase):
+    def test_the_aura_graph_arm_answers_a_lookup_and_a_dependency_case_through_read_templates_only(self):
+        rows = [dict(id=s["id"], tenant=s["tenant"], kind=s["kind"], title=s["title"], text=s["text"], revision=s["revision"], status=s["status"], superseded_by=s["superseded_by"]) for s in DOC["sources"] if s["tenant"] == "alpha"]
+
+        class Sc:
+            def __init__(self):
+                self.log = []
+
+            def read(self, name, ns, **p):
+                self.log.append(name)
+                return rows if name == "tenant_nodes" else [{"id": "FAKE-REQ-001"}]
+        sc = Sc()
+        arm = pilot.AuraGraph(sc)
+        ids, calls = arm.answer("alpha", "What does the offline export bundle requirement say?")
+        self.assertEqual((ids[0], calls), ("FAKE-REQ-001", 2))                                       # one fetch plus one lookup
+        ids, calls = arm.deps(DOC["dependency_cases"][0])
+        self.assertEqual(ids, ["FAKE-REQ-001"])
+        self.assertTrue(set(sc.log) <= {"tenant_nodes", "downstream"})
+
+
 class Hygiene(unittest.TestCase):
     def test_the_script_holds_no_credential_and_names_secrets_only_by_their_item_names(self):
         text = (ROOT / "tools" / "um_aura_pilot.py").read_text()
