@@ -98,11 +98,11 @@ try:
 except ImportError:
     call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = todoist_governed = None
 try:
-    from lifeos.platform import memory_honcho, memory_monitor
+    from lifeos.platform import memory_honcho, memory_monitor, memory_tools
     memory_honcho.register(READ, _lift, MEMORY)
     ROUTES.update({op: memory_honcho.route for op in memory_honcho.OPS})
 except ImportError:
-    memory_honcho = memory_monitor = None
+    memory_honcho = memory_monitor = memory_tools = None
 NEEDS_COMMUNITY = set(READ) - {"list_communities", *ROUTES}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
 ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
@@ -253,17 +253,6 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
     return mcp_access.capabilities_for_client(out.result, who, access, tuple(ROUTES), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
 
 
-def _only_granted(reply, who, access):
-    try:
-        from lifeos.platform import mcp_access
-        access = access or mcp_access.load()
-        allowed = mcp_access.granted_tools(access, mcp_access.identify(access, "http", who["facts"]))
-        tools = [t for t in reply["result"]["tools"] if GATE_TOOL.get(t["name"], t["name"]) in allowed or (t["name"] == "buzz_read" and set(MEMORY_OPS) & set(allowed))]
-    except Exception:                                                                          # noqa: BLE001
-        tools = []
-    return {**reply, "result": {**reply["result"], "tools": tools}}
-
-
 def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=_receipt):
     """relays: {client label: Relay}; the key is the verified client label and community, with no fallback identity."""
     bases = {base[8:]: base, **{a[8:-4]: a[:-4] for a in auth.extra_audiences}}
@@ -334,6 +323,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 msg = None
             if not isinstance(msg, dict):
                 return self._send(400, {"error": "bad request"})
+            msg = memory_tools.as_buzz_read(msg, MEMORY_OPS) if memory_tools else msg
             params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
             spec = {**TOOLS, **FROZEN}.get(params.get("name")) if msg.get("method") == "tools/call" and isinstance(params.get("name"), str) else None
             need = "buzz:read" if spec and spec[3] else "buzz:write"
@@ -350,14 +340,14 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 reply = _fail(msg, "client_identity_not_configured")
             else:
                 reply = (governed(who, params["name"], args, msg, lambda: rpc(relay, msg, who), receipts, access) if spec else rpc(relay, msg, who)) if "method" in msg else None
-            if reply and who.get("facts", {}).get("credential") and msg.get("method") == "tools/list":
-                reply = _only_granted(reply, who, access)
+            reply = memory_tools.listed(reply, msg, who, access, GATE_TOOL, MEMORY_OPS) if memory_tools and reply else reply
             if spec and reply:
                 inner = json.loads(reply["result"]["content"][0]["text"])
                 comm = args.get("community") if isinstance(args.get("community"), str) else None
                 audit({"client": who["client"], "identity": ids.get((who["client"], comm)), "sub": who["sub"], "iat": who["iat"], "exp": who["exp"], "tid": who["tid"], "tool": params["name"] + (":" + args["operation"] if not legacy and args.get("operation") in (*READ, *PUBLISH) else ""), "community": comm,
                        "to": next((r for r in (args.get("recipient"), (args.get("arguments") or {}).get("recipient") if isinstance(args.get("arguments"), dict) else None) if isinstance(r, str) and ALIAS.match(r)), None),
                        "outcome": inner.get("error", "ok") if isinstance(inner, dict) else "ok"})
+            reply = memory_tools.unwrap(reply, msg) if memory_tools and reply else reply
             self._send(202) if reply is None else self._send(200, reply)
 
         def do_GET(self):

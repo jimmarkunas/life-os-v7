@@ -76,6 +76,7 @@ def load(text=None, catalog_text=None):
         ) or len({c["id"] for c in creds}) != len(creds):
             raise ValueError("bad_credentials")
         return SimpleNamespace(
+            from_file=text is None and catalog_text is None,
             credentials=creds,
             clients=tuple(doc["clients"]),
             grants=tuple(_grant(g) for g in doc["grants"]),
@@ -176,13 +177,16 @@ def principal_id(client, tenant):
     return client["id"] if tenant == "personal" else f'{client["id"]}-{tenant}'
 
 
+PREGRANT = ("gmail_search", "gmail_read", "drive_search", "drive_read")
+
+
 def call(access, client, tenant, tool, action, account, service, effect, audit, now=None):
     purpose = access.purpose.get(tool)
     if purpose is None:
         raise AccessError("unknown_tool")
     session = G.Session(principal_id(client, tenant), client["policy_key"], tenant, True)
     request = G.Request(tool, action, account, purpose, service, uuid.uuid4().hex[:16])
-    return G.execute(
+    out = G.execute(
         session,
         request,
         access.catalog,
@@ -193,8 +197,28 @@ def call(access, client, tenant, tool, action, account, service, effect, audit, 
         effect,
         audit,
         now or datetime.now(timezone.utc),
-        pregrant_tools=("gmail_search", "gmail_read", "drive_search", "drive_read"),
+        pregrant_tools=PREGRANT,
     )
+    if not (out.executed and action == "read"):
+        return out
+    # Output-time recheck: the same complete gate again just before output, on a fresh read of the access file when it
+    # came from the file and a fresh clock, so a grant revoked or expired while the source answered gives no output.
+    # The effect is not run again; only a refusal is receipted (the allow was already written).
+    fresh = load() if getattr(access, "from_file", False) else access
+    again = G.execute(
+        session,
+        request,
+        fresh.catalog,
+        fresh.policy,
+        fresh.grants,
+        (),
+        frozenset(),
+        lambda: None,
+        lambda receipt: audit(receipt) if receipt.get("outcome") == "deny" else None,
+        datetime.now(timezone.utc) if now is None else now,
+        pregrant_tools=PREGRANT,
+    )
+    return out if again.executed else G.Outcome("deny", again.reason)
 
 
 def operation_arguments(args):
