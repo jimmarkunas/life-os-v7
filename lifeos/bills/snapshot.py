@@ -10,8 +10,8 @@ from lifeos.platform.snapshot_store import Store
 
 LOCAL_TZ = "America/Chicago"
 SCHEMA_V = 1
-CRITICAL = ("Name", "Status", "Cycle", "Paid", "Due Date", "Next Due")      # these drive the due-state: a surprise here fails closed
-FIELDS = CRITICAL + ("Last Paid", "Costs per Cycle", "Last Observed Amount")  # display-only: an unfamiliar shape (rollup, currency) is None, as in V1
+CRITICAL = ("Name", "Status", "Cycle", "Paid", "Due Date", "Next Due")
+FIELDS = CRITICAL + ("Last Paid", "Costs per Cycle", "Last Observed Amount")
 STORE = Store("v7_bills_snapshot")
 
 
@@ -111,7 +111,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     client = client or Client(environ, token_name="NOTION_BILLS_TOKEN", source_name="NOTION_BILLS_DATA_SOURCE_ID")
     now = now or datetime.now(ZoneInfo(LOCAL_TZ))
     now = now.astimezone(ZoneInfo(LOCAL_TZ)) if now.tzinfo else now.replace(tzinfo=ZoneInfo(LOCAL_TZ))
-    rows = query_all(client)                         # limit never truncates the requested full snapshot
+    rows = query_all(client)
     snapshot = {"schema": SCHEMA_V, "taken_at": now.isoformat(), "timezone": LOCAL_TZ, "rows": rows}
     from . import state
     buckets = state.classify(rows, now.date())

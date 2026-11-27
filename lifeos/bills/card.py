@@ -1,8 +1,7 @@
-"""Render the saved Bills snapshot into V7's one "Bills: This Week" callout on the Daily Report (D116).
+"""Render the saved Bills snapshot into V7's one "Bills: This Week" callout on the Daily Report.
 
-Bill Tracker -> bills-paid -> bills-snapshot -> bills-card. This stage only reads the accepted private snapshot and writes the one callout it owns;
-it never reads or writes the Bill Tracker, and it never advances a Due Date (the Paid processor owns that). The supporting window is calculated at
-render time from the America/Chicago date, [today, today + 7] (the same boundary as the Bills view's native 'one week from now' filter); no calendar date is stored anywhere. Counts-only logs, fixed error codes."""
+Reads only the accepted private snapshot and writes only the callout it owns; never touches the Bill Tracker or a
+Due Date. The window is [today, today + 7] in America/Chicago."""
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -14,11 +13,11 @@ from . import snapshot as bills_snapshot, state
 
 TZ = ZoneInfo(bills_snapshot.LOCAL_TZ)
 STALE_HOURS = 3
-WINDOW_DAYS = 8                                  # [today, today + 7]: today through one week from now, 8 calendar dates inclusive
+WINDOW_DAYS = 8
 CARD_TITLE = router.BILLS_REGION
 MODULE = router.OWNERS[CARD_TITLE]
-# D117: the card owns only the TEXT in the callout (the summary line). The linked Bills table inside it is Jim's interactive view (it is where he ticks
-# Paid), so it is never removed or rewritten: report_region.replace_text replaces only the plain text kinds; every other block stays exactly where it is.
+# The card owns only the TEXT in the callout. The linked Bills table inside it is where bills are ticked Paid, so it
+# is never rewritten.
 
 
 class CardError(NotionError):
@@ -40,7 +39,6 @@ def _instant(value):
 
 
 def _valid(saved):
-    """A snapshot is usable only when it is whole. An empty or malformed one is never shown as 'no bills'."""
     if not isinstance(saved, dict) or saved.get("schema") != bills_snapshot.SCHEMA_V or not isinstance(saved.get("rows"), list) or not saved["rows"]:
         raise CardError("BILLS_CARD_SNAPSHOT_INVALID")
     for row in saved["rows"]:
@@ -53,7 +51,6 @@ def _valid(saved):
 
 
 def _amount(row):
-    """The known amount of a bill, or None. Missing is never zero."""
     for field in ("Costs per Cycle", "Last Observed Amount"):
         value = row.get(field)
         if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
@@ -66,13 +63,12 @@ def _money(value):
 
 
 def _window(rows, today):
-    """Active unpaid recurring bills whose Next Due falls in [today, today + 7], from the state classifier's buckets (its due_today and due_next_7_days)."""
     buckets = state.classify(rows, today)
-    last = today + timedelta(days=WINDOW_DAYS - 1)                  # today + 7
+    last = today + timedelta(days=WINDOW_DAYS - 1)
     due = [row for row in buckets["due_today"] + buckets["due_next_7_days"] if (day := state._day(row.get("Next Due"))) is not None and day <= last]
     overdue = sorted(buckets["stale_due"], key=lambda row: (state._day(row["Due Date"]), row["Name"]))
     late = {row["page_id"] for row in overdue if "page_id" in row}
-    due = sorted((row for row in due if row.get("page_id") not in late), key=lambda row: (state._day(row["Next Due"]), row["Name"]))   # an overdue bill is listed once, as overdue
+    due = sorted((row for row in due if row.get("page_id") not in late), key=lambda row: (state._day(row["Next Due"]), row["Name"]))
     return overdue, due
 
 
@@ -82,13 +78,12 @@ def _status(saved, stale):
 
 
 def heading_text(saved, stale):
-    """LIFE-609: the update time shares the heading, like Calendar: "Bills: This Week (11/13 · 2:30 PM CT)"."""
     return f"{CARD_TITLE} ({_status(saved, stale)})"
 
 
 def _summary(saved, stale, overdue, due):
     known = [amount for amount in (_amount(row) for row in due) if amount is not None]
-    total = len(overdue) + len(due)                                       # the Daily Command Center's "Bills due" tile reads this: due this week, plus unpaid and already past due
+    total = len(overdue) + len(due)  # the Daily Command Center's "Bills due" tile reads this count
     parts = [f"{total} bill{'s' if total != 1 else ''} due", f"{len(due)} due through one week from now"]
     if due:
         parts.append(f"{_money(sum(known))} known")
@@ -114,7 +109,6 @@ def _paragraph(content, url_label=None, url=None):
 
 
 def render(saved, stale=False, now=None, tracker_url=None):
-    """-> (blocks, counts). Pure: the window comes from `now` in America/Chicago, the rows from the saved snapshot."""
     now = _now(now)
     saved = _valid(saved)
     overdue, due = _window(saved["rows"], now.date())
@@ -126,7 +120,6 @@ def render(saved, stale=False, now=None, tracker_url=None):
 
 
 def _tracker_link(existing):
-    """Keep the Bill Tracker link the callout already carries (never invented here)."""
     for block in existing[1:]:
         for part in (block.get(block.get("type")) or {}).get("rich_text") or []:
             url = ((part.get("text") or {}).get("link") or {}).get("url") or part.get("href")
@@ -157,7 +150,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     def write(blocks, live):
         return report_region.replace_text(client, block_id, CARD_TITLE, MODULE, blocks, protected_ids, _fail, "bills", live, heading=heading_text(saved, stale))
 
-    existing, _ = write([], False)                              # the dry run checks the callout is ours and returns what it holds, so the Bill Tracker link can be kept
+    existing, _ = write([], False)
     blocks, counts = render(saved, stale, now, _tracker_link(existing))
     if not live:
         return counts

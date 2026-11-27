@@ -1,21 +1,21 @@
-"""LIFE-918 AC6, AC11, AC12: the v2 quarterly promotion check (off by default, not wired; the kill switch V2_PROMOTION is off).
+"""The v2 quarterly promotion check (off by default, not wired; V2_PROMOTION is the kill switch).
 
-On the first run at or after Fri Jan 1 2027, 8:00 AM America/Chicago (a tz-aware compare), `run_if_due` evaluates AC11 and AC12. A pass sets V2_OFFICIAL through an injected setter; a fail keeps legacy official and sends ONE
-Agent Inbox alert through an injected alerter, under one dedupe key. V2_PROMOTION off: no read, write or alert. Codes and counts only.
-
-AC11, hard fail on any missing, ambiguous, duplicate or wrong-date datum, never excused: the frozen quarter list exists and is 100% counted; no key has two goals; completion dates are the first verified Done transition
-from the changelog; historical v1 figures are unchanged; manual and automatic recurring closures stay distinct (no overlap, and they add up to the total).
-AC12 (`reconcile`): a discrepancy is explained only by a record with who, what and source; at most ONE unexplained per board per quarter, two or more block promotion."""
+On the first run at or after Fri Jan 1 2027, 8:00 AM America/Chicago, `run_if_due` evaluates the checks: a pass
+sets V2_OFFICIAL through an injected setter; a fail keeps legacy official and sends ONE Agent Inbox alert through
+an injected alerter. Any missing, ambiguous, duplicate or wrong-date datum is a hard fail, never excused (frozen
+quarter list 100% counted, no key with two goals, completion dates from the first verified Done transition, v1
+figures unchanged, manual and automatic closures distinct). `reconcile` allows at most ONE unexplained discrepancy
+per board per quarter."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 CENTRAL = ZoneInfo("America/Chicago")
-FIRST_RUN = (2027, 1, 1)                      # Fri Jan 1 2027, 8:00 AM America/Chicago
+FIRST_RUN = (2027, 1, 1)
 FIRST_RUN_HOUR = 8
 BOARDS = ("JFM", "MEJ")
 ALERT_SUBJECT = "V2 promotion check failed: legacy stays official"
 EXPLANATION_FIELDS = ("by", "what", "source")
-MAX_UNEXPLAINED = 1                           # per board per quarter (AC12)
+MAX_UNEXPLAINED = 1
 
 MEMBERSHIP_MISSING = "ACCOUNTABILITY_PROMOTION_MEMBERSHIP_MISSING"
 MEMBERSHIP_INCOMPLETE = "ACCOUNTABILITY_PROMOTION_MEMBERSHIP_INCOMPLETE"
@@ -30,7 +30,6 @@ ALERT_FAILED = "ACCOUNTABILITY_PROMOTION_ALERT_FAILED"
 
 
 class PromotionError(Exception):
-    """A fixed code, never a message with content."""
 
     def __init__(self, code):
         super().__init__(code)
@@ -38,20 +37,18 @@ class PromotionError(Exception):
 
 
 def boundary(year=FIRST_RUN[0], month=FIRST_RUN[1], day=FIRST_RUN[2]):
-    """The 8:00 AM America/Chicago instant of that date (daylight time is applied by the zone, never a fixed offset)."""
     return datetime(year, month, day, FIRST_RUN_HOUR, 0, tzinfo=CENTRAL)
 
 
 def due(now):
-    """True at or after the first run instant. A naive `now` is refused: a time without a zone cannot be compared safely."""
     if not isinstance(now, datetime) or now.tzinfo is None:
         raise PromotionError(INPUT_INVALID)
     return now >= boundary()
 
 
 def reconcile(discrepancies):
-    """AC12 method. `discrepancies` is a list of {"key": issue key, "explanation": {"by", "what", "source"} or None}.
-    -> {"explained": [keys], "unexplained": [keys]}. A record counts only when all three fields are present and non-blank; a repeated key is one discrepancy."""
+    """`discrepancies`: [{"key", "explanation": {"by", "what", "source"} or None}] -> {"explained": [keys],
+    "unexplained": [keys]}. An explanation needs all three fields non-blank."""
     explained, unexplained, seen = [], [], set()
     for item in discrepancies or []:
         key = str((item or {}).get("key") or "")
@@ -65,7 +62,6 @@ def reconcile(discrepancies):
 
 
 def _board(name, data):
-    """-> sorted list of AC11 hard-fail codes for one board, then the AC12 result. A malformed board is INPUT_INVALID (hard)."""
     if not isinstance(data, dict):
         return [INPUT_INVALID], None
     hard = set()
@@ -79,7 +75,7 @@ def _board(name, data):
         if len(keys) != len(set(keys)):
             hard.add(DUPLICATE_ATTRIBUTION)
         goals = data.get("goals")
-        if isinstance(goals, dict):                              # {issue key: [goal keys]}: one goal each
+        if isinstance(goals, dict):
             if any(not isinstance(v, list) or len(set(v)) != 1 for v in goals.values()):
                 hard.add(DUPLICATE_ATTRIBUTION)
     completions = data.get("completions")
@@ -104,8 +100,8 @@ def _board(name, data):
 
 
 def evaluate(inputs):
-    """-> {"verdict": "PASS"|"FAIL", "reasons": [sorted fixed codes], "quarter", "boards": {name: {"hard": [...], "unexplained": n, "explained": n}}}.
-    PASS needs both boards (JFM and MEJ) clean: no AC11 failure and at most one unexplained discrepancy per board (AC12). The AC12 tolerance never excuses an AC11 failure."""
+    """-> {"verdict": "PASS"|"FAIL", "reasons": [codes], "quarter", "boards": {name: {"hard": [...], "unexplained": n,
+    "explained": n}}}. PASS needs both boards with no hard failure and at most one unexplained discrepancy each."""
     reasons, boards = set(), {}
     if not isinstance(inputs, dict) or not isinstance(inputs.get("boards"), dict) or not inputs.get("quarter"):
         return {"verdict": "FAIL", "reasons": [INPUT_INVALID], "quarter": str((inputs or {}).get("quarter") or "") if isinstance(inputs, dict) else "", "boards": {}}
@@ -120,28 +116,25 @@ def evaluate(inputs):
 
 
 def alert_item(verdict):
-    """The one Agent Inbox item for a failed check. The key is the same every day (it carries the quarter only), so the existing inbox send updates one row instead of adding more. Codes and counts only."""
     failing = failing_boards(verdict)
     return {"subject": ALERT_SUBJECT, "urgency": "Today", "workspace": "Personal", "key": f"v2-promotion-{verdict.get('quarter') or 'unknown'}",
             "details": ("failing board: " + ", ".join(failing) + ". " if failing else "") + "reasons: " + ", ".join(verdict.get("reasons") or []) + ". Both boards stay on legacy; v2 stays preview."}
 
 
 def failing_boards(verdict):
-    """The boards (JFM, MEJ in that order) that made a check fail: an AC11 hard failure or more than the AC12 tolerance. Promotion is one unit (Jim, comment 14228): either failing keeps both on legacy, and the one alert names them."""
+    """Boards that made a check fail. Promotion is one unit: either failing keeps both on legacy."""
     boards = (verdict or {}).get("boards") or {}
     return [name for name in BOARDS if name in boards and (boards[name]["hard"] or boards[name]["unexplained"] > MAX_UNEXPLAINED)]
 
 
 def refusing_setter():
-    """The setter used until a safe Runtime Configuration row writer exists: V7 has no writer of settings rows today (settings.py and runtime_config.py only read). It refuses with a fixed code, so a PASS never silently
-    pretends to have promoted; the caller keeps legacy official and alerts."""
     raise PromotionError(SETTER_UNAVAILABLE)
 
 
 def run_if_due(now, switches, readers, setters, alerter):
-    """-> {"status": ..., ...} with fixed words and codes only.
-    switches: {"V2_PROMOTION": bool, "V2_OFFICIAL": bool}, read by the caller from lifeos.accountability.switches. readers: a function returning the evaluation inputs. setters: a function that sets V2_OFFICIAL on.
-    alerter: a function taking the one inbox item. Order: kill switch off -> not_enabled (nothing read, written or sent); already official -> already_official; before the first run instant -> not_due; else read, evaluate, then set or alert."""
+    """-> {"status": ..., ...}, fixed words and codes only. Order: kill switch off -> not_enabled (nothing read,
+    written or sent); already official -> already_official; before the first run instant -> not_due; else read,
+    evaluate, set or alert."""
     if not (switches or {}).get("V2_PROMOTION"):
         return {"status": "not_enabled"}
     if (switches or {}).get("V2_OFFICIAL"):
@@ -152,7 +145,7 @@ def run_if_due(now, switches, readers, setters, alerter):
         verdict = evaluate(readers())
     except PromotionError as error:
         verdict = {"verdict": "FAIL", "reasons": [error.code], "quarter": "", "boards": {}}
-    except Exception:                                                  # noqa: BLE001 - an unreadable input is a hard fail with a fixed code, never text
+    except Exception:  # noqa: BLE001 - an unreadable input is a hard fail
         verdict = {"verdict": "FAIL", "reasons": [INPUT_INVALID], "quarter": "", "boards": {}}
     if verdict["verdict"] == "PASS":
         try:
@@ -172,7 +165,8 @@ def run_if_due(now, switches, readers, setters, alerter):
 
 
 def inbox_alerter(deliver=None):
-    """The alerter for `run_if_due` over the existing Agent Inbox delivery, which the CALLER passes in (lifeos.inbox.send_to_jim.deliver; this package never imports the inbox). It updates the row of the same key. A delivery that is not ok raises, so run_if_due records it as not sent."""
+    """Alerter over the Agent Inbox delivery, which the CALLER passes in (this package never imports the inbox). A
+    delivery that is not ok raises, so run_if_due records it as not sent."""
     if deliver is None:
         raise PromotionError(ALERT_FAILED)
 

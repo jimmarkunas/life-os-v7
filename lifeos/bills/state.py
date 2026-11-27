@@ -1,8 +1,8 @@
 """Pure due-state buckets over a saved Bill Tracker snapshot."""
 from datetime import date, timedelta
 
-# The production contract's supported recurring cycles, exactly. Anything else (Lifetime, One Time, "4 Years", a cycle added later, none) is not
-# processed automatically and is never "stale due".
+# The supported recurring cycles, exactly; anything else (Lifetime, One Time, "4 Years", none) is not processed
+# automatically and is never "stale due".
 SUPPORTED_CYCLES = {"Weekly", "Bi-Weekly", "Monthly", "45 Days", "60 Days", "90 Days", "Quarterly", "180 Days", "Yearly"}
 
 

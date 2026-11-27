@@ -33,12 +33,10 @@ def _total(value):
 
 
 def _conflict(existing):
-    """Only the review fields change after a conflict; every other property stays untouched."""
     return {"Status": "REVIEW", "Needs Review": True}
 
 
 def reconcile(events, existing=None, now=None):
-    """Return (full desired row, conflict reason or None); input events must share one order id."""
     existing = dict(existing or {})
     if not events:
         raise ValueError("AMAZON_EVENTS_EMPTY")
@@ -59,7 +57,6 @@ def reconcile(events, existing=None, now=None):
             if event.get("amazon_order_url") != expected_url:
                 return _conflict(existing), "URL_CONFLICT"
             normalized_event = dict(event)
-            # Shipment and delivery amounts are source details, never the canonical order total.
             normalized_event["grand_total"] = _total(event.get("grand_total")) if event["status"] == "ORDERED" else None
             key = (order_id, event["status"], event["id"])
             prior = by_key.get(key)
@@ -84,8 +81,9 @@ def reconcile(events, existing=None, now=None):
     except (TypeError, ValueError):
         return _conflict(existing), "EVENT_TIME_INVALID"
     existing_rank = RANK.get(current_status, 0)
-    # D146: a later event with a lower status is NOT a conflict. One order can ship in several packages, so a delivery can precede another shipment or a late confirmation.
-    # The status is the highest seen and the time the latest; only real contradictions (two totals, a bad URL, an invalid event) go to REVIEW.
+    # A later event with a lower status is NOT a conflict: one order can ship in several packages, so a delivery can
+    # precede another shipment. Status is the highest seen and time the latest; only real contradictions (two totals,
+    # a bad URL, an invalid event) go to REVIEW.
     ordered = [event for event in unique if event["status"] == "ORDERED"]
     incoming_totals = {event["grand_total"] for event in ordered if event.get("grand_total") is not None}
     try:
@@ -109,7 +107,8 @@ def reconcile(events, existing=None, now=None):
     all_latest = max([latest_time] + ([existing_latest] if existing_latest else []))
     existing_subject = _text(existing.get("Last Source Subject"))
     last_subject = existing_subject if existing_latest and existing_latest > latest_time else _text(latest_event.get("subject"))
-    newer_than_row = not (existing_latest and existing_latest > latest_time)          # replaying an older month must not roll the item text back over a newer event's
+    # replaying an older month must not roll item text back over a newer event's
+    newer_than_row = not (existing_latest and existing_latest > latest_time)
     latest_summary = (_text(latest_event.get("item_summary")) if newer_than_row else "") or _text(existing.get("Item Summary")) or _text(latest_event.get("item_summary"))
     latest_count = latest_event.get("item_count") if latest_event.get("item_count") is not None and newer_than_row else existing.get("Item Count")
     total = next(iter(incoming_totals), prior_total)
@@ -138,7 +137,8 @@ COMPARED = tuple(field for field in FIELDS if field != "Last Reconciled At")
 
 
 def equal(left_row, right_row, fields, moment=_time, text=_text):
-    """True when two Notion-normalized rows agree on `fields`: times by `moment`, the total by value, the count as an integer, the flag by truth, anything else by `text`. An unreadable total or count is a difference."""
+    """True when two Notion-normalized rows agree on `fields`: times by `moment`, the total by value, the count as an
+    integer, the flag by truth, anything else by `text`."""
     for field in fields:
         left, right = left_row.get(field), right_row.get(field)
         if field in TIMES:
@@ -158,5 +158,4 @@ def equal(left_row, right_row, fields, moment=_time, text=_text):
 
 
 def same(existing, desired):
-    """Compare Notion-normalized properties, excluding the audit timestamp."""
     return bool(existing) and equal(existing, desired, COMPARED)

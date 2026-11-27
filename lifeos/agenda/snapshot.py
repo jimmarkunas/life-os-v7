@@ -24,7 +24,6 @@ def _invalid():
 
 
 def _of(value, kind):
-    """`value` when it is None or a `kind` (a missing field); anything else is an invalid event."""
     if value is not None and not isinstance(value, kind):
         raise _invalid()
     return value
@@ -38,7 +37,7 @@ def local_now(now=None):
 def window(now=None):
     today = local_now(now).date()
     start = datetime.combine(today, time.min, TZ)
-    end = datetime.combine(today + timedelta(days=2), time.min, TZ)  # API timeMax is exclusive
+    end = datetime.combine(today + timedelta(days=2), time.min, TZ)
     return start.isoformat(), end.isoformat(), today, today + timedelta(days=1)
 
 
@@ -56,7 +55,6 @@ def _instant(part):
 
 
 def compact(event, today, tomorrow):
-    """Keep only report fields; omit cancelled, declined, and working-location records."""
     if event.get("status") == "cancelled" or event.get("eventType") == "workingLocation":
         return None
     attendees = _of(event.get("attendees") or [], list)
@@ -84,7 +82,7 @@ def compact(event, today, tomorrow):
         if start.get("date") or end.get("date"):
             raise _invalid()
         start_at, end_at = _instant(start), _instant(end)
-        if end_at < start_at:                                     # zero-length events are legal in Google
+        if end_at < start_at:
             raise _invalid()
         start_value, end_value = start_at.isoformat(), end_at.isoformat()
         for day in (today, tomorrow):
@@ -97,13 +95,13 @@ def compact(event, today, tomorrow):
     event_id, title = event.get("id"), _of(event.get("summary"), str)
     if not isinstance(event_id, str) or not event_id:
         raise _invalid()
-    title = (title or "").strip() or "(no title)"             # untitled events are normal on a shared calendar
+    title = (title or "").strip() or "(no title)"
     private = _of(_of(event.get("extendedProperties") or {}, dict).get("private") or {}, dict)
     entry_points = _of(event.get("conferenceData") or {}, dict).get("entryPoints") or []
     meeting = event.get("hangoutLink") or next((point.get("uri") for point in entry_points
                                                 if isinstance(point, dict) and isinstance(point.get("uri"), str)), None)
     location, html_link = _of(event.get("location"), str), _of(event.get("htmlLink"), str)
-    calendar_link = html_link if html_link and html_link.startswith(("https://", "http://")) else None     # the event's own page in Google Calendar (the title's link)
+    calendar_link = html_link if html_link and html_link.startswith(("https://", "http://")) else None
     return {"id": event_id, "title": title, "start": start_value, "end": end_value, "all_day": all_day,
             "location": location or None, "meeting_link": meeting or None, "calendar_link": calendar_link,
             "source": "bridge" if private.get("v7_src") else "native", "days": days}
