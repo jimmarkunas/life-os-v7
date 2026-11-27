@@ -1,9 +1,7 @@
-"""Notion page and data-source ids come from the environment, never from source (LIFE-338).
+"""Notion page and data-source ids come from the environment, never from source.
 
-The public repo holds names only. A run that needs a real page gets one JSON variable, LIFEOS_NOTION_IDS (a GitHub Actions
-variable shaped {"NAME": "id"}); a single LIFEOS_NOTION_<NAME> variable also works and wins. Without either the id is a
-synthetic hash of the name that matches nothing, so tests and forks stay safe.
-"""
+A run that needs a real page gets one JSON variable, LIFEOS_NOTION_IDS ({"NAME": "id"}); a single LIFEOS_NOTION_<NAME>
+variable also works and wins. Without either the id is a synthetic hash of the name that matches nothing."""
 from collections.abc import Mapping
 import hashlib
 import json

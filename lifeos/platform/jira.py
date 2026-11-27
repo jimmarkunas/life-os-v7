@@ -1,6 +1,7 @@
-"""Minimal Jira Cloud REST client (stdlib only; platform: no product knowledge).
+"""Minimal Jira Cloud REST client (stdlib only).
 
-Every error is a fixed code: never a URL, a response body or an issue field. Reads retry transient failures; a write retries only when the caller says it is idempotent."""
+Every error is a fixed code. Reads retry transient failures; a write retries only when the caller says it is
+idempotent."""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -37,7 +38,7 @@ class Jira:
     def from_env(cls, environ: Mapping[str, str] = os.environ, **kwargs: Any) -> Jira:
         missing = [name for name in REQUIRED if not (environ.get(name) or "").strip()]
         if missing:
-            raise JiraError("JIRA_CONFIG_MISSING:" + ",".join(missing))      # setting names only, never values
+            raise JiraError("JIRA_CONFIG_MISSING:" + ",".join(missing))  # setting names only, never values
         return cls(environ["JIRA_BASE_URL"], environ["JIRA_EMAIL"], environ["JIRA_API_TOKEN"], **kwargs)
 
     def request(self, method: str, path: str, params: dict[str, Any] | None = None, payload: Any = None, retry: bool | None = None) -> Any:
@@ -57,7 +58,7 @@ class Jira:
         return self.request("POST", path, payload=payload, retry=retry)
 
     def pages(self, path: str, params: dict[str, Any] | None = None, key: str = "values", meta: dict[str, Any] | None = None) -> list[Any]:
-        """Every item of a paged Agile endpoint; bounded, and a page that makes no progress is an error. `meta`, when given, receives {"pages", "items", "total", "complete"} (counts and booleans only; LIFE-918 diagnostics)."""
+        """Every item of a paged Agile endpoint; bounded, and a page that makes no progress is an error."""
         out, start, count = [], 0, 0
         for _ in range(MAX_PAGES):
             data = self.get(path, {**(params or {}), "startAt": start, "maxResults": PAGE_SIZE})
@@ -75,7 +76,6 @@ class Jira:
             start += len(items)
         raise JiraError("JIRA_TOO_MANY_PAGES")
 
-    # The small surface the Jira OS uses.
     def board(self, board_id: int | str) -> Any:
         return self.get(f"/rest/agile/1.0/board/{int(board_id)}")
 
@@ -92,23 +92,21 @@ class Jira:
         return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/issue", {"jql": jql, "fields": fields}, "issues")
 
     def set_sprint_state(self, sprint_id: int | str, state: str) -> Any:
-        return self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}", {"state": state}, retry=True)   # idempotent
+        return self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}", {"state": state}, retry=True)  # idempotent
 
     def create_sprint(self, board_id: int | str, name: str, start: datetime, end: datetime) -> Any:
         return self.post("/rest/agile/1.0/sprint", {"name": name, "originBoardId": int(board_id),
                                                     "startDate": start.isoformat(), "endDate": end.isoformat()})
 
-    # LIFE-918: partial sprint update (name only). UNVERIFIED against the live tenant; nothing calls it live. The daily reconciliation takes its writes as injected objects and refuses a live run without them.
+    # The sprint and backlog writers below are unverified against the live tenant; nothing calls them live.
     def rename_sprint(self, sprint_id: int | str, name: str) -> Any:
-        return self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}", {"name": name}, retry=True)   # idempotent
+        return self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}", {"name": name}, retry=True)  # idempotent
 
     def move_issues(self, sprint_id: int | str, keys: list[str]) -> None:
         for index in range(0, len(keys), 50):
             reply = self.post(f"/rest/agile/1.0/sprint/{int(sprint_id)}/issue", {"issues": keys[index:index + 50]}, retry=True)
-            self.last_write = {"ok": True, "body_empty": not reply}               # a non-2xx raises; LIFE-918 diagnostics read this, counts and booleans only
+            self.last_write = {"ok": True, "body_empty": not reply}
 
-    # LIFE-915: the Jira Agile backlog primitive. UNVERIFIED against the live tenant (permissions, board semantics, returned shape): nothing calls it live. run() never passes it; the gated MEJ
-    # rollover only uses an object like this one that a test injects, and refuses to close a sprint with unapproved work and no such object. LIFE-918 proves the live contract before any activation.
     def move_to_backlog(self, keys: list[str]) -> None:
         for index in range(0, len(keys), 50):
             reply = self.post("/rest/agile/1.0/backlog/issue", {"issues": keys[index:index + 50]}, retry=True)
@@ -117,7 +115,6 @@ class Jira:
     def backlog_issues(self, board_id: int | str, jql: str, fields: str, meta: dict[str, Any] | None = None) -> list[Any]:
         return self.pages(f"/rest/agile/1.0/board/{int(board_id)}/backlog", {"jql": jql, "fields": fields}, "issues", meta)
 
-    # LIFE-918 (live writers; every one UNVERIFIED against the tenant until the throwaway-sprint check passes and JIRA_WRITERS_VERIFIED is "yes"). Nothing here runs without lifeos.jira.writers.
     def put(self, path: str, payload: Any, retry: bool = False) -> Any:
         return self.request("PUT", path, payload=payload, retry=retry)
 
@@ -131,7 +128,7 @@ class Jira:
         return self.post("/rest/api/3/issue", {"fields": fields})
 
     def edit_issue(self, key: str, fields: dict[str, Any] | None = None, update: dict[str, Any] | None = None) -> Any:
-        return self.put(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}", {**({"fields": fields} if fields else {}), **({"update": update} if update else {})}, retry=True)   # idempotent
+        return self.put(f"/rest/api/3/issue/{urllib.parse.quote(str(key), safe='')}", {**({"fields": fields} if fields else {}), **({"update": update} if update else {})}, retry=True)  # idempotent
 
     def add_comment(self, key: str, text: str) -> Any:
         body = {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]}
@@ -144,7 +141,7 @@ class Jira:
         return (self.get("/rest/api/3/issueLinkType") or {}).get("issueLinkTypes") or []
 
     def my_permissions(self, project_key: str, names: Any) -> dict[str, Any]:
-        """GET only: which of `names` the calling user holds in one project. -> {name: {"havePermission": bool, ...}}."""
+        """GET only: which of `names` the calling user holds in one project."""
         return (self.get("/rest/api/3/mypermissions", {"projectKey": project_key, "permissions": ",".join(names)}) or {}).get("permissions") or {}
 
     def field_list(self) -> list[Any]:
