@@ -174,7 +174,7 @@ class Table(unittest.TestCase):
             table(notion, "jim"),
             [
                 ["Lane", "Progress", "Done / all", "New count (preview)", "Status"],
-                ["Career", "██████████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"],
+                ["Career", "██████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"],
             ],
         )
         order = notion.kids["b-jim-goals"]
@@ -204,7 +204,7 @@ class Table(unittest.TestCase):
         )
         jim, matt = table(notion, "jim"), table(notion, "matt")
         self.assertEqual(jim[0], matt[0])
-        self.assertEqual(jim[1], ["Career", "██████████", "1 / 3", "1 / 2", "OK"])
+        self.assertEqual(jim[1], ["Career", "██████", "1 / 3", "1 / 2", "OK"])
         self.assertEqual(matt[1][3:], ["1 / 1", "OK"])
 
     def test_jfm_without_its_own_list_reads_needs_q1_member_list_in_red_even_when_mej_is_approved(self):
@@ -215,7 +215,7 @@ class Table(unittest.TestCase):
 
     def test_matt_needs_the_q1_member_list_while_none_is_approved_and_legacy_stays_official(self):
         _, notion, _ = run_goals([kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2")])
-        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "1 / 2", "—", "NEEDS Q1 MEMBER LIST"])
         status = notion.blocks[
             notion.kids[next(k for k in notion.kids["b-matt-goals"] if notion.blocks[k]["type"] == "table")][1]
         ]["table_row"]["cells"][4][0]
@@ -228,7 +228,7 @@ class Table(unittest.TestCase):
         _, notion, _ = run_goals(
             [kid("MEJ-20", "MEJ-2", True), kid("MEJ-21", "MEJ-2"), kid("MEJ-22", "MEJ-2", True)], membership=frozen
         )
-        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████████", "2 / 3", "1 / 2", "OK"])
+        self.assertEqual(table(notion, "matt")[1], ["Creative", "██████", "2 / 3", "1 / 2", "OK"])
 
     def test_a_drifted_list_reads_data_missing_in_red(self):
         frozen = approved({"MEJ-20": {"parent": "MEJ-2", "goal": "MEJ-99"}})
@@ -281,19 +281,19 @@ class Table(unittest.TestCase):
 class Bar(unittest.TestCase):
     def test_ten_blocks_filled_by_share_and_coloured_by_threshold(self):
         for done, total, filled, color in (
-            (5, 26, 2, "red"),
-            (3, 7, 4, "orange"),
-            (6, 9, 7, "orange"),
-            (7, 10, 7, "green"),
+            (5, 26, 1, "red"),
+            (3, 7, 3, "orange"),
+            (6, 9, 4, "orange"),
+            (7, 10, 4, "green"),
             (0, 6, 0, None),
-            (10, 10, 10, "green"),
+            (10, 10, 6, "green"),
             (0, 0, 0, None),
         ):
             pieces = render.bar(done, total)
-            self.assertEqual(sum(len(p[0]) for p in pieces), 10)
+            self.assertEqual(sum(len(p[0]) for p in pieces), 6)
             self.assertEqual(sum(len(p[0]) for p in pieces if p[3] != "gray"), filled)  # filled cells keep their colour
             self.assertEqual(
-                sum(len(p[0]) for p in pieces if p[3] == "gray"), 10 - filled
+                sum(len(p[0]) for p in pieces if p[3] == "gray"), 6 - filled
             )  # empty cells are the same glyph in gray
             self.assertTrue(all(set(p[0]) == {"█"} for p in pieces))  # one glyph, so every bar is the same width
             if filled:
@@ -306,8 +306,8 @@ class Render(unittest.TestCase):
         with contextlib.redirect_stdout(out), mock.patch("socket.socket", side_effect=AssertionError("network")):
             self.assertEqual(preview.main(["--synthetic"]), 0)
         text = out.getvalue()
-        self.assertIn("██████████ · 5 / 26 · — · NEEDS Q1 MEMBER LIST", text)
-        self.assertIn("██████████ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
+        self.assertIn("██████ · 5 / 26 · — · NEEDS Q1 MEMBER LIST", text)
+        self.assertIn("██████ · 12 / 29 · — · NEEDS Q1 MEMBER LIST", text)
 
     def test_any_other_argument_is_refused(self):
         with contextlib.redirect_stdout(io.StringIO()):
