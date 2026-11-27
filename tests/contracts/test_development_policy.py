@@ -151,7 +151,7 @@ class OneFilePolicy(unittest.TestCase):
             "Tech Lead",
         ):
             self.assertNotIn(gone, POLICY, gone)
-        for line in POLICY.splitlines():  # Codex returns only as an agent named in the Agent trailer rule (LIFE-1096)
+        for line in POLICY_FILE.splitlines():  # Codex returns only as an agent named in the Agent trailer rule
             if "Codex" in line:
                 self.assertIn("`Agent: Codex`", line)
 

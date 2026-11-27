@@ -538,7 +538,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_runs_on_pull_requests_and_main_only_read_only_and_holds_no_secret(self):
         text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
         self.assertEqual(list(doc[True]), ["pull_request", "merge_group", "push"])
-        self.assertEqual(doc[True]["merge_group"], {"types": ["checks_requested"]})  # the merge queue (LIFE-1096)
+        self.assertEqual(doc[True]["merge_group"], {"types": ["checks_requested"]})  # the merge queue
         self.assertEqual(doc[True]["push"], {"branches": ["main"]})
         self.assertEqual(doc["permissions"], {"contents": "read"})
         for word in ("secrets.", "bitwarden", "NOTION_", "GMAIL_", "--live"):
