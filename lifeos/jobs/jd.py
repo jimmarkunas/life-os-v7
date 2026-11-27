@@ -2,15 +2,25 @@
 
 Pure functions, no network. The full text is ALWAYS kept; sections are a best-effort split by headings.
 """
+
 from html.parser import HTMLParser
 from hashlib import sha256
 import re
 
-SECTION_PATTERNS = (   # first match wins; order matters (specific before generic)
-    ("responsibilities", r"responsibilit|what you.?ll do|what you will do|duties|day.to.day|your impact|in this role|key tasks"),
-    ("requirements", r"requirement|must[- ]have|minimum|basic qualifications|required|what you.?ll bring|what you bring|what we.?re looking for|you have|you.?ll need|who you are|about you"),
+SECTION_PATTERNS = (  # first match wins; order matters (specific before generic)
+    (
+        "responsibilities",
+        r"responsibilit|what you.?ll do|what you will do|duties|day.to.day|your impact|in this role|key tasks",
+    ),
+    (
+        "requirements",
+        r"requirement|must[- ]have|minimum|basic qualifications|required|what you.?ll bring|what you bring|what we.?re looking for|you have|you.?ll need|who you are|about you",
+    ),
     ("qualifications", r"qualification|preferred|nice to have|bonus|skills|experience|education|plus|desired"),
-    ("summary", r"about (the )?(role|job|position|us|company|team)|overview|summary|job description|the role|description|who we are|position"),
+    (
+        "summary",
+        r"about (the )?(role|job|position|us|company|team)|overview|summary|job description|the role|description|who we are|position",
+    ),
 )
 BLOCK_TAGS = {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section"}
 

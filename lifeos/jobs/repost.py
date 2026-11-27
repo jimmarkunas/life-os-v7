@@ -5,6 +5,7 @@ DUPLICATE of it (repost_of) and bumps the original's seen_count/last_seen. Ghost
 sightings inside 60 days, or no real posting date for 21+ days, flags `ghost_flag`. sync_last_seen(): daily Notion
 write per resighted/flagged page.
 """
+
 from datetime import timedelta
 
 from lifeos.jobs import ledger, store
@@ -23,18 +24,25 @@ _now = store.now
 
 def link(cursor, key, fuzzy, now):
     """Called right after a fresh insert (dedupe_key=key). Returns the original id when it was a repost, else None."""
-    cursor.execute("SELECT id FROM v7_jobs WHERE fuzzy_key=%s AND dedupe_key<>%s AND repost_of IS NULL AND status IN %s"
-                   " AND first_seen >= %s ORDER BY first_seen LIMIT 2",
-                   (fuzzy, key, LIVE_STATES, now - timedelta(days=WINDOW_DAYS)))
+    cursor.execute(
+        "SELECT id FROM v7_jobs WHERE fuzzy_key=%s AND dedupe_key<>%s AND repost_of IS NULL AND status IN %s"
+        " AND first_seen >= %s ORDER BY first_seen LIMIT 2",
+        (fuzzy, key, LIVE_STATES, now - timedelta(days=WINDOW_DAYS)),
+    )
     rows = cursor.fetchall()
     if not rows:
         return None
     if len(rows) > 1:  # ambiguous identity evidence: never pick one arbitrarily, keep both and mark it
-        cursor.execute("UPDATE v7_jobs SET unresolved_reason='repost_ambiguous', updated_at=%s WHERE dedupe_key=%s", (now, key))
+        cursor.execute(
+            "UPDATE v7_jobs SET unresolved_reason='repost_ambiguous', updated_at=%s WHERE dedupe_key=%s", (now, key)
+        )
         return None
     row = rows[0]
-    cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='repost', updated_at=%s"
-                   " WHERE dedupe_key=%s", (row[0], now, key))
+    cursor.execute(
+        "UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='repost', updated_at=%s"
+        " WHERE dedupe_key=%s",
+        (row[0], now, key),
+    )
     cursor.execute("UPDATE v7_jobs SET seen_count=seen_count+1, last_seen=%s WHERE id=%s", (now, row[0]))
     return row[0]
 
@@ -50,7 +58,9 @@ def is_ghost(seen_count, first_seen, posted_date, now):
 def sync_props(last_seen, ghost):
     props = {"Last Seen": {"date": {"start": ledger.ct_day(last_seen).isoformat()}}}
     if ghost:
-        props["Review Reason"] = {"rich_text": notion_client.rich_text("possible ghost: reposted or long-open without a real date")}
+        props["Review Reason"] = {
+            "rich_text": notion_client.rich_text("possible ghost: reposted or long-open without a real date")
+        }
     return props
 
 
@@ -60,10 +70,12 @@ def sync_last_seen(limit=SYNC_PER_RUN, live=False, environ=None):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, notion_page_id, seen_count, first_seen, last_seen, posted_date FROM v7_jobs"
-                           " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL AND (notion_synced_at IS NULL"
-                           " OR (notion_synced_at < %s AND last_seen > notion_synced_at)) ORDER BY id LIMIT %s",
-                           (now - timedelta(hours=SYNC_EVERY_HOURS), limit))
+            cursor.execute(
+                "SELECT id, notion_page_id, seen_count, first_seen, last_seen, posted_date FROM v7_jobs"
+                " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL AND (notion_synced_at IS NULL"
+                " OR (notion_synced_at < %s AND last_seen > notion_synced_at)) ORDER BY id LIMIT %s",
+                (now - timedelta(hours=SYNC_EVERY_HOURS), limit),
+            )
             rows = cursor.fetchall()
     counts["due"] = len(rows)
     if not live or not rows:
@@ -79,7 +91,9 @@ def sync_last_seen(limit=SYNC_PER_RUN, live=False, environ=None):
                 break
             continue
         with store.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("UPDATE v7_jobs SET notion_synced_at=%s, ghost_flag=%s WHERE id=%s", (now, int(ghost), job_id))
+            cursor.execute(
+                "UPDATE v7_jobs SET notion_synced_at=%s, ghost_flag=%s WHERE id=%s", (now, int(ghost), job_id)
+            )
         counts["synced"] += 1
         counts["ghost"] += int(ghost)
     return counts

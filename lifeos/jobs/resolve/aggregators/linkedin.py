@@ -2,6 +2,7 @@
 
 Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending.
 """
+
 import time
 
 from lifeos.jobs.resolve import ats_match, search_match
@@ -42,7 +43,7 @@ def resolve_rows(rows, budget=None):
     for _, url, *_ in rows:
         results.append(read_guest(url))
         if results[-1]["outcome"] == "rate_limited":
-            results.extend({"outcome": "rate_limited"} for _ in rows[len(results):])
+            results.extend({"outcome": "rate_limited"} for _ in rows[len(results) :])
             break
     results = match_rows(rows, results, SEARCH_LIMIT, budget)
     return [page_fallback(row, result) for row, result in zip(rows, results)]
@@ -57,7 +58,12 @@ def page_fallback(row, result):
     """
     jid = li_apply.job_id(row[1])
     if str(result.get("outcome", "")).startswith("no_match_") and jid and li_apply.is_linkedin(row[1]):
-        return {"outcome": "landed", "via": "linkedin_page", "kind": "aggregator", "url": "https://www.linkedin.com/jobs/view/" + jid}
+        return {
+            "outcome": "landed",
+            "via": "linkedin_page",
+            "kind": "aggregator",
+            "url": "https://www.linkedin.com/jobs/view/" + jid,
+        }
     return result
 
 
@@ -66,16 +72,19 @@ def match_rows(rows, results, search_limit=SEARCH_LIMIT, budget=None):
     need = [i for i, r in enumerate(results) if r["outcome"] == "external_hidden"]
     hits = ats_match.match_many([(rows[i][2], rows[i][3], rows[i][4]) for i in need])
     for i, hit in zip(need, hits):
-        results[i] = ({"outcome": "no_match_" + hit} if isinstance(hit, str)
-                      else {"outcome": "landed", "via": "ats_match", "kind": "ats", "url": hit[1]})
-    budget = budget if budget is not None else {"left": search_limit}      # shared across batches in one run
+        results[i] = (
+            {"outcome": "no_match_" + hit}
+            if isinstance(hit, str)
+            else {"outcome": "landed", "via": "ats_match", "kind": "ats", "url": hit[1]}
+        )
+    budget = budget if budget is not None else {"left": search_limit}  # shared across batches in one run
     for i, result in enumerate(results):
         if not result["outcome"].startswith("no_match_"):
             continue
         if len(rows[i]) > 5 and rows[i][5] == "linkedin-search":
             continue  # no TinyFish for a search row; a definite no-match takes the LinkedIn page (page_fallback)
         if budget["left"] <= 0:
-            results[i] = {"outcome": "deferred"}          # search budget for this run is spent; not an attempt
+            results[i] = {"outcome": "deferred"}  # search budget for this run is spent; not an attempt
             continue
         budget["left"] -= 1
         verdict = search_match.find(rows[i][2], rows[i][3])
@@ -88,6 +97,9 @@ def match_rows(rows, results, search_limit=SEARCH_LIMIT, budget=None):
             continue
         # terminal evidence: dead page = closed
         gone = fetch(verdict[2], timeout=12, max_hops=4).status in (404, 410)
-        results[i] = ({"outcome": "closed"} if gone else
-                      {"outcome": "landed", "via": "search", "kind": verdict[1], "url": verdict[2]})
+        results[i] = (
+            {"outcome": "closed"}
+            if gone
+            else {"outcome": "landed", "via": "search", "kind": verdict[1], "url": verdict[2]}
+        )
     return results

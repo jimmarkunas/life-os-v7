@@ -4,6 +4,7 @@ Logs carry counts only, so this stage writes the answer to a page in the Job Led
 title, place, Fit score and stored reason, grouped by outcome. The page has no row in v7_jobs, so no other stage
 touches it. Input: REVIEW_COMPANY (a substring of the company name or of the source id).
 """
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import os
@@ -37,7 +38,14 @@ def blocks_for(rows):
     groups = {}
     for title, location, status, source, score, admission, reason, stop, link, detail in rows:
         why = (reason or stop or "").strip()
-        line = f"{title} | {(location or 'no place stated')[:260]} | " + (f"Fit {score}" if score is not None else "not scored") + (f" | {why}" if why else "") + f" | via {source or 'unknown'}" + (f" | {link[:140]}" if link and status in ("NEW", "HOLD", "RESOLVED") else "") + (f" | {detail[:420]}" if detail and score is not None else "")
+        line = (
+            f"{title} | {(location or 'no place stated')[:260]} | "
+            + (f"Fit {score}" if score is not None else "not scored")
+            + (f" | {why}" if why else "")
+            + f" | via {source or 'unknown'}"
+            + (f" | {link[:140]}" if link and status in ("NEW", "HOLD", "RESOLVED") else "")
+            + (f" | {detail[:420]}" if detail and score is not None else "")
+        )
         groups.setdefault(group_of(status, admission, why), []).append(line)
     blocks = []
     for name in sorted(groups, key=lambda g: (g != "On the board", g)):
@@ -57,9 +65,12 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT j.title, j.location_text, j.status, COALESCE(j.source, ''), f.score, f.admission, f.admission_reason, j.unresolved_reason, COALESCE(j.final_apply_url, j.source_url), CONCAT(COALESCE(f.line, ''), ' / ', COALESCE(f.buckets, ''))"
-                           " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE (" + where + ")"
-                           " AND j.status <> 'DUPLICATE' ORDER BY (j.status = 'PUBLISHED') DESC, f.score DESC LIMIT %s", tuple(p for like in likes for p in (like, like)) + (MAX_ROWS,))
+            cursor.execute(
+                "SELECT j.title, j.location_text, j.status, COALESCE(j.source, ''), f.score, f.admission, f.admission_reason, j.unresolved_reason, COALESCE(j.final_apply_url, j.source_url), CONCAT(COALESCE(f.line, ''), ' / ', COALESCE(f.buckets, ''))"
+                " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE (" + where + ")"
+                " AND j.status <> 'DUPLICATE' ORDER BY (j.status = 'PUBLISHED') DESC, f.score DESC LIMIT %s",
+                tuple(p for like in likes for p in (like, like)) + (MAX_ROWS,),
+            )
             rows = [tuple(r) for r in cursor.fetchall()]
     blocks, groups = blocks_for(rows)
     counts = {"matched": len(rows), "groups": groups, "written": False}
