@@ -1,4 +1,4 @@
-"""LIFE-761 (synthetic, no network): one call stamps, comments, moves to Done and reads both back; never repeats a write; a failed read-back is partial."""
+"""(synthetic, no network): one call stamps, comments, moves to Done and reads both back"""
 import io
 import unittest
 from datetime import datetime

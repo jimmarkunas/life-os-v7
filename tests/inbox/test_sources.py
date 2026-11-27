@@ -1,4 +1,6 @@
-"""LIFE-708 (synthetic): Jira and Calendar sources are read-only, scoped per workspace, fail alone, and never reach a live provider."""
+"""(synthetic): Jira and Calendar sources are read-only, scoped per workspace, fail alone, and never reach a live
+provider.
+"""
 import ast
 import unittest
 from datetime import timedelta
@@ -55,7 +57,7 @@ class Reads(unittest.TestCase):
         self.assertEqual((jira.url, jira.assignee, jira.source_status, jira.kind), (f"{BASE}/browse/LIFE-1", "acct-1", "Human UAT", "human_uat"))
         calendar = F.record_for(result, "calendar", "bytalos")
         self.assertEqual((calendar.url, calendar.assignee, calendar.due_tz, calendar.presentation), ("https://cal.example.test/e1", "jim", "America/Chicago", "upcoming"))
-        self.assertEqual(result.records[0].retrieved_at, F.NOW)                                             # fresh: retrieved now
+        self.assertEqual(result.records[0].retrieved_at, F.NOW)  # fresh: retrieved now
 
     def test_the_revision_follows_the_source_status(self):
         a = run([jira_src("personal", [issue(status="Human UAT")])]).records[0]
@@ -90,7 +92,7 @@ class FailClosed(unittest.TestCase):
                 self.assertEqual(calls, [])
                 self.assertEqual(next(h.state for h in result.health if h.source == "jira"), "no_grant")
                 if name == "missing":
-                    self.assertEqual([r.source for r in result.records], ["calendar"])                       # the healthy source is kept
+                    self.assertEqual([r.source for r in result.records], ["calendar"])  # the healthy source is kept
 
     def test_an_erroring_source_is_unavailable_by_type_only_and_the_others_survive(self):
         result = run([jira_src("personal", error=TimeoutError(F.ERROR_CANARY)), cal_src("personal")])

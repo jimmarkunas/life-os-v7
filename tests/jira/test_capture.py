@@ -1,4 +1,4 @@
-"""LIFE-994: Jira decisions into the shared memory. Fake Jira, fake memory and in-memory state; no network, no database."""
+"""Jira decisions into the shared memory."""
 import unittest
 import urllib.error
 import urllib.request
@@ -100,7 +100,7 @@ class CaptureTests(unittest.TestCase):
         gone = self.run_once(FakeJira({"LIFE-1": []}), memory, state)
         self.assertEqual((gone["revoked"], memory.log[-1]), (1, ("revoke", "m2")))
         self.assertEqual(state.comment(11)["state"], "revoked")
-        self.assertEqual(self.run_once(FakeJira({"LIFE-1": []}), memory, state)["revoked"], 0)       # not revoked twice
+        self.assertEqual(self.run_once(FakeJira({"LIFE-1": []}), memory, state)["revoked"], 0)  # not revoked twice
 
     def test_a_sensitive_decision_is_counted_never_stored_and_not_retried_every_hour(self):
         memory, state = FakeMemory(refuse=("SECRETWORD",)), FakeState()
@@ -109,10 +109,10 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual((total["filtered"], total["stored"], state.comment(11)["state"], state.comment(11)["memory_id"]), (1, 0, "filtered", ""))
         self.assertNotIn("SECRETWORD", repr(total))
         again = self.run_once(jira, memory, state)
-        self.assertEqual((again["unchanged"], again["filtered"], len(memory.log)), (1, 0, 1))        # not tried again every hour
+        self.assertEqual((again["unchanged"], again["filtered"], len(memory.log)), (1, 0, 1))  # not tried again every hour
         jira.comments["LIFE-1"] = [comment(11, "[approvals] the card was removed")]
         fixed = self.run_once(jira, memory, state)
-        self.assertEqual((fixed["stored"], len(memory.log)), (1, 2))                                  # an edited comment is judged again
+        self.assertEqual((fixed["stored"], len(memory.log)), (1, 2))  # an edited comment is judged again
 
     def test_comments_that_are_not_decisions_are_ignored_and_the_write_cap_defers_the_rest(self):
         notes = [comment(n, f"Claimed by MC02 number {n}") for n in range(20, 25)]
@@ -121,7 +121,7 @@ class CaptureTests(unittest.TestCase):
         total = self.run_once(FakeJira({"LIFE-1": notes + decisions}), memory, state)
         self.assertEqual((total["decisions"], total["stored"], total["deferred"], len(memory.log)), (C.WRITE_CAP + 5, C.WRITE_CAP, 5, C.WRITE_CAP))
         second = self.run_once(FakeJira({"LIFE-1": notes + decisions}), memory, state)
-        self.assertEqual((second["stored"], second["unchanged"]), (5, C.WRITE_CAP))                   # the deferred five land on the next hour
+        self.assertEqual((second["stored"], second["unchanged"]), (5, C.WRITE_CAP))  # the deferred five land on the next hour
 
     def test_a_dry_run_writes_nothing_anywhere(self):
         memory = FakeMemory()
@@ -202,7 +202,7 @@ class MemoryClient(unittest.TestCase):
             raise OSError("down")
         down = C.Memory("https://example.invalid/mcp", "t", counting)
         down.store("x", "s"), down.store("y", "s")
-        self.assertEqual((len(calls), down.down), (1, "OSError"))  # the second call fails at once; the error class is kept for the run's counts
+        self.assertEqual((len(calls), down.down), (1, "OSError"))  # the second call fails at once
 
     @staticmethod
     def _reply(doc, wrapped):

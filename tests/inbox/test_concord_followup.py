@@ -1,4 +1,4 @@
-"""LIFE-710 (synthetic): the read-only Concord projection and the Followup verdict plus bounded projection. No live read, no write, no TGP, no cross-workspace leak."""
+"""(synthetic): the read-only Concord projection and the Followup verdict plus bounded projection."""
 import json
 import unittest
 from pathlib import Path
@@ -59,9 +59,9 @@ class ConcordProjection(unittest.TestCase):
         rec = run([source(messages=msgs)]).records[0]
         self.assertEqual((rec.source_status, rec.presentation, "resumable" in rec.flags, rec.approval_required), ("approved", "needs_me", True, False))
         offline = run([source(messages=msgs, live=())]).records[0]
-        self.assertNotIn("resumable", offline.flags)                                     # approval is not resume eligibility
+        self.assertNotIn("resumable", offline.flags)  # approval is not resume eligibility
         unknown = run([source(messages=msgs, live=None)]).records[0]
-        self.assertNotIn("resumable", unknown.flags)                                     # `who` unreadable: never guessed
+        self.assertNotIn("resumable", unknown.flags)  # `who` unreadable: never guessed
         no_resume = run([source(messages=[msg("m1", env(resume_after_approval=False)), decision("d1", "m1")])]).records[0]
         self.assertNotIn("resumable", no_resume.flags)
 
@@ -122,7 +122,7 @@ class ConcordProjection(unittest.TestCase):
 
     def test_module_reaches_no_write_path(self):
         text = Path("lifeos/inbox/concord_source.py").read_text()
-        code = "\n".join(line.split("#")[0] for line in text.split('"""')[2:])             # the docstring names what is refused; the code must not use it
+        code = "\n".join(line.split("#")[0] for line in text.split('"""')[2:])  # the docstring names what is refused
         for word in ("update_work", "subprocess", "execFile", "os.system", "requests", "urlopen", "socket", "write_text", "open("):
             self.assertNotIn(word, code)
 
@@ -136,7 +136,7 @@ def ev(kind, key, owner="jim", **kw):
 
 class FollowupVerdict(unittest.TestCase):
     def test_the_default_followup_reader_refuses_while_live_reads_are_off(self):
-        self.assertEqual(followup.FOLLOWUP_PROJECTION_OWNER, "lifeos.inbox.followup_stage")          # LIFE-749: the stage owns the projection; nothing is wired in production
+        self.assertEqual(followup.FOLLOWUP_PROJECTION_OWNER, "lifeos.inbox.followup_stage")  # the stage owns the projection
         result = run([followup.FollowupSource("personal", "jim-personal", "jim")])
         self.assertEqual((result.records, result.health[0].state, result.health[0].reason), ((), "unavailable", "live_reads_not_authorized"))
 
@@ -182,7 +182,7 @@ class FollowupProjection(unittest.TestCase):
         items.append(ev("jim_capture", "a", override="2026-11-25T09:00:00"))
         loop = self.project(items).native[0]
         self.assertEqual((loop["next_checkpoint"], "jim_override" in loop["notes"]), ("2026-11-25T09:00:00", True))
-        self.assertEqual(items[1]["checkpoint"], "2026-11-18T09:00:00")                          # the source item is unchanged
+        self.assertEqual(items[1]["checkpoint"], "2026-11-18T09:00:00")  # the source item is unchanged
 
     def test_contradictory_owners_never_merge(self):
         p = self.project([ev("promise", "a", owner="jim", checkpoint="2026-11-20T09:00:00", checkpoint_source="source"), ev("waiting_on", "a", owner="external", checkpoint="2026-11-20T09:00:00",

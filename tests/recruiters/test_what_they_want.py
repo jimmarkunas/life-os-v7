@@ -1,4 +1,6 @@
-"""LIFE-989: What they want is never empty (extracted ask, else the fallback sentence with Needs review ticked), the backfill fills open rows only, and both the old and the renamed property names work."""
+"""What they want is never empty (extracted ask, else the fallback sentence with Needs review ticked), the backfill fills
+open rows only, and both the.
+"""
 import contextlib
 import io
 import unittest
@@ -24,7 +26,7 @@ class Fallback(unittest.TestCase):
         run([mail(body=ASK)], with_ask, live=True)
         run([signed()], without, live=True)
         a, b = store.read(with_ask.pages[0]), store.read(without.pages[0])
-        self.assertTrue(a["what"].startswith("Send an updated resume") and not a["needs_review"])                 # the extracted ask is kept, no review tick
+        self.assertTrue(a["what"].startswith("Send an updated resume") and not a["needs_review"])  # the extracted ask is kept, no review tick
         self.assertTrue(b["what"].startswith("Reply to their message") and b["needs_review"])
         self.assertTrue(all(store.read(p)["what"].strip() for p in with_ask.pages + without.pages))
 
@@ -43,7 +45,7 @@ class Names(unittest.TestCase):
         self.assertTrue({"Recruiter", "Company"} <= keys and not ({"Recruiter / Person", "Recruiter Company"} & keys))
         row = store.read(notion.pages[0])
         self.assertEqual((row["person"], row["company"]), ("Pat Example", "Acme Staffing"))
-        again = run([signed()], notion, live=True)                                                  # a replay finds the same row
+        again = run([signed()], notion, live=True)  # a replay finds the same row
         self.assertEqual((again["created"], len(notion.pages)), (0, 1))
 
     def test_the_old_names_alone_fail_closed_with_the_fixed_code(self):
@@ -88,10 +90,10 @@ class AskBackfill(unittest.TestCase):
         rows = {store.read(p)["person"]: store.read(p) for p in notion.pages}
         self.assertTrue(rows["Pat Example"]["what"].strip() and rows["Pat Example"]["needs_review"])
         self.assertEqual(rows["Sam Example"]["what"], "Already has text")
-        self.assertEqual(rows["Kim Example"]["what"], "")                                              # a closed row keeps its blank
+        self.assertEqual(rows["Kim Example"]["what"], "")  # a closed row keeps its blank
         self.assertEqual((counts["asks_filled"], counts["asks_fallback"]), (1, 1))
         self.assertIn("recruiters-ask:", out)
-        self.assertNotIn("Pat", out)                                                                     # ids and a kind only, never a name
+        self.assertNotIn("Pat", out)  # ids and a kind only, never a name
 
     def test_an_extracted_ask_is_kept_without_the_review_tick_and_a_dry_run_writes_nothing(self):
         pages = [page("Pat Example", "Acme", role="Data Engineer", url=self.URL, action="Replied")]

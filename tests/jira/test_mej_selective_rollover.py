@@ -1,5 +1,4 @@
-"""LIFE-915: the gated MEJ selective rollover, synthetic only. No live Jira call exists in this file or in the code under test: the backlog primitive is a mock, the gate is off by default,
-and every refusal below must leave the source sprint open (no `closed` in the write log)."""
+"""the gated MEJ selective rollover, synthetic only."""
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -24,15 +23,15 @@ class MejFake(FakeJira):
     def __init__(self, sprints, issues=(), subtasks=None, types=None, **kw):
         knobs = {k: kw.pop(k) for k in self.KNOBS if k in kw}
         super().__init__(sprints, issues, subtasks=subtasks, **kw)
-        self.types = dict(types or {})                           # key -> "Task" | "Story" | "Epic"
+        self.types = dict(types or {})  # key -> "Task" | "Story" | "Epic"
         self.backlog = set()
-        self.backlog_lag = 0                                      # reads that hide the moved keys (eventual consistency)
-        self.backlog_fail = None                                  # exception to raise from the move
-        self.read_fail = None                                     # exception to raise from the backlog read
-        self.drop = set()                                         # keys the backlog silently fails to take (partial)
-        self.leave_child = False                                  # a child that stays in the sprint when its parent is backlogged
-        self.sprint_field = None                                  # what the issue reads claim as their sprint id
-        self.sprint_state = None                                  # override of client.sprint()["state"]
+        self.backlog_lag = 0
+        self.backlog_fail = None  # exception to raise from the move
+        self.read_fail = None  # exception to raise from the backlog read
+        self.drop = set()  # keys the backlog silently fails to take (partial)
+        self.leave_child = False
+        self.sprint_field = None  # what the issue reads claim as their sprint id
+        self.sprint_state = None  # override of client.sprint["state"]
         for name, value in knobs.items():
             setattr(self, name, value)
 
@@ -52,7 +51,7 @@ class MejFake(FakeJira):
             f = {"issuetype": {"name": "Sub-task" if sub else self.types.get(key, "Task"), "subtask": sub}}
             if sub:
                 parent = self.subtasks[key]
-                held = {k: s for items in self.members.values() for k, s in items.items()}          # a parent that left for the backlog has no known status
+                held = {k: s for items in self.members.values() for k, s in items.items()}
                 f["parent"] = ({"key": parent, "fields": {"status": {"name": held[parent]}}} if parent in held else {"key": parent}) if parent else None
             if self.sprint_field is not None:
                 f["sprint"] = {"id": self.sprint_field}
@@ -98,7 +97,9 @@ def sprint_week():
 
 
 def fresh(types=None, subtasks=None, extra=(), **kw):
-    """Source sprint 1 with an approved Task (M-1) and its child (M-2), an unapproved Task (M-3) and its child (M-4), a finite weekly occurrence (M-5) and a stranded child of a Done parent (M-6)."""
+    """Source sprint 1 with an approved Task (M-1) and its child (M-2), an unapproved Task (M-3) and its child (M-4), a
+    finite weekly occurrence (M-5) and a.
+    """
     issues = [("MEJ-1", 1, "To Do"), ("MEJ-2", 1, "To Do"), ("MEJ-3", 1, "In Progress"), ("MEJ-4", 1, "To Do"), ("MEJ-5", 1, "To Do"),
               ("MEJ-6", 1, "To Do"), ("MEJ-7", 1, "Done"), *extra]
     subs = {"MEJ-2": "MEJ-1", "MEJ-4": "MEJ-3", "MEJ-6": "MEJ-7"}
@@ -109,7 +110,7 @@ def fresh(types=None, subtasks=None, extra=(), **kw):
 class GateOffByDefault(unittest.TestCase):
     def test_the_gate_is_off_unless_a_caller_passes_it_and_no_caller_does(self):
         users = [str(p.relative_to(ROOT)) for p in (ROOT / "lifeos").rglob("*.py") if "mej_selective" in p.read_text()]
-        self.assertEqual(users, ["lifeos/jira/rollover.py"])             # nothing else (not run.py, not a workflow) passes it
+        self.assertEqual(users, ["lifeos/jira/rollover.py"])
         self.assertEqual([], [str(p) for p in (ROOT / ".github").rglob("*") if p.is_file() and "mej_selective" in p.read_text(errors="ignore")])
 
     def test_mej_with_the_gate_off_carries_everything_unfinished_exactly_as_main_does(self):
@@ -120,7 +121,7 @@ class GateOffByDefault(unittest.TestCase):
         self.assertEqual(a.log, b.log)
         self.assertEqual(a.log, ["create", "move", "closed", "active"])
         self.assertNotIn("backlog", a.log)
-        self.assertEqual(sorted(a.members[a.next_id]), ["MEJ-1", "MEJ-2", "MEJ-3", "MEJ-4", "MEJ-5"])      # everything unfinished moves; the Done parent's child is stranded (D181)
+        self.assertEqual(sorted(a.members[a.next_id]), ["MEJ-1", "MEJ-2", "MEJ-3", "MEJ-4", "MEJ-5"])  # everything unfinished moves
         self.assertEqual(default["stranded"], 1)
 
     def test_the_same_gate_on_another_project_changes_nothing(self):
@@ -144,10 +145,10 @@ class SelectiveCarry(unittest.TestCase):
     def test_an_approved_task_and_its_child_are_carried_once_and_the_rest_placed_in_the_backlog(self):
         client = fresh()
         out = self.go(client, finite=["MEJ-5"])
-        self.assertEqual(client.log, ["create", "move", "backlog", "closed", "active"])         # one carry move, one backlog move, then close and start
+        self.assertEqual(client.log, ["create", "move", "backlog", "closed", "active"])
         target = client.members[client.next_id]
-        self.assertEqual(sorted(target), ["MEJ-1", "MEJ-2"])                                   # the approved Task with its child, once
-        self.assertEqual(client.backlog, {"MEJ-3", "MEJ-4", "MEJ-5"})                         # the unapproved Task and child, and the finite occurrence
+        self.assertEqual(sorted(target), ["MEJ-1", "MEJ-2"])  # the approved Task with its child, once
+        self.assertEqual(client.backlog, {"MEJ-3", "MEJ-4", "MEJ-5"})
         self.assertEqual((out["carried"], out["backlogged"], out["stranded"], out["finite_missed"], out["closed"]), (2, 3, 1, 1, 1))
         self.assertEqual(client.sprints_by_id[1]["state"], "closed")
 
@@ -155,10 +156,10 @@ class SelectiveCarry(unittest.TestCase):
         client = fresh()
         self.go(client, finite=["MEJ-5"])
         statuses = {k: v for items in client.members.values() for k, v in items.items()}
-        self.assertEqual(client.log.count("create"), 1)                                          # only the next sprint; no clone of the occurrence
+        self.assertEqual(client.log.count("create"), 1)  # only the next sprint
         self.assertNotIn("MEJ-5", client.members[client.next_id])
-        self.assertNotIn("MEJ-5", statuses)                                                      # it left the sprint for the backlog, still unfinished: its status was never written
-        self.assertEqual(client.members[1].get("MEJ-7"), "Done")                                 # history preserved
+        self.assertNotIn("MEJ-5", statuses)
+        self.assertEqual(client.members[1].get("MEJ-7"), "Done")  # history preserved
         with self.assertRaisesRegex(JiraError, "JIRA_MEJ_FINITE_NOT_CARRY"):
             self.go(fresh(), roster=["MEJ-1", "MEJ-5"], finite=["MEJ-5"])
 
@@ -210,14 +211,14 @@ class RosterAndInventory(unittest.TestCase):
         self.refuses(client, "JIRA_MEJ_INVENTORY_INVALID", config(["MEJ-1"]))
 
     def test_a_child_whose_parent_is_in_another_destination_fails_closed_after_the_move(self):
-        client = fresh(leave_child=True)                                                         # the backlog takes MEJ-3 but the child MEJ-4 stays in the sprint
-        with self.assertRaisesRegex(JiraError, "JIRA_MEJ_DESTINATION_MISMATCH"):                  # first pass: the readback lacks the child (partial), the re-plan sees the orphan
+        client = fresh(leave_child=True)
+        with self.assertRaisesRegex(JiraError, "JIRA_MEJ_DESTINATION_MISMATCH"):
             run(client, True, at(5, 6), config(["MEJ-1"], finite=["MEJ-5"]))
         self.assertNotIn("closed", client.log)
 
     def test_a_carried_key_found_in_the_backlog_is_a_destination_mismatch(self):
         client = fresh()
-        client.backlog.add("MEJ-1")                                                               # the approved Task is also read as backlog
+        client.backlog.add("MEJ-1")  # the approved Task is also read as backlog
         with self.assertRaisesRegex(JiraError, "JIRA_MEJ_DESTINATION_MISMATCH"):
             run(client, True, at(5, 6), config(["MEJ-1"], finite=["MEJ-5"]))
         self.assertNotIn("closed", client.log)
@@ -245,7 +246,7 @@ class BacklogFailures(unittest.TestCase):
     def test_a_partial_result_is_retried_once_then_refuses_close(self):
         client = fresh(drop={"MEJ-3"})
         slept = self.refuses(client, "JIRA_MEJ_BACKLOG_PARTIAL")
-        self.assertEqual(slept, [15])                                                           # exactly one bounded re-plan
+        self.assertEqual(slept, [15])  # exactly one bounded re-plan
         self.assertEqual(client.log.count("backlog"), 2)
 
     def test_one_bounded_consistency_retry_recovers_a_lagging_readback(self):
@@ -254,7 +255,7 @@ class BacklogFailures(unittest.TestCase):
         out = run(client, True, at(5, 6), config(["MEJ-1"], ["MEJ-5"]), sleep=slept.append)
         self.assertEqual(slept, [15])
         self.assertEqual(out["closed"], 1)
-        self.assertEqual(sorted(client.members[client.next_id]), ["MEJ-1", "MEJ-2"])           # carried once even though the plan ran twice
+        self.assertEqual(sorted(client.members[client.next_id]), ["MEJ-1", "MEJ-2"])  # carried once even though the plan ran twice
         self.assertEqual(client.log.count("closed"), 1)
 
 
@@ -263,11 +264,11 @@ class RestartRecovery(unittest.TestCase):
         client = fresh()
         sprint_2 = sprint(2, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ))
         client.sprints_by_id[2] = sprint_2
-        client.members[2] = {"MEJ-1": "To Do", "MEJ-2": "To Do"}                                  # the earlier run already moved the approved Task and its child
+        client.members[2] = {"MEJ-1": "To Do", "MEJ-2": "To Do"}
         client.members[1].pop("MEJ-1")
         client.members[1].pop("MEJ-2")
         out = run(client, True, at(5, 6), config(["MEJ-1"], ["MEJ-5"]))
-        self.assertEqual(client.log, ["backlog", "closed", "active"])                            # no second create, no second move of the carried work
+        self.assertEqual(client.log, ["backlog", "closed", "active"])
         self.assertEqual((out["carried"], out["backlogged"], out["closed"]), (0, 3, 1))
         self.assertEqual(sorted(client.members[2]), ["MEJ-1", "MEJ-2"])
 
@@ -327,10 +328,10 @@ class Primitive(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=fake):
             client.move_to_backlog(["MEJ-%d" % n for n in range(1, 61)])
             client.backlog_issues(38, "statusCategory != Done", "summary")
-        self.assertEqual([c[0:2] for c in calls[:2]], [("POST", "/rest/agile/1.0/backlog/issue")] * 2)           # 60 keys go in two bounded batches
+        self.assertEqual([c[0:2] for c in calls[:2]], [("POST", "/rest/agile/1.0/backlog/issue")] * 2)  # 60 keys go in two bounded batches
         self.assertTrue(calls[2][1].startswith("/rest/agile/1.0/board/38/backlog"))
         sources = [str(p.relative_to(ROOT)) for p in (ROOT / "lifeos").rglob("*.py") if "move_to_backlog" in p.read_text()]
-        self.assertEqual(sorted(sources), ["lifeos/jira/rollover.py", "lifeos/jira/writers.py", "lifeos/platform/jira.py"])      # LIFE-918 wiring: writers.py is the one gated caller (JIRA_WRITERS_VERIFIED)
+        self.assertEqual(sorted(sources), ["lifeos/jira/rollover.py", "lifeos/jira/writers.py", "lifeos/platform/jira.py"])
 
 
 if __name__ == "__main__":

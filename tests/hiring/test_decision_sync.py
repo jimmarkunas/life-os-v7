@@ -1,4 +1,6 @@
-"""LIFE-973, synthetic only: a Hiring Decision set by hand in the Job Ledger gets Decision On, one history line and Freshness Status Closed; Hiring Decision itself is never changed."""
+"""synthetic only: a Hiring Decision set by hand in the Job Ledger gets Decision On, one history line and Freshness
+Status Closed
+"""
 import json
 import unittest
 from datetime import datetime
@@ -48,7 +50,7 @@ class DecisionSync(unittest.TestCase):
         self.assertEqual((props[D.DECISION]["select"]["name"], props[S.DECISION_ON]["date"]["start"], props[S.FRESHNESS]["select"]["name"]), ("Rejected", "2026-11-25", "Closed"))
         [entry] = D.entries(D._text(props[D.HISTORY], "rich_text"))
         self.assertEqual((entry["outcome"], entry["action"]), ("Rejected", "hand-set"))
-        self.assertNotIn(D.DECISION, ledger.writes[0][1])                                                  # the decision itself is never written
+        self.assertNotIn(D.DECISION, ledger.writes[0][1])  # the decision itself is never written
 
     def test_a_row_that_already_has_all_three_is_left_alone_and_a_replay_writes_nothing(self):
         done = json.dumps({"op": "x1", "action": "CONFIRM_REJECTED", "at": "2026-11-20T09:00:00-06:00", "reason": "r", "outcome": "Passed"})

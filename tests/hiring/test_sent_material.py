@@ -1,6 +1,4 @@
-"""LIFE-114 (Jim, Oct 29 2026): Materials Sent on the opportunity page. Jim records an application form / portal answers (an optional link) or a Google Drive file
-(a project plan, an article) on Manage, through the signed review and confirm, stored on the opportunity's Job Ledger row (LIFE-353); his own emails on the job's request thread are
-read from Gmail (read only, metadata only). Cover letters are out. Every name is invented; nothing is live."""
+"""Materials Sent on the opportunity page."""
 import unittest
 from dataclasses import replace
 from unittest import mock
@@ -39,7 +37,7 @@ class Manage(unittest.TestCase):
         status, body, _ = h.hand_review("sent", sk="form", sx="Workday application answers", su="https://example.test/apply/1")
         self.assertEqual(status, 200, body)
         self.assertIn("Sent: Application form / portal answers · Workday application answers", body)
-        self.assertEqual(h.writes(), (0, 0))                                                            # review writes nothing
+        self.assertEqual(h.writes(), (0, 0))  # review writes nothing
         status, body, _ = h.hand("sent", sk="form", sx="Workday application answers", su="https://example.test/apply/1")
         self.assertEqual(status, 200, body)
         after = hand_text(h.world.source).splitlines()
@@ -47,13 +45,13 @@ class Manage(unittest.TestCase):
         got = M.sent_of(after)
         self.assertEqual([(s["kind"], s["text"], s["url"]) for s in got], [(M.FORM, "Workday application answers", "https://example.test/apply/1")])
         self.assertIn("Application form / portal answers: Workday application answers · recorded", h.hub(h.world.ws.target)[1])
-        self.assertEqual(h.after, [])                                                                   # sent material never redraws the Hiring Pipeline
+        self.assertEqual(h.after, [])  # sent material never redraws the Hiring Pipeline
 
     def test_a_form_needs_what_it_was_and_a_link_is_optional_but_must_be_https(self):
         h, fold = ledger_page()
         self.assertEqual(h.hand_review("sent", sk="form", sx="")[0], 400)
         self.assertEqual(h.hand_review("sent", sk="form", sx="Portal answers", su="javascript:alert(1)")[0], 400)
-        self.assertEqual(h.hand_review("sent", sk="letter", sx="Cover letter")[0], 400)              # cover letters are out of scope: only form | file
+        self.assertEqual(h.hand_review("sent", sk="letter", sx="Cover letter")[0], 400)  # cover letters are out of scope: only form | file
         status, body, _ = h.hand("sent", sk="form", sx="Portal answers")
         self.assertEqual(status, 200, body)
         self.assertEqual(M.sent_of(hand_text(h.world.source).splitlines())[0]["url"], None)
@@ -62,7 +60,7 @@ class Manage(unittest.TestCase):
         h, fold = ledger_page()
         self.assertEqual(h.hand_review("sent", sk="file", su="https://example.test/not-drive")[0], 400)
         with mock.patch.object(manage_app, "_drive", lambda secrets: None):
-            self.assertEqual(h.hand_review("sent", sk="file", su=DRIVE_URL)[0], 409)                 # Drive not connected on the Close service
+            self.assertEqual(h.hand_review("sent", sk="file", su=DRIVE_URL)[0], 409)  # Drive not connected on the Close service
         with mock.patch.object(manage_app, "_drive", lambda secrets: Drive(trashed=True)):
             status, body, _ = h.hand_review("sent", sk="file", su=DRIVE_URL)
             self.assertEqual(status, 409)
@@ -71,7 +69,7 @@ class Manage(unittest.TestCase):
         with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
             status, body, _ = h.hand("sent", sk="file", su=DRIVE_URL)
         self.assertEqual(status, 200, body)
-        self.assertEqual(drive.gets, 2)                                                                 # read at review and again at confirm, never changed
+        self.assertEqual(drive.gets, 2)  # read at review and again at confirm, never changed
         got = M.sent_of(hand_text(h.world.source).splitlines())
         self.assertEqual([(s["kind"], s["text"], s["url"]) for s in got], [(M.FILE, "Launch plan for ExampleCo", drive.meta["webViewLink"])])
 
@@ -95,12 +93,11 @@ class Manage(unittest.TestCase):
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([s["text"] for s in M.sent_of(got)], ["Portal answers", "Assessment answers"])
         self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.WAITING, "Call Pat", 4))
-        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["drive", "hold", "next", "sent", "sent", "unsent", "unsent"])   # LIFE-172: one Remove per item; LIFE-173: Drive search; LIFE-174: a Drive-link form and a form form
+        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["drive", "hold", "next", "sent", "sent", "unsent", "unsent"])
 
 
 class Remove(unittest.TestCase):
-    """LIFE-172 (Jim, Oct 30 2026): a sent item is removed on Manage through its own review and confirm. The removal is one more append-only line naming the item's op,
-    so the record keeps its history; Manage and the opportunity page then leave the item out."""
+    """a sent item is removed on Manage through its own review and confirm."""
     def test_a_removed_item_leaves_manage_and_the_ledger_keeps_both_lines(self):
         h = M2([(TD.TARGET, COMPANY, ROLE)])
         ledger_ready(h.world.source)
@@ -112,13 +109,13 @@ class Remove(unittest.TestCase):
         status, body, _ = h.call("POST", "/manage", form=remove)
         self.assertEqual(status, 200, body)
         self.assertIn("Remove sent material: Test", body)
-        self.assertEqual(len(h.world.source.patches()), before)                                        # review writes nothing
+        self.assertEqual(len(h.world.source.patches()), before)  # review writes nothing
         status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
         self.assertEqual(len(h.world.source.patches()), before + 1)
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([m["text"] for m in M.sent_of(got)], ["Portal answers"])
-        self.assertEqual(sum(1 for t in got if M.SENT_LINE.fullmatch(t)), 2)                           # the item's own line stays: history is kept
+        self.assertEqual(sum(1 for t in got if M.SENT_LINE.fullmatch(t)), 2)  # the item's own line stays: history is kept
         self.assertEqual(M.UNSENT_LINE.fullmatch(got[-1]).group(3), test["op"])
         hub = h.hub(h.world.ws.target)[1]
         self.assertNotIn("Form / portal answers: Test", hub)
@@ -148,7 +145,7 @@ class Remove(unittest.TestCase):
     def test_the_page_leaves_a_removed_item_out_and_carries_the_removal(self):
         gone = M.unsent_line(OP, "2026-10-06T09:00:00-05:00", "e" * 16)
         page = Page()
-        self.assertFalse([t for t in page.materials(opp(hand=(FORM,), hand_ledger=(gone,))) if t.startswith("Application form")])     # removed on the other record: still gone
+        self.assertFalse([t for t in page.materials(opp(hand=(FORM,), hand_ledger=(gone,))) if t.startswith("Application form")])  # removed on the other record: still gone
         para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}         # noqa: E731
         self.assertEqual(create.hand_lines([para(FORM), para(gone)]), (FORM, gone))
         self.assertEqual(create._undone([{"text": notion.FOLD, "children": [{"text": gone}]}]), [{"text": notion.FOLD, "children": []}])
@@ -166,7 +163,7 @@ class Page(unittest.TestCase):
         got = self.materials(page)
         self.assertTrue(got[0].startswith("Submitted résumé"))
         self.assertIn("Application form — Workday application answers · recorded Oct 5", got)
-        self.assertIn("Email you sent — Thank you — ExampleCo · Oct 6", got)                          # 1:30 AM UTC Oct 7 is Oct 6 in Central Time
+        self.assertIn("Email you sent — Thank you — ExampleCo · Oct 6", got)
         self.assertIn("https://example.test/apply/1", str(template.opportunity_page(page, "2026-10-24")))
 
     def test_none_sent_unreadable_and_not_connected_are_never_the_same(self):
@@ -178,7 +175,7 @@ class Page(unittest.TestCase):
 
     def test_the_same_record_on_both_records_shows_once_and_sent_lines_are_carried_and_never_an_edit(self):
         self.assertEqual(len([t for t in self.materials(opp(hand=(FORM,), hand_ledger=(FORM,))) if t.startswith("Application form")]), 1)
-        self.assertIn(FORM, texts(template.opportunity_page(opp(hand=(FORM,)), "2026-10-24")))         # carried in the fold as written
+        self.assertIn(FORM, texts(template.opportunity_page(opp(hand=(FORM,)), "2026-10-24")))  # carried in the fold as written
         para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}         # noqa: E731
         hold = M.hold_line(M.PAUSED, SET_AT, "f" * 16)
         self.assertEqual(create.hand_lines([para(FORM), para(notion.MARKERS["opportunity"]), para(hold)]), (FORM, hold))
@@ -209,7 +206,7 @@ class Mail(unittest.TestCase):
         self.assertFalse(failed)
         self.assertEqual(g.asked, [self.THREAD])
         self.assertEqual((out[0][1].sent_mail, out[0][1].sent_mail_state), ((("2026-10-07T01:30:00+00:00", "Thank you"),), "read"))
-        self.assertEqual((out[1][1].sent_mail, out[1][1].sent_mail_state), ((), None))               # not a Gmail request: untouched
+        self.assertEqual((out[1][1].sent_mail, out[1][1].sent_mail_state), ((), None))  # not a Gmail request: untouched
 
         class Down:
             def thread_sent(self, thread):
@@ -220,9 +217,9 @@ class Mail(unittest.TestCase):
         class Gone:
             def thread_sent(self, thread):
                 raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me/threads -> HTTP 404 notFound")
-        out, failed = interview_evidence.sent_mail({}, self.evidence(), Gone())                         # LIFE-657: a thread Gmail does not have stays unreadable and is not a failure to retry
+        out, failed = interview_evidence.sent_mail({}, self.evidence(), Gone())
         self.assertEqual((failed, out[0][1].sent_mail_state), (False, "unreadable"))
-        out, failed = interview_evidence.sent_mail({}, self.evidence(), None)                           # no Gmail credential in this step: not connected
+        out, failed = interview_evidence.sent_mail({}, self.evidence(), None)  # no Gmail credential in this step: not connected
         self.assertEqual((out, failed), (self.evidence(), False))
 
     def test_the_reader_keeps_only_sent_messages_and_their_subject(self):
@@ -249,8 +246,7 @@ if __name__ == "__main__":
 
 
 class Search(unittest.TestCase):
-    """LIFE-173 (Jim, Oct 30 2026): "I don't want to have to hunt for Google Drive files". Manage searches Jim's Drive by name (read only); a hit opens the usual
-    sent-material review for that file, so nothing is recorded until he confirms there."""
+    """'I don't want to have to hunt for Google Drive files'."""
     class Found(Drive):
         def __init__(self, files=None):
             super().__init__()
@@ -272,7 +268,7 @@ class Search(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(drive.queries, [("name contains 'Launch o\\'plan' and mimeType != 'application/vnd.google-apps.folder'", "modifiedTime desc")])
         self.assertIn("Launch plan for ExampleCo", body)
-        self.assertIn(f"/manage?o={form['p']}", body)                                                  # back to Manage, nothing recorded
+        self.assertIn(f"/manage?o={form['p']}", body)  # back to Manage, nothing recorded
         self.assertEqual(h.writes(), (0, 0))
         pick = next(f for f in forms(body) if f.get("act") == "sent")
         self.assertEqual((pick["sk"], pick["su"]), (M.FILE, drive.meta["webViewLink"]))
@@ -280,7 +276,7 @@ class Search(unittest.TestCase):
             status, body, _ = h.call("POST", "/manage", form=pick)
             self.assertEqual(status, 200, body)
             self.assertIn("Launch plan for ExampleCo", body)
-            self.assertEqual(h.writes(), (0, 0))                                                        # review writes nothing
+            self.assertEqual(h.writes(), (0, 0))  # review writes nothing
             status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
         self.assertEqual([(m["kind"], m["text"]) for m in M.sent_of(hand_text(h.world.source).splitlines())], [(M.FILE, "Launch plan for ExampleCo")])
@@ -300,7 +296,7 @@ class Search(unittest.TestCase):
         self.assertEqual(h.writes(), (0, 0))
 
     def test_an_empty_box_lists_the_latest_files_to_pick_from(self):
-        """Jim, Oct 31 2026: "I shouldn't have to type". An empty search lists the most recently edited files (folders excluded); a Pick opens the review as before."""
+        """An empty search lists the most recently edited files (folders excluded)"""
         h, _ = ledger_page()
         drive = self.Found()
         for q in ("", "   "):
@@ -321,7 +317,9 @@ class Search(unittest.TestCase):
 
 
 class Layout(unittest.TestCase):
-    """LIFE-174 (Jim, Oct 31 2026): Manage's actions are one card each, their fields and button together, styled by /manage.css (the gate's CSP allows no inline styles)."""
+    """Manage's actions are one card each, their fields and button together, styled by /manage.css (the gate's CSP allows
+    no inline styles).
+    """
     def test_the_hub_links_its_stylesheet_and_every_field_sits_in_a_card(self):
         h, _ = ledger_page()
         body = h.hub(h.world.ws.target)[1]
@@ -336,8 +334,7 @@ class Layout(unittest.TestCase):
 
 
 class Expiry(unittest.TestCase):
-    """LIFE-174 (Jim, Oct 31 2026): Manage forms stayed valid for only 15 minutes, so a page left open refused every click. They now last 8 hours, and a stale or
-    altered form offers Manage again in one click, writing nothing."""
+    """Manage forms stayed valid for only 15 minutes, so a page left open refused every click."""
     def test_a_page_open_for_hours_still_works_and_an_expired_one_offers_a_reload(self):
         from datetime import timedelta
         h, fold = ledger_page()
@@ -358,8 +355,7 @@ class Expiry(unittest.TestCase):
 
 
 class Picker(unittest.TestCase):
-    """LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): Google's own Drive picker on Manage, shown only once its public browser identifiers are set; a pick
-    posts the usual sent-material form (sk=file, su=the file's link), so the review and confirm are unchanged and nothing is recorded before them."""
+    """Google's own Drive picker on Manage, shown only once its public browser identifiers are set"""
     CONFIG = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
 
     def test_no_picker_until_it_is_configured(self):
@@ -367,14 +363,14 @@ class Picker(unittest.TestCase):
         body = h.hub(h.world.ws.target)[1]
         self.assertNotIn("pick-drive", body)
         self.assertNotIn("manage-picker.js", body)
-        self.assertIn("Show my Drive files", body)                                                     # the LIFE-173 way stays
+        self.assertIn("Show my Drive files", body)  # the way stays
 
     def test_the_configured_picker_button_posts_the_usual_sent_form(self):
         h, _ = ledger_page()
         with mock.patch.object(manage_app, "picker", lambda secrets: self.CONFIG):
             body = h.hub(h.world.ws.target)[1]
         self.assertIn('<script src="/manage-picker.js" defer></script>', body)
-        self.assertEqual(body.count("<script"), body.count('<script src="/'))                           # no inline script: the CSP allows none
+        self.assertEqual(body.count("<script"), body.count('<script src="/'))  # no inline script: the CSP allows none
         self.assertIn(f'id="pick-drive" disabled data-client="{self.CONFIG["client_id"]}" data-key="{self.CONFIG["api_key"]}" data-app="1234567"', body)
         pick = next(f for f in forms(body) if f.get("act") == "sent" and "su" in f and f.get("su") == "" and f.get("sk") == M.FILE and 'id="pick-form"' in body)
         self.assertEqual((pick["sk"], pick["su"]), (M.FILE, ""))
@@ -383,18 +379,18 @@ class Picker(unittest.TestCase):
         self.assertEqual((status, ctype, extra), (200, "text/javascript; charset=utf-8", ()))
         for part in (b"https://www.googleapis.com/auth/drive.file", b'"https://drive.google.com/file/d/" + d.docs[0].id + "/view"', b"google.picker.Action.PICKED", b"f.submit()"):
             self.assertIn(part, js)
-        self.assertNotIn(b"auth/drive\"", js)                                                           # never the full Drive scope
-        for part in (b'localStorage.setItem(KEY', b"t.exp > Date.now()", b'requestAccessToken({ prompt: "" })', b"keep(r); show();"):   # LIFE-173: one sign-in, reused
+        self.assertNotIn(b"auth/drive\"", js)  # never the full Drive scope
+        for part in (b'localStorage.setItem(KEY', b"t.exp > Date.now()", b'requestAccessToken({ prompt: "" })', b"keep(r); show();"):  # one sign-in, reused
             self.assertIn(part, js)
-        self.assertTrue(manage_app.DRIVE_LINK.fullmatch("https://drive.google.com/file/d/1AbCdEfGhIjK_lmnop/view"))   # the link the picker posts is one the review accepts
+        self.assertTrue(manage_app.DRIVE_LINK.fullmatch("https://drive.google.com/file/d/1AbCdEfGhIjK_lmnop/view"))
 
     def test_the_identifiers_come_only_from_the_gate_and_only_in_their_exact_shapes(self):
         self.assertEqual(manage_app.picker({"picker": dict(self.CONFIG)}), self.CONFIG)
-        self.assertEqual(manage_app.picker({"picker": {**self.CONFIG, "extra": "x"}}), self.CONFIG)              # only the three fields are used
+        self.assertEqual(manage_app.picker({"picker": {**self.CONFIG, "extra": "x"}}), self.CONFIG)  # only the three fields are used
         for bad in ({}, {"picker": None}, {"picker": {**self.CONFIG, "api_key": ""}}, {"picker": {**self.CONFIG, "client_id": 'x" onclick="y'}},
                     {"picker": {**self.CONFIG, "app_id": "12a"}}, {"picker": {k: v for k, v in self.CONFIG.items() if k != "app_id"}}):
             self.assertIsNone(manage_app.picker(bad), bad)
-        self.assertFalse(hasattr(manage_app, "PICKER"))                                                        # never held in this public repository
+        self.assertFalse(hasattr(manage_app, "PICKER"))  # never held in this public repository
 
     def test_the_picker_script_is_routed(self):
         from lifeos.sources.apps import close_app

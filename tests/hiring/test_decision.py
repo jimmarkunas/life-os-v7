@@ -1,7 +1,4 @@
-"""D194: Confirm Rejected. A confirmed action writes one exact Job Ledger row with read-back.
-
-All company names, roles and ids here are invented. The chain under test is the Close screen's: hiring.decision routes the request to its Ledger row by page id and confirm_rejected writes it through the Ledger client interface;
-only Notion (a stateful in-memory Ledger) is a stand-in. The compiler's own tests are in CompilerTests; the Hiring Pipeline projection is tested in test_hiring."""
+"""Confirm Rejected."""
 import copy
 import json
 import re
@@ -22,7 +19,7 @@ OP = "op-0123456789"
 NOW = T.NOW
 
 
-_OUTCOME_SCAN = mock.patch.object(T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat()))     # the outcome-mail scan saved an hour ago: these tests are about the decision, not that stage
+_OUTCOME_SCAN = mock.patch.object(T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat()))
 
 
 def setUpModule():
@@ -38,8 +35,8 @@ def request(**changes):
 
 
 class Source:
-    """A stateful synthetic Job Ledger data source: the pages, their edit times and the exact calls made. Failure switches cover every step of the write."""
-    source = "e5" * 16                                   # the canonical Ledger data source: every row's parent names it
+    """A stateful synthetic Job Ledger data source: the pages, their edit times and the exact calls made."""
+    source = "e5" * 16
 
     def __init__(self, rows=None, schema=True):
         rows = [(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, SIBLING_ROLE), (OTHER, OTHER_COMPANY, "Program Manager")] if rows is None else rows
@@ -61,7 +58,7 @@ class Source:
         self.log.append((method, path.split("/")[1]))
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
-        if path.startswith("/blocks/"):                                                    # a row page's body (the pipeline reader): these rows have none
+        if path.startswith("/blocks/"):
             return {"results": [], "has_more": False}
         props = {name: {"type": kind} for name, kind in ledger.REQUIRED.items()}
         if self.schema:
@@ -73,18 +70,18 @@ class Source:
     def query_data_source(self, source_id=None, body=None):
         flt = body["filter"]
         staged = lambda p: bool((p["properties"].get("Stage") or {}).get("select"))                       # noqa: E731
-        if flt == {"property": "Stage", "select": {"is_not_empty": True}}:        # LIFE-352: the Ledger-first read (the pipeline reader); not part of the write path under test
+        if flt == {"property": "Stage", "select": {"is_not_empty": True}}:  # the Ledger-first read (the pipeline reader)
             if self.fail_read:
                 raise NotionError("NOTION_HTTP_500")
             return {"results": [copy.deepcopy(p) for p in self.pages.values() if staged(p)], "has_more": False}
-        if flt == {"property": "Hiring Decision", "select": {"is_not_empty": True}}:      # LIFE-973: the decision sync's read, covered by test_decision_sync
+        if flt == {"property": "Hiring Decision", "select": {"is_not_empty": True}}:
             return {"results": [], "has_more": False}
         self.log.append(("QUERY", "data_sources"))
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
         if flt == {"property": "Applied", "checkbox": {"equals": True}}:
             return {"results": [copy.deepcopy(p) for p in self.pages.values() if p["properties"]["Applied"]["checkbox"]], "has_more": False}
-        assert flt == D.PURSUIT, flt                                                                         # LIFE-353: the decision writers' read, Applied ticked or Stage set
+        assert flt == D.PURSUIT, flt
         return {"results": [copy.deepcopy(p) for p in self.pages.values() if p["properties"]["Applied"]["checkbox"] or staged(p)], "has_more": False}
 
     def get_page(self, page_id):
@@ -124,7 +121,9 @@ class Source:
 
 
 class Chain:
-    """What the Close screen does: `route` finds the Ledger row by page id, then `confirm_rejected` writes it with read-back."""
+    """What the Close screen does: `route` finds the Ledger row by page id, then `confirm_rejected` writes it with read-
+    back.
+    """
 
     def __init__(self, source=None):
         self.source = source or Source()
@@ -143,13 +142,13 @@ class ConfirmRejectedTests(unittest.TestCase):
         before = copy.deepcopy(chain.source.pages)
         done = chain.confirm()
         self.assertEqual((done["status"], done["verified"], done["entries"]), ("recorded", True, 1))
-        self.assertEqual(chain.source.patches(), [("PATCH", TARGET, ("Hiring Decision", "Hiring Decision History"))])      # one bounded write, two properties, one row
+        self.assertEqual(chain.source.patches(), [("PATCH", TARGET, ("Hiring Decision", "Hiring Decision History"))])  # one bounded write, two properties, one row
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
         entry = json.loads(chain.source.history())
         self.assertEqual(entry, {"action": "CONFIRM_REJECTED", "at": NOW.isoformat(timespec="seconds"), "op": OP, "reason": "Employer rejection email confirmed", "outcome": "Rejected"})
-        for page_id in (SIBLING, OTHER):                                                           # another opportunity at the same company, and another company: not touched
+        for page_id in (SIBLING, OTHER):
             self.assertEqual(chain.source.pages[page_id], before[page_id])
-        for name in ("Applied", "Applied On", "Saturn Decision", "Company", "Job"):               # the historical application stays exactly as it was
+        for name in ("Applied", "Applied On", "Saturn Decision", "Company", "Job"):  # the historical application stays exactly as it was
             self.assertEqual(chain.source.pages[TARGET]["properties"][name], before[TARGET]["properties"][name], name)
 
     def test_retrying_the_same_confirmed_operation_writes_and_appends_nothing_twice(self):
@@ -167,7 +166,7 @@ class ConfirmRejectedTests(unittest.TestCase):
             chain.confirm(request(op="op-9876543210"))
         self.assertEqual(str(error.exception), "DECISION_CONFLICT")
         self.assertEqual(len(chain.source.patches()), 1)
-        chain.source.pages[TARGET]["properties"]["Hiring Decision"] = {"select": {"name": "Passed"}}                  # a different existing decision
+        chain.source.pages[TARGET]["properties"]["Hiring Decision"] = {"select": {"name": "Passed"}}  # a different existing decision
         chain.source.pages[TARGET]["properties"]["Hiring Decision History"] = {"rich_text": []}
         with self.assertRaises(D.DecisionError) as error:
             chain.confirm(request(op="op-5555555555"))
@@ -177,7 +176,7 @@ class ConfirmRejectedTests(unittest.TestCase):
     def test_earlier_history_is_preserved_and_the_new_entry_is_appended_after_it(self):
         chain = Chain()
         old = json.dumps({"op": "op-earlier-001", "action": "CONFIRM_REJECTED", "at": "2026-09-01T09:00:00-05:00", "reason": "earlier"}, separators=(",", ":"), sort_keys=True)
-        chain.source.pages[TARGET] = Source.make(TARGET, COMPANY, ROLE, decision=None, history=old)              # an earlier closure that was reopened: no decision, history kept
+        chain.source.pages[TARGET] = Source.make(TARGET, COMPANY, ROLE, decision=None, history=old)
         chain.confirm()
         lines = chain.source.history().splitlines()
         self.assertEqual((len(lines), lines[0]), (2, old))
@@ -205,19 +204,19 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
             chain.confirm(req, **kw)
         self.assertEqual(str(error.exception), code)
         self.assertEqual(chain.source.patches(), [])
-        for private in (COMPANY, ROLE, TARGET, OP, "Employer rejection"):                          # fixed codes only
+        for private in (COMPANY, ROLE, TARGET, OP, "Employer rejection"):  # fixed codes only
             self.assertNotIn(private, str(error.exception))
 
     def test_company_alone_never_selects_a_row(self):
-        self.refused(Chain(), request(role="Vice President, Something Else"), "DECISION_STALE_IDENTITY")      # LIFE-353: the row is found by its page id, and its names must still agree
-        self.refused(Chain(), request(role="Director, Delivery"), "DECISION_STALE_IDENTITY")                  # the sibling role exists, but not under this page id
+        self.refused(Chain(), request(role="Vice President, Something Else"), "DECISION_STALE_IDENTITY")
+        self.refused(Chain(), request(role="Director, Delivery"), "DECISION_STALE_IDENTITY")
         self.refused(Chain(), request(id="f6" * 16, role="Vice President, Something Else"), "DECISION_NO_MATCH")
 
     def test_two_ledger_rows_for_one_company_and_role_are_told_apart_by_page_id(self):
         chain = Chain(Source([(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, ROLE), (OTHER, OTHER_COMPANY, "Program Manager")]))
-        chain.confirm()                                                                              # LIFE-353: the page id decides, as the Stable Job Key does for create
+        chain.confirm()
         self.assertEqual((chain.source.decision(TARGET), chain.source.decision(SIBLING)), ({"name": "Rejected"}, None))
-        self.refused(Chain(Source([(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, ROLE)])), request(id="f6" * 16), "DECISION_AMBIGUOUS")      # by names alone, two rows are never guessed
+        self.refused(Chain(Source([(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, ROLE)])), request(id="f6" * 16), "DECISION_AMBIGUOUS")  # by names alone, two rows are never guessed
 
     def test_a_missing_row_or_a_row_that_is_no_longer_applied_has_no_match(self):
         chain = Chain(Source([(SIBLING, COMPANY, SIBLING_ROLE)]))
@@ -245,7 +244,7 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         self.refused(Chain(Source(schema=False)), request(), "DECISION_SCHEMA_MISSING")
         chain = Chain()
         base = chain.source.call
-        chain.source.call = lambda m, p, b=None: {"properties": {**base(m, p, b)["properties"], "Hiring Decision": {"type": "select", "select": {"options": [{"name": "Rejected"}]}}}}      # Passed option missing
+        chain.source.call = lambda m, p, b=None: {"properties": {**base(m, p, b)["properties"], "Hiring Decision": {"type": "select", "select": {"options": [{"name": "Rejected"}]}}}}  # Passed option missing
         self.refused(chain, request(), "DECISION_SCHEMA_MISSING")
 
     def test_an_unreadable_notion_state_fails_closed_and_is_never_reported_as_success(self):
@@ -273,12 +272,12 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         def trash(source):
             source.pages[TARGET]["in_trash"] = True
         for edit in (unapply, retitle, recompany, trash):
-            self.changed_after(1, edit)                              # the first exact fetch already disagrees with what the query matched
+            self.changed_after(1, edit)
 
     def test_a_row_that_disagrees_only_on_the_first_exact_fetch_is_refused_as_stale_not_merely_changed(self):
         chain = Chain()
         chain.source.on_get = {1: lambda source: source.pages[TARGET]["properties"].update(Applied={"checkbox": False}),
-                               2: lambda source: source.pages[TARGET]["properties"].update(Applied={"checkbox": True})}          # a transient edit: the second read looks right again
+                               2: lambda source: source.pages[TARGET]["properties"].update(Applied={"checkbox": True})}
         with self.assertRaises(NotionError) as error:
             chain.confirm()
         self.assertEqual(str(error.exception), "DECISION_STALE_IDENTITY")
@@ -290,14 +289,14 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         def retitle(source):
             source.pages[TARGET]["properties"]["Job"] = {"title": rich("Vice President, Something Else")}
         for edit in (unapply, retitle):
-            self.changed_after(2, edit)                              # the second fetch, immediately before the write: two consistent reads can no longer authorize a wrong closure
+            self.changed_after(2, edit)
 
     def test_a_fetched_page_that_is_not_a_row_of_the_canonical_ledger_is_refused_at_both_fetches(self):
         for parent in ({"type": "data_source_id", "data_source_id": "f6" * 16}, {"type": "page_id", "page_id": TARGET}, {"type": "data_source_id"}, {}, None):
             for call in (1, 2):
                 self.changed_after(call, lambda source, parent=parent: source.pages[TARGET].update(parent=parent), "DECISION_NOT_LEDGER_ROW")
         chain = Chain()
-        chain.source.pages[TARGET]["parent"] = {"type": "data_source_id", "data_source_id": ("E5" * 16)[:32].upper(), "database_id": "d4" * 16}      # the same id in another case is still the Ledger
+        chain.source.pages[TARGET]["parent"] = {"type": "data_source_id", "data_source_id": ("E5" * 16)[:32].upper(), "database_id": "d4" * 16}  # the same id in another case is still the Ledger
         chain.confirm()
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
 
@@ -307,7 +306,7 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
                  lambda source: source.pages[TARGET]["properties"].update({"Applied On": {"date": {"start": "2026-10-02", "end": "2026-10-09", "time_zone": None}}}),
                  lambda source: source.pages[TARGET]["properties"].update({"Applied On": {"date": {"start": "2026-10-02", "end": None, "time_zone": "America/Chicago"}}}))
         for edit in edits:
-            self.changed_after(2, edit, "DECISION_CONCURRENT_CHANGE")                           # nothing moved the edit time: the exact fields themselves are compared
+            self.changed_after(2, edit, "DECISION_CONCURRENT_CHANGE")
 
     def test_an_archived_row_is_refused(self):
         chain = Chain()
@@ -353,7 +352,7 @@ class FailedWriteTests(unittest.TestCase):
         def edit(source):
             source.pages[TARGET]["last_edited_time"] = "2026-10-06T01:00:00.000Z"
         chain = Chain()
-        chain.source.on_get = {2: edit}                    # the second read of the exact row, just before the write
+        chain.source.on_get = {2: edit}
         with self.assertRaises(NotionError) as error:
             chain.confirm()
         self.assertEqual(str(error.exception), "DECISION_CONCURRENT_CHANGE")
@@ -370,9 +369,9 @@ class FailedWriteTests(unittest.TestCase):
         chain.source.update_page_properties = lost
         with self.assertRaises(NotionError) as error:
             chain.confirm()
-        self.assertEqual(str(error.exception), "DECISION_WRITE_FAILED")                              # an uncertain write is a failure, never a success
+        self.assertEqual(str(error.exception), "DECISION_WRITE_FAILED")  # an uncertain write is a failure, never a success
         chain.source.update_page_properties = real
-        done = chain.confirm()                                                                       # the same operation id: the row already carries it, so it only verifies
+        done = chain.confirm()
         self.assertEqual((done["status"], len(chain.source.history().splitlines())), ("already_recorded", 1))
 
 
@@ -391,7 +390,7 @@ class CompilerTests(unittest.TestCase):
             self.assertEqual({r["role"]: r["ledger_id"] for r in got["rows"]}, {"Director": "i2", "PM": "i3"})
 
     def test_the_closed_decisions_are_the_six_outcomes_and_passed_and_nothing_else_closes(self):
-        self.assertEqual(M.CLOSED_DECISIONS, M.OUTCOMES + ("Passed",))                     # LIFE-47 S2: a closure the screen records and reads back leaves the hourly report
+        self.assertEqual(M.CLOSED_DECISIONS, M.OUTCOMES + ("Passed",))
         self.assertEqual(M.OUTCOMES, ("Rejected", "Withdrew", "Position filled", "Declined offer", "Hired", "Other"))
 
     def test_an_active_notes_page_does_not_keep_a_confirmed_closure_open(self):
@@ -405,13 +404,13 @@ class CompilerTests(unittest.TestCase):
 
     def test_a_decision_on_one_of_two_applications_for_one_company_and_role_closes_nothing_and_is_flagged(self):
         got = self.rows([self.applied("Acme", "PM", None, "i1"), self.applied("Acme", "PM", "Rejected", "i2")])
-        self.assertEqual((len(got["rows"]), got["closed"], got["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))           # still listed, with a degraded signal, until the application identity is proven
+        self.assertEqual((len(got["rows"]), got["closed"], got["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))
         self.assertIsNone(got["rows"][0]["ledger_id"])
         first = self.rows([self.applied("Acme", "PM", "Passed", "i1"), self.applied("Acme", "PM", None, "i2"), self.applied("Acme", "PM", None, "i3")])
-        self.assertEqual((len(first["rows"]), first["closed"], first["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))     # whichever duplicate carries it, and however many there are
+        self.assertEqual((len(first["rows"]), first["closed"], first["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))
         both = self.rows([self.applied("Acme", "PM", "Rejected", "i1"), self.applied("Acme", "PM", "Rejected", "i2")])
-        self.assertEqual((len(both["rows"]), both["closed"], both["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))        # even when both say so: two applications are not one decision
-        for value in M.OUTCOMES:                                                                                        # and for every outcome: a duplicate is never read as a safely closed pursuit
+        self.assertEqual((len(both["rows"]), both["closed"], both["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))
+        for value in M.OUTCOMES:
             dup = self.rows([self.applied("Acme", "PM", value, "i1"), self.applied("Acme", "PM", None, "i2")])
             self.assertEqual((len(dup["rows"]), dup["closed"], dup["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]), value)
         rendered = render.render(got, None, NOW)[0]
@@ -443,10 +442,10 @@ class BoundaryTests(unittest.TestCase):
         text = (self.ROOT / "lifeos/hiring/decision.py").read_text()
         self.assertEqual(len(re.findall(r"update_page_properties\(", text)), 2)
         self.assertEqual(re.findall(r"update_page_properties\(want\[\"id\"\], \{(\w+): .*?\*\*\(\{(\w+): ", text), [("DECISION", "HISTORY")])
-        self.assertEqual(re.findall(r"update_page_properties\(want\[\"id\"\], \{(\w+): \{\"rich_text\": rich_text\(new\)\}\}\)", text), ["HAND_SET"])     # LIFE-111/112: the one hand-set property, alone
+        self.assertEqual(re.findall(r"update_page_properties\(want\[\"id\"\], \{(\w+): \{\"rich_text\": rich_text\(new\)\}\}\)", text), ["HAND_SET"])  # /112: the one hand-set property, alone
         for banned in ("call_once", "/move", "/children", "Retired Opportunities", "Active Opportunities", "tinyfish", "gmail", "outlook", ".create(", "lifeos.jobs", "lifeos.interview", "lifeos.jira",
                        '"DELETE"', '"archived": True', '"in_trash": True', "Applied\": {\"checkbox\": ", "\"Stage\": {\"select\": {\"name"):
-            self.assertNotIn(banned.lower(), text.lower(), banned)                                 # LIFE-353: no page move, no block write, Stage and Applied never written
+            self.assertNotIn(banned.lower(), text.lower(), banned)
         self.assertNotIn("update_page_properties", (self.ROOT / "lifeos/sources/pipeline/hiring.py").read_text())
 
     def test_the_action_is_not_reachable_from_any_stage_workflow_or_schedule(self):

@@ -1,4 +1,4 @@
-"""LIFE-915: synthetic, no Jira writes. The selective path is inert pending Matt consent and backlog API verification."""
+"""synthetic, no Jira writes."""
 import unittest
 
 from lifeos.jira.rollover import preview_mej_selective_carry
