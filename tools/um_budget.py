@@ -12,23 +12,26 @@ Every parameter below was read from the installed Honcho v3.6.1 image (Nov 26 20
 Retries (code constants): queue MAX_RETRYABLE_ATTEMPTS 3; deriver internal retry_attempts 3; Anthropic SDK max_retries 2 (3 attempts); the meter charges a reply that breaks off after a 200 at its FULL reservation, so a broken reply is a billed attempt.
 Two profiles are kept apart on purpose: MODELED (a message's billed attempts 9 = queue x deriver; the dream retried only by its own queue entry) and STRICT (27 and 9: the SDK retry on a broken reply as well). STRICT cannot fit any $0.50 ceiling; that is the case for a scoped cap in the meter."""
 
-PRICE_IN, PRICE_OUT = 0.10, 0.50                         # USD per million tokens; pinned to the meter's PRICES in a test
+PRICE_IN, PRICE_OUT = 0.10, 0.50  # USD per million tokens; pinned to the meter's PRICES in a test
 DERIVER_IN, DERIVER_OUT = 25_000, 2_500
 DREAM_OUT = 8_192
 DREAM_ITER = (13, 11)
 DREAM_BASE_IN = (8_000, 4_000)
 DREAM_GROWTH = 3_334
-BILLED = {"modeled": 9, "strict": 27}                    # billed attempts for one message
-DREAM_ATTEMPTS = {"modeled": 1, "strict": 9}             # a dream is retried only when run_dream itself raises (a failed specialist is caught inside it): 1 in the modeled profile, queue x SDK in the strict one
-DREAM_ATTEMPTS_QUEUE = 3                                 # the queue's own limit, reported beside the profiles
+BILLED = {"modeled": 9, "strict": 27}  # billed attempts for one message
+DREAM_ATTEMPTS = {
+    "modeled": 1,
+    "strict": 9,
+}  # a dream is retried only when run_dream itself raises (a failed specialist is caught inside it): 1 in the modeled profile, queue x SDK in the strict one
+DREAM_ATTEMPTS_QUEUE = 3  # the queue's own limit, reported beside the profiles
 CEILING = 0.50
-TRIP = 0.40                                              # the live brake (extra to the arming rule)
-TRANCHE = 3                                              # messages armed at a time
-EXPLICIT_MAX = 45                                        # below Honcho's threshold of 50, so no automatic dream can ever become due
+TRIP = 0.40  # the live brake (extra to the arming rule)
+TRANCHE = 3  # messages armed at a time
+EXPLICIT_MAX = 45  # below Honcho's threshold of 50, so no automatic dream can ever become due
 CHECK_DELTA = 0.0001
-MESSAGE_CHARS_MAX = 2_000                                # settings.LLM.MAX_MESSAGE_CONTENT_CHARS; the fixtures use at most 300
-VOLUME_CHARS_MAX = 12_000                                # all message and conclusion text in the workspace; the fixtures hold about 6,000
-CALL_IN_MAX = DERIVER_IN                                 # kept for the tests that name it
+MESSAGE_CHARS_MAX = 2_000  # settings.LLM.MAX_MESSAGE_CONTENT_CHARS; the fixtures use at most 300
+VOLUME_CHARS_MAX = 12_000  # all message and conclusion text in the workspace; the fixtures hold about 6,000
+CALL_IN_MAX = DERIVER_IN  # kept for the tests that name it
 
 
 def call_worst(tokens_in, tokens_out):
@@ -62,8 +65,17 @@ def can_arm(spent_delta, exposure, still_to_come, ceiling=CEILING):
 
 def numbers(messages=20):
     tranches = -(-messages // TRANCHE)
-    return {"deriver_call_worst_usd": round(call_worst(DERIVER_IN, DERIVER_OUT), 5), "dream_call_output_worst_usd": round(call_worst(0, DREAM_OUT), 5),
-            "message_worst_modeled_usd": round(message_worst(), 4), "message_worst_strict_usd": round(message_worst("strict"), 4),
-            "tranche_worst_usd": round(tranche_worst(), 4), "tranches": tranches,
-            "dream_attempt_worst_usd": round(dream_attempt_worst(), 4), "dream_modeled_1_attempt_usd": round(dream_worst(), 4), "dream_queue_3_attempts_usd": round(dream_worst(DREAM_ATTEMPTS_QUEUE), 4),
-            "dream_strict_usd": round(dream_worst(profile="strict"), 4), "ceiling_usd": CEILING, "trip_usd": TRIP}
+    return {
+        "deriver_call_worst_usd": round(call_worst(DERIVER_IN, DERIVER_OUT), 5),
+        "dream_call_output_worst_usd": round(call_worst(0, DREAM_OUT), 5),
+        "message_worst_modeled_usd": round(message_worst(), 4),
+        "message_worst_strict_usd": round(message_worst("strict"), 4),
+        "tranche_worst_usd": round(tranche_worst(), 4),
+        "tranches": tranches,
+        "dream_attempt_worst_usd": round(dream_attempt_worst(), 4),
+        "dream_modeled_1_attempt_usd": round(dream_worst(), 4),
+        "dream_queue_3_attempts_usd": round(dream_worst(DREAM_ATTEMPTS_QUEUE), 4),
+        "dream_strict_usd": round(dream_worst(profile="strict"), 4),
+        "ceiling_usd": CEILING,
+        "trip_usd": TRIP,
+    }

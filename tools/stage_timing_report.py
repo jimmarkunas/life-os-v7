@@ -7,6 +7,7 @@
 Missing evidence is UNVERIFIED, never zero: a run with no artifact is counted as such, and a stage a run lacks is left out of that run's numbers and counted. The critical path of a run is walked back from its
 latest end: the stage that ended last, then the latest-ending stage that had ended by the time the previous one began, and so on; a stage's critical seconds are its own elapsed seconds on that path. Names and numbers only.
 Stdlib only (gh for the fetch)."""
+
 import argparse
 import collections
 import datetime as dt
@@ -22,7 +23,7 @@ from zoneinfo import ZoneInfo
 CENTRAL = ZoneInfo("America/Chicago")
 REPO = "jimmarkunas/life-os-v7"
 WORKFLOW = "hourly.yml"
-GAP = 1.0                                      # seconds: a stage that ended this close before another began is that one's predecessor
+GAP = 1.0  # seconds: a stage that ended this close before another began is that one's predecessor
 JOB_ROWS = ("prep", "finish", "report")
 
 
@@ -54,7 +55,9 @@ def percentile(values, fraction):
 
 def critical_path(rows):
     """-> the stage rows on the critical path of one run, last to first."""
-    spans = [(r, _t(r["begin"]), _t(r["end"])) for r in rows if not str(r["stage"]).startswith("job ")]          # the job rows contain the tick's stages, so they are not on the path
+    spans = [
+        (r, _t(r["begin"]), _t(r["end"])) for r in rows if not str(r["stage"]).startswith("job ")
+    ]  # the job rows contain the tick's stages, so they are not on the path
     if not spans:
         return []
     path, (row, begin, _) = [], max(spans, key=lambda s: s[2])
@@ -71,7 +74,17 @@ def analyse(runs, expected=None):
     """`runs`: {run id: rows or None (no artifact)}. -> {"runs", "unverified_runs", "stages": {name: {...}}, "wall": [...]}."""
     have = {run: rows for run, rows in runs.items() if rows}
     names = set(expected or ()) | {r["stage"] for rows in have.values() for r in rows}
-    stats = {name: {"elapsed": [], "wait": [], "critical": [], "on_path": 0, "missing_runs": [], "outcomes": collections.Counter()} for name in names}
+    stats = {
+        name: {
+            "elapsed": [],
+            "wait": [],
+            "critical": [],
+            "on_path": 0,
+            "missing_runs": [],
+            "outcomes": collections.Counter(),
+        }
+        for name in names
+    }
     walls = {}
     for run, rows in sorted(have.items()):
         begins, ends = [_t(r["begin"]) for r in rows], [_t(r["end"]) for r in rows]
@@ -93,10 +106,24 @@ def analyse(runs, expected=None):
     out = {}
     for name, s in sorted(stats.items()):
         e = s["elapsed"]
-        out[name] = {"runs": len(e), "p50": percentile(e, 0.5) if e else None, "p95": percentile(e, 0.95) if e else None, "max": max(e) if e else None,
-                     "share_of_wall": round(100 * sum(e) / total_wall, 1) if e and total_wall else None, "wait_p50": percentile(s["wait"], 0.5) if s["wait"] else None,
-                     "critical_runs": s["on_path"], "critical_seconds": round(sum(s["critical"]), 1), "outcomes": dict(s["outcomes"]), "missing_in_runs": s["missing_runs"]}
-    return {"runs": len(have), "unverified_runs": sorted(run for run, rows in runs.items() if not rows), "stages": out, "wall": sorted(walls.values())}
+        out[name] = {
+            "runs": len(e),
+            "p50": percentile(e, 0.5) if e else None,
+            "p95": percentile(e, 0.95) if e else None,
+            "max": max(e) if e else None,
+            "share_of_wall": round(100 * sum(e) / total_wall, 1) if e and total_wall else None,
+            "wait_p50": percentile(s["wait"], 0.5) if s["wait"] else None,
+            "critical_runs": s["on_path"],
+            "critical_seconds": round(sum(s["critical"]), 1),
+            "outcomes": dict(s["outcomes"]),
+            "missing_in_runs": s["missing_runs"],
+        }
+    return {
+        "runs": len(have),
+        "unverified_runs": sorted(run for run, rows in runs.items() if not rows),
+        "stages": out,
+        "wall": sorted(walls.values()),
+    }
 
 
 def _ct(moment):
@@ -105,15 +132,32 @@ def _ct(moment):
 
 
 def render(result, title="Stage timing report"):
-    lines = [f"### {title}", "", f"Runs with a receipt: {result['runs']}. Runs with no artifact (UNVERIFIED, not counted as zero): {len(result['unverified_runs'])}" + (f" ({', '.join(result['unverified_runs'])})" if result["unverified_runs"] else "") + "."]
+    lines = [
+        f"### {title}",
+        "",
+        f"Runs with a receipt: {result['runs']}. Runs with no artifact (UNVERIFIED, not counted as zero): {len(result['unverified_runs'])}"
+        + (f" ({', '.join(result['unverified_runs'])})" if result["unverified_runs"] else "")
+        + ".",
+    ]
     if result["wall"]:
-        lines.append(f"Run wall time (first begin to last end of the stage rows): p50 {percentile(result['wall'], 0.5):.0f} s, p95 {percentile(result['wall'], 0.95):.0f} s, max {max(result['wall']):.0f} s.")
-    lines += ["", "| Stage | Runs | p50 s | p95 s | Max s | Share of wall % | Wait p50 s | On critical path (runs) | Critical s total | Not complete | Missing in runs |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+        lines.append(
+            f"Run wall time (first begin to last end of the stage rows): p50 {percentile(result['wall'], 0.5):.0f} s, p95 {percentile(result['wall'], 0.95):.0f} s, max {max(result['wall']):.0f} s."
+        )
+    lines += [
+        "",
+        "| Stage | Runs | p50 s | p95 s | Max s | Share of wall % | Wait p50 s | On critical path (runs) | Critical s total | Not complete | Missing in runs |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
     for name, s in result["stages"].items():
-        fmt = lambda v: "UNVERIFIED" if v is None else f"{v:.1f}"                        # noqa: E731 - one line of formatting
+        fmt = lambda v: "UNVERIFIED" if v is None else f"{v:.1f}"  # noqa: E731 - one line of formatting
         bad = sum(n for o, n in s["outcomes"].items() if o != "complete")
-        lines.append(f"| {name} | {s['runs']} | {fmt(s['p50'])} | {fmt(s['p95'])} | {fmt(s['max'])} | {fmt(s['share_of_wall'])} | {fmt(s['wait_p50'])} | {s['critical_runs']} | {s['critical_seconds']:.1f} | {bad} | {len(s['missing_in_runs'])} |")
-    lines += ["", "Share of wall is a stage's summed seconds over the summed run wall time; concurrent stages overlap, so the column can add to more than 100. Critical path: see the tool's docstring."]
+        lines.append(
+            f"| {name} | {s['runs']} | {fmt(s['p50'])} | {fmt(s['p95'])} | {fmt(s['max'])} | {fmt(s['share_of_wall'])} | {fmt(s['wait_p50'])} | {s['critical_runs']} | {s['critical_seconds']:.1f} | {bad} | {len(s['missing_in_runs'])} |"
+        )
+    lines += [
+        "",
+        "Share of wall is a stage's summed seconds over the summed run wall time; concurrent stages overlap, so the column can add to more than 100. Critical path: see the tool's docstring.",
+    ]
     return "\n".join(lines)
 
 
@@ -132,7 +176,9 @@ def fetch(first, last, repo=REPO, runner=gh):
     """-> {run id: rows or None} for the hourly runs created from `first` through `last` (Central dates, inclusive); an artifact that cannot be downloaded is None."""
     start = dt.datetime.combine(first, dt.time.min, CENTRAL).astimezone(dt.timezone.utc)
     stop = dt.datetime.combine(last + dt.timedelta(days=1), dt.time.min, CENTRAL).astimezone(dt.timezone.utc)
-    listing = json.loads(runner("api", f"repos/{repo}/actions/workflows/{WORKFLOW}/runs?per_page=100&status=completed") or "{}").get("workflow_runs", [])
+    listing = json.loads(
+        runner("api", f"repos/{repo}/actions/workflows/{WORKFLOW}/runs?per_page=100&status=completed") or "{}"
+    ).get("workflow_runs", [])
     runs = {}
     for item in listing:
         if item.get("display_title") != "tick" or not (start <= _t(item["created_at"]) < stop):
@@ -152,7 +198,16 @@ def job_rows(run, repo=REPO, runner=gh):
     for job in jobs:
         if job.get("name") in JOB_ROWS and job.get("started_at") and job.get("completed_at"):
             seconds = (_t(job["completed_at"]) - _t(job["started_at"])).total_seconds()
-            rows.append({"stage": f"job {job['name']}", "outcome": "complete" if job.get("conclusion") == "success" else "incomplete", "begin": job["started_at"], "end": job["completed_at"], "elapsed_s": seconds, "wait_s": 0})
+            rows.append(
+                {
+                    "stage": f"job {job['name']}",
+                    "outcome": "complete" if job.get("conclusion") == "success" else "incomplete",
+                    "begin": job["started_at"],
+                    "end": job["completed_at"],
+                    "elapsed_s": seconds,
+                    "wait_s": 0,
+                }
+            )
     return rows
 
 

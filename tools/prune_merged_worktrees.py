@@ -12,6 +12,7 @@ Safe by construction: a worktree is removed only if ALL hold
 Default is a dry run. Pass --apply to remove. Branches are never deleted.
 Usage: tools/prune_merged_worktrees.py [--apply] [--repo OWNER/NAME] [--allow-prefix PATH ...]
 """
+
 import argparse
 import json
 import os
@@ -45,14 +46,31 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--repo", default="jimmarkunas/life-os-v7")
-    ap.add_argument("--allow-prefix", action="append", default=[],
-                    help="extra path prefix to consider (repeatable); default scope is unchanged without it")
+    ap.add_argument(
+        "--allow-prefix",
+        action="append",
+        default=[],
+        help="extra path prefix to consider (repeatable); default scope is unchanged without it",
+    )
     a = ap.parse_args()
 
     top = run("git", "rev-parse", "--show-toplevel").stdout.strip()
     run("git", "fetch", "--quiet", "origin", "main", check=False)
-    prs = json.loads(run("gh", "pr", "list", "--repo", a.repo, "--state", "merged",
-                         "--limit", "2000", "--json", "headRefName,headRefOid").stdout)
+    prs = json.loads(
+        run(
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            a.repo,
+            "--state",
+            "merged",
+            "--limit",
+            "2000",
+            "--json",
+            "headRefName,headRefOid",
+        ).stdout
+    )
     merged = {}
     for p in prs:
         merged.setdefault(p["headRefName"], set()).add(p["headRefOid"])
@@ -64,15 +82,20 @@ def main():
         if i == 0 or os.path.realpath(path) == os.path.realpath(top):
             continue  # primary checkout / current worktree
         if not path.startswith(ALLOWED_PREFIXES + tuple(a.allow_prefix)):
-            keep.append((path, "outside allowed locations")); continue
+            keep.append((path, "outside allowed locations"))
+            continue
         if "locked" in w:
-            keep.append((path, "locked")); continue
+            keep.append((path, "locked"))
+            continue
         if not branch:
-            keep.append((path, "detached HEAD")); continue
+            keep.append((path, "detached HEAD"))
+            continue
         if not os.path.isdir(path):
-            remove.append((path, branch, "directory missing (prune)")); continue
+            remove.append((path, branch, "directory missing (prune)"))
+            continue
         if run("git", "status", "--porcelain", cwd=path, check=False).stdout.strip():
-            keep.append((path, "uncommitted changes")); continue
+            keep.append((path, "uncommitted changes"))
+            continue
         in_main = run("git", "merge-base", "--is-ancestor", head, "origin/main", check=False).returncode == 0
         if head in merged.get(branch, ()) or in_main:
             remove.append((path, branch, "merged"))

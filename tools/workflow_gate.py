@@ -10,6 +10,7 @@ LIFE-908: an owner approval made in ChatGPT and recorded as a CHECKED item in th
 (`lifeos.jira.readiness_record`: the Jira REST settings when set, else the unmodified Atlassian MCP getJiraIssue result saved to the file named by `--jira-read FILE` or LIFEOS_JIRA_READ, at most 15 minutes old, the same handoff as `readiness issue-mcp`). The issue must be In Progress. Only a stop
 reason that is ALONE a wider `permissions` block for a workflow path and job named in a checked item, whose added scopes are all `read` and all named in that item, is covered; any other reason (a write, another scope or job, a secret, a credential, a deletion, spend), an unchecked,
 ambiguous or other-issue item, a stale or unreadable read, or no read at all keeps exit 5. The environment string LIFEOS_JIM_APPROVED (Jim's typed yes) still works as before and is not needed for this path."""
+
 import difflib
 import json
 import os
@@ -25,19 +26,26 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wfsrc  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-REPO = ROOT                                            # where `lifeos` is imported from (tests swap ROOT for a scratch repo)
+REPO = ROOT  # where `lifeos` is imported from (tests swap ROOT for a scratch repo)
 LEVEL = {"none": 0, "read": 1, "write": 2}
-MCP_MAX_AGE = 15 * 60                                  # seconds: an older saved Jira read is not proof (the same limit as readiness issue-mcp)
+MCP_MAX_AGE = 15 * 60  # seconds: an older saved Jira read is not proof (the same limit as readiness issue-mcp)
 BRANCH_KEY = re.compile(r"^life/(LIFE-\d+)/")
 WORKFLOW_PATH = re.compile(r"\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml")
-JOB_LIST = re.compile(r"((?:`[A-Za-z0-9_-]+`\s*(?:,|\band\b|\bor\b)?\s*)+)\s+jobs?\b")          # one or more `names` before the word job(s): two names are two jobs, never an approval for one
+JOB_LIST = re.compile(
+    r"((?:`[A-Za-z0-9_-]+`\s*(?:,|\band\b|\bor\b)?\s*)+)\s+jobs?\b"
+)  # one or more `names` before the word job(s): two names are two jobs, never an approval for one
 BACKTICKED = re.compile(r"`([A-Za-z0-9_-]+)`")
 SCOPE_PAIR = re.compile(r"`([A-Za-z0-9_-]+):\s*(read|write|none)`")
 SECRET_REF = re.compile(r"secrets\.([A-Za-z0-9_]+)")
 BWS_OUTPUT = re.compile(r"steps\.bws[A-Za-z0-9_]*\.outputs\.([A-Za-z0-9_]+)")
 BWS_LOAD = re.compile(r"^\s*[0-9a-fA-F-]{36}\s*>\s*([A-Za-z0-9_]+)\s*$", re.M)
-DELETION = re.compile(r"gh\s+(?:secret|variable)\s+delete|\bDROP\s+(?:TABLE|DATABASE|SCHEMA)\b|\bTRUNCATE\s+TABLE\b|\bDELETE\s+FROM\b|(?:-X|--method)\s+DELETE\b", re.I)
-SPEND = re.compile(r"api\.anthropic\.com|api\.openai\.com|\bclaude\s+(?:-p|--print)\b|\bcodex\s+exec\b|ANTHROPIC_API_KEY|OPENAI_API_KEY|V7_CLOUD_FIT_(?:BACKLOG_BUDGET|BACKLOG_MAX|PARALLEL|SCHEDULED)")
+DELETION = re.compile(
+    r"gh\s+(?:secret|variable)\s+delete|\bDROP\s+(?:TABLE|DATABASE|SCHEMA)\b|\bTRUNCATE\s+TABLE\b|\bDELETE\s+FROM\b|(?:-X|--method)\s+DELETE\b",
+    re.I,
+)
+SPEND = re.compile(
+    r"api\.anthropic\.com|api\.openai\.com|\bclaude\s+(?:-p|--print)\b|\bcodex\s+exec\b|ANTHROPIC_API_KEY|OPENAI_API_KEY|V7_CLOUD_FIT_(?:BACKLOG_BUDGET|BACKLOG_MAX|PARALLEL|SCHEDULED)"
+)
 
 
 def code_lines(text):
@@ -46,7 +54,9 @@ def code_lines(text):
     for line in text.splitlines():
         if line.lstrip().startswith("#"):
             continue
-        kept.append(re.sub(r"\s+#\s.*$", "", line))          # LIFE-1010: the spaces before the comment go too, so dropping a comment changes no line
+        kept.append(
+            re.sub(r"\s+#\s.*$", "", line)
+        )  # LIFE-1010: the spaces before the comment go too, so dropping a comment changes no line
     return "\n".join(kept)
 
 
@@ -115,7 +125,9 @@ def reasons_detail(path, base_text, head_text):
     # Bitwarden name that some job of this same workflow already loads on the base may reach another job of it with no
     # stop. Only a name new to the workflow is a new credential. `secrets: inherit`, permissions, deletion and spend are unchanged.
     base_secrets = set(SECRET_REF.findall(job_text(base_jobs)))
-    base_loads = set(BWS_LOAD.findall("\n".join(_block_text(j) for j in base_jobs.values()))) | set(BWS_OUTPUT.findall(job_text(base_jobs)))
+    base_loads = set(BWS_LOAD.findall("\n".join(_block_text(j) for j in base_jobs.values()))) | set(
+        BWS_OUTPUT.findall(job_text(base_jobs))
+    )
     out = []
     for name, job in head_jobs.items():
         before = job_text(base_jobs.get(name)) if name in base_jobs else ""
@@ -127,11 +139,21 @@ def reasons_detail(path, base_text, head_text):
         inherits = job.get("secrets") == "inherit" and (base_jobs.get(name) or {}).get("secrets") != "inherit"
         if new_secrets or inherits:
             out.append(("new secret (%s: %s: %s)" % (path, name, ", ".join(new_secrets) or "secrets: inherit"), None))
-        loads = sorted(set(BWS_LOAD.findall(_block_text(job))) - set(BWS_LOAD.findall(_block_text(base_jobs.get(name)))) - base_loads)
+        loads = sorted(
+            set(BWS_LOAD.findall(_block_text(job)))
+            - set(BWS_LOAD.findall(_block_text(base_jobs.get(name))))
+            - base_loads
+        )
         reach = sorted(set(BWS_OUTPUT.findall(now)) - set(BWS_OUTPUT.findall(before)) - base_loads)
         if loads or reach:
             out.append(("new credential (%s: %s: %s)" % (path, name, ", ".join(sorted(set(loads + reach)))), None))
-    added = [line for line in difflib.unified_diff(code_lines(base_text).splitlines(), code_lines(head_text).splitlines(), lineterm="", n=0) if line.startswith("+") and not line.startswith("+++")]
+    added = [
+        line
+        for line in difflib.unified_diff(
+            code_lines(base_text).splitlines(), code_lines(head_text).splitlines(), lineterm="", n=0
+        )
+        if line.startswith("+") and not line.startswith("+++")
+    ]
     added_text = "\n".join(added)
     if DELETION.search(added_text):
         out.append(("deleting GitHub values or production data (%s)" % path, None))
@@ -164,16 +186,31 @@ def expand_sets(text, sets_text):
     """LIFE-1013: a `bws-load` step names its credential list with `set: <name>` (the lists live in sets.yml); the gate judges the inline `secrets:` block that stands for it, so adding a name to sets.yml is a new credential like adding it inline."""
     sets = yaml.safe_load(sets_text) if sets_text else None
     sets = sets if isinstance(sets, dict) else {}
-    text = wfsrc.expand_aliases(text)                       # LIFE-1013: the generated workflows write repeats as YAML aliases; the gate judges the plain text
-    return SET_REF.sub(lambda m: f"{m.group(1)}secrets: |\n" + "".join(f"{m.group(1)}  {line}\n" for line in str(sets.get(m.group(2), "")).splitlines()), text)
+    text = wfsrc.expand_aliases(
+        text
+    )  # LIFE-1013: the generated workflows write repeats as YAML aliases; the gate judges the plain text
+    return SET_REF.sub(
+        lambda m: (
+            f"{m.group(1)}secrets: |\n"
+            + "".join(f"{m.group(1)}  {line}\n" for line in str(sets.get(m.group(2), "")).splitlines())
+        ),
+        text,
+    )
 
 
 def changed_workflows(base, head, root=ROOT):
-    out = git("diff", "--name-only", "--diff-filter=ACMRD", base, head, "--", ".github/workflows", SETS_PATH, root=root).stdout
+    out = git(
+        "diff", "--name-only", "--diff-filter=ACMRD", base, head, "--", ".github/workflows", SETS_PATH, root=root
+    ).stdout
     names = [line for line in out.splitlines() if line.endswith((".yml", ".yaml"))]
-    if SETS_PATH in names:                                       # a changed list can reach every workflow that names it
-        listed = git("ls-tree", "--name-only", head, ".github/workflows/", root=root).stdout + git("ls-tree", "--name-only", base, ".github/workflows/", root=root).stdout
-        names = sorted({n for n in names if n != SETS_PATH} | {n for n in listed.splitlines() if n.endswith((".yml", ".yaml"))})
+    if SETS_PATH in names:  # a changed list can reach every workflow that names it
+        listed = (
+            git("ls-tree", "--name-only", head, ".github/workflows/", root=root).stdout
+            + git("ls-tree", "--name-only", base, ".github/workflows/", root=root).stdout
+        )
+        names = sorted(
+            {n for n in names if n != SETS_PATH} | {n for n in listed.splitlines() if n.endswith((".yml", ".yaml"))}
+        )
     return names
 
 
@@ -190,7 +227,9 @@ def verdict_detail(base, head, root=ROOT):
     found = []
     base_sets, head_sets = show(base, SETS_PATH, root), show(head, SETS_PATH, root)
     for path in changed_workflows(base, head, root):
-        found += reasons_detail(path, expand_sets(show(base, path, root), base_sets), expand_sets(show(head, path, root), head_sets))
+        found += reasons_detail(
+            path, expand_sets(show(base, path, root), base_sets), expand_sets(show(head, path, root), head_sets)
+        )
     return found
 
 
@@ -198,12 +237,20 @@ def approved_items(description):
     """LIFE-908: the owner-approved permission items of a ticket's "Jim must do first" section -> [{"path", "job", "scopes": {scope: "read"}}].
     Only a CHECKED item that names Jim and ChatGPT, exactly one workflow path, exactly one `job`, and at least one `scope: read` counts; an item that names a write or none level, a second path or job, or no job is not an approval for anything."""
     sys.path.insert(0, str(REPO))
-    from lifeos.jira.release import BULLET, DONE_ITEM, JIM_FIRST, NONE_ITEM, OPEN_ITEM, checkbox_lines     # lazy: the gate itself imports nothing of lifeos
+    from lifeos.jira.release import (
+        BULLET,
+        DONE_ITEM,
+        JIM_FIRST,
+        NONE_ITEM,
+        OPEN_ITEM,
+        checkbox_lines,
+    )  # lazy: the gate itself imports nothing of lifeos
+
     rows, found = checkbox_lines(description), []
     for index, line in enumerate(rows):
         if not JIM_FIRST.match(line):
             continue
-        for item in rows[index + 1:]:
+        for item in rows[index + 1 :]:
             item = item.replace("\\", "").strip()
             bare = item.strip("*").strip()
             if not bare or NONE_ITEM.match(bare):
@@ -214,7 +261,14 @@ def approved_items(description):
                 continue
             paths, pairs = set(WORKFLOW_PATH.findall(bare)), SCOPE_PAIR.findall(bare)
             jobs = {name for group in JOB_LIST.findall(bare) for name in BACKTICKED.findall(group)}
-            if "Jim" in bare and "ChatGPT" in bare and len(paths) == 1 and len(jobs) == 1 and pairs and all(lvl == "read" for _, lvl in pairs):
+            if (
+                "Jim" in bare
+                and "ChatGPT" in bare
+                and len(paths) == 1
+                and len(jobs) == 1
+                and pairs
+                and all(lvl == "read" for _, lvl in pairs)
+            ):
                 found.append({"path": paths.pop(), "job": jobs.pop(), "scopes": {scope: lvl for scope, lvl in pairs}})
         break
     return found
@@ -224,26 +278,41 @@ def covered(detail, items):
     """True when an approved item names this exact path and job and every scope the change adds, each added at `read`."""
     if not detail:
         return False
-    return any(i["path"] == detail["path"] and i["job"] == detail["job"]
-               and all(lvl == "read" and i["scopes"].get(scope) == "read" for scope, lvl in detail["scopes"].items()) for i in items)
+    return any(
+        i["path"] == detail["path"]
+        and i["job"] == detail["job"]
+        and all(lvl == "read" and i["scopes"].get(scope) == "read" for scope, lvl in detail["scopes"].items())
+        for i in items
+    )
 
 
 def jira_issue(key, environ, read_file, now=time.time):
     """-> (raw issue {key, fields}, source label, why not). Reads the LIVE issue by the existing paths; every failure is a fixed code, never a body or a value."""
     sys.path.insert(0, str(REPO))
     from lifeos.jira import readiness_record as rr
+
     try:
         if read_file:
             path = pathlib.Path(read_file)
             if now() - path.stat().st_mtime > MCP_MAX_AGE:
                 return None, "", "JIRA_READ_STALE (the saved Jira read is older than 15 minutes)"
-            return rr.from_mcp(json.loads(path.read_text()), key), "mcp-read file (session-saved, cannot be proven unmodified)", ""
+            return (
+                rr.from_mcp(json.loads(path.read_text()), key),
+                "mcp-read file (session-saved, cannot be proven unmodified)",
+                "",
+            )
         if all((environ.get(name) or "").strip() for name in ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")):
             return rr.fetch(key, rr.Jira.from_env(environ)), "live Jira read", ""
         return None, "", "JIRA_UNREADABLE (no Jira settings here and no --jira-read FILE)"
-    except Exception as exc:                                  # noqa: BLE001  a fixed code only
+    except Exception as exc:  # noqa: BLE001  a fixed code only
         code = str(exc)
-        return None, "", code if code.startswith(("INCOMPLETE:", "KEY_MISMATCH", "JIRA_")) else "JIRA_UNREADABLE (%s)" % type(exc).__name__
+        return (
+            None,
+            "",
+            code
+            if code.startswith(("INCOMPLETE:", "KEY_MISMATCH", "JIRA_"))
+            else "JIRA_UNREADABLE (%s)" % type(exc).__name__,
+        )
 
 
 def jira_verdict(found, environ, branch, read_file, now=time.time):
@@ -252,28 +321,53 @@ def jira_verdict(found, environ, branch, read_file, now=time.time):
     if not key:
         return "", "no Jira approval read: the branch is not life/LIFE-nnn/..., so no ticket is named"
     if any(detail is None for _, detail in found):
-        return "", ""                                         # another gate reason is in the diff: a recorded permission approval never covers it
+        return "", ""  # another gate reason is in the diff: a recorded permission approval never covers it
     raw, source, why = jira_issue(key, environ, read_file, now)
     if not raw:
-        return "", "BLOCKED: %s read %s: %s. Read it with the Atlassian MCP, save the unmodified result to a file and rerun with LIFEOS_JIRA_READ=<file> sh tools/preflight.sh" % (key, "failed", why)
-    status = ((raw["fields"].get("status") or {}).get("name") or "")
+        return (
+            "",
+            "BLOCKED: %s read %s: %s. Read it with the Atlassian MCP, save the unmodified result to a file and rerun with LIFEOS_JIRA_READ=<file> sh tools/preflight.sh"
+            % (key, "failed", why),
+        )
+    status = (raw["fields"].get("status") or {}).get("name") or ""
     if status != "In Progress":
-        return "", "%s is %r, not In Progress: no approval is read from a ticket that is not actively claimed" % (key, status)
+        return "", "%s is %r, not In Progress: no approval is read from a ticket that is not actively claimed" % (
+            key,
+            status,
+        )
     items = approved_items(raw["fields"].get("description"))
     unmatched = [text for text, detail in found if not covered(detail, items)]
     if unmatched:
-        return "", "%s's checked Jim must do first items (%d) do not cover: %s" % (key, len(items), "; ".join(unmatched))
-    return ("Jira-approved (%s, %s, updated %s): %s" % (key, source, raw["fields"].get("updated") or "unknown",
-            "; ".join("%s: %s: %s" % (d["path"], d["job"], " ".join("%s:%s" % kv for kv in sorted(d["scopes"].items()))) for _, d in found))), ""
+        return "", "%s's checked Jim must do first items (%d) do not cover: %s" % (
+            key,
+            len(items),
+            "; ".join(unmatched),
+        )
+    return (
+        "Jira-approved (%s, %s, updated %s): %s"
+        % (
+            key,
+            source,
+            raw["fields"].get("updated") or "unknown",
+            "; ".join(
+                "%s: %s: %s" % (d["path"], d["job"], " ".join("%s:%s" % kv for kv in sorted(d["scopes"].items())))
+                for _, d in found
+            ),
+        )
+    ), ""
 
 
 def main(argv=(), stdout=sys.stdout, environ=None, branch=None):
     environ = os.environ if environ is None else environ
-    arg = lambda name, default: argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
+    arg = lambda name, default: (
+        argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
+    )
     found = verdict_detail(arg("--base", "origin/main"), arg("--head", "HEAD"), ROOT)
     reasons = [text for text, _ in found]
     if not reasons:
-        stdout.write("workflow gate: ok (no secret added, no permission widened; pre-approved, no label, no typed yes)\n")
+        stdout.write(
+            "workflow gate: ok (no secret added, no permission widened; pre-approved, no label, no typed yes)\n"
+        )
         return 0
     if branch is None:
         branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
@@ -289,7 +383,9 @@ def main(argv=(), stdout=sys.stdout, environ=None, branch=None):
         stdout.write("[waiting on] Jim: %s\n" % reason)
     if note:
         stdout.write("workflow gate: %s\n" % note)
-    stdout.write("workflow gate: ask Jim once, record one [approvals] line, then LIFEOS_JIM_APPROVED='<that line>' sh tools/preflight.sh\n")
+    stdout.write(
+        "workflow gate: ask Jim once, record one [approvals] line, then LIFEOS_JIM_APPROVED='<that line>' sh tools/preflight.sh\n"
+    )
     return 5
 
 

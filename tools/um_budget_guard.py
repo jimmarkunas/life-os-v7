@@ -3,6 +3,7 @@
 How the ceiling is kept (the model is tools/um_budget.py): the workspace starts DISARMED (no deriver or dream spending without an explicit switch) and the guard ARMS one step at a time, only when the queue is idle and the meter reading is fresh,
 settled and consistent, and only when (spend so far) + (this step's worst case) + (the dream's worst case) fits the ceiling. Seeding messages are armed one by one with a per-message switch, so a guard that dies leaves nothing armed beyond the step
 already running. Every failure (meter timeout or stale reading, a refused configuration change, an expired token, a drain that never ends) stops the guard from arming anything further. The live trip is a second, earlier brake, not the bound."""
+
 import importlib.util
 import pathlib
 import sys
@@ -24,7 +25,7 @@ MAX_METER_ERRORS = 3
 SETTLE_S = 1.0
 DRAIN_S = 600
 WAIT_STEP_S = 1.0
-RUN_S = 90 * 60                                            # the token lasts two hours; the run is over well before that
+RUN_S = 90 * 60  # the token lasts two hours; the run is over well before that
 
 
 class Stop(Exception):
@@ -47,7 +48,14 @@ class Unauthorized(HonchoError):
 
 class Guard:
     def __init__(self, meter, honcho, clock, ceiling=budget.CEILING, trip=budget.TRIP, tranche=budget.TRANCHE):
-        self.meter, self.hon, self.clock, self.ceiling, self.trip, self.tranche = meter, honcho, clock, ceiling, trip, tranche
+        self.meter, self.hon, self.clock, self.ceiling, self.trip, self.tranche = (
+            meter,
+            honcho,
+            clock,
+            ceiling,
+            trip,
+            tranche,
+        )
         self.events, self.base, self.last, self.units_seen, self.exposure = [], None, None, 0, 0.0
         self.units_seen_armed, self.spent_at_units = False, 0.0
         self.started = clock.now()
@@ -59,7 +67,7 @@ class Guard:
     def _read(self):
         try:
             value = float(self.meter.spent())
-        except Exception as error:                                                              # noqa: BLE001  any failure of the meter is a failed reading
+        except Exception as error:  # noqa: BLE001  any failure of the meter is a failed reading
             raise MeterError(type(error).__name__) from error
         if self.last is not None and value < self.last - 1e-9:
             raise MeterError("ledger_went_backwards")
@@ -99,7 +107,7 @@ class Guard:
         spent = second - self.base
         done = self.hon.completed_units()
         if done > self.units_seen and spent <= self.spent_at_units + budget.CHECK_DELTA and self.units_seen_armed:
-            raise Stop("meter_stale")                                                           # work finished but the ledger did not move: the reading cannot be trusted
+            raise Stop("meter_stale")  # work finished but the ledger did not move: the reading cannot be trusted
         self.units_seen, self.spent_at_units = done, spent
         return spent
 
@@ -108,7 +116,7 @@ class Guard:
         try:
             self.hon.set_flags(False, False)
             self._log("disarmed")
-        except Exception as error:                                                              # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             self._log("disarm_failed", error=type(error).__name__)
 
     def _watch(self, until_idle):
@@ -151,7 +159,7 @@ class Guard:
         spent = self._settled()
         self._log("start", spent=round(spent, 5))
         for i in range(0, len(messages), self.tranche):
-            batch = messages[i:i + self.tranche]
+            batch = messages[i : i + self.tranche]
             spent = self._settled()
             exposure = budget.tranche_worst(len(batch))
             self._inputs_ok(batch)
@@ -169,7 +177,7 @@ class Guard:
             self._watch(lambda: self._idle_safely())
             after = self._settled()
             if after - spent > exposure + budget.CHECK_DELTA:
-                raise Stop("exposure_exceeded")                                                 # the model's per-call assumption was wrong: no more arming
+                raise Stop("exposure_exceeded")  # the model's per-call assumption was wrong: no more arming
         return sent
 
     def _idle_safely(self):
@@ -230,7 +238,7 @@ class Guard:
             self.dream()
         except Stop as stop:
             reason = stop.reason
-        except Exception as error:                                                              # noqa: BLE001  any surprise is a stop, never a continued spend
+        except Exception as error:  # noqa: BLE001  any surprise is a stop, never a continued spend
             reason = "unexpected_" + type(error).__name__
         finally:
             self.brake()
@@ -238,4 +246,9 @@ class Guard:
             final = self._read() - (self.base or 0.0)
         except MeterError:
             final = None
-        return {"stopped": reason or None, "spent_usd": None if final is None else round(final, 6), "armed_exposure_usd": round(self.exposure, 4), "events": self.events}
+        return {
+            "stopped": reason or None,
+            "spent_usd": None if final is None else round(final, 6),
+            "armed_exposure_usd": round(self.exposure, 4),
+            "events": self.events,
+        }
