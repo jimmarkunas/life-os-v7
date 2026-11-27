@@ -1,0 +1,39 @@
+name: probe-alias2
+on:
+  pull_request:
+    paths: [".github/workflows/probe-alias2.yml"]
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    env:
+      TOP: ${{ github.event_name }}
+    steps:
+      - id: one
+        name: one
+        if: &cond ${{ github.event_name == 'pull_request' && github.actor != '' }}
+        env: &blk
+          ALPHA: &v1 ${{ github.repository }}
+          BETA: "2"
+        run: echo "ALPHA=$ALPHA BETA=$BETA"
+      - id: two
+        name: two
+        if: *cond
+        env: *blk
+        run: echo "ALPHA=$ALPHA BETA=$BETA"
+      - id: three
+        name: three
+        env:
+          GAMMA: *v1
+          LIVE: ${{ steps.one.outcome }}
+        run: echo "GAMMA=$GAMMA LIVE=$LIVE"
+  b:
+    needs: [a]
+    if: *cond
+    runs-on: ubuntu-24.04
+    steps:
+      - name: four
+        env:
+          ALPHA: *v1
+        run: echo "ALPHA=$ALPHA"
