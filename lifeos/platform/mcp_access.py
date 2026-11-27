@@ -195,3 +195,27 @@ def call(access, client, tenant, tool, action, account, service, effect, audit, 
         now or datetime.now(timezone.utc),
         pregrant_tools=("gmail_search", "gmail_read", "drive_search", "drive_read"),
     )
+
+
+def operation_arguments(args):
+    """The `arguments` of a buzz_read or buzz_publish call. Some clients send that object as a JSON string instead of an
+    object (the schema says object); a string that parses to exactly one JSON object is taken as that object. Anything
+    else is returned unchanged, so the argument check still refuses it."""
+    value = args.get("arguments", {})
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        return parsed if isinstance(parsed, dict) else value
+    return value
+
+
+def arguments_shape(args):
+    """A fixed word for what a call's `arguments` looked like (never its content), for a refused call's reply."""
+    value = args.get("arguments")
+    if value is None:
+        return "missing"
+    if isinstance(value, dict):
+        return "object" if isinstance(value.get("workspace"), str) else "object_without_workspace"
+    return "string" if isinstance(value, str) else "other"

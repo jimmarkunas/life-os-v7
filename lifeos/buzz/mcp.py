@@ -97,11 +97,11 @@ try:
 except ImportError:
     call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = None
 try:
-    from lifeos.platform import memory_honcho
+    from lifeos.platform import memory_honcho, memory_monitor
     memory_honcho.register(READ, _lift, MEMORY)
     ROUTES.update({op: memory_honcho.route for op in memory_honcho.OPS})
 except ImportError:
-    memory_honcho = None
+    memory_honcho = memory_monitor = None
 NEEDS_COMMUNITY = set(READ) - {"list_communities", *ROUTES}
 RETRYABLE = ("relay_error", "relay_unreachable", "precheck_unavailable")
 ERRORS = {"unsupported": ["unknown_operation", "unknown_tool", "page_boundary_unsupported"], "unauthorized": ["insufficient_scope", "community_not_authorized", "recipient_not_authorized", "recipient_not_channel_member", "write_disabled", "client_identity_not_configured", "access_denied", "governance_unavailable"],
@@ -130,7 +130,7 @@ def dispatch(relay, name, args, who):
         if args:
             raise BuzzError("invalid_argument")
         return {"ok": True, "contract": CONTRACT, "operation": "capabilities", "data": capabilities(relay, who)}
-    op, comm, a = args.get("operation"), args.get("community"), args.get("arguments", {})
+    op, comm, a = args.get("operation"), args.get("community"), mcp_access.operation_arguments(args)
     if set(args) - set(FROZEN[name][1]) or not isinstance(op, str) or op not in (READ if name == "buzz_read" else PUBLISH):
         raise BuzzError("unknown_operation", operation=op[:64], valid=mcp_access.valid_operations(who, name, READ, ROUTES, PUBLISH, DISABLED)) if isinstance(op, str) and not set(args) - set(FROZEN[name][1]) else BuzzError("invalid_argument")
     if name == "buzz_publish":
@@ -236,7 +236,7 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         from lifeos.platform import mcp_access
         access = access or mcp_access.load()
         client = mcp_access.identify(access, "http", who.get("facts") or {"oauth_client": who.get("client")})
-        arguments = args.get("arguments") if isinstance(args.get("arguments"), dict) else {}
+        arguments = mcp_access.operation_arguments(args) if isinstance(mcp_access.operation_arguments(args), dict) else {}
         community = args.get("community") if isinstance(args.get("community"), str) else arguments.get("community") if isinstance(arguments.get("community"), str) else None
         tenant = access.communities.get(community, "personal") if community is not None else "personal"
         read_only = {**TOOLS, **FROZEN}[name][3] if name in {**TOOLS, **FROZEN} else False
@@ -245,7 +245,8 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         out = mcp_access.call(access, client, tenant, op or GATE_TOOL.get(name, name), action, account, service, effect, receipts, now)
     except Exception as error:                                                                # noqa: BLE001  a fixed code only
         code = getattr(error, "reason", None) or (str(error) if type(error).__name__ == "AccessError" else "governance_unavailable")
-        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant", "account_required", "unknown_account") else "governance_unavailable", reason=code)
+        memory_monitor and code == "identity_unknown" and memory_monitor.unknown(MEMORY, "client:" + str(who.get("client")), code)
+        return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant", "account_required", "unknown_account") else "governance_unavailable", reason=code, **({"arguments_shape": mcp_access.arguments_shape(args)} if code == "unknown_tenant" and mcp_access else {}))
     if not out.executed:
         return _fail(msg, "access_denied", reason=out.reason)
     return mcp_access.capabilities_for_client(out.result, who, access, tuple(ROUTES), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
@@ -296,6 +297,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
             except AuthError as e:
                 if e.code in ("user_not_authorized", "invalid_token") and e.status != 503:
                     audit({"client": None, "identity": None, "sub": e.sub, "tool": None, "community": None, "outcome": e.code, "reason": e.reason})
+                    memory_monitor and e.code == "user_not_authorized" and memory_monitor.unknown(MEMORY, "oauth:" + str(e.sub), e.code)
                 self._deny(e.status, e.code) if e.status != 503 else self._send(503, {"error": e.code})
 
         def _credential(self):
@@ -306,6 +308,7 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
             except Exception as error:                                                          # noqa: BLE001  a fixed code only
                 if type(error).__name__ == "AccessError" and str(error) == "invalid_credential":
                     audit({"client": None, "identity": None, "sub": None, "tool": None, "community": None, "outcome": "invalid_credential", "reason": None})
+                    memory_monitor and memory_monitor.unknown(MEMORY, memory_monitor.credential_id(self.headers.get("Authorization", "")), "invalid_credential")
                     return self._deny(401, "invalid_token")
                 return self._send(503, {"error": "governance_unavailable"})
             return {"client": row["buzz_identity"], "facts": {"credential": row["id"]}, "scopes": {"buzz:read", *(("buzz:write",) if row.get("write") is True else ())}, "sub": "cred:" + row["id"], "communities": tuple(row["communities"]), "iat": None,
@@ -432,6 +435,7 @@ def main():
         # the Agent Inbox write (service's Notion integration); None until placed. The Jira ticket-state lookup needs the three
         # JIRA_* names, else agent_dispatch fails closed
         orchestrator and orchestrator.wire(credentials(os.environ), ORCH); inbox_send.wire(credentials(os.environ), INBOX)
+        memory_monitor and memory_monitor.wire(MEMORY, inbox_send, INBOX)  # event-driven memory alerts; no timer
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))
         source_lookup.wire(credentials(os.environ), LOOKUP)
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()

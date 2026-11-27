@@ -972,6 +972,48 @@ class Credentials(Server):
         self.start(access=expired)
         self.assertEqual(self.rpc(self.tok(), "tools/list")[0], 401)
 
+    def test_unregistered_credentials_feed_the_memory_alert_and_a_known_clients_bytalos_denial_never_does(self):
+        from lifeos.platform import memory_monitor
+
+        sent = []
+        self.addCleanup(buzz_mcp.MEMORY.pop, "monitor", None)
+        buzz_mcp.MEMORY["monitor"] = memory_monitor.Monitor(
+            sent.append, dispatch=lambda send, item, report: send(item), report=lambda r: None
+        )
+        self.start(access=self.access())
+        for _ in range(3):  # a known client asking for Bytalos memory: a policy denial, never an unknown caller
+            status, out = self.tool(
+                self.tok(), "buzz_read", operation="memory_recall", arguments={"workspace": "Bytalos", "query": "x"}
+            )
+            self.assertEqual((status, out["error"]), (200, "access_denied"))
+        self.assertEqual(sent, [])
+        for _ in range(3):
+            self.assertEqual(self.rpc(self.tok("no-such-client", "Z" * 43), "tools/list")[0], 401)
+        self.assertEqual(len(sent), 1)
+        self.assertIn(memory_monitor.fingerprint("cred:no-such-client"), sent[0]["subject"])
+        self.assertNotIn("no-such-client", json.dumps(sent))
+
+    def test_memory_arguments_sent_as_a_json_string_route_to_personal_and_bad_shapes_say_what_arrived(self):
+        """Some clients send the nested `arguments` object as a JSON string; it is read as that object. A shape that
+        still names no exact workspace is refused unknown_tenant with a fixed word for what arrived, never its content."""
+        self.start(access=self.access())
+        args = json.dumps({"workspace": "Personal", "query": "probe"})
+        status, out = self.tool(self.tok(), "buzz_read", operation="memory_recall", arguments=args)
+        self.assertEqual(status, 200)
+        self.assertNotEqual(out.get("reason"), "unknown_tenant")
+        self.assertEqual(self.receipts[-2]["tenant"], "personal")  # it reached the gate as a Personal call
+        for arguments, shape in (
+            ({"workspace": "personal", "query": "probe"}, "object"),
+            ({"query": "probe"}, "object_without_workspace"),
+            ("not json", "string"),
+        ):
+            status, out = self.tool(self.tok(), "buzz_read", operation="memory_recall", arguments=arguments)
+            self.assertEqual(
+                (status, out["error"], out["reason"], out["arguments_shape"]),
+                (200, "access_denied", "unknown_tenant", shape),
+            )
+            self.assertNotIn("probe", json.dumps(out))
+
     def test_one_credential_never_becomes_another_client_whatever_the_caller_sends(self):
         self.start(access=self.access())
         status, raw, _ = self.req(
