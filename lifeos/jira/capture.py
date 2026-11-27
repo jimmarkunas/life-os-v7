@@ -21,6 +21,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from lifeos.jira.search import search
+from lifeos.platform import db
 from lifeos.platform.jira import Jira, JiraError
 from lifeos.platform.snapshot_store import Store
 
@@ -153,14 +154,24 @@ class State:
     def comment(self, comment_id):
         return COMMENT_STORE.load(self.connection, int(comment_id))
 
+    def _write(self, store, key, payload, now):
+        """The row is an upsert, so a write that lost its session (the database drops an idle one within seconds) may reconnect and run once more; the shared cursor only retries reads."""
+        try:
+            store.save(self.connection, key, self._wrap(payload, now))
+        except Exception as error:  # noqa: BLE001
+            if not db._lost(error):
+                raise
+            self.connection._reconnect(error)
+            store.save(self.connection, key, self._wrap(payload, now))
+
     def put_comment(self, comment_id, payload, now):
-        COMMENT_STORE.save(self.connection, int(comment_id), self._wrap(payload, now))
+        self._write(COMMENT_STORE, int(comment_id), payload, now)
 
     def issue(self, key):
         return (ISSUE_STORE.load(self.connection, key) or {}).get("comments") or []
 
     def put_issue(self, key, ids, now):
-        ISSUE_STORE.save(self.connection, key, self._wrap({"comments": sorted(ids)}, now))
+        self._write(ISSUE_STORE, key, {"comments": sorted(ids)}, now)
 
 
 def _tick(total, key, why=None):

@@ -216,6 +216,34 @@ class MemoryClient(unittest.TestCase):
         reply = self._reply({"Answer": [{"type": 5, "data": "alias."}, {"type": 1, "data": "198.51.100.7"}]}, False)
         self.assertEqual(C.public_address("h.example", lambda request, timeout=0: reply), "198.51.100.7")
 
+    def test_a_state_write_that_lost_its_session_reconnects_and_runs_once_more(self):
+        class OperationalError(Exception):
+            pass
+
+        class Conn:
+            reconnects = 0
+
+            def _reconnect(self, error):
+                self.reconnects += 1
+
+        class Store:
+            def __init__(self, failures):
+                self.failures, self.saved = failures, []
+
+            def save(self, connection, key, payload):
+                if self.failures:
+                    self.failures -= 1
+                    raise OperationalError(2013, "Lost connection to MySQL server during query")
+                self.saved.append(key)
+
+        state = C.State.__new__(C.State)
+        state.connection = Conn()
+        store = Store(1)
+        state._write(store, 7, {"state": "stored"}, datetime(2026, 11, 26, tzinfo=timezone.utc))
+        self.assertEqual((store.saved, state.connection.reconnects), ([7], 1))
+        with self.assertRaises(OperationalError):  # a second loss is not hidden
+            state._write(Store(2), 7, {}, datetime(2026, 11, 26, tzinfo=timezone.utc))
+
 
 if __name__ == "__main__":
     unittest.main()
