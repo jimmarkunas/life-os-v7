@@ -56,7 +56,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: V7_ARCHIVE_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_archive.outputs) }}
+          bitwarden: '{}'
       - name: Archive the merged branch (tag in life-os-automation, read back) and delete it only when safe
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -97,7 +97,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_JIRA_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_report.outputs) }}
+          bitwarden: '{}'
       - id: bws_runtime_config
         continue-on-error: true
         name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
@@ -115,7 +115,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_runtime_config.outputs) }}
+          bitwarden: '{}'
       - name: V7 settings page for the Weekly Review page address (LIFE-703; names and counts only; an unreadable page changes nothing)
         continue-on-error: true
         env:

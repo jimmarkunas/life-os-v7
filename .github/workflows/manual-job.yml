@@ -73,7 +73,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_INTERVIEW_TOKEN
-          bitwarden: ${{ toJSON(steps.bws_manual.outputs) }}
+          bitwarden: '{}'
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
@@ -97,7 +97,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: NOTION_JIRA_TOKEN,V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: ${{ toJSON(steps.bws_settings.outputs) }}
+          bitwarden: '{}'
       - name: Manual job (one job into Jobs OS and the Interview OS writer; dry run unless live is ticked; counts and fixed codes only)
         env:
           NOTION_JIRA_TOKEN: ${{ steps.bws_settings.outputs.NOTION_JIRA_TOKEN }}

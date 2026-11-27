@@ -61,7 +61,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: FIT_PROFILE_EXTRA_JSON,FIT_PROFILE_JSON,LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NTFY_TOPIC
-          bitwarden: ${{ toJSON(steps.bws_safety.outputs) }}
+          bitwarden: '{}'
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:
