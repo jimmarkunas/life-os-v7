@@ -107,6 +107,22 @@ A message can carry one signed recipient `p` tag (Buzz's native mention form: ki
 
 Known limits: one process only (the write lock is in-process); the relay's read-after-write consistency is unverified; a new IdP client registration changes the `client_id`, so `BUZZ_OAUTH_CLIENTS` must be updated to match.
 
+## Reproducible release from one commit (current procedure)
+
+The release holds exactly `deploy/buzz-mcp/release-manifest.txt`: the service's import closure, the two access files and the four `bin/` tools. A test keeps the manifest equal to that closure.
+
+```
+# Mac: build from the merged commit (prints one sha256 per file)
+python3 tools/buzz_release.py build $FULL /tmp/buzz-$SHA.tgz && scp /tmp/buzz-$SHA.tgz opc@lifeos-edge-01:/tmp/
+# Oracle: new immutable directory, then hash-check it against the commit before switching
+REL=/opt/lifeos-buzz-mcp/releases/$SHA; sudo install -d -m 0755 $REL && sudo tar -xzf /tmp/buzz-$SHA.tgz -C $REL --no-same-owner
+python3 tools/buzz_release.py verify $FULL <copy of $REL>    # 0 differences, nothing missing or extra
+sudo -u buzz-mcp env PYTHONPATH=$REL python3 -s -B -c "import lifeos.buzz.mcp"   # dry load as the service user
+sudo ln -sfn releases/$SHA /opt/lifeos-buzz-mcp/current && sudo systemctl restart lifeos-buzz-mcp
+```
+
+Rollback: point `current` back at the previous release directory and restart; the service keeps no ledger or database. Memory health alerts are event-driven inside this service (`lifeos/platform/memory_monitor.py`): three `memory_unavailable` results in a row send one Agent Inbox item, and recovery updates it; three refusals in an hour from one unregistered caller send one item for that caller. Known clients refused for a tenant they lack (Bytalos) and grant drills are never counted. There is no timer, so an outage with no callers is not detected.
+
 ## Governed release (LIFE-865): the exact protected procedure (prepared, NOT run)
 
 Same service, unit, user, port and Funnel endpoint: only the release directory changes. Needs Jim's explicit approval of the release SHA and the final grant list (`docs/platform/mcp-grants-proposed.md`). `$FULL` is the merged commit, `$SHA` its first 12 characters.
@@ -201,5 +217,5 @@ Claude.ai connectors are account-level, so the Duet connector gets its own publi
 Jim (Nov 23 2026 7:24 and 7:28 PM CT, Nov 24 3:53 AM CT): all governed agents share real, non-sensitive work memory on the retained Honcho. Five operations of `buzz_read`: `memory_store`, `memory_recall`, `memory_correct`, `memory_revoke`, `memory_ask`; Personal only (Bytalos and TGP stay refused); purpose `personal-memory`; granted to `claude-chat` (which is also how OC, MC and Claude chat arrive), `chatgpt-chat`, `muse-chat`, `duet-chat`, `mac-claude-code`, `oracle-claude-code`, `hermes-librarian` and `openclaw`; no expiry in practice (2099-12-31), revocable any time (`revoked` true). The legacy `synthetic-memory-test` rows were removed at the LIFE-877 sign-off (Nov 26 2026).
 - **Sensitive filter** (`lifeos/platform/memory_filter.py`), in front of `memory_store` and the new text of `memory_correct`: deterministic patterns (credentials, identity numbers and birth dates, finance, health, phone numbers, emails, street addresses), then a Haiku 5.5 second look through the Honcho meter (`http://172.28.0.1:8081`, the Docker bridge address in `lifeos/edge/honcho/meter_proxy.py`; the meter holds the real key, so the service gets no new credential). Either flags: `{"error": "sensitive_refused", "category": "<one word>", "stored": false, "hint": ...}`; the text is never stored, echoed or logged, and the stderr receipt holds `client`, `category`, `ct` only. The second look unavailable (meter at its cap, an error, an answer outside the fixed words): `memory_unavailable`, fail closed.
 - **Revoke and correct delete the text** (Honcho's ask reads stored conclusions directly): the old conclusion is hard-deleted and a metadata-only tombstone stays (id, client, CT time, reason, replacement id). A revoke whose delete failed has already hidden the item; the same revoke again finishes the deletion.
-- **`memory_ask`**: Honcho peer chat on `lifeos-memory` at level `minimal` (default) or `low`, 500-character question, at most 30 an hour per client, `label: "memory-derived"`, `notice: canonical sources win`, and the top five recall hits it considered (ids and source links). Honcho's own model calls go through the meter, which stops them at the cap (`memory_unavailable`).
+- **`memory_ask`**: Honcho peer chat on `lifeos-memory` at level `minimal` (default) or `low`, 500-character question, at most 5 an hour per client (Jim, Nov 27 2026; recall first, ask only when asked for), `label: "memory-derived"`, `notice: canonical sources win`, and the top five recall hits it considered (ids and source links). Honcho's own model calls go through the meter, which stops them at the cap (`memory_unavailable`).
 - **Release files:** the previous memory release plus `lifeos/platform/memory_filter.py` (new), `memory_honcho.py`, `mcp_access.json`, `capability_catalog.json` and `lifeos/buzz/mcp.py`. Rollback: repoint `/opt/lifeos-buzz-mcp/current` to the previous `releases/<sha>` and restart `lifeos-buzz-mcp`.
