@@ -1,6 +1,7 @@
 """Pure text for the V3 accountability regions: no Notion, no Jira, no clock.
 
 A summary page is at most SUMMARY_MAX characters."""
+
 from lifeos.accountability import read
 from lifeos.platform import ct_stamp
 
@@ -27,7 +28,7 @@ def degraded_stamp(old, now, what="Jira"):
 
 
 def cut(text, limit):
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def goal_cell(done, total):
@@ -43,7 +44,9 @@ def bar(done, total):
     share = done / total if total else 0.0
     filled = min(BAR, int(share * BAR + 0.5))
     color = GREEN if share >= 0.7 else ORANGE if share >= 0.3 else RED
-    return ([("█" * filled, None, False, color)] if filled else []) + ([("█" * (BAR - filled), None, False, GRAY)] if filled < BAR else [])
+    return ([("█" * filled, None, False, color)] if filled else []) + (
+        [("█" * (BAR - filled), None, False, GRAY)] if filled < BAR else []
+    )
 
 
 def p(text, url=None, bold=False):
@@ -78,12 +81,17 @@ def _v3_week_view(week, today, site):
     open_rows, subtasks = week["open"], week["subtasks"]
     blocked, overdue, done_rows = week["blocked"], week["overdue"], week["done"]
     sub_count = sum(len(rows) for rows in subtasks.values())
-    head = (f"{len(open_rows)} sprint commitments · {sub_count} sub-tasks under them · {len(blocked)} blocked outside sprint · "
-            f"{len(overdue)} overdue backlog · {len(done_rows)} done this week")
+    head = (
+        f"{len(open_rows)} sprint commitments · {sub_count} sub-tasks under them · {len(blocked)} blocked outside sprint · "
+        f"{len(overdue)} overdue backlog · {len(done_rows)} done this week"
+    )
     late = {r["key"] for r in open_rows if r["due"] and r["due"] < today.isoformat()}
     ordered = [r for r in open_rows if r["key"] in late] + [r for r in open_rows if r["key"] not in late]
     shown = ordered[:OPEN_SHOWN]
-    parts, lines = [NL, p(f"Sprint commitments ({len(open_rows)})", bold=True)], [f"Sprint commitments ({len(open_rows)}):"]
+    parts, lines = (
+        [NL, p(f"Sprint commitments ({len(open_rows)})", bold=True)],
+        [f"Sprint commitments ({len(open_rows)}):"],
+    )
     if not open_rows:
         parts, lines = parts + [NL, p("Nothing.")], lines + ["Nothing."]
     for row in shown:
@@ -95,13 +103,29 @@ def _v3_week_view(week, today, site):
     if len(open_rows) > len(shown):
         more = f"…and {len(open_rows) - len(shown)} more in Jira"
         parts, lines = parts + [NL, p(more, read.jql_url(site, week["jql"] + " ORDER BY duedate ASC"))], lines + [more]
-    blocked_parts, blocked_lines = _group("Blocked outside sprint", blocked, OPEN_SHOWN, site, read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC"))
-    overdue_parts, overdue_lines = _group("Overdue backlog", overdue, OPEN_SHOWN, site, read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC"),
-                                          flags={r["key"]: ", overdue" for r in overdue})
-    done_more = read.jql_url(site, "issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done")
+    blocked_parts, blocked_lines = _group(
+        "Blocked outside sprint",
+        blocked,
+        OPEN_SHOWN,
+        site,
+        read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC"),
+    )
+    overdue_parts, overdue_lines = _group(
+        "Overdue backlog",
+        overdue,
+        OPEN_SHOWN,
+        site,
+        read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC"),
+        flags={r["key"]: ", overdue" for r in overdue},
+    )
+    done_more = read.jql_url(
+        site, "issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done"
+    )
     done_parts, done_lines = _group("Done this week", done_rows, DONE_SHOWN, site, done_more)
-    return ([p(head)] + parts + [NL] + blocked_parts + [NL] + overdue_parts + [NL] + done_parts,
-            [head] + lines + [""] + blocked_lines + [""] + overdue_lines + [""] + done_lines)
+    return (
+        [p(head)] + parts + [NL] + blocked_parts + [NL] + overdue_parts + [NL] + done_parts,
+        [head] + lines + [""] + blocked_lines + [""] + overdue_lines + [""] + done_lines,
+    )
 
 
 def week_view(week, today, site):
@@ -114,29 +138,47 @@ def week_view(week, today, site):
         combined = open_rows + outside
         overdue = {r["key"] for r in combined if r["due"] and r["due"] < today.isoformat()}
         blocked = [r for r in combined if r["status"].lower() == "blocked"]
-        head = (f"{len(open_rows)} sprint open · {len(outside)} due outside sprint · "
-                f"{len(overdue)} overdue · {len(blocked)} blocked · {len(done_rows)} done this week")
+        head = (
+            f"{len(open_rows)} sprint open · {len(outside)} due outside sprint · "
+            f"{len(overdue)} overdue · {len(blocked)} blocked · {len(done_rows)} done this week"
+        )
         ordered = [r for r in open_rows if r["key"] in overdue] + [r for r in open_rows if r["key"] not in overdue]
         more = read.jql_url(site, week["jql"] + " ORDER BY duedate ASC")
-        active_parts, active_lines = _group("Sprint commitments", ordered, OPEN_SHOWN, site, more,
-                                            flags={k: ", overdue" for k in overdue})
+        active_parts, active_lines = _group(
+            "Sprint commitments", ordered, OPEN_SHOWN, site, more, flags={k: ", overdue" for k in overdue}
+        )
         due_order = [r for r in outside if r["key"] in overdue] + [r for r in outside if r["key"] not in overdue]
         due_more = read.jql_url(site, week["outside_jql"] + " ORDER BY duedate ASC")
-        due_parts, due_lines = _group("Due outside sprint", due_order, OPEN_SHOWN, site, due_more,
-                                      flags={k: ", overdue" for k in overdue})
-        done_more = read.jql_url(site, f'project = MEJ AND issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done')
+        due_parts, due_lines = _group(
+            "Due outside sprint", due_order, OPEN_SHOWN, site, due_more, flags={k: ", overdue" for k in overdue}
+        )
+        done_more = read.jql_url(
+            site,
+            f'project = MEJ AND issuetype != Sub-task AND statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done',
+        )
         done_parts, done_lines = _group("Done this week", done_rows, DONE_SHOWN, site, done_more)
-        return ([p(head)] + active_parts + [NL] + due_parts + [NL] + done_parts,
-                [head] + active_lines + [""] + due_lines + [""] + done_lines)
+        return (
+            [p(head)] + active_parts + [NL] + due_parts + [NL] + done_parts,
+            [head] + active_lines + [""] + due_lines + [""] + done_lines,
+        )
 
     overdue = {r["key"] for r in open_rows if r["due"] and r["due"] < today.isoformat()}
     blocked = [r for r in open_rows if r["status"].lower() == "blocked"]
     head = f"{len(open_rows)} open · {len(overdue)} overdue · {len(blocked)} blocked · {len(done_rows)} done this week"
     ordered = [r for r in open_rows if r["key"] in overdue] + [r for r in open_rows if r["key"] not in overdue]
     more = read.jql_url(site, week["jql"] + " ORDER BY duedate ASC")
-    got_open, lines_open = _group(SECTION_OPEN, ordered, OPEN_SHOWN, site, more, flags={k: ", overdue" for k in overdue})
-    got_done, lines_done = _group(SECTION_DONE + " this week", done_rows, DONE_SHOWN, site, read.jql_url(site, "statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done"))
+    got_open, lines_open = _group(
+        SECTION_OPEN, ordered, OPEN_SHOWN, site, more, flags={k: ", overdue" for k in overdue}
+    )
+    got_done, lines_done = _group(
+        SECTION_DONE + " this week",
+        done_rows,
+        DONE_SHOWN,
+        site,
+        read.jql_url(site, "statusCategoryChangedDate >= startOfWeek() AND statusCategory = Done"),
+    )
     return [p(head)] + got_open + [NL] + got_done, [head] + lines_open + lines_done
+
 
 MAX_ARTIFACT_LINES = 40
 NO_INDEX = "The artifact index is not set up yet."
@@ -152,7 +194,11 @@ def artifact_lines(items):
     if not items:
         return [[p(NO_ARTIFACTS)]], [NO_ARTIFACTS], False
     shown = items[:MAX_ARTIFACT_LINES]
-    return [[p(item["title"], item["url"])] for item in shown], [f"{item['title']} — {item['url']}" for item in shown], True
+    return (
+        [[p(item["title"], item["url"])] for item in shown],
+        [f"{item['title']} — {item['url']}" for item in shown],
+        True,
+    )
 
 
 def combined_heading(person, year, n):
@@ -171,7 +217,7 @@ def review_parts(links):
 def fit(parts):
     parts = list(parts)
     while len(parts) > MAX_PARTS:
-        parts = parts[:max(i for i, part in enumerate(parts[:-1]) if part == NL)]
+        parts = parts[: max(i for i, part in enumerate(parts[:-1]) if part == NL)]
     return parts
 
 

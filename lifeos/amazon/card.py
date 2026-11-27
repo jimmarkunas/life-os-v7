@@ -2,6 +2,7 @@
 
 Reads the canonical orders and writes only the callout it owns; when the ingest step just failed the line says
 DEGRADED and the last accepted orders stay visible."""
+
 import os
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -22,7 +23,12 @@ DELIVERED_DAYS = 7
 OPEN_STALE_DAYS = 30
 MAX_LISTED = 10
 MAX_PAGES = 10
-PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
+PROTECTED = (
+    ("JIRA_CARD_BLOCK_ID", router.JIRA_REGION),
+    ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION),
+    ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
+    ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION),
+)
 
 
 class CardError(NotionError):
@@ -34,18 +40,45 @@ def _fail(code):
 
 
 def _query_body(since):
-    return {"page_size": 100, "sorts": [{"property": "Latest Event At", "direction": "descending"}],
-            "filter": {"or": [{"property": "Status", "select": {"equals": "ORDERED"}}, {"property": "Status", "select": {"equals": "SHIPPED"}},
-                              {"property": "Needs Review", "checkbox": {"equals": True}},
-                              {"property": "Status", "select": {"equals": "RETURNING"}},
-                              {"and": [{"property": "Status", "select": {"equals": "DELIVERED"}}, {"property": "Latest Event At", "date": {"on_or_after": since}}]},
-                              {"and": [{"property": "Status", "select": {"equals": "REFUNDED"}}, {"property": "Latest Event At", "date": {"on_or_after": since}}]}]}}
+    return {
+        "page_size": 100,
+        "sorts": [{"property": "Latest Event At", "direction": "descending"}],
+        "filter": {
+            "or": [
+                {"property": "Status", "select": {"equals": "ORDERED"}},
+                {"property": "Status", "select": {"equals": "SHIPPED"}},
+                {"property": "Needs Review", "checkbox": {"equals": True}},
+                {"property": "Status", "select": {"equals": "RETURNING"}},
+                {
+                    "and": [
+                        {"property": "Status", "select": {"equals": "DELIVERED"}},
+                        {"property": "Latest Event At", "date": {"on_or_after": since}},
+                    ]
+                },
+                {
+                    "and": [
+                        {"property": "Status", "select": {"equals": "REFUNDED"}},
+                        {"property": "Latest Event At", "date": {"on_or_after": since}},
+                    ]
+                },
+            ]
+        },
+    }
 
 
 def read_rows(client, source_id, since):
     rows = []
-    for page in notion_pages.query(client, source_id, _query_body(since), _fail, incomplete="CARD_READ_INCOMPLETE", repeat="CARD_PAGINATION_INVALID",
-                                   capped="CARD_PAGINATION_INCOMPLETE", limit=MAX_PAGES, read="CARD_READ_FAILED"):
+    for page in notion_pages.query(
+        client,
+        source_id,
+        _query_body(since),
+        _fail,
+        incomplete="CARD_READ_INCOMPLETE",
+        repeat="CARD_PAGINATION_INVALID",
+        capped="CARD_PAGINATION_INCOMPLETE",
+        limit=MAX_PAGES,
+        read="CARD_READ_FAILED",
+    ):
         with fixed(NotionError, _fail, "CARD_ROW_INVALID"):
             rows.extend(stage._row_from_page(item) for item in page["results"])
     return rows
@@ -73,7 +106,11 @@ def _amount(row):
 
 
 def _item(*parts):
-    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [piece for part in parts for piece in part]}}
+    return {
+        "object": "block",
+        "type": "bulleted_list_item",
+        "bulleted_list_item": {"rich_text": [piece for part in parts for piece in part]},
+    }
 
 
 def _linked(content, url):
@@ -85,12 +122,27 @@ def _linked(content, url):
 
 def _bullet(row, label):
     link = row.get("Amazon Order URL")
-    tail = " · ".join(part for part in (label, _amount(row) or "amount unknown", _day(row.get("Latest Event At"))) if part)
-    return _item(_linked((row.get("Item Summary") or "").strip() or "Amazon order", link if isinstance(link, str) and link.startswith("https://") else None), rich_text(" · " + tail))
+    tail = " · ".join(
+        part for part in (label, _amount(row) or "amount unknown", _day(row.get("Latest Event At"))) if part
+    )
+    return _item(
+        _linked(
+            (row.get("Item Summary") or "").strip() or "Amazon order",
+            link if isinstance(link, str) and link.startswith("https://") else None,
+        ),
+        rich_text(" · " + tail),
+    )
 
 
 def _paragraph(content, url=None):
-    link = [{"type": "text", "text": {"content": " · "}}, {"type": "text", "text": {"content": "All orders", "link": {"url": url}}}] if url else []
+    link = (
+        [
+            {"type": "text", "text": {"content": " · "}},
+            {"type": "text", "text": {"content": "All orders", "link": {"url": url}}},
+        ]
+        if url
+        else []
+    )
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(content) + link}}
 
 
@@ -106,28 +158,58 @@ def _orders_url(reader, source_id):
 def sections(rows, now):
     review = [r for r in rows if r.get("Needs Review") is True or r.get("Status") == "REVIEW"]
     when = lambda r: _when(r.get("Latest Event At")) or now
+
     def pick(statuses, days=None):
-        return [r for r in rows if r.get("Status") in statuses and r not in review and (days is None or when(r) >= now - timedelta(days=days))]
+        return [
+            r
+            for r in rows
+            if r.get("Status") in statuses
+            and r not in review
+            and (days is None or when(r) >= now - timedelta(days=days))
+        ]
+
     newest = lambda items: sorted(items, key=when, reverse=True)
     open_ = pick(("ORDERED", "SHIPPED"), OPEN_STALE_DAYS)
-    return (newest(open_), newest(pick(("DELIVERED",), DELIVERED_DAYS)), newest(review), len(pick(("ORDERED", "SHIPPED"))) - len(open_),
-            newest(pick(("RETURNING",), OPEN_STALE_DAYS)),
-            newest(pick(("REFUNDED",), DELIVERED_DAYS)))
+    return (
+        newest(open_),
+        newest(pick(("DELIVERED",), DELIVERED_DAYS)),
+        newest(review),
+        len(pick(("ORDERED", "SHIPPED"))) - len(open_),
+        newest(pick(("RETURNING",), OPEN_STALE_DAYS)),
+        newest(pick(("REFUNDED",), DELIVERED_DAYS)),
+    )
 
 
 def _package_bullet(pkg, label):
-    track = _linked(" ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part), packages_mod.tracking_url(pkg.get("carrier"), pkg["number"]))
-    return _item(rich_text(f"{pkg['store']} · {label} · "), track, rich_text(f" · {_day(pkg['delivered_at'] if label == 'Delivered' else pkg['shipped_at'])}"))
+    track = _linked(
+        " ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part),
+        packages_mod.tracking_url(pkg.get("carrier"), pkg["number"]),
+    )
+    return _item(
+        rich_text(f"{pkg['store']} · {label} · "),
+        track,
+        rich_text(f" · {_day(pkg['delivered_at'] if label == 'Delivered' else pkg['shipped_at'])}"),
+    )
 
 
 def package_blocks(packages, now, error=False):
     """-> (blocks, counts) for other-store packages. None with error=True means the read failed: shown as unavailable,
     never as 'no packages'."""
     if packages is None:
-        return ([_paragraph("Other packages · unavailable (mail read failed this run)")] if error else []), {"packages_in_transit": 0, "packages_delivered": 0, "packages_status": "unavailable" if error else "off"}
+        return ([_paragraph("Other packages · unavailable (mail read failed this run)")] if error else []), {
+            "packages_in_transit": 0,
+            "packages_delivered": 0,
+            "packages_status": "unavailable" if error else "off",
+        }
     transit, delivered = packages_mod.split(packages, now)
-    blocks = [_paragraph(f"Other packages · {len(transit)} in transit · {len(delivered)} delivered (last {packages_mod.DELIVERED_DAYS} days)")]
-    blocks += [_package_bullet(p, "In transit") for p in transit[:MAX_LISTED]] + [_package_bullet(p, "Delivered") for p in delivered[:MAX_LISTED]]
+    blocks = [
+        _paragraph(
+            f"Other packages · {len(transit)} in transit · {len(delivered)} delivered (last {packages_mod.DELIVERED_DAYS} days)"
+        )
+    ]
+    blocks += [_package_bullet(p, "In transit") for p in transit[:MAX_LISTED]] + [
+        _package_bullet(p, "Delivered") for p in delivered[:MAX_LISTED]
+    ]
     return blocks, {"packages_in_transit": len(transit), "packages_delivered": len(delivered), "packages_status": "ok"}
 
 
@@ -138,33 +220,62 @@ def heading_text(now, degraded=False):
 def render(rows, now, degraded=False, url=None, packages=None, packages_error=False):
     open_, delivered, review, older, returning, refunded = sections(rows, now)
     summary = f"{'Amazon sync failed · showing last accepted orders · ' if degraded else ''}{len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days)"
-    summary += (f" · {len(returning)} returning" if returning else "") + (f" · {len(refunded)} refunded (last {DELIVERED_DAYS} days)" if refunded else "") + f" · {len(review)} need review"
+    summary += (
+        (f" · {len(returning)} returning" if returning else "")
+        + (f" · {len(refunded)} refunded (last {DELIVERED_DAYS} days)" if refunded else "")
+        + f" · {len(review)} need review"
+    )
     if older:
         summary += f" · {older} older than {OPEN_STALE_DAYS} days not shown"
     blocks = [_paragraph(summary, url)]
-    for title, items, label in (("In transit", open_, None), ("Returning", returning, "Returning"), (f"Delivered, last {DELIVERED_DAYS} days", delivered, "Delivered"),
-                                (f"Refunded, last {DELIVERED_DAYS} days", refunded, "Refunded"), ("Needs review", review, "Review")):
+    for title, items, label in (
+        ("In transit", open_, None),
+        ("Returning", returning, "Returning"),
+        (f"Delivered, last {DELIVERED_DAYS} days", delivered, "Delivered"),
+        (f"Refunded, last {DELIVERED_DAYS} days", refunded, "Refunded"),
+        ("Needs review", review, "Review"),
+    ):
         if items:
             blocks.append(_paragraph(title))
-            blocks += [_bullet(row, (row.get("Status", "").title() if label is None else label)) for row in items[:MAX_LISTED]]
+            blocks += [
+                _bullet(row, (row.get("Status", "").title() if label is None else label)) for row in items[:MAX_LISTED]
+            ]
             if len(items) > MAX_LISTED:
                 blocks.append(_paragraph(f"…and {len(items) - MAX_LISTED} more"))
     if not (open_ or delivered or review or returning or refunded):
         blocks.append(_paragraph(f"No open orders and nothing delivered in the last {DELIVERED_DAYS} days"))
     extra, package_counts = package_blocks(packages, now, packages_error)
     blocks += extra
-    counts = {**package_counts, "in_transit": len(open_), "delivered": len(delivered), "review": len(review), "returning": len(returning), "refunded": len(refunded), "older_open": older, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
+    counts = {
+        **package_counts,
+        "in_transit": len(open_),
+        "delivered": len(delivered),
+        "review": len(review),
+        "returning": len(returning),
+        "refunded": len(refunded),
+        "older_open": older,
+        "status": "degraded" if degraded else "fresh",
+        "blocks_written": 0,
+    }
     return blocks, counts
 
 
 def _writer(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def _gmail(environ, gmail):
     if gmail is not None:
         return gmail
-    if not all((environ.get(name) or "").strip() for name in ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN")):
+    if not all(
+        (environ.get(name) or "").strip()
+        for name in ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN")
+    ):
         return None
     try:
         return Gmail.from_env()
@@ -187,10 +298,28 @@ def run(limit, live, environ=os.environ, reader=None, client=None, now=None, gma
     degraded = (environ.get("AMAZON_SYNC_OUTCOME") or "").strip().lower() in ("failure", "cancelled")
     mail = _gmail(environ, gmail)
     packages = packages_mod.safe_read(mail, now)[0] if mail else None
-    blocks, counts = render(rows, now, degraded, _orders_url(reader, source_id), packages, packages_error=mail is False or (bool(mail) and packages is None))
+    blocks, counts = render(
+        rows,
+        now,
+        degraded,
+        _orders_url(reader, source_id),
+        packages,
+        packages_error=mail is False or (bool(mail) and packages is None),
+    )
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "amazon", live, heading=heading_text(now, degraded))
+    _, removed = report_region.replace_text(
+        client,
+        block_id,
+        TITLE,
+        MODULE,
+        blocks,
+        protected_ids,
+        _fail,
+        "amazon",
+        live,
+        heading=heading_text(now, degraded),
+    )
     if live:
         counts["blocks_written"], counts["removed"] = len(blocks), removed
     return counts

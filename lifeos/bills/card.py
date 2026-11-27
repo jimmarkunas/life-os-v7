@@ -2,6 +2,7 @@
 
 Reads only the accepted private snapshot and writes only the callout it owns; never touches the Bill Tracker or a
 Due Date. The window is [today, today + 7] in America/Chicago."""
+
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -39,11 +40,21 @@ def _instant(value):
 
 
 def _valid(saved):
-    if not isinstance(saved, dict) or saved.get("schema") != bills_snapshot.SCHEMA_V or not isinstance(saved.get("rows"), list) or not saved["rows"]:
+    if (
+        not isinstance(saved, dict)
+        or saved.get("schema") != bills_snapshot.SCHEMA_V
+        or not isinstance(saved.get("rows"), list)
+        or not saved["rows"]
+    ):
         raise CardError("BILLS_CARD_SNAPSHOT_INVALID")
     for row in saved["rows"]:
-        if (not isinstance(row, dict) or not isinstance(row.get("Name"), str) or not row["Name"].strip()
-                or not isinstance(row.get("Paid"), bool) or any(field not in row for field in bills_snapshot.CRITICAL)):
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("Name"), str)
+            or not row["Name"].strip()
+            or not isinstance(row.get("Paid"), bool)
+            or any(field not in row for field in bills_snapshot.CRITICAL)
+        ):
             raise CardError("BILLS_CARD_SNAPSHOT_INVALID")
     with fixed((KeyError, TypeError, ValueError), CardError, "BILLS_CARD_SNAPSHOT_INVALID"):
         _instant(saved["taken_at"])
@@ -65,10 +76,17 @@ def _money(value):
 def _window(rows, today):
     buckets = state.classify(rows, today)
     last = today + timedelta(days=WINDOW_DAYS - 1)
-    due = [row for row in buckets["due_today"] + buckets["due_next_7_days"] if (day := state._day(row.get("Next Due"))) is not None and day <= last]
+    due = [
+        row
+        for row in buckets["due_today"] + buckets["due_next_7_days"]
+        if (day := state._day(row.get("Next Due"))) is not None and day <= last
+    ]
     overdue = sorted(buckets["stale_due"], key=lambda row: (state._day(row["Due Date"]), row["Name"]))
     late = {row["page_id"] for row in overdue if "page_id" in row}
-    due = sorted((row for row in due if row.get("page_id") not in late), key=lambda row: (state._day(row["Next Due"]), row["Name"]))
+    due = sorted(
+        (row for row in due if row.get("page_id") not in late),
+        key=lambda row: (state._day(row["Next Due"]), row["Name"]),
+    )
     return overdue, due
 
 
@@ -113,9 +131,15 @@ def render(saved, stale=False, now=None, tracker_url=None):
     saved = _valid(saved)
     overdue, due = _window(saved["rows"], now.date())
     blocks = [_paragraph(_summary(saved, stale, overdue, due), "Bill Tracker", tracker_url)]
-    counts = {"rows": len(saved["rows"]), "active": sum(row.get("Status") == "Active" for row in saved["rows"]), "overdue": len(overdue),
-              "due_window": len(due), "amount_missing": sum(_amount(row) is None for row in overdue + due),
-              "status": "stale" if stale else "fresh", "blocks_written": 0}
+    counts = {
+        "rows": len(saved["rows"]),
+        "active": sum(row.get("Status") == "Active" for row in saved["rows"]),
+        "overdue": len(overdue),
+        "due_window": len(due),
+        "amount_missing": sum(_amount(row) is None for row in overdue + due),
+        "status": "stale" if stale else "fresh",
+        "blocks_written": 0,
+    }
     return blocks, counts
 
 
@@ -123,19 +147,37 @@ def _tracker_link(existing):
     for block in existing[1:]:
         for part in (block.get(block.get("type")) or {}).get("rich_text") or []:
             url = ((part.get("text") or {}).get("link") or {}).get("url") or part.get("href")
-            if isinstance(part, dict) and (part.get("plain_text") or "").strip() == "Bill Tracker" and isinstance(url, str) and url.startswith("https://"):
+            if (
+                isinstance(part, dict)
+                and (part.get("plain_text") or "").strip() == "Bill Tracker"
+                and isinstance(url, str)
+                and url.startswith("https://")
+            ):
                 return url
     return None
 
 
 def _client(environ):
-    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client(
+        {
+            "NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused",
+        }
+    )
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     block_id = (environ.get("BILLS_CARD_BLOCK_ID") or "").strip()
     if not block_id:
-        return {"rows": 0, "active": 0, "overdue": 0, "due_window": 0, "amount_missing": 0, "blocks_written": 0, "status": "not_configured"}
+        return {
+            "rows": 0,
+            "active": 0,
+            "overdue": 0,
+            "due_window": 0,
+            "amount_missing": 0,
+            "blocks_written": 0,
+            "status": "not_configured",
+        }
     with fixed(Exception, CardError, "BILLS_CARD_STORE_FAILED", keep=NotionError):
         with (connect or db.connect)() as connection:
             saved = bills_snapshot.load(connection)
@@ -144,11 +186,25 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     now = _now(now)
     _valid(saved)
     stale = now - _instant(saved["taken_at"]) > timedelta(hours=STALE_HOURS)
-    protected_ids = {router.JIRA_REGION: (environ.get("JIRA_CARD_BLOCK_ID") or "").strip(), router.CALENDAR_REGION: (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()}
+    protected_ids = {
+        router.JIRA_REGION: (environ.get("JIRA_CARD_BLOCK_ID") or "").strip(),
+        router.CALENDAR_REGION: (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip(),
+    }
     client = client or _client(environ)
 
     def write(blocks, live):
-        return report_region.replace_text(client, block_id, CARD_TITLE, MODULE, blocks, protected_ids, _fail, "bills", live, heading=heading_text(saved, stale))
+        return report_region.replace_text(
+            client,
+            block_id,
+            CARD_TITLE,
+            MODULE,
+            blocks,
+            protected_ids,
+            _fail,
+            "bills",
+            live,
+            heading=heading_text(saved, stale),
+        )
 
     existing, _ = write([], False)
     blocks, counts = render(saved, stale, now, _tracker_link(existing))

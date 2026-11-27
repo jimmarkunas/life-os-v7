@@ -3,6 +3,7 @@
 Any other row fails closed (RUNTIME_CONFIG_WRITE_NOT_ALLOWED) before any read or write. A dry run (the default)
 only reports; a live write is read back and fails (RUNTIME_CONFIG_WRITE_VERIFY_FAILED) unless the new Value and
 Revision are seen."""
+
 from lifeos.platform import runtime_config
 
 ALLOWED = ("V2_OFFICIAL",)
@@ -13,7 +14,6 @@ VERIFY_FAILED = "RUNTIME_CONFIG_WRITE_VERIFY_FAILED"
 
 
 class WriteError(RuntimeError):
-
     def __init__(self, code):
         super().__init__(code)
         self.code = code
@@ -43,7 +43,10 @@ def set_value(client, source, name, value, live=False, allowed=ALLOWED):
     if not live:
         return {"status": "dry_run", "row": name}
     new_revision = int(revision or 0) + 1
-    client.update_page_properties(page["id"], {"Value": {"rich_text": [{"type": "text", "text": {"content": value}}]}, "Revision": {"number": new_revision}})
+    client.update_page_properties(
+        page["id"],
+        {"Value": {"rich_text": [{"type": "text", "text": {"content": value}}]}, "Revision": {"number": new_revision}},
+    )
     after = _rows(client, source, name)
     if len(after) != 1 or after[0][1][1] != value or after[0][1][3] != new_revision:
         raise WriteError(VERIFY_FAILED)
@@ -55,4 +58,5 @@ def official_setter(client, source, live=False):
         out = set_value(client, source, "V2_OFFICIAL", "on", live=live)
         print(f"promotion: V2_OFFICIAL {out['status']}")
         return out
+
     return setter

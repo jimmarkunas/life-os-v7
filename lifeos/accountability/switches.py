@@ -2,6 +2,7 @@
 
 MEJ_SPRINT_AUTOMATION, V3_WEEK_VIEW, V2_QUARTER_SHADOW, V2_PROMOTION and V2_OFFICIAL are on only when the value is
 exactly "on" (case and spaces ignored)."""
+
 import os
 
 SWITCHES = ("MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PROMOTION", "V2_OFFICIAL")
@@ -10,8 +11,13 @@ SWITCHES = ("MEJ_SPRINT_AUTOMATION", "V3_WEEK_VIEW", "V2_QUARTER_SHADOW", "V2_PR
 def _read(environ):
     environ = os.environ if environ is None else environ
     try:
-        return {"MEJ_SPRINT_AUTOMATION": environ.get("MEJ_SPRINT_AUTOMATION"), "V3_WEEK_VIEW": environ.get("V3_WEEK_VIEW"), "V2_QUARTER_SHADOW": environ.get("V2_QUARTER_SHADOW"),
-                "V2_PROMOTION": environ.get("V2_PROMOTION"), "V2_OFFICIAL": environ.get("V2_OFFICIAL")}
+        return {
+            "MEJ_SPRINT_AUTOMATION": environ.get("MEJ_SPRINT_AUTOMATION"),
+            "V3_WEEK_VIEW": environ.get("V3_WEEK_VIEW"),
+            "V2_QUARTER_SHADOW": environ.get("V2_QUARTER_SHADOW"),
+            "V2_PROMOTION": environ.get("V2_PROMOTION"),
+            "V2_OFFICIAL": environ.get("V2_OFFICIAL"),
+        }
     except (AttributeError, TypeError):
         return {}
 

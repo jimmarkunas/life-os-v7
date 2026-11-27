@@ -6,6 +6,7 @@ an injected alerter. Any missing, ambiguous, duplicate or wrong-date datum is a 
 quarter list 100% counted, no key with two goals, completion dates from the first verified Done transition, v1
 figures unchanged, manual and automatic closures distinct). `reconcile` allows at most ONE unexplained discrepancy
 per board per quarter."""
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -30,7 +31,6 @@ ALERT_FAILED = "ACCOUNTABILITY_PROMOTION_ALERT_FAILED"
 
 
 class PromotionError(Exception):
-
     def __init__(self, code):
         super().__init__(code)
         self.code = code
@@ -56,7 +56,9 @@ def reconcile(discrepancies):
             continue
         seen.add(key)
         record = (item or {}).get("explanation")
-        complete = isinstance(record, dict) and all(isinstance(record.get(f), str) and record.get(f).strip() for f in EXPLANATION_FIELDS)
+        complete = isinstance(record, dict) and all(
+            isinstance(record.get(f), str) and record.get(f).strip() for f in EXPLANATION_FIELDS
+        )
         (explained if complete else unexplained).append(key)
     return {"explained": sorted(explained), "unexplained": sorted(unexplained)}
 
@@ -83,7 +85,12 @@ def _board(name, data):
         hard.add(COMPLETION_DATE_UNVERIFIED)
     else:
         for item in completions.values():
-            if not isinstance(item, dict) or item.get("source") != "changelog" or not item.get("date") or item.get("ambiguous"):
+            if (
+                not isinstance(item, dict)
+                or item.get("source") != "changelog"
+                or not item.get("date")
+                or item.get("ambiguous")
+            ):
                 hard.add(COMPLETION_DATE_UNVERIFIED)
     parity = data.get("history")
     if not isinstance(parity, dict) or "before" not in parity or "after" not in parity:
@@ -91,9 +98,13 @@ def _board(name, data):
     elif parity["before"] != parity["after"]:
         hard.add(HISTORY_DRIFT)
     recurring = data.get("recurring")
-    if not isinstance(recurring, dict) or not all(isinstance(recurring.get(k), int) and recurring.get(k) >= 0 for k in ("manual", "auto", "total")):
+    if not isinstance(recurring, dict) or not all(
+        isinstance(recurring.get(k), int) and recurring.get(k) >= 0 for k in ("manual", "auto", "total")
+    ):
         hard.add(RECURRING_NOT_DISTINCT)
-    elif recurring["manual"] + recurring["auto"] != recurring["total"] or set(recurring.get("manual_keys") or []) & set(recurring.get("auto_keys") or []):
+    elif recurring["manual"] + recurring["auto"] != recurring["total"] or set(recurring.get("manual_keys") or []) & set(
+        recurring.get("auto_keys") or []
+    ):
         hard.add(RECURRING_NOT_DISTINCT)
     result = reconcile(data.get("discrepancies"))
     return sorted(hard), result
@@ -104,27 +115,53 @@ def evaluate(inputs):
     "explained": n}}}. PASS needs both boards with no hard failure and at most one unexplained discrepancy each."""
     reasons, boards = set(), {}
     if not isinstance(inputs, dict) or not isinstance(inputs.get("boards"), dict) or not inputs.get("quarter"):
-        return {"verdict": "FAIL", "reasons": [INPUT_INVALID], "quarter": str((inputs or {}).get("quarter") or "") if isinstance(inputs, dict) else "", "boards": {}}
+        return {
+            "verdict": "FAIL",
+            "reasons": [INPUT_INVALID],
+            "quarter": str((inputs or {}).get("quarter") or "") if isinstance(inputs, dict) else "",
+            "boards": {},
+        }
     for name in BOARDS:
         hard, result = _board(name, inputs["boards"].get(name))
         unexplained = len(result["unexplained"]) if result else 0
-        boards[name] = {"hard": hard, "unexplained": unexplained, "explained": len(result["explained"]) if result else 0}
+        boards[name] = {
+            "hard": hard,
+            "unexplained": unexplained,
+            "explained": len(result["explained"]) if result else 0,
+        }
         reasons.update(hard)
         if unexplained > MAX_UNEXPLAINED:
             reasons.add(TOLERANCE_EXCEEDED)
-    return {"verdict": "FAIL" if reasons else "PASS", "reasons": sorted(reasons), "quarter": str(inputs["quarter"]), "boards": boards}
+    return {
+        "verdict": "FAIL" if reasons else "PASS",
+        "reasons": sorted(reasons),
+        "quarter": str(inputs["quarter"]),
+        "boards": boards,
+    }
 
 
 def alert_item(verdict):
     failing = failing_boards(verdict)
-    return {"subject": ALERT_SUBJECT, "urgency": "Today", "workspace": "Personal", "key": f"v2-promotion-{verdict.get('quarter') or 'unknown'}",
-            "details": ("failing board: " + ", ".join(failing) + ". " if failing else "") + "reasons: " + ", ".join(verdict.get("reasons") or []) + ". Both boards stay on legacy; v2 stays preview."}
+    return {
+        "subject": ALERT_SUBJECT,
+        "urgency": "Today",
+        "workspace": "Personal",
+        "key": f"v2-promotion-{verdict.get('quarter') or 'unknown'}",
+        "details": ("failing board: " + ", ".join(failing) + ". " if failing else "")
+        + "reasons: "
+        + ", ".join(verdict.get("reasons") or [])
+        + ". Both boards stay on legacy; v2 stays preview.",
+    }
 
 
 def failing_boards(verdict):
     """Boards that made a check fail. Promotion is one unit: either failing keeps both on legacy."""
     boards = (verdict or {}).get("boards") or {}
-    return [name for name in BOARDS if name in boards and (boards[name]["hard"] or boards[name]["unexplained"] > MAX_UNEXPLAINED)]
+    return [
+        name
+        for name in BOARDS
+        if name in boards and (boards[name]["hard"] or boards[name]["unexplained"] > MAX_UNEXPLAINED)
+    ]
 
 
 def refusing_setter():
@@ -152,16 +189,21 @@ def run_if_due(now, switches, readers, setters, alerter):
             setters()
         except PromotionError as error:
             verdict = {**verdict, "verdict": "FAIL", "reasons": [error.code]}
-        except Exception:                                              # noqa: BLE001
+        except Exception:  # noqa: BLE001
             verdict = {**verdict, "verdict": "FAIL", "reasons": [SETTER_UNAVAILABLE]}
         else:
             return {"status": "promoted", "verdict": verdict}
     sent = True
     try:
         alerter(alert_item(verdict))
-    except Exception:                                                  # noqa: BLE001 - a failed alert never turns a fail into a pass
+    except Exception:  # noqa: BLE001 - a failed alert never turns a fail into a pass
         sent = False
-    return {"status": "kept_legacy", "verdict": verdict, "alerted": sent, **({} if sent else {"alert_code": ALERT_FAILED})}
+    return {
+        "status": "kept_legacy",
+        "verdict": verdict,
+        "alerted": sent,
+        **({} if sent else {"alert_code": ALERT_FAILED}),
+    }
 
 
 def inbox_alerter(deliver=None):
@@ -174,4 +216,5 @@ def inbox_alerter(deliver=None):
         out = deliver({**item, "from": "v7-promotion"})
         if not (out or {}).get("ok"):
             raise PromotionError(ALERT_FAILED)
+
     return send

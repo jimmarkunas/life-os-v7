@@ -1,4 +1,5 @@
 """Pure extraction of Amazon order mail events (ordered, shipped, delivered, returning, refunded)."""
+
 import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -14,13 +15,20 @@ SENDERS = {
 }
 ORDER_ID_RE = re.compile(r"(?<![\w-])\d{3}-\d{7}-\d{7}(?![\w-])")
 TOTAL_LABEL_RE = re.compile(r"\bGrand\s+Total\b", re.IGNORECASE)
-TOTAL_RE = re.compile(r"\bGrand\s+Total\s*:?\s*(?:USD\s*)?([-+]?\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?)(?![\d.,])", re.IGNORECASE)
+TOTAL_RE = re.compile(
+    r"\bGrand\s+Total\s*:?\s*(?:USD\s*)?([-+]?\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?)(?![\d.,])", re.IGNORECASE
+)
 MAX_ORDERS_PER_MESSAGE = 10
 # Only a line that is exactly "Total", "Order Total" or "Grand Total" counts, never "Subtotal" or item prices.
-LINE_TOTAL_RE = re.compile(r"(?im)^[ \t]*(?:(?:Order|Grand)[ \t]+)?Total[ \t]*:?[ \t]*\r?\n?[ \t]*(?:USD[ \t]*)?(\$?[ \t]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?:[ \t]*USD)?[ \t\r]*$")
+LINE_TOTAL_RE = re.compile(
+    r"(?im)^[ \t]*(?:(?:Order|Grand)[ \t]+)?Total[ \t]*:?[ \t]*\r?\n?[ \t]*(?:USD[ \t]*)?(\$?[ \t]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?:[ \t]*USD)?[ \t\r]*$"
+)
 REFUND_RE = re.compile(r"\brefund", re.IGNORECASE)
-SUBJECT_PREFIX_RE = re.compile(r"^\s*(?:(?:ordered|shipped|delivered)\s*:|(?:advance\s+)?refund\s+issued\s+for|your\s+refund\s+for|dropoff\s+confirmed\s+for|return\s+request\s+confirmed\s+for|"
-                               r"your\s+return\s+drop\s+off\s+confirmation\s+for|your\s+return\s+of)\s*:?\s*", re.IGNORECASE)
+SUBJECT_PREFIX_RE = re.compile(
+    r"^\s*(?:(?:ordered|shipped|delivered)\s*:|(?:advance\s+)?refund\s+issued\s+for|your\s+refund\s+for|dropoff\s+confirmed\s+for|return\s+request\s+confirmed\s+for|"
+    r"your\s+return\s+drop\s+off\s+confirmation\s+for|your\s+return\s+of)\s*:?\s*",
+    re.IGNORECASE,
+)
 CANONICAL_URL = "https://www.amazon.com/your-orders/order-details?orderID={}"
 
 
@@ -73,7 +81,7 @@ def _grouped_by_total(body):
     for match in found:
         if match.start() < cursor:
             continue
-        parts.append((body[cursor:match.start()], match.group(1)))
+        parts.append((body[cursor : match.start()], match.group(1)))
         cursor = match.end()
     if not parts or ORDER_ID_RE.search(body[cursor:]):
         return None
@@ -101,7 +109,10 @@ def extract_all(message):
     body = message.get("body_text")
     grouped = _grouped_by_total(body)
     if grouped:
-        return [extract({**message, "body_text": f"orderID={order_id}\nGrand Total: {amount}"}) for order_id, amount in grouped]
+        return [
+            extract({**message, "body_text": f"orderID={order_id}\nGrand Total: {amount}"})
+            for order_id, amount in grouped
+        ]
     ids = sorted(set(ORDER_ID_RE.findall(body)))
     linked = set(re.findall(r"orderID=(\d{3}-\d{7}-\d{7})", body))
     if len(ids) > MAX_ORDERS_PER_MESSAGE or set(ids) != linked:
@@ -126,7 +137,11 @@ def extract(message):
     order_id = next(iter(order_ids))
     status = SENDERS[sender]
     if status == "RETURN":
-        status = "REFUNDED" if REFUND_RE.search(message.get("subject") if isinstance(message.get("subject"), str) else "") else "RETURNING"
+        status = (
+            "REFUNDED"
+            if REFUND_RE.search(message.get("subject") if isinstance(message.get("subject"), str) else "")
+            else "RETURNING"
+        )
     totals = set()
     if status == "ORDERED":
         labels, matches = TOTAL_LABEL_RE.findall(body), TOTAL_RE.findall(body)

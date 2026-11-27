@@ -1,4 +1,5 @@
 """Stage `accountability-goals`: the only writer of each person's Quarterly Goals & Review callout."""
+
 import os
 
 from lifeos.accountability import common, index, preview, read, region, render, switches
@@ -26,7 +27,17 @@ def _build(client, block_id, person, project, jira, now, live, site, notion, sha
         first, last = read.quarter_bounds(year, n)
         mine = [e for e in read.epics(jira, year, n) if e["person"] == person]
         wide = preview.cells(found, preview.reading(jira, person, mine, first, last))
-    out = region.write_combined(client, block_id, render.combined_heading(person, year, n), stamp, values, extra, render.review_parts(links), live, wide)
+    out = region.write_combined(
+        client,
+        block_id,
+        render.combined_heading(person, year, n),
+        stamp,
+        values,
+        extra,
+        render.review_parts(links),
+        live,
+        wide,
+    )
     out["epics"] = len(found)
     out["review_pages"] = len(links or [])
     return out
