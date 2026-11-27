@@ -1,4 +1,4 @@
-> **Canonical home: V7 (Nov 27 2026, 2:45 AM CT; LIFE-1060).** This file, `docs/life-os-production-contract.md` in `jimmarkunas/life-os-v7`, is now the single canonical copy of the Production Contract. The copy in `life-os-automation` (V1) is historical reference only and is no longer edited. The text below is v2.15.19 as it stood at `life-os-automation` commit `3fbf6c6`: no rule, wording or version was altered by the move. The one difference: this repository is public, so each Notion page ID is replaced by a placeholder `NOTION-PAGE-nn` and each `collection://` data source ID by `NOTION-COLLECTION-nn` (the titles in the surrounding text still name each page and source).
+> **Canonical home: V7 (Nov 27 2026, 2:45 AM CT; LIFE-1060).** This file, `docs/life-os-production-contract.md` in `jimmarkunas/life-os-v7`, is now the single canonical copy of the Production Contract. The copy in `life-os-automation` (V1) is historical reference only and is no longer edited. The text below is v2.15.19 as it stood at `life-os-automation` commit `3fbf6c6`: no rule, wording or version was altered by the move. The one difference: this repository is public, so Notion page and data source IDs are not shown. Each appears as a stable name, `notion:<name>` for a page and `collection:<name>` for a data source (for example `notion:daily_report`, `collection:bill_tracker`). Real IDs live only in the private environment (`LIFEOS_NOTION_IDS`; see `lifeos/platform/notion_ids.py` and `docs/PRIVACY.md`) and in the routes of the Notion Agent Bootstrap page; the original links are in the V1 copy at `3fbf6c6`.
 
 # LIFE OS Production Contract
 
@@ -57,7 +57,7 @@ This section is the highest-precedence text in this file. It supersedes every ot
 
 ## INTERVIEW CANON OWNERSHIP OVERRIDE — October 20, 2026 CT
 
-- **V7 is the sole live owner and writer of the Hiring Pipeline Interview OS pages** (opportunity parents and interview children) at the canonical root, Hiring Pipeline hub `[removed]`. Jim authorized the single-writer transition on October 20, 2026 CT (LIFE-88, PR #408 in `jimmarkunas/life-os-v7`).
+- **V7 is the sole live owner and writer of the Hiring Pipeline Interview OS pages** (opportunity parents and interview children) at the canonical root, Hiring Pipeline hub `notion:hiring_pipeline_hub`. Jim authorized the single-writer transition on October 20, 2026 CT (LIFE-88, PR #408 in `jimmarkunas/life-os-v7`).
 - The prior Interview Canon writer (`scripts/interview_canon_runtime.py` and `interview_canon/runtime.py`) has **no write authority**. Its production gate reads the marker below from this file and refuses every apply while the marker is `false`. Nothing (including the retired `LIFE OS Daily Runs`) may run it in `qa-apply` or `apply` mode against the canonical root, must not assemble its input payload, and must not create, update, reorder or normalize any Interview OS page. The Smith/Willie layouts and the creation gates in `docs/interview-canon-production-contract.md` are superseded by the approved UI 3c / UI 4 pages and V7's identity and progression rules.
 - V7 owns the evidence, identity, page creation and in-place refresh, and the authoritative read-back, through its existing hourly tick and `domains.yml` execution path (`lifeos.run interview`). This creates no new scheduler, workflow family, orchestration layer, or datastore. Each side stays the sole scheduler in its own scope, as the October 2026 scheduler-scope rule already records.
 - `LIFE OS Daily Runs` is retired and does not read Interview OS pages. Missing, stale, partial, failed or unaccepted V7 Interview OS output is `DEGRADED` for any consumer; it never falls back to the retired writer or the retired executor.
@@ -146,31 +146,31 @@ Canonical persistent natural keys:
 
 These are the durable Notion/Drive identities. Listing a surface here does not mean any executor under this contract refreshes it; see `DAILY RUNS RETIREMENT OVERRIDE` for what is delivered.
 
-- Daily Report: `https://app.notion.com/p/NOTION-PAGE-01`
-- Dashboard: `https://app.notion.com/p/NOTION-PAGE-02`
-- Daily Report Template / UI canon: `https://app.notion.com/p/NOTION-PAGE-03`
-- J Search front door: `https://app.notion.com/p/NOTION-PAGE-04`
-- Recruiters & Human Outreach: `collection://NOTION-COLLECTION-01`
-- Attention: `collection://NOTION-COLLECTION-02`
-- Hiring Pipeline context hub: `https://app.notion.com/p/NOTION-PAGE-05`
-- US Remote Jobs: `https://app.notion.com/p/NOTION-PAGE-06`
-- Job Boards / US Web (RETIRED — superseded by US Remote Jobs): `https://app.notion.com/p/NOTION-PAGE-07`
-- Scale Up Jobs (ACTIVE): `https://app.notion.com/p/NOTION-PAGE-08`
-- Skilled Worker Jobs: `https://app.notion.com/p/NOTION-PAGE-09`
-- Canonical Job Ledger: `collection://NOTION-COLLECTION-03`
-- Job Lane Configuration: `collection://NOTION-COLLECTION-04`
-- Target Companies: `collection://NOTION-COLLECTION-05`
-- Weekly Review Hub: `https://app.notion.com/p/NOTION-PAGE-10`
-- Weekly Reviews: `collection://NOTION-COLLECTION-06`
-- Weekly Reports Archive hub: `https://app.notion.com/p/NOTION-PAGE-11`
-- Drive Index: `collection://NOTION-COLLECTION-07`
-- Bill Tracker: `https://app.notion.com/p/NOTION-PAGE-12`
-- Bill Tracker data source: `collection://NOTION-COLLECTION-08`
-- Interview Archive: `https://app.notion.com/p/NOTION-PAGE-13`
-- Amazon Orders database: `https://app.notion.com/p/NOTION-PAGE-14`
-- Amazon Orders data source: `5a720a09-dfec-400e-b1dd-8e45a2a4fd4b`
-- Accountability Dashboard: `https://app.notion.com/p/NOTION-PAGE-15`
-- Saturn Protocol: `https://app.notion.com/p/NOTION-PAGE-16`
+- Daily Report: `notion:daily_report`
+- Dashboard: `notion:dashboard`
+- Daily Report Template / UI canon: `notion:daily_report_template`
+- J Search front door: `notion:j_search_front_door`
+- Recruiters & Human Outreach: `collection:recruiters_human_outreach`
+- Attention: `collection:attention`
+- Hiring Pipeline context hub: `notion:hiring_pipeline_hub`
+- US Remote Jobs: `notion:us_remote_jobs`
+- Job Boards / US Web (RETIRED — superseded by US Remote Jobs): `notion:job_boards_us_web`
+- Scale Up Jobs (ACTIVE): `notion:scale_up_jobs`
+- Skilled Worker Jobs: `notion:skilled_worker_jobs`
+- Canonical Job Ledger: `collection:canonical_job_ledger`
+- Job Lane Configuration: `collection:job_lane_configuration`
+- Target Companies: `collection:target_companies`
+- Weekly Review Hub: `notion:weekly_review_hub`
+- Weekly Reviews: `collection:weekly_reviews`
+- Weekly Reports Archive hub: `notion:weekly_reports_archive_hub`
+- Drive Index: `collection:drive_index`
+- Bill Tracker: `notion:bill_tracker`
+- Bill Tracker data source: `collection:bill_tracker`
+- Interview Archive: `notion:interview_archive`
+- Amazon Orders database: `notion:amazon_orders_database`
+- Amazon Orders data source: `collection:amazon_orders`
+- Accountability Dashboard: `notion:accountability_dashboard`
+- Saturn Protocol: `notion:saturn_protocol`
 
 Production job child pages are persistent canonical views plus one retired surface: US Remote Jobs (active), Scale Up Jobs (active), Skilled Worker Jobs (quarantined reference). Job Boards / US Web is RETIRED and superseded by US Remote Jobs — it must not be deleted or archived, but no acquisition module writes to it. Do not recreate, move, rename, or delete active pages from any executor. While Skilled Worker is quarantined, its page remains a persistent reference surface rather than a current production acquisition output.
 
@@ -471,11 +471,11 @@ Still binding on any actor:
 
 ## Persistent Recruiters & Human Outreach
 
-**Status: ownership not asserted here** (V7's `recruiters` stage writes the Recruiters data source, but the Daily Report region's owner is not recorded in `OWNERS`); the weekly-persistent maintenance performed by the retired `LIFE OS Daily Runs` is void. Canonical source: `collection://NOTION-COLLECTION-01`. Durable rules that survive for any actor: only direct human recruiter, staffing, hiring-manager, referral, or comparable person-to-person hiring outreach belongs here (automated alerts do not; human outreach is Saturn-exempt); `Done` is Jim's state and is never auto-cleared; resolve by the natural key in the global invariants before creating, and if absence cannot be proven do not create a possible duplicate. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: ownership not asserted here** (V7's `recruiters` stage writes the Recruiters data source, but the Daily Report region's owner is not recorded in `OWNERS`); the weekly-persistent maintenance performed by the retired `LIFE OS Daily Runs` is void. Canonical source: `collection:recruiters_human_outreach`. Durable rules that survive for any actor: only direct human recruiter, staffing, hiring-manager, referral, or comparable person-to-person hiring outreach belongs here (automated alerts do not; human outreach is Saturn-exempt); `Done` is Jim's state and is never auto-cleared; resolve by the natural key in the global invariants before creating, and if absence cannot be proven do not create a possible duplicate. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
 
 ## Persistent Attention
 
-**Status: V7 only** for the Daily Report Attention region (V7's `attention` stage); the weekly maintenance and Monday carry-forward procedure was the retired `LIFE OS Daily Runs`' and is void. Canonical source: `collection://NOTION-COLLECTION-02`. Durable rules: Attention is an exception queue, not a second Jira/task list; `Done` is Jim's state; resolve by Week Ending + Category + normalized Item and never create a possible duplicate; Physical Mail is owned by Mail Alerts and is never admitted to Attention (Jim, October 4, 2026). The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: V7 only** for the Daily Report Attention region (V7's `attention` stage); the weekly maintenance and Monday carry-forward procedure was the retired `LIFE OS Daily Runs`' and is void. Canonical source: `collection:attention`. Durable rules: Attention is an exception queue, not a second Jira/task list; `Done` is Jim's state; resolve by Week Ending + Category + normalized Item and never create a possible duplicate; Physical Mail is owned by Mail Alerts and is never admitted to Attention (Jim, October 4, 2026). The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
 
 ## Calendar
 
@@ -483,7 +483,7 @@ Still binding on any actor:
 
 ## Bills: This Week
 
-**Status: V7 only** for the Daily Report Bills region (V7's `bills` card); the summary, correlated Job + Bill snapshot trigger, and Paid processor were driven by the retired `LIFE OS Daily Runs` and are void. Canonical Bill Tracker: `collection://NOTION-COLLECTION-08`. Durable rules: missing/stale/mismatched/incomplete Finance evidence is DEGRADED and never a zero or empty summary; an unset amount is never silently $0; unattended work must not use metered MCP Notion rows/SQL as a substitute for Public API snapshots. The Runtime's Notion snapshot scripts and the Paid Bills snapshot module (`data/notion-bill-paid-snapshot-trigger.txt`) remain in this repository and have no scheduled producer; Paid-row transitions, `stale_due` rollover, and Bill Tracker mutation are not performed by anything governed here. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: V7 only** for the Daily Report Bills region (V7's `bills` card); the summary, correlated Job + Bill snapshot trigger, and Paid processor were driven by the retired `LIFE OS Daily Runs` and are void. Canonical Bill Tracker: `collection:bill_tracker`. Durable rules: missing/stale/mismatched/incomplete Finance evidence is DEGRADED and never a zero or empty summary; an unset amount is never silently $0; unattended work must not use metered MCP Notion rows/SQL as a substitute for Public API snapshots. The Runtime's Notion snapshot scripts and the Paid Bills snapshot module (`data/notion-bill-paid-snapshot-trigger.txt`) remain in this repository and have no scheduled producer; Paid-row transitions, `stale_due` rollover, and Bill Tracker mutation are not performed by anything governed here. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
 
 ## Mail Alerts
 
@@ -570,7 +570,7 @@ Durable rules for any actor: never mutate Jira planning data unattended (the one
 
 ### V7 JIRA SPRINT ROLLOVER AND DAILY RECONCILIATION — approved v2.15.18 (LIFE-915); activated under LIFE-918 (recorded v2.15.19)
 
-Approved by Jim on November 24, 2026 (ChatGPT scoping session; LIFE-915 owner decisions 1–17 and the field matrix at `https://app.notion.com/p/NOTION-PAGE-17`). v2.15.18 recorded the approval only. v2.15.19 records the activation below; it changes no schedule.
+Approved by Jim on November 24, 2026 (ChatGPT scoping session; LIFE-915 owner decisions 1–17 and the field matrix at `notion:life_915_owner_decisions`). v2.15.18 recorded the approval only. v2.15.19 records the activation below; it changes no schedule.
 
 - **Activation (recorded v2.15.19).** Activated by Jim's approval "918 activate" on November 25, 2026, 2:30 PM CT, for both boards as one unit, through V7 Runtime Configuration switch rows: `JIRA_WRITERS_VERIFIED` = yes, `MEJ_AUTOMATION_SINCE` = 2026-11-25T14:30:00-06:00, `MEJ_SPRINT_AUTOMATION` = on (V7 LIFE-918). The two parts have separate status:
   - **Daily reconciliation: ACTIVE and delivered.** First live run 45700362347 (November 25, 2026, 3:01 PM CT; both boards ok, 11 sprints renamed, none created); first natural daily run 45844720396 (November 26, 2026, 9:01 AM CT; both boards ok); 24-hour acceptance V7 LIFE-982.
@@ -589,7 +589,7 @@ Approved by Jim on November 24, 2026 (ChatGPT scoping session; LIFE-915 owner de
 
 ### V7 QUARTERLY METRIC PROMOTION (JFM and MEJ) — approved v2.15.19 (LIFE-1026); DISABLED — NOT DELIVERED
 
-Approved by Jim on November 26, 2026 (ChatGPT; REQ-63 remediation decisions R01–R05 at `https://app.notion.com/p/NOTION-PAGE-18`, and the preparation decisions recorded on V7 LIFE-1026 and LIFE-983). This amendment records authority and timing only. It changes no schedule and enables nothing new.
+Approved by Jim on November 26, 2026 (ChatGPT; REQ-63 remediation decisions R01–R05 at `notion:req_63_remediation_decisions`, and the preparation decisions recorded on V7 LIFE-1026 and LIFE-983). This amendment records authority and timing only. It changes no schedule and enables nothing new.
 
 - **What it decides.** Whether the corrected (v2) quarterly goal metric becomes official for JFM and MEJ together, replacing the legacy (v1) metric for the new quarter. Legacy stays official until a promotion succeeds, and legacy figures stay available for history.
 - **Quarter calendar.** Quarters start on the first Wednesday of January, April, July and October, America/Chicago. Q4 2026 runs Wednesday, October 7, 2026 through Tuesday, January 5, 2027; Q1 2027 starts Wednesday, January 6, 2027. January 1–5, 2027 are Q4 2026: no promotion evaluation runs then.
@@ -784,11 +784,11 @@ Surface plausible review/excluded candidates with exact reasons when useful, inc
 
 ## Drive Index
 
-**Status: DISABLED — NOT DELIVERED** under this contract (indexing ran in the retired `LIFE OS Daily Runs` full branches). Canonical store: `collection://NOTION-COLLECTION-07`; natural key is the exact Drive File ID (global invariants). Drive Index is metadata only: never copy Drive file contents into Notion. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: DISABLED — NOT DELIVERED** under this contract (indexing ran in the retired `LIFE OS Daily Runs` full branches). Canonical store: `collection:drive_index`; natural key is the exact Drive File ID (global invariants). Drive Index is metadata only: never copy Drive file contents into Notion. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
 
 ## Weekly Reports Archive and Notes lifecycle
 
-**Status: DISABLED — NOT DELIVERED** under this contract. The 6 PM Daily Report archive, Sunday 6 PM final Notes freeze, and Monday 6 AM Notes reset were Daily Runs boundaries and are void; they leave no obligation. The archive hub (`https://app.notion.com/p/NOTION-PAGE-11`) and existing archived pages are historical evidence only and are never a second source of truth; nothing governed here creates, edits, or deletes them. Live Notes are Jim's and no executor under this contract may reset them. `docs/weekly-reports-archive-contract.md` is a subordinate specification of the retired boundaries and carries no current authority. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: DISABLED — NOT DELIVERED** under this contract. The 6 PM Daily Report archive, Sunday 6 PM final Notes freeze, and Monday 6 AM Notes reset were Daily Runs boundaries and are void; they leave no obligation. The archive hub (`notion:weekly_reports_archive_hub`) and existing archived pages are historical evidence only and are never a second source of truth; nothing governed here creates, edits, or deletes them. Live Notes are Jim's and no executor under this contract may reset them. `docs/weekly-reports-archive-contract.md` is a subordinate specification of the retired boundaries and carries no current authority. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
 
 ## Weekly Review
 
