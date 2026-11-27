@@ -1,13 +1,14 @@
-"""MegIBOW weekly projection (D134): outcomes -> the 8-week table with Cumulative. Pure.
+"""MegIBOW weekly projection: outcomes -> the 8-week table with Cumulative. Pure.
 
-The open week is always recomputed from outcomes. A closed week comes from the frozen store when it is there; a week before the cut-over Monday is None (shown as a dash).
-Cumulative = the carried-over legacy totals + every closed week + the open week."""
+The open week is recomputed; a closed week comes from the frozen store, and a week before the cut-over Monday is None
+(a dash).
+"""
 from lifeos.megibow import classify as C
 from lifeos.megibow.windows import monday, visible_weeks
 
 
 def dedupe(outcomes):
-    """One outcome per key: the first seen, except that a settled COUNTED beats REVIEW and EXCLUDED for the same key."""
+    """One outcome per key: the first seen, except that a settled COUNTED beats REVIEW and EXCLUDED."""
     rank = {C.COUNTED: 0, C.REVIEW: 1, C.EXCLUDED: 2}
     best = {}
     for o in outcomes:
@@ -39,7 +40,7 @@ def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=Non
         elif o["status"] == C.REVIEW and o["week"] >= weeks[0]:
             review.append(o)
     history = history or {}
-    for w, adds in (manual or {}).items():                           # Jim's own phone-call counts for a week V7 is counting (never a history week)
+    for w, adds in (manual or {}).items():
         if w in live and (cutover is None or w >= cutover):
             for a, n in adds.items():
                 if a in live[w]:
@@ -60,7 +61,7 @@ def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=Non
             for a in C.ACTIVITIES:
                 cumulative[a] += c.get(a, 0)
     for w in weeks:
-        if counts[w] and (cutover is None or w >= cutover):                  # the history weeks are already inside the legacy totals
+        if counts[w] and (cutover is None or w >= cutover):
             for a in C.ACTIVITIES:
                 cumulative[a] += counts[w][a]
     return {"weeks": weeks, "counts": counts, "cumulative": cumulative, "review": review, "current": current}

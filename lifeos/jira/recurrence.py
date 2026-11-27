@@ -1,6 +1,7 @@
-"""LIFE-918 wiring: recurring-series clones and closure counts of one board, shared by the daily reconcile and the rollover boundary.
+"""Recurring-series clones and closure counts of one board, shared by the daily reconcile and the rollover.
 
-Every write goes through the injected writers (an unverified live run fails closed), `jobs` is pure and never plans a second occurrence of a series, output is counts and fixed codes only."""
+Writes go through injected writers and fail closed when unverified.
+"""
 
 from datetime import timedelta
 
@@ -15,7 +16,7 @@ NO_SPRINT = -1
 
 
 def jobs(issues, next_id, configured=()):
-    """-> (plan, [(root key, latest key, clone fields)]). `next_id` None means the next sprint does not exist yet (every labelled series needs a clone); a duplicate occurrence there fails closed for that series (the plan's exceptions)."""
+    """-> (plan, [(root key, latest key, clone fields)]). `next_id` None means the next sprint does not exist yet."""
     marker = NO_SPRINT if next_id is None else int(next_id)
     found = rc.series(issues, configured)
     plan = rc.plan_recurrence(issues, found, marker, configured)
@@ -38,8 +39,8 @@ def _next_sprint(client, project, board_id, now, tz, keys):
 
 
 def for_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=None):
-    """The recurrence of one board: exactly one occurrence per labelled series in next week's sprint, drift of unfinished future occurrences synchronized, a stopped series left alone. Dry run counts only.
-    Live: writes through `writers`, reads back and re-plans once on a lag; anything still undone is JIRA_RECONCILE_VERIFY_FAILED. -> counts."""
+    """One occurrence per labelled series in next week's sprint; drift on unfinished future occurrences is
+    synchronized. Live: write, read back, re-plan once; anything undone is JIRA_RECONCILE_VERIFY_FAILED. -> counts."""
     for attempt in range(2):
         target = _next_sprint(client, project, board_id, now, tz, keys)
         plan, todo = jobs(client.board_issues(board_id, "labels = recurring", SERIES_FIELDS), target)
@@ -50,7 +51,7 @@ def for_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=
         if not todo and not plan["sync"]:
             return {"cloned": 0, "synced": 0, "series_stopped": plan["stopped"]}
         if todo and target is None:
-            raise JiraError("JIRA_RECONCILE_SPRINT_CONFLICT")              # the sprint inventory runs first; a missing next sprint here means it did not hold
+            raise JiraError("JIRA_RECONCILE_SPRINT_CONFLICT")
         done = {"cloned": 0, "synced": 0}
         for root, latest, fields in todo:
             writers.need("create_clone")(root, fields, target, latest)
@@ -62,14 +63,15 @@ def for_board(client, project, board_id, now, tz, writers, live, keys=(), sleep=
         if not more and not again["sync"]:
             return {**done, "series_stopped": plan["stopped"]}
         if attempt == 0 and sleep:
-            sleep(15)                                                       # a known Jira consistency lag: one re-plan from actual state, never a blind repeat
+            sleep(15)
             continue
         raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
     raise JiraError("JIRA_RECONCILE_VERIFY_FAILED")
 
 
 def closures(client, board_id, since):
-    """-> counts of this week's closures on the board: closures_total always, closures_manual and closures_automatic only once `since` (the activation time) is set."""
+    """-> this week's closure counts: closures_total, plus closures_manual and closures_automatic once `since` is set.
+    """
     issues = client.board_issues(board_id, "statusCategory = Done AND statusCategoryChangedDate >= startOfWeek()", CLOSURE_FIELDS)
     counts = rc.closure_counts(issues, since)
     out = {"closures_total": counts["total"]}
@@ -79,7 +81,6 @@ def closures(client, board_id, since):
 
 
 def extra(environ):
-    """The `extra` hook of reconcile.run: recurrence, then the week's closure counts, for one board."""
     since = rc.since(environ)
 
     def hook(client, project, board_id, now, tz, writers, live, keys, sleep):
@@ -90,7 +91,6 @@ def extra(environ):
 
 
 def summary(total, live):
-    """The one counts-only line of the reconcile workload for the Daily Report: boards ok, sprints added and renamed, clones, closures (total, and the manual/automatic split once it exists)."""
     done = "added" if live else "would add"
     line = f"Jira sprints: {total.get('ok', 0)} of {total.get('boards', 0)} boards in order, {total.get('created' if live else 'would_create', 0)} sprints {done}, {total.get('renamed' if live else 'would_rename', 0)} {'renamed' if live else 'would rename'}"
     line += f", {total.get('cloned' if live else 'would_clone', 0)} recurring {'cloned' if live else 'to clone'}"

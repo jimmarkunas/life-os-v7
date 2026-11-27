@@ -1,7 +1,8 @@
-"""MegIBOW state (D134): two tiny private tables, never messages or events. Counts, hashed keys and Jim's decisions only.
+"""MegIBOW state: two tiny private tables of counts, hashed keys and decisions.
 
-v7_megibow_weeks: week_start (a Monday, or LEGACY) -> the five counts, a trustworthy flag, when frozen, a note.   Closed weeks never change on their own.
-v7_megibow_overrides: a hashed key -> Jim's decision (an item) or a settled contact type (a person, reused).   The durable memory of the review list."""
+v7_megibow_weeks: week_start (a Monday, or LEGACY) -> five counts, a trust flag, when frozen, a note.
+v7_megibow_overrides: hashed key -> a decision or a settled contact type.
+"""
 from datetime import date, datetime, timezone
 
 from lifeos.megibow import classify as C
@@ -34,10 +35,11 @@ def _rows(connection, store):
 
 
 def load(connection):
-    """-> (frozen {monday: counts}, legacy counts or None, overrides {key: decision}, contacts {contact_key: activity}, trusted {monday: bool}). A missing table reads as empty."""
+    """-> (frozen {monday: counts}, legacy counts or None, overrides {key: decision}, contacts {key: activity},
+    trusted {monday: bool})."""
     try:
         weeks, over = _rows(connection, WEEKS), _rows(connection, OVERRIDES)
-    except Exception as error:                                       # noqa: BLE001 - a table that is not there yet reads as empty; a real outage is caught by the caller's other reads
+    except Exception as error:  # noqa: BLE001
         if "doesn't exist" in str(error) or "1146" in str(error):
             return {}, None, {}, {}, {}
         raise StoreError("MEGIBOW_STORE_READ_FAILED") from None
@@ -64,7 +66,6 @@ def remember(connection, key, kind, decision):
 
 
 def activity_of(decision):
-    """'Count as Recruiter Call' -> 'Recruiter Calls'; anything else -> None."""
     if decision.startswith("Count as "):
         wanted = decision[len("Count as "):]
         for a in C.ACTIVITIES:
@@ -74,7 +75,6 @@ def activity_of(decision):
 
 
 def save_legacy(connection, counts):
-    """Seed the Cumulative column once (a LEGACY row); never overwritten by a later run."""
     snapshot = {"schema": 1, "taken_at": _now(), "counts": counts, "trustworthy": True, "frozen_at": _now(), "note": "legacy totals"}
     WEEKS.save(connection, LEGACY, snapshot)
     if WEEKS.load(connection, LEGACY) != snapshot:

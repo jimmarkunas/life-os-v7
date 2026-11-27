@@ -1,7 +1,7 @@
-"""MegIBOW evidence readers (D134): Gmail and Outlook sent mail, Google and Outlook calendar events -> the plain dicts classify expects. Read only, in memory only.
+"""MegIBOW evidence readers: Gmail and Outlook sent mail, Google and Outlook calendar events -> the plain dicts classify expects. Read only, in memory only.
 
-A bridged copy on Google (it carries the V7 bridge's private marker) is skipped: its creation time is the bridge's and it has no attendees; the Outlook original is read instead.
-A listing that cannot be proven complete raises (the platform clients do), so a partial read is never counted."""
+Bridged Google copies are skipped; a listing that cannot be proven complete raises.
+"""
 from datetime import datetime, timezone
 from email.utils import getaddresses
 import re
@@ -16,7 +16,6 @@ GMAIL_LIMIT = 1500
 
 
 def _when(text):
-    """An ISO timestamp (Z, offset, or a bare UTC string from Graph) -> aware datetime, or None."""
     if not text:
         return None
     text = str(text).replace("Z", "+00:00")
@@ -33,7 +32,6 @@ def addresses(header):
 
 
 def _own(client):
-    """The mailbox's own addresses, so a self-send or Jim's own attendee entry is never an external person. A sign-in without the profile permission returns none (the other sources still name Jim)."""
     try:
         me = client.get("/me", {"$select": "mail,userPrincipalName"})
     except OutlookError:
@@ -42,7 +40,7 @@ def _own(client):
 
 
 def gmail_sent(gmail, start, end):
-    """Sent messages in [start, end): {id, sent_at, to, cc, subject, snippet, bulk}. Also returns the mailbox's own address."""
+    """Sent messages in [start, end) and the mailbox's own address."""
     query = f"in:sent after:{int(start.timestamp())} before:{int(end.timestamp())}"
     out = []
     for message_id in gmail.list_ids_complete(query, GMAIL_LIMIT):
@@ -53,7 +51,6 @@ def gmail_sent(gmail, start, end):
 
 
 def outlook_sent(client, account, start, end):
-    """Sent Items in [start, end) for one Outlook account. -> (messages, own address)."""
     own = _own(client)
     out = []
     for m in client.messages("sentitems", iso(start), 3000, fields=SENT_FIELDS, time_field="sentDateTime"):
@@ -71,7 +68,6 @@ def outlook_sent(client, account, start, end):
 
 
 def gcal_events(gcal, start, end):
-    """Native Google events (never bridged copies). -> (events, own address if the calendar shows one)."""
     out, own = [], set()
     for e in gcal.list_events(iso(start), iso(end)):
         if ((e.get("extendedProperties") or {}).get("private") or {}).get(BRIDGE_MARKER):

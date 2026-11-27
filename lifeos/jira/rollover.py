@@ -1,7 +1,8 @@
-"""Scheduled 7/14-day Jira sprint rollover: read-only unless live, fails closed on ambiguity, verifies every step it takes.
+"""Scheduled 7/14-day Jira sprint rollover: read-only unless live, fails closed on ambiguity, verifies every step.
 
-Never closes a sprint before its end, and never closes it before the carry-forward is verified. A sub-task stranded under a finished parent is left out of the move (D181).
-Output: counts and fixed codes only; sprint names, issue keys and summaries are private."""
+Never closes a sprint before its end or before the carry-forward is verified. Output: counts and fixed codes only
+(names, keys and summaries are private).
+"""
 import os
 import time
 from datetime import datetime, time as clock, timedelta
@@ -13,7 +14,7 @@ from .boards import boards, owned
 
 LOCAL_TZ = "America/Chicago"
 UNFINISHED_FIELDS = "summary,status,issuetype,parent"
-AUTO_AFTER_HOUR = 0                      # scheduled rollover runs on the first hourly tick after midnight Monday local; manual runs only need the sprint to have ended
+AUTO_AFTER_HOUR = 0
 
 
 def _when(value):
@@ -21,7 +22,8 @@ def _when(value):
 
 
 def resolve_current(active, future, now, tz):
-    """(sprint, catchup). Exactly one active sprint, or - recovery - exactly one future sprint that ended within 48 hours."""
+    """(sprint, catchup): the one active sprint, or, for recovery, the one future sprint that ended within 48 hours.
+    """
     if len(active) == 1:
         return active[0], False
     if len(active) > 1:
@@ -37,7 +39,6 @@ def resolve_current(active, future, now, tz):
 
 
 def sprint_days(sprint, tz):
-    """Use the Jira schedule as authority: exactly 1 or 2 Monday-Sunday weeks."""
     start, end = _when(sprint.get("startDate")), _when(sprint.get("endDate"))
     if not start or not end:
         raise JiraError("JIRA_NO_END_DATE")
@@ -54,7 +55,6 @@ def target_week(sprint, tz):
     start = datetime.combine(end_local.date() + timedelta(days=1), datetime.min.time(), tzinfo=tz)
     if start.weekday() != 0:
         raise JiraError("JIRA_NOT_MONDAY")
-    # Local dates, not elapsed UTC hours, preserve Monday/Sunday across DST.
     return end_local, start, start + timedelta(days=days - 1, hours=23, minutes=30)
 
 
@@ -64,12 +64,11 @@ def sprint_name(project, start, end):
     return f"{project} Sprint — {start.strftime('%b %-d, %Y')}–{end.strftime('%b %-d, %Y')}"
 
 
-DST_TOLERANCE = timedelta(hours=2)       # a sprint stamped before a clock change is off by exactly the DST shift (1 hour); never reach a different day
+DST_TOLERANCE = timedelta(hours=2)
 
 
 def _matches(sprint, start, end, tz):
-    """True when the sprint is the target week. Compared as instants within the DST shift, not as local dates: a legacy sprint stamped
-    05:00Z (midnight CDT) reads as 11 PM the previous day in CST, and the local-date test missed it and created a duplicate (Nov 2, 2026)."""
+    """True when the sprint is the target week, compared as instants within the DST shift."""
     s, e = _when(sprint.get("startDate")), _when(sprint.get("endDate"))
     return bool(s and e and abs(s - start) <= DST_TOLERANCE and abs(e - end) <= DST_TOLERANCE)
 
@@ -80,9 +79,8 @@ def _state(client, sprint_id, expected, code):
 
 
 def split_unfinished(issues):
-    """-> (keys to carry, keys stranded). Jira keeps a sub-task in its parent's sprint, so a sub-task moves with its parent. When the parent is unfinished too, the sub-task follows it and is carried and
-    verified with it. When the parent is Done it stays behind in the closed sprint and can never appear in the next one: carrying it would fail the verification every hour (Oct 12: one such sub-task kept a
-    board on its old sprint), so it is left out and counted as stranded."""
+    """-> (keys to carry, keys stranded). A sub-task moves with its parent; one whose parent is Done is stranded (left
+    out)."""
     present = {i["key"] for i in issues if i.get("key")}
     carry, stranded = [], []
     for issue in issues:
@@ -96,17 +94,7 @@ def split_unfinished(issues):
 
 
 def preview_mej_selective_carry(issues, approved_keys, finite_keys=(), backlog_verified=False, already_carried=()):
-    """LIFE-915: pure preflight for a Matt-approved Task commitment roster.
-
-    Not connected to run()/execute() until Matt's exact roster and Jira's
-    backlog-placement/readback contract are live-proven. It never calls Jira.
-    An unresolved unfinished Task cannot be silently re-added, abandoned or
-    presumed in backlog. Existing JFM rollover remains untouched.
-
-    LIFE-915 gated path: with backlog_verified=True (an injected, read-back-proven backlog placement exists) the unapproved standard work and its
-    children are returned as a third list, to be placed in the backlog, instead of blocking close; `already_carried` are roster keys a previous
-    interrupted run already moved into the target sprint (restart recovery), so they need not be in the source inventory. The default call is unchanged.
-    """
+    """Pure preflight for an approved Task roster (not wired into run/execute); never calls Jira."""
     if not isinstance(issues, (list, tuple)) or not isinstance(approved_keys, (list, tuple, set, frozenset)) or not isinstance(finite_keys, (list, tuple, set, frozenset)):
         raise JiraError("JIRA_MEJ_ROSTER_INVALID")
     keys = list(approved_keys)
@@ -134,9 +122,7 @@ def preview_mej_selective_carry(issues, approved_keys, finite_keys=(), backlog_v
         name, subtask, _ = found[key]
         if subtask or name not in ("Task", "Story"):
             raise JiraError("JIRA_MEJ_ROSTER_INVALID")
-    # Without a verified backlog API/readback, an unfinished standard item
-    # outside the approved roster must block close, not vanish into Jira's
-    # provider-defined sprint-closure behavior.
+    # Without a verified backlog readback, unfinished standard work outside the roster must block close.
     for key, (name, subtask, _) in found.items():
         if not subtask and key not in keys and not backlog_verified:
             raise JiraError("JIRA_MEJ_BACKLOG_UNVERIFIED")
@@ -146,21 +132,19 @@ def preview_mej_selective_carry(issues, approved_keys, finite_keys=(), backlog_v
         if not subtask:
             continue
         if backlog_verified and not parent:
-            raise JiraError("JIRA_MEJ_INVENTORY_INVALID")          # a sub-task with no parent at all: its destination cannot be decided
+            raise JiraError("JIRA_MEJ_INVENTORY_INVALID")
         if parent in keys:
-            carry.append(key)                     # the child follows a carried parent
+            carry.append(key)
         elif backlog_verified and parent in backlog:
-            backlog.append(key)                   # the child follows its unapproved parent into the backlog
+            backlog.append(key)
         else:
-            stranded.append(key)                  # D181: parent Done/outside sprint
+            stranded.append(key)
     if backlog_verified:
         return carry, stranded, backlog
     return carry, stranded
 
 
 def select_carry(project, issues, recurring=(), roster=None):
-    """Decision A: the carry rule for either board; Matt's roster is an OPTIONAL MEJ-only override, used only when `roster` (a validated rollover.selective_config) is given and the project is MEJ. Pure; never writes.
-    -> the same shape as carry_plan. The override reuses PR #1507's preview (backlog verified) and keeps recurring series and unknown types out of its carry and backlog."""
     if roster is None or project != "MEJ":
         return reconcile.carry_plan(issues, recurring)
     base = reconcile.carry_plan(issues, recurring)
@@ -175,15 +159,15 @@ MAX_ROSTER = 50
 
 
 def selective_config(config):
-    """LIFE-915 gate (off by default; no env var or setting: the caller passes it in code, LIFE-918 will). -> the validated config: {"roster": approved Task/Story keys, "finite": finite weekly occurrence keys,
-    "consent": the reference to the approved roster, "backlog": an object with move_to_backlog(keys) and backlog_issues(board_id, jql, fields), or None while the tenant contract is UNVERIFIED}."""
+    """Validated roster config: roster, finite, consent and a `backlog` object (move_to_backlog, backlog_issues) or
+    None."""
     if not isinstance(config, dict):
         raise JiraError("JIRA_MEJ_ROSTER_INVALID")
     roster, finite, consent = config.get("roster"), config.get("finite", ()), config.get("consent")
     if not isinstance(roster, (list, tuple)) or len(roster) > MAX_ROSTER or not isinstance(finite, (list, tuple)):
         raise JiraError("JIRA_MEJ_ROSTER_INVALID")
     if not isinstance(consent, str) or not consent.strip():
-        raise JiraError("JIRA_MEJ_ROSTER_INVALID")                       # no approved roster without its consent reference
+        raise JiraError("JIRA_MEJ_ROSTER_INVALID")
     return {"roster": list(roster), "finite": list(finite), "consent": consent.strip(), "backlog": config.get("backlog")}
 
 
@@ -192,16 +176,15 @@ def _members(client, sprint_id):
 
 
 def _backlog_keys(backlog, board_id):
-    """The keys the backlog currently holds. Any failure (403, 429, timeout, malformed) is one fixed code: nothing has been closed."""
     try:
         return {i["key"] for i in backlog.backlog_issues(board_id, "statusCategory != Done", "summary") if i.get("key")}
-    except Exception as error:                                           # noqa: BLE001 - provider errors, timeouts and bad shapes are all the same refusal
+    except Exception as error:  # noqa: BLE001
         raise JiraError("JIRA_MEJ_BACKLOG_FAILED") from error
 
 
 def _orphans(raw):
-    """A sub-task whose parent is not among the unfinished work is only D181-stranded when that parent is verifiably Done. A child left behind by a parent that is still unfinished (moved to the backlog or
-    another sprint without it) is a destination mismatch: closing would leave the pair apart. The parent's status comes from the child's own `parent` field; unknown is not Done."""
+    """Stranded only when the parent is verifiably Done (unknown is not Done); otherwise closing would split the pair.
+    """
     present = {i["key"] for i in raw if i.get("key")}
     for issue in raw:
         fields = issue.get("fields") or {}
@@ -213,13 +196,13 @@ def _orphans(raw):
 
 
 def _selective_partition(client, sprint_id, raw, target_id, selective):
-    """The gated MEJ partition of the source sprint's unfinished work: carry (approved Tasks/Stories and their children), backlog (the rest and their children), stranded (D181). Never calls a write."""
+    """Partition unfinished work for the roster path into carry, backlog and stranded. Never writes."""
     if client.sprint(sprint_id).get("state") not in ("active", "future"):
-        raise JiraError("JIRA_MEJ_SPRINT_STALE")                         # the sprint read is stale: it is already closed
+        raise JiraError("JIRA_MEJ_SPRINT_STALE")
     for issue in raw:
         current = ((issue.get("fields") or {}).get("sprint") or {}).get("id")
         if current is not None and int(current) != sprint_id:
-            raise JiraError("JIRA_MEJ_SPRINT_STALE")                     # an issue the read says is in another sprint
+            raise JiraError("JIRA_MEJ_SPRINT_STALE")
     _orphans(raw)
     backlog = selective["backlog"]
     already = _members(client, target_id) & set(selective["roster"]) if target_id else set()
@@ -231,23 +214,21 @@ def _selective_partition(client, sprint_id, raw, target_id, selective):
 
 
 def _place_in_backlog(client, board_id, p, target_id):
-    """Move the excluded work to the backlog and read it back before anything is closed; every ambiguity is a fixed code and the sprint stays open."""
     selective, keys = p["selective"], p["backlog"]
     backlog = selective["backlog"]
     try:
         backlog.move_to_backlog(keys)
-    except Exception as error:                                           # noqa: BLE001
+    except Exception as error:  # noqa: BLE001
         raise JiraError("JIRA_MEJ_BACKLOG_FAILED") from error
     held = _backlog_keys(backlog, board_id)
     if any(key not in held for key in keys):
-        raise JiraError("JIRA_MEJ_BACKLOG_PARTIAL")                      # Jira's reads can lag: run_project re-plans once
+        raise JiraError("JIRA_MEJ_BACKLOG_PARTIAL")
     carried = _members(client, target_id)
     if any(key in held for key in p["unfinished"] + p["already"]) or any(key in carried for key in keys):
-        raise JiraError("JIRA_MEJ_DESTINATION_MISMATCH")                 # a parent and its child (or a carried and a backlogged key) ended up apart
+        raise JiraError("JIRA_MEJ_DESTINATION_MISMATCH")
 
 
 def _closable(client, sprint_id, p):
-    """Immediately before close: nothing but the declared stranded sub-tasks may still be unfinished in the source sprint."""
     raw = client.sprint_issues(sprint_id, "statusCategory != Done", UNFINISHED_FIELDS)
     _orphans(raw)
     _, stranded = split_unfinished(raw)
@@ -257,8 +238,7 @@ def _closable(client, sprint_id, p):
 
 
 def _automation_partition(client, project, sprint_id, raw, stranded, target_id, automation):
-    """LIFE-918 (MEJ_SPRINT_AUTOMATION on): the carry rule for either board (decision A, `select_carry`; Matt's roster only as the optional MEJ-only override), the recurring series and their one clone each, all decided
-    before any write. A stale sprint read, an unknown issue type or an ambiguous series stops here with a fixed code."""
+    """Decide carry, backlog and recurring clones before any write; any ambiguity stops with a fixed code."""
     if client.sprint(sprint_id).get("state") not in ("active", "future"):
         raise JiraError("JIRA_MEJ_SPRINT_STALE")
     for issue in raw:
@@ -285,9 +265,8 @@ def _automation_partition(client, project, sprint_id, raw, stranded, target_id, 
 
 
 def _execute_automation(client, project, board_id, p, now, sleep, keys, automation):
-    """The boundary with automation on: the same order as `execute` (create the next sprint under its short name, carry, backlog, verify, close, start), plus one clone per recurring series into the next sprint and the
-    recurring originals closed Done with the auto-closed label and one run-ID comment (decision 3), all before the old sprint closes. Every write goes through the injected writers; unverified writers fail closed
-    before the first write."""
+    """Boundary with automation on: like `execute`, plus one clone per recurring series and the recurring originals
+    closed Done, all before the old sprint closes."""
     if now < p["end_local"]:
         raise JiraError("JIRA_EARLY_ROLLOVER")
     writers = automation["writers"]
@@ -313,7 +292,7 @@ def _execute_automation(client, project, board_id, p, now, sleep, keys, automati
         _place_in_backlog(client, board_id, p, target_id)
     for root, latest, fields in recurrence.jobs(client.sprint_issues(p["sprint_id"], "labels = recurring", recurrence.SERIES_FIELDS)
                                                 + client.sprint_issues(target_id, "labels = recurring", recurrence.SERIES_FIELDS), target_id)[1]:
-        writers.need("create_clone")(root, fields, target_id, latest)         # one occurrence per series; a repeat after a crash plans from the actual state and creates none
+        writers.need("create_clone")(root, fields, target_id, latest)
     after = recurrence.jobs(client.sprint_issues(p["sprint_id"], "labels = recurring", recurrence.SERIES_FIELDS)
                             + client.sprint_issues(target_id, "labels = recurring", recurrence.SERIES_FIELDS), target_id)
     if after[1]:
@@ -341,11 +320,8 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
     active = owned(client.sprints(board_id, "active"), project, keys)
     future = owned(client.sprints(board_id, "future"), project, keys)
-    # First activation: open an unambiguous currently scheduled sprint without
-    # inventing a preceding sprint. If an older future sprint has already
-    # expired, STOP: its unfinished work requires an explicit recovery decision.
-    # In particular, never silently combine a stale sprint with a pre-planned
-    # customer roadmap sprint.
+    # First activation: open an unambiguous scheduled sprint without inventing a predecessor; an expired future sprint
+    # STOPS the run (it needs an explicit recovery decision).
     if not active:
         expired, current = [], []
         for candidate in future:
@@ -368,7 +344,7 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None
             return {"not_due": True}
     sprint, catchup = resolve_current(active, future, now, tz)
     sprint_id = int(sprint["id"])
-    if auto:                                                  # scheduled: do nothing until the sprint has ended and it is Monday morning
+    if auto:
         end = _when(sprint.get("endDate"))
         if not end or now < datetime.combine(end.astimezone(tz).date() + timedelta(days=1), clock(AUTO_AFTER_HOUR), tzinfo=tz):
             return {"not_due": True}
@@ -379,8 +355,6 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None
     matching = [s for s in future if int(s.get("id", -1)) != sprint_id and _matches(s, start, end, tz)]
     if len(matching) > 1:
         raise JiraError("JIRA_TARGET_AMBIGUOUS")
-    # A two-week roadmap is finite. Do not manufacture Sprint 9 after its
-    # planned final date, or reinterpret a different future sprint as the next.
     if sprint_days(sprint, tz) == 14 and not matching:
         raise JiraError("JIRA_TARGET_NOT_STAGED")
     out = {"sprint_id": sprint_id, "catchup": catchup, "unfinished": unfinished, "stranded": len(stranded), "end_local": end_local,
@@ -388,7 +362,7 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False, selective=None
            "name": sprint_name(project, start, end)}
     if selective:
         out.update(_selective_partition(client, sprint_id, raw, out["target_id"], selective))
-    if automation is not None:                                # LIFE-918: the short name at creation, the carry rule, the recurrence clones (decisions A, C, 3)
+    if automation is not None:
         out["name"] = reconcile.iso_name(project, start.date())
         out.update(_automation_partition(client, project, sprint_id, raw, stranded, out["target_id"], automation))
     return out
@@ -410,11 +384,11 @@ def execute(client, project, board_id, p, now, sleep=time.sleep, keys=(), select
         client.move_issues(target_id, p["unfinished"])
         have = {i["key"] for i in client.sprint_issues(target_id, "statusCategory != Done", "summary") if i.get("key")}
         if any(key not in have for key in p["unfinished"]):
-            raise JiraError("JIRA_CARRY_VERIFY_FAILED")           # Jira's sprint reads can lag; nothing has been closed yet
+            raise JiraError("JIRA_CARRY_VERIFY_FAILED")
     if selective:
         have = _members(client, target_id)
         if any(key not in have for key in p["already"]):
-            raise JiraError("JIRA_CARRY_VERIFY_FAILED")           # restart recovery: what an interrupted run carried must still be there
+            raise JiraError("JIRA_CARRY_VERIFY_FAILED")
         if p["backlog"]:
             _place_in_backlog(client, board_id, p, target_id)
         _closable(client, p["sprint_id"], p)
@@ -432,11 +406,11 @@ def execute(client, project, board_id, p, now, sleep=time.sleep, keys=(), select
 
 
 def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=False, mej_selective=None, automation=None):
-    """`mej_selective` is the LIFE-915 gate: None (the default, and what every caller passes today) leaves this exactly as it was for every board; a config (see selective_config) applies only to MEJ."""
+    """`mej_selective`: None (the default) keeps every board on the standard path; a config applies only to MEJ."""
     selective = selective_config(mej_selective) if mej_selective is not None and str(project).upper() == MEJ_PROJECT else None
     retry = ("JIRA_CARRY_VERIFY_FAILED", "JIRA_MEJ_BACKLOG_PARTIAL") if selective else ("JIRA_CARRY_VERIFY_FAILED",)
     for attempt in range(2):
-        if automation is not None:                                           # LIFE-918, MEJ_SPRINT_AUTOMATION on: short names, the carry rule, recurrence clones; absent (the default) is the path below, unchanged
+        if automation is not None:
             p = plan(client, project, board_id, now, tz, keys, auto, None, automation)
         else:
             p = plan(client, project, board_id, now, tz, keys, auto, selective) if selective else plan(client, project, board_id, now, tz, keys, auto)
@@ -466,7 +440,7 @@ def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=F
             return {**done, "closed": 1, "started": 1}
         except JiraError as error:
             if str(error) in (retry + ("JIRA_MEJ_BACKLOG_PARTIAL",) if automation is not None else retry) and attempt == 0:
-                sleep(15)                                         # known Jira consistency lag: one re-plan, then give up
+                sleep(15)
                 continue
             raise
 
@@ -477,7 +451,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep
     client = client or Jira.from_env(environ)
     tz = ZoneInfo(LOCAL_TZ)
     now = now or datetime.now(tz)
-    if automation is None and reconcile.enabled(environ):         # LIFE-918: the one switch row; off (the default) leaves everything below exactly as it was
+    if automation is None and reconcile.enabled(environ):
         from . import writers as jira_writers
         automation = {"writers": jira_writers.live_writers(client, environ), "run_id": str(environ.get("GITHUB_RUN_ID") or "manual"), "roster": None}
     total = {"projects": len(configured), "ok": 0, "failed": 0, "reuse": 0, "would_create": 0, "would_carry": 0, "would_strand": 0,
@@ -495,7 +469,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep
                 result = run_project(client, project, board_id, live, now, tz, sleep, keys, auto, mej_selective) if mej_selective is not None else run_project(client, project, board_id, live, now, tz, sleep, keys, auto)
         except JiraError as error:
             total["failed"] += 1
-            code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name
+            code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"
             total["why"][code] = total["why"].get(code, 0) + 1
             continue
         total["ok"] += 1

@@ -1,6 +1,4 @@
-"""Read-only Jira execution snapshot per board, kept in the private database (never in this public repo) for the report.
-
-Output: counts only; ticket keys, summaries and sprint names are private."""
+"""Read-only Jira execution snapshot per board, kept in the private database for the report. Output: counts only; keys, summaries and sprint names are private."""
 import os
 import time
 from datetime import datetime
@@ -40,7 +38,6 @@ def _by_start(sprints):
 
 
 def gtv_work(client, board_id, epic):
-    """Unfinished work under the GTV epic: its Tasks, plus those Tasks' Sub-tasks (leaves are chosen at render time)."""
     tasks = [compact(i) for i in client.board_issues(board_id, f"parent = {epic} AND statusCategory != Done ORDER BY Rank ASC", FIELDS)]
     keys = [t["key"] for t in tasks]
     subs = []
@@ -65,9 +62,9 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_ep
     def issues(jql):
         return [compact(i) for i in client.board_issues(board_id, jql + " ORDER BY Rank ASC", FIELDS)]
 
-    # OFF BY DEFAULT (LIFE-914): every project keeps the existing snapshot semantics. Only the explicit `mej_task_focus=True` code argument (LIFE-918)
-    # makes MEJ count Tasks/Stories/Bugs with Sub-tasks reachable from their parents.
-    # `v3_week_view=True` (LIFE-918 AC3, also off by default) gives every project the same standard-work view, so JFM and MEJ show the same weekly commitments.
+    # OFF BY DEFAULT: every project keeps the standard snapshot semantics. Only the explicit `mej_task_focus=True`
+    # argument makes MEJ count Tasks/Stories/Bugs with Sub-tasks reachable from their parents; `v3_week_view=True`
+    # gives every project the same standard-work view, so JFM and MEJ show the same weekly commitments.
     work_type = "issuetype != Epic AND issuetype != Sub-task" if (project == "MEJ" and mej_task_focus) or v3_week_view else "issuetype != Epic"
 
     def tasks(sprint):
@@ -76,7 +73,7 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_ep
         return issues(f"sprint = {sprint['id']} AND {work_type} AND statusCategory != Done")
 
     triage_type = work_type if triage_all else "issuetype = Task"
-    gtv = gtv_work(client, board_id, gtv_epic) if gtv_epic and gtv_epic.split("-")[0] == project else None   # None = not configured here
+    gtv = gtv_work(client, board_id, gtv_epic) if gtv_epic and gtv_epic.split("-")[0] == project else None
     done = issues(f"{work_type} AND sprint = {active[0]['id']} AND statusCategory = Done") if active else []
     return {"schema": SCHEMA_V, "project": project, "taken_at": now.isoformat(), "timezone": LOCAL_TZ,
             "board": {"id": board_id, "name": board.get("name")},
@@ -103,11 +100,11 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             snap = project_snapshot(client, project, board_id, triage_all, now, keys, (environ.get("JIRA_GTV_EPIC") or "").strip() or None)
         except JiraError as error:
             total["failed"] += 1
-            code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name
+            code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"
             total["why"][code] = total["why"].get(code, 0) + 1
             continue
         total["ok"] += 1
-        for section in SECTIONS:                                   # one ticket, one row: boards that overlap never double count
+        for section in SECTIONS:
             snap[section] = [i for i in snap[section] if i["key"] not in seen[section]]
             seen[section].update(i["key"] for i in snap[section])
         built.append(snap)
@@ -126,8 +123,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
 
 
 def probe(limit, live, environ=os.environ, client=None):
-    """Read-only layout check, counts only: per board (by position) how many active/future sprints it lists, and for each
-    active sprint how many issues each configured project (by position) has in it, plus whether its name starts with a key."""
+    """Read-only layout check, counts only: per board, its active and future sprint counts and, per active sprint, how
+    many issues each project has in it."""
     from lifeos.platform.jira import Jira
     configured = boards(environ)
     client = client or Jira.from_env(environ)

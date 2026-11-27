@@ -1,9 +1,12 @@
-"""LIFE-994: LIFE-project decisions in Jira flow into the shared memory once an hour, through the governed memory tools.
+"""Hourly capture of LIFE-project decisions from Jira into shared memory through the governed memory tools.
 
-Jim approved it ("capture jira ok", "capture projects: LIFE", Nov 26 2026). LIFE tickets updated in the last two hours only; a comment is a decision when it has an `[approvals]` line or opens with Jim's decision wording; each becomes one Personal memory item naming its ticket and comment. Counts and fixed words out, never text."""
-# The same comment never stores twice (a small private state row per comment); an edited comment corrects its item and a deleted comment revokes it. Nothing older than two hours is ever backfilled.
-# Every write goes through the governed MCP as the `jira-capture` client (memory_store, memory_correct, memory_revoke, Personal): the server applies the sensitive-text filter before any write (a refused
-# decision is counted and never stored, echoed or logged), the rate limit and the meter. This module holds no filter of its own and never recalls.
+A comment on a ticket updated in the last two hours is a decision when it has an `[approvals]` line; each becomes one
+Personal memory item. Output: counts and fixed words, never text.
+"""
+# A comment never stores twice (one private state row each); an edit corrects its item, a deletion revokes it; nothing
+# older than the window is backfilled.
+# Writes go through the governed MCP as the `jira-capture` client, whose server applies the sensitive-text filter; a
+# refused decision is counted, never stored or logged. No filter here; never recalls.
 import hashlib
 import json
 import os
@@ -16,8 +19,8 @@ from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 from lifeos.platform.snapshot_store import Store
 
-PROJECT = "LIFE"                               # Jim: "capture projects: LIFE" (any other project needs his say)
-WINDOW_HOURS = 2                               # an hourly run reads two hours back so one missed run loses nothing; never older
+PROJECT = "LIFE"
+WINDOW_HOURS = 2
 MAX_ISSUES, WRITE_CAP, TEXT_MAX = 40, 30, 500
 URL_DEFAULT = "https://lifeos-buzz.tail96b07f.ts.net/mcp"
 SOURCE = "jira-decision"
@@ -28,7 +31,6 @@ ISSUE_STORE = Store("jira_capture_issue", "issue_key", "VARCHAR(32)")
 
 
 def flatten(node):
-    """Plain text of a Jira rich-text body: paragraphs and breaks become new lines."""
     if isinstance(node, dict):
         inner = "".join(flatten(c) for c in node.get("content") or ())
         text = node.get("text", "") + inner
@@ -37,7 +39,7 @@ def flatten(node):
 
 
 def decision_text(body):
-    """The decision the comment states, or "" when it is not a decision comment: the `[approvals]` lines, else the opening paragraph of a comment that opens with Jim's decision wording."""
+    """The decision a comment states ("" when it is not one): its `[approvals]` lines, else its opening paragraph."""
     text = flatten(body).strip()
     tagged = [ln.strip() for ln in text.splitlines() if TAG.search(ln)]
     if tagged:
@@ -47,7 +49,6 @@ def decision_text(body):
 
 
 class Memory:
-    """The governed memory tools over MCP as the jira-capture client. Fixed words only."""
 
     def __init__(self, url, token, urlopen=urllib.request.urlopen):
         self.url, self.token, self.urlopen = url, token, urlopen
@@ -73,7 +74,6 @@ class Memory:
 
 
 class State:
-    """The private state rows: one per captured comment (text hash, memory id) and one per ticket (its comment ids), so a repeat, an edit and a deletion are told apart."""
 
     def __init__(self, connection):
         self.connection = connection
@@ -121,7 +121,7 @@ def capture_issue(jira, key, memory, state, live, now, total):
         digest = hashlib.sha256(decision.encode()).hexdigest()
         prior = state.comment(cid) if state else None
         if prior and prior.get("state") in ("stored", "filtered") and prior.get("sha") == digest:
-            total["unchanged"] += 1                                    # a refused decision is not retried every hour: only a changed comment is tried again
+            total["unchanged"] += 1
             continue
         if total["writes"] >= WRITE_CAP:
             _tick(total, "deferred")
@@ -137,12 +137,12 @@ def capture_issue(jira, key, memory, state, live, now, total):
             _tick(total, "corrected" if prior and prior.get("state") == "stored" else "stored")
             state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": new, "state": "stored"}, now)
         elif reply.get("error") == "sensitive_refused":
-            _tick(total, "filtered")                                   # refused before any write; the text is never kept or logged
+            _tick(total, "filtered")
             state.put_comment(cid, {"issue": key, "sha": digest, "memory_id": "", "state": "filtered"}, now)
         else:
             _tick(total, "failed", str(reply.get("error") or "capture_failed")[:40])
     if live and state:
-        for gone in sorted(set(state.issue(key)) - seen):             # a decision comment that is no longer there: its item is revoked
+        for gone in sorted(set(state.issue(key)) - seen):
             prior = state.comment(gone) or {}
             if prior.get("state") == "stored" and prior.get("memory_id") and total["writes"] < WRITE_CAP:
                 total["writes"] += 1
@@ -155,7 +155,7 @@ def capture_issue(jira, key, memory, state, live, now, total):
 
 
 def run(limit, live, environ=os.environ, jira=None, now=None, connect=None, memory=None):
-    """Counts and fixed words only. Not configured (no credential placed yet) is a fixed `capture_not_configured`, never a failure."""
+    """Counts and fixed words only; not configured is the fixed `capture_not_configured`, never a failure."""
     now = now or datetime.now(timezone.utc)
     total = {"issues": 0, "decisions": 0, "stored": 0, "corrected": 0, "revoked": 0, "unchanged": 0, "filtered": 0, "failed": 0, "deferred": 0, "would_write": 0, "writes": 0, "why": {}}
     token = (environ.get("LIFEOS_MCP_JIRA_CAPTURE") or "").strip()

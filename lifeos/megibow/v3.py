@@ -1,7 +1,8 @@
-"""MegIBOW on Jim & Matt V3 (LIFE-672): the two V3 callouts (Jim from the engine, Matt from his own typed database), Matt's warnings and both summary pages.
+"""MegIBOW on the Jim & Matt V3 page: two V3 callouts, Matt's warnings and both summary pages.
 
-A V3 callout is: heading, gray stamp line, one 7 x 10 table (Activity, 8 Mondays, Cumulative), note lines, then `Summary for Claude: <page>`. Only the stamp, the table
-cells, one machine notes paragraph and the summary page are written, each read back. Any other shape, or a block not found by its id, writes nothing: MEGIBOW_V3_* codes."""
+A V3 callout is a heading, stamp line, one 7 x 10 table, note lines, then `Summary for Claude: <page>`. Any other
+shape writes nothing (MEGIBOW_V3_* codes).
+"""
 from datetime import date
 from statistics import median
 import re
@@ -21,7 +22,7 @@ MIN_ENTERED = 4
 REGISTER_TITLE = "V3 block ID register (Jim & Matt V3)"
 MATT_SOURCE_TITLE = "Matt — MegIBOW weekly (manual)"
 V3_PAGE_TITLE = "Jim & Matt V3"
-HISTORY_TITLE = {"Jim": "Megibow history (Jim)", "Matt": "Megibow history (Matt)"}          # LIFE-687: one history page per person, linked from the callout's note line
+HISTORY_TITLE = {"Jim": "Megibow history (Jim)", "Matt": "Megibow history (Matt)"}
 TYPED_NOTE = "* typed over by Jim in the weekly database"
 MATT_FIELDS = {"Week Start": "date", **{a: "number" for a in C.ACTIVITIES}}
 
@@ -35,7 +36,6 @@ def _text(block):
 
 
 def _rich(parts, color=None):
-    """[(text, link or None)] -> Notion rich text."""
     out = []
     for content, link in parts:
         item = {"type": "text", "text": {"content": content, **({"link": {"url": link}} if link else {})}}
@@ -58,12 +58,11 @@ def _get_block(client, block_id):
         return client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     except NotionError as error:
         if "404" in str(error) or "400" in str(error):
-            raise V3Error("MEGIBOW_V3_BLOCK_NOT_FOUND") from None             # also what a missing Notion connection on the V3 page looks like
+            raise V3Error("MEGIBOW_V3_BLOCK_NOT_FOUND") from None
         raise
 
 
 def is_v3(client, block_id):
-    """True when the block is a V3 callout (its first child is a heading). A block that cannot be found raises MEGIBOW_V3_BLOCK_NOT_FOUND."""
     meta = _get_block(client, block_id)
     if not isinstance(meta, dict) or meta.get("type") != "callout":
         return False
@@ -72,7 +71,7 @@ def is_v3(client, block_id):
 
 
 def locate(client, block_id):
-    """-> {stamp, table, rows, notes (block or None), anchor (id), summary (page id)}. Anything unexpected raises; nothing is written."""
+    """-> {stamp, table, rows, notes (block or None), anchor (id), summary (page id)}."""
     meta = _get_block(client, block_id)
     if not isinstance(meta, dict) or meta.get("type") != "callout":
         raise V3Error("MEGIBOW_V3_BLOCK_NOT_FOUND")
@@ -89,7 +88,7 @@ def locate(client, block_id):
     if len(rows) != ROWS or any(len(_cells(r)) != COLS for r in rows):
         raise V3Error("MEGIBOW_V3_BLOCK_SHAPE")
     anchor = 2
-    if kids[3].get("type") == "paragraph" and _text(kids[3]).lower().startswith(DASH_NOTE):        # Matt's fixed note line stays where it is
+    if kids[3].get("type") == "paragraph" and _text(kids[3]).lower().startswith(DASH_NOTE):
         anchor = 3
     after = kids[anchor + 1] if anchor + 1 < len(kids) - 1 else None
     notes = after if after is not None and after.get("type") == "paragraph" and not _text(after).lower().startswith(PHONE) else None
@@ -97,7 +96,8 @@ def locate(client, block_id):
 
 
 def write(client, block_id, stamp, table_rows, notes, live):
-    """stamp: the gray first line; table_rows: ROWS x COLS strings or None (leave the table); notes: [(text, link)] or None (leave them). -> counts."""
+    """stamp: the gray first line; table_rows: ROWS x COLS strings or None (leave the table); notes: [(text, link)] or
+    None. -> counts."""
     found = locate(client, block_id)
     if table_rows is not None and (len(table_rows) != ROWS or any(len(r) != COLS for r in table_rows)):
         raise V3Error("MEGIBOW_V3_RENDER_SHAPE")
@@ -117,7 +117,7 @@ def write(client, block_id, stamp, table_rows, notes, live):
         body = {"paragraph": {"rich_text": _rich(notes)}}
         if found["notes"] is not None:
             client.call_once("PATCH", f"/blocks/{quote(found['notes']['id'], safe='')}", body)
-        else:                                                                             # the first run adds the one notes paragraph inside the callout, never outside it
+        else:
             client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "paragraph", **body}], "after": found["anchor"]})
         out["notes_written"] = True
 
@@ -131,7 +131,7 @@ def write(client, block_id, stamp, table_rows, notes, live):
 
 
 def write_summary(client, page_id, text, live):
-    """The summary page for Claude: one plain paragraph of at most SUMMARY_MAX characters, edited in place and read back. -> True when written."""
+    """The summary page: one paragraph of at most SUMMARY_MAX characters, edited in place and read back."""
     text = text[:SUMMARY_MAX]
     kids = report_region.children(client, page_id, V3Error)
     if len(kids) != 1 or kids[0].get("type") != "paragraph":
@@ -150,8 +150,6 @@ def _cell(value):
 
 
 def table(weeks, counts, cumulative, typed=None):
-    """7 rows x 10 columns: header (Activity, the 8 Mondays, Cumulative), the five activities, Total. A week that is None is a dash everywhere, never 0.
-    `typed` {monday: activities} marks a number Jim typed over (LIFE-687) with a trailing star."""
     typed = typed or {}
     rows = [["Activity"] + [f"{w.strftime('%b')} {w.day}" for w in weeks] + ["Cumulative"]]
     for activity, label in zip(C.ACTIVITIES, LABELS, strict=True):
@@ -162,7 +160,6 @@ def table(weeks, counts, cumulative, typed=None):
 
 
 def summary(who, stamp, weeks, counts, cumulative, notes):
-    """Plain text for the summary page: one line per week, counts only, at most SUMMARY_MAX characters (trailing note lines are dropped first)."""
     def line(c):
         return DASH if not c else "/".join(str(c[a]) for a in C.ACTIVITIES) + f" = {P.total(c)}"
     lines = [f"Megibow ({who}) · {stamp}", "Each week: Outreach/Scheduled/Networking/Recruiter/Company = Total; a dash is a week with no entry."]
@@ -182,8 +179,7 @@ def _title(obj):
 
 
 def find(client, title, kind):
-    """The one page or data source whose title is exactly `title` (no secret holds these ids). None or several -> MEGIBOW_V3_TARGET_NOT_FOUND.
-    LIFE-891: every page of the search is read (a short or capped read refuses with the same code); the first page alone lost the register once similarly named pages piled up."""
+    """The one page or data source titled exactly `title` (none or several: MEGIBOW_V3_TARGET_NOT_FOUND)."""
     found = notion_pages.search_all(client, title, kind, V3Error, incomplete="MEGIBOW_V3_TARGET_NOT_FOUND", capped="MEGIBOW_V3_TARGET_NOT_FOUND")
     hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == title and not r.get("in_trash") and not r.get("archived")]
     if len(hits) != 1:
@@ -192,8 +188,8 @@ def find(client, title, kind):
 
 
 def registered(client, key):
-    """A callout id from the V3 block ID register row `key` (jim.megibow, matt.megibow), accepted only when that callout sits on the Jim & Matt V3 page,
-    so an edited register row can never point a write anywhere else. -> id; else MEGIBOW_V3_TARGET_NOT_FOUND."""
+    """A callout id from the V3 block ID register row `key`, accepted only when it sits on the Jim & Matt V3 page;
+    else MEGIBOW_V3_TARGET_NOT_FOUND."""
     pattern = re.compile(r"(?:^|\s)" + re.escape(key) + r"\s+([0-9a-fA-F-]{32,36})\b")
     register = find(client, REGISTER_TITLE, "page")
     for block in report_region.children(client, register, V3Error):
@@ -208,13 +204,12 @@ def registered(client, key):
 
 
 def matt_block(client):
-    """Matt's callout id, from the register row `matt.megibow`."""
     return registered(client, "matt.megibow")
 
 
 def matt_rows(client, source_id):
-    """Matt's typed weeks -> ({monday: counts}, rows ignored). A row is entered when at least one number is filled; a blank number in an entered row is 0.
-    Two rows for one week: the most recently edited wins (counted in `ignored`). An unreadable or changed database raises."""
+    """Matt's typed weeks -> ({monday: counts}, rows ignored). A row counts when any number is filled (blanks are 0);
+    of two rows for one week the most recently edited wins."""
     meta = client.call("GET", f"/data_sources/{quote(source_id, safe='')}")
     props = (meta or {}).get("properties") or {}
     if any((props.get(n) or {}).get("type") != t for n, t in MATT_FIELDS.items()):
@@ -249,7 +244,7 @@ def matt_rows(client, source_id):
 
 
 def matt_project(entered, today):
-    """-> {weeks, counts (None = not entered), cumulative (entered weeks up to this week; None when there are none), entered}."""
+    """-> {weeks, counts (None = not entered), cumulative, entered}."""
     weeks = visible_weeks(today)
     counts = {w: entered.get(w) for w in weeks}
     upto = [c for w, c in entered.items() if w <= weeks[-1]]
@@ -258,8 +253,8 @@ def matt_project(entered, today):
 
 
 def matt_warnings(proj, now):
-    """Counts-only warnings (no evidence or forward-pipeline rules): no new meetings, outreach drop, conversation drop. None until MIN_ENTERED weeks are entered,
-    and none from a week that is not entered. -> (warnings, suppressed)."""
+    """Counts-only warnings (no meetings, outreach drop, conversation drop); none until MIN_ENTERED weeks are entered.
+    -> (warnings, suppressed)."""
     current = proj["counts"][proj["weeks"][-1]]
     baseline = [c for w in proj["weeks"][:-1] for c in [proj["counts"][w]] if c]
     if proj["entered"] < MIN_ENTERED or current is None:
@@ -279,7 +274,7 @@ def matt_warnings(proj, now):
 
 
 def history_link(client, who):
-    """-> the notion.so address of that person's "Megibow history" page, or None when it cannot be found (the note line then simply has no link; never an error)."""
+    """-> the notion.so address of that person's "Megibow history" page, or None."""
     try:
         return "https://www.notion.so/" + find(client, HISTORY_TITLE[who], "page").replace("-", "")
     except NotionError:
