@@ -29,6 +29,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 ## Commands
 
 - **Rate limits:** Never poll or loop on rate-limited APIs (GitHub, Notion REST): use git for repo state, batch single calls.
+- **Format:** run `ruff format lifeos tools` before you commit; CI runs `ruff format --check` on both.
 - **Tests:** `sh tools/preflight.sh` before every push (quick gate: contract tests, scanners and tests mirroring your changed files; never the whole suite (CI does), so fix once if red; `sh tools/automerge.sh <pr>` exits 4 without its PASS for HEAD); `sh tools/preflight.sh --all` or `sh tools/test.sh --all` for everything; one file `python -m unittest <module>`; setup `sh tools/setup-dev.sh`. Tickets on the same files may share one PR (LIFE-762).
 - **Jira connector:** `mcp__claude_ai_Atlassian_MCP__*` only; Rovo connectors are retired.
 - **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
