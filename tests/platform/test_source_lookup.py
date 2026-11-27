@@ -1,4 +1,4 @@
-"""LIFE-888 (synthetic fixtures): canonical source lookup. No network, no Notion, no GitHub."""
+"""(synthetic fixtures): canonical source lookup."""
 import json
 import unittest
 import urllib.error
@@ -42,7 +42,7 @@ class GitHubAndNotion(unittest.TestCase):
     def test_a_source_older_than_the_callers_limit_is_stale_source(self):
         self.assertEqual(refused({"source": "github", "path": "AGENTS.md", "max_age_seconds": 60}, {"github": gh()}), "stale_source")
         self.assertEqual(refused({"source": "notion", "page_id": PAGE, "max_age_seconds": 60}, {"notion": nt()}), "stale_source")
-        self.assertEqual(refused({"source": "github", "path": "AGENTS.md"}, {"github": gh(modified=NOW - timedelta(days=91))}), "stale_source")     # the default limit
+        self.assertEqual(refused({"source": "github", "path": "AGENTS.md"}, {"github": gh(modified=NOW - timedelta(days=91))}), "stale_source")  # the default limit
 
     def test_unknown_or_malformed_sources_are_unknown_source_and_nothing_is_fetched(self):
         called = []
@@ -92,7 +92,7 @@ class LiveGitHubReader(unittest.TestCase):
             return Reply({"type": "file", "encoding": "base64", "sha": BLOB, "content": base64.b64encode(b"hello").decode()})
         got = S.github_fetch(opener)("docs/x.md", "main")
         self.assertEqual((got["commit"], got["last_change"], got["blob"], got["text"]), (SHA, LAST, BLOB, "hello"))
-        self.assertTrue(seen[2].endswith(f"?ref={SHA}"))                                   # the file is read at the commit the ref named, so SHA and text agree
+        self.assertTrue(seen[2].endswith(f"?ref={SHA}"))
         self.assertTrue(all(u.startswith(f"https://api.github.com/repos/{S.REPO}/") for u in seen))
 
     def test_a_missing_path_is_unknown_source_and_a_server_error_is_source_unavailable(self):
@@ -144,7 +144,7 @@ class LiveNotion(unittest.TestCase):
     def test_directory_rows_become_native_rows_and_a_lookup_shows_the_directory_status(self):
         client = FakeNotion()
         rows = S.directory_rows(client, "[removed]")()
-        self.assertEqual(len(rows), 3)                                                          # the archived row is dropped
+        self.assertEqual(len(rows), 3)  # the archived row is dropped
         self.assertEqual(rows[0]["Space"], ["Personal"])
         out = S.lookup_agent({"agent_id": rows[0]["Agent ID"]}, lambda: rows, datetime(2026, 11, 16, 12, 0, tzinfo=D.CENTRAL))
         self.assertEqual((out["agent"]["agent_id"], out["status"], out["authorizes"]), (rows[0]["Agent ID"], "configured-untested", []))
@@ -177,7 +177,7 @@ class AgentLookup(unittest.TestCase):
     def test_a_lookup_shows_the_directory_status_class_and_never_upgrades_it(self):
         out = self.look(agent_id="bot_hermes_claude-hermes")
         self.assertEqual((out["agent"]["agent_id"], out["status"], out["authorizes"]), ("bot_hermes_claude-hermes", "configured-untested", []))
-        self.assertNotEqual(out["status"], "routable-verified")                           # no proof is ever supplied here
+        self.assertNotEqual(out["status"], "routable-verified")  # no proof is ever supplied here
         for row in F.rows():
             try:
                 self.assertNotEqual(self.look(agent_id=row["Agent ID"])["status"], "routable-verified", row["Agent ID"])

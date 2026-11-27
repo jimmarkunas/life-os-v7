@@ -1,4 +1,6 @@
-"""LIFE-680: page_digest walks again once when a block it listed is gone (another card writer rewrote the page mid-read) and fails as before when the second walk fails too."""
+"""page_digest walks again once when a block it listed is gone (another card writer rewrote the page mid-read) and fails
+as before when the second walk.
+"""
 import unittest
 from unittest import mock
 from urllib.parse import unquote
@@ -16,7 +18,7 @@ def block(block_id, kind, has_children=False):
 
 
 class Page:
-    """A page with one toggle (id `toggle`) that holds one bullet. `errors` maps a block id to the codes its next listings answer with, in order."""
+    """A page with one toggle (id `toggle`) that holds one bullet."""
 
     def __init__(self, errors=None):
         self.tree = {"page": [block("toggle", "toggle", True), block("tail", "paragraph")], "toggle": [block("bullet", "bulleted_list_item")]}

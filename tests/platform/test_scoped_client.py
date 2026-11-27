@@ -1,4 +1,4 @@
-"""LIFE-586: the write-scope guard. Only the network (a fake Notion client that records calls) is replaced; the guard is the real class."""
+"""the write-scope guard."""
 import unittest
 
 from lifeos.platform.report_region import ScopedClient
@@ -66,12 +66,12 @@ class Guard(unittest.TestCase):
         self.client.call("GET", f"/blocks/{OTHER}")
         self.client.call("GET", f"/blocks/{OTHER}/children")
         with self.assertRaises(Refused):
-            self.client.call("PATCH", f"/blocks/{OTHER}", {})                         # reading a foreign block does not make it ours
+            self.client.call("PATCH", f"/blocks/{OTHER}", {})  # reading a foreign block does not make it ours
 
     def test_a_listing_of_a_foreign_block_does_not_make_its_children_ours(self):
         self.client.call("GET", f"/blocks/{OTHER}/children")
         with self.assertRaises(Refused):
-            self.client.call("PATCH", f"/blocks/{CHILD}", {})                         # CHILD was not listed under the root yet
+            self.client.call("PATCH", f"/blocks/{CHILD}", {})  # CHILD was not listed under the root yet
 
     def test_ids_are_compared_without_dashes_and_case_and_call_once_is_guarded_too(self):
         dashed = "22222222-2222-2222-2222-222222222222"

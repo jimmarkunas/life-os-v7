@@ -1,7 +1,6 @@
-"""LIFE-688: two cards writing different regions of the Daily Report at the same moment both succeed (no 409, no 404, nothing aimed at the page itself); a failed card write keeps the last accepted card.
-
-`ConflictingNotion` simulates Notion's conflict behavior: a request that touches a region while another request is touching it answers 409; a request aimed at the page itself while any other request is in flight answers 409
-(page-level edits collide with everything); a request for a block that no longer exists answers 404. The negative controls prove the simulation bites."""
+"""two cards writing different regions of the Daily Report at the same moment both succeed (no 409, no 404, nothing aimed
+at the page itself)
+"""
 import copy
 import threading
 import time
@@ -41,7 +40,7 @@ class ConflictingNotion:
     def _run(self, fn, method, path):
         region, me = self._region(path), threading.current_thread().name
         if region is None:
-            raise NotionError("NOTION_HTTP_404")                                    # the block was deleted since it was listed
+            raise NotionError("NOTION_HTTP_404")  # the block was deleted since it was listed
         with self.guard:
             others = {r: t for r, t in self.busy.items() if t != me}
             if region in others or (region == "page" and others) or "page" in others:
@@ -50,7 +49,7 @@ class ConflictingNotion:
             self.busy[region] = me
             self.touched.append((me, region))
         try:
-            time.sleep(self.hold)                                                    # long enough for another thread to arrive
+            time.sleep(self.hold)  # long enough for another thread to arrive
             with self.data:
                 return fn()
         finally:
@@ -69,7 +68,7 @@ def write(client, block_id, title, module, lines, heading=None):
 
 
 def both_write(rounds, first, second):
-    """Two threads, aligned at the start of every round so their requests overlap; -> the exceptions each raised."""
+    """Two threads, aligned at the start of every round so their requests overlap"""
     barrier, errors = threading.Barrier(2), []
 
     def runner(work):
@@ -102,7 +101,7 @@ class TwoCardsAtTheSameMoment(unittest.TestCase):
         regions = {}
         for thread, region in self.notion.touched:
             regions.setdefault(thread, set()).add(region)
-        self.assertEqual(regions, {"mail-job": {"mail-callout"}, "agenda-job": {"calendar-callout"}})        # each card touched only its own callout, never the page
+        self.assertEqual(regions, {"mail-job": {"mail-callout"}, "agenda-job": {"calendar-callout"}})
         self.assertEqual([report_region.plain(b) for b in self.notion.inner.children["mail-callout"][1:3]], ["mail status 14", "mail detail 14"])
         self.assertEqual(report_region.plain(self.notion.inner.children["calendar-callout"][1]), "calendar line 14")
 
@@ -157,7 +156,7 @@ class AFailedWriteKeepsTheLastAcceptedCard(unittest.TestCase):
             before = copy.deepcopy(notion.children["mail-callout"])
             with self.assertRaises(NotionError):
                 write(FailsOnItsFirstWrite(notion), "mail-callout", "Mail Alerts", router.OWNERS[router.MAIL_ALERTS_REGION], ["a new status"], heading=heading)
-            self.assertEqual(notion.children["mail-callout"], before, heading)                         # the heading (the stamp) and every line are exactly as accepted before
+            self.assertEqual(notion.children["mail-callout"], before, heading)
             self.assertEqual(report_region.plain(notion.children["mail-callout"][0]), "Mail Alerts")
 
 

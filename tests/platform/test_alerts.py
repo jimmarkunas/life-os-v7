@@ -36,7 +36,7 @@ class Reconcile(unittest.TestCase):
 
 class Delivery(unittest.TestCase):
     def test_render_is_redacted_and_counts_only(self):
-        address = "someone" + chr(64) + "example.test"          # built at runtime: the privacy guard scans tracked files for addresses
+        address = "someone" + chr(64) + "example.test"
         a = alerts.Alert("x", alerts.PAGE, "Token problem", f"Bearer abcdef123456 failed for {address}", "renew it")
         title, body, severity = alerts.render("open", a)
         self.assertNotIn("abcdef123456", body)
@@ -44,8 +44,8 @@ class Delivery(unittest.TestCase):
         self.assertIn("Next: renew it", body)
         self.assertEqual(severity, alerts.PAGE)
 
-    def setUp(self):                                          # the send path itself, as it behaves when Jim turns alerts on (the ALERTS_ENABLED switch)
-        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": ""})     # a mute set on the repository must not decide these tests (it failed the tick gate, Oct 26)
+    def setUp(self):
+        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": ""})
         patcher.start()
         self.addCleanup(patcher.stop)
         alerts.reset_flood()
@@ -100,7 +100,7 @@ class Delivery(unittest.TestCase):
                 def __exit__(self, *a):
                     return False
             return lambda request, timeout: Resp()
-        for status, want in ((500, 1), (200, 0)):                                            # LIFE-604: the real main and the real ntfy run; only the network answer is replaced
+        for status, want in ((500, 1), (200, 0)):  # the real main and the real ntfy run
             with self.subTest(status=status), mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "NTFY_TOPIC": "topic"}, clear=True), \
                     mock.patch.object(alerts.urllib.request, "urlopen", answer(status)), contextlib.redirect_stdout(io.StringIO()):
                 alerts.reset_flood()
@@ -108,8 +108,9 @@ class Delivery(unittest.TestCase):
 
 
 class CommandLineCopies(unittest.TestCase):
-    """LIFE-604 item 2: the command line (`alerts.main`) used by the workflows must carry the same Telegram and WhatsApp copy tags as `push()` does.
-    Only the network call is replaced; the real main, the real registry and the real settings run."""
+    """item 2: the command line (`alerts.main`) used by the workflows must carry the same Telegram and WhatsApp copy tags
+    as `push` does.
+    """
     WORKFLOW_KEYS = ("run_failed", "domain_jobs_failed", "purge_done", "purge_failed", "safety_failed", "test_push")
 
     def run_main(self, *argv, settings=None):
@@ -164,13 +165,13 @@ class CommandLineCopies(unittest.TestCase):
 
 
 class Hibernated(unittest.TestCase):
-    """LIFE-71 (Jim, Oct 18 2026): every LIFE OS phone push is suspended until Jim explicitly approves reactivation."""
+    """every LIFE OS phone push is suspended until Jim explicitly approves reactivation."""
 
     def test_alerts_are_off_unless_the_master_switch_says_on(self):
         for value in (None, "", "off", "true", "1", "ON please"):
             env = {} if value is None else {"ALERTS_ENABLED": value}
             with self.subTest(value=value), mock.patch.dict("os.environ", env, clear=True):
-                self.assertTrue(alerts.hibernated())              # the safe default is OFF: only exactly "on" turns alerts on (LIFE-75: Jim's switch, not a commit)
+                self.assertTrue(alerts.hibernated())
         with mock.patch.dict("os.environ", {"ALERTS_ENABLED": " On "}, clear=True):
             self.assertFalse(alerts.hibernated())
 

@@ -1,4 +1,4 @@
-"""LIFE-810 (F01, synthetic): the capability catalog resolver. Fixtures only: no provider, no account, no credential, no network."""
+"""(F01, synthetic): the capability catalog resolver."""
 import copy
 import json
 import unittest
@@ -98,7 +98,7 @@ class Registry(unittest.TestCase):
         self.assertEqual(statuses, set(C.STATUSES))
         for row in c["capabilities"]:
             if row["status"] != "missing":
-                self.assertTrue((ROOT / row["source"]).exists(), row["source"])             # a registered source is a real file
+                self.assertTrue((ROOT / row["source"]).exists(), row["source"])  # a registered source is a real file
 
     def test_the_missing_secret_provider_resolves_as_unavailable(self):
         c = C.load((ROOT / "lifeos/platform/capability_catalog.json").read_text())

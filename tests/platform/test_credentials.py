@@ -1,4 +1,6 @@
-"""LIFE-528 outcome 2: the credential list is names, providers and dates only, every entry is complete, and a dated entry warns through the existing expiry alert."""
+"""outcome 2: the credential list is names, providers and dates only, every entry is complete, and a dated entry warns
+through the existing expiry alert.
+"""
 import datetime as dt
 import re
 import unittest
@@ -14,11 +16,11 @@ SECRET_SHAPES = (re.compile(r"[A-Za-z0-9+/=_]{32,}"), re.compile(r"\b[0-9a-f]{8}
 
 
 BITWARDEN_NAMES = ("openclaw/outlook/clientId", "openclaw/outlook/personal/mailboxFingerprint", "openclaw/outlook/personal/refreshToken",
-                   "openclaw/outlook/work/mailboxFingerprint", "openclaw/outlook/work/refreshToken")      # secret NAMES Jim gave (LIFE-528 comment 12557); a name is not a value
+                   "openclaw/outlook/work/mailboxFingerprint", "openclaw/outlook/work/refreshToken")  # secret NAMES Jim gave
 
 
 def secret_like(text):
-    for name in BITWARDEN_NAMES:                                                                       # only these exact names are exempt; any other long run still fails
+    for name in BITWARDEN_NAMES:  # only these exact names are exempt
         text = text.replace(name, " ")
     return any(p.search(text) for p in SECRET_SHAPES)
 
@@ -34,12 +36,12 @@ class TheList(unittest.TestCase):
             for field in ("label", "provider", "used_for", "read_in", "how_read"):
                 self.assertTrue(e[field].strip(), (e["key"], field))
             if e["expires"]:
-                dt.date.fromisoformat(e["expires"])                                  # a real date
-                self.assertNotEqual(e["expiry_source"], "none", e["key"])           # a credential with a date cannot claim "no expiry exposed"
+                dt.date.fromisoformat(e["expires"])  # a real date
+                self.assertNotEqual(e["expiry_source"], "none", e["key"])
             if e["expiry_source"] in ("none", "no_expiry"):
                 self.assertIsNone(e["expires"], e["key"])
             if e["expiry_source"] == "no_expiry":
-                self.assertTrue(e.get("source_label", "").startswith("No fixed expiry ("), e["key"])         # a stated reason, never a bare claim
+                self.assertTrue(e.get("source_label", "").startswith("No fixed expiry ("), e["key"])  # a stated reason, never a bare claim
 
     def test_no_value_looks_like_a_secret_an_id_an_email_or_a_key(self):
         for e in cred.load():
@@ -52,13 +54,13 @@ class TheList(unittest.TestCase):
                         "https://x.test/path?token=abc", "A" * 40):
             self.assertTrue(secret_like(planted), planted)
         self.assertFalse(secret_like("Notion internal integration secrets have no expiry"))
-        self.assertFalse(secret_like("Bitwarden secret names: " + ", ".join(BITWARDEN_NAMES)))              # the listed names are allowed
-        self.assertTrue(secret_like("openclaw/outlook/work/" + "Ab1" * 12))                                 # an unlisted long run under the same prefix is still caught
+        self.assertFalse(secret_like("Bitwarden secret names: " + ", ".join(BITWARDEN_NAMES)))  # the listed names are allowed
+        self.assertTrue(secret_like("openclaw/outlook/work/" + "Ab1" * 12))
 
     def test_the_file_is_names_only_so_nothing_in_it_could_be_a_value(self):
         fields = {k for e in cred.load() for k in e}
         self.assertNotIn("value", fields)
-        self.assertTrue(fields <= set(cred.REQUIRED) | set(cred.OPTIONAL), fields - set(cred.REQUIRED))                       # only the known name-and-date fields
+        self.assertTrue(fields <= set(cred.REQUIRED) | set(cred.OPTIONAL), fields - set(cred.REQUIRED))  # only the known name-and-date fields
 
 
 class Rows(unittest.TestCase):
@@ -105,7 +107,7 @@ class Screen(unittest.TestCase):
     def test_the_section_lists_every_credential_with_days_left_and_source_and_never_a_value(self):
         html = app._credentials(dt.datetime(2026, 11, 10, 12, 0))
         self.assertIn("No expiry exposed", html)
-        self.assertIn("Provider reported", html)                                                       # LIFE-565: every dated entry now has a provider reading; the "Manual" label is still covered by the Rows tests
+        self.assertIn("Provider reported", html)  # every dated entry now has a provider reading
         for e in cred.load():
             self.assertIn(app.e(e["label"]), html)
         for fragment in ("renew", "how_read", "token=", "BEGIN"):
@@ -118,7 +120,7 @@ class Screen(unittest.TestCase):
         self.assertIn(b"Credentials", body)
         source = open(app.__file__).read() + open(cred.__file__).read()
         for call in ("notion_client", "api.notion.com", "import notion", "platform.notion"):
-            self.assertNotIn(call, source)                                               # the screen and the list never call Notion
+            self.assertNotIn(call, source)  # the screen and the list never call Notion
 
 
 if __name__ == "__main__":
@@ -126,7 +128,7 @@ if __name__ == "__main__":
 
 
 class NoFixedExpiry(unittest.TestCase):
-    """LIFE-528 (Jim, Nov 11 2026): a credential with nothing that expires says so, with its reason; it is not counted as "no date to check"."""
+    """a credential with nothing that expires says so, with its reason"""
     def test_outlook_and_the_calendar_key_show_the_reason_and_the_status(self):
         rows = {r["key"]: r for r in cred.rows(TODAY)}
         self.assertEqual(rows["outlook_sign_in"]["source"], "No fixed expiry (delegated sign-in, no app secret)")

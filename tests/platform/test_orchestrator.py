@@ -1,4 +1,6 @@
-"""LIFE-987 (synthetic): the orchestrator operations of the Buzz bridge: the gate route, the fixed socket, the trust boundary, idempotency, the offline fallback, the grants. No Concord, no Oracle, no network."""
+"""(synthetic): the orchestrator operations of the Buzz bridge: the gate route, the fixed socket, the trust boundary,
+idempotency, the offline fallback.
+"""
 import json
 import socket
 import unittest
@@ -139,7 +141,7 @@ class Trust(unittest.TestCase):
         with self.assertRaises(O.OrchestratorError) as raised:
             O.run("agent_dispatch", {**ARGS, **over}, st)
         self.assertEqual(raised.exception.reason, reason)
-        self.assertEqual(st["gateway"].calls, [])                                               # nothing reached the gateway
+        self.assertEqual(st["gateway"].calls, [])  # nothing reached the gateway
 
     def test_no_jira_lookup_means_no_dispatch_at_all(self):
         self.refused("ticket_state_unavailable", st=state(ticket="none"))
@@ -227,7 +229,7 @@ class Dispatch(unittest.TestCase):
         out = O.run("agent_dispatch", {**ARGS, "agent": "mc01"}, st)
         self.assertEqual((out["delivered"], out["not_delivered"], out["start_item"], out["can_start"]), (False, "agent_offline", "created", False))
         self.assertEqual(len(client.rows), 1)
-        again = O.run("agent_dispatch", {**ARGS, "agent": "mc01", "idempotency_key": "idem-2"}, st)           # another dispatch to the same offline agent updates the same row
+        again = O.run("agent_dispatch", {**ARGS, "agent": "mc01", "idempotency_key": "idem-2"}, st)
         self.assertNotEqual(again["start_item"], "created")
         self.assertEqual(len(client.rows), 1)
         O.run("agent_dispatch", {**ARGS, "agent": "mc02", "idempotency_key": "idem-3"}, state(Gate(data={"delivered": False, "reason": "agent_offline", "state": "not_delivered", "agent": "mc02"}), inbox=True))
@@ -245,7 +247,7 @@ class Dispatch(unittest.TestCase):
             out = O.run("agent_dispatch", ARGS, state(gate))
         finally:
             del os.environ["ORCHESTRATOR_CAN_START"]
-        self.assertEqual((out["can_start"], out["start_item"]), (True, "created"))                              # recorded, and the item is still the answer
+        self.assertEqual((out["can_start"], out["start_item"]), (True, "created"))  # recorded, and the item is still the answer
 
     def test_status_and_messages_pass_through_with_the_verified_client_only(self):
         gate = Gate(data={"messages": [], "next_cursor": None})
@@ -279,7 +281,7 @@ if __name__ == "__main__":
 
 
 class QueuedIsNotOffline(unittest.TestCase):
-    """LIFE-992: a present but idle agent has the prompt stored for pull; that is not offline, so no 'Start <agent>: go' item is made."""
+    """a present but idle agent has the prompt stored for pull"""
     def test_queued_for_pull_creates_no_start_item(self):
         gate = Gate(data={"delivered": False, "reason": "queued_for_pull", "state": "queued_pull", "agent": "mc01"})
         out = O.run("agent_dispatch", {**ARGS, "agent": "mc01", "idempotency_key": "idem-q1"}, state(gate), now=NOW) if "now" in O.run.__code__.co_varnames else O.run("agent_dispatch", {**ARGS, "agent": "mc01", "idempotency_key": "idem-q1"}, state(gate))
@@ -288,7 +290,7 @@ class QueuedIsNotOffline(unittest.TestCase):
 
 
 class JiraTicketState(unittest.TestCase):
-    """LIFE-991: the bridge's own read-only Jira lookup of one issue's status; fail closed until its three credentials are placed."""
+    """the bridge's own read-only Jira lookup of one issue's status"""
 
     class Reply:
         def __init__(self, body):

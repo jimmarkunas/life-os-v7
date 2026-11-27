@@ -1,4 +1,6 @@
-"""LIFE-863: the Doppler trial compares by hash, prints no value, and a Doppler problem is a fixed code with exit 0 (the job keeps running on Bitwarden)."""
+"""the Doppler trial compares by hash, prints no value, and a Doppler problem is a fixed code with exit 0 (the job keeps
+running on Bitwarden).
+"""
 import json
 import re
 import unittest
@@ -24,7 +26,7 @@ class Compare(unittest.TestCase):
     def test_a_full_match_by_hash(self):
         code, result, lines = run(dict(BW))
         self.assertEqual((code, result["code"], result["matched"], result["total"], result["doppler_ms"]), (0, "match", 4, 4, 250))
-        self.assertTrue(all(x.startswith(("::add-mask::", "doppler-compare: ")) for x in lines))          # masks and one counts line, nothing else
+        self.assertTrue(all(x.startswith(("::add-mask::", "doppler-compare: ")) for x in lines))  # masks and one counts line, nothing else
 
     def test_a_multi_line_doppler_value_is_masked_one_line_per_command_and_never_printed_as_text(self):
         value = "{\n  \"type\": \"service_account\",\n  \"private_key\": \"LINE-TWO-SECRET\"\n}"
@@ -40,7 +42,7 @@ class Compare(unittest.TestCase):
         self.assertEqual((code, result["code"], result["matched"], result["mismatched"]), (0, "mismatch", 3, ["NOTION_JIRA_TOKEN"]))
         text = "\n".join(x for x in lines if not x.startswith("::add-mask::"))
         for value in list(BW.values()) + ["different-VALUE"]:
-            self.assertNotIn(value, text)                                                           # no value, from either side, is printed
+            self.assertNotIn(value, text)  # no value, from either side, is printed
 
     def test_a_name_missing_on_either_side_is_its_own_code(self):
         _, result, _ = run({k: v for k, v in BW.items() if k != "IMESSAGE_ALERTS_HOST"})
@@ -48,7 +50,7 @@ class Compare(unittest.TestCase):
         _, result, _ = run(dict(BW), bitwarden={k: v for k, v in BW.items() if k != "NOTION_JIRA_TOKEN"})
         self.assertEqual((result["code"], result["missing_in_bitwarden"]), ("missing_in_bitwarden", ["NOTION_JIRA_TOKEN"]))
         _, result, _ = run({**BW, "NOTION_JIRA_TOKEN": ""})
-        self.assertEqual(result["code"], "missing_in_doppler")                                      # an empty value is not a match
+        self.assertEqual(result["code"], "missing_in_doppler")  # an empty value is not a match
 
     def test_a_doppler_problem_is_a_fixed_code_and_exit_zero(self):
         for status in ("doppler_unreachable", "doppler_unauthorized", "doppler_bad_reply"):
@@ -71,14 +73,14 @@ class Compare(unittest.TestCase):
 
 
 class Workflow(unittest.TestCase):
-    """LIFE-981: the compare runs after every Bitwarden load; `DOPPLER_TOKEN` is used only as the token input of the compare step, once per compare step; the job keeps using Bitwarden's values."""
+    """the compare runs after every Bitwarden load"""
     def test_doppler_token_is_used_only_as_the_token_of_a_compare_step(self):
         for path in (ROOT / ".github").rglob("*.yml"):
             if path == ROOT / ".github/actions/bws-load/action.yml":
-                continue                                                                              # LIFE-1010: the loader runs the compare with the token its caller passes in
+                continue
             from tests import wftext
             text = wftext.text(path)
-            self.assertEqual(len(re.findall(r"secrets\.DOPPLER_TOKEN", text)), text.count("uses: ./.github/actions/doppler-load") + len(re.findall(r"^\s+doppler_compare: \$\{\{ secrets\.DOPPLER_TOKEN \}\}$", text, re.M)), str(path))   # LIFE-1010: a loader's doppler_compare input is a compare too
+            self.assertEqual(len(re.findall(r"secrets\.DOPPLER_TOKEN", text)), text.count("uses: ./.github/actions/doppler-load") + len(re.findall(r"^\s+doppler_compare: \$\{\{ secrets\.DOPPLER_TOKEN \}\}$", text, re.M)), str(path))  # a loader's doppler_compare input is a compare too
 
     def test_the_trial_step_cannot_fail_the_job_and_nothing_uses_doppler_values(self):
         import yaml
@@ -88,10 +90,10 @@ class Workflow(unittest.TestCase):
         self.assertTrue(trial["continue-on-error"])
         self.assertEqual(trial["uses"], "./.github/actions/doppler-load")
         self.assertEqual(trial["with"]["token"], "${{ secrets.DOPPLER_TOKEN }}")
-        self.assertNotIn("doppler_trial", json.dumps([s for s in steps if s is not trial]))           # no other step reads the trial's output: Bitwarden's values are the ones used
+        self.assertNotIn("doppler_trial", json.dumps([s for s in steps if s is not trial]))
         self.assertEqual(doc["permissions"], {"contents": "read"})
         action = (ROOT / ".github/actions/doppler-load/action.yml").read_text()
-        self.assertNotRegex(action, r"uses:")                                                         # no third-party action: stdlib Python from this repository
+        self.assertNotRegex(action, r"uses:")
 
 
 if __name__ == "__main__":

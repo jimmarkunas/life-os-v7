@@ -36,10 +36,10 @@ class Read(unittest.TestCase):
         h = Harness()
         a, b = h.call(), h.call("codex", CX, rid="r2")
         self.assertEqual((a.decision, a.reason, b.reason), ("allow", "ok", "ok"))
-        self.assertEqual(set(a.data), set(S.FIELDS))                                           # assignee and description never leave
+        self.assertEqual(set(a.data), set(S.FIELDS))  # assignee and description never leave
         self.assertEqual([r["client"] for r in h.receipts if r["outcome"] == "ok"], ["claude-code", "codex"])
         self.assertNotEqual(h.receipts[0]["principal_fp"], h.receipts[2]["principal_fp"])
-        self.assertEqual([f[0] for f in h.fetched], ["bws-jira-read-claude-code", "bws-jira-read-codex"])   # each client uses its own credential NAME
+        self.assertEqual([f[0] for f in h.fetched], ["bws-jira-read-claude-code", "bws-jira-read-codex"])  # each client uses its own credential NAME
 
     def test_receipts_hold_fixed_words_ids_and_fingerprints_only(self):
         h = Harness()
@@ -65,7 +65,7 @@ class FailClosed(unittest.TestCase):
         h = Harness(**kw.pop("harness", {}))
         answer = h.call(**kw)
         self.assertEqual((answer.decision, answer.reason, h.fetched), ("deny", reason, []))
-        self.assertEqual(h.receipts[-1]["outcome"], "deny")                                    # a refusal has a receipt and no read
+        self.assertEqual(h.receipts[-1]["outcome"], "deny")  # a refusal has a receipt and no read
 
     def test_unknown_tool_and_any_write(self):
         self.refused("unknown_tool", tool="jira.delete_issue")
@@ -95,8 +95,8 @@ class FailClosed(unittest.TestCase):
 
     def test_wrong_account_wrong_tenant_and_borrowed_grant(self):
         self.refused("no_grant", account="acct-2")
-        self.refused("no_grant", tenant="bytalos")                                              # a Personal grant is not a Bytalos grant
-        self.refused("no_grant", client="codex")                                                # Codex with the Claude Code principal borrows nothing
+        self.refused("no_grant", tenant="bytalos")  # a Personal grant is not a Bytalos grant
+        self.refused("no_grant", client="codex")
         self.refused("no_grant", client="claude-code", principal=CX)
 
     def test_revoked_and_expired(self):
@@ -128,10 +128,10 @@ class Isolation(unittest.TestCase):
     def test_personal_and_bytalos_do_not_share_grants_identity_or_cache(self):
         h = Harness(grants=[grant("claude-code", CC, "personal"), grant("claude-code", CC, "bytalos", account="acct-b", credential_ref="bws-jira-read-bytalos")])
         self.assertEqual(h.call(tenant="personal").reason, "ok")
-        self.assertEqual(h.call(tenant="bytalos").reason, "no_grant")                           # wrong account for the Bytalos grant
+        self.assertEqual(h.call(tenant="bytalos").reason, "no_grant")  # wrong account for the Bytalos grant
         self.assertEqual(h.call(tenant="bytalos", account="acct-b").reason, "ok")
         self.assertEqual(h.call(tenant="personal", account="acct-b").reason, "no_grant")
-        self.assertEqual(len(h.fetched), 2)                                                     # every allowed read goes to the source: there is no cache to share
+        self.assertEqual(len(h.fetched), 2)
         self.assertFalse([n for n in vars(S) if n.lower() in ("cache", "_cache", "store")])
 
     def test_revoking_one_client_leaves_the_other_and_other_sources_alone(self):
@@ -140,8 +140,8 @@ class Isolation(unittest.TestCase):
         self.assertEqual(h.call().reason, "grant_revoked")
         self.assertEqual(h.call("codex", CX).reason, "ok")
         self.assertEqual(S.revoke((), "codex"), ())
-        self.assertEqual(A.decide(POLICY, CC, "github", "read")[0], "allow")                    # the policy for other services did not change
-        self.assertEqual(A.decide(POLICY, CC, "notion", "read"), ("deny", "service_off"))       # and nothing new became implicitly allowed
+        self.assertEqual(A.decide(POLICY, CC, "github", "read")[0], "allow")  # the policy for other services did not change
+        self.assertEqual(A.decide(POLICY, CC, "notion", "read"), ("deny", "service_off"))  # and nothing new became implicitly allowed
 
     def test_the_module_imports_no_network_or_credential_code(self):
         import pathlib

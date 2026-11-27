@@ -1,4 +1,6 @@
-"""LIFE-865 test data: the real seeded mcp_access.json and capability catalog, widened for tests that exercise a server's own behavior (publish grants for both chat clients), with knobs for the gate's refusal reasons."""
+"""test data: the real seeded mcp_access.json and capability catalog, widened for tests that exercise a server's own
+behavior (publish grants for both.
+"""
 import copy
 import json
 from datetime import datetime, timezone
@@ -11,7 +13,9 @@ CATALOG = json.loads(mcp_access.CATALOG.read_text())
 
 
 def inbox_rows():
-    """A test-only inbox write grant and catalog row for the Mac client: the shipped seed grants no `send_to_jim` call (no client has that MCP server configured)."""
+    """A test-only inbox write grant and catalog row for the Mac client: the shipped seed grants no `send_to_jim` call
+    (no client has that MCP server.
+    """
     return ({"id": "t-claude-code-mac-send-to-jim", "principal": "claude-code-mac", "tenant": "personal", "account": "agent-inbox", "tool": "send_to_jim", "purpose": "agent-inbox", "actions": ["write"], "credential_ref": "notion-v7-integration", "expires": "2027-02-22", "revoked": False},
             {"principal": "claude-code-mac", "tool": "send_to_jim", "action": "write", "provider": "notion", "account_alias": None, "host": "mac-worktree", "source": "lifeos/inbox/send_to_jim.py", "as_of": "2026-11-22", "max_age_days": 90, "status": "synthetic"})
 
@@ -35,7 +39,7 @@ def principal(client, tenant):
 
 
 def publish_rows():
-    """Grants and catalog rows that let both chat clients publish in both tenants (a test widening only; the seed grants reads)."""
+    """Grants and catalog rows that let both chat clients publish in both tenants (a test widening only)"""
     grants, rows = [], []
     for client in ("claude-chat", "chatgpt-chat"):
         for tenant in ("personal", "bytalos"):

@@ -1,4 +1,4 @@
-"""LIFE-570: the fail-closed unit-test gate. The tests are skipped only on a confirmed green pr-tests push run on main for this exact commit; every doubt runs them."""
+"""the fail-closed unit-test gate."""
 import datetime as dt
 import io
 import json

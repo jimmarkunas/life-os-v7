@@ -9,8 +9,7 @@ _quiet = contextlib.redirect_stderr(io.StringIO())
 
 
 def setUpModule():
-    """The retry paths print their invented `store:` lines by design. In CI's prep job they read like real store failures in the run log, so the
-    module keeps them out of it; a test that checks a line captures stderr itself."""
+    """The retry paths print their invented `store:` lines by design."""
     _quiet.__enter__()
 
 
@@ -29,7 +28,7 @@ class ConnectionConfigTests(unittest.TestCase):
 
 
 class RetryTests(unittest.TestCase):
-    """D92: a Hostinger network blip (the 8 AM and 9 AM CDT ticks failed with STORE_SSH_NETWORK) is retried; auth and host-key errors never are."""
+    """a Hostinger network blip (the 8 AM and 9 AM CDT ticks failed with STORE_SSH_NETWORK) is retried"""
 
     def setUp(self):
         import os
@@ -40,7 +39,7 @@ class RetryTests(unittest.TestCase):
         self.patches = [mock.patch.object(db.time, "sleep", side_effect=self.sleeps.append), mock.patch.object(db, "_jitter", return_value=0)]
         for p in self.patches:
             p.start()
-        db._tunnel.update(directory=None, port=None, exit=None, check=None)        # each test starts with no open tunnel
+        db._tunnel.update(directory=None, port=None, exit=None, check=None)  # each test starts with no open tunnel
         db._route["jump"] = False
 
     def tearDown(self):
@@ -51,7 +50,7 @@ class RetryTests(unittest.TestCase):
             p.stop()
 
     def _run(self, outcomes):
-        """outcomes: stderr text for each ssh start (None = success). Returns (connect result or error code, ssh starts)."""
+        """outcomes: stderr text for each ssh start (None = success)."""
         import subprocess
         import sys
         from unittest import mock
@@ -59,7 +58,7 @@ class RetryTests(unittest.TestCase):
 
         def fake_run(cmd, **kw):
             if "-O" in cmd:
-                return None                                       # the tunnel exit
+                return None  # the tunnel exit
             starts.append(1)
             detail = outcomes[len(starts) - 1]
             if detail is not None:
@@ -76,22 +75,22 @@ class RetryTests(unittest.TestCase):
     def test_only_the_first_connect_of_a_process_and_retries_are_spread_out(self):
         from unittest import mock
         with mock.patch.object(db, "_jitter", return_value=3), mock.patch.object(db, "_spread", [True]):
-            self._run([None])                                             # the process's first connect: spread out
-            self._run([])                                                 # a later connect reuses the tunnel at once (publish opens hundreds)
+            self._run([None])  # the process's first connect: spread out
+            self._run([])
             db._tunnel.update(directory=None, port=None, exit=None, check=None)
-            self._run(["ssh: connect to host h port 22: Connection timed out", None])     # a new tunnel's retry is spread out again
-        self.assertEqual(self.sleeps, [3, 0, 0, 33])                                  # after an unanswered connection the retry waits quietly (QUIET_WAITS)
+            self._run(["ssh: connect to host h port 22: Connection timed out", None])  # a new tunnel's retry is spread out again
+        self.assertEqual(self.sleeps, [3, 0, 0, 33])
 
     def test_one_tunnel_serves_every_connect_of_the_process(self):
         self.assertEqual(self._run([None]), ("connected", 1))
-        self.assertEqual(self._run([]), ("connected", 0))                  # no second ssh start: the open tunnel is reused
+        self.assertEqual(self._run([]), ("connected", 0))  # no second ssh start: the open tunnel is reused
         self.assertEqual(self._run([]), ("connected", 0))
 
     def test_a_dead_tunnel_is_reopened(self):
         from unittest import mock
         self.assertEqual(self._run([None]), ("connected", 1))
-        with mock.patch.object(db, "_alive", return_value=False):           # the master died between stages
-            self.assertEqual(self._run([None]), ("connected", 1))          # a fresh tunnel, not a failed stage
+        with mock.patch.object(db, "_alive", return_value=False):  # the master died between stages
+            self.assertEqual(self._run([None]), ("connected", 1))  # a fresh tunnel, not a failed stage
 
     def test_a_network_blip_is_retried_and_then_connects(self):
         result, starts = self._run(["Network is unreachable", None])
@@ -99,7 +98,7 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(self.sleeps, [0, 4])
 
     def test_an_unanswered_connection_waits_long_and_quietly_and_a_recovery_is_logged(self):
-        """LIFE-41: the host drops one runner for minutes; quick retries never recovered (9 of 9 series), so after a TCP timeout the next wait is QUIET_WAITS."""
+        """the host drops one runner for minutes"""
         import contextlib
         import io
         timeout = "ssh: connect to host h port 22: Connection timed out"
@@ -114,19 +113,19 @@ class RetryTests(unittest.TestCase):
 
     def test_the_wait_follows_the_last_failure_not_the_first(self):
         self._run(["ssh: connect to host h port 22: Connection timed out", "Connection timed out during banner exchange", "Network is unreachable", None])
-        self.assertEqual(self.sleeps, [0, 30, 12, 30])                 # quiet only right after an unanswered connection; a dropped or unreachable one keeps the short schedule
+        self.assertEqual(self.sleeps, [0, 30, 12, 30])  # quiet only right after an unanswered connection
 
     def test_it_gives_up_after_the_last_attempt_with_the_fixed_code(self):
         result, starts = self._run(["Network is unreachable"] * ATTEMPTS)
         self.assertEqual((result, starts), ("STORE_SSH_NETWORK", ATTEMPTS))
-        self.assertEqual(self.sleeps, [0, 4, 12, 30])                  # the last wait is long enough to outlast a minute-scale blip
+        self.assertEqual(self.sleeps, [0, 4, 12, 30])
 
     def test_a_blip_that_outlasts_three_attempts_still_connects_on_the_fourth(self):
         timeout = "ssh: connect to host h port 22: Connection timed out"
         self.assertEqual(self._run([timeout] * (ATTEMPTS - 1) + [None]), ("connected", ATTEMPTS))
 
     def test_a_dropped_connection_and_an_unanswered_one_get_different_codes(self):
-        """MON-1.5: the 46-second failures were all three attempts timing out; the code now says whether sshd answered and dropped us or nothing answered."""
+        """MON-1.5: the 46-second failures were all three attempts timing out"""
         banner = ["Connection timed out during banner exchange", "kex_exchange_identification: read: Connection reset by peer", "kex_exchange_identification: Connection closed by remote host"]
         for message in banner:
             self.assertEqual(self._run([message] * ATTEMPTS), ("STORE_SSH_BANNER", ATTEMPTS), message)
@@ -147,18 +146,19 @@ class RetryTests(unittest.TestCase):
 
 
 class ConnectJitterTests(unittest.TestCase):
-    """LIFE-76 / D206: lanes that start in the same second must not open their tunnels together."""
+    """lanes that start in the same second must not open their tunnels together."""
     def test_every_attempt_waits_its_retry_time_plus_a_bounded_random_extra(self):
         from unittest import mock
         with mock.patch.object(db.random, "uniform", return_value=2.5) as uniform:
             self.assertEqual(db._jitter(), 2.5)
         uniform.assert_called_once_with(0, db.JITTER_SECONDS)
-        self.assertLessEqual(db.JITTER_SECONDS, 5)                         # small next to the 30 s last wait: a blip window is still covered
+        self.assertLessEqual(db.JITTER_SECONDS, 5)
 
 
 class OracleRouteTests(unittest.TestCase):
-    """LIFE-85: a runner the store host drops (an unanswered connection) reaches the store through Oracle's fixed address on its next attempt, as the
-    forward-only user, to the store's one IP and port; nothing else changes and no store secret is put on a command line."""
+    """a runner the store host drops (an unanswered connection) reaches the store through Oracle's fixed address on its
+    next attempt, as the forward-only.
+    """
     TIMEOUT = "ssh: connect to host h port 65002: Connection timed out"
     JUMP = {"LIFEOS_ACQ_SSH_JUMP_KEY": "JUMPKEY-INVENTED", "LIFEOS_ACQ_SSH_JUMP_HOST": "100.64.0.7", "LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS": "100.64.0.7 ssh-ed25519 AAAAinvented"}
 
@@ -223,17 +223,17 @@ class OracleRouteTests(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             self.assertEqual(self.run_([self.TIMEOUT, None]), "connected")
         first, second = self.cmds
-        self.assertIsNone(self.proxy(first))                                                           # direct first
+        self.assertIsNone(self.proxy(first))  # direct first
         p = self.proxy(second)
-        self.assertIn("-W 203.0.113.9:65002 " + db.JUMP_USER + "@" + self.JUMP["LIFEOS_ACQ_SSH_JUMP_HOST"], p)                                # the store's one IP and port, the forward-only user
+        self.assertIn("-W 203.0.113.9:65002 " + db.JUMP_USER + "@" + self.JUMP["LIFEOS_ACQ_SSH_JUMP_HOST"], p)  # the store's one IP and port, the forward-only user
         self.assertIn("StrictHostKeyChecking=yes", p)
-        self.assertEqual(second[-1], "store.example")                                                   # the store's own host key is still checked by name
-        self.assertEqual(self.sleeps, [0, 4])                                                           # no quiet wait: the route changes instead
+        self.assertEqual(second[-1], "store.example")  # the store's own host key is still checked by name
+        self.assertEqual(self.sleeps, [0, 4])  # no quiet wait: the route changes instead
         self.assertEqual(err.getvalue().splitlines()[-1], "store: connected on attempt 2 of 4 via oracle after STORE_SSH_TCP_TIMEOUT")
         self.assertEqual(self.files["jump_key"], ("JUMPKEY-INVENTED\n", "0o600"))
         self.assertEqual(self.files["jump_known_hosts"][1], "0o600")
         for secret in ("JUMPKEY-INVENTED", "STOREKEY-INVENTED", "DBPASS-INVENTED"):
-            self.assertFalse(any(secret in c for c in second), secret)                                  # no secret on any command line
+            self.assertFalse(any(secret in c for c in second), secret)  # no secret on any command line
 
     def test_only_an_unanswered_connection_switches_route(self):
         for detail in ("Connection timed out during banner exchange", "Network is unreachable", "Connection refused"):
@@ -270,22 +270,21 @@ class OracleRouteTests(unittest.TestCase):
         import os
         os.environ["LIFEOS_ACQ_SSH_VIA"] = "oracle"
         self.assertEqual(self.run_([None]), "connected")
-        self.assertIsNotNone(self.proxy(self.cmds[0]))                                                 # the first attempt already goes through Oracle
+        self.assertIsNotNone(self.proxy(self.cmds[0]))  # the first attempt already goes through Oracle
         self.reset()
         for key in self.JUMP:
             os.environ.pop(key)
         self.run_([None])
-        self.assertIsNone(self.proxy(self.cmds[0]))                                                    # without the route configured the switch does nothing
+        self.assertIsNone(self.proxy(self.cmds[0]))
 
     def test_a_tunnel_opened_through_oracle_is_logged_once_even_without_a_failure(self):
-        """The 48 h watch counts Oracle tunnels. A forced first attempt that succeeds has no failure to report, so before this it left no line at all
-        (live proof run 39360136918); a reused tunnel stays silent, since publish opens hundreds of sessions through one."""
+        """The 48 h watch counts Oracle tunnels."""
         import os
         os.environ["LIFEOS_ACQ_SSH_VIA"] = "oracle"
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
             self.run_([None])
-            self.run_([None])                                                                          # the same process again: the tunnel is reused
+            self.run_([None])  # the same process again: the tunnel is reused
         self.assertEqual([s for s in err.getvalue().splitlines() if s.startswith("store:")], ["store: connected on attempt 1 of 4 via oracle"])
 
     def test_a_direct_connection_with_no_failure_stays_silent(self):
@@ -295,7 +294,7 @@ class OracleRouteTests(unittest.TestCase):
         self.assertNotIn("store:", err.getvalue())
 
     def test_the_relay_never_holds_the_pipe_this_process_waits_on_and_its_refusal_is_still_named(self):
-        """Live run 39359049454: an inherited stderr pipe made every Oracle start wait for its timeout. The relay writes to a file in the tunnel directory."""
+        """Live run 39359049454: an inherited stderr pipe made every Oracle start wait for its timeout."""
         import os
         import subprocess
         import sys
@@ -304,24 +303,23 @@ class OracleRouteTests(unittest.TestCase):
         self.assertRegex(self.proxy(self.cmds[1]), r" 2>>\S+/jump\.err$")
         self.reset()
 
-        def fake_run(cmd, **kw):                                                                            # the outer ssh reports nothing useful; the relay wrote why
+        def fake_run(cmd, **kw):  # the outer ssh reports nothing useful
             if "-O" in cmd:
                 return None
             self.cmds.append(cmd)
             if len(self.cmds) == 1:
                 raise subprocess.CalledProcessError(255, cmd, stderr=self.TIMEOUT)
             with open(os.path.join(db._tunnel["directory"], "jump.err"), "w") as f:
-                f.write(db.JUMP_USER + "@" + "100.64.0.7: Permission denied (publickey).\n")                # built at runtime: the privacy guard reads user@host as an address
+                f.write(db.JUMP_USER + "@" + "100.64.0.7: Permission denied (publickey).\n")
             raise subprocess.CalledProcessError(255, cmd, stderr="kex_exchange_identification: Connection closed by remote host")
         with mock.patch.object(db.subprocess, "run", side_effect=fake_run), mock.patch.dict(sys.modules, {"pymysql": mock.MagicMock()}):
             with self.assertRaises(db.StoreError) as ctx:
                 with db.connect():
                     pass
-        self.assertEqual(str(ctx.exception), "STORE_SSH_JUMP_AUTH")                                           # the relay's refusal wins over the outer symptom
+        self.assertEqual(str(ctx.exception), "STORE_SSH_JUMP_AUTH")  # the relay's refusal wins over the outer symptom
 
     def test_a_real_relay_process_does_not_stall_the_tunnel_start(self):
-        """The fakes above cannot see an inherited pipe. A stand-in `ssh` on PATH behaves like the real one: the main call starts its ProxyCommand (stderr
-        inherited, as OpenSSH does) and then backgrounds (-f); the relay stays alive like a live tunnel. The start must return at once, not at its timeout."""
+        """The fakes above cannot see an inherited pipe."""
         import os
         import shutil
         import stat
@@ -398,8 +396,7 @@ class _FakeRaw:
 
 
 class LostSessionTests(unittest.TestCase):
-    """LIFE-76 (Jim, Oct 25): a dropped MySQL session (2013 / 2006) on a read reconnects and reads once more; a write or a read inside a
-    transaction is never repeated, so nothing can be applied twice."""
+    """a dropped MySQL session (2013 / 2006) on a read reconnects and reads once more"""
 
     def setUp(self):
         from unittest import mock
@@ -420,7 +417,7 @@ class LostSessionTests(unittest.TestCase):
         query = "SELECT retired_at FROM v7_tombstones WHERE dedupe_key=%s LIMIT 1"
         self.assertEqual(self._execute(raw, query), (1, [("row",)]))
         self.assertEqual(raw.executed, [query, query])
-        self.assertEqual(raw.pings, [(True, 4242)])                     # a fresh session on the tunnel's port
+        self.assertEqual(raw.pings, [(True, 4242)])  # a fresh session on the tunnel's port
 
     def test_a_gone_away_read_is_retried_too(self):
         raw = _FakeRaw([OperationalError(2006, "MySQL server has gone away")])
@@ -437,7 +434,7 @@ class LostSessionTests(unittest.TestCase):
                 self.assertEqual((raw.executed, raw.pings), ([query], []))
 
     def test_a_read_inside_an_open_transaction_is_never_repeated(self):
-        for status in (3, None):                                         # IN_TRANS set, or a status the retry cannot read
+        for status in (3, None):  # IN_TRANS set, or a status the retry cannot read
             with self.subTest(status=status):
                 raw = _FakeRaw([OperationalError(2013, "Lost connection")], server_status=status)
                 with self.assertRaises(OperationalError):
@@ -474,7 +471,7 @@ class LostSessionTests(unittest.TestCase):
         with db._Connection(raw) as connection:
             with connection.cursor(cursor="dict") as cursor:
                 cursor.execute("SELECT 1")
-        self.assertEqual((raw.kinds, len(raw.exits)), (((), {"cursor": "dict"}), 1))   # the retry's fresh cursor is the same kind
+        self.assertEqual((raw.kinds, len(raw.exits)), (((), {"cursor": "dict"}), 1))  # the retry's fresh cursor is the same kind
 
     def test_any_other_error_is_not_retried(self):
         raw = _FakeRaw([OperationalError(1205, "Lock wait timeout exceeded"), ValueError("bad")])

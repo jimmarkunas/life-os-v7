@@ -1,4 +1,4 @@
-"""LIFE-1023: the keyless Google calendar sign-in (GitHub OIDC -> Google STS -> impersonated access token). Three stubbed HTTP calls, no network."""
+"""the keyless Google calendar sign-in (GitHub OIDC -> Google STS -> impersonated access token)."""
 
 import io
 import json
@@ -26,7 +26,7 @@ def reply(doc):
 
 
 class Net:
-    """Routes the three calls by URL; `fail` names a stage that refuses; every request is recorded."""
+    """Routes the three calls by URL"""
 
     def __init__(self, fail=None, bad=None):
         self.fail, self.bad, self.seen = fail, bad or {}, []
@@ -75,7 +75,7 @@ class Keyless(unittest.TestCase):
         self.assertEqual(sent["subjectToken"], OIDC_JWT)
         self.assertEqual(iam[2]["Authorization"], "Bearer " + FEDERATED)
         self.assertEqual(json.loads(iam[3]), {"scope": [gcal.SCOPE], "lifetime": "3600s"})  # the calendar scope the client already uses
-        self.assertEqual(api[2]["Authorization"], "Bearer " + ACCESS)  # the bearer is used exactly as the key path used its token
+        self.assertEqual(api[2]["Authorization"], "Bearer " + ACCESS)
         self.assertTrue(api[0].startswith("https://www.googleapis.com/calendar/v3/calendars/cal-id/events"))
 
     def test_the_read_only_scope_is_the_one_asked_for(self):

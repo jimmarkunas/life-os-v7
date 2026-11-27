@@ -1,4 +1,6 @@
-"""LIFE-975 step 4d: the System health database as the record behind the Connections row (its writer, the should-work rule, Concord, Todoist)."""
+"""step 4d: the System health database as the record behind the Connections row (its writer, the should-work rule,
+Concord, Todoist).
+"""
 import datetime as dt
 import unittest
 from zoneinfo import ZoneInfo
@@ -48,7 +50,7 @@ class Rows(unittest.TestCase):
 
     def test_the_last_ok_text_reads_back_to_a_central_time(self):
         self.assertEqual(c.last_ok_time("11/16 · 8:30 PM CT", NOW), dt.datetime(2026, 11, 16, 20, 30, tzinfo=CT))
-        self.assertEqual(c.last_ok_time("12/31 · 11:59 PM CT", dt.datetime(2027, 1, 1, 0, 5, tzinfo=CT)), dt.datetime(2026, 12, 31, 23, 59, tzinfo=CT))      # a date after now is the year before
+        self.assertEqual(c.last_ok_time("12/31 · 11:59 PM CT", dt.datetime(2027, 1, 1, 0, 5, tzinfo=CT)), dt.datetime(2026, 12, 31, 23, 59, tzinfo=CT))  # a date after now is the year before
         self.assertIsNone(c.last_ok_time("—", NOW))
 
 
@@ -74,7 +76,7 @@ class Evidence(unittest.TestCase):
         self.assertEqual(seen["outlook"], {"last_ok": dt.datetime(2026, 11, 25, 10, 0, tzinfo=UTC), "failed": True})
 
     def test_a_manual_run_that_failed_never_turns_a_connection_red(self):
-        """Nov 25 2026: an agent's manual domains run failed in its jira job; the System table showed JIRA DOWN although every tick passed."""
+        """the System table showed JIRA DOWN although every tick passed."""
         api = self.runs([[self.job("jira", "failure")], [self.job("jira", "success", "2026-11-25T10:00:00Z")]], titles=["domains (manual)", "domains (after tick)"])
         self.assertEqual(c.evidence({"GITHUB_REPOSITORY": "o/r"}, api)["jira"], {"last_ok": dt.datetime(2026, 11, 25, 10, 0, tzinfo=UTC), "failed": False})
         self.assertEqual(c.evidence({"GITHUB_REPOSITORY": "o/r"}, self.runs([[self.job("jira", "success")]], titles=["domains (manual)"])), {})
@@ -95,8 +97,8 @@ class Refresh(unittest.TestCase):
         self.assertEqual(names, {"health:personal:jira", "health:bytalos:jira", "health:personal:calendar", "health:personal:gmail", "health:all:followup"})
         self.assertEqual(dict(updates)["pg-health:personal:jira"], {"Health": c.OK, "Last OK": "11/25 · 8:40 AM CT"})
         c.apply(page, updates, c.retired_pages(rows))
-        self.assertEqual(page.pages["pg-health:all:concord"]["properties"]["Health"]["select"]["name"], c.NOT_CONNECTED)            # nothing exercises Concord: untouched
-        self.assertTrue(page.pages["pg-health:personal:todoist"].get("in_trash"))                                                      # the Todoist row is retired, once
+        self.assertEqual(page.pages["pg-health:all:concord"]["properties"]["Health"]["select"]["name"], c.NOT_CONNECTED)  # nothing exercises Concord: untouched
+        self.assertTrue(page.pages["pg-health:personal:todoist"].get("in_trash"))  # the Todoist row is retired, once
         self.assertFalse(any("todoist" in str(entry) and "Health" in str(entry) for entry in page.log if not entry[2].get("in_trash")))
 
     def test_a_failed_job_marks_its_row_unavailable_and_keeps_its_last_ok(self):
@@ -124,7 +126,7 @@ class Summary(unittest.TestCase):
         self.assertIsNone(summary["stale_since"])
 
     def test_a_row_that_says_ok_but_was_not_refreshed_for_two_hours_is_not_connected_and_reports_how_stale(self):
-        summary = c.summary(self.rows_after({}), NOW)                                                  # no evidence at all: every row keeps its Nov 16 time
+        summary = c.summary(self.rows_after({}), NOW)
         self.assertEqual((summary["connected"], sorted(summary["down"])[:2]), (0, ["Bytalos Jira", "Calendar"]))
         self.assertEqual(summary["stale_since"], dt.datetime(2026, 11, 16, 20, 30, tzinfo=CT))
 

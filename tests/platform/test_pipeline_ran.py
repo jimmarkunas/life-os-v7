@@ -1,4 +1,4 @@
-"""LIFE-856: the after-tick domains run asks whether the tick's hourly `finish` job ran before it runs the jobs that moved out of it. Synthetic jobs; no network."""
+"""Synthetic jobs"""
 import io
 import tempfile
 import unittest
@@ -21,7 +21,7 @@ def output(jobs=None, boom=False):
 class Ran(unittest.TestCase):
     def test_a_finish_job_that_ran_is_true_and_a_skipped_one_is_false(self):
         self.assertEqual(output([{"name": "prep", "conclusion": "success"}, {"name": "finish", "conclusion": "success"}]), "ran=true")
-        self.assertEqual(output([{"name": "finish", "conclusion": "failure"}]), "ran=true")                  # a failed pipeline still owes its moved work
+        self.assertEqual(output([{"name": "finish", "conclusion": "failure"}]), "ran=true")  # a failed pipeline still owes its moved work
         self.assertEqual(output([{"name": "prep", "conclusion": "success"}, {"name": "finish", "conclusion": "skipped"}]), "ran=false")
         self.assertEqual(output([{"name": "prep", "conclusion": "success"}]), "ran=false")
 

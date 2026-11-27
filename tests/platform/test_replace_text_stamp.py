@@ -1,8 +1,6 @@
-"""LIFE-722: a card whose body write fails after its heading stamp was written keeps the OLD stamp (and the old body), never a NEW stamp over OLD content.
-
-`replace_text` writes the stamp first on purpose (one PATCH, the body writes and the read-back follow), so the fix puts the previous stamp back when anything after the stamp write fails. When every write succeeds
-nothing changes: the same requests in the same order and the same card (the logs below are what the code sent before the fix). The callers are Bills, Amazon and Mail Alerts; the floating-region writers
-(Hiring, Recruiter Outreach) and the other card writers already write the heading last."""
+"""a card whose body write fails after its heading stamp was written keeps the OLD stamp (and the old body), never a NEW
+stamp over OLD content.
+"""
 import copy
 import unittest
 
@@ -18,7 +16,7 @@ WRITES = ("PATCH", "POST", "DELETE", "PUT", "APPEND")
 
 
 class FailsAtWrite:
-    """Counts the write requests (appends included) and refuses the `n`th with a Notion conflict; with `refuse_restore` any later heading write is refused too, with a different code."""
+    """Counts the write requests (appends included) and refuses the `n`th with a Notion conflict"""
 
     def __init__(self, inner, n, refuse_restore=False):
         self.inner, self.n, self.refuse_restore, self.writes, self.heading_writes = inner, n, refuse_restore, 0, []
@@ -74,7 +72,8 @@ def body_of(notion):
 
 
 def insert_path(notion):
-    """The first old line changes block type, so the write takes the insert-then-delete path instead of editing in place."""
+    """The first old line changes block type, so the write takes the insert-then-delete path instead of editing in place.
+    """
     kid = notion.children["mail-callout"][1]
     kid["type"] = "bulleted_list_item"
     kid["bulleted_list_item"] = kid.pop("paragraph")
@@ -84,18 +83,18 @@ def insert_path(notion):
 class FailureAfterTheStamp(unittest.TestCase):
     def test_a_body_write_refused_after_the_heading_write_keeps_the_old_stamp_and_the_old_body(self):
         for name, notion in (("in place", Watched(["old status", "old detail"])), ("insert", insert_path(Watched(["old status", "old detail"])))):
-            client = FailsAtWrite(notion, 2)                                                     # write 1 is the stamp, write 2 is the first body write
+            client = FailsAtWrite(notion, 2)
             with self.assertRaises(NotionError) as raised:
                 write(client, ["new status", "new detail"], heading=STAMP)
-            self.assertEqual(str(raised.exception), "NOTION_HTTP_409", name)                      # the failure the card already reported, unchanged
+            self.assertEqual(str(raised.exception), "NOTION_HTTP_409", name)  # the failure the card already reported, unchanged
             self.assertEqual((heading_of(notion), body_of(notion)), (OLD_STAMP, ["old status", "old detail"]), name)
-            self.assertEqual(client.heading_writes, [STAMP, OLD_STAMP], name)                    # the stamp was written, then put back once
+            self.assertEqual(client.heading_writes, [STAMP, OLD_STAMP], name)  # the stamp was written, then put back once
 
     def test_a_later_failure_also_puts_the_old_stamp_back(self):
         notion = Watched(["old status", "old detail"])
         with self.assertRaises(NotionError):
-            write(FailsAtWrite(notion, 3), ["new status", "new detail"], heading=STAMP)           # the first line was rewritten, the second was refused
-        self.assertEqual(heading_of(notion), OLD_STAMP)                                           # whatever the body shows, the stamp does not claim it is current
+            write(FailsAtWrite(notion, 3), ["new status", "new detail"], heading=STAMP)
+        self.assertEqual(heading_of(notion), OLD_STAMP)
         self.assertEqual(body_of(notion), ["new status", "old detail"])
 
     def test_a_read_back_that_does_not_match_puts_the_old_stamp_back_and_keeps_its_fixed_code(self):
@@ -110,13 +109,15 @@ class FailureAfterTheStamp(unittest.TestCase):
         client = FailsAtWrite(notion, 2, refuse_restore=True)
         with self.assertRaises(NotionError) as raised:
             write(client, ["new status"], heading=STAMP)
-        self.assertEqual(str(raised.exception), "NOTION_HTTP_409")                                # not the restore's 429
-        self.assertEqual(client.heading_writes, [STAMP, OLD_STAMP])                              # it tried once, best effort, and said nothing more
+        self.assertEqual(str(raised.exception), "NOTION_HTTP_409")  # not the restore's 429
+        self.assertEqual(client.heading_writes, [STAMP, OLD_STAMP])  # it tried once, best effort, and said nothing more
 
 
 class NothingElseChanges(unittest.TestCase):
     def test_when_every_write_succeeds_the_requests_and_the_card_are_exactly_what_they_were(self):
-        """The logs are what the code sent before LIFE-722 (captured from main): the same requests in the same order, so no request is added."""
+        """The logs are what the code sent before (captured from main): the same requests in the same order, so no
+        request is added.
+        """
         notion = Watched(["old status", "old detail"])
         write(notion, ["new status", "new detail"], heading=STAMP)
         self.assertEqual([(m, p.split("?")[0]) for m, p in notion.log], [
@@ -134,17 +135,17 @@ class NothingElseChanges(unittest.TestCase):
 
     def test_a_write_refused_on_its_first_request_is_unchanged_and_sends_no_restore(self):
         notion = Watched(["old status"])
-        client = FailsAtWrite(notion, 1)                                                         # the stamp write itself is refused: there is nothing to put back
+        client = FailsAtWrite(notion, 1)
         with self.assertRaises(NotionError):
             write(client, ["new status"], heading=STAMP)
         self.assertEqual((heading_of(notion), body_of(notion), client.heading_writes), (OLD_STAMP, ["old status"], [STAMP]))
 
     def test_a_card_whose_heading_needed_no_write_sends_no_restore_when_its_body_fails(self):
         notion = Watched(["old status"])
-        write(notion, ["new status"], heading=STAMP)                                              # the card already shows this stamp
+        write(notion, ["new status"], heading=STAMP)  # the card already shows this stamp
         client = FailsAtWrite(notion, 1)
         with self.assertRaises(NotionError):
-            write(client, ["newer status"], heading=STAMP)                                        # the first write is a body write; no heading was written, so none is restored
+            write(client, ["newer status"], heading=STAMP)  # the first write is a body write
         self.assertEqual((heading_of(notion), body_of(notion), client.heading_writes), (STAMP, ["new status"], []))
 
     def test_a_card_with_no_stamp_sends_no_restore(self):
@@ -164,10 +165,10 @@ class ThroughARealCard(unittest.TestCase):
         client = FailsAtWrite(notion, 2)
         with self.assertRaises(NotionError) as raised:
             amazon_card.run(0, True, environ=ENV, reader=Reader(ROWS), client=client, now=NOW)
-        self.assertEqual(str(raised.exception), "NOTION_HTTP_409")                                # the failure code the card already reported
-        self.assertEqual([(b["id"], b["type"], report_region.plain(b)) for b in notion.children["amazon-callout"]], card_before)      # the Amazon card: old heading text and old body
+        self.assertEqual(str(raised.exception), "NOTION_HTTP_409")  # the failure code the card already reported
+        self.assertEqual([(b["id"], b["type"], report_region.plain(b)) for b in notion.children["amazon-callout"]], card_before)  # the Amazon card: old heading text and old body
         self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders")
-        self.assertEqual({k: notion.full_tree(k) for k in others}, before)                        # every other region exactly as before
+        self.assertEqual({k: notion.full_tree(k) for k in others}, before)  # every other region exactly as before
         self.assertEqual(client.heading_writes, ["Amazon Orders (10/4 · 1:30 PM CT)", "Amazon Orders"])
 
 

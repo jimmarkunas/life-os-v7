@@ -1,4 +1,4 @@
-"""LIFE-689: one bad item never fails a stage. The helper, and the exit rule `lifeos.run.main` applies to a stage that reports item outcomes. Synthetic only."""
+"""one bad item never fails a stage."""
 import contextlib
 import io
 import unittest
@@ -13,7 +13,9 @@ class Coded(Exception):
 
 
 def main_exit(stage, name="demo", partial="DEMO_FAILED"):
-    """-> (exit code, stderr, stdout) of `python -m lifeos.run <name> --live` for a stage function registered as a partial-failure stage."""
+    """> (exit code, stderr, stdout) of `python -m lifeos.run <name> --live` for a stage function registered as a
+    partial-failure stage.
+    """
     err, out = io.StringIO(), io.StringIO()
     with mock.patch.dict(run.STAGES, {name: stage}), mock.patch.dict(run.PARTIAL_FAILURE, {name: partial}), mock.patch.object(settings, "apply", return_value={"status": "off"}), \
             mock.patch("lifeos.jobs.daily.record"):
@@ -23,7 +25,7 @@ def main_exit(stage, name="demo", partial="DEMO_FAILED"):
 
 
 def five_items(bad):
-    """A stage over 5 items where the items in `bad` raise; the good ones are 'written'."""
+    """A stage over 5 items where the items in `bad` raise"""
     written = []
 
     def work(item):
@@ -50,7 +52,7 @@ class Helper(unittest.TestCase):
     def test_an_exceptions_text_never_becomes_the_code(self):
         done = isolate.run_items([1], lambda i: (_ for _ in ()).throw(RuntimeError("token abc123 host db.internal")))
         self.assertEqual(done.failures, [(1, "ITEM_FAILED")])
-        self.assertEqual(isolate.fixed_code(Coded("NOTION_HTTP_429")), "NOTION_HTTP_429")                      # a platform error's own fixed code is kept
+        self.assertEqual(isolate.fixed_code(Coded("NOTION_HTTP_429")), "NOTION_HTTP_429")  # a platform error's own fixed code is kept
         self.assertEqual(isolate.fixed_code(Coded("not a code, has spaces")), "ITEM_FAILED")
         error = Coded("x")
         error.code = "STORE_SSH_REFUSED"
@@ -65,7 +67,7 @@ class Helper(unittest.TestCase):
         done = isolate.run_items(range(5), lambda i: i)
         counts = isolate.record({"failed": 0, "filed": 5}, done)
         self.assertEqual(counts, {"failed": 0, "filed": 5})
-        self.assertIsNone(isolate.stage_fails(counts))                                                         # no item outcome: the stage keeps its own rule
+        self.assertIsNone(isolate.stage_fails(counts))  # no item outcome: the stage keeps its own rule
 
     def test_an_empty_list_is_not_a_failed_stage(self):
         done = isolate.run_items([], lambda i: i)
@@ -86,7 +88,7 @@ class ExitRule(unittest.TestCase):
         stage, written = five_items({3})
         code, err, out = main_exit(stage)
         self.assertEqual((code, written, err), (0, [0, 1, 2, 4], ""))
-        self.assertIn('"item_codes": {"DEMO_ITEM_FAILED": 1}', out)                                            # the failure is recorded under its fixed code
+        self.assertIn('"item_codes": {"DEMO_ITEM_FAILED": 1}', out)  # the failure is recorded under its fixed code
         self.assertNotIn("secret", out + err)
 
     def test_all_five_failing_exit_one_with_the_one_fixed_code(self):

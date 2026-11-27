@@ -1,4 +1,4 @@
-"""LIFE-975 step 4b: the Runs OK today count from GitHub's run history (fake GitHub, no network)."""
+"""step 4b: the Runs OK today count from GitHub's run history (fake GitHub, no network)."""
 import io
 import json
 import unittest
@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from lifeos.platform import runs_today
 
 TZ = ZoneInfo("America/Chicago")
-NOW = datetime(2026, 11, 25, 3, 30, tzinfo=TZ)                    # 09:30 UTC; Chicago midnight was 06:00 UTC
+NOW = datetime(2026, 11, 25, 3, 30, tzinfo=TZ)  # 09:30 UTC
 ENV = {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r"}
 
 
@@ -49,13 +49,13 @@ class RunsToday(unittest.TestCase):
         self.assertEqual((out["ok"], out["total"], out["state"]), (2, 2, "ok"))
 
     def test_the_chicago_midnight_is_the_reset(self):
-        before = run(1, "2026-11-25T05:59:59Z")                    # 11:59:59 PM CT yesterday
-        after = run(2, "2026-11-25T06:00:00Z")                     # midnight CT
+        before = run(1, "2026-11-25T05:59:59Z")  # 11:59:59 PM CT yesterday
+        after = run(2, "2026-11-25T06:00:00Z")  # midnight CT
         out = read(Github([before, after]))
         self.assertEqual((out["ok"], out["total"]), (1, 1))
         git = Github([after])
         read(git)
-        self.assertTrue(all("created=%3E%3D2026-11-25T06%3A00%3A00Z" in u for u in git.urls if "/runs" in u))      # the query starts at midnight Chicago (06:00 UTC in winter), never at UTC midnight
+        self.assertTrue(all("created=%3E%3D2026-11-25T06%3A00%3A00Z" in u for u in git.urls if "/runs" in u))
 
     def test_no_runs_yet_today_is_zero_of_zero(self):
         out = read(Github([run(1, "2026-11-24T20:00:00Z")]))
@@ -76,7 +76,7 @@ class RunsToday(unittest.TestCase):
         self.assertEqual((out["state"], out["ok"], out["total"], out["failed"]), ("failed", 2, 3, ["https://github.com/o/r/actions/runs/10"]))
         for follow in ({"recruiters": [run(11, "2026-11-25T07:20:00Z", title="recruiters", conclusion="failure")]}, {"capacity": [run(12, "2026-11-25T07:20:00Z", title="capacity-card", conclusion="failure")]}):
             self.assertEqual(read(Github(ticks, **follow))["ok"], 2)
-        self.assertEqual(read(Github(ticks, [run(13, "2026-11-25T07:12:00Z", title="domains (manual)", conclusion="failure")]))["ok"], 3)           # another title is not a follow-on
+        self.assertEqual(read(Github(ticks, [run(13, "2026-11-25T07:12:00Z", title="domains (manual)", conclusion="failure")]))["ok"], 3)  # another title is not a follow-on
         self.assertEqual(read(Github(ticks, [run(14, "2026-11-25T07:12:00Z", title="domains (after tick)", conclusion="success")]))["ok"], 3)
 
     def test_a_follow_on_of_the_last_tick_makes_it_the_latest_failure(self):

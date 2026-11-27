@@ -1,4 +1,6 @@
-"""LIFE-703 (synthetic): `python -m lifeos.platform.settings` as a workflow pre-step: fills $GITHUB_ENV, publishes chosen switches to $GITHUB_OUTPUT, never writes a safety name or a value with a line break."""
+"""(synthetic): `python -m lifeos.platform.settings` as a workflow pre-step: fills $GITHUB_ENV, publishes chosen switches
+to $GITHUB_OUTPUT, never.
+"""
 import contextlib
 import io
 import os
@@ -31,16 +33,15 @@ class Step(unittest.TestCase):
     def test_a_name_the_step_declares_empty_is_filled_into_the_environment_file(self):
         code, env, out, printed = self.run_step([f"BILLS_CARD_BLOCK_ID {GOOD}"], {"BILLS_CARD_BLOCK_ID": ""})
         self.assertEqual((code, env, out), (0, [f"BILLS_CARD_BLOCK_ID={GOOD}"], []))
-        self.assertIn(f"::add-mask::{GOOD}", printed)                                                          # masked, so a log can never show it
+        self.assertIn(f"::add-mask::{GOOD}", printed)  # masked, so a log can never show it
         self.assertIn('"filled": ["BILLS_CARD_BLOCK_ID"]', printed)
 
     def test_an_output_name_publishes_its_effective_value_held_or_filled(self):
         _, env, out, _ = self.run_step(["HIRING_AUTO_CLOSE on", "GRANOLA_AUTO on"], {"HIRING_AUTO_CLOSE": "", "GRANOLA_AUTO": "off"}, "--output", "HIRING_AUTO_CLOSE", "--output", "GRANOLA_AUTO")
-        self.assertEqual(env, ["HIRING_AUTO_CLOSE=on"])                                                              # filled because it was empty
-        self.assertEqual(out, ["HIRING_AUTO_CLOSE=on", "GRANOLA_AUTO=off"])                                          # a held value wins; the page's "on" is only a mismatch count
+        self.assertEqual(env, ["HIRING_AUTO_CLOSE=on"])  # filled because it was empty
+        self.assertEqual(out, ["HIRING_AUTO_CLOSE=on", "GRANOLA_AUTO=off"])  # a held value wins
 
     def test_a_plain_switch_is_never_masked_so_a_job_output_is_never_dropped(self):
-        """Nov 15 2026: masking the value "on" or "true" made GitHub skip every gate output that contained those letters, so every domain job was skipped."""
         _, env, out, printed = self.run_step(["HIRING_AUTO_CLOSE on", "GRANOLA_AUTO true"], {"HIRING_AUTO_CLOSE": "", "GRANOLA_AUTO": ""}, "--output", "HIRING_AUTO_CLOSE", "--output", "GRANOLA_AUTO")
         self.assertEqual((sorted(env), sorted(out)), (["GRANOLA_AUTO=true", "HIRING_AUTO_CLOSE=on"], ["GRANOLA_AUTO=true", "HIRING_AUTO_CLOSE=on"]))
         self.assertNotIn("::add-mask::", printed)

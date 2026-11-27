@@ -1,7 +1,5 @@
-"""LIFE-688: the daily write-conflict count in the watchdog's check-in (gate.write_conflicts, gate.conflict_line) and its rule.
-
-A write conflict is one of NOTION_HTTP_409, a page-walk 404 (with or without a job's prefix) or PROTECTED_REGION_CHANGED surfacing in a domains-run job log in the last 24 hours; NOTION_HTTP_429 is a rate limit, counted apart.
-Counts per job by fixed code only; the logs are fake archives built here, so no test touches the network."""
+"""the daily write-conflict count in the watchdog's check-in (gate.write_conflicts, gate.conflict_line) and its rule.
+"""
 import datetime as dt
 import io
 import pathlib
@@ -25,7 +23,7 @@ def domains_run(rid, hours_ago, conclusion="success"):
 def archive(**jobs):
     """A run's log archive: one folder per job, one step file each, plus the run's own system.txt."""
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as bundle:                                 # the shape of a real archive: `<n>_<job>.txt` holds the whole job log, `<job>/system.txt` is the runner's
+    with zipfile.ZipFile(buffer, "w") as bundle:
         bundle.writestr("system.txt", "NOTION_HTTP_409 in a file that is not a job")
         for number, (job, text) in enumerate(jobs.items()):
             bundle.writestr(f"{number}_{job}.txt", text)
@@ -44,7 +42,7 @@ class Reading(unittest.TestCase):
             mail="MAIL-CARD FAILED: NOTION_HTTP_409", jira="JIRA-CARD FAILED: NOTION_HTTP_429", bills="bills-card: ok"))
         self.assertEqual(found, {("hiring", "PAGE_WALK_NOTION_HTTP_404"): 1, ("recruiters", "PAGE_WALK_NOTION_HTTP_404"): 1, ("recruiters", "PROTECTED_REGION_CHANGED"): 1,
                                  ("mail", "NOTION_HTTP_409"): 1, ("jira", "NOTION_HTTP_429"): 1})
-        self.assertEqual(sorted({job for job, _ in found}), ["hiring", "jira", "mail", "recruiters"])      # the runner's system.txt files are not jobs and their codes are not counted
+        self.assertEqual(sorted({job for job, _ in found}), ["hiring", "jira", "mail", "recruiters"])
 
     def test_a_clean_run_has_no_codes_and_no_content_is_kept(self):
         self.assertEqual(gate.conflict_codes_in(CLEAN), {})
@@ -52,13 +50,13 @@ class Reading(unittest.TestCase):
 
 class Counting(unittest.TestCase):
     def count(self, runs, logs, **kw):
-        kw.setdefault("count_from", None)                                                   # these tests look at a whole 24-hour window; the start of counting has its own test
+        kw.setdefault("count_from", None)  # these tests look at a whole 24-hour window
         return gate.write_conflicts(runs, NOW, logs=logs, **kw)
 
     def test_conflicts_and_rate_limits_are_counted_per_job_over_the_last_24_hours_only(self):
         logs = {1: archive(hiring="X_PAGE_WALK_NOTION_HTTP_404", mail="NOTION_HTTP_409"), 2: archive(hiring="PROTECTED_REGION_CHANGED", imessage="NOTION_HTTP_429"),
                 3: archive(agenda="NOTION_HTTP_409"), 4: archive(bills="NOTION_HTTP_409"), 5: archive(jira="NOTION_HTTP_409")}
-        runs = [domains_run(1, 1), domains_run(2, 3, "failure"), domains_run(3, 23), domains_run(4, 25), domains_run(5, 2, "cancelled")]      # 4 is older than a day, 5 never finished
+        runs = [domains_run(1, 1), domains_run(2, 3, "failure"), domains_run(3, 23), domains_run(4, 25), domains_run(5, 2, "cancelled")]  # 4 is older than a day, 5 never finished
         seen = []
         result = self.count(runs, lambda rid, limit: seen.append(rid) or logs[rid])
         self.assertEqual((result["conflicts"], result["rate_limits"]), ({"hiring": 2, "mail": 1, "agenda": 1}, {"imessage": 1}))
@@ -78,7 +76,7 @@ class Counting(unittest.TestCase):
         self.assertEqual((result["conflicts"], result["unreadable"], result["read"]), ({"mail": 2}, 1, 2))
         line = gate.conflict_line(result)
         self.assertIn("Count incomplete: WRITE_CONFLICT_LOGS_UNREADABLE for 1 of 3 runs.", line)
-        self.assertNotIn("secret", line)                                                    # only the fixed code, never the error's text
+        self.assertNotIn("secret", line)  # only the fixed code, never the error's text
 
     def test_a_corrupt_archive_is_one_unreadable_run(self):
         result = self.count([domains_run(1, 1), domains_run(2, 2)], lambda rid, limit: b"not a zip file" if rid == 1 else archive(jira="NOTION_HTTP_409"))
@@ -89,15 +87,15 @@ class Counting(unittest.TestCase):
         calls = []
         with mock.patch.object(gate, "CONFLICT_RUNS_MAX", 3):
             result = self.count(runs, lambda rid, limit: calls.append(rid) or CLEAN)
-        self.assertEqual((calls, result["runs"]), ([1, 2, 3], 3))                          # newest first, three runs at most
+        self.assertEqual((calls, result["runs"]), ([1, 2, 3], 3))  # newest first, three runs at most
         with mock.patch.object(gate, "CONFLICT_BYTES_MAX", len(CLEAN)):
             calls.clear()
             result = self.count(runs, lambda rid, limit: calls.append(rid) or CLEAN)
-        self.assertEqual((calls, result["capped"], result["read"]), ([1], True, 1))        # the first archive used the whole byte budget
+        self.assertEqual((calls, result["capped"], result["read"]), ([1], True, 1))  # the first archive used the whole byte budget
         ticks = iter(range(0, 10_000, 40))
         calls.clear()
         result = self.count(runs, lambda rid, limit: calls.append(rid) or CLEAN, clock=lambda: next(ticks))
-        self.assertTrue(result["capped"] and len(calls) < 7)                                # 90 seconds of budget at 40 seconds a look
+        self.assertTrue(result["capped"] and len(calls) < 7)  # 90 seconds of budget at 40 seconds a look
         self.assertIn("WRITE_CONFLICT_CAP_REACHED after", gate.conflict_line(result))
 
     def test_an_archive_bigger_than_the_byte_budget_is_an_unreadable_run_not_a_guess(self):
@@ -113,10 +111,10 @@ class Counting(unittest.TestCase):
 class CountingStartsAtTheDecision(unittest.TestCase):
     def test_runs_before_the_decision_are_history_and_the_line_says_the_window_is_shorter(self):
         logs = {1: archive(recruiters="X_PAGE_WALK_NOTION_HTTP_404"), 2: archive(hiring="NOTION_HTTP_409")}
-        runs = [domains_run(1, 9), domains_run(2, 3)]                                        # run 1 finished 9 hours before NOW (4:17 AM UTC), run 2 three hours before
-        now = dt.datetime(2026, 11, 15, 13, 17, tzinfo=dt.timezone.utc)                       # 7:17 AM CT, the first check-in after the decision (12:05 AM CT = 06:05 UTC)
+        runs = [domains_run(1, 9), domains_run(2, 3)]
+        now = dt.datetime(2026, 11, 15, 13, 17, tzinfo=dt.timezone.utc)
         result = gate.write_conflicts(runs, now, logs=lambda rid, limit: logs[rid])
-        self.assertEqual((result["conflicts"], result["runs"], result["since"] is not None), ({"hiring": 1}, 1, True))      # only the run after the decision
+        self.assertEqual((result["conflicts"], result["runs"], result["since"] is not None), ({"hiring": 1}, 1, True))  # only the run after the decision
         line = gate.conflict_line(result)
         self.assertIn("Counted since the writer-chain decision (Nov 15 2026, 12:05 AM CT).", line)
         self.assertTrue(line.startswith("Notion write conflicts in the last 24 h: 1 (hiring 1)"))
@@ -171,8 +169,8 @@ class InTheCheckin(unittest.TestCase):
     def test_with_no_conflicts_nothing_else_in_the_checkin_changes(self):
         title, body = gate.health(self.RUNS, [], NOW)
         with_line = gate.health(self.RUNS, [], NOW, conflicts=self.LINE)
-        self.assertEqual(with_line, (title, body + " " + self.LINE))                        # same title, same body, one added line
-        self.assertEqual(gate.health(self.RUNS, [], NOW, conflicts=""), (title, body))      # no line: exactly the old check-in
+        self.assertEqual(with_line, (title, body + " " + self.LINE))  # same title, same body, one added line
+        self.assertEqual(gate.health(self.RUNS, [], NOW, conflicts=""), (title, body))  # no line: exactly the old check-in
 
     def test_a_conflict_or_an_unavailable_count_never_changes_ok_or_degraded(self):
         ok = gate.health(self.RUNS, [], NOW)[0]
@@ -202,10 +200,10 @@ class InTheCheckin(unittest.TestCase):
         raising = mock.Mock(side_effect=RuntimeError("anything"))
         (sent,) = self.watch_at_checkin([domains_run(1, 1)], raising)
         self.assertIn("WRITE_CONFLICT_COUNT_UNAVAILABLE", sent[1])
-        self.assertIn("V7 daily check", sent[0])                                           # the check-in still went out
-        (sent,) = self.watch_at_checkin(None, raising)                                     # the runs could not be listed at all
+        self.assertIn("V7 daily check", sent[0])  # the check-in still went out
+        (sent,) = self.watch_at_checkin(None, raising)  # the runs could not be listed at all
         self.assertIn("WRITE_CONFLICT_COUNT_UNAVAILABLE", sent[1])
-        raising.assert_called_once()                                                       # not even asked when there is nothing to read
+        raising.assert_called_once()  # not even asked when there is nothing to read
 
 
 if __name__ == "__main__":
