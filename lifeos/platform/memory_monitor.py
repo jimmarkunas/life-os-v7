@@ -16,10 +16,10 @@ import json
 import sys
 import threading
 import time
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
-CENTRAL = ZoneInfo("America/Chicago")
+from lifeos.platform import ct_stamp
+
 OUTAGE_AFTER = 3
 UNKNOWN_AFTER = 3
 WINDOW = 3600
@@ -32,7 +32,7 @@ def fingerprint(value):
 
 
 def _ct(epoch):
-    return datetime.fromtimestamp(epoch, CENTRAL).strftime("%b %-d %Y, %-I:%M %p CT")
+    return ct_stamp.stamp(datetime.fromtimestamp(epoch, timezone.utc))
 
 
 def _report(record):
@@ -115,3 +115,25 @@ class Monitor:
                         "details": f"Last refusal {_ct(now)}; code {reason}. The caller is not a registered client; it stays refused. Registered clients and grant drills are never counted here.",
                     }
                 )
+
+
+def wire(memory_state, inbox_send, inbox_state):
+    """Attach a monitor that delivers through the service's own send_to_jim, only when the Agent Inbox is configured."""
+    if inbox_state.get("client") is not None:
+        memory_state["monitor"] = Monitor(
+            lambda item: inbox_send.run("send_to_jim", {**item, "_client": SENDER}, inbox_state)
+        )
+
+
+def unknown(memory_state, identity, reason):
+    """Feed one refusal of an unregistered caller to the wired monitor, if any."""
+    monitor = memory_state.get("monitor")
+    if monitor is not None:
+        monitor.unknown_caller(identity, reason)
+    return None
+
+
+def credential_id(header):
+    """`Bearer lm1.<id>.<secret>` -> "cred:<id>" (never the secret); anything else -> "cred:malformed"."""
+    parts = (header or "").split(".")
+    return "cred:" + (parts[1] if len(parts) >= 3 and parts[1] else "malformed")
