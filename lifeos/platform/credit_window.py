@@ -1,17 +1,18 @@
-"""LIFE-950: the monthly window of the promotional API credit: the 5th at 6:00 PM CT to the next 5th at 6:00 PM CT.
+"""The monthly window of the promotional API credit: the 5th at 6:00 PM CT to the next 5th at 6:00 PM CT (America/Chicago, daylight time included).
 
-CT is America/Chicago, daylight time included.
-The Honcho meter (lifeos/edge/honcho/meter_proxy.py) and Oracle's Anthropic report reader (lifeos/edge/anthropic_report/reader.py) are single files that run alone on Oracle, so each carries the same
-12-line rule; tests/platform/test_credit_window.py pins that all three give the same answer. The Daily Report cards use this module. Stdlib only."""
+The Honcho meter (lifeos/edge/honcho/meter_proxy.py) and Oracle's Anthropic report reader
+(lifeos/edge/anthropic_report/reader.py) are single files that run alone on Oracle, so each carries its own copy of
+this rule; tests/platform/test_credit_window.py pins that all three agree. Stdlib only.
+"""
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 CENTRAL = ZoneInfo("America/Chicago")
-PROMO_USD = 100.0                                                    # the credit that resets each window
+PROMO_USD = 100.0
 
 
 def window(moment):
-    """-> (start, end) as aware datetimes in CT: the window holding `moment`."""
+    """-> (start, end) as aware CT datetimes: the window holding `moment`."""
     now = moment.astimezone(CENTRAL)
     year, month = now.year, now.month
     if now < datetime(year, month, 5, 18, tzinfo=CENTRAL):

@@ -1,15 +1,11 @@
-"""LIFE-81 (Jim, Oct 20 2026; D244): branch archiving on merge, and the weekly stale-branch report.
+"""Branch archiving on merge, and the weekly stale-branch report.
 
-`archive` (the branches workflow, on a merged pull request from this repository): tags the PR's head commit in life-os-automation as
-`v7-archive/<branch>-pr<N>` (one tag per PR, so a reused branch name never collides), reads the tag back, then deletes the branch ONLY when it is
-safe: its head is still the merged head (nothing pushed after the merge), no other open PR uses it, and it is not on KEEP (branches used by name,
-e.g. the fit-edge-test fixtures). Otherwise the branch is archived and kept, with the reason. An existing tag on another commit is never overwritten.
-
-`report` (weekly, Monday morning; or on demand): every branch besides main with its open PR (if any) and days since its last commit; idle 7+ days
-is stale. Written to the run's summary, and with --live to V7's one owned callout on the Weekly LIFE OS Review page (router.REPO_REGION), rewritten
-in place and read back. Read-only on GitHub: nothing is closed or deleted; Jim decides.
-
-Fixed codes only; never a token, and nothing from a commit or PR body."""
+`archive` (on a merged pull request): tags the PR's head commit in life-os-automation as `v7-archive/<branch>-pr<N>`,
+reads the tag back, then deletes the branch ONLY when its head is still the merged head, no other open PR uses it, and
+it is not on KEEP; otherwise it is archived and kept, with the reason. `report` (weekly): every branch besides main
+with its open PR and days idle (7+ is stale), written to the run's summary and, with --live, to the one owned callout
+on the Weekly LIFE OS Review page. Read-only on GitHub. Fixed codes only.
+"""
 import base64
 from datetime import datetime, timezone
 import json
@@ -26,7 +22,7 @@ from lifeos.platform import ct_stamp, report_region, router
 API = "https://api.github.com"
 ARCHIVE_REPO = "https://github.com/jimmarkunas/life-os-automation.git"
 DEFAULT = "main"
-KEEP = {"main", "claude/life41-edge-fixtures"}            # used by name: fit-edge-test runs from the fixtures branch (LIFE-81 comment 10871)
+KEEP = {"main", "claude/life41-edge-fixtures"}
 STALE_DAYS = 7
 TZ = ZoneInfo("America/Chicago")
 MODULE = "v7-repo-hygiene"
@@ -41,7 +37,8 @@ def _fail(code):
 
 
 def gh(path, token, method="GET", opener=urlopen):
-    """One GitHub REST call -> parsed JSON (None for an empty body; None for 404 on a GET). Anything else failing is a fixed code."""
+    """One GitHub REST call -> parsed JSON (None for an empty body or a 404 on a GET); any other failure is a fixed code.
+    """
     req = Request(API + path, method=method, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                                                      "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-v7-branches"})
     try:
@@ -66,10 +63,8 @@ def pages(path, token, opener=urlopen):
         page += 1
 
 
-# --- archive on merge -------------------------------------------------------------------------------------------------------------------------
 
 def plan(branch, merged_head, branch_head, other_open_prs, keep=KEEP):
-    """-> {"delete", "why"}. Pure: the one decision the workflow acts on."""
     if branch in keep or branch == DEFAULT:
         return {"delete": False, "why": "KEEP_LIST"}
     if branch_head is None:
@@ -99,8 +94,9 @@ def _remote_tag(tag, header):
 
 
 def push_refusal(stderr):
-    """Why GitHub refused the archive push, as a fixed code (git's message itself is never printed). Oct 20: the first real push needed the token's
-    Workflows permission, because the archived commits change .github/workflows files."""
+    """Why GitHub refused the archive push, as a fixed code. The push needs the token's Workflows permission because
+    archived commits change workflow files.
+    """
     text = (stderr or "").lower()
     if "workflow" in text:
         return "ARCHIVE_PUSH_NEEDS_WORKFLOWS_PERMISSION"
@@ -112,14 +108,13 @@ def push_refusal(stderr):
 
 
 def push_tag(sha, tag, token):
-    """Tag `sha` in life-os-automation and read it back. Idempotent for the same commit; another commit already there is never overwritten."""
     header = "AUTHORIZATION: basic " + base64.b64encode(f"x-access-token:{token}".encode()).decode()
     found = _remote_tag(tag, header)
     if found == sha:
         return "ALREADY_ARCHIVED"
     if found:
         raise _fail("ARCHIVE_TAG_TAKEN")
-    if _git("fetch", "--quiet", "--no-tags", "origin", sha).returncode != 0:              # the PR head, by id (it stays reachable through refs/pull)
+    if _git("fetch", "--quiet", "--no-tags", "origin", sha).returncode != 0:
         raise _fail("HEAD_NOT_FETCHED")
     pushed = _git("push", "--quiet", ARCHIVE_REPO, f"{sha}:refs/tags/{tag}", header=header)
     if pushed.returncode != 0:
@@ -130,13 +125,12 @@ def push_tag(sha, tag, token):
 
 
 def archive(event, environ=os.environ, opener=urlopen, push=None):
-    """One merged pull request -> {"pr", "branch", "tag", "archive", "delete", "why"}."""
     pr, repo = event["pull_request"], environ["GITHUB_REPOSITORY"]
     if not pr.get("merged") or pr["head"]["repo"]["full_name"] != pr["base"]["repo"]["full_name"]:
         return {"pr": pr["number"], "archive": "SKIPPED", "delete": False, "why": "NOT_MERGED_OR_FORK"}
     token, branch, sha, number = environ["GITHUB_TOKEN"], pr["head"]["ref"], pr["head"]["sha"], pr["number"]
     tag = tag_name(branch, number)
-    archived = (push or push_tag)(sha, tag, environ["V7_ARCHIVE_TOKEN"])                # archived and read back before anything is deleted
+    archived = (push or push_tag)(sha, tag, environ["V7_ARCHIVE_TOKEN"])  # archived and read back before anything is deleted
     ref = gh(f"/repos/{repo}/git/ref/heads/{quote(branch, safe='')}", token, opener=opener)
     head = ((ref or {}).get("object") or {}).get("sha")
     owner = repo.split("/")[0]
@@ -147,10 +141,11 @@ def archive(event, environ=os.environ, opener=urlopen, push=None):
     return {"pr": number, "branch": branch, "tag": tag, "archive": archived, "delete": decision["delete"], "why": decision["why"]}
 
 
-# --- weekly report -----------------------------------------------------------------------------------------------------------------------------
 
 def stale(branches, open_prs, now, days=STALE_DAYS, keep=KEEP):
-    """branches: [{"name", "last": datetime}]; open_prs: [{"number", "branch"}]. -> rows (oldest first): {"branch", "pr", "idle_days", "stale", "kept"}. Pure."""
+    """branches: [{"name", "last": datetime}]; open_prs: [{"number", "branch"}]. -> rows, oldest first: {"branch", "pr",
+    "idle_days", "stale", "kept"}.
+    """
     by_branch = {}
     for p in open_prs:
         by_branch.setdefault(p["branch"], p["number"])
@@ -164,7 +159,6 @@ def stale(branches, open_prs, now, days=STALE_DAYS, keep=KEEP):
 
 
 def lines(rows, now):
-    """The callout's text: one status line, then one line per stale branch. Branch names and PR numbers only."""
     stale_rows = [r for r in rows if r["stale"]]
     head = (f"{now.astimezone(TZ):%a}, {ct_stamp.when(now)} · {len(rows)} branches besides main · "
             f"{sum(1 for r in rows if r['pr'])} with an open PR · {len(stale_rows)} idle {STALE_DAYS}+ days")
@@ -184,7 +178,6 @@ def read_repo(repo, token, opener=urlopen):
 
 
 def find_region(client, page_id):
-    """-> the one V7-owned callout on the page (first child: the region heading), or None. Two are refused."""
     found = []
     for block in report_region.children(client, page_id, _fail):
         if block.get("type") != "callout":
@@ -198,7 +191,6 @@ def find_region(client, page_id):
 
 
 def install_region(client, page_id):
-    """Append the empty owned callout at the end of the page (first live run only). -> its id."""
     callout = {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": {"type": "emoji", "emoji": "🧹"}, "color": "gray_background",
                "children": [{"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": router.REPO_REGION}}]}}]}}
     result = client.call("PATCH", f"/blocks/{quote(page_id, safe='')}/children", {"children": [callout]})
@@ -209,7 +201,7 @@ def install_region(client, page_id):
 
 
 def write_region(client, page_id, text_lines, live):
-    """Rewrite the owned callout's text in place and read it back (report_region.replace_text). -> "WRITTEN" | "DRY_RUN"."""
+    """Rewrite the owned callout's text in place and read it back. -> "WRITTEN" | "DRY_RUN"."""
     block = find_region(client, page_id)
     if block is None:
         if not live:
@@ -217,15 +209,14 @@ def write_region(client, page_id, text_lines, live):
         block = install_region(client, page_id)
     blocks = [{"object": "block", "type": "paragraph" if i == 0 else "bulleted_list_item",
                ("paragraph" if i == 0 else "bulleted_list_item"): {"rich_text": [{"type": "text", "text": {"content": t[:1900]}}]}} for i, t in enumerate(text_lines)]
-    before = report_region.page_digest(client, page_id, [block], _fail)                  # every other block on Jim's page, by content
+    before = report_region.page_digest(client, page_id, [block], _fail)
     report_region.replace_text(client, block, router.REPO_REGION, MODULE, blocks, {router.REPO_REGION: block}, _fail, "REPO", live)
     if report_region.page_digest(client, page_id, [block], _fail) != before:
-        raise _fail("PAGE_CHANGED")                                                       # anything outside the owned callout moved: fail by name
+        raise _fail("PAGE_CHANGED")  # anything outside the owned callout moved
     return "WRITTEN" if live else "DRY_RUN"
 
 
 def writer(environ):
-    """The Notion client the Daily Report cards use (their token; no data source: this writes one page's blocks and queries nothing)."""
     from lifeos.platform.notion_client import Client                                      # noqa: PLC0415 - only a Notion run needs it
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 

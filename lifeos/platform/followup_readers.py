@@ -1,10 +1,10 @@
-"""LIFE-748: read-only delta readers for the Followup stage's six source families. Pure, no network, no store, no cache. Fixtures only until Jim approves live reads."""
-# One call reads ONE source for ONE tenant and account since the last ACCEPTED checkpoint. Order: validate, check the grant, write the receipt, then read with the grant's credential NAME.
-# The caller never holds a credential; the injected `fetch(credential_ref, since)` is the host-broker side. In production it wraps the existing GET-only clients (Jira.board_issues, GoogleCalendar.list_events)
-# or a read-only adapter behind the LIFE-306 broker; none exists for the others yet, so every call here is a fixture.
-# Evidence is minimal: source, native id, https link, kind, observed time, a title cut to 120 characters. Bodies, snippets, descriptions, recipients and attachments are never copied.
-# A failed, denied, incomplete or partly malformed read is DEGRADED with the last accepted time and no next checkpoint; an empty list is trustworthy only when the read completed.
-# Asana is never read (view-only elsewhere). TGP is excluded. Personal and Bytalos grants never share an identity, credential or cache: nothing is kept between calls.
+"""Read-only delta readers for the Followup stage's six source families. Pure: no network, no store, no cache."""
+# One call reads ONE source for ONE tenant and account since the last ACCEPTED checkpoint: validate, check the grant,
+# write the receipt, then read with the grant's credential NAME (the injected `fetch` is the host-broker side; the
+# caller never holds a credential). Evidence is minimal: source, native id, https link, kind, observed time, a title
+# cut to 120 characters. A failed, denied, incomplete or partly malformed read is DEGRADED with the last accepted time
+# and no next checkpoint. Asana is never read, TGP is excluded, and grants never share an identity, credential or
+# cache.
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,10 +13,10 @@ SOURCES = ("gmail", "outlook", "calendar", "jira", "todoist", "notion", "intervi
 TENANTS = ("personal", "bytalos")
 KINDS = {"gmail": "mail", "outlook": "mail", "calendar": "event", "jira": "issue", "todoist": "task", "notion": "page", "interview_os": "interview"}
 TITLE_MAX = 120
-MAX_ROWS = 500                                                              # a larger answer is treated as truncated, never silently cut
+MAX_ROWS = 500  # a larger answer is treated as truncated, never silently cut
 SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:ghp_|sk-|xox[abprs]-)[A-Za-z0-9_-]{10,}")
 LINK = re.compile(r"^https://[^\s]{4,500}$")
-DUE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$")      # a date the SOURCE itself holds (a due date): metadata, never read from a body
+DUE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$")  # a date the SOURCE itself holds (a due date): metadata, never read from a body
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ class Grant:
     source: str
     tenant: str
     account: str
-    credential_ref: str          # a NAME, never a value
+    credential_ref: str  # a NAME, never a value
     expires: datetime
     revoked: bool = False
 
@@ -34,11 +34,11 @@ class Delta:
     source: str
     tenant: str
     account: str
-    status: str                  # ok | degraded | refused
-    reason: str                  # fixed word
+    status: str
+    reason: str
     items: tuple = ()
     last_accepted: datetime | None = None
-    next_checkpoint: datetime | None = None     # a candidate only: the store advances it after an accepted write, never here
+    next_checkpoint: datetime | None = None  # a candidate only: the store advances it after an accepted write, never here
 
 
 def _when(text):
@@ -53,7 +53,7 @@ def _item(source, native_id, link, observed, title, due=None):
         raise ValueError("row")
     item = {"source": source, "native_id": native_id[:80], "link": link, "kind": KINDS[source], "observed_at": _when(observed).isoformat(), "title": str(title or "")[:TITLE_MAX]}
     if isinstance(due, str) and DUE.match(due.strip()):
-        item["due"] = due.strip()                                          # LIFE-716: only when the source has one; an item without a due date has no `due` key, so older evidence is unchanged
+        item["due"] = due.strip()  # only when the source has one; an item without a due date has no `due` key
     return item
 
 
@@ -85,7 +85,6 @@ NORMALIZE = {"gmail": _mail("gmail"), "outlook": _mail("outlook"), "calendar": _
 
 
 def revoke(grants, source=None, tenant=None):
-    """A new tuple with the matching grants revoked; every other grant is untouched."""
     return tuple(Grant(**{**g.__dict__, "revoked": True}) if (source in (None, g.source) and tenant in (None, g.tenant)) else g for g in grants)
 
 
@@ -94,8 +93,10 @@ def _receipt(source, tenant, account, request_id, outcome, reason, now):
 
 
 def read_delta(source, tenant, account, since, grants, fetch, audit, now, request_id, jira_base=None):
-    """`since`: the last accepted checkpoint (aware datetime) or None for a first read. `fetch(credential_ref, since)` returns a list of raw rows; `audit(receipt)` raises when it cannot write.
-    Never raises for a refused or failed read; an audit failure raises before any read."""
+    """`since`: the last accepted checkpoint (aware datetime) or None for a first read. `fetch(credential_ref, since)`
+    returns a list of raw rows; `audit(receipt)` raises when it cannot write. A refused or failed read never raises;
+    an audit failure raises before any read.
+    """
     def refuse(reason):
         audit(_receipt(str(source)[:20], str(tenant)[:20], account, request_id, "deny", reason, now))
         return Delta(str(source)[:20], str(tenant)[:20], account, "refused", reason, last_accepted=since)
@@ -116,7 +117,7 @@ def read_delta(source, tenant, account, since, grants, fetch, audit, now, reques
         return refuse("grant_revoked")
     if grant.expires <= now:
         return refuse("grant_expired")
-    audit(_receipt(source, tenant, account, request_id, "allow", "ok", now))             # the receipt first: no receipt, no read
+    audit(_receipt(source, tenant, account, request_id, "allow", "ok", now))  # the receipt first: no receipt, no read
 
     def degraded(reason):
         audit(_receipt(source, tenant, account, request_id, "degraded", reason, now))
@@ -153,7 +154,9 @@ def read_delta(source, tenant, account, since, grants, fetch, audit, now, reques
 
 
 def read_all(requests, grants, fetchers, audit, now, since_by_key=None, jira_base=None):
-    """`requests`: (source, tenant, account) triples; `fetchers`: {source: fetch}; each source fails alone and the others still read. Returns {(source, tenant, account): Delta}."""
+    """`requests`: (source, tenant, account) triples; `fetchers`: {source: fetch}. Each source fails alone. Returns
+    {(source, tenant, account): Delta}.
+    """
     since_by_key, out = since_by_key or {}, {}
     for n, (source, tenant, account) in enumerate(requests):
         fetch = fetchers.get(source)

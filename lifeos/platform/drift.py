@@ -1,25 +1,27 @@
-"""LIFE-528 step 0: the deployed-version drift check. A GitHub merge does not update the Oracle VM, so the watchdog compares each repo-owned deployed file with `main`.
+"""The deployed-version drift check: the watchdog compares each repo-owned file installed on the Oracle VM with `main`.
 
-For every surface it records: the source blob on `main` (git's own sha1 of the file), the hash of the installed file, the systemd unit that activates it and that unit's state.
-DEPLOYED needs all three to agree and be known: installed hash equals main, and the unit is active (LIFE-725: where the caller cannot ask systemd, enabled; the row then says UNIT_STATE_FROM_ENABLED, because a stopped but enabled unit is not caught). A piece that cannot be read (GitHub, the file, systemd) is UNKNOWN, never DEPLOYED.
-A hash that differs, a file that is gone, or a unit that is not running is DRIFT. Counts, names of repo files and fixed words only: no file content, no credential.
-
-The ticker's watch command calls `incident_signal` once per run and opens or closes one quiet issue through the existing incident helper (alert key `deploy_drift`, INFO, phone only).
-Pure logic: every read is passed in, so the tests inject all of them."""
+For every surface it records the blob sha on `main`, the installed file's hash, and the systemd unit that activates it
+with its state. DEPLOYED needs all three known and agreeing (where systemd cannot be asked, an enabled unit counts and
+the row says UNIT_STATE_FROM_ENABLED). A piece that cannot be read is UNKNOWN, never DEPLOYED; a differing hash, a
+missing file or a unit that is not running is DRIFT. The ticker calls `incident_signal` once per run to open or close
+one quiet issue (`deploy_drift`, INFO). Pure logic: every read is passed in.
+"""
 import hashlib
 from typing import NamedTuple
 
 DEPLOYED, DRIFT, UNKNOWN = "DEPLOYED", "DRIFT", "UNKNOWN"
-ACTIVE, ENABLED = "active", "enabled"       # a unit state: systemd answered "active", or (inside the ticker's sandbox, which cannot reach systemd) its enablement link exists
-UNIT_STATE_FROM_ENABLED = "UNIT_STATE_FROM_ENABLED"       # LIFE-725 `why` word: the unit counted as running only because it is enabled; a stopped but enabled timer would not be caught
-MISSING = object()          # the read said "no such file"; an unreadable file is None instead
+ACTIVE, ENABLED = "active", "enabled"  # systemd answered "active", or (inside the ticker's sandbox, which cannot reach systemd) its enablement link exists
+UNIT_STATE_FROM_ENABLED = "UNIT_STATE_FROM_ENABLED"  # the unit counted as running only because it is enabled, so a stopped but enabled timer would not be caught
+MISSING = object()  # the read said "no such file"; an unreadable file is None
 
 
-EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE, EXPECTED_UNREADABLE = ("EXPECTED_NETWORK", "INSTALLED_UNREADABLE", "UNIT_UNREADABLE", "EXPECTED_UNREADABLE")     # the fixed `why` words (EXPECTED_HTTP_<status> is built)
+EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE, EXPECTED_UNREADABLE = ("EXPECTED_NETWORK", "INSTALLED_UNREADABLE", "UNIT_UNREADABLE", "EXPECTED_UNREADABLE")  # the fixed `why` words (EXPECTED_HTTP_<status> is built)
 
 
 class Unreadable(Exception):
-    """LIFE-725: a reader raises this with a fixed code (EXPECTED_HTTP_404, EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE) so an UNKNOWN row can say why. Never a message."""
+    """A reader raises this with a fixed code (EXPECTED_HTTP_404, EXPECTED_NETWORK, INSTALLED_UNREADABLE,
+    UNIT_UNREADABLE) so an UNKNOWN row can say why. Never a message.
+    """
 
     def __init__(self, code):
         super().__init__(code)
@@ -33,19 +35,21 @@ class Surface(NamedTuple):
     unit: str
 
 
-_TICKER_MODULES = ("gate.py", "alerts.py", "alert_registry.py", "alert_settings.py", "alert_store.py", "redact.py", "drift.py", "health.py", "release_proof.py")      # the MODULES list in install-ticker.sh
+_TICKER_MODULES = ("gate.py", "alerts.py", "alert_registry.py", "alert_settings.py", "alert_store.py", "redact.py", "drift.py", "health.py", "release_proof.py")  # the MODULES list in install-ticker.sh
 SURFACES = (
     Surface("ticker", "lifeos/edge/ticker/ticker.py", "/opt/lifeos-ticker/ticker.py", "lifeos-ticker-watch.timer"),
     *(Surface("ticker/" + m, "lifeos/platform/" + m, "/opt/lifeos-ticker/lifeos/platform/" + m, "lifeos-ticker-watch.timer") for m in _TICKER_MODULES),
     Surface("offsite-backup", "lifeos/edge/backup/offsite_backup.py", "/opt/lifeos-offsite/offsite_backup.py", "lifeos-offsite-backup.timer"),
-    # LIFE-604 item 4. The installers are deployed files too, and the Close updater runs from a root-owned copy of two repo files that main cannot change by itself.
+    # The installers are deployed files too, and the Close updater runs from a root-owned copy of two repo files that
+    # main cannot change by itself.
     Surface("ticker/install-ticker.sh", "lifeos/edge/ticker/oracle/install-ticker.sh", "/opt/lifeos-ticker/install-ticker.sh", "lifeos-ticker-watch.timer"),
     Surface("offsite-installer", "lifeos/edge/backup/oracle/install-offsite.sh", "/opt/lifeos-offsite/install-offsite.sh", "lifeos-offsite-backup.timer"),
     Surface("close/close_release.py", "lifeos/edge/oracle/close_release.py", "/opt/lifeos-close/bin/close_release.py", "lifeos-close-release.timer"),
     Surface("close/install-close.sh", "lifeos/edge/oracle/install-close.sh", "/opt/lifeos-close/bin/install-close.sh", "lifeos-close-release.timer"),
 )
 
-# Installers that are deliberately NOT surfaces. A new install-*.sh must be a surface above or be listed here with the reason (tests/platform/test_drift.py reads this).
+# Installers that are deliberately NOT surfaces. A new install-*.sh must be a surface above or be listed here with the
+# reason (tests/platform/test_drift.py reads this).
 UNCOVERED_INSTALLERS = {
     "lifeos/edge/runner/install-runner.sh": "The script-pack runner starts no unit, so there is no unit state to compare; its program is pinned by a hash inside its own installer and checked by that installer's verify.",
     "lifeos/edge/concord/oracle/install-gateway.sh": "LIFE-987: run once by hand with sudo (like the LIFE-977 Concord helper installer, which is not a surface either); it prints a smoke test and has its own rollback, and its files are repo files with tests.",
@@ -53,18 +57,17 @@ UNCOVERED_INSTALLERS = {
 
 
 def uncovered_installers(scripts, surfaces=SURFACES, allowed=UNCOVERED_INSTALLERS):
-    """-> the install scripts (repo paths) that are neither a drift surface nor in the allowlist."""
     covered = {s.repo_path for s in surfaces} | set(allowed)
     return [path for path in scripts if path not in covered]
 
 
 def blob_sha(data):
-    """git's object id for a file: sha1 of "blob <size>\\0" + content, what the GitHub contents API reports as `sha`."""
+    """git's object id for a file: sha1 of "blob <size>\\0" + content, what the GitHub contents API reports as `sha`.
+    """
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
 def classify(expected, installed, unit_state):
-    """expected: main's blob sha or None; installed: bytes, MISSING or None (unreadable); unit_state: 'active' | other word | None (unreadable)."""
     if expected is None or installed is None:
         return UNKNOWN
     if installed is MISSING or blob_sha(installed) != expected:
@@ -75,8 +78,10 @@ def classify(expected, installed, unit_state):
 
 
 def check(expected_for, read, unit_state_for, surfaces=SURFACES):
-    """-> [{"surface", "state", "installed_hash", "unit", "unit_state", "why"}], one per surface. The three callables do the reading; any of them raising reads as unknown.
-    LIFE-725: `why` is "" when decided, else a fixed code naming the piece that could not be read (the reader's own `Unreadable` code, or READER_FAILED:<exception class>)."""
+    """-> [{"surface", "state", "installed_hash", "unit", "unit_state", "why"}], one per surface. A reader that raises
+    reads as unknown. `why` is "" when decided, else a fixed code naming the piece that could not be read (the
+    reader's `Unreadable` code, or READER_FAILED:<exception class>).
+    """
     def safe(why, call, *args):
         try:
             return call(*args)
@@ -84,7 +89,7 @@ def check(expected_for, read, unit_state_for, surfaces=SURFACES):
             why.append(error.code)
             return None
         except Exception as error:                                             # noqa: BLE001 - an unreadable piece is UNKNOWN, never a crash and never DEPLOYED
-            why.append("READER_FAILED:" + type(error).__name__)                # the class only, never the message
+            why.append("READER_FAILED:" + type(error).__name__)
             return None
     rows = []
     for s in surfaces:
@@ -92,7 +97,7 @@ def check(expected_for, read, unit_state_for, surfaces=SURFACES):
         expected, installed, unit_state = safe(why, expected_for, s.repo_path), safe(why, read, s.installed), safe(why, unit_state_for, s.unit)
         state = classify(expected, installed, unit_state)
         if state == DEPLOYED and unit_state == ENABLED:
-            why.append(UNIT_STATE_FROM_ENABLED)                                # decided, but by the enablement link, not by asking systemd
+            why.append(UNIT_STATE_FROM_ENABLED)
         elif state == UNKNOWN and not why:
             why.append(EXPECTED_UNREADABLE if expected is None else INSTALLED_UNREADABLE if installed is None else UNIT_UNREADABLE)
         rows.append({"surface": s.name, "state": state, "unit": s.unit, "unit_state": unit_state or UNKNOWN, "why": why[0] if why and (state == UNKNOWN or why[0] == UNIT_STATE_FROM_ENABLED) else "",
@@ -101,7 +106,9 @@ def check(expected_for, read, unit_state_for, surfaces=SURFACES):
 
 
 def incident_signal(rows):
-    """True when any surface drifted (open), False when every surface is DEPLOYED (recovered), None otherwise (an UNKNOWN never opens or closes anything)."""
+    """True when any surface drifted (open), False when every surface is DEPLOYED (recovered), None otherwise (an UNKNOWN
+    never opens or closes anything).
+    """
     states = {r["state"] for r in rows}
     if DRIFT in states:
         return True
@@ -115,7 +122,6 @@ def summary(rows):
 
 
 def explain(rows):
-    """LIFE-725: one short journal line for every check: the counts, then the surfaces that could not be decided grouped by fixed code (the first three names of each group). Names and codes only, never a value or a message."""
     counts, drifted = summary(rows)
     groups = {}
     for r in rows:

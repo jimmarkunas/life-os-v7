@@ -1,10 +1,11 @@
-"""LIFE-811 (F02, synthetic): the central authorization gate in front of one side effect. Pure functions, no network, no store, no credential.
+"""The central authorization gate in front of one side effect. Pure functions: no network, no store, no credential.
 
-It joins the layers that already exist and adds no service: capability_catalog.resolve (is this principal's tool and action registered, in its own workspace, fresh, not missing), access_policy.decide
-(the per-agent level of LIFE-374/403), a tenant grant (LIFE-707/721 style: principal, tenant, account, tool, purpose, actions, expiry, revoke) and a human approval for protected actions.
-Order: validate, tenant, session, catalog, policy, grant, revoke, expiry, purpose, action, protected approval, receipt, then the effect. Every deny happens before `effect` runs and writes a redacted receipt first;
-a receipt that cannot be written means no effect. Fixed words only. A grant names a credential by NAME and the gate never reads or returns one.
-Simulated enforcement only: nothing here proves a live adapter, a live tenant or a real grant (`live_proven` is always False and every receipt says mode=synthetic)."""
+It joins capability_catalog.resolve, access_policy.decide, a tenant grant (principal, tenant, account, tool, purpose,
+actions, expiry, revoke) and a human approval for protected actions, in that order, then writes a redacted receipt and
+only then runs the effect. Every deny happens before `effect` and writes its receipt first; if the receipt cannot be
+written there is no effect. A grant names a credential by NAME; the gate never reads one. Simulated enforcement only:
+`live_proven` is always False and every receipt says mode=synthetic.
+"""
 import hashlib
 import re
 from dataclasses import dataclass
@@ -14,8 +15,8 @@ from lifeos.platform import access_policy, capability_catalog
 
 TENANTS = ("personal", "bytalos", "tgp")
 ACTIONS = ("read", "write", "send", "delete", "permission", "production")
-PROTECTED = ("send", "delete", "permission", "production")                      # a human approves each one; the agent never approves itself
-KIND = {"read": "read", "write": "write", "send": "write", "permission": "write", "production": "write", "delete": "delete"}   # the access_policy kind each action maps to
+PROTECTED = ("send", "delete", "permission", "production")  # a human approves each one; the agent never approves itself
+KIND = {"read": "read", "write": "write", "send": "write", "permission": "write", "production": "write", "delete": "delete"}
 APPROVAL_TTL = timedelta(minutes=15)
 SKEW = timedelta(seconds=60)
 NAME = re.compile(r"[a-z][a-z0-9_.:-]{1,63}")
@@ -24,10 +25,10 @@ SECRET = re.compile(r"(?i)(?:api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|
 
 @dataclass(frozen=True)
 class Session:
-    principal: str          # the catalog principal id
-    policy_key: str         # the 64-hex key access_policy uses for the same agent
+    principal: str
+    policy_key: str
     tenant: str
-    trusted: bool           # set only by the host side after it authenticated the session
+    trusted: bool
 
 
 @dataclass(frozen=True)
@@ -38,20 +39,20 @@ class Grant:
     account: str
     tool: str
     purpose: str
-    actions: tuple         # the exact actions granted; nothing is implied by another entry
-    credential_ref: str    # a NAME, never a value
+    actions: tuple
+    credential_ref: str  # a NAME, never a value
     expires: datetime
     revoked: bool = False
 
 
 @dataclass(frozen=True)
 class Approval:
-    principal: str         # the agent the human approved
+    principal: str
     tenant: str
     tool: str
     action: str
-    request_id: str        # one approval, one request
-    approver: str          # a human id the host knows; never the requesting agent
+    request_id: str
+    approver: str  # a human id the host knows; never the requesting agent
     approved_at: datetime
 
 
@@ -61,14 +62,14 @@ class Request:
     action: str
     account: str
     purpose: str
-    service: str           # the access_policy service this call touches
+    service: str
     request_id: str
 
 
 @dataclass(frozen=True)
 class Outcome:
-    decision: str          # allow | deny
-    reason: str            # fixed word
+    decision: str
+    reason: str
     executed: bool = False
     result: object = None
     live_proven: bool = False
@@ -79,7 +80,6 @@ def fingerprint(value):
 
 
 def revoke(grants, grant_id=None, principal=None):
-    """A new tuple with the matching grants revoked (by id, or every grant of one principal). Other grants are untouched."""
     return tuple(Grant(**{**g.__dict__, "revoked": True}) if (grant_id is not None and g.id == grant_id) or (principal is not None and g.principal == principal) else g for g in grants)
 
 
@@ -104,10 +104,12 @@ def _shape_ok(session, request, now):
 
 
 def execute(session, request, catalog, policy, grants, approvals, human_approvers, effect, audit, now, excluded_tenants=(), pregrant_tools=()):
-    """-> Outcome. `effect()` is the one side effect (the fake provider call in a fixture); it runs only after every check passed and the allow receipt was written.
-    `audit(receipt)` raises when it cannot write. `human_approvers` is the host's set of human approver ids. `excluded_tenants` lets a caller refuse a tenant outright (shared_read excludes tgp)."""
+    """-> Outcome. `effect()` runs only after every check passed and the allow receipt was written. `audit(receipt)`
+    raises when it cannot write. `human_approvers` is the host's set of approver ids. `excluded_tenants` lets a caller
+    refuse a tenant outright.
+    """
     if not _shape_ok(session, request, now):
-        raise ValueError("bad_request")                                                     # no receipt can name a request that is not even well formed
+        raise ValueError("bad_request")
 
     def refuse(reason, grant=None, approval=None):
         audit(_receipt(session, request, "deny", reason, now, grant, approval))
@@ -120,8 +122,8 @@ def execute(session, request, catalog, policy, grants, approvals, human_approver
         return refuse("tenant_excluded")
     if not session.trusted:
         return refuse("untrusted_session")
-    # Known registered operations can explicitly require a grant before catalog resolution.
-    # This produces an auditable no_grant refusal with no provider call for ungranted clients.
+    # A known operation can require a grant before catalog resolution: an auditable no_grant refusal with no provider
+    # call.
     if request.tool in pregrant_tools and not any(g.principal == session.principal and g.tool == request.tool and g.account == request.account for g in grants):
         return refuse("no_grant")
     found = capability_catalog.resolve(catalog, session.principal, request.tool, request.action, session.tenant, now)
@@ -161,8 +163,8 @@ def execute(session, request, catalog, policy, grants, approvals, human_approver
         if not _aware(approval.approved_at) or now - approval.approved_at > APPROVAL_TTL or approval.approved_at - now > SKEW:
             return refuse("approval_stale", grant, approval)
     elif decision == "pending":
-        return refuse("approval_missing", grant)                                            # the policy wants an approval this action's class does not carry: refuse, never invent one
-    audit(_receipt(session, request, "allow", "ok", now, grant, approval, found["synthetic"]))   # the receipt first: no receipt, no effect
+        return refuse("approval_missing", grant)  # the policy wants an approval this action's class does not carry: refuse, never invent one
+    audit(_receipt(session, request, "allow", "ok", now, grant, approval, found["synthetic"]))  # no receipt, no effect
     try:
         result = effect()
     except Exception:                                                                       # noqa: BLE001 - a provider failure is recorded by outcome only, never its message

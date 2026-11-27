@@ -1,10 +1,13 @@
-"""LIFE-609: which domain jobs are due on this tick, from ONE table (lifeos/platform/due_table.json) and each job's last successful run.
+"""Which domain jobs are due on this tick, from ONE table (lifeos/platform/due_table.json) and each job's last successful run.
 
-    python3 -m lifeos.platform.due        run by the gate job of domains.yml; writes due_<job>=true|false to $GITHUB_OUTPUT and a table to $GITHUB_STEP_SUMMARY
+    python3 -m lifeos.platform.due    run by the gate job of domains.yml; writes due_<job>=true|false to $GITHUB_OUTPUT
+                                      and a table to $GITHUB_STEP_SUMMARY
 
-For a tick (event workflow_run, or the early run with phase tick) a job is due when its row says so; for anything else (`all`) every job is due. "Last successful run" comes from the Actions API: the recent domains runs started by a tick, newest first, and each job's conclusion; a skipped job is not a success and a manual run never counts (the early run of a tick counts: its title is the after-tick title). A success is timed at the START of its run (the gate's time), not the job's end.
-every_hours: due when now minus that time >= hours minus SLACK; 1 means every tick, with no history read. slots_ct: due when a slot (CT, HH:MM) has passed since that time. No success in the history: due; several missed slots: due once. History unreadable: every job is due and "history unreadable" is printed (fail open). Counts and job names only."""
-# A manual run never counts because a dry run must not make a card look fresh; the time is the START of the run so an hourly job that ends late is not mistaken for a recent one.
+On a tick a job is due when its row says so; otherwise every job is due. The last success comes from the Actions API
+(recent tick-started runs); skipped jobs and manual runs never count, and a success is timed at the START of its run.
+every_hours: due when now minus that time >= hours minus SLACK. slots_ct: due when a CT slot (HH:MM) has passed since
+it. No success in the history: due; several missed slots: due once. Unreadable history: every job is due (fail open).
+"""
 import datetime as dt
 import io
 import json
@@ -21,7 +24,7 @@ from lifeos.platform import gate
 TABLE = Path(__file__).with_name("due_table.json")
 CENTRAL = ZoneInfo("America/Chicago")
 SLACK = dt.timedelta(minutes=15)
-HISTORY_RUNS = 30                                   # a daily row needs at most about 24 hourly runs back
+HISTORY_RUNS = 30
 
 
 def load_table(path=TABLE):
@@ -29,7 +32,6 @@ def load_table(path=TABLE):
 
 
 def load_stages(path=TABLE):
-    """LIFE-617: the board stages of the Jobs tick (lifeos/jobs/tick.py), rows in the same table and with the same rules as the jobs."""
     return json.loads(Path(path).read_text()).get("stages", {})
 
 
@@ -38,7 +40,6 @@ def _t(value):
 
 
 def last_success(runs, jobs_of, wanted):
-    """-> {job: start of the newest tick run in which it succeeded}. runs: newest first; jobs_of(run) -> that run's job records. Stops reading once every wanted job is found."""
     found = {}
     for run in runs:
         if len(found) == len(wanted):
@@ -51,7 +52,9 @@ def last_success(runs, jobs_of, wanted):
 
 
 def slot_passed(slots, last, now):
-    """True when a Central-Time slot lies after `last` and not after `now` (today's and yesterday's slots are enough for any row that runs at least daily)."""
+    """True when a Central-Time slot lies after `last` and not after `now` (today's and yesterday's slots suffice for a
+    row that runs at least daily).
+    """
     local = now.astimezone(CENTRAL)
     for day in (0, 1):
         date = (local - dt.timedelta(days=day)).date()
@@ -64,7 +67,6 @@ def slot_passed(slots, last, now):
 
 
 def is_due(row, last, now):
-    """-> (due, why) for one row, the job's last success time (None: none known) and now (both aware)."""
     if "slots_ct" in row:
         if last is None:
             return True, "no earlier success"
@@ -78,7 +80,6 @@ def is_due(row, last, now):
 
 
 def decide(table, last, now, tick=True):
-    """-> {job: (due, why)}. Not a tick: everything is due."""
     if not tick:
         return {job: (True, "not a tick") for job in table}
     return {job: is_due(row, last.get(job), now) for job, row in table.items()}
@@ -89,20 +90,20 @@ def needs_history(table):
 
 
 def fetch_last_success(wanted, api=gate._api):
-    runs = api(f"actions/workflows/domains.yml/runs?status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])      # LIFE-775: after-tick runs start by workflow_run or, for the early phase, by dispatch; the title tells them from a manual run
+    runs = api(f"actions/workflows/domains.yml/runs?status=completed&per_page={HISTORY_RUNS}").get("workflow_runs", [])  # the title tells after-tick runs from a manual run
     runs = [run for run in runs if run.get("display_title") == gate.DOMAINS_TITLE]
     return last_success(runs, lambda run: api(f"actions/runs/{run['id']}/jobs?per_page=100").get("jobs", []), set(wanted))
 
 
 STAGE_OK = re.compile(r"\bstage (\S+): ok ")
-TICK_RUNS = 30                                      # a daily stage row needs about 24 hourly runs back
+TICK_RUNS = 30
 
 
 class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
         if new is not None:
-            new.headers.pop("Authorization", None)                       # the log archive lives on another host: the token is never sent there
+            new.headers.pop("Authorization", None)  # the log archive lives on another host: the token is never sent there
         return new
 
 
@@ -115,12 +116,10 @@ def _log_text(run_id, environ=os.environ):
 
 
 def stages_ok(text):
-    """-> the stage names that print `stage <name>: ok` in one run's log (a stage the log masks, such as one named like a secret, is never found and so is always due)."""
     return set(STAGE_OK.findall(text))
 
 
 def fetch_stage_success(wanted, api=gate._api, log_text=_log_text):
-    """-> {stage: start of the newest hourly tick run in which it printed ok}; the newest runs first, stops once every wanted stage is found."""
     runs = api(f"actions/workflows/hourly.yml/runs?status=completed&per_page={TICK_RUNS}").get("workflow_runs", [])
     found = {}
     for run in runs:
@@ -134,7 +133,9 @@ def fetch_stage_success(wanted, api=gate._api, log_text=_log_text):
 
 
 def stage_decisions(table, environ=os.environ, now=None, api=gate._api, log_text=_log_text):
-    """-> ({stage: (due, why)}, history_ok). Every row hourly reads no history. Slower rows read it; when it cannot be read every stage is due and history_ok is False (fail open, as for the jobs)."""
+    """-> ({stage: (due, why)}, history_ok). All-hourly rows read no history; when history cannot be read every stage is
+    due and history_ok is False (fail open).
+    """
     now = now or dt.datetime.now(dt.timezone.utc)
     last, ok = {}, True
     if needs_history(table):
@@ -148,8 +149,9 @@ def stage_decisions(table, environ=os.environ, now=None, api=gate._api, log_text
 
 
 def split_plan(plan, environ=None, decisions=None):
-    """LIFE-617: -> (plan without the stages whose row in the table's `stages` says not due this tick, [(step, why)] for those left out). Stages with no row always run. With every row hourly nothing is
-    left out and no history is read. `plan` is any sequence of objects with a `name` (the tick's steps)."""
+    """-> (plan without the stages the table's `stages` says are not due this tick, [(step, why)] for those left out).
+    Stages with no row always run.
+    """
     table = load_stages()
     result = decisions if decisions is not None else stage_decisions(table, os.environ if environ is None else environ)[0]
     left = [(step, result[step.name][1]) for step in plan if step.name in table and not result[step.name][0]]
@@ -176,7 +178,7 @@ def summary(result, last, failed_open):
 def main(environ=os.environ, api=gate._api, now=None, table=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     table = table if table is not None else load_table()
-    tick = gate.is_tick_event(environ)                                      # LIFE-775: an after-tick run, or the early run the tick's prep job starts (phase tick)
+    tick = gate.is_tick_event(environ)  # an after-tick run, or the early run the tick's prep job starts (phase tick)
     last, failed_open = {}, False
     if tick and needs_history(table):
         try:
