@@ -54,8 +54,8 @@ def _span(sprint, tz):
 
 
 def plan_sprints(project, active, future, now, tz, minimum=MIN_FUTURE):
-    """-> {"rename", "create", "future"}, or JiraError with a fixed code before any write. A non-weekly sprint,
-    duplicate week, off-grid future sprint or two active sprints stop the board."""
+    """-> {"rename", "create", "future"}, or JiraError with a fixed code before any write; a non-weekly sprint, duplicate week,
+    off-grid future sprint or two active sprints stop the board."""
     if len(active) > 1:
         raise JiraError("JIRA_ACTIVE_AMBIGUOUS")
     today = now.astimezone(tz).date()
@@ -107,8 +107,8 @@ AUTO_LABEL = "auto-closed"
 
 
 def carry_plan(issues, recurring=()):
-    """Carry rule: In Progress carries at any priority; High/Highest carries when To Do or Blocked; the rest go to the
-    backlog. -> {"carry", "backlog", "recurring", "exceptions"}."""
+    """Carry rule: In Progress carries at any priority; High/Highest carries when To Do or Blocked; the rest go to the backlog.
+    -> {"carry", "backlog", "recurring", "exceptions"}."""
     rows = [_norm(i) for i in issues]
     top = {r["key"]: r for r in rows if r["type"] in STANDARD}
     out = {"carry": [], "backlog": [], "recurring": [], "exceptions": []}
@@ -139,8 +139,8 @@ def carry_plan(issues, recurring=()):
 
 
 def series(issues, configured=()):
-    """-> {root key: {"keys", "labelled"}} from the `recurring` label and configuration. A root follows the `Cloners`
-    chain; two origins fail closed; a series that lost its label is stopped."""
+    """-> {root key: {"keys", "labelled"}} from the `recurring` label and configuration. A root follows the `Cloners` chain;
+    two origins fail closed; a series that lost its label is stopped."""
     by_key = {i["key"]: i for i in issues}
     parent_of = {}
     for i in issues:
@@ -169,8 +169,7 @@ def series(issues, configured=()):
 
 
 def clone_fields(issue, advance_days=7):
-    """Fields copied to a clone: summary, description, assignee, priority, labels, parent Epic; status To Do, due date
-    +7 days, no comments or history."""
+    """Fields copied to a clone: summary, description, assignee, priority, labels, parent Epic; status To Do, due +7 days."""
     f = issue.get("fields") or {}
     description = f.get("description")
     if isinstance(description, str):
@@ -182,8 +181,8 @@ def clone_fields(issue, advance_days=7):
 
 
 def plan_recurrence(issues, found, next_sprint_id, configured=()):
-    """-> {"create": [root key], "sync": [(key, fields)], "stopped": n, "exceptions": [codes]}. One occurrence per
-    series per next-week sprint; a duplicate fails closed."""
+    """-> {"create": [root key], "sync": [(key, fields)], "stopped": n, "exceptions": [codes]}. One occurrence per series per
+    next-week sprint; a duplicate fails closed."""
     by_key = {i["key"]: i for i in issues}
     out = {"create": [], "sync": [], "stopped": 0, "exceptions": []}
     for root_key, entry in sorted(found.items()):
@@ -222,8 +221,7 @@ def _closed_at(issue):
 
 
 def closure_counts(issues, since=None):
-    """-> manual, automatic and total closed counts. The split starts at `since`; earlier closures count only in the
-    total, and without `since` nothing is classified."""
+    """-> manual, automatic and total closed counts. The split starts at `since`; earlier closures count only in the total."""
     done = [i for i in issues if _norm(i)["category"] == "done"]
     if since is None:
         return {"manual": None, "automatic": None, "total": len(done), "split": False}
@@ -257,7 +255,6 @@ def due(now, last_done, tz=None):
 
 
 def enabled(environ=None):
-    """MEJ_SPRINT_AUTOMATION: on only for exactly "on"."""
     try:
         return str((os.environ if environ is None else environ).get("MEJ_SPRINT_AUTOMATION") or "").strip().lower() == "on"
     except (AttributeError, TypeError):
@@ -319,9 +316,8 @@ def reconcile_board(client, project, board_id, now, tz, writers, live, keys=(), 
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, writers=None, state=None, alert=None, sleep=None, extra=None, force=False):
-    """The daily reconciliation stage. Off: {"enabled": 0}, nothing read. On: at most once per Chicago date after 8:00
-    AM CT, JFM and MEJ as one unit. Live needs injected `writers` and `state` (get() -> last date, set(date)) or fails
-    closed."""
+    """The daily reconciliation stage. Off: {"enabled": 0}, nothing read. On: at most once per Chicago date after 8:00 AM CT,
+    JFM and MEJ as one unit. Live needs injected `writers` and `state` (get() -> last date, set(date)) or fails closed."""
     if not enabled(environ):
         return {"enabled": 0}
     minimum = future_target(environ)

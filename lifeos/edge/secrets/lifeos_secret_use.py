@@ -1,22 +1,21 @@
 #!/usr/bin/python3 -I
-"""Secrets broker on lifeos-edge-01: a root-owned fixed program that uses a host credential for a registered PURPOSE
-so the value never appears in a prompt, chat, Jira, log or file an agent reads: `sudo -n
-/usr/local/sbin/lifeos-secret-use PURPOSE` (anything extra is SECRET_BAD_ARGS). The root-owned registry
-(/etc/lifeos-secrets/purposes.d/*.json) fixes per purpose the one credential (an encrypted systemd credential in
-/etc/hermes-eval/creds), the allowed callers and one action: `http_get_fields` (GET one fixed https URL with the
-credential as bearer token, return only the listed scalar JSON fields; "auth": "x-api-key" targets exactly
-https://api.anthropic.com/v1/models, "auth": "basic" sends an `email:token` credential to one fixed Jira issue read on
-api.atlassian.com) or `check_credential` (NAME, length and first 8 hex of the SHA-256). Every output is searched for
-the value in raw, base64, URL-encoded, hex and JSON-escaped forms (for Basic also the token and header) and a hit
-refuses the answer. No redirects; output capped at 4096 bytes; 20 calls per minute per caller; every call appends to
-/var/log/lifeos-secret-use.jsonl and is refused if that cannot be written.
+"""Secrets broker on lifeos-edge-01: a root-owned program that uses a host credential for a registered PURPOSE, so the
+value never appears in a prompt, chat, log or file an agent reads: `sudo -n /usr/local/sbin/lifeos-secret-use PURPOSE`
+(anything extra is SECRET_BAD_ARGS). The root-owned registry (/etc/lifeos-secrets/purposes.d/*.json) fixes per purpose
+the one credential (an encrypted systemd credential in /etc/hermes-eval/creds), the allowed callers and one action:
+`http_get_fields` (GET one fixed https URL with the credential as bearer token, return only the listed scalar JSON
+fields; "auth": "x-api-key" targets exactly https://api.anthropic.com/v1/models, "auth": "basic" sends an `email:token`
+credential to one fixed Jira issue read on api.atlassian.com) or `check_credential` (NAME, length, first 8 hex of the
+SHA-256). Every output is searched for the value in its common encodings; a hit refuses the answer. No redirects;
+output capped at 4096 bytes; 20 calls per minute per caller; every call is appended to /var/log/lifeos-secret-use.jsonl
+and refused if that cannot be written.
 
-Limit: the agent account has passwordless root, so this cannot make reading a credential impossible; it keeps the
-normal path from showing a value and records every use. The caller name is SUDO_USER, which a root caller could forge.
+Limit: the agent account has passwordless root, so this cannot make reading a credential impossible; it keeps the normal
+path from showing a value and records every use. The caller name is SUDO_USER, which root could forge.
 
-Codes (ok false): SECRET_BAD_ARGS, SECRET_NOT_ROOT, SECRET_REGISTRY_UNSAFE, SECRET_UNKNOWN_PURPOSE,
-SECRET_CALLER_NOT_ALLOWED, SECRET_RATE_LIMITED, SECRET_AUDIT_UNAVAILABLE, SECRET_CRED_UNREADABLE, SECRET_FETCH_FAILED,
-SECRET_BAD_REPLY, SECRET_FIELD_NOT_SCALAR, SECRET_OUTPUT_TOO_LARGE, SECRET_OUTPUT_CONTAINS_SECRET. Stdlib only.
+Failure codes (ok false), all prefixed SECRET_: BAD_ARGS, NOT_ROOT, REGISTRY_UNSAFE, UNKNOWN_PURPOSE, CALLER_NOT_ALLOWED,
+RATE_LIMITED, AUDIT_UNAVAILABLE, CRED_UNREADABLE, FETCH_FAILED, BAD_REPLY, FIELD_NOT_SCALAR, OUTPUT_TOO_LARGE,
+OUTPUT_CONTAINS_SECRET. Stdlib only.
 """
 import base64
 import binascii
@@ -42,10 +41,9 @@ PURPOSE = re.compile(r"[a-z][a-z0-9_]{1,40}")
 NAME = re.compile(r"[a-z][a-z0-9_]{1,60}")
 HTTPS = re.compile(r"https://[a-z0-9.-]+(/[A-Za-z0-9._~/-]*)?")
 ATLASSIAN = re.compile(r"https://api\.atlassian\.com/ex/jira/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/rest/api/3/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}(\?fields=[a-z,]+)?")
-# the one URL an "x-api-key" purpose may read (the free model list)
 ANTHROPIC_URL = "https://api.anthropic.com/v1/models"
 ANTHROPIC_VERSION = "2023-06-01"
-BASIC_CRED = re.compile(r"[^:\s@]+@[^:\s@]+:[^\s]+")                  # email:token, the only shape a Basic credential may have
+BASIC_CRED = re.compile(r"[^:\s@]+@[^:\s@]+:[^\s]+")
 AUTHS = ("bearer", "basic", "x-api-key")
 MAX_OUT, PER_MINUTE, FETCH_WAIT, FETCH_MAX = 4096, 20, 15, 65536
 ACTIONS = ("http_get_fields", "check_credential")
@@ -198,7 +196,7 @@ class Broker:
         return out
 
     def run(self, argv, caller):
-        """-> (exit code, stdout text). The audit line is written before any credential is touched and once more with the outcome."""
+        """-> (exit code, stdout text). The audit line is written before any credential is touched and again with the outcome."""
         now = self.clock()
         row = {"epoch": int(now), "ct": datetime.fromtimestamp(now, CT).strftime("%Y-%m-%d %I:%M:%S %p CT"), "caller": caller, "pid": os.getpid(), "purpose": "-", "secret": "-", "bytes": 0}
         code, text = "OK", ""

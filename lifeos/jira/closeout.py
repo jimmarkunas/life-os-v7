@@ -1,9 +1,8 @@
 """LIFE-761: one call closes a delivered ticket: Central-time stamp, the one receipt comment, the move to Done, and a read-back of both. Dry run unless live.
 
-    python -m lifeos.jira.closeout LIFE-1 LIFE-2 --pr 1234 --sha <40-hex> --run <ci-run-id> --proof LIFE-1="what ran" --proof LIFE-2="what ran" [--live]
-
-A batched PR (several tickets, one receipt text) passes every key; each ticket gets the same receipt listing every ticket and its proof, so each one reads whole on its own. Never repeats itself: a ticket already Done, or already carrying this PR's receipt, is not written again.
-Needs JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (the existing Jira client). Output: one line per ticket, key and outcome only; no secret is read or printed."""
+A batched PR passes every key; each ticket gets the same receipt listing every ticket and its proof. A ticket already
+Done, or already carrying this PR's receipt, is not written again. Needs JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN.
+Output: one line per ticket, key and outcome only."""
 import argparse
 import re
 import sys
@@ -19,7 +18,7 @@ KEY = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 
 
 def receipt(keys, pr, sha, run, proofs, now=None):
-    """-> the receipt text. First line is the idempotency marker (PR and short sha), then one line per ticket with its proof."""
+    """-> the receipt text: an idempotency marker line (PR and short sha), then one line per ticket with its proof."""
     lines = [f"[receipt] {stamp(now)}: merged {REPO_PULL}{pr} at {sha[:8]}; same-head CI green {REPO_RUN}{run}."]
     for key in keys:
         lines.append(f"{key}: {proofs.get(key) or 'local proof as in the PR'}")
@@ -43,7 +42,7 @@ def read(jira, key):
 
 
 def close(jira, key, text, mark, live=False):
-    """-> {"key", "outcome", "problems"}. Outcomes: dry_run, closed (comment and Done both read back), already_done, partial (see problems)."""
+    """-> {"key", "outcome", "problems"}; outcomes: dry_run, closed (comment and Done read back), already_done, partial."""
     status, comments = read(jira, key)
     done = status.lower() == "done"
     has = any(mark in c for c in comments)
