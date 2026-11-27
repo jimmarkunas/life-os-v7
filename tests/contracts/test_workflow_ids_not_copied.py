@@ -14,6 +14,10 @@ ALLOWED = {  # path: (most copies it may hold, why)
         63,
         "pins the exact bws mappings each workflow loads (existing contract; the ids are the thing under test; 58 since LIFE-699 added the two private acceptance cases; 60 since LIFE-696 added the Bytalos Gmail refresh token and the Todoist token to the followup job); 61 since LIFE-711 added the Action Inbox view QA job's Notion token loader; 62 since LIFE-844 added the Runtime Configuration bootstrap ID",
     ),
+    "lifeos/platform/todoist_refresh.py": (
+        1,
+        "the Todoist refresher writes the read-only access token to the ALERTS item that the imessage and followup sets load (an identifier only, already public in the workflows)",
+    ),
     "docs/NOTION_INTEGRATIONS.md": (
         6,
         "the integrations table names the Bitwarden id each Notion token is loaded from (identifiers only, already public in the workflows)",
