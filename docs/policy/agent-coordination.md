@@ -14,6 +14,4 @@ Before editing `docs/life-os-production-contract.md`, the agent posts a claim on
 
 Each ticket lists the paths it will touch, on one line (`Paths:` in the ticket template). An agent about to start a ticket whose paths overlap a ticket that is In Progress waits, or is sequenced by Claude (the orchestrator).
 
-## Merge queue
-
-`main` merges through GitHub's merge queue (group of up to 5, build concurrency 5). The merge queue runs the same required check `unit-tests` on each group (the `merge_group` trigger in `pr-tests.yml`, with the shared changed-test selector against the group's base). Any workflow that gates a pull request must also trigger on `merge_group`, or it hangs the queue. `sh tools/automerge.sh <PR>` arms auto-merge, which adds the pull request to the queue once its own checks pass. Undo is one setting: delete the ruleset named `main merge queue`.
+No merge queue: GitHub offers it only to organization-owned repositories and this one is a personal repository (Jim, Nov 27 2026). A pull request that is behind main is rebased and re-checked as before.
