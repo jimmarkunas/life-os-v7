@@ -93,7 +93,9 @@ class NoSetupActions(unittest.TestCase):
         self.assertIn("Python 3\\.12\\.", first)
         self.assertIn('python3 -m venv "$RUNNER_TEMP/venv"', first)
         self.assertIn('"$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"', first)
-        self.assertEqual(steps[1]["run"], "pip install --require-hashes -r requirements.lock")
+        self.assertTrue(steps[1]["uses"].startswith("actions/cache@"))  # the pip download cache, before the install
+        self.assertEqual(steps[1]["with"]["path"], "~/.cache/pip")
+        self.assertEqual(steps[2]["run"], "pip install --require-hashes -r requirements.lock")
 
 
 if __name__ == "__main__":

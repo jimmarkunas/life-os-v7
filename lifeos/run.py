@@ -21,7 +21,7 @@ from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.gcal import GcalError
 from lifeos.platform.outlook import OutlookError
-from lifeos.platform import budget, isolate, source_registry as registry, stage_timing
+from lifeos.platform import api_counts, budget, isolate, source_registry as registry, stage_timing
 
 
 def lazy(module, name="run", floor=0, live_only=False, **fixed):
@@ -232,7 +232,15 @@ def _timing(stage, label, began, counts=None):
     """Print a standalone stage's `stage_timing` line when STAGE_TIMING_FILE is set."""
     if os.environ.get("STAGE_TIMING_FILE") and not stage_timing.in_tick():
         stage_timing.emit(
-            stage_timing.record(stage, label, time.monotonic() - began, 0.0, counts, stage_timing.items_key_for(stage))
+            stage_timing.record(
+                stage,
+                label,
+                time.monotonic() - began,
+                0.0,
+                counts,
+                stage_timing.items_key_for(stage),
+                api_calls=api_counts.take(),
+            )
         )
 
 

@@ -79,5 +79,26 @@ class Locks(unittest.TestCase):
             json.loads((package.parent / "package-lock.json").read_text())
 
 
+class Trims(unittest.TestCase):
+    def test_the_pip_caches_are_keyed_on_locks(self):
+        action = (ROOT / ".github/actions/python/action.yml").read_text()
+        self.assertIn("path: ~/.cache/pip", action)
+        self.assertIn("hashFiles('requirements.lock')", action)
+        self.assertLess(action.index("Pip download cache"), action.index("Install dependencies"))
+        finish = (ROOT / ".github/workflows-src/hourly/060-finish.yml").read_text()
+        self.assertIn("hashFiles('requirements-fit.lock')", finish)
+        self.assertLess(finish.index("Pip cache for the semantic layer"), finish.index("Install semantic layer"))
+
+    def test_profile_sync_follows_only_the_hourly_runs_that_started_in_the_11_and_23_utc_hours(self):
+        text = (ROOT / ".github/workflows/profile-sync.yml").read_text()
+        self.assertIn("contains('11 23', substring(github.event.workflow_run.run_started_at, 11, 2))", text)
+        # the same test in Python: of the 24 hours of a day exactly two pass, and a manual dispatch has no such condition
+        started = ["2026-11-27T%02d:00:11Z" % hour for hour in range(24)]
+        passing = [stamp for stamp in started if stamp[11:13] in "11 23".split(" ") or stamp[11:13] in "11 23"]
+        self.assertEqual(sorted(s[11:13] for s in passing), ["11", "23"])
+        dispatch_job = text.split("  sync:")[1] if "  sync:" in text else text
+        self.assertIn("github.event_name == 'workflow_dispatch'", dispatch_job)
+
+
 if __name__ == "__main__":
     unittest.main()

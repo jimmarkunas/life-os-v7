@@ -23,7 +23,7 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
            "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py", "lifeos/platform/hidden.py", "lifeos/platform/ledger_body.py",
            "lifeos/sources/apps/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/apps/manage_app.py", "lifeos/sources/apps/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/alert_store.py", "lifeos/platform/redact.py",
-           "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py", "lifeos/platform/fixed_code.py", "lifeos/platform/notion_text.py", "lifeos/platform/notion_pages.py")
+           "lifeos/platform/credentials.py", "lifeos/platform/credential_list.py", "lifeos/platform/fixed_code.py", "lifeos/platform/notion_text.py", "lifeos/platform/notion_pages.py", "lifeos/platform/api_counts.py")
 ROUTES = {"/sent": ("apps.outreach_app", "handle"), "/referral": ("apps.outreach_app", "handle_status"),
           "/resume": ("apps.resume_app", "handle"), "/manage": ("apps.manage_app", "handle"), "/manage.css": ("apps.manage_app", "handle_css"), "/manage-picker.js": ("apps.manage_app", "handle_js"), "/alerts": ("apps.alerts_app", "handle"), "/alerts.css": ("apps.alerts_app", "handle_css")}
 KIND = "ledger"
