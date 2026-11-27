@@ -8,7 +8,7 @@
 /etc/lifeos-honcho/honcho_alerts_mcp.cred (a unit loads it with LoadCredentialEncrypted=honcho_alerts_mcp:/etc/lifeos-honcho/honcho_alerts_mcp.cred). It never overwrites: a second run prints the same
 hash with `exists`. Prints `honcho-alerts ok sha256=<hex>` or `honcho-alerts exists sha256=<hex>`, never the credential.
 `send` makes one request with a 60 s timeout and never retries; its failure words are timeout, interrupted, unreachable, http_<code>, malformed_reply, no_credential or the server's own code. `send` reads the credential from $CREDENTIALS_DIRECTORY/honcho_alerts_mcp (inside a unit) or, as root, by decrypting the file above in memory; it calls the loopback MCP service (127.0.0.1:8787) as that client.
-The sender in the Inbox is always `honcho-alerts`, and the same subject updates the same row, so a repeat never adds a second one. Prints `alert created|updated|duplicate` or `alert_failed <reason>`
+The request names no Buzz community: send_to_jim writes the Agent Inbox (Notion) and needs none. The sender in the Inbox is always `honcho-alerts`, and the same subject updates the same row, so a repeat never adds a second one. Prints `alert created|updated|duplicate` or `alert_failed <reason>`
 (exit 1) and nothing else: no subject text, no credential. Subjects and details must carry no secret and no personal data."""
 import base64
 import hashlib
@@ -86,7 +86,7 @@ def send(subject, details, urgency):
     args = {"subject": subject[:160], "urgency": urgency}
     if details:
         args["details"] = details[:1500]
-    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": "send_to_jim", "community": "life-os", "arguments": args}}}
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_read", "arguments": {"operation": "send_to_jim", "arguments": args}}}
     request = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Accept": "application/json", "Authorization": "Bearer " + token})
     # Exactly one request, never retried: a timeout or a dropped reply is AMBIGUOUS (the write may have been committed), and a resend of the same
     # sender and subject updates the same Inbox row, so the next alert run is the only safe retry.
