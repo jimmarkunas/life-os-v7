@@ -12,7 +12,7 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from lifeos.platform import limits
+from lifeos.platform import api_counts, limits
 
 API = "https://api.notion.com/v1"
 VERSION = "2025-09-03"
@@ -126,6 +126,7 @@ class Client:
             if wait > 0:
                 self._sleep(wait)
             self._last, self.calls = self._clock(), self.calls + 1
+            api_counts.count("notion")
             request = urllib.request.Request(
                 API + path,
                 method=method,

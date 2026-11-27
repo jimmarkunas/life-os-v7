@@ -10,6 +10,7 @@ lifeos/platform/__init__.py
 lifeos/platform/access_policy.py
 lifeos/platform/agent_directory.py
 lifeos/platform/agent_inbox.py
+lifeos/platform/api_counts.py
 lifeos/platform/authorization_gate.py
 lifeos/platform/call_limit.py
 lifeos/platform/capability_catalog.json

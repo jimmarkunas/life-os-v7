@@ -14,6 +14,7 @@ import urllib.request
 from collections.abc import Iterable
 from typing import Any, Self
 
+from lifeos.platform import api_counts
 from lifeos.platform.fixed_code import fixed
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -87,6 +88,7 @@ class Gmail:
             headers["Authorization"] = "Bearer " + self._access_token()
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         for attempt in range(LIMITED_TRIES):
+            api_counts.count("gmail")
             try:
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     raw = response.read()

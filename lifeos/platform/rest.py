@@ -8,6 +8,8 @@ import json
 import urllib.error
 import urllib.request
 
+from lifeos.platform import api_counts
+
 TRANSIENT = (429, 500, 502, 503, 504)
 
 
@@ -24,6 +26,7 @@ def call(build, fail, prefix, sleep, timeout=30, attempts=4, bad_json="BAD_JSON"
     """build() -> urllib Request; fail(code) -> the exception to raise. Returns the parsed JSON body ({} when empty)."""
     for attempt in range(attempts):
         last = attempt == attempts - 1
+        api_counts.count(prefix)
         try:
             with urllib.request.urlopen(build(), timeout=timeout) as response:
                 raw = response.read()
