@@ -6,14 +6,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "docs" / "life-os-development-policy.md"
-POLICY = POLICY_PATH.read_text()
+POLICY_FILE = POLICY_PATH.read_text()
+DETAIL = sorted((ROOT / "docs" / "policy").glob("*.md"))
+POLICY = POLICY_FILE + "\n".join(f.read_text() for f in DETAIL)  # the policy and the task-specific files it points to
 
 
 class DryRunGate(unittest.TestCase):
     """the scoping gate is in the policy, the one-page boot guide and the ticket template."""
 
     def test_the_policy_section_has_the_rules(self):
-        self.assertIn("## 12. Dry run gate (scoping, before Agent Go;", POLICY)
+        self.assertIn("## 12. Dry run gate (scoping, before Agent Go;", POLICY_FILE)
+        self.assertIn("policy/dry-run-gate.md", POLICY_FILE)
         for kept in (
             "**Dry run**",
             "**Decisions pre-made**",
@@ -66,7 +69,7 @@ class DryRunGate(unittest.TestCase):
 
 class OneFilePolicy(unittest.TestCase):
     def test_it_is_one_file_under_the_size_ceiling(self):
-        self.assertLessEqual(len(POLICY.encode()), 18 * 1024)
+        self.assertLessEqual(len(POLICY_FILE.encode()), 15 * 1024)
         self.assertFalse(
             (ROOT / "docs" / "development-policy").exists(), "the policy is one file; history lives in docs/archive/"
         )
