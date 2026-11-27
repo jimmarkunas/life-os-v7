@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import socket
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -34,6 +35,9 @@ LAUNCHES = {"messages": "/launch/messages/", "telegram": "/launch/telegram/", "w
 LABELS = {"messages": "Messages", "telegram": "Telegram", "whatsapp": "WhatsApp"}
 TODOIST_LAUNCH = "/launch/todoist/"
 TODOIST_LIMIT = 99
+TODOIST_ROW_LIMIT = 4000  # the client pages at most 20 x 200 rows; a result that fills it is truncated
+TODOIST_DASH = "—"
+TODOIST_STALE = " · STALE"
 CHANNEL_BLOCKS = ("telegram", "whatsapp")
 STATES = ("PRESENT", "NONE", "UNAVAILABLE")
 PROTECTED = (
@@ -280,18 +284,35 @@ def write_todoist(client, block, label):
     return 0
 
 
-def todoist_label(count):
-    return f"Todoist ({'99+' if count > TODOIST_LIMIT else count})"
+def kept_count(label):
+    """The last verified count a Todoist label shows, or None (`(—)`, the old `(-)` placeholder, or anything else)."""
+    hit = re.fullmatch(rf"Todoist \((\d+|99\+)(?:{re.escape(TODOIST_STALE)})?\)", label or "")
+    return hit.group(1) if hit else None
+
+
+def todoist_label(count, previous=None):
+    """A verified count reads `Todoist (N)` (`99+` above 99). A failed read keeps the last verified count and marks it
+    `· STALE`; before the first verified count it reads `(—)`, never zero. The last verified value is the label itself:
+    no second store."""
+    if count is not None:
+        return f"Todoist ({'99+' if count > TODOIST_LIMIT else count})"
+    kept = kept_count(previous)
+    return f"Todoist ({kept}{TODOIST_STALE})" if kept else f"Todoist ({TODOIST_DASH})"
 
 
 def todoist_count(environ, tasks=None):
+    """The open top-level task count, or None when it cannot be proved complete (no credential, any error, or a listing
+    that reached the most the client can page)."""
     token = (environ.get("FOLLOWUP_TODOIST_PERSONAL_TOKEN") or "").strip()
     if not token:
         return None
     try:
         from lifeos.platform import todoist  # noqa: PLC0415
 
-        return len((tasks or todoist.Todoist(token).tasks)(TODOIST_LIMIT + 1))
+        rows = (tasks or todoist.Todoist(token).tasks)(TODOIST_ROW_LIMIT)
+        if len(rows) >= TODOIST_ROW_LIMIT:
+            raise OverflowError  # a listing that stopped at the cap is not a complete read
+        return len(todoist.top_level(rows))
     except Exception:  # noqa: BLE001 - a fixed word only: never the token, a URL or a body
         print("imessage-comms: todoist unavailable", json.dumps({"code": "TODOIST_UNREADABLE"}))
         return None
@@ -356,12 +377,19 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     client = client or _writer(environ)
     heading, blocks, todoist = locate(client, anchor)
     count = todoist_count(environ, tasks) if todoist is not None else None
+    previous = _plain(_items(todoist))[_todoist_item(todoist)] if todoist is not None else None
     counts = {
         "unread_7d": rows["messages"][0],
         "latest": rows["messages"][1].lower(),
         **{f"{c}_latest": rows[c][1].lower() for c in CHANNEL_BLOCKS},
         **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()},
-        "todoist": "none" if todoist is None else "unread" if count is None else count,
+        "todoist": "none"
+        if todoist is None
+        else count
+        if count is not None
+        else "stale"
+        if kept_count(previous)
+        else "unavailable",
         "written": 0,
     }
     if not live:
@@ -373,6 +401,6 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     with fixed(NotionError, _fail, "COMMS_WRITE_FAILED"):
         write(scoped, heading, blocks, lines, heading_text)
         counts["written"] = 2 * len(blocks) + 1
-        if todoist is not None and count is not None:
-            counts["written"] += write_todoist(scoped, todoist, todoist_label(count))
+        if todoist is not None:
+            counts["written"] += write_todoist(scoped, todoist, todoist_label(count, previous))
     return counts

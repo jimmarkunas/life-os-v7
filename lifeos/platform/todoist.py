@@ -58,4 +58,14 @@ class Todoist:
         raise TodoistError("TODOIST_LISTING_INCOMPLETE")
 
 
-__all__ = ["Todoist", "TodoistError"]
+def top_level(rows):
+    """The tasks a person counts as open actions: no subtasks (a parent counts once) and no `* ` header items (Todoist's
+    non-task lines). Undated and future tasks count; a recurring task is one row. Pure: it never reads or changes the rows."""
+    return [
+        task
+        for task in rows
+        if not task.get("parent_id") and not str(task.get("content") or "").lstrip().startswith("* ")
+    ]
+
+
+__all__ = ["Todoist", "TodoistError", "top_level"]
