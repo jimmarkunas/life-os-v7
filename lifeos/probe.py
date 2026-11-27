@@ -2,6 +2,7 @@
 
 Prints facts (status, sizes, key names, counts) and never posting text, URLs or personal data. Nothing here writes.
 """
+
 import json
 import os
 import re
@@ -44,16 +45,25 @@ def teamtailor(fetcher=fetch):
         page = fetcher(source["url"], timeout=20, max_bytes=3_000_000)
         rss = fetcher(source["url"].rstrip("/") + ".rss", timeout=20, max_bytes=3_000_000)
         out[source["id"][3:15]] = {
-            "status": page.status, "bytes": len(page.html), "job_links": len(set(re.findall(r'href="[^"]*/jobs/\d[^"]*"', page.html))),
-            "jobposting_ld": sum("JobPosting" in b for b in JSONLD.findall(page.html)), "rss_status": rss.status, "rss_items": rss.html.count("<item>")}
+            "status": page.status,
+            "bytes": len(page.html),
+            "job_links": len(set(re.findall(r'href="[^"]*/jobs/\d[^"]*"', page.html))),
+            "jobposting_ld": sum("JobPosting" in b for b in JSONLD.findall(page.html)),
+            "rss_status": rss.status,
+            "rss_items": rss.html.count("<item>"),
+        }
     return out
 
 
-DICE_SAMPLES = ("1dde497d-8758-4eed-8aac-816bed294b63",)             # a public job id used as a fixed sample
+DICE_SAMPLES = ("1dde497d-8758-4eed-8aac-816bed294b63",)  # a public job id used as a fixed sample
 
 
 def dice(fetcher=fetch):
-    search = fetcher("https://www.dice.com/jobs?q=technical%20program%20manager&filters.workplaceTypes=Remote", timeout=25, max_bytes=3_000_000)
+    search = fetcher(
+        "https://www.dice.com/jobs?q=technical%20program%20manager&filters.workplaceTypes=Remote",
+        timeout=25,
+        max_bytes=3_000_000,
+    )
     links = sorted(set(re.findall(r'href="(https://www\.dice\.com/job-detail/[0-9a-f-]{36})', search.html)))[:3]
     out = {"search_status": search.status, "detail_links": len(links), "pages": []}
     links += [f"https://www.dice.com/job-detail/{i}" for i in DICE_SAMPLES]
@@ -65,29 +75,45 @@ def dice(fetcher=fetch):
             description = (json.loads(blocks[0]).get("description") or "") if blocks else ""
         except ValueError:
             pass
-        out["pages"].append({"status": page.status, "bytes": len(page.html), "jobposting_ld": len(blocks), "ld_description_chars": len(description),
-                             "easy_apply_marker": "easy apply" in page.html.lower(), "apply_link_marker": "applyurl" in page.html.lower(),
-                             "next_data": "__NEXT_DATA__" in page.html, "title_in_html": "<title>" in page.html.lower()})
+        out["pages"].append(
+            {
+                "status": page.status,
+                "bytes": len(page.html),
+                "jobposting_ld": len(blocks),
+                "ld_description_chars": len(description),
+                "easy_apply_marker": "easy apply" in page.html.lower(),
+                "apply_link_marker": "applyurl" in page.html.lower(),
+                "next_data": "__NEXT_DATA__" in page.html,
+                "title_in_html": "<title>" in page.html.lower(),
+            }
+        )
     return out
 
 
 def hiring(environ=os.environ):
     """Whether the runner can read the Hiring Pipeline page, and the shape of its tree (counts only)."""
-    from lifeos.jobs import hiring_pipeline                                                  # noqa: PLC0415
-    from lifeos.platform.notion_client import Client                                          # noqa: PLC0415
+    from lifeos.jobs import hiring_pipeline  # noqa: PLC0415
+    from lifeos.platform.notion_client import Client  # noqa: PLC0415
+
     page_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     if not page_id:
         return {"configured": False}
     opportunities, status = hiring_pipeline.snapshot(Client(environ), page_id)
-    return {"configured": True, "status": status, "active": sum(o.section == hiring_pipeline.ACTIVE for o in opportunities),
-            "retired": sum(o.section == hiring_pipeline.RETIRED for o in opportunities), "with_rounds": sum(bool(o.rounds) for o in opportunities),
-            "unparsed_titles": sum(not o.role for o in opportunities)}
+    return {
+        "configured": True,
+        "status": status,
+        "active": sum(o.section == hiring_pipeline.ACTIVE for o in opportunities),
+        "retired": sum(o.section == hiring_pipeline.RETIRED for o in opportunities),
+        "with_rounds": sum(bool(o.rounds) for o in opportunities),
+        "unparsed_titles": sum(not o.role for o in opportunities),
+    }
 
 
 def ledger_target(environ=os.environ):
     """Whether the configured data source passes the Job Ledger target check. Failing property names are schema, not content."""
-    from lifeos.jobs import ledger                                                           # noqa: PLC0415
-    from lifeos.platform.notion_client import Client, NotionError                             # noqa: PLC0415
+    from lifeos.jobs import ledger  # noqa: PLC0415
+    from lifeos.platform.notion_client import Client, NotionError  # noqa: PLC0415
+
     client = Client(environ)
     status = ledger.verify(client)
     out = {"status": status}
@@ -100,4 +126,10 @@ def ledger_target(environ=os.environ):
 
 
 def run(limit, live):
-    return {"open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {
+        "open_jobs": open_jobs(),
+        "teamtailor": teamtailor(),
+        "dice": dice(),
+        "hiring_pipeline": hiring(),
+        "ledger_target": ledger_target(),
+    }
