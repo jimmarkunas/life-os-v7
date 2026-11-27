@@ -1,4 +1,4 @@
-"""LIFE-687 (synthetic): Jim's weekly database is the history and the source of his lifetime Cumulative; Matt's lifetime and both history links."""
+"""(synthetic): Jim's weekly database is the history and the source of his lifetime Cumulative"""
 import unittest
 from datetime import date, datetime, timezone
 
@@ -6,7 +6,7 @@ from lifeos.megibow import classify as C, project as P, v3, weekly
 from lifeos.sources.cards import megibow as stage
 from tests.megibow import test_v3 as T
 
-SHEET = {  # Jim's 16 sheet weeks (LIFE-687): Outreach, Scheduled, Networking, Recruiter, Company
+SHEET = {
     date(2026, 7, 27): (2, 0, 0, 6, 0), date(2026, 8, 3): (5, 2, 1, 7, 0), date(2026, 8, 10): (2, 4, 1, 5, 4), date(2026, 8, 17): (4, 0, 1, 5, 4), date(2026, 8, 24): (4, 1, 5, 3, 0),
     date(2026, 8, 31): (1, 0, 0, 3, 1), date(2026, 9, 7): (1, 3, 0, 2, 1), date(2026, 9, 14): (1, 1, 2, 1, 3), date(2026, 9, 21): (0, 1, 1, 3, 1), date(2026, 9, 28): (0, 1, 0, 1, 1),
     date(2026, 10, 5): (0, 0, 1, 2, 0), date(2026, 10, 12): (0, 0, 0, 4, 0), date(2026, 10, 19): (0, 0, 0, 0, 0), date(2026, 10, 26): (0, 2, 0, 2, 0),
@@ -84,22 +84,22 @@ class History(unittest.TestCase):
         self.assertEqual(cumulative(page), LIFETIME)
         self.assertEqual(page.cells("jim")[6][-1], "111")
         self.assertEqual(page.cells("jim")[0][1:4], ["Sep 21", "Sep 28", "Oct 5"])
-        self.assertEqual([r[1] for r in page.cells("jim")[1:6]], ["0", "1", "1", "3", "1"])                      # the Sep 21 week as typed in the sheet
+        self.assertEqual([r[1] for r in page.cells("jim")[1:6]], ["0", "1", "1", "3", "1"])  # the Sep 21 week as typed in the sheet
 
     def test_a_week_that_leaves_the_eight_week_table_still_counts(self):
         later = datetime(2026, 12, 4, 14, 0, tzinfo=T.CHI)
         page = WeeklyPage(sheet_rows())
         run(page, now=later, mail=False)
-        self.assertNotIn("Sep 21", page.cells("jim")[0])                                                         # gone from the table
-        self.assertEqual(cumulative(page), LIFETIME)                                                             # but still in the lifetime total
+        self.assertNotIn("Sep 21", page.cells("jim")[0])  # gone from the table
+        self.assertEqual(cumulative(page), LIFETIME)  # but still in the lifetime total
 
     def test_a_finished_week_with_a_row_is_frozen_and_the_open_week_is_live(self):
         page = WeeklyPage(sheet_rows())
-        run(page)                                                                                                # the engine reads 1 Outreach in the Nov 2 week and 1 in the open week
+        run(page)
         t = page.cells("jim")
-        self.assertEqual((t[1][-3], t[1][-2]), ("4", "1"))                                                       # Nov 2: the sheet's 4 stays; Nov 9: live 1, not the loaded 0
-        self.assertEqual(cumulative(page)["Outreach"], 25)                                                       # 24 + the open week's live 1
-        self.assertEqual(page.created, [])                                                                       # nothing to write while the weeks are still open or already rowed
+        self.assertEqual((t[1][-3], t[1][-2]), ("4", "1"))
+        self.assertEqual(cumulative(page)["Outreach"], 25)  # 24 + the open week's live 1
+        self.assertEqual(page.created, [])
 
     def test_a_typed_override_replaces_the_number_marks_it_and_counts(self):
         page = WeeklyPage(sheet_rows({date(2026, 11, 2): {"over": {"Outreach": 9}}}))
@@ -110,15 +110,15 @@ class History(unittest.TestCase):
         self.assertIn(v3.TYPED_NOTE, page.text("jim-notes"))
 
     def test_the_engine_writes_a_finished_week_once_and_finalizes_the_open_at_load_sheet_week(self):
-        later = datetime(2026, 11, 20, 14, 0, tzinfo=T.CHI)                                                      # Friday of the week of Nov 16: Nov 9 has ended
+        later = datetime(2026, 11, 20, 14, 0, tzinfo=T.CHI)
         page = WeeklyPage(sheet_rows())
         run(page, now=later)
-        self.assertIn(("finalized", f"w{date(2026, 11, 9)}"), page.created)                                      # the Nov 9 sheet week became the engine's final counts
+        self.assertIn(("finalized", f"w{date(2026, 11, 9)}"), page.created)
         final = next(r for r in page.jim_rows if r["id"] == f"w{date(2026, 11, 9)}")
         self.assertEqual(final["properties"]["Source"]["select"]["name"], "Engine")
         before = len(page.created)
         run(page, now=later)
-        self.assertEqual(len(page.created), before)                                                              # written once, never again
+        self.assertEqual(len(page.created), before)  # written once, never again
 
     def test_a_week_with_no_row_shows_the_engine_reading_and_is_written_when_it_ends(self):
         rows = [r for r in sheet_rows() if r["properties"]["Week Start"]["date"]["start"] != "2026-11-02"]
@@ -126,7 +126,7 @@ class History(unittest.TestCase):
         run(page, now=T.NOW)
         self.assertEqual(page.created, [date(2026, 11, 2)])
         self.assertEqual(page.jim_rows[-1]["properties"]["Source"]["select"]["name"], "Engine")
-        self.assertEqual(page.cells("jim")[1][-3], "1")                                                          # the engine's own reading for that week, until frozen
+        self.assertEqual(page.cells("jim")[1][-3], "1")
 
     def test_an_unreadable_weekly_database_keeps_the_last_table_and_says_degraded(self):
         page = WeeklyPage(sheet_rows(), schema_ok=False)
@@ -182,7 +182,7 @@ class Matt(unittest.TestCase):
         page = T.Page([T.row(old, 5, 1, 0, 2, 0), T.row(T.WEEKS[3], 1, 0, 0, 0, 0)])
         out = T.matt(page)
         self.assertEqual(out["status"], "OK")
-        self.assertEqual(page.cells("matt")[1][-1], "6")                                                         # Outreach 5 (not in the table) + 1
+        self.assertEqual(page.cells("matt")[1][-1], "6")  # Outreach 5 (not in the table) + 1
         self.assertEqual(page.cells("matt")[6][-1], "9")
 
 

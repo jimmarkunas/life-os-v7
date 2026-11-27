@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Router:
-    """Fake network: token endpoint + Graph pages. Records every request."""
+    """Fake network: token endpoint + Graph pages."""
 
     def __init__(self, pages=(), rotate=False, fail=None):
         self.pages, self.rotate, self.fail, self.seen = list(pages), rotate, fail or {}, []
@@ -128,7 +128,7 @@ class WriteTests(unittest.TestCase):
         self.assertIn("Mail.Read ", sent[0]["scope"] + " ")
         self.assertNotIn("Mail.ReadWrite", sent[0]["scope"])
         self.assertIn("Mail.ReadWrite", sent[1]["scope"])
-        self.assertNotIn("scope", sent[2])                                       # a refresh keeps whatever the sign-in was granted
+        self.assertNotIn("scope", sent[2])  # a refresh keeps whatever the sign-in was granted
 
     def test_folder_lookup_create_and_a_move_that_is_read_back(self):
         calls = []
@@ -154,7 +154,7 @@ class WriteTests(unittest.TestCase):
             self.assertEqual(client.folder_id("J Newsletters", create=True), "F1")
             self.assertTrue(client.move("AAMk/+=id", "F1"))
         self.assertEqual([c[0] for c in calls if "oauth2" not in c[1]], ["GET", "GET", "POST", "POST", "GET"])
-        self.assertIn("AAMk%2F%2B%3Did", calls[-2][1])                          # ids are URL-quoted
+        self.assertIn("AAMk%2F%2B%3Did", calls[-2][1])  # ids are URL-quoted
         self.assertEqual(json.loads(calls[-2][2]), {"destinationId": "F1"})
 
     def test_nothing_in_the_adapter_deletes_or_sends(self):
@@ -231,16 +231,16 @@ class StageTests(unittest.TestCase):
     def test_a_second_mailbox_cannot_silently_replace_the_first_and_one_mailbox_cannot_hold_two_labels(self):
         db = FakeDb()
         self.sign_in(db, "SECRET-REFRESH")
-        with self.assertRaises(OutlookError) as error:                       # same label, different mailbox
+        with self.assertRaises(OutlookError) as error:  # same label, different mailbox
             self.sign_in(db, "OTHER")
         self.assertEqual(str(error.exception), "OUTLOOK_LABEL_HOLDS_A_DIFFERENT_MAILBOX")
         self.assertEqual(db.rows["personal"][0], "SECRET-REFRESH")
-        with self.assertRaises(OutlookError) as error:                       # same mailbox, different label
+        with self.assertRaises(OutlookError) as error:  # same mailbox, different label
             self.sign_in(db, "SECRET-REFRESH", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})
         self.assertEqual(str(error.exception), "OUTLOOK_MAILBOX_ALREADY_SIGNED_IN_AS_OTHER_LABEL")
-        self.sign_in(db, "OTHER", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})   # a different mailbox on a free label
+        self.sign_in(db, "OTHER", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})  # a different mailbox on a free label
         self.assertEqual(sorted(db.rows), ["personal", "work"])
-        self.sign_in(db, "OTHER", replace=True, env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})   # same mailbox again is fine
+        self.sign_in(db, "OTHER", replace=True, env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})  # same mailbox again is fine
 
     def test_an_unfingerprinted_legacy_row_may_be_replaced_and_a_rotated_token_keeps_the_fingerprint(self):
         db = FakeDb({"personal": ["OLD", None]})
@@ -283,13 +283,13 @@ class WorkflowTests(unittest.TestCase):
     text = (ROOT / ".github/workflows/outlook.yml").read_text()
 
     def test_the_sign_in_code_is_visible_while_the_run_waits(self):
-        self.assertIn("python -u -m lifeos.run outlook-auth", self.text)         # unbuffered: the code must not wait for process exit
+        self.assertIn("python -u -m lifeos.run outlook-auth", self.text)
         self.assertIn("print(line, flush=True)", (ROOT / "lifeos/outlook/stage.py").read_text())
 
     def test_manual_only_and_only_the_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
         direct = set(re.findall(r"secrets\.(\w+)", self.text)) - {"LIFEOS_BWS_RUNTIME_TOKEN", "DOPPLER_TOKEN"}
-        self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),              # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
+        self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", self.text))),
                          sorted(["OUTLOOK_CLIENT_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
 

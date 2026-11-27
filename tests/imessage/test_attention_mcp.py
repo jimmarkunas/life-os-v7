@@ -16,7 +16,9 @@ H, D = timedelta(hours=1), timedelta(days=1)
 
 
 def db(rows):
-    """A synthetic Messages database: (age, is_from_me, is_read, item_type) per row, each carrying content and identities the tool must never surface."""
+    """A synthetic Messages database: (age, is_from_me, is_read, item_type) per row, each carrying content and identities
+    the tool must never surface.
+    """
     path = os.path.join(tempfile.mkdtemp(), "chat.db")
     con = sqlite3.connect(path)
     con.execute("CREATE TABLE message (ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, handle_id INTEGER, date INTEGER, is_from_me INTEGER, is_read INTEGER, item_type INTEGER)")
@@ -41,9 +43,9 @@ class Snapshot(unittest.TestCase):
     def observe(self, path):
         out = m.snapshot(path, NOW)
         self.assertEqual(set(out), KEYS)
-        self.assertIsNone(out["count"])                                   # never a count, never zero
+        self.assertIsNone(out["count"])  # never a count, never zero
         self.assertIs(out["count_reliable"], False)
-        self.assertEqual(out["sync"], "UNVERIFIED")                       # a readable database never proves iCloud sync
+        self.assertEqual(out["sync"], "UNVERIFIED")  # a readable database never proves iCloud sync
         self.assertNotEqual(out["attention"], "CLEAR")
         self.assertEqual((out["channel"], out["source"], out["observed_at"]), ("imessage", "Apple Messages / Mac Mini", "2026-10-14T15:00:00Z"))
         for secret in (SECRET_TEXT, SECRET_HANDLE, SECRET_GUID, "1", path):

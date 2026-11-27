@@ -1,4 +1,4 @@
-"""LIFE-933 (synthetic): the Weekly Reports Archive writer against an in-memory Notion. No network, no real page."""
+"""(synthetic): the Weekly Reports Archive writer against an in-memory Notion."""
 import itertools
 import os
 import unittest
@@ -16,7 +16,7 @@ PAGES = ("page", "child_page")
 
 
 class Notion:
-    """Blocks and pages in one dict. Reads are by ID; the only writes allowed are the ones the archive may make."""
+    """Blocks and pages in one dict."""
     def __init__(self):
         self.blocks, self.ids, self.writes, self.full_width = {}, itertools.count(1), [], []
         self.add(ARCHIVE, "page", None, title="Weekly Reports Archive")
@@ -85,7 +85,7 @@ class Notion:
         if method == "PATCH" and path.endswith("/children"):
             parent = path.split("/blocks/")[1].split("/children")[0]
             return {"results": [{"id": self.make(node, parent)} for node in body["children"]]}
-        if method == "POST" and path == "/pages":                         # D16.1: only a page made from the Full Width template is full width; the template lands with one empty paragraph and takes no children
+        if method == "POST" and path == "/pages":
             assert body["parent"]["page_id"] in self.blocks
             assert body.get("template") == {"type": "template_id", "template_id": "e" * 32} and "children" not in body, "page not created from the Full Width template"
             title = "".join(p["text"]["content"] for p in body["properties"]["title"]["title"])
@@ -100,7 +100,9 @@ class Notion:
 
 
 def report(n, with_notes=None):
-    """A Daily Report page: two columns, a callout with bullets, a table, a linked database view, and optionally a Notes callout. -> the Notes callout id."""
+    """A Daily Report page: two columns, a callout with bullets, a table, a linked database view, and optionally a Notes
+    callout.
+    """
     cols = n.add(n.new(), "column_list", REPORT, {})
     left, right = n.add(n.new(), "column", cols, {}), n.add(n.new(), "column", cols, {})
     n.add(CARD, "callout", left, {"rich_text": rich_text("Command Center")})
@@ -139,11 +141,11 @@ class DailySnapshot(unittest.TestCase):
         week = n.live_kids(ARCHIVE)[0]
         self.assertEqual(titles(n, week), ["Daily LIFE OS Report — Nov 24, 2026"])
         snap = n.live_kids(week)[-1]
-        self.assertNotIn("child_database", [n.blocks[k]["type"] for k in n.live_kids(snap)])               # no live view is copied
+        self.assertNotIn("child_database", [n.blocks[k]["type"] for k in n.live_kids(snap)])  # no live view is copied
         self.assertTrue(wa._complete(n, snap))
         text = " ".join(t for _, _, t in wa.digest(wa.read_tree(n, snap)))
         for want in ("10:00 AM Standup", "Codex | 2%", "Command Center", "Frozen from the Nov 24, 2026 V7 Daily Report taken at 6:05 PM CT"):
-            self.assertIn(want, text)                                                                        # columns are flattened in order
+            self.assertIn(want, text)  # columns are flattened in order
 
     def test_a_rerun_the_same_day_is_a_no_op_and_before_six_pm_nothing_is_written(self):
         n = Notion()
@@ -163,8 +165,8 @@ class DailySnapshot(unittest.TestCase):
         self.assertEqual(wa.run(0, False, ENV, n, TUE_6PM)["snapshot"], "would_create_week")
         self.assertEqual(n.writes, [])
         wa.run(0, True, ENV, n, TUE_6PM)
-        wa.run(0, True, ENV, n, TUE_6PM.replace(day=25))                                                     # Wednesday, same week
-        wa.run(0, True, ENV, n, datetime(2026, 11, 30, 18, 1, tzinfo=CT))                                    # Monday, the next week
+        wa.run(0, True, ENV, n, TUE_6PM.replace(day=25))  # Wednesday, same week
+        wa.run(0, True, ENV, n, datetime(2026, 11, 30, 18, 1, tzinfo=CT))  # Monday, the next week
         self.assertEqual(set(titles(n, ARCHIVE)), {"Weekly Reports — Week Ending Nov 29, 2026", "Weekly Reports — Week Ending Dec 6, 2026"})
         week = [k for k in n.live_kids(ARCHIVE) if n.blocks[k]["title"].endswith("Nov 29, 2026")][0]
         self.assertEqual(sorted(titles(n, week)), ["Daily LIFE OS Report — Nov 24, 2026", "Daily LIFE OS Report — Nov 25, 2026"])
@@ -175,7 +177,7 @@ class DailySnapshot(unittest.TestCase):
         wa.run(0, True, ENV, n, TUE_6PM)
         week = n.live_kids(ARCHIVE)[0]
         snap = n.live_kids(week)[-1]
-        n.blocks[n.live_kids(snap)[-1]]["archived"] = True                                                   # lose the completion marker: an interrupted write
+        n.blocks[n.live_kids(snap)[-1]]["archived"] = True  # lose the completion marker: an interrupted write
         self.assertEqual(wa.run(0, True, ENV, n, TUE_6PM)["snapshot"], "created")
         self.assertTrue(n.blocks[snap].get("archived"))
         n.add(n.new(), "child_page", week, {}, title="Daily LIFE OS Report — Nov 24, 2026")
@@ -193,21 +195,21 @@ class FullWidthAndFailClosed(unittest.TestCase):
     def test_every_page_it_creates_comes_from_the_full_width_template_and_the_filler_is_gone(self):
         n = Notion()
         report(n)
-        wa.run(0, True, ENV, n, TUE_6PM)                                       # the fake refuses a page created without the template or with children in the create request
+        wa.run(0, True, ENV, n, TUE_6PM)
         week = n.live_kids(ARCHIVE)[0]
         snap = n.live_kids(week)[-1]
         self.assertEqual(n.full_width, [week, snap])
         for page in (week, snap):
             first = n.blocks[n.live_kids(page)[0]]
-            self.assertNotEqual((first["type"], first["paragraph"]["rich_text"] if first["type"] == "paragraph" else None), ("paragraph", []))   # the template's empty paragraph is not left on top
+            self.assertNotEqual((first["type"], first["paragraph"]["rich_text"] if first["type"] == "paragraph" else None), ("paragraph", []))  # the template's empty paragraph is not left on top
 
     def test_an_empty_body_fails_closed_and_makes_no_page(self):
         n = Notion()
-        n.add(CARD, "child_database", REPORT, {"title": "Command Center"})                              # a report whose only content is a live view: nothing static to copy
+        n.add(CARD, "child_database", REPORT, {"title": "Command Center"})
         with self.assertRaises(wa.ArchiveError) as caught:
             wa.run(0, True, ENV, n, TUE_6PM)
         self.assertEqual(str(caught.exception), "ARCHIVE_EMPTY_SNAPSHOT")
-        self.assertEqual([t for t in titles(n, n.live_kids(ARCHIVE)[0]) if t.startswith("Daily")], [])     # the week page exists, no daily page was made
+        self.assertEqual([t for t in titles(n, n.live_kids(ARCHIVE)[0]) if t.startswith("Daily")], [])  # the week page exists, no daily page was made
 
     def test_a_missing_template_makes_no_page_at_all(self):
         n = Notion()
@@ -243,7 +245,7 @@ class NotesFreezeAndMondayReset(unittest.TestCase):
         self.assertEqual(wa.run(0, True, ENV, n, self.SUN_6PM)["weekly_notes"], "created")
         self.assertEqual(wa.run(0, True, ENV, n, self.SUN_6PM.replace(hour=20))["weekly_notes"], "exists")
         self.assertEqual(wa.run(0, True, ENV, n, self.MON_8AM)["reset"], "reset")
-        self.assertEqual([t for _, _, t in wa.digest(wa.freeze(n, box, []))], [""])                           # live Notes now one empty paragraph
+        self.assertEqual([t for _, _, t in wa.digest(wa.freeze(n, box, []))], [""])  # live Notes now one empty paragraph
         self.assertEqual(wa.run(0, True, ENV, n, self.MON_8AM.replace(hour=9))["reset"], "already_empty")
 
     def test_a_missing_or_different_or_duplicate_snapshot_keeps_the_live_notes(self):
@@ -251,16 +253,16 @@ class NotesFreezeAndMondayReset(unittest.TestCase):
         box = report(n, with_notes=["call Smith"])
         self.assertEqual(wa.run(0, True, ENV, n, self.MON_8AM)["reset"], "kept_no_week_page")
         wa.run(0, True, ENV, n, self.SUN_6PM)
-        n.text(box, "paragraph", "added after the snapshot")                                                   # the live Notes no longer equal the snapshot
+        n.text(box, "paragraph", "added after the snapshot")
         self.assertEqual(wa.run(0, True, ENV, n, self.MON_8AM)["reset"], "kept_mismatch")
         self.assertEqual(wa.run(0, False, ENV, n, self.MON_8AM)["reset"], "kept_mismatch")
         week = n.live_kids(ARCHIVE)[0]
         n.add(n.new(), "child_page", week, {}, title="Weekly Notes — Week Ending Nov 29, 2026")
         self.assertEqual(wa.run(0, True, ENV, n, self.MON_8AM)["reset"], "kept_duplicate_snapshot")
-        self.assertEqual(len(n.live_kids(box)), 2)                                                           # nothing was removed
+        self.assertEqual(len(n.live_kids(box)), 2)  # nothing was removed
 
 class ArchivePageText(unittest.TestCase):
-    """LIFE-954: the writer lists only the archive page's child pages; no heading or paragraph on it is read."""
+    """the writer lists only the archive page's child pages"""
     def test_the_same_snapshots_are_made_with_the_old_sections_or_the_trimmed_page(self):
         outs = []
         for lines in (("Archive Model", "Production Owner", "Production Status", "Gap: No snapshots Sep 14 to Nov 22, 2026"),
@@ -272,11 +274,11 @@ class ArchivePageText(unittest.TestCase):
             report(n)
             out = wa.run(0, True, ENV, n, TUE_6PM)
             outs.append((out["snapshot"], titles(n, ARCHIVE)[-1]))
-            self.assertIn("Weekly Reports - Week Ending Sep 13, 2026", titles(n, ARCHIVE))      # the old week page stays listed, untouched
+            self.assertIn("Weekly Reports - Week Ending Sep 13, 2026", titles(n, ARCHIVE))  # the old week page stays listed, untouched
         self.assertEqual(len(set(outs)), 1)
 
     def test_the_archive_is_found_by_its_page_id_wherever_its_parent_is(self):
-        """LIFE-944: moving the archive under the Reports & Archives hub changes nothing; the id alone finds it, and the week pages stay listed."""
+        """moving the archive under the Reports & Archives hub changes nothing"""
         outs = []
         for hub in (False, True):
             n = Notion()
@@ -287,7 +289,7 @@ class ArchivePageText(unittest.TestCase):
                 n.blocks[hub_id]["kids"].append(ARCHIVE)
             report(n)
             out = wa.run(0, True, ENV, n, TUE_6PM)
-            self.assertEqual(wa.run(0, True, ENV, n, TUE_6PM)["snapshot"], "exists")            # a second run does not duplicate
+            self.assertEqual(wa.run(0, True, ENV, n, TUE_6PM)["snapshot"], "exists")  # a second run does not duplicate
             outs.append((out["snapshot"], sorted(titles(n, ARCHIVE))))
             self.assertEqual((out["archive"]["root"], out["archive"]["archived"], out["archive"]["weeks"]), ("readable", False, ["Weekly Reports - Week Ending Sep 13, 2026"]))
         self.assertEqual(outs[0], outs[1])

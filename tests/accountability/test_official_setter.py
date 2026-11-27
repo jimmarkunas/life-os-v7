@@ -1,4 +1,4 @@
-"""LIFE-976: the V2_OFFICIAL setter writes one allowed row, refuses every other name, reads back, and is idempotent. Synthetic rows only; no network."""
+"""the V2_OFFICIAL setter writes one allowed row, refuses every other name, reads back, and is idempotent."""
 import io
 import unittest
 from contextlib import redirect_stdout
@@ -122,4 +122,4 @@ class WithPromotion(unittest.TestCase):
     def test_boundary_is_chicago_not_utc(self):
         just_before_utc = datetime(2027, 1, 1, 7, 59, tzinfo=ZoneInfo("America/Chicago"))
         self.assertEqual(self.run_check(just_before_utc)[0]["status"], "not_due")
-        self.assertEqual(self.run_check(datetime(2027, 1, 1, 14, 0, tzinfo=ZoneInfo("UTC")))[0]["status"], "promoted")   # 8:00 AM CT
+        self.assertEqual(self.run_check(datetime(2027, 1, 1, 14, 0, tzinfo=ZoneInfo("UTC")))[0]["status"], "promoted")  # 8:00 AM CT

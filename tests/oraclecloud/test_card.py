@@ -11,7 +11,7 @@ from lifeos.platform import notion_client, report_region
 from tests.imessage.support import RUNNER, OTHER, v2, whois
 from tests.oraclecloud.support import SystemPage, plain_row
 
-NOW = dt.datetime(2026, 10, 15, 13, 5, 0, tzinfo=dt.timezone.utc)                # 8:05 AM in Chicago
+NOW = dt.datetime(2026, 10, 15, 13, 5, 0, tzinfo=dt.timezone.utc)  # 8:05 AM in Chicago
 SVC = {"gateway": True, "telegram": True, "whatsapp": True, "alerts": True}
 
 
@@ -22,7 +22,7 @@ def stats(**over):
 
 
 class Validate(unittest.TestCase):
-    """The Oracle contract is unchanged by LIFE-975: a reply is used whole or not at all."""
+    """The Oracle contract is unchanged by: a reply is used whole or not at all."""
 
     def test_a_good_reply_is_used_and_the_optional_readings_are_kept(self):
         r = card.validate(json.dumps({**stats(), "workers": {"count": 6, "agents": 5}, "backups": {"used": 5, "available": 0}}), NOW)
@@ -80,13 +80,13 @@ class Place(unittest.TestCase):
         heading, _, rows = card.locate(page, "jira")
         want = self.table()
         result = card.write(page, heading, rows, want, "System (11/25 · 9:00 AM CT)", True)
-        self.assertEqual((result["rows_written"], result["heading_written"]), (16, True))                  # the header and the rows that already match are not touched
+        self.assertEqual((result["rows_written"], result["heading_written"]), (16, True))
         self.assertEqual(page.plain("sys-h"), "System (11/25 · 9:00 AM CT)")
         self.assertEqual(page.row_text()[1][2], "9%")
         again_heading, _, again_rows = card.locate(page, "jira")
         mark = len(page.patches)
         self.assertEqual(card.write(page, again_heading, again_rows, want, "System (11/25 · 9:00 AM CT)", True)["rows_written"], 0)
-        self.assertEqual(len(page.patches), mark)                                                            # an unchanged table writes nothing
+        self.assertEqual(len(page.patches), mark)  # an unchanged table writes nothing
         changed = self.table(memory="10%")
         card.write(page, again_heading, again_rows, changed, "System (11/25 · 9:00 AM CT)", True)
         self.assertEqual([p[0] for p in page.patches[mark:]], [f"sys-r{i}" for i in range(1, 17)])
@@ -116,7 +116,7 @@ class Place(unittest.TestCase):
             scoped.call_once("PATCH", "/blocks/jira", {"callout": {"rich_text": []}})
         self.assertEqual(str(error.exception), "WRITE_OUT_OF_SCOPE")
         self.assertEqual(page.patches, [])
-        card.write(scoped, heading, rows, self.table(), "System (11/25 · 9:00 AM CT)", True)                  # the heading and the rows themselves are allowed
+        card.write(scoped, heading, rows, self.table(), "System (11/25 · 9:00 AM CT)", True)  # the heading and the rows themselves are allowed
 
 
 class Endpoint(unittest.TestCase):

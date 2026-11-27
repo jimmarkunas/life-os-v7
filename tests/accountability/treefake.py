@@ -1,4 +1,6 @@
-"""A fake Notion for the LIFE-918 block writers (synthetic): nested block creation (children inline, tables with rows), `after` placement and has_children, as the API gives them."""
+"""A fake Notion for the block writers (synthetic): nested block creation (children inline, tables with rows), `after`
+placement and has_children, as.
+"""
 from tests.accountability import fakes as F
 
 

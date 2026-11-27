@@ -1,6 +1,6 @@
-"""A synthetic Daily Report holding the Jira card (in a column, so the page is found by climbing) and the System callout (heading, one 5-column table of the header and sixteen rows) at the top
-level, plus the System health database. GET block, GET children, PATCH a block's rich text or a table row's cells, POST a data-source query and PATCH a page; anything else is a test failure.
-Invented ids only."""
+"""A synthetic Daily Report holding the Jira card (in a column, so the page is found by climbing) and the System callout
+(heading, one 5-column table of.
+"""
 from copy import deepcopy
 
 from lifeos.oraclecloud import system_table as st
@@ -24,7 +24,7 @@ def plain_row(label, usage="██████████", reading="1%", reset
 class SystemPage:
     def __init__(self, heading="System (11/24 · 11:01 PM CT)", rows=None, extra_callout=False, table_rows=17):
         self.blocks, self.kids, self.patches, self.log = {}, {}, [], []
-        self.pages = {}                                                 # System health rows: page id -> properties
+        self.pages = {}  # System health rows: page id -> properties
         self.add("col", "column", {"type": "block_id", "block_id": "cl"})
         self.add("cl", "column_list", {"type": "page_id", "page_id": PAGE})
         self.kids["cl"] = ["col"]

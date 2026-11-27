@@ -1,4 +1,4 @@
-"""D118: the Amazon card renders canonical order rows into the one 'Amazon Orders' callout."""
+"""the Amazon card renders canonical order rows into the one 'Amazon Orders' callout."""
 import copy
 import inspect
 import pathlib
@@ -49,7 +49,7 @@ def texts(blocks):
 
 
 class ReturnRenderTests(unittest.TestCase):
-    """LIFE-124: returning orders and refunds are their own sections; refunds leave after the same 7 days as Delivered."""
+    """returning orders and refunds are their own sections"""
     def test_returning_and_refunded_sections_and_their_fall_off(self):
         rows = [order(1, "RETURNING", "2026-10-03T15:00:00+00:00", summary="Phone case"), order(2, "REFUNDED", "2026-10-03T17:00:00+00:00", summary="Screen protector"),
                 order(3, "REFUNDED", "2026-09-26T18:00:00+00:00", summary="Old refund"), order(4, "RETURNING", "2026-06-08T10:00:00+00:00", summary="Old return")]
@@ -69,7 +69,9 @@ class ReturnRenderTests(unittest.TestCase):
         self.assertIn("REFUNDED", text)
 
     def test_the_filter_never_nests_deeper_than_notion_allows(self):
-        """Notion accepts a compound filter inside a compound filter, and no deeper: three levels is a 400 and the card never redraws (LIFE-124 regression)."""
+        """Notion accepts a compound filter inside a compound filter, and no deeper: three levels is a 400 and the card
+        never redraws.
+        """
         def depth(node):
             kids = [v for key in ("or", "and") for v in node.get(key, [])]
             return 1 + max((depth(k) for k in kids), default=0) if kids else 0
@@ -85,8 +87,8 @@ class RenderTests(unittest.TestCase):
         self.assertTrue(any(t.startswith("USB cable · Ordered") for t in text))
         self.assertTrue(any(t.startswith("Garden hose · Shipped") for t in text))
         self.assertTrue(any(t.startswith("2 Device Accessories items · Delivered") for t in text))
-        self.assertFalse(any("Old office item" in t for t in text))                           # delivered 8 days ago is outside the 7-day window
-        self.assertFalse(any("June order" in t for t in text))                                # an open order untouched for four months is counted, never listed
+        self.assertFalse(any("Old office item" in t for t in text))  # delivered 8 days ago is outside the 7-day window
+        self.assertFalse(any("June order" in t for t in text))
         self.assertEqual((counts["in_transit"], counts["delivered"], counts["review"], counts["older_open"], counts["status"]), (2, 1, 1, 1, "fresh"))
 
     def test_the_item_links_to_its_amazon_order_and_a_missing_total_is_said_not_zero(self):
@@ -97,10 +99,10 @@ class RenderTests(unittest.TestCase):
         self.assertIn("amount unknown", texts([bullet])[0])
         self.assertNotIn("$0", texts([bullet])[0])
 
-    def test_the_heading_carries_the_stamp_and_the_degraded_line_never_says_updated(self):          # LIFE-609
+    def test_the_heading_carries_the_stamp_and_the_degraded_line_never_says_updated(self):
         self.assertEqual(card.heading_text(NOW), "Amazon Orders (10/4 · 1:30 PM CT)")
         self.assertEqual(card.heading_text(NOW, degraded=True), "Amazon Orders (DEGRADED at 10/4 · 1:30 PM CT)")
-        self.assertNotIn("Updated", texts(card.render(ROWS, NOW)[0])[0])                          # the time is in the heading only, never repeated in the first line
+        self.assertNotIn("Updated", texts(card.render(ROWS, NOW)[0])[0])
         blocks, counts = card.render(ROWS, NOW, degraded=True)
         self.assertTrue(texts(blocks)[0].startswith("Amazon sync failed · showing last accepted orders · "))
         self.assertNotIn("Updated", texts(blocks)[0])
@@ -150,14 +152,14 @@ class RunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout")}
         notion, counts = self.run_card(notion)
         kids = notion.children["amazon-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders (10/4 · 1:30 PM CT)")                  # LIFE-609: the stamp is in the heading
+        self.assertEqual(report_region.plain(kids[0]), "Amazon Orders (10/4 · 1:30 PM CT)")  # the stamp is in the heading
         self.assertEqual(kids[0]["id"], "heading-amazon-callout")
         self.assertTrue(report_region.plain(kids[1]).startswith("2 in transit"))
-        self.assertEqual(kids[-1]["id"], "amazon-table-old")                                    # a non-text block is never removed
+        self.assertEqual(kids[-1]["id"], "amazon-table-old")  # a non-text block is never removed
         self.assertNotIn("last accepted order state retained", "\n".join(texts(kids)))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual(counts["blocks_written"], len(kids) - 2)
-        self.assertEqual(kids[1]["id"], "amazon-status-old")                                   # the old line is rewritten in place, never shown beside the new one
+        self.assertEqual(kids[1]["id"], "amazon-status-old")
         self.assertEqual([m for m, _ in notion.log if m == "DELETE"], [])
         self.assertLess([m for m, _ in notion.log].index("PATCH"), [m for m, _ in notion.log].index("APPEND"))
 
@@ -193,7 +195,7 @@ class RunTests(unittest.TestCase):
 
     def test_an_unreadable_or_malformed_order_list_fails_closed_and_leaves_the_callout_alone(self):
         broken = Reader(ROWS)
-        del broken.pages[0]["properties"]["Needs Review"]                                      # a row missing a column this card needs
+        del broken.pages[0]["properties"]["Needs Review"]  # a row missing a column this card needs
         for reader in (Reader(ROWS, fail=True), broken):
             notion = AmazonRegions()
             before = copy.deepcopy(notion.children["amazon-callout"])
@@ -212,16 +214,14 @@ class RunTests(unittest.TestCase):
             self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
 
     def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-586: the other cards' regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
-        for op in ("PATCH", "APPEND"):                                                          # the in-place rewrite, then the extra lines
+        for op in ("PATCH", "APPEND"):  # the in-place rewrite, then the extra lines
             for region in ("calendar-callout", "jira-callout", "bills-callout"):
                 notion = AmazonRegions(change_on=op, change_region=region)
                 counts = card.run(0, True, environ=ENV, reader=Reader(ROWS), client=notion, now=NOW)
                 self.assertGreater(counts["blocks_written"], 0, (op, region))
 
     def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
-        """LIFE-586 mutation proof. A card whose writer aims at a block of another card (here Jira's callout) must still fail, and the other card's block must be untouched. On the
-        old code the write went through and was only noticed afterwards (PROTECTED_REGION_CHANGED), so this assertion on the untouched block fails there."""
+        """mutation proof."""
         notion = AmazonRegions()
         foreign = notion.children["jira-callout"][0]["id"]
         before = notion.full_tree("jira-callout")
@@ -230,7 +230,7 @@ class RunTests(unittest.TestCase):
             try:
                 client.call("PATCH", f"/blocks/{foreign}", {"heading_2": {"rich_text": [{"type": "text", "text": {"content": "overwritten"}}]}})
             finally:
-                intact()                                                                         # what every real writer does after each write (the old after-the-fact comparison)
+                intact()
             return 0
 
         with mock.patch.object(report_region, "_write_in_place", buggy_writer):
@@ -239,8 +239,8 @@ class RunTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "AMAZON_WRITE_OUT_OF_SCOPE")
         self.assertEqual(notion.full_tree("jira-callout"), before)
         writes = [p for m, p in notion.log if m in ("PATCH", "APPEND", "DELETE")]
-        self.assertEqual(writes, ["/blocks/heading-amazon-callout", "/blocks/heading-amazon-callout"])          # LIFE-609: only the card's own heading was written before the writer was refused; LIFE-722: and it was put back (the stamp, then the old stamp)
-        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders")           # the failed card does not claim to be current
+        self.assertEqual(writes, ["/blocks/heading-amazon-callout", "/blocks/heading-amazon-callout"])
+        self.assertEqual(report_region.plain(notion.children["amazon-callout"][0]), "Amazon Orders")  # the failed card does not claim to be current
 
 
 class OwnershipTests(unittest.TestCase):

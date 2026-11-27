@@ -118,9 +118,9 @@ class AgendaCardTests(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         self.assertTrue(lines[0].startswith("Next · 6:30 PM–9:00 PM — 🍕 Pizza night") and "365 W Dundee Rd" in lines[0])
         self.assertEqual((counts["events"], counts["merged"]), (2, 1))
-        self.assertEqual(json.dumps(saved, sort_keys=True), before)                           # display only: the stored snapshot is untouched
+        self.assertEqual(json.dumps(saved, sort_keys=True), before)  # display only: the stored snapshot is untouched
         swapped, _ = card.render(saved_snapshot([compacted(mine), compacted(gmail)]), now=NOW)
-        self.assertEqual(sorted(plain(b) for b in blocks), sorted(plain(b) for b in swapped))      # the order the two arrive in does not matter
+        self.assertEqual(sorted(plain(b) for b in blocks), sorted(plain(b) for b in swapped))  # the order the two arrive in does not matter
 
     def test_a_meeting_link_outranks_a_longer_location_and_title_case_and_spacing_do_not_matter(self):
         long_place = timed("a", "Team  Sync", location="A very long location name that has no meeting link at all")
@@ -153,15 +153,15 @@ class AgendaCardTests(unittest.TestCase):
         saved = saved_snapshot([event])
         heading = card._heading_text(saved, False)
         self.assertRegex(heading, r"^Calendar \(\d{1,2}/\d{1,2} · \d{1,2}:\d{2} (AM|PM) CT\)$")
-        self.assertNotRegex(heading, r"\b(1[3-9]|2[0-3]):\d{2}\b")                          # never 24-hour time
+        self.assertNotRegex(heading, r"\b(1[3-9]|2[0-3]):\d{2}\b")  # never 24-hour time
         blocks, _ = card.render(saved, now=NOW)
         self.assertFalse(any(plain(b).startswith("Updated") for b in blocks))
         notion = AgendaRegions()
-        notion.children["calendar-callout"][1] = notion._paragraph("Updated 12:14 CT")        # last hour's separate status line
+        notion.children["calendar-callout"][1] = notion._paragraph("Updated 12:14 CT")  # last hour's separate status line
         card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved))
         kids = notion.children["calendar-callout"]
         self.assertEqual(plain(kids[0]), heading)
-        self.assertEqual(kids[0]["id"], "heading-calendar-callout")                             # the same heading block, edited in place
+        self.assertEqual(kids[0]["id"], "heading-calendar-callout")  # the same heading block, edited in place
         self.assertFalse(any(plain(b).startswith("Updated") for b in kids[1:]))
         self.assertEqual(plain(kids[1]), "Today")
         # the next hour finds the combined heading and still owns the card
@@ -169,13 +169,15 @@ class AgendaCardTests(unittest.TestCase):
         self.assertEqual(plain(notion.children["calendar-callout"][0]), heading)
 
     def test_stale_never_claims_content_V7_did_not_write(self):
-        notion = AgendaRegions()                                                              # the heading is still plain "Calendar": ChatGPT's card
+        notion = AgendaRegions()
         with self.assertRaises(card.CardError) as caught:
             card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved_snapshot([], NOW.replace(hour=4))))
         self.assertEqual(str(caught.exception), "AGENDA_CARD_STALE_NO_BASELINE")
 
     def test_the_card_is_owned_under_the_new_heading_and_under_the_older_ones(self):
-        """LIFE-679: V7 keeps its card across the deploy: the new `Calendar (11/13 · 1:18 PM CT)`, the dated `Updated` heading and the time-only one."""
+        """V7 keeps its card across the deploy: the new `Calendar (11/13 · 1:18 PM CT)`, the dated `Updated` heading and
+        the time-only one.
+        """
         for text in ("Calendar", "Calendar (11/13 · 1:18 PM CT)", "Calendar (Updated Nov 13 · 1:18 PM CT)", "Calendar (Updated 1:18 PM CT)", "Calendar (STALE · last accepted 11/13 · 1:18 PM CT)"):
             self.assertTrue(card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text)
 
@@ -230,15 +232,13 @@ class AgendaCardTests(unittest.TestCase):
         self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log))
 
     def test_a_jira_card_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-613: the Jira region is no longer compared before and after our write, so a legitimate write by the Jira card at the same time cannot fail this one."""
         database = AgendaSnapshotDB(saved_snapshot([]))
         notion = AgendaRegions(change_jira_on="APPEND")
         counts = card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
         self.assertGreater(counts["blocks_written"], 0)
 
     def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
-        """LIFE-613 mutation proof. A writer aimed at a block of another card (Jira's callout) must fail with the fixed code and leave that block untouched. On the old code the write went through
-        and was only noticed afterwards (AGENDA_PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        """mutation proof."""
         database = AgendaSnapshotDB(saved_snapshot([]))
         notion = AgendaRegions()
         foreign = notion.children["jira-callout"][0]["id"]
@@ -263,7 +263,7 @@ class AgendaCardTests(unittest.TestCase):
         saved = saved_snapshot([], NOW.replace(hour=4))
         database = AgendaSnapshotDB(saved)
         notion = AgendaRegions()
-        notion.children["calendar-callout"][0]["heading_3"]["rich_text"] = [{"plain_text": "Calendar (Updated 4:00 AM CT)"}]    # V7 wrote it before
+        notion.children["calendar-callout"][0]["heading_3"]["rich_text"] = [{"plain_text": "Calendar (Updated 4:00 AM CT)"}]  # V7 wrote it before
         notion.children["calendar-callout"].append(notion._paragraph("Example previous event"))
         counts = card.run(1, True, environ=self._env(), client=notion,
                           now=NOW, connect=lambda: database)
@@ -295,7 +295,7 @@ class RealCalendarShapeTests(unittest.TestCase):
 
 
 class HyphenatedIdTests(unittest.TestCase):
-    """The API returns ids with hyphens; the secret (copied from a block link) has none. The card must still find its block."""
+    """The API returns ids with hyphens"""
 
     HYPHENATED = "fc809376-99e6-45a2-ac96-257d093d8e7c"
     PLAIN = "fc80937699e645a2ac96257d093d8e7c"
@@ -332,7 +332,7 @@ def event_blocks(snap):
 
 
 class CalendarDeepLinkTests(unittest.TestCase):
-    """The event title opens the event in Google Calendar; the conference (Teams / Meet) is a separate small Join link."""
+    """The event title opens the event in Google Calendar"""
     CAL = "https://www.google.com/calendar/event?eid=abc123"
     MEET = "https://teams.example.com/meet/42"
 
@@ -363,7 +363,6 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual(plain(block), "Now · 9:30 AM–10:45 AM — Example sync · Join · Room 2")
 
     def test_a_location_that_is_a_web_address_becomes_a_small_link_named_for_its_site(self):
-        # Oct 12: a live-session address was the whole location and printed as a long plain-text line that wrapped under the event
         snap = saved_snapshot([compacted(timed("t7", "Example session", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00", htmlLink=self.CAL,
                                                     location="https://www.example.com/live/AbC123"))])
         block = event_blocks(snap)[0]
@@ -376,7 +375,7 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual([p["text"]["content"] for p in mixed if p["text"].get("link")], ["example.com"])
         self.assertEqual(card._location_parts(self.MEET, self.MEET), [])
         long_one = "https://example.com/" + "a" * 2000
-        self.assertFalse([p for p in card._location_parts(long_one) if p["text"].get("link")])        # too long for Notion's link: stays text
+        self.assertFalse([p for p in card._location_parts(long_one) if p["text"].get("link")])  # too long for Notion's link: stays text
         self.assertEqual(card._location_parts("   "), [])
 
     def test_all_day_event_links_to_the_calendar_and_has_no_join_without_a_meeting(self):

@@ -1,4 +1,6 @@
-"""D173: a calendar sync that keeps failing reaches the phone, once it has failed for three hours, then reminds, then says when it recovers."""
+"""a calendar sync that keeps failing reaches the phone, once it has failed for three hours, then reminds, then says when
+it recovers.
+"""
 import contextlib
 import io
 import unittest
@@ -11,7 +13,7 @@ from lifeos.platform import alerts
 from tests.kit import shared
 from tests.kit.db import SingleRowDb as FakeDb
 
-T0 = datetime(2026, 10, 12, 3, 0)                          # naive UTC, as stored
+T0 = datetime(2026, 10, 12, 3, 0)  # naive UTC, as stored
 
 
 Pushes = shared.Pushes
@@ -32,13 +34,13 @@ class DecideTests(unittest.TestCase):
     def test_it_pages_once_after_three_hours_then_reminds_every_six(self):
         state = {"last_ok": T0, "alert_open": False, "last_notified": None}
         state, plan = watch.decide(state, False, T0 + timedelta(hours=2), "X")
-        self.assertEqual(plan.notify, [])                                            # two hours is a blip
+        self.assertEqual(plan.notify, [])  # two hours is a blip
         state, plan = watch.decide(state, False, T0 + timedelta(hours=3), "X")
         self.assertEqual([k for k, _ in plan.notify], ["open"])
         self.assertTrue(state["alert_open"])
         state["last_notified"] = T0 + timedelta(hours=3)
         _, plan = watch.decide(state, False, T0 + timedelta(hours=8), "X")
-        self.assertEqual(plan.notify, [])                                            # not yet: reminders are 6 hours apart
+        self.assertEqual(plan.notify, [])  # not yet: reminders are 6 hours apart
         _, plan = watch.decide(state, False, T0 + timedelta(hours=9), "X")
         self.assertEqual([k for k, _ in plan.notify], ["remind"])
 
@@ -58,20 +60,20 @@ class WrapperTests(unittest.TestCase):
         db, pushes = FakeDb(self.stuck_row()), Pushes()
         with self.assertRaises(BridgeError) as error:
             wrapped(db, pushes, BridgeError("CALENDAR_MASS_DELETE_GUARD"))
-        self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")        # the sync's own error is untouched
+        self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")  # the sync's own error is untouched
         (topic, title, body, severity), = pushes.sent
         self.assertEqual((topic, severity, title), ("topic-example", alerts.PAGE, "Calendar sync has not worked for 4 hours"))
         self.assertIn("CALENDAR_MASS_DELETE_GUARD", body)
         with self.assertRaises(BridgeError):
             wrapped(db, pushes, BridgeError("CALENDAR_MASS_DELETE_GUARD"), now=T0 + timedelta(hours=1))
-        self.assertEqual(len(pushes.sent), 1)                                        # still failing, reminder not due
+        self.assertEqual(len(pushes.sent), 1)  # still failing, reminder not due
         self.assertEqual(db.row[1], 1)
 
     def test_a_push_the_phone_service_refused_is_retried_next_run(self):
         db, pushes = FakeDb(self.stuck_row()), Pushes(accept=False)
         with self.assertRaises(BridgeError):
             wrapped(db, pushes, BridgeError("X"))
-        self.assertEqual((db.row[1], db.row[2]), (1, None))                          # open, never notified
+        self.assertEqual((db.row[1], db.row[2]), (1, None))  # open, never notified
         pushes.accept = True
         with self.assertRaises(BridgeError):
             wrapped(db, pushes, BridgeError("X"), now=T0 + timedelta(hours=1))

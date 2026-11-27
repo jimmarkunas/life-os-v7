@@ -58,13 +58,13 @@ class Endpoint(unittest.TestCase):
         p["telegram"] = {k: v for k, v in p["telegram"].items() if k != "latest"}
         p["whatsapp"] = {k: v for k, v in p["whatsapp"].items() if k != "latest"}
         self.assertEqual(set(sealed), {"nonce", "box", "tag"})
-        self.assertTrue(all(set(v) <= set("0123456789abcdef") for v in sealed.values()))       # the scrambled name is hex only
+        self.assertTrue(all(set(v) <= set("0123456789abcdef") for v in sealed.values()))  # the scrambled name is hex only
         for leak in (NAME, "Alice", "Older", SECRET_HANDLE, SECRET_TEXT, "m2", "c3"):
             self.assertNotIn(leak, json.dumps(p))
-        self.assertEqual(card.validate(raw, KEY, NOW)[0]["messages"], (12, "PRESENT", NAME))   # the runner's key opens it; the newest incoming sender, not mine
-        self.assertEqual((p["telegram"]["health"], p["whatsapp"]["health"]), ("UNAVAILABLE", "UNAVAILABLE"))   # no adapters here: unavailable, never zero
+        self.assertEqual(card.validate(raw, KEY, NOW)[0]["messages"], (12, "PRESENT", NAME))  # the runner's key opens it
+        self.assertEqual((p["telegram"]["health"], p["whatsapp"]["health"]), ("UNAVAILABLE", "UNAVAILABLE"))  # no adapters here: unavailable, never zero
         with self.assertRaises(card.CommsError):
-            card.validate(raw, bytes(32), NOW)                                          # any other key cannot
+            card.validate(raw, bytes(32), NOW)  # any other key cannot
 
     def test_no_incoming_and_failed_sources_are_never_a_guess(self):
         _, raw = self.call(v2(RUNNER) + b"comms3 " + KEY.hex().encode() + b"\n", Wrapper(msgs=[]))
@@ -167,7 +167,7 @@ class Contract(unittest.TestCase):
                 card.validate(raw, KEY, NOW)
 
     def test_tampered_or_inconsistent_telegram_blocks_are_refused(self):
-        bad = (dict(tg_block(KEY), health="DEGRADED"),                                    # a non-current block may not carry counts or a name
+        bad = (dict(tg_block(KEY), health="DEGRADED"),  # a non-current block may not carry counts or a name
                dict(tg_block(KEY), unread_messages=-1), dict(tg_block(KEY), latest_state="NONE"), {k: v for k, v in tg_block(KEY).items() if k != "auth"},
                dict(tg_block(KEY), latest={**ep.scramble(KEY, NAME), "tag": "00" * 16}))
         for block in bad:
@@ -202,7 +202,7 @@ class Card(unittest.TestCase):
         self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])
         self.assertEqual((report.plain("l2"), report.plain("r2")), (":whatsapp: WhatsApp (7)", "Latest: Carol Example"))
         self.assertEqual((report.plain("l1"), report.plain("r1")), (":telegram: Telegram (7)", "Latest: Bob Example"))
-        self.assertEqual(report.plain("l0"), ":messages: Messages (45)")                 # Jim's icon and the space are sent back as read
+        self.assertEqual(report.plain("l0"), ":messages: Messages (45)")  # Jim's icon and the space are sent back as read
         self.assertEqual(report.blocks["l0"]["paragraph"]["rich_text"][0]["mention"]["custom_emoji"]["id"], "e-msg")
         self.assertEqual(report.blocks["l0"]["paragraph"]["rich_text"][2]["text"]["link"]["url"], "https://example.com/launch/messages/")
         self.assertEqual(report.plain("r0"), "Latest: Alice Example")
@@ -250,8 +250,7 @@ class Card(unittest.TestCase):
             self.run_card(Report(), env={**self.ENV, "CALENDAR_CARD_BLOCK_ID": ""})
 
     def add_row(self, report, name, links=False, own_links=False):
-        """Another two-column row in the callout, as Jim added below a divider (Reminders | Todoist); with links=True it holds a launch link too (a channel's: ambiguous),
-        with own_links=True the labels link to their own launch pages (Reminders, Todoist: not channels this card writes)."""
+        """Another two-column row in the callout, as Jim added below a divider (Reminders | Todoist)"""
         report.add(name, "column_list", "comms")
         report.add(name + "L", "column", name)
         report.add(name + "R", "column", name)
@@ -273,8 +272,8 @@ class Card(unittest.TestCase):
         self.add_row(report, "extra", own_links=True)
         before = (copy.deepcopy(report.blocks["extral"]), copy.deepcopy(report.blocks["extrar"]))
         counts, _ = self.run_card(report)
-        self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])      # the channel rows are still written, nothing else
-        self.assertEqual((report.blocks["extral"], report.blocks["extrar"]), before)                    # label, icon-less text, count and link untouched
+        self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])  # the channel rows are still written, nothing else
+        self.assertEqual((report.blocks["extral"], report.blocks["extrar"]), before)  # label, icon-less text, count and link untouched
         self.assertEqual(counts["written"], 7)
 
     TODOIST_ENV = {"FOLLOWUP_TODOIST_PERSONAL_TOKEN": "unused"}
@@ -284,7 +283,7 @@ class Card(unittest.TestCase):
         self.add_row(report, "extra", own_links=True)
 
     def test_the_todoist_launcher_reads_its_live_count_and_keeps_its_link_and_label(self):
-        """LIFE-975 step 4d: `Todoist (-)` becomes `Todoist (13)`; nothing else on that paragraph or on Reminders changes."""
+        """step 4d: `Todoist (-)` becomes `Todoist (13)`"""
         report = Report()
         self.todoist_row(report)
         reminders = copy.deepcopy(report.blocks["extral"])
@@ -317,7 +316,6 @@ class Card(unittest.TestCase):
         self.assertNotIn("401", log)
 
     def test_the_callout_is_found_in_another_column_than_the_calendar_card(self):
-        """Jim's Nov 25 layout: the Communications callout sits in the right column, the Calendar card in the left one."""
         report = Report()
         report.add("col2", "column", "root")
         report.blocks["col2"]["parent"] = {"type": "page_id", "page_id": "root"}
@@ -344,7 +342,6 @@ class Card(unittest.TestCase):
         self.assertEqual(report.patches, [])
 
     def test_another_cards_write_during_ours_no_longer_fails_the_run(self):
-        """LIFE-613: the other cards' regions are no longer compared before and after our write, so a legitimate write by another card at the same time cannot fail this one."""
         class Busy(Report):
             def call_once(self, method, path, body=None):
                 result = super().call_once(method, path, body)
@@ -355,8 +352,7 @@ class Card(unittest.TestCase):
         self.assertGreater(counts["written"], 0)
 
     def test_a_write_into_another_cards_block_is_refused_before_it_is_sent_and_nothing_changes(self):
-        """LIFE-613 mutation proof. A writer aimed at another card's block (the Attention callout) must fail with the fixed code and leave that block untouched. On the old code the write went
-        through and was only noticed afterwards (PROTECTED_REGION_CHANGED), so the untouched-block assertion fails there."""
+        """mutation proof."""
         report = Report()
         before = deepcopy(report.blocks["attn"])
 

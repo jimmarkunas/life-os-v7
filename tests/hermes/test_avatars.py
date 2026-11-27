@@ -1,4 +1,4 @@
-"""LIFE-326: the avatar manifest and the checked install script. No image is stored in this public repository; the tests make tiny fake files with real image signatures."""
+"""the avatar manifest and the checked install script."""
 import hashlib
 import os
 import re
@@ -81,7 +81,6 @@ class Avatars(unittest.TestCase):
             self.assertTrue(self.read(os.path.join(self.backup, p, "avatar.png")).startswith(b"\x89PNG\r\n\x1a\nOLD"), p)
             self.assertFalse(os.path.exists(self.avatar(p, "png") + ".tmp"), p)
         self.assertIn("ROLLBACK writer", out)
-        # same extension old and new: the rollback only restores, it never deletes the file it just restored
         line = [l for l in out.splitlines() if l.startswith("ROLLBACK writer")][0]
         self.assertIn("avatar.png", line)
         self.assertNotIn("rm -f", line)

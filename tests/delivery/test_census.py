@@ -20,7 +20,7 @@ class FakeGmail:
     def message(self, i):
         return ("", self.html.get(i, ""), 0)
 
-    html = {}                       # no write method exists on this fake: any trash, label or Notion call from the census fails
+    html = {}
 
 
 class NumbersTests(unittest.TestCase):

@@ -1,8 +1,4 @@
-"""LIFE-913 K2/K3: synthetic verified Done history and frozen quarter membership.
-
-No real Jira or Notion requests, no provider writes. v1/JFM remain backward
-compatible; v2 is opt-in and fails closed without an approved quarter baseline.
-"""
+"""K2/K3: synthetic verified Done history and frozen quarter membership."""
 import copy
 import json
 import unittest
@@ -111,7 +107,7 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
         fake = Jira()
         self.assertEqual(read.tally(fake, GOALS, FIRST, LAST,
                                     mej_metric_version="v1"), {"MEJ-2": [1, 2]})
-        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 2)          # v1: a project Epic is not a quarter epic, exactly as on main
+        self.assertEqual(read.unparented(fake, "MEJ", {"MEJ-2"}), 2)
 
     def test_explicit_v2_counts_only_frozen_standard_tasks(self):
         fake = Jira()
@@ -132,7 +128,7 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
         fake = Jira()
         fake.histories["MEJ-501"] = [
             status_change("2027-01-06T03:00:00+00:00")
-        ]  # Jan 5 9 PM CT, inside Q4 boundary
+        ]
         self.assertEqual(self.v2(fake), {"MEJ-2": [2, 4]})
 
     def test_paginated_history_is_fully_checked_for_earlier_done(self):
@@ -194,7 +190,7 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
             self.v2(Jira(projects))
 
     def test_jfm_gets_the_same_v2_count_from_its_own_frozen_list(self):
-        """LIFE-918, "918 uniform new" (comment 14228): two frozen lists, one per board, in one quarter row."""
+        """'918 uniform new' (comment 14228): two frozen lists, one per board, in one quarter row."""
         both = {"schema_version": 1, "quarters": {"2026-q4": {"boards": {
             "MEJ": FROZEN["quarters"]["2026-q4"],
             "JFM": {"approved": True, "baseline_id": "SYNTHETIC-JFM", "approval_ref": "SYNTHETIC", "tasks": {"JFM-10": {"parent": "JFM-2", "goal": "JFM-2"}, "JFM-11": {"parent": "JFM-2", "goal": "JFM-2"}}}}}}}
@@ -212,7 +208,9 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
             read.tally(Jira(), [{"key": "JFM-2", "person": "Jim", "lane": "Career"}], FIRST, LAST, mej_metric_version="v2", frozen_membership=None)
 
     def test_v1_issues_exactly_main_requests_and_never_reads_history_or_project_labels(self):
-        """Parity with main: the default path asks Jira only for the quarter epics' children (main's field list) and the open-work scan; no changelog, no project-label search, for MEJ and JFM alike."""
+        """Parity with main: the default path asks Jira only for the quarter epics' children (main's field list) and the
+        open-work scan
+        """
         self.assertEqual(read.CHILD_FIELDS, "status,parent,resolutiondate,issuetype,resolution,labels,statuscategorychangedate")
         for goals, project, keys in ((GOALS, "MEJ", {"MEJ-2"}), ([{"key": "JFM-2", "person": "Jim"}], "JFM", {"JFM-2"})):
             fake = Jira()

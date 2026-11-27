@@ -21,7 +21,7 @@ class FakeNotion:
         self.legacy = ""
 
     def call(self, method, path, body=None):
-        if method == "POST" and path == "/search":                       # LIFE-672: no V3 register here, so the MEGIBOW_BLOCK_ID fallback is used
+        if method == "POST" and path == "/search":
             return {"results": [], "has_more": False}
         if method == "GET" and path.startswith("/blocks/page/children"):
             return {"results": [{"id": "para", "type": "paragraph"}, {"id": "cal", "type": "callout"}], "has_more": False}
@@ -51,7 +51,7 @@ class FakeNotion:
         raise AssertionError((method, path))
 
     def call_once(self, method, path, body=None):
-        if path.endswith("/children"):                                   # the one empty "Phone calls: none" line V7 adds for Jim to edit
+        if path.endswith("/children"):
             self.appended = getattr(self, "appended", []) + [body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]]
             self.phone = body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]
             return {}
@@ -148,10 +148,10 @@ class Stage(unittest.TestCase):
         counts = run(gm, gc, n)
         self.assertEqual(counts["status"][C.OUTREACH], 2)
         self.assertEqual(counts["status"][C.SCHEDULED], 1)
-        self.assertEqual(n.rows["r1"][-1], "2")           # Outreach, current week
-        self.assertEqual(n.rows["r2"][-1], "1")           # Scheduled
-        self.assertEqual(n.rows["r6"][-1], "3")           # the total is the LAST row
-        self.assertTrue(n.bold["r6"])                     # and it is bold
+        self.assertEqual(n.rows["r1"][-1], "2")  # Outreach, current week
+        self.assertEqual(n.rows["r2"][-1], "1")  # Scheduled
+        self.assertEqual(n.rows["r6"][-1], "3")  # the total is the LAST row
+        self.assertTrue(n.bold["r6"])  # and it is bold
         self.assertFalse(any(n.bold.get(r) for r in ("r1", "r2", "r3", "r4", "r5")))
         self.assertTrue(n.callout.startswith("MegIBOW (10/7 · 1:00 PM CT)"))
 
@@ -186,15 +186,15 @@ class Stage(unittest.TestCase):
     def test_jims_phone_call_line_is_added_once_and_his_counts_reach_the_week_and_the_totals(self):
         n = FakeNotion()
         run(FakeGmail({}), FakeGcal([]), n)
-        self.assertEqual(n.appended, ["Phone calls: none"])                  # added once, live
+        self.assertEqual(n.appended, ["Phone calls: none"])  # added once, live
         run(FakeGmail({}), FakeGcal([]), n)
-        self.assertEqual(len(n.appended), 1)                                  # never again
+        self.assertEqual(len(n.appended), 1)  # never again
         n.phone = "Phone calls: Oct 5 Recruiter Calls 2; Oct 6 Company Calls 1; Oct 7 Outreach 1; Oct 7 Bogus 4; nonsense"
         counts = run(FakeGmail({}), FakeGcal([]), n)
-        self.assertEqual(counts["manual_unreadable"], 2)                      # counted and ignored, never guessed
+        self.assertEqual(counts["manual_unreadable"], 2)  # counted and ignored, never guessed
         self.assertEqual(counts["status"][C.RECRUITER], 2)
         self.assertEqual(counts["status"][C.COMPANY], 1)
-        self.assertEqual(n.rows["r6"][-1], "4")                               # the bold totals row (last): 2 + 1 + 1 this week
+        self.assertEqual(n.rows["r6"][-1], "4")  # the bold totals row (last): 2 + 1 + 1 this week
 
     def test_the_phone_line_parser_reads_dates_and_counts_strictly(self):
         from datetime import date
@@ -220,7 +220,7 @@ class Stage(unittest.TestCase):
 
 class FixedBlock(unittest.TestCase):
     def test_without_the_block_id_the_stage_refuses_and_writes_nothing(self):
-        """LIFE-385 (D250-13): no shape discovery; a missing MEGIBOW_BLOCK_ID is a fixed code."""
+        """no shape discovery"""
         n = FakeNotion()
         with self.assertRaises(Exception) as caught:
             run(FakeGmail([]) if "FakeGmail" in globals() else None, None, n, env={"MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"})

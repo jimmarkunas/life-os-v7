@@ -1,4 +1,4 @@
-"""LIFE-918: the five cutover rows are registered, default off and fail closed. Nothing here reads Notion or changes behavior."""
+"""the five cutover rows are registered, default off and fail closed."""
 import unittest
 from pathlib import Path
 
