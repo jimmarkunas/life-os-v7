@@ -4,10 +4,17 @@ A page is protected when the human has applied (Applied, or an Applied On date),
 hiring-pipeline handoff finds an ACTIVE opportunity for it. Anything unreadable is UNKNOWN and protected too (fail
 closed). Reasons are fixed codes.
 """
+
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import NotionError
 
-APPLIED, APPLIED_ON, SATURN, HIRING, UNREADABLE = "applied", "applied_on", "saturn_decision", "hiring_pipeline", "unreadable"
+APPLIED, APPLIED_ON, SATURN, HIRING, UNREADABLE = (
+    "applied",
+    "applied_on",
+    "saturn_decision",
+    "hiring_pipeline",
+    "unreadable",
+)
 
 
 def protection(client, page_id, company, title, opportunities=()):

@@ -2,6 +2,7 @@
 
 These are the monitors' evidence.
 """
+
 # Counts only; no title, company or link. `record` is called by lifeos.run after a live stage and never raises: a
 # missed row costs a monitor one day of evidence, never a run. Days are UTC dates.
 import datetime as dt
@@ -15,11 +16,14 @@ def deltas(stage, counts):
     """-> {name: n} to ADD for one stage's counts line. Pure; a stage with nothing to say returns {}."""
     if not isinstance(counts, dict):
         return {}
-    num = lambda key: counts.get(key) if type(counts.get(key)) is int else 0                  # noqa: E731
+    num = lambda key: counts.get(key) if type(counts.get(key)) is int else 0  # noqa: E731
     if stage in ("boards", "boards-backfill", "web", "web-scale-up"):
         failed = num("failed")
         dead = counts.get("failed_why", {}).get("not_found", 0) if isinstance(counts.get("failed_why"), dict) else 0
-        return {"board_reads": num("complete") + failed, "board_failed": max(0, failed - (dead if type(dead) is int else 0))}
+        return {
+            "board_reads": num("complete") + failed,
+            "board_failed": max(0, failed - (dead if type(dead) is int else 0)),
+        }
     if stage == "discover-jobs":
         return {"search_calls": num("searched") + num("search_errors"), "search_failed": num("search_errors")}
     if stage == "web-titlewatch":
@@ -32,11 +36,17 @@ def today(now=None):
 
 
 def add(cursor, day, name, n):
-    cursor.execute("INSERT INTO v7_daily_counts (day, name, value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE value=value+VALUES(value)", (day, name, int(n)))
+    cursor.execute(
+        "INSERT INTO v7_daily_counts (day, name, value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE value=value+VALUES(value)",
+        (day, name, int(n)),
+    )
 
 
 def put(cursor, day, name, n):
-    cursor.execute("INSERT INTO v7_daily_counts (day, name, value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)", (day, name, int(n)))
+    cursor.execute(
+        "INSERT INTO v7_daily_counts (day, name, value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)",
+        (day, name, int(n)),
+    )
 
 
 def read(cursor, since):
@@ -64,5 +74,5 @@ def record(stage, counts, connect=None, now=None):
                     add(cursor, day, name, n)
             connection.commit()
         return found
-    except Exception:                                                                           # noqa: BLE001 - evidence for a monitor must never fail a stage
+    except Exception:  # noqa: BLE001 - evidence for a monitor must never fail a stage
         return {}

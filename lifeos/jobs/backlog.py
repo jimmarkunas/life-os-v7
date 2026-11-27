@@ -4,6 +4,7 @@ Writes ONE dated private Notion page (lifeos.jobs.private_report) per run; a dry
 counts and fixed codes only. Statuses read: NEW (link unresolved), RESOLVED (description unread), READY (scored or
 awaiting a score, not published) and HOLD.
 """
+
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -13,15 +14,25 @@ OPEN = ("NEW", "RESOLVED", "READY", "HOLD")
 ORDER = {"READY": 0, "HOLD": 1, "RESOLVED": 2, "NEW": 3}
 MAX_ROWS = 8000
 CT = ZoneInfo("America/Chicago")
-SQL = ("SELECT j.status, j.unresolved_reason, f.admission, f.admission_reason, f.score, f.cloud_status, j.company, j.title, j.lane, j.source, j.first_seen, j.posted_date,"
-       " COALESCE(j.final_apply_url, j.source_url) FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-       " WHERE j.notion_page_id IS NULL AND j.status IN ('NEW', 'RESOLVED', 'READY', 'HOLD')")
+SQL = (
+    "SELECT j.status, j.unresolved_reason, f.admission, f.admission_reason, f.score, f.cloud_status, j.company, j.title, j.lane, j.source, j.first_seen, j.posted_date,"
+    " COALESCE(j.final_apply_url, j.source_url) FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id"
+    " WHERE j.notion_page_id IS NULL AND j.status IN ('NEW', 'RESOLVED', 'READY', 'HOLD')"
+)
 # Jobs given their one retry in the first run after hold.MISMATCH_AT: that run's expire-holds step stamps each
 # requeued job with the same recovered_at.
-RELEASED = ("SELECT j.status, j.source LIKE 'linkedin%%', COUNT(*) FROM v7_jobs j WHERE j.recovered_at = (SELECT MIN(recovered_at) FROM v7_jobs WHERE recovered_at >= %s)"
-            " GROUP BY 1, 2")
-OUTCOME = {"PUBLISHED": "on the board", "READY": "still on its way", "RESOLVED": "still on its way", "NEW": "still on its way", "HOLD": "still on its way",
-           "DUPLICATE": "bounced: same job already on the board"}
+RELEASED = (
+    "SELECT j.status, j.source LIKE 'linkedin%%', COUNT(*) FROM v7_jobs j WHERE j.recovered_at = (SELECT MIN(recovered_at) FROM v7_jobs WHERE recovered_at >= %s)"
+    " GROUP BY 1, 2"
+)
+OUTCOME = {
+    "PUBLISHED": "on the board",
+    "READY": "still on its way",
+    "RESOLVED": "still on its way",
+    "NEW": "still on its way",
+    "HOLD": "still on its way",
+    "DUPLICATE": "bounced: same job already on the board",
+}
 
 
 def reason(status, why, admission, admission_why, score, cloud):
@@ -45,14 +56,42 @@ def _days(now, then):
 def rows_of(found, now):
     """-> (report rows, summary counts by reason group); oldest waiting first within each status, READY first."""
     out, groups = [], {}
-    for status, why, admission, admission_why, score, cloud, company, title, lane, source, first_seen, posted, link in found:
+    for (
+        status,
+        why,
+        admission,
+        admission_why,
+        score,
+        cloud,
+        company,
+        title,
+        lane,
+        source,
+        first_seen,
+        posted,
+        link,
+    ) in found:
         line = reason(status, why, admission, admission_why, score, cloud)
         group = line.split(" (")[0] if status != "HOLD" else line
         groups[group] = groups.get(group, 0) + 1
-        clean = lambda v: " ".join(str(v if v is not None else "").split())          # noqa: E731
+        clean = lambda v: " ".join(str(v if v is not None else "").split())  # noqa: E731
         waited, age = _days(now, first_seen), _days(now, posted)
-        out.append((ORDER.get(status, 9), -(waited or 0), [clean(line), clean(company), clean(title), clean(lane), "" if waited is None else str(waited),
-                                                            "unknown" if age is None else str(age), clean(source), clean(link)]))
+        out.append(
+            (
+                ORDER.get(status, 9),
+                -(waited or 0),
+                [
+                    clean(line),
+                    clean(company),
+                    clean(title),
+                    clean(lane),
+                    "" if waited is None else str(waited),
+                    "unknown" if age is None else str(age),
+                    clean(source),
+                    clean(link),
+                ],
+            )
+        )
     out.sort(key=lambda r: (r[0], r[1], r[2][1], r[2][2]))
     return [r[2] for r in out], dict(sorted(groups.items(), key=lambda kv: -kv[1]))
 
@@ -73,18 +112,24 @@ def released_lines(rows):
         by[key] = (total + int(n), li + (int(n) if linkedin else 0))
     if not by:
         return []
-    lines = [f"LIFE-212 release: {sum(t for t, _ in by.values())} jobs got their one retry in the first run after 5:00 AM CT on Oct 31. Where they are now:"]
-    return lines + [f"{t} · {key} ({li} from LinkedIn)" for key, (t, li) in sorted(by.items(), key=lambda kv: -kv[1][0])]
+    lines = [
+        f"LIFE-212 release: {sum(t for t, _ in by.values())} jobs got their one retry in the first run after 5:00 AM CT on Oct 31. Where they are now:"
+    ]
+    return lines + [
+        f"{t} · {key} ({li} from LinkedIn)" for key, (t, li) in sorted(by.items(), key=lambda kv: -kv[1][0])
+    ]
 
 
 def run(limit, live, connect=store.connect, client=None, now=None):
     from lifeos.jobs import private_report
     from lifeos.platform.notion_client import Client
+
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(SQL)
         found = cursor.fetchall()
-        from lifeos.jobs import hold                                    # noqa: PLC0415
+        from lifeos.jobs import hold  # noqa: PLC0415
+
         cursor.execute(RELEASED, (hold.MISMATCH_AT,))
         release = released_lines(cursor.fetchall())
     rows, groups = rows_of(found, now)
@@ -92,11 +137,22 @@ def run(limit, live, connect=store.connect, client=None, now=None):
     rows = rows[:MAX_ROWS]
     stamp = now.replace(tzinfo=timezone.utc).astimezone(CT)
     title = f"LIFE-212 Jobs backlog — {stamp:%b} {stamp.day}, {stamp:%Y} {stamp:%I:%M %p} CT — {len(found)} not on the board"
-    intro = [f"{len(found)} jobs are not on the Job Ledger yet and not finally bounced. Newest data from the Jobs store; nothing was changed."]
+    intro = [
+        f"{len(found)} jobs are not on the Job Ledger yet and not finally bounced. Newest data from the Jobs store; nothing was changed."
+    ]
     intro += [f"{n} · {group}" for group, n in groups.items()]
     if left_out:
         intro.append(f"{left_out} more are left out of the table below (it lists the first {MAX_ROWS}).")
     intro += release
-    header = ["why it is not on the board", "company", "title", "lane", "days waiting", "posting age (days)", "source", "link"]
+    header = [
+        "why it is not on the board",
+        "company",
+        "title",
+        "lane",
+        "days waiting",
+        "posting age (days)",
+        "source",
+        "link",
+    ]
     result = private_report.publish(client or Client(), title, header, rows, live, links=(7,), intro=intro)
     return {"total": len(found), "groups": groups, "left_out": left_out, "release": release[1:], **result}

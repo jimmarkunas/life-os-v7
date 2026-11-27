@@ -6,10 +6,11 @@ alone and never inferred by a model. Absence of a match proves nothing, so this 
 never unprotect one. `from_ledger` reads the pursuits of Ledger rows whose Stage is set; `merge` puts them first.
 Read only; an incomplete Ledger read raises (the caller fails closed).
 """
+
 from dataclasses import dataclass, field
 import re
 
-from lifeos.platform.names import LEGAL, norm, same_company, same_role, split_title          # noqa: F401 - shared with Interview OS
+from lifeos.platform.names import LEGAL, norm, same_company, same_role, split_title  # noqa: F401 - shared with Interview OS
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.notion_pages import query
 
@@ -116,7 +117,11 @@ def read(client, root_id, rounds=True):
                             except NotionError:
                                 pass
                     found.append(opp)
-            elif block.get("has_children") and depth < MAX_DEPTH and (kind in ("toggle", "column_list", "column") or kind.startswith("heading")):
+            elif (
+                block.get("has_children")
+                and depth < MAX_DEPTH
+                and (kind in ("toggle", "column_list", "column") or kind.startswith("heading"))
+            ):
                 walk(block["id"], context, depth + 1)
 
     walk(root_id, None, 0)
@@ -132,7 +137,9 @@ def _select(prop):
 
 
 def _fold_lines(client, kids, budget):
-    fold = next((c for c in kids if c.get("type") == "toggle" and c.get("has_children") and "LIFE OS" in _title_of(c)), None)
+    fold = next(
+        (c for c in kids if c.get("type") == "toggle" and c.get("has_children") and "LIFE OS" in _title_of(c)), None
+    )
     if not fold:
         return []
     try:
@@ -146,7 +153,18 @@ def from_ledger(client, rounds=True):
     Applied, Interviewing or Offer and Hiring Decision is empty, else RETIRED. Raises NotionError when the Ledger
     page set cannot be proven complete.
     """
-    rows = [row for page in query(client, None, {"page_size": 100, "filter": {"property": STAGE, "select": {"is_not_empty": True}}}, NotionError, incomplete="HIRING_LEDGER_INCOMPLETE", limit=LEDGER_MAX_PAGES) for row in page["results"]]
+    rows = [
+        row
+        for page in query(
+            client,
+            None,
+            {"page_size": 100, "filter": {"property": STAGE, "select": {"is_not_empty": True}}},
+            NotionError,
+            incomplete="HIRING_LEDGER_INCOMPLETE",
+            limit=LEDGER_MAX_PAGES,
+        )
+        for row in page["results"]
+    ]
     out, budget = [], [MAX_BLOCKS]
     for row in rows:
         props = row.get("properties") or {}
@@ -155,7 +173,9 @@ def from_ledger(client, rounds=True):
         if not (company and role and stage and row.get("id")):
             continue
         active = stage in ACTIVE_STAGES and not decision
-        opp = Opportunity(row["id"], f"{company} — {role}", ACTIVE if active else RETIRED, company=company, role=role, from_row=True)
+        opp = Opportunity(
+            row["id"], f"{company} — {role}", ACTIVE if active else RETIRED, company=company, role=role, from_row=True
+        )
         if rounds:
             kids = _children(client, row["id"], budget)
             if budget[0] <= 0:
@@ -174,19 +194,33 @@ def merge(ledger_opps, tree_opps):
     role. Each Ledger pursuit remembers its first matching tree page (tree_id).
     """
     for opp in ledger_opps:
-        match = next((t for t in tree_opps if same_company(t.company, opp.company) and same_role(t.role, opp.role)), None)
+        match = next(
+            (t for t in tree_opps if same_company(t.company, opp.company) and same_role(t.role, opp.role)), None
+        )
         opp.tree_id = match.page_id if match else ""
-    kept = [t for t in tree_opps if not any(same_company(t.company, o.company) and same_role(t.role, o.role) for o in ledger_opps)]
+    kept = [
+        t
+        for t in tree_opps
+        if not any(same_company(t.company, o.company) and same_role(t.role, o.role) for o in ledger_opps)
+    ]
     return list(ledger_opps) + kept
 
 
 def handoff_for(company, title, opportunities):
-    matches = [o for o in opportunities if o.section == ACTIVE and same_company(o.company, company) and same_role(o.role, title)]
+    matches = [
+        o
+        for o in opportunities
+        if o.section == ACTIVE and same_company(o.company, company) and same_role(o.role, title)
+    ]
     if not matches:
         return Handoff(False)
     interview = any(o.rounds for o in matches)
-    return Handoff(True, INTERVIEW_ACTIVE if interview else HIRING_ACTIVE, interview,
-                   [{"type": "hiring_pipeline_opportunity", "source_id": o.page_id} for o in matches])
+    return Handoff(
+        True,
+        INTERVIEW_ACTIVE if interview else HIRING_ACTIVE,
+        interview,
+        [{"type": "hiring_pipeline_opportunity", "source_id": o.page_id} for o in matches],
+    )
 
 
 def snapshot(client, root_id, rounds=True, ledger=None):

@@ -4,6 +4,7 @@ Read-only. For jobs first seen in the last 24 hours and 7 days: per source the c
 score band and lane reason, and time since a job was last found and published. Sources, statuses and reasons are
 fixed codes.
 """
+
 import json
 import re
 from datetime import timedelta
@@ -29,7 +30,8 @@ def public_code(reason):
     """reason_code for a PUBLIC log: a stored reason prints only if its code is in alertstate.REASONS, a lane reason
     only as its lanes.PUBLIC_REASONS code, else "other" (a lowercase word can be a private rule name).
     """
-    from lifeos.jobs.alertstate import REASONS                     # noqa: PLC0415 (alertstate imports this module)
+    from lifeos.jobs.alertstate import REASONS  # noqa: PLC0415 (alertstate imports this module)
+
     code = reason_code(reason)
     return code if code.replace(" ", "_") in REASONS else lanes.public_reason(reason)
 
@@ -40,8 +42,18 @@ def _add(table, *keys, n):
     table[keys[-1]] = table.get(keys[-1], 0) + int(n)
 
 
-STAGE = {"NEW": "found", "RESOLVED": "linked", "READY": "read", "PUBLISHED": "published", "EXCLUDED_FIT": "scored_out", "EXCLUDED_STALE": "too_old",
-         "CLOSED": "closed", "DUPLICATE": "duplicate", "HOLD": "stuck", "EXCLUDED_UNRESOLVED": "stuck"}
+STAGE = {
+    "NEW": "found",
+    "RESOLVED": "linked",
+    "READY": "read",
+    "PUBLISHED": "published",
+    "EXCLUDED_FIT": "scored_out",
+    "EXCLUDED_STALE": "too_old",
+    "CLOSED": "closed",
+    "DUPLICATE": "duplicate",
+    "HOLD": "stuck",
+    "EXCLUDED_UNRESOLVED": "stuck",
+}
 CANARY_PER_SOURCE = 3
 
 
@@ -65,9 +77,19 @@ def canary(rows, status_24h):
     for source, st, reason, resolve_n, enrich_n, kind, proof, admission, score, age in rows:
         traces = per.setdefault(source, [])
         if len(traces) < CANARY_PER_SOURCE:
-            traces.append({"stage": STAGE.get(st, st), "status": st, "reason": public_code(reason), "resolve_attempts": int(resolve_n or 0),
-                           "enrich_attempts": int(enrich_n or 0), "link": kind or None, "proof": proof or None,
-                           "fit": f"{admission}:{band(score)}" if admission else None, "age_h": int(age or 0)})
+            traces.append(
+                {
+                    "stage": STAGE.get(st, st),
+                    "status": st,
+                    "reason": public_code(reason),
+                    "resolve_attempts": int(resolve_n or 0),
+                    "enrich_attempts": int(enrich_n or 0),
+                    "link": kind or None,
+                    "proof": proof or None,
+                    "fit": f"{admission}:{band(score)}" if admission else None,
+                    "age_h": int(age or 0),
+                }
+            )
     sources = set(per) | set(status_24h)
     return {src: {"verdict": verdict(status_24h.get(src, {})), "newest": per.get(src, [])} for src in sorted(sources)}
 
@@ -84,12 +106,17 @@ def summary(windows):
             into = board if str(source).startswith("web:") else other
             for st, n in statuses.items():
                 into[st] = into.get(st, 0) + n
-        out[name] = {"board": dict(sorted(board.items())), "other": dict(sorted(other.items())), "total": sum(board.values()) + sum(other.values())}
+        out[name] = {
+            "board": dict(sorted(board.items())),
+            "other": dict(sorted(other.items())),
+            "total": sum(board.values()) + sum(other.values()),
+        }
     return out
 
 
 def run(limit, live, now=None):
-    from lifeos.jobs.retention import _now                                  # noqa: PLC0415 - one clock for the jobs stages
+    from lifeos.jobs.retention import _now  # noqa: PLC0415 - one clock for the jobs stages
+
     now = now or _now()
     out = {"windows": {}, "freshness_hours": {}, "saved": False}
     with store.connect() as connection:
@@ -97,26 +124,39 @@ def run(limit, live, now=None):
         with connection.cursor() as cursor:
             for hours in WINDOWS:
                 since = now - timedelta(hours=hours)
-                cursor.execute("SELECT COALESCE(source, 'unknown'), status, COUNT(*) FROM v7_jobs WHERE first_seen >= %s GROUP BY 1, 2", (since,))
+                cursor.execute(
+                    "SELECT COALESCE(source, 'unknown'), status, COUNT(*) FROM v7_jobs WHERE first_seen >= %s GROUP BY 1, 2",
+                    (since,),
+                )
                 status = {}
                 for source, st, n in cursor.fetchall():
                     _add(status, source, st, n=n)
-                cursor.execute("SELECT COALESCE(j.source, 'unknown'), f.admission, f.admission_reason, f.score, COUNT(*) FROM v7_jobs j"
-                               " JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s GROUP BY 1, 2, 3, 4", (since,))
+                cursor.execute(
+                    "SELECT COALESCE(j.source, 'unknown'), f.admission, f.admission_reason, f.score, COUNT(*) FROM v7_jobs j"
+                    " JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s GROUP BY 1, 2, 3, 4",
+                    (since,),
+                )
                 fit_bands, fit_reasons = {}, {}
                 for source, admission, reason, score, n in cursor.fetchall():
                     _add(fit_bands, source, f"{admission or 'none'}:{band(score)}", n=n)
                     _add(fit_reasons, source, f"{admission or 'none'}:{public_code(reason)}", n=n)
                 out["windows"][f"{hours}h"] = {"status": status, "fit_by_band": fit_bands, "fit_by_reason": fit_reasons}
-            cursor.execute("SELECT COALESCE(source, 'unknown'), TIMESTAMPDIFF(HOUR, MAX(first_seen), %s),"
-                           " TIMESTAMPDIFF(HOUR, MAX(CASE WHEN status = 'PUBLISHED' THEN updated_at END), %s) FROM v7_jobs GROUP BY 1", (now, now))
+            cursor.execute(
+                "SELECT COALESCE(source, 'unknown'), TIMESTAMPDIFF(HOUR, MAX(first_seen), %s),"
+                " TIMESTAMPDIFF(HOUR, MAX(CASE WHEN status = 'PUBLISHED' THEN updated_at END), %s) FROM v7_jobs GROUP BY 1",
+                (now, now),
+            )
             for source, found, published in cursor.fetchall():
-                out["freshness_hours"][source] = {"since_found": None if found is None else int(found),
-                                                  "since_published": None if published is None else int(published)}
-            cursor.execute("SELECT COALESCE(j.source, 'unknown'), j.status, COALESCE(j.unresolved_reason, ''), j.resolve_attempts, j.enrich_attempts,"
-                           " COALESCE(j.apply_kind, ''), COALESCE(j.link_proof, ''), f.admission, f.score, TIMESTAMPDIFF(HOUR, j.first_seen, %s)"
-                           " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s ORDER BY j.first_seen DESC LIMIT 3000",
-                           (now, now - timedelta(hours=48)))
+                out["freshness_hours"][source] = {
+                    "since_found": None if found is None else int(found),
+                    "since_published": None if published is None else int(published),
+                }
+            cursor.execute(
+                "SELECT COALESCE(j.source, 'unknown'), j.status, COALESCE(j.unresolved_reason, ''), j.resolve_attempts, j.enrich_attempts,"
+                " COALESCE(j.apply_kind, ''), COALESCE(j.link_proof, ''), f.admission, f.score, TIMESTAMPDIFF(HOUR, j.first_seen, %s)"
+                " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s ORDER BY j.first_seen DESC LIMIT 3000",
+                (now, now - timedelta(hours=48)),
+            )
             out["canary"] = canary(cursor.fetchall(), out["windows"]["24h"]["status"])
     print("funnel-summary:", json.dumps(summary(out["windows"]), sort_keys=True))
     return out

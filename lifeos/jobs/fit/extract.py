@@ -1,4 +1,5 @@
 """Job description -> units (a bullet or sentence tagged with its section) and the raw facts the scorer classifies."""
+
 from dataclasses import dataclass
 import re
 
@@ -10,11 +11,61 @@ _STRICT = re.compile(r"required|must|minimum|mandatory|basic qualification", re.
 _OPTIONAL = re.compile(lexicon.OPTIONAL, re.I)
 _SHAPE = re.compile(lexicon.SHAPE, re.I)
 _YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:-\s*\d{1,2}\s*)?(?:\+\s*)?(?:years?|yrs?)\b", re.I)
-_TRIGGER = re.compile(r"(?:experience|proficien\w*|knowledge|familiar\w*|expertise|hands-on|background)\s+"
-                      r"(?:with|in|of|using|on)\s+([^.;:()\n]{3,140})", re.I)
-_NOT_TECH = {"english", "spanish", "french", "german", "bachelor", "master", "masters", "mba", "phd", "us", "usa", "uk",
-             "united", "states", "fluent", "strong", "excellent", "proven", "good", "deep", "solid", "senior", "the",
-             "a", "an", "our", "your", "ability", "understanding", "working", "hands", "agile", "rest", "json", "xml", "http", "html", "css", "kpi", "kpis", "okr", "okrs", "roi", "b2b", "b2c", "saas", "sla", "slas"}
+_TRIGGER = re.compile(
+    r"(?:experience|proficien\w*|knowledge|familiar\w*|expertise|hands-on|background)\s+"
+    r"(?:with|in|of|using|on)\s+([^.;:()\n]{3,140})",
+    re.I,
+)
+_NOT_TECH = {
+    "english",
+    "spanish",
+    "french",
+    "german",
+    "bachelor",
+    "master",
+    "masters",
+    "mba",
+    "phd",
+    "us",
+    "usa",
+    "uk",
+    "united",
+    "states",
+    "fluent",
+    "strong",
+    "excellent",
+    "proven",
+    "good",
+    "deep",
+    "solid",
+    "senior",
+    "the",
+    "a",
+    "an",
+    "our",
+    "your",
+    "ability",
+    "understanding",
+    "working",
+    "hands",
+    "agile",
+    "rest",
+    "json",
+    "xml",
+    "http",
+    "html",
+    "css",
+    "kpi",
+    "kpis",
+    "okr",
+    "okrs",
+    "roi",
+    "b2b",
+    "b2c",
+    "saas",
+    "sla",
+    "slas",
+}
 _SPLIT = re.compile(r",|/|\band\b|\bor\b|&|\bsuch as\b|\be\.g\.|\bincluding\b|\bi\.e\.")
 
 
@@ -53,8 +104,11 @@ def _heading(line, about=False):
     return None
 
 
-_BOILER = re.compile(r"encourage applications|diverse backgrounds?|by submitting (?:this|your) application|equal opportunit|we are committed to|"
-                     r"privacy (?:notice|policy)|reasonable adjustments?|regardless of (?:race|gender|age)", re.I)
+_BOILER = re.compile(
+    r"encourage applications|diverse backgrounds?|by submitting (?:this|your) application|equal opportunit|we are committed to|"
+    r"privacy (?:notice|policy)|reasonable adjustments?|regardless of (?:race|gender|age)",
+    re.I,
+)
 
 
 def parse(text):
@@ -71,8 +125,11 @@ def parse(text):
             continue
         if line.endswith(":") and len(line) < 90:
             continue
-        pieces = [line.lstrip("• ").strip()] if line.startswith("•") or len(line) < 220 else \
-            [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
+        pieces = (
+            [line.lstrip("• ").strip()]
+            if line.startswith("•") or len(line) < 220
+            else [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
+        )
         kept = [p for p in pieces if len(p) > 3 and not _BOILER.search(p)]
         if about:
             at = next((i for i, p in enumerate(kept) if _ROLE_INTRO.search(p)), len(kept))
@@ -90,7 +147,9 @@ def gated(unit):
     """
     if unit.section in ("required", "preferred"):
         return bool(_SHAPE.search(unit.text))
-    return unit.section in ("summary", "duty") and bool(re.search(r"\b(required|must have|minimum of|requires)\b", unit.text, re.I))
+    return unit.section in ("summary", "duty") and bool(
+        re.search(r"\b(required|must have|minimum of|requires)\b", unit.text, re.I)
+    )
 
 
 def requirement_units(units):
@@ -142,10 +201,16 @@ def max_years(units):
 
 
 _SCOPE = (
-    ("people_leadership", r"\b(?:manage|lead|leading|oversee|direct|mentor|supervis)\w*\s+(?:a\s+|the\s+)?(?:team|teams|engineers|people|staff|organization)"),
+    (
+        "people_leadership",
+        r"\b(?:manage|lead|leading|oversee|direct|mentor|supervis)\w*\s+(?:a\s+|the\s+)?(?:team|teams|engineers|people|staff|organization)",
+    ),
     ("team_size", r"team of (\d+)|(\d+)\+?\s+(?:direct reports|engineers|people|team members)"),
     ("budget", r"\$\s?(\d+(?:\.\d+)?)\s?(m|mm|million|b|billion|k)\b"),
-    ("global", r"\b(?:global|international|multi-?country|multi-?market|worldwide|emea|apac|cross-border|multi-?region)\b"),
+    (
+        "global",
+        r"\b(?:global|international|multi-?country|multi-?market|worldwide|emea|apac|cross-border|multi-?region)\b",
+    ),
     ("enterprise", r"\b(?:enterprise|fortune 500|large[- ]scale|complex (?:programs?|systems?|organi[sz]ations?))\b"),
     ("executive", r"\b(?:c-?level|executive|vp|vice president|senior leadership|board|sponsor)\b"),
     ("multi_team", r"\b(?:cross-?functional|multi-?team|multiple teams|multiple workstreams|portfolio)\b"),

@@ -4,6 +4,7 @@ A hit is HARD (score 0, stop) when it is in the title or company, in the first 6
 `strict` rule (security clearance), or repeated (2+ mentions). A single deep mention is only noted as soft: a
 consultancy listing "healthcare" among ten client industries is not a healthcare role.
 """
+
 import re
 
 from lifeos.jobs.fit import lexicon
@@ -20,6 +21,7 @@ def _matcher(rule):
         spots = [m.start() for rx in term_rx for m in rx.finditer(normed)]
         spots += [m.start() for rx in pattern_rx for m in rx.finditer(raw)]
         return spots
+
     return positions
 
 
