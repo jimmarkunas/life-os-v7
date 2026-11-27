@@ -73,7 +73,7 @@ class RobustnessTests(unittest.TestCase):
             self.assertEqual(ats_match.boards_for("Acme Corp"), [])
 
 class TitleNoiseTests(unittest.TestCase):
-    """Lensa and LinkedIn decorate titles ("(Fully Remote)", "| Company | USA (Remote)"). Only noise that never changes the role is removed."""
+    """Lensa and LinkedIn decorate titles ('(Fully Remote)', '| Company | USA (Remote)')."""
     jobs = [("greenhouse", "Product Manager", "https://boards.greenhouse.io/a/jobs/3", "Remote"),
             ("greenhouse", "Senior Project Manager", "https://boards.greenhouse.io/a/jobs/4", "Remote"),
             ("greenhouse", "Staff Nurse", "https://boards.greenhouse.io/a/jobs/5", "Boston"),
@@ -88,11 +88,11 @@ class TitleNoiseTests(unittest.TestCase):
         self.assertEqual(ats_match.why(self.jobs, "Client Project Manager | FirstPoint Group | USA (Remote)", "")[0], "hit")
 
     def test_a_parenthetical_that_changes_the_role_is_kept(self):
-        self.assertEqual(ats_match.why(self.jobs, "Staff Nurse (ICU)", "")[0], "no_title")        # not turned into the generic Staff Nurse posting
+        self.assertEqual(ats_match.why(self.jobs, "Staff Nurse (ICU)", "")[0], "no_title")  # not turned into the generic Staff Nurse posting
         self.assertEqual(ats_match.why(self.jobs, "Staff Nurse (Remote)", "")[0], "hit")
 
     def test_a_cleaned_title_of_one_word_is_never_trusted(self):
-        self.assertEqual(ats_match.why(self.jobs, "Remote Manager", "")[0], "no_title")          # would shrink to the bare word Manager
+        self.assertEqual(ats_match.why(self.jobs, "Remote Manager", "")[0], "no_title")  # would shrink to the bare word Manager
 
     def test_a_different_level_still_does_not_match(self):
         self.assertEqual(ats_match.why(self.jobs, "Staff Project Manager (Remote)", "")[0], "no_title")

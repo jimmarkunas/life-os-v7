@@ -1,14 +1,6 @@
-"""NEWSLETTER_GOLDEN_PATH_GATE (LIFE-59): one production-shaped Jobright alert through the REAL V7 stages to the Job Ledger and back to Gmail.
-
-RUNTIME DECLARATION. ENTRY POINT: sweep, extract, resolve-jobright, enrich, fit, publish (with its read-back) and finalize, called as `python -m lifeos.run` calls them.
-REQUIRED INPUTS: a labelled Gmail message, the Jobright parser's card shape, the private-profile projection (a synthetic one here), the Notion Job Ledger target check.
-CALL CHAIN: lifeos.sources.newsletters.sweep -> ingest.extract -> lifeos.jobs.resolve.stage.run_rows -> lifeos.jobs.enrich.run -> lifeos.jobs.fit.stage.run -> lifeos.jobs.publish.run
-(fit_sync, readback) -> lifeos.sources.newsletters.finalize. MUTATION OWNER: the Jobs store (v7_*) for state, publish for the one Ledger page per qualifying vacancy, finalize for the Gmail Done label.
-SUCCESS SIGNAL: every vacancy has exactly one terminal outcome, each published page was read back, and only then does the message get Done. FAIL-CLOSED SIGNAL: a pending, held, unverified or failed vacancy keeps the message open.
-CANONICAL STATE: v7_jobs / v7_job_sources / v7_job_fit and the Ledger page. AUTHORITATIVE READ-BACK: readback.check against the page. LIVE ACCEPTANCE BOUNDARY: the real Gmail message, the real Ledger and Jim's acceptance (not claimed here).
-
-What runs for real: the stage code and the production SQL (over the in-memory Jobs store). What is stood in for, because it is an external boundary: Gmail (a stateful mailbox that applies the real label queries), the provider's
-link resolution and the employer pages (canned), and Notion (a synthetic Ledger). TinyFish is never reachable: the gate fails if the path touches it. Invented companies and a synthetic profile only (D16)."""
+"""NEWSLETTER_GOLDEN_PATH_GATE: one production-shaped Jobright alert through the REAL V7 stages to the Job Ledger and
+back to Gmail.
+"""
 import json
 import time
 import unittest
@@ -36,7 +28,7 @@ PROFILE = {"years": 15, "scope": {"team_size": 10, "budget_usd": 20_000_000, "gl
 ENV = {"FIT_PROFILE_JSON": json.dumps(PROFILE), "V7_FIT_GATE": "true"}
 
 
-# id -> (company, title, employer page url, page body). V4 resolves to V1's employer page: the same vacancy seen twice. V5's resolution is rate limited at first.
+# id -> (company, title, employer page url, page body).
 
 
 
@@ -49,7 +41,9 @@ def page(title, company, body):
 
 
 class JobLedger:
-    """A synthetic Notion Job Ledger: it checks the target, creates pages, answers the URL query and the read-back, and takes the Fit patches. `break_url` makes the read-back disagree."""
+    """A synthetic Notion Job Ledger: it checks the target, creates pages, answers the URL query and the read-back, and
+    takes the Fit patches.
+    """
     source = SOURCE
 
     def __init__(self):
@@ -71,7 +65,9 @@ class JobLedger:
         return page_id
 
     def _store(self, b):
-        """A block as Notion keeps it: an id, its type, its text (with the link of each run) and its children, which are stored under its id."""
+        """A block as Notion keeps it: an id, its type, its text (with the link of each run) and its children, which are
+        stored under its id.
+        """
         self.n += 1
         kind, inner = b["type"], b[b["type"]]
         runs = [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in inner.get("rich_text", [])]
@@ -93,11 +89,11 @@ class JobLedger:
             return {"properties": {n: {"type": t} for n, t in ledger.REQUIRED.items()}}
         if method == "POST" and path.endswith("/query"):
             where = (body or {}).get("filter") or {}
-            if where.get("property") == "Role":                                  # fit_sync's Role-only backfill: the pages whose Role is still empty
+            if where.get("property") == "Role":
                 return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
                                     and not "".join(r["plain_text"] for r in self._shown(p).get("Role", {}).get("rich_text", []))], "has_more": False}
             ors = where.get("or")
-            wanted = {f["rich_text"]["equals"] for f in ors} if ors else ({where["rich_text"]["equals"]} if where.get("rich_text") else None)   # one key, a batch (D212 read-back) or none (the URL read)
+            wanted = {f["rich_text"]["equals"] for f in ors} if ors else ({where["rich_text"]["equals"]} if where.get("rich_text") else None)  # one key, a batch or none (the URL read)
             return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
                                 and (wanted is None or p["props"]["Stable Job Key"]["rich_text"][0]["plain_text"] in wanted)], "has_more": False}
         if method == "GET" and path.startswith("/pages/"):
@@ -122,7 +118,7 @@ class Journey:
     """The chain a tick runs, in order, over one mailbox, one Jobs store and one Ledger."""
     def __init__(self, test, messages):
         self.mailbox, self.db, self.ledger = Mailbox(messages), JobsDB(), JobLedger()
-        self.resolved = {}                                                         # jobright url -> the provider's resolution result
+        self.resolved = {}  # jobright url -> the provider's resolution result
         patches = [mock.patch.object(store, "connect", lambda: self.db), mock.patch.object(store, "ensure_schema", lambda c: None),
                    mock.patch.object(enrich, "fetch", self._fetch), mock.patch.object(publish, "Client", lambda environ: self.ledger),
                    mock.patch.object(enrich.tinyfish, "fetch_many", side_effect=AssertionError("TinyFish must never be reached")),
@@ -176,16 +172,16 @@ class GoldenPath(unittest.TestCase):
 
     def test_one_alert_is_accounted_vacancy_by_vacancy_and_only_the_complete_mail_is_finalized(self):
         j = self.journey(m1=mail("v1", "v2", "v3", "v4", "v5"), m2=mail("v6"))
-        j.resolve_all(["v1", "v2", "v3", "v4", "v6"])                              # v5's provider link stays rate limited: DEGRADED, not empty
+        j.resolve_all(["v1", "v2", "v3", "v4", "v6"])
         published, closed = j.tick()
         self.assertEqual(j.table(), {
             "Acme": ("PUBLISHED", None, True, True), "Globex": ("PUBLISHED", None, True, True), "Initech": ("EXCLUDED_FIT", "lane_exclude", False, False),
             "Umbrella": ("DUPLICATE", "dup_of_final_url", False, False), "Hooli": ("NEW", "rate_limited", False, False), "Wayne": ("PUBLISHED", None, True, True)})
-        self.assertEqual((j.labels("m1"), j.labels("m2")), (NEWSLETTER, DONE))     # m1 still has a pending vacancy; m2 is complete and verified
+        self.assertEqual((j.labels("m1"), j.labels("m2")), (NEWSLETTER, DONE))  # m1 still has a pending vacancy
         self.assertEqual((closed["closed"], closed["in_flight"]), (1, 1))
-        self.assertEqual(j.ledger.created, 3)                                      # one canonical Ledger page per qualifying vacancy, no more
-        self.assertEqual(published["readback"], {"checked": 3, "verified": 3, "failed": 0, "why": {}})   # D212: every created page is read back from Notion
-        self.assertEqual(published["fit_sync"]["due"], 0)                          # and the Fit publish wrote is not written a second time
+        self.assertEqual(j.ledger.created, 3)
+        self.assertEqual(published["readback"], {"checked": 3, "verified": 3, "failed": 0, "why": {}})  # every created page is read back from Notion
+        self.assertEqual(published["fit_sync"]["due"], 0)
 
     def test_the_us_remote_view_carries_the_admitted_vacancy_with_its_employer_link_key_and_fit(self):
         j = self.journey(m1=mail("v1"))
@@ -209,7 +205,7 @@ class GoldenPath(unittest.TestCase):
         j.resolve_all(["v1"])
         j.tick()
         self.assertEqual(j.labels("m1"), NEWSLETTER)
-        j.resolve_all(["v5"])                                                       # the provider recovers on a later tick
+        j.resolve_all(["v5"])  # the provider recovers on a later tick
         j.tick()
         self.assertEqual(j.table()["Hooli"], ("PUBLISHED", None, True, True))
         self.assertEqual(j.labels("m1"), DONE)
@@ -220,7 +216,7 @@ class GoldenPath(unittest.TestCase):
         j.resolve_all(["v1", "v2"])
         j.tick()
         before = (j.table(), j.ledger.created, j.db.count("v7_jobs"), j.db.count("v7_job_sources"))
-        for i in j.mailbox.labels:                                                  # the same message arrives again, as if it were never swept
+        for i in j.mailbox.labels:
             j.mailbox.labels[i] = {"INBOX"}
         j.tick()
         self.assertEqual((j.table(), j.ledger.created, j.db.count("v7_jobs"), j.db.count("v7_job_sources")), before)
@@ -230,10 +226,10 @@ class GoldenPath(unittest.TestCase):
         j = self.journey(m1=mail("v1", "v2"))
         j.resolve_all(["v1", "v2"])
         sweep.sweep(j.mailbox, True)
-        j.db.fail_on = ("INSERT IGNORE INTO v7_jobs", 2)                            # the second card's insert fails
+        j.db.fail_on = ("INSERT IGNORE INTO v7_jobs", 2)  # the second card's insert fails
         with self.assertRaises(RuntimeError):
             ingest.extract(j.mailbox, True, 100, j.db)
-        self.assertEqual((j.labels("m1") & {"j-newsletters-processed"}, j.db.count("v7_jobs")), (set(), 1))   # not Processed, and nothing is lost: one card is saved
+        self.assertEqual((j.labels("m1") & {"j-newsletters-processed"}, j.db.count("v7_jobs")), (set(), 1))
         j.tick()
         self.assertEqual((j.db.count("v7_jobs"), j.labels("m1"), j.ledger.created), (2, DONE, 2))
 
@@ -252,11 +248,11 @@ class GoldenPath(unittest.TestCase):
     def test_a_crash_after_the_ledger_page_is_created_but_before_it_is_recorded_does_not_duplicate_the_page(self):
         j = self.journey(m1=mail("v1"))
         j.resolve_all(["v1"])
-        j.db.fail_on = ("UPDATE v7_jobs SET status='PUBLISHED'", 1)                  # the database write after the Notion create fails
+        j.db.fail_on = ("UPDATE v7_jobs SET status='PUBLISHED'", 1)  # the database write after the Notion create fails
         with self.assertRaises(RuntimeError):
             j.tick()
         self.assertEqual(j.ledger.created, 1)
-        j.tick()                                                                    # the next tick must not create the same page again
+        j.tick()  # the next tick must not create the same page again
         self.assertEqual(j.ledger.created, 1)
         self.assertEqual((j.table()["Acme"], j.labels("m1")), (("PUBLISHED", None, True, True), DONE))
 
@@ -269,7 +265,7 @@ class GoldenPath(unittest.TestCase):
         return j
 
     def test_an_ambiguous_create_keeps_its_claim_and_the_next_run_adopts_the_page_it_made_never_a_second(self):
-        """LIFE-903: Notion accepted the create but the answer was lost. The claim stays; the next run finds the page by key (adopt only while the key is held) and creates nothing."""
+        """Notion accepted the create but the answer was lost."""
         j = self.journey(m1=mail("v1"))
         j.resolve_all(["v1"])
         made = j.ledger.create
@@ -280,35 +276,35 @@ class GoldenPath(unittest.TestCase):
         j.ledger.create = lost_answer
         published, _ = j.tick()
         self.assertEqual((published["failed"], j.ledger.created, published["claim_won"]), (1, 1, 1))
-        self.assertEqual(j.db.raw.execute("SELECT ledger_claim_by IS NOT NULL, notion_page_id IS NULL FROM v7_jobs").fetchone(), (1, 1))       # unresolved: claim held, no page recorded
+        self.assertEqual(j.db.raw.execute("SELECT ledger_claim_by IS NOT NULL, notion_page_id IS NULL FROM v7_jobs").fetchone(), (1, 1))  # unresolved: claim held, no page recorded
         j.ledger.create = made
         published, closed = j.tick()
-        self.assertEqual((published["failed"], j.ledger.created, published["claim_held"]), (0, 1, 0))                                      # still one page: the batched key lookup finds it, adopts it, and no claim is needed to adopt
+        self.assertEqual((published["failed"], j.ledger.created, published["claim_held"]), (0, 1, 0))
         self.assertEqual((j.table()["Acme"], j.db.raw.execute("SELECT ledger_claim_by IS NULL FROM v7_jobs").fetchone()), (("PUBLISHED", None, True, True), (1,)))
 
     def test_a_create_that_made_nothing_is_not_retried_until_the_lease_passes_then_exactly_once(self):
         j = self.journey(m1=mail("v1"))
         j.resolve_all(["v1"])
         made = j.ledger.create
-        j.ledger.create = lambda props, blocks: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))           # nothing was created
+        j.ledger.create = lambda props, blocks: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))  # nothing was created
         published, _ = j.tick()
         self.assertEqual((published["failed"], j.ledger.created), (1, 0))
         j.ledger.create = made
         published, _ = j.tick()
-        self.assertEqual((published["failed"], published["claim_held"], j.ledger.created), (0, 1, 0))             # inside the lease: nothing is created on a guess
+        self.assertEqual((published["failed"], published["claim_held"], j.ledger.created), (0, 1, 0))  # inside the lease: nothing is created on a guess
         j.db.raw.execute("UPDATE v7_jobs SET ledger_claim_at = ?", (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30),))
         published, _ = j.tick()
-        self.assertEqual((published["failed"], published["claim_won"], j.ledger.created), (0, 1, 1))              # lease over, key read back empty: one create
+        self.assertEqual((published["failed"], published["claim_won"], j.ledger.created), (0, 1, 1))  # lease over, key read back empty: one create
         self.assertEqual(j.table()["Acme"], ("PUBLISHED", None, True, True))
 
     def assertRefused(self, j, error):
         published, closed = j.tick()
-        self.assertEqual((published["failed"], published["error"], j.ledger.created), (1, error, 1))        # nothing created, nothing adopted
+        self.assertEqual((published["failed"], published["error"], j.ledger.created), (1, error, 1))  # nothing created, nothing adopted
         self.assertEqual((j.table()["Acme"], j.labels("m1"), closed["closed"]), (("READY", None, False, False), NEWSLETTER, 0))
 
     def test_two_ledger_pages_for_one_key_are_refused_never_resolved_by_picking_one(self):
         j = self.crashed_after_create()
-        j.ledger.pages["page-dup"] = j.ledger.pages["page1"]                       # a duplicate that already exists in the Ledger
+        j.ledger.pages["page-dup"] = j.ledger.pages["page1"]  # a duplicate that already exists in the Ledger
         self.assertRefused(j, "ledger_key_ambiguous")
 
     def test_an_unreadable_key_lookup_is_refused_never_treated_as_no_page(self):
@@ -317,18 +313,18 @@ class GoldenPath(unittest.TestCase):
                 j = self.crashed_after_create()
                 lookup = j.ledger.call
                 j.ledger.call = lambda method, path, body=None, lookup=lookup, answer=answer: (
-                    answer if body and set(body.get("filter") or {}) & {"rich_text", "or"} else lookup(method, path, body))     # the batched lookup (saving 3) and the per-key fallback both unreadable
+                    answer if body and set(body.get("filter") or {}) & {"rich_text", "or"} else lookup(method, path, body))
                 self.assertRefused(j, "ledger_lookup_unreadable")
 
     def test_an_unreadable_batched_lookup_falls_back_to_the_per_key_lookup_and_adopts(self):
-        """LIFE-76 saving 3: a batched key answer that cannot be read is never `no page`; the per-key lookup then finds and adopts the page the crash left, creating nothing."""
+        """saving 3: a batched key answer that cannot be read is never `no page`"""
         j = self.crashed_after_create()
         lookup, batches = j.ledger.call, []
 
         def call(method, path, body=None):
             if body and (body.get("filter") or {}).get("or"):
                 batches.append(1)
-                if len(batches) == 1:                                                  # publish's batched lookup only; the D212 read-back still reads Notion
+                if len(batches) == 1:  # publish's batched lookup only
                     return {"results": None}
             return lookup(method, path, body)
         j.ledger.call = call
@@ -336,7 +332,7 @@ class GoldenPath(unittest.TestCase):
         self.assertEqual((published["failed"], published.get("key_lookup"), j.ledger.created), (0, "per_key", 1))
 
     def test_one_batched_key_query_serves_every_page_a_run_publishes(self):
-        """LIFE-76 saving 3: the jobs a run publishes are looked up with one data-source query, not one each; the per-key query is never used."""
+        """saving 3: the jobs a run publishes are looked up with one data-source query, not one each"""
         j = self.journey(m1=mail("v1", "v2"))
         j.resolve_all(["v1", "v2"])
         queries = []
@@ -345,8 +341,8 @@ class GoldenPath(unittest.TestCase):
                                                           if body and method == "POST" and path.endswith("/query") else None) or lookup(method, path, body)
         published, _ = j.tick()
         self.assertEqual((published["created"], published["failed"], j.ledger.created), (2, 0, 2))
-        self.assertEqual(queries.count("one"), 2)                                     # LIFE-903: one authoritative per-key read-back per create, taken after the claim (the batched lookup still serves every found page)
-        self.assertEqual(queries.count("or"), 2)                                      # the publish lookup, then the D212 read-back
+        self.assertEqual(queries.count("one"), 2)
+        self.assertEqual(queries.count("or"), 2)  # the publish lookup, then the read-back
 
 
 if __name__ == "__main__":

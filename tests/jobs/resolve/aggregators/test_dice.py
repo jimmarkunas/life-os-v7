@@ -52,7 +52,7 @@ class DiceResolverTests(unittest.TestCase):
         opener = ScriptedOpener(Response(b"", status=429))
         with mock.patch.object(dice.http, "_OPENER", opener), mock.patch.object(dice.time, "sleep"):
             results = dice.make_resolver()([(1, TRACK1), (2, TRACK2), (3, TRACK1)])
-        self.assertEqual([r["outcome"] for r in results], ["rate_limited", "deferred", "deferred"])   # untried rows are not attempts
+        self.assertEqual([r["outcome"] for r in results], ["rate_limited", "deferred", "deferred"])  # untried rows are not attempts
         self.assertEqual(len(opener.urls), 1)
 
     def test_network_error_stays_pending_and_never_closes_or_duplicates(self):
@@ -93,7 +93,7 @@ class DiceResolverTests(unittest.TestCase):
         args, kwargs = run_rows.call_args
         self.assertEqual((args[0], args[1], args[2]), ("dice", limits.DICE_PER_RUN, False))
         self.assertEqual(kwargs["deadline_minutes"], limits.DICE_DEADLINE_MINUTES)
-        self.assertLessEqual(limits.DICE_DEADLINE_MINUTES, 3)                    # Dice is low value: never a long job
+        self.assertLessEqual(limits.DICE_DEADLINE_MINUTES, 3)  # Dice is low value: never a long job
         self.assertEqual(counts, {"picked": 0, "resolved": 0, "closed": 0, "duplicate": 0, "pending": 0, "rate_limited": 0})
 
     def test_gap_is_shared_between_batches(self):

@@ -45,19 +45,19 @@ class Detect(unittest.TestCase):
                 return False
 
             def execute(self, sql, params=()):
-                sql % tuple("x" for _ in params)                       # the statement must survive %-formatting
+                sql % tuple("x" for _ in params)  # the statement must survive %-formatting
                 self.last = sql
 
             def fetchone(self):
                 return (1,)
 
             def fetchall(self):
-                if "last_complete_at" in self.last:                     # boards read in full inside the window
+                if "last_complete_at" in self.last:  # boards read in full inside the window
                     return [("braze",)]
-                if "v7_feed" in self.last:                              # the Open Jobs feed: OK when its last run read it without error
+                if "v7_feed" in self.last:
                     return feed_rows
                 return [("dice", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400), ("web:examplefeed", 0, 3400),
-                        ("lensa", 0, 700), ("web:openjobs", 0, 3400)]                     # D201: retired sources, busy before and silent now
+                        ("lensa", 0, 700), ("web:openjobs", 0, 3400)]  # retired sources, busy before and silent now
 
         class Conn:
             def cursor(self):
@@ -69,18 +69,18 @@ class Detect(unittest.TestCase):
 
     def test_a_feed_read_without_error_is_idle_but_a_degraded_feed_still_pages(self):
         self.assertNotIn("web:examplefeed", [name for name, _ in self.gather_stopped([("examplefeed",)])])
-        self.assertIn(("web:examplefeed", 242.9), self.gather_stopped([]))                      # no OK feed row: the read failed (DEGRADED) or never ran
+        self.assertIn(("web:examplefeed", 242.9), self.gather_stopped([]))
 
     def test_a_retired_source_never_pages_even_with_no_feed_row(self):
         stopped = [name for name, _ in self.gather_stopped([])]
-        self.assertFalse({"lensa", "web:openjobs"} & set(stopped), stopped)                     # D201: Lensa retired, Open Jobs ended 10 Oct 2026
-        self.assertTrue(all(reason for reason in jobs_alerts.RETIRED_SOURCES.values()))          # each says why, specifically
+        self.assertFalse({"lensa", "web:openjobs"} & set(stopped), stopped)  # Lensa retired, Open Jobs ended 10 Oct 2026
+        self.assertTrue(all(reason for reason in jobs_alerts.RETIRED_SOURCES.values()))  # each says why, specifically
 
 
     def test_stuck_breakdown_groups_by_state_and_keeps_only_counts_and_codes(self):
         class Cur:
             def execute(self, sql, params=()):
-                sql % tuple("x" for _ in params)                       # the statement must survive %-formatting
+                sql % tuple("x" for _ in params)  # the statement must survive %-formatting
                 assert "SELECT" in sql and "UPDATE" not in sql and "DELETE" not in sql
 
             def fetchall(self):
@@ -93,13 +93,13 @@ class Detect(unittest.TestCase):
     def test_body_shape_counts_what_notion_can_refuse_and_never_returns_text(self):
         def block(kind, text):
             return {"object": "block", "type": kind, kind: {"rich_text": [{"type": "text", "text": {"content": text}}]}}
-        too_long = "a" * 1996 + "\U0001F600" * 4                                       # 2000 characters, 2004 UTF-16 units (the Oct 12 publish failure)
+        too_long = "a" * 1996 + "\U0001F600" * 4
         blocks = [block("paragraph", "marker"), block("heading_2", "Summary"), block("paragraph", too_long), block("paragraph", "bad\x01char and nul\x00 here")]
         got = alertstate.body_shape(blocks)
         self.assertEqual((got["over_2000_chars"], got["over_2000_units"]), (0, 1))
         self.assertEqual((got["control"], got["nul"], got["surrogate"]), (1, 1, 0))
         self.assertEqual(got["child2"], {"type": "paragraph", "items": 1, "chars": 2000, "units": 2004, "empty": False, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0})
-        self.assertNotIn("bad", json.dumps(got))                                            # counts only
+        self.assertNotIn("bad", json.dumps(got))  # counts only
 
     def test_publish_bodies_reads_only_and_falls_back_to_the_full_text(self):
         class Cur:
@@ -112,7 +112,7 @@ class Detect(unittest.TestCase):
             def fetchall(self):
                 return [(None, None, None, None, "A plain description line"), ("Short summary", None, None, None, "ignored")]
         got = alertstate.publish_bodies(Cur())
-        self.assertEqual([g["blocks"] for g in got], [3, 3])                                   # marker, heading, one paragraph each
+        self.assertEqual([g["blocks"] for g in got], [3, 3])  # marker, heading, one paragraph each
         self.assertTrue(Cur.sql.startswith("SELECT") and "UPDATE" not in Cur.sql and "DELETE" not in Cur.sql)
 
     def test_expiry_pages_a_week_before_and_after(self):
@@ -123,11 +123,11 @@ class Detect(unittest.TestCase):
         self.assertIn("expired", jobs_alerts.detect(QUIET, dt.datetime(2026, 11, 2), exp)[0].title)
 
     def test_the_credential_list_is_the_only_source_of_expiry_dates(self):
-        """LIFE-604 item 6: the older lifeos/jobs/expiries.json overrode the credential list with a different date; there is now one source."""
+        """item 6: the older lifeos/jobs/expiries.json overrode the credential list with a different date"""
         import pathlib
         self.assertFalse(pathlib.Path(jobs_alerts.__file__).with_name("expiries.json").exists())
         self.assertFalse(hasattr(jobs_alerts, "EXPIRIES"))
-        self.assertTrue(jobs_alerts.credentials.expiries())                           # the list still carries the dated credential that file used to hold
+        self.assertTrue(jobs_alerts.credentials.expiries())
 
 
 MSG_A, MSG_B = "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"
@@ -135,7 +135,6 @@ REF_A, REF_B = (hashlib.sha256(m.encode()).hexdigest() for m in (MSG_A, MSG_B))
 SEEN = dt.datetime(2026, 10, 13, 15, 30)
 
 
-# Measured Oct 25 2026, ~6:30 PM CT, funnel report run 40244628597 (jobs first seen in 7 days / in 24 hours), grouped as the monitors group them.
 MEASURED_7D = {'dice': {'CLOSED': 1, 'EXCLUDED_FIT': 4, 'PUBLISHED': 15}, 'discover': {'DUPLICATE': 18, 'EXCLUDED_FIT': 5, 'HOLD': 25, 'PUBLISHED': 1},
                'jobright': {'CLOSED': 6, 'DUPLICATE': 9, 'EXCLUDED_FIT': 24, 'EXCLUDED_STALE': 19, 'HOLD': 15, 'NEW': 1, 'PUBLISHED': 39, 'RESOLVED': 11},
                'linkedin-alerts': {'CLOSED': 2, 'DUPLICATE': 12, 'EXCLUDED_FIT': 29, 'EXCLUDED_STALE': 4, 'NEW': 2, 'PUBLISHED': 32, 'RESOLVED': 3},
@@ -152,7 +151,8 @@ MEASURED_24H = {'discover': {'DUPLICATE': 3, 'EXCLUDED_FIT': 1, 'HOLD': 2}, 'job
 
 
 class YieldMonitors(unittest.TestCase):
-    """LIFE-74 M1 (stuck early) and M2 (low yield): pure functions of status counts per source, boards grouped by ATS family."""
+    """M1 (stuck early) and M2 (low yield): pure functions of status counts per source, boards grouped by ATS family.
+    """
 
     def test_sources_are_grouped_boards_by_family_and_retired_sources_are_skipped(self):
         rows = [("web:gh-zoox", "PUBLISHED", 2), ("web:gh-wachter", "PUBLISHED", 3), ("web:lv-way", "HOLD", 1), ("web:servicenow", "NEW", 4), ("web:okta", "NEW", 1),
@@ -163,23 +163,23 @@ class YieldMonitors(unittest.TestCase):
     def test_stuck_needs_20_jobs_and_half_still_new_or_hold(self):
         def stuck(total, stuck_n):
             return jobs_alerts.yield_monitors({"s": {"HOLD": stuck_n, "PUBLISHED": total - stuck_n}}, {})["stuck"]
-        self.assertEqual(stuck(19, 19), {})                                   # too few jobs
+        self.assertEqual(stuck(19, 19), {})  # too few jobs
         self.assertEqual(stuck(20, 9), {})
         self.assertEqual(stuck(20, 10), {"s": 0.5})
-        self.assertEqual(stuck(109, 107), {"s": 0.982})                         # Lensa, Oct 6-17: 2 resolved of 109
+        self.assertEqual(stuck(109, 107), {"s": 0.982})
 
     def test_low_yield_needs_30_jobs_in_7_days_and_under_5_percent_published(self):
         def low(total, published):
             return jobs_alerts.yield_monitors({}, {"s": {"PUBLISHED": published, "EXCLUDED_FIT": total - published}})["low_yield"]
         self.assertEqual(low(29, 0), {})
         self.assertEqual(low(30, 1), {"s": 0.033})
-        self.assertEqual(low(100, 5), {})                                     # exactly 5% is not under 5%
+        self.assertEqual(low(100, 5), {})  # exactly 5% is not under 5%
         self.assertEqual(low(100, 4), {"s": 0.04})
 
     def test_the_measured_tables_trip_exactly_scale_up_discovery_and_the_scale_up_boards(self):
-        found = jobs_alerts.yield_monitors(MEASURED_24H, MEASURED_7D)         # the 24 h table stands in for the 72 h one: no source there has 20 stuck jobs either
+        found = jobs_alerts.yield_monitors(MEASURED_24H, MEASURED_7D)
         self.assertEqual(found["stuck"], {})
-        self.assertEqual(found["low_yield"], {"discover": 0.02, "web:su": 0.0})    # web:su: 47 of 48 jobs excluded by Fit, a Fit-policy fact worth seeing
+        self.assertEqual(found["low_yield"], {"discover": 0.02, "web:su": 0.0})
 
     def test_detect_raises_info_alerts_with_stable_keys(self):
         counts = {**QUIET, "yield_72h": {"web:gh": {"HOLD": 30}}, "yield_7d": {"discover": {"HOLD": 40, "PUBLISHED": 1}}}
@@ -192,9 +192,9 @@ class YieldMonitors(unittest.TestCase):
         self.assertEqual(jobs_alerts.detect({**QUIET, "yield_72h": MEASURED_24H, "yield_7d": healthy}, NOW), [])
 
     def replay(self, resolved_per_day):
-        """Twelve daily evaluations (Oct 6-17) of one source that finds 9 jobs a day; `resolved_per_day` of them leave NEW. Returns the notification kinds, with the alert state carried like save()."""
+        """`resolved_per_day` of them leave NEW."""
         state, kinds = {}, []
-        window = []                                                           # (resolved, stuck) per day
+        window = []  # (resolved, stuck) per day
         for day, resolved in enumerate(resolved_per_day):
             window = (window + [(resolved, 9 - resolved)])[-3:]
             counts = {**QUIET, "yield_72h": {"lensa": {"RESOLVED": sum(r for r, _ in window), "HOLD": sum(s for _, s in window)}}, "yield_7d": {}}
@@ -211,8 +211,8 @@ class YieldMonitors(unittest.TestCase):
         return kinds
 
     def test_replaying_the_lensa_counts_opens_the_stuck_alert_exactly_once(self):
-        with mock.patch.object(jobs_alerts, "RETIRED_SOURCES", {}):            # Lensa was still live on Oct 17
-            kinds = self.replay([0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0])         # 2 resolved of 108 over the twelve days
+        with mock.patch.object(jobs_alerts, "RETIRED_SOURCES", {}):
+            kinds = self.replay([0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0])  # 2 resolved of 108 over the twelve days
         self.assertEqual(kinds.count("open"), 1)
         self.assertEqual(kinds.count("resolved"), 0)
 
@@ -227,7 +227,7 @@ class YieldMonitors(unittest.TestCase):
         with mock.patch.object(jobs_alerts.store, "connect", return_value=db), mock.patch.object(jobs_alerts.store, "ensure_schema"), \
                 mock.patch.object(jobs_alerts.credentials, "expiries", return_value=listed), mock.patch.object(jobs_alerts, "detect", wraps=jobs_alerts.detect) as spy:
             jobs_alerts.run(0, False, now=NOW)
-        self.assertEqual(spy.call_args.args[2], listed)                              # the real detect ran; nothing was merged into the list
+        self.assertEqual(spy.call_args.args[2], listed)  # the real detect ran
 
     def test_the_stage_log_line_carries_the_monitor_values(self):
         db = JobsDB()
@@ -238,7 +238,7 @@ class YieldMonitors(unittest.TestCase):
 
 
 class Delivered(unittest.TestCase):
-    """LIFE-653: each successful push is recorded as delivered; only a failed one stays undelivered and is retried."""
+    """each successful push is recorded as delivered"""
 
     def run_live(self, accepted):
         pushes, saved = [], []
@@ -271,12 +271,14 @@ class Delivered(unittest.TestCase):
 
 
 class MessageTraceTests(unittest.TestCase):
-    """LIFE-59: ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) turns alerts-open into a read-only, allowlisted, per-vacancy trace of that message, over the real v7_job_sources / v7_jobs SQL."""
+    """ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) turns alerts-open into a read-only, allowlisted, per-
+    vacancy trace of that message, over the.
+    """
 
     def setUp(self):
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
-        self.db.raw.create_function("SHA2", 2, lambda value, bits: hashlib.sha256(str(value).encode()).hexdigest())          # MySQL's SHA2(x, 256), which the query uses to match the id without holding it
+        self.db.raw.create_function("SHA2", 2, lambda value, bits: hashlib.sha256(str(value).encode()).hexdigest())
         self.n = 0
 
     def vacancy(self, message, status, reason=None, page=None, verified=None, source="jobright", title="Secret Title"):
@@ -293,7 +295,7 @@ class MessageTraceTests(unittest.TestCase):
         for status, reason, page, verified in (("PUBLISHED", None, "page-1", SEEN), ("PUBLISHED", None, "page-2", None), ("HOLD", "http_503", None, None), ("EXCLUDED_FIT", "Fit 67 below 68", None, None),
                                                ("NEW", None, None, None), ("DUPLICATE", "dup_of_final_url", None, None), ("WEIRD", None, None, None)):
             self.vacancy(MSG_A, status, reason, page, verified)
-        self.association(MSG_A, 999)                                                    # a source row whose job row is missing
+        self.association(MSG_A, 999)  # a source row whose job row is missing
         self.vacancy(MSG_B, "PUBLISHED", None, "page-9", SEEN)
         self.vacancy(MSG_B, "HOLD", "link_mismatch")
 
@@ -321,7 +323,7 @@ class MessageTraceTests(unittest.TestCase):
             self.assertEqual(self.trace(hashlib.sha256(near.encode()).hexdigest())["message_trace"], {"associations": 0, "vacancies": [], "terminal": 0, "blockers": {}})
 
     def test_every_job_status_gets_the_outcome_finalize_gives_its_mail(self):
-        self.assertEqual((alertstate.IN_FLIGHT, alertstate.TERMINAL), (finalize.IN_FLIGHT, finalize.TERMINAL))               # the copies jobs keeps (it cannot import sources) stay equal
+        self.assertEqual((alertstate.IN_FLIGHT, alertstate.TERMINAL), (finalize.IN_FLIGHT, finalize.TERMINAL))
         for status, reason, page, verified in (("NEW", None, None, None), ("RESOLVED", None, None, None), ("READY", None, None, None), ("HOLD", "x", None, None), ("PUBLISHED", None, "p", SEEN),
                                                ("PUBLISHED", None, "p", None), ("CLOSED", None, None, None), ("DUPLICATE", None, None, None), ("PURGED", None, None, None),
                                                ("EXCLUDED_FIT", None, None, None), ("EXCLUDED_UNRESOLVED", None, None, None), ("MYSTERY", None, None, None)):
@@ -345,7 +347,7 @@ class MessageTraceTests(unittest.TestCase):
         self.seed()
         dump = lambda: {t: self.db.raw.execute(f"SELECT * FROM {t}").fetchall() for t in store.TABLES}      # noqa: E731
         before = dump()
-        self.db.raw.execute("PRAGMA query_only = ON")                                                  # the engine itself refuses a write from here on
+        self.db.raw.execute("PRAGMA query_only = ON")  # the engine itself refuses a write from here on
         self.trace(REF_A)
         self.db.raw.execute("PRAGMA query_only = OFF")
         self.assertEqual(dump(), before)
@@ -362,7 +364,7 @@ class MessageTraceTests(unittest.TestCase):
                 alertstate._select(Cur(), sql, ())
             self.assertEqual(str(ctx.exception), "ALERT_STATE_NOT_READ_ONLY")
         alertstate._select(Cur(), "select 1", ())
-        self.assertEqual(seen, ["select 1"])                                                             # only the SELECT ever reached the database
+        self.assertEqual(seen, ["select 1"])  # only the SELECT ever reached the database
 
     def test_the_output_carries_no_job_identity_message_id_or_selector(self):
         self.seed()
@@ -424,7 +426,7 @@ class MessageTraceTests(unittest.TestCase):
         self.assertEqual(got["message_trace"]["associations"], 2)
         with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": ""}), mock.patch.object(store, "connect", side_effect=store.StoreError("STORE_CONFIG_MISSING:X")):
             with self.assertRaises(store.StoreError):
-                alertstate.run(0, False)                                                                   # empty selector: the original report path, which opens the store as before
+                alertstate.run(0, False)
 
 
 if __name__ == "__main__":

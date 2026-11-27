@@ -37,7 +37,7 @@ class AuditNeverDestroysAPursuit(unittest.TestCase):
         import inspect
         from lifeos.jobs import audit
         source = inspect.getsource(audit.run)
-        self.assertLess(source.index("guard.protection"), source.index('"in_trash"'))     # no trash call can precede the check
+        self.assertLess(source.index("guard.protection"), source.index('"in_trash"'))  # no trash call can precede the check
 
 
 class ProvenLinkTests(unittest.TestCase):
@@ -49,9 +49,9 @@ class ProvenLinkTests(unittest.TestCase):
         self.assertIsNone(audit.judge(url, text, proven=True))
         thin = "A short description of a role. " * 5
         self.assertEqual(audit.judge("https://careers.example.com/jobs/12345", thin), "audit_jd_thin")
-        self.assertIsNone(audit.judge("https://careers.example.com/jobs/12345", thin, thin_ok=True))               # Jim, Oct 21: a Scale-Up sponsor's thin page is Review
-        self.assertEqual(audit.judge("https://careers.example.com/jobs/12345", "{{x}} {{y}} {{z}} " * 5, thin_ok=True), "audit_jd_template")     # only THIN is let through
-        self.assertEqual(audit.judge("https://careers-acme.icims.com/", text, proven=True), "audit_url_root")      # a root is never excused
+        self.assertIsNone(audit.judge("https://careers.example.com/jobs/12345", thin, thin_ok=True))
+        self.assertEqual(audit.judge("https://careers.example.com/jobs/12345", "{{x}} {{y}} {{z}} " * 5, thin_ok=True), "audit_jd_template")  # only THIN is let through
+        self.assertEqual(audit.judge("https://careers-acme.icims.com/", text, proven=True), "audit_url_root")  # a root is never excused
 
 
 class DuplicatePageTests(unittest.TestCase):
@@ -60,30 +60,30 @@ class DuplicatePageTests(unittest.TestCase):
                                      (2, "PUBLISHED", "https://x.example/2", "p2", None, "ServiceNow", "Director, TA Infrastructure"),
                                      (3, "PUBLISHED", "https://x.example/3", "p3", None, "ServiceNow", "Director, TA Infrastructure"),
                                      (4, "PUBLISHED", "https://x.example/4", "p4", None, "Adobe", "Product Manager"),
-                                     (5, "PUBLISHED", "https://x.example/5", "p5", None, "Adobe", "Product Manager")]), 2)       # ids 2 and 3; two-word titles never merge
+                                     (5, "PUBLISHED", "https://x.example/5", "p5", None, "Adobe", "Product Manager")]), 2)  # ids 2 and 3
 
-    def test_pages_whose_links_name_different_vacancies_are_never_duplicates_and_one_vacancy_still_is(self):     # D205
+    def test_pages_whose_links_name_different_vacancies_are_never_duplicates_and_one_vacancy_still_is(self):
         gh = "https://www.acme.example/careers?gh_jid={}"
         self.assertEqual(self.audit([(1, "PUBLISHED", gh.format(1001), "p1", None, "Acme", "Senior Technical Program Manager"),
                                      (2, "PUBLISHED", gh.format(2002), "p2", None, "Acme", "Senior Technical Program Manager"),
                                      (3, "PUBLISHED", "https://boards.greenhouse.io/acme/jobs/2002", "p3", None, "Acme", "Senior Technical Program Manager"),
-                                     (4, "PUBLISHED", "https://www.linkedin.com/jobs/view/44", "p4", None, "Acme", "Senior Technical Program Manager")]), 1)   # only 3 (= 2): 4 has no id, so not shown
+                                     (4, "PUBLISHED", "https://www.linkedin.com/jobs/view/44", "p4", None, "Acme", "Senior Technical Program Manager")]), 1)  # only 3 (= 2): 4 has no id, so not shown
         self.assertEqual(self.audit([(1, "PUBLISHED", "https://careers.acme.example/a", "p1", None, "Acme", "Senior Technical Program Manager"),
-                                     (2, "PUBLISHED", "https://careers.acme.example/b", "p2", None, "Acme", "Senior Technical Program Manager")]), 1)   # no ids: D90 as before
+                                     (2, "PUBLISHED", "https://careers.acme.example/b", "p2", None, "Acme", "Senior Technical Program Manager")]), 1)  # no ids: as before
 
-    def test_an_aggregator_page_at_an_ats_vacancys_place_goes_whichever_came_first(self):     # LIFE-64: Clarus, Oct 24
+    def test_an_aggregator_page_at_an_ats_vacancys_place_goes_whichever_came_first(self):
         wd = "https://independencepetgroup.wd12.myworkdayjobs.com/clarus/job/Chicago-IL/Project-Manager---Advanced_JR102945"
         li = "https://www.linkedin.com/jobs/view/4482175447"
-        pages = [(1, "PUBLISHED", li, "p1", None, "Clarus Technology", "Project Manager - Advanced"),         # the LinkedIn page came first
+        pages = [(1, "PUBLISHED", li, "p1", None, "Clarus Technology", "Project Manager - Advanced"),  # the LinkedIn page came first
                  (2, "PUBLISHED", wd, "p2", None, "Clarus Technology", "Project Manager - Advanced")]
         from lifeos.jobs import audit
         group = {("clarus technology", "project manager advanced"): pages}
-        self.assertEqual([(r[0], twin) for r, twin in audit.twins(group, {1: "Chicago, IL", 2: "Remote / Enterprise Software"}, set())], [(1, 2)])   # the aggregator page goes
+        self.assertEqual([(r[0], twin) for r, twin in audit.twins(group, {1: "Chicago, IL", 2: "Remote / Enterprise Software"}, set())], [(1, 2)])  # the aggregator page goes
         self.assertEqual(audit.twins(group, {1: "Austin, TX", 2: "Remote"}, set()), [])
         self.assertEqual(audit.twins(group, {1: "Remote", 2: "Remote"}, set()), [])
-        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {2}), [])                     # the ATS page is itself going: nothing is kept in its place
-        self.assertEqual(self.audit(pages, {1: "Chicago, IL", 2: "Remote"}), 1)                # and the run counts it
-        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {1}), [])                     # a page already going (e.g. excluded by Fit) is not counted twice
+        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {2}), [])
+        self.assertEqual(self.audit(pages, {1: "Chicago, IL", 2: "Remote"}), 1)  # and the run counts it
+        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {1}), [])  # a page already going (e.g.)
 
     def audit(self, pages, places=None):
         from unittest import mock
@@ -123,7 +123,7 @@ class DuplicatePageTests(unittest.TestCase):
 
 
 class PageCapTests(unittest.TestCase):
-    def test_a_large_excluded_pile_is_trashed_a_bounded_slice_per_run_and_the_rest_counted(self):     # D246
+    def test_a_large_excluded_pile_is_trashed_a_bounded_slice_per_run_and_the_rest_counted(self):
         from unittest import mock
         from lifeos.jobs import audit
         from lifeos.platform import limits
@@ -209,7 +209,7 @@ class AlreadyTrashedPageTests(unittest.TestCase):
 
 
 class ReadyGateTests(unittest.TestCase):
-    """LIFE-76: the gate before publish judges only the READY rows, with the same guards, and never reads or trashes a page; the full pass runs after publish."""
+    """the gate before publish judges only the READY rows, with the same guards, and never reads or trashes a page"""
     def _run(self, ready_only):
         from unittest import mock
         from lifeos.jobs import audit
@@ -255,8 +255,8 @@ class ReadyGateTests(unittest.TestCase):
         self.assertEqual(counts["by_reason"], {"audit_url_root": 1})
         self.assertFalse(made.called)
         self.assertFalse(client.call.called)
-        self.assertFalse(any("notion_page_id IS NOT NULL" in s or "f.admission" in s for s in sql))     # no page list, place list or Exclude pile is read
-        self.assertTrue(any("d.full_text" in s and "IN ('READY')" in s for s in sql))             # and only READY descriptions
+        self.assertFalse(any("notion_page_id IS NOT NULL" in s or "f.admission" in s for s in sql))  # no page list, place list or Exclude pile is read
+        self.assertTrue(any("d.full_text" in s and "IN ('READY')" in s for s in sql))  # and only READY descriptions
 
     def test_the_full_pass_still_judges_and_trashes_published_pages(self):
         counts, _sql, made, client = self._run(False)

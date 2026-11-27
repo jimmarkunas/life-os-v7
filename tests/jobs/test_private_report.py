@@ -31,8 +31,8 @@ class Private(unittest.TestCase):
         self.assertEqual((counts["page"], counts["failed"]), ("new", 0))
         method, path, body = client.writes[0]
         self.assertEqual((method, path, body["parent"]), ("POST", "/pages", {"type": "page_id", "page_id": PARENT}))
-        self.assertEqual(body["template"], {"type": "template_id", "template_id": "e" * 32})        # D16.1: created from the Full Width template
-        self.assertNotIn("children", body)                                                          # a template page takes no children: they follow by PATCH
+        self.assertEqual(body["template"], {"type": "template_id", "template_id": "e" * 32})  # created from the Full Width template
+        self.assertNotIn("children", body)
         self.assertEqual([m for m, _, _ in client.writes][:2], ["POST", "PATCH"])
         cells = client.written()[1][0]["table"]["children"][1]["table_row"]["cells"]
         self.assertEqual(cells[1][0]["text"]["link"]["url"], "https://example.com/1")
@@ -81,10 +81,10 @@ class Private(unittest.TestCase):
 
 
 class SharedHelpers(unittest.TestCase):
-    """LIFE-526: private_report no longer carries its own copy of the stored-page helpers; it uses lifeos/platform/stored_pages. Schema-neutral: the same table and key column as before."""
+    """it uses lifeos/platform/stored_pages."""
 
     def test_the_table_definition_is_the_one_private_report_always_used(self):
-        original = snapshot_store.Store("v7_private_reports", key_column="report_key", key_type="VARCHAR(96)")      # exactly what private_report.STORE was before LIFE-526
+        original = snapshot_store.Store("v7_private_reports", key_column="report_key", key_type="VARCHAR(96)")  # exactly what private_report.STORE was before
         self.assertEqual((stored_pages.STORE.table, stored_pages.STORE.key_column, stored_pages.STORE.schema), (original.table, original.key_column, original.schema))
 
     def test_private_report_calls_the_shared_helpers_and_defines_none_of_its_own(self):

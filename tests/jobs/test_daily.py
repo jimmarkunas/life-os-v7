@@ -1,4 +1,4 @@
-"""LIFE-74 step 2: the daily counts (board reads, search calls, the HOLD pile) and the monitors that read them."""
+"""step 2: the daily counts (board reads, search calls, the HOLD pile) and the monitors that read them."""
 import datetime as dt
 import unittest
 from unittest import mock
@@ -68,7 +68,7 @@ class Record(unittest.TestCase):
             self.db.insert("v7_jobs", id=n + 1, dedupe_key=f"k{n}", status="HOLD", title="x", company="y", first_seen=NOW, last_seen=NOW, updated_at=NOW - dt.timedelta(hours=age_hours))
         jobs_alerts.snapshot_hold(self.db, NOW)
         self.assertEqual(self.rows(), {(iso(0), "hold_total"): 4, (iso(0), "hold_touched_24h"): 1})
-        jobs_alerts.snapshot_hold(self.db, NOW)                                             # the last run of the day wins; nothing doubles
+        jobs_alerts.snapshot_hold(self.db, NOW)  # the last run of the day wins
         self.assertEqual(self.rows()[(iso(0), "hold_total")], 4)
 
 
@@ -78,7 +78,7 @@ class DailyMonitors(unittest.TestCase):
 
     def test_board_reads_failing_needs_100_reads_and_a_fifth_failed(self):
         self.assertEqual(jobs_alerts.daily_monitors(self.rows(board_reads={0: 99}, board_failed={0: 99}), TODAY), {})
-        self.assertEqual(jobs_alerts.daily_monitors(self.rows(board_reads={0: 60, 1: 40}, board_failed={0: 10, 1: 9}), TODAY), {})          # 19%
+        self.assertEqual(jobs_alerts.daily_monitors(self.rows(board_reads={0: 60, 1: 40}, board_failed={0: 10, 1: 9}), TODAY), {})  # 19%
         self.assertEqual(jobs_alerts.daily_monitors(self.rows(board_reads={0: 60, 1: 40}, board_failed={0: 10, 1: 10}), TODAY), {"board_reads_failing": 0.2})
 
     def test_search_failing_needs_20_calls_and_a_fifth_failed(self):
@@ -88,10 +88,10 @@ class DailyMonitors(unittest.TestCase):
 
     def test_hold_rising_needs_three_rising_days_a_fifth_more_and_25_jobs(self):
         self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 30, 1: 34, 0: 40}), TODAY), {"hold_rising": [30, 34, 40]})
-        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 30, 1: 30, 0: 40}), TODAY), {})            # not strictly rising
-        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 30, 1: 31, 0: 33}), TODAY), {})            # under a fifth more
-        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 10, 1: 14, 0: 20}), TODAY), {})            # under 25 jobs
-        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={1: 34, 0: 40}), TODAY), {})                    # a day of evidence is missing
+        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 30, 1: 30, 0: 40}), TODAY), {})  # not strictly rising
+        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 30, 1: 31, 0: 33}), TODAY), {})  # under a fifth more
+        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={2: 10, 1: 14, 0: 20}), TODAY), {})  # under 25 jobs
+        self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={1: 34, 0: 40}), TODAY), {})  # a day of evidence is missing
 
     def test_hold_not_retried_needs_a_large_growing_pile_and_nothing_touched(self):
         rows = self.rows(hold_total={2: 30, 1: 33, 0: 40}, hold_touched_24h={0: 0})
@@ -99,7 +99,7 @@ class DailyMonitors(unittest.TestCase):
         rows["hold_touched_24h"] = {iso(0): 1}
         self.assertNotIn("hold_not_retried", jobs_alerts.daily_monitors(rows, TODAY))
         flat = self.rows(hold_total={2: 40, 1: 40, 0: 40}, hold_touched_24h={0: 0})
-        self.assertNotIn("hold_not_retried", jobs_alerts.daily_monitors(flat, TODAY))                                      # not growing
+        self.assertNotIn("hold_not_retried", jobs_alerts.daily_monitors(flat, TODAY))  # not growing
 
     def test_the_hold_pile_measured_on_oct_25_trips_nothing_without_three_days_of_evidence(self):
         self.assertEqual(jobs_alerts.daily_monitors(self.rows(hold_total={0: 114}, hold_touched_24h={0: 0}), TODAY), {})
@@ -116,7 +116,7 @@ class DailyMonitors(unittest.TestCase):
 
     def test_a_replayed_failing_week_opens_each_alert_exactly_once(self):
         state, opened = {}, []
-        for day in range(7):                                                                  # board failures climb from day 3; the HOLD pile grows from day 4
+        for day in range(7):  # board failures climb from day 3
             now = NOW + dt.timedelta(days=day - 6)
             rows = {"board_reads": {(now.date() - dt.timedelta(days=b)).isoformat(): 300 for b in range(2)},
                     "board_failed": {(now.date() - dt.timedelta(days=b)).isoformat(): (90 if day >= 3 else 5) for b in range(2)},
@@ -143,7 +143,7 @@ class LiveStage(unittest.TestCase):
         self.assertEqual(first["monitors"]["board_reads_failing"], 0.5)
         keys = {row[0] for row in db.raw.execute("SELECT alert_key FROM v7_alerts WHERE status='OPEN'").fetchall()}
         self.assertIn("board_reads_failing", keys)
-        self.assertEqual(sum(1 for a in sent if a[1] == "Board reads failing"), 1)             # told once, not on the second run
+        self.assertEqual(sum(1 for a in sent if a[1] == "Board reads failing"), 1)  # told once, not on the second run
         self.assertEqual(second["opened"], 0)
         self.assertEqual(db.raw.execute("SELECT value FROM v7_daily_counts WHERE name='hold_total'").fetchone()[0], 0)
 

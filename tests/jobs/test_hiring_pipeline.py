@@ -49,7 +49,7 @@ class Pipeline(unittest.TestCase):
         with_rounds, without = hp.read(full, "root"), hp.read(lean, "root", rounds=False)
         self.assertEqual([(o.page_id, o.section, o.company, o.role) for o in without], [(o.page_id, o.section, o.company, o.role) for o in with_rounds])
         self.assertEqual({o.rounds for o in without}, {0})
-        self.assertEqual(full.calls - lean.calls, len(with_rounds))                               # the S2 closure skips exactly the interview-count reads
+        self.assertEqual(full.calls - lean.calls, len(with_rounds))
 
     def test_a_round_less_page_is_a_lead_only_when_its_render_line_names_a_recruiter_key(self):
         def fold(line):
@@ -61,7 +61,7 @@ class Pipeline(unittest.TestCase):
             (found,) = hp.read(Fake(tree), "root")
             self.assertEqual((found.rounds, found.lead), (0, want), line)
         tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)], "o1": [page("r1", "Interview 1")]}
-        self.assertFalse(hp.read(Fake(tree), "root")[0].lead)                          # a page with a round is never a lead
+        self.assertFalse(hp.read(Fake(tree), "root")[0].lead)  # a page with a round is never a lead
 
     def test_a_lead_is_replied_only_by_a_done_line_for_its_own_reply_action(self):
         def para(i, line):
@@ -91,13 +91,13 @@ class Pipeline(unittest.TestCase):
         self.assertFalse(hp.read(Down(tree), "root")[0].lead)
 
     def test_company_and_role_must_both_match(self):
-        h = hp.handoff_for("Smartsheet Inc.", "Technical Programme Manager", self.opps)       # legal suffix and British spelling
+        h = hp.handoff_for("Smartsheet Inc.", "Technical Programme Manager", self.opps)  # legal suffix and British spelling
         self.assertEqual((h.protected, h.progression_state, h.interview_progression), (True, hp.INTERVIEW_ACTIVE, True))
         self.assertEqual(h.evidence, [{"type": "hiring_pipeline_opportunity", "source_id": "o1"}])
         self.assertEqual(hp.handoff_for("Smith", "Senior Project Manager", self.opps).progression_state, hp.HIRING_ACTIVE)
-        self.assertFalse(hp.handoff_for("Smartsheet", "Software Engineer", self.opps).protected)       # company alone is not evidence
+        self.assertFalse(hp.handoff_for("Smartsheet", "Software Engineer", self.opps).protected)  # company alone is not evidence
         self.assertFalse(hp.handoff_for("Smith & Wesson", "Senior Project Manager", self.opps).protected)
-        self.assertFalse(hp.handoff_for("Acme", "Product Manager", self.opps).protected)               # retired: no protection from this source
+        self.assertFalse(hp.handoff_for("Acme", "Product Manager", self.opps).protected)  # retired: no protection from this source
 
     def test_a_walmart_subsidiary_prefix_matches_but_a_substring_does_not(self):
         self.assertTrue(hp.same_company("Walmart", "Walmart Global Tech"))
@@ -140,13 +140,13 @@ class FakeLedgerClient:
 
 
 class LedgerFirst(unittest.TestCase):
-    """LIFE-352 (REQ-5, LOS-88): pursuits come from Ledger rows with Stage set; the page tree fills in only what the Ledger does not hold."""
+    """(REQ-5, LOS-88): pursuits come from Ledger rows with Stage set"""
 
     def test_stage_and_decision_set_the_section_and_child_pages_are_the_rounds(self):
         kids = {"r1": [{"type": "child_page", "child_page": {"title": "Interview 1"}, "id": "c1"}]}
         got = {o.page_id: o for o in hp.from_ledger(FakeLedgerClient([[row("r1", "Acme", "PM", "Interviewing"), row("r2", "Beta", "PM", "Applied", "Rejected"),
                                                                        row("r3", "Cora", "PM", "Ended"), row("r4", "", "PM", "Applied")]], kids))}
-        self.assertEqual({k: (v.section, v.rounds) for k, v in got.items()}, {"r1": (hp.ACTIVE, 1), "r2": (hp.RETIRED, 0), "r3": (hp.RETIRED, 0)})   # r4 is unnamed: not a pursuit
+        self.assertEqual({k: (v.section, v.rounds) for k, v in got.items()}, {"r1": (hp.ACTIVE, 1), "r2": (hp.RETIRED, 0), "r3": (hp.RETIRED, 0)})  # r4 is unnamed: not a pursuit
         self.assertTrue(all(o.from_row for o in got.values()))
 
     def test_the_query_asks_only_for_rows_with_a_stage(self):
@@ -167,18 +167,18 @@ class LedgerFirst(unittest.TestCase):
         ledger = hp.from_ledger(FakeLedgerClient([[row("r1", "Acme", "Program Manager", "Interviewing")]]))
         tree = [hp.Opportunity("t1", "Acme — Program Manager", hp.RETIRED, 0, "Acme", "Program Manager"), hp.Opportunity("t2", "Beta — Analyst", hp.ACTIVE, 0, "Beta", "Analyst")]
         merged = hp.merge(ledger, tree)
-        self.assertEqual([(o.page_id, o.section, o.tree_id) for o in merged], [("r1", hp.ACTIVE, "t1"), ("t2", hp.ACTIVE, "")])    # GWT-RD-2: Beta (no Stage row) is read from the tree
+        self.assertEqual([(o.page_id, o.section, o.tree_id) for o in merged], [("r1", hp.ACTIVE, "t1"), ("t2", hp.ACTIVE, "")])
 
     def test_snapshot_with_a_ledger_is_unreadable_if_either_read_fails(self):
         tree = {"root": [page("o1", "Acme — PM")], "o1": []}
         good = FakeLedgerClient([[row("r1", "Beta", "PM", "Applied")]])
         got, status = hp.snapshot(Fake(tree), "root", ledger=good)
         self.assertEqual((status, sorted(o.page_id for o in got)), ("ok", ["o1", "r1"]))
-        self.assertEqual(hp.snapshot(Fake(tree), "root", ledger=FakeLedgerClient([[]], bad={"results": []})), ([], "unreadable"))     # GWT-RD-3
-        self.assertEqual(hp.snapshot(Fake(tree), "root")[1], "ok")                                                                       # no ledger: the page tree alone, as before
+        self.assertEqual(hp.snapshot(Fake(tree), "root", ledger=FakeLedgerClient([[]], bad={"results": []})), ([], "unreadable"))  # GWT-RD-3
+        self.assertEqual(hp.snapshot(Fake(tree), "root")[1], "ok")  # no ledger: the page tree alone, as before
 
     def test_a_ledger_pursuit_keeps_its_tree_page_id_for_the_writers(self):
         from lifeos.sources.pipeline import hiring as stage
         tree = {"root": [page("o1", "Acme — Program Manager")], "o1": []}
         out = stage.read_parents(Fake(tree), "root", FakeLedgerClient([[row("r1", "Acme", "Program Manager", "Applied"), row("r2", "Beta", "Analyst", "Applied")]]))
-        self.assertEqual({p["company"]: (p["id"], p["row_id"]) for p in out}, {"Acme": ("o1", "r1"), "Beta": ("r2", "r2")})      # LIFE-353: the decision writers act on row_id
+        self.assertEqual({p["company"]: (p["id"], p["row_id"]) for p in out}, {"Acme": ("o1", "r1"), "Beta": ("r2", "r2")})  # the decision writers act on row_id

@@ -17,7 +17,7 @@ Clock = shared.Clock
 
 
 class TickTests(unittest.TestCase):
-    """LIFE-76 PR 4b (D208): one process, fixed order, the fast path first, budgets, and a failure never stops the next stage."""
+    """one process, fixed order, the fast path first, budgets, and a failure never stops the next stage."""
     def setUp(self):
         self.calls, self.clock = [], Clock()
 
@@ -36,13 +36,14 @@ class TickTests(unittest.TestCase):
         bulk = [i for i, s in enumerate(tick.PLAN) if s.bulk]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
-        registered = {s.name for s in registry.SOURCES if s.tick}                                          # LIFE-588: a source's bulk step comes from its registry row, so only the hand-kept bulk steps are pinned
+        registered = {s.name for s in registry.SOURCES if s.tick}
         self.assertEqual({s.name for s in tick.PLAN if s.bulk} - registered, {"drain-audit-ready", "drain-publish", "drain-enrich", "drain-fit"})
-        self.assertLess(names.index("finalize"), names.index("boards-backfill"))     # D217: a first pass never takes time from the hourly work
-        self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
+        self.assertLess(names.index("finalize"), names.index("boards-backfill"))  # a first pass never takes time from the hourly work
+        self.assertFalse({"sweep", "extract"} & set(names))  # the prep job sweeps and extracts on every run
 
     def test_the_gate_runs_just_before_each_publish_and_the_full_audit_just_after(self):
-        """LIFE-76: nothing failing the guards reaches the Ledger, and the full pass (page reads and trashes) never delays it."""
+        """nothing failing the guards reaches the Ledger, and the full pass (page reads and trashes) never delays it.
+        """
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[names.index("publish") - 1], "audit-ready")
         self.assertEqual(names[names.index("publish-fresh") - 1], "audit-fresh")
@@ -51,34 +52,33 @@ class TickTests(unittest.TestCase):
         from lifeos.jobs import audit
         with mock.patch.object(audit, "run", return_value={}) as gate:
             run.STAGES["audit-fresh"](60, True)
-        gate.assert_called_once_with(2000, True, ready_only=True)                   # the seconds-long READY gate, never the full pass
+        gate.assert_called_once_with(2000, True, ready_only=True)  # the seconds-long READY gate, never the full pass
         self.assertEqual(run.STAGES["publish-fresh"].target, run.STAGES["publish"].target)
 
     def test_jobs_already_scored_are_published_before_new_descriptions_are_read(self):
-        """LIFE-76 (Jim, Oct 25: publish first): the noon tick spent 2.3 of its 7.5 minutes to the first page in enrich."""
+        """the noon tick spent 2.3 of its 7.5 minutes to the first page in enrich."""
         names = [s.name for s in tick.PLAN]
         self.assertLess(names.index("publish"), names.index("enrich"))
         self.assertLess(names.index("fit"), names.index("publish-fresh"))
         self.assertFalse(any(s.bulk for s in tick.PLAN if s.name in ("audit-fresh", "publish-fresh")))
-        self.assertFalse(next(s for s in tick.PLAN if s.name == "audit").bulk)      # the full pass is never skipped for lack of time
+        self.assertFalse(next(s for s in tick.PLAN if s.name == "audit").bulk)  # the full pass is never skipped for lack of time
 
     def test_the_drain_pass_runs_last_gated_and_inside_the_ledger_caps(self):
-        """LIFE-76 (Jim, Oct 25): the backlog drains in the run's spare time; nothing reaches the Ledger ungated and no call exceeds NOTION_PER_RUN."""
+        """the backlog drains in the run's spare time"""
         from lifeos import run
         from lifeos.platform import limits
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[-4:], ["drain-audit-ready", "drain-publish", "drain-enrich", "drain-fit"])
-        self.assertTrue(all(s.bulk for s in tick.PLAN[-4:]))                    # never before the hourly work, skipped when the run has no time left
+        self.assertTrue(all(s.bulk for s in tick.PLAN[-4:]))
         step = next(s for s in tick.PLAN if s.name == "drain-publish")
         self.assertLessEqual(step.limit, limits.NOTION_PER_RUN)
-        self.assertLessEqual(step.limit * 6, step.budget)                         # twice today's ~3 s a page
+        self.assertLessEqual(step.limit * 6, step.budget)  # twice today's ~3 s a page
         self.assertEqual(run.STAGES["drain-enrich"].target, ("lifeos.jobs.enrich", "run"))
         self.assertLessEqual(tick.QUICK_LIMITS["drain-publish"], tick.QUICK_LIMITS["publish"])
 
     def test_the_publish_cap_fits_its_budget(self):
-        """Tick 39170290502 (Oct 18): 60 pages at about 13 s each overran the 720 s publish budget."""
         step = next(s for s in tick.PLAN if s.name == "publish")
-        self.assertLessEqual(step.limit * 13, step.budget * 0.8)                      # room for a slow Notion minute
+        self.assertLessEqual(step.limit * 13, step.budget * 0.8)  # room for a slow Notion minute
 
     def test_stages_run_in_order_with_their_limits_and_the_live_switch(self):
         plan = (Step("a", 10, 5), Step("b", 10, 7, bulk=True))
@@ -93,7 +93,7 @@ class TickTests(unittest.TestCase):
 
     def test_a_stage_over_its_budget_is_stopped_and_counted(self):
         def slow(limit, live):
-            raise tick.StageTimeout()                      # what the alarm raises; a stage's own `except Exception` cannot swallow it
+            raise tick.StageTimeout()  # what the alarm raises
         out = tick.tick(False, plan=(Step("a", 10), Step("b", 10)), stages={"a": slow, "b": self.stage("b")}, clock=self.clock)
         self.assertEqual(out, {"a": "timeout", "b": "ok"})
         self.assertFalse(issubclass(tick.StageTimeout, Exception))
@@ -133,7 +133,7 @@ class TickTests(unittest.TestCase):
                 self.assertEqual(tick.main(["--live"]), code)
 
     def test_a_named_stage_is_left_out_of_the_plan_and_nothing_else_changes(self):
-        """LIFE-653: no browser, no Jobright stage; an empty or unknown name changes nothing."""
+        """no browser, no Jobright stage"""
         self.assertEqual(tick.planned({}), tuple(tick.PLAN))
         self.assertEqual(tick.planned({"TICK_SKIP_STAGES": "no-such-stage"}), tuple(tick.PLAN))
         kept = tick.planned({"TICK_SKIP_STAGES": "resolve-jobright"})
@@ -145,7 +145,7 @@ class TickTests(unittest.TestCase):
     def test_main_prints_each_stage_line_as_it_happens(self):
         with mock.patch.object(tick, "tick", return_value={"a": "ok"}), mock.patch.object(tick.sys.stdout, "reconfigure") as reconfigure:
             tick.main([])
-        reconfigure.assert_called_once_with(line_buffering=True)                   # proof run 39163729298 printed every stage's line only at exit
+        reconfigure.assert_called_once_with(line_buffering=True)
 
     def test_every_planned_stage_exists(self):
         from lifeos import run
@@ -159,7 +159,7 @@ class TickTests(unittest.TestCase):
 
 
 class StageSeconds(unittest.TestCase):
-    """LIFE-569: one line per stage with its seconds, and a summary table; nothing about what a stage found or saved changes."""
+    """one line per stage with its seconds, and a summary table"""
     def test_each_stage_prints_its_outcome_and_seconds_and_fills_the_timings(self):
         import io
         from contextlib import redirect_stdout
@@ -190,12 +190,12 @@ class StageSeconds(unittest.TestCase):
         self.assertIn("| a | ok | 30.0 | 25% |", table)
         self.assertIn("| b | skipped | 0.0 | 0% |", table)
         self.assertIn("| **total** | | **120.0** | |", table)
-        self.assertIn("-", tick.summary_table({"a": "ok"}, {"a": 1.0}, 0).splitlines()[4])           # no division by zero
+        self.assertIn("-", tick.summary_table({"a": "ok"}, {"a": 1.0}, 0).splitlines()[4])  # no division by zero
 
 
 
 class SideBySide(unittest.TestCase):
-    """LIFE-569: consecutive independent stages run as threads of the one process when TICK_CONCURRENCY=on; caps, isolation, order between groups and the results stay as they are in a sequential run."""
+    """consecutive independent stages run as threads of the one process when TICK_CONCURRENCY=on"""
     def gate(self):
         import threading
         state = {"now": 0, "max": 0, "lock": threading.Lock(), "log": []}
@@ -228,11 +228,11 @@ class SideBySide(unittest.TestCase):
         return result, out.getvalue()
 
     def test_concurrency_is_always_on_and_a_bad_cap_falls_back_to_the_safe_default(self):
-        """LIFE-604 approval 5: the TICK_CONCURRENCY switch is gone; stages of a group always run side by side. Only the caps are tunable."""
-        for environ in ({}, {"TICK_CONCURRENCY": "off"}, {"TICK_CONCURRENCY": ""}):                # a leftover variable can no longer turn it off
+        """approval 5: the TICK_CONCURRENCY switch is gone"""
+        for environ in ({}, {"TICK_CONCURRENCY": "off"}, {"TICK_CONCURRENCY": ""}):
             self.assertEqual(tick.concurrency_from_env(environ), {"caps": {"linkedin": 1, "tinyfish": 1, "jobright": 1, "dice": 1, "ats": 8}, "parallel": 4}, environ)
         odd = tick.concurrency_from_env({"TICK_CAP_LINKEDIN": "0", "TICK_CAP_TINYFISH": "99", "TICK_CAP_ATS": "x", "TICK_CAP_DICE": "3", "TICK_MAX_PARALLEL": "2"})
-        self.assertEqual((odd["caps"]["linkedin"], odd["caps"]["tinyfish"], odd["caps"]["ats"], odd["caps"]["dice"], odd["parallel"]), (1, 1, 8, 3, 2))      # junk never raises a cap
+        self.assertEqual((odd["caps"]["linkedin"], odd["caps"]["tinyfish"], odd["caps"]["ats"], odd["caps"]["dice"], odd["parallel"]), (1, 1, 8, 3, 2))  # junk never raises a cap
 
     def test_stages_of_one_group_run_side_by_side_and_a_service_cap_of_one_keeps_two_stages_in_turn(self):
         state, stage = self.gate()
@@ -242,10 +242,10 @@ class SideBySide(unittest.TestCase):
         state, stage = self.gate()
         plan = (Step("a", 20, group="G", providers=("linkedin",)), Step("b", 20, group="G", providers=("linkedin",)), Step("c", 20, group="G"))
         result, _ = self.run_tick(plan, {n: stage(n) for n in "abc"})
-        self.assertEqual((result, state["max"]), ({"a": "ok", "b": "ok", "c": "ok"}, 2))                  # a and b share LinkedIn (cap 1): never both; c runs beside either
+        self.assertEqual((result, state["max"]), ({"a": "ok", "b": "ok", "c": "ok"}, 2))  # a and b share LinkedIn (cap 1): never both
 
     def test_an_early_step_starts_with_the_run_overlaps_the_fast_path_and_is_done_before_what_followed_its_group(self):
-        """LIFE-793: `boards` starts at the beginning in its own thread; the plain steps do not wait for it, the rest of its group runs when it used to, and the step after the group starts only once it has ended."""
+        """`boards` starts at the beginning in its own thread"""
         import threading
         log, lock = [], threading.Lock()
         seen = {"fast_done": threading.Event(), "boards_started": threading.Event(), "boards_saw_fast": [], "fast_saw_boards": []}
@@ -256,7 +256,7 @@ class SideBySide(unittest.TestCase):
 
         def fast(limit, live):
             note("start", "fast")
-            seen["fast_saw_boards"].append(seen["boards_started"].wait(5))      # the fast path only goes on once boards is running: with the old order (boards after finalize) this would time out
+            seen["fast_saw_boards"].append(seen["boards_started"].wait(5))
             seen["fast_done"].set()
             note("end", "fast")
             return 0
@@ -264,7 +264,7 @@ class SideBySide(unittest.TestCase):
         def boards(limit, live):
             note("start", "boards")
             seen["boards_started"].set()
-            seen["boards_saw_fast"].append(seen["fast_done"].wait(5))          # it is still running when the fast path has finished: they overlap
+            seen["boards_saw_fast"].append(seen["fast_done"].wait(5))
             note("end", "boards")
             return {"ok": 1}
 
@@ -279,11 +279,11 @@ class SideBySide(unittest.TestCase):
             return 0
         plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("other", 20, bulk=True, group="B", providers=("ats",)), Step("after", 20))
         result, _ = self.run_tick(plan, {"fast": fast, "boards": boards, "other": other, "after": after})
-        self.assertEqual(result, {"fast": "ok", "boards": "ok", "other": "ok", "after": "ok"})                  # the same results, in plan order
-        self.assertEqual((seen["boards_saw_fast"], seen["fast_saw_boards"]), ([True], [True]))                  # each was running while the other ran: they overlap
-        self.assertLess(log.index(("start", "boards")), log.index(("end", "fast")))                             # it started before the fast path ended
-        self.assertLess(log.index(("end", "boards")), log.index(("start", "after")))                            # the step after the group never starts before the early step ends
-        self.assertLess(log.index(("start", "other")), log.index(("start", "after")))                           # and the rest of the group still runs before it
+        self.assertEqual(result, {"fast": "ok", "boards": "ok", "other": "ok", "after": "ok"})  # the same results, in plan order
+        self.assertEqual((seen["boards_saw_fast"], seen["fast_saw_boards"]), ([True], [True]))  # each was running while the other ran: they overlap
+        self.assertLess(log.index(("start", "boards")), log.index(("end", "fast")))  # it started before the fast path ended
+        self.assertLess(log.index(("end", "boards")), log.index(("start", "after")))
+        self.assertLess(log.index(("start", "other")), log.index(("start", "after")))  # and the rest of the group still runs before it
 
     def test_an_early_step_keeps_its_own_outcome_timings_and_budget_and_a_failure_is_one_red_stage(self):
         for error, expected in ((None, "ok"), (RuntimeError("x"), "failed")):
@@ -294,16 +294,16 @@ class SideBySide(unittest.TestCase):
             plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", providers=("ats",), early=True), Step("after", 20))
             seen = []
             result, _ = self.run_tick(plan, {"fast": lambda limit, live: 0, "boards": boards, "after": lambda limit, live, seen=seen: seen.append(limit) or 0})
-            self.assertEqual(result, {"fast": "ok", "boards": expected, "after": "ok"})                          # a failing early step never stops the next stage
-            self.assertEqual(seen, [40])                                                                         # the next stage gets its own default limit, untouched
+            self.assertEqual(result, {"fast": "ok", "boards": expected, "after": "ok"})  # a failing early step never stops the next stage
+            self.assertEqual(seen, [40])
 
     def test_early_changes_nothing_when_concurrency_is_off_and_the_real_plan_has_one_early_step(self):
         calls = []
         plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", early=True), Step("after", 20))
         stages = {n: (lambda limit, live, n=n: calls.append(n) or 0) for n in ("fast", "boards", "after")}
-        tick.tick(False, plan=plan, stages=stages)                                                             # concurrency=None: the old sequential order
+        tick.tick(False, plan=plan, stages=stages)  # concurrency=None: the old sequential order
         self.assertEqual(calls, ["fast", "boards", "after"])
-        self.assertEqual([s.name for s in tick.PLAN if s.early], ["web-titlewatch", "discover-jobs"])                              # LIFE-856: the two early steps in the real plan (nothing after the fast path reads what they write); discover-jobs shares the LinkedIn slot with group A, so an early step asks for its slots a moment after the run's first group                                            # LIFE-854: the real plan has no early step now (the boards stage moved to its own four windows); the mechanism stays proven by the plan above
+        self.assertEqual([s.name for s in tick.PLAN if s.early], ["web-titlewatch", "discover-jobs"])
 
     def test_the_stage_thread_limit_is_honoured(self):
         state, stage = self.gate()
@@ -341,10 +341,10 @@ class SideBySide(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             sequential = tick.tick(False, plan=plan, stages=stages)
         self.assertEqual(concurrent, sequential)
-        self.assertEqual(list(concurrent), ["a1", "a2", "plain", "b1", "b2"])                          # plan order, whatever order they finished in
+        self.assertEqual(list(concurrent), ["a1", "a2", "plain", "b1", "b2"])  # plan order, whatever order they finished in
         first = state["log"][:10]
         starts = [n for kind, n in first if kind == "start"]
-        self.assertEqual(starts[2], "plain")                                                          # plain starts only after both A stages ended
+        self.assertEqual(starts[2], "plain")  # plain starts only after both A stages ended
         self.assertTrue({("end", "a1"), ("end", "a2")} <= set(first[:5]))
 
     def test_a_bulk_group_stage_is_skipped_when_the_run_has_no_time_left(self):
@@ -368,21 +368,23 @@ class SideBySide(unittest.TestCase):
     def test_the_real_plan_groups_only_the_independent_stages_and_keeps_publish_after_the_inputs(self):
         names = [s.name for s in tick.PLAN]
         group = lambda g: [s.name for s in tick.PLAN if s.group == g]                                  # noqa: E731
-        self.assertEqual({s.group for s in tick.PLAN} - {""}, {"A", "B"})                              # LIFE-588: a source joins a group by its registry row, so the members are a rule, not a list
+        self.assertEqual({s.group for s in tick.PLAN} - {""}, {"A", "B"})
         caps = tick.concurrency_from_env({})["caps"]
-        self.assertEqual({p for s in tick.PLAN for p in s.providers} - set(caps), set())               # every outside service a step names has a cap
-        for g in ("A", "B"):                                                                           # a group is one unbroken run of the plan
+        self.assertEqual({p for s in tick.PLAN for p in s.providers} - set(caps), set())  # every outside service a step names has a cap
+        for g in ("A", "B"):  # a group is one unbroken run of the plan
             where = [names.index(n) for n in group(g)]
             self.assertEqual(where, list(range(where[0], where[0] + len(where))))
         for name in ("audit-ready", "publish", "enrich", "fit", "publish-fresh", "audit", "finalize", "drain-publish", "drain-enrich", "drain-fit"):
-            self.assertEqual(next(s for s in tick.PLAN if s.name == name).group, "")                   # Notion, Fit and the ordered chain never run side by side
+            self.assertEqual(next(s for s in tick.PLAN if s.name == name).group, "")
         self.assertEqual(next(s for s in tick.PLAN if s.name == "discover-jobs").providers, ("tinyfish", "linkedin"))
         for pair in (("resolve-linkedin", "linkedin-search"),):
             self.assertTrue(all("linkedin" in next(s for s in tick.PLAN if s.name == n).providers for n in pair))
 
 
 class OneCore(unittest.TestCase):
-    """LIFE-604 item 12: the sequential loop and the side-by-side runner share one rule for the budget, the limit and the skipped-stage line; both timeout mechanisms are kept."""
+    """item 12: the sequential loop and the side-by-side runner share one rule for the budget, the limit and the skipped-
+    stage line
+    """
     def run_quiet(self, plan, stages, **kw):
         import io
         from contextlib import redirect_stderr, redirect_stdout
@@ -405,7 +407,7 @@ class OneCore(unittest.TestCase):
         import io
         from contextlib import redirect_stdout
         steps = [Step("b1", 20, bulk=True, group="B"), Step("b2", 20, bulk=True, group="B")]
-        left = iter([500, 10])                                                          # the run's time runs out between the two launches
+        left = iter([500, 10])  # the run's time runs out between the two launches
         outcome, timings = {}, {}
         with redirect_stdout(io.StringIO()):
             tick._run_group(steps, False, False, {"b1": lambda limit, live: 0, "b2": lambda limit, live: 0}, lambda: 0.0, lambda: next(left), {"caps": {}, "parallel": 4}, outcome, timings)
@@ -413,9 +415,9 @@ class OneCore(unittest.TestCase):
 
     def test_the_allotment_rule_is_one_function_for_both_runners(self):
         bulk, fast = Step("b", 100, 5, bulk=True), Step("f", 100, 7)
-        self.assertIsNone(tick._allot(bulk, 59, False))                                   # a bulk stage with under a minute left is skipped
-        self.assertEqual(tick._allot(bulk, 80, False), (80, 5))                           # cut to the run's remaining time
-        self.assertEqual(tick._allot(fast, 10, False), (tick.FAST_FLOOR_SECONDS, 7))      # a fast-path stage is never below its floor
+        self.assertIsNone(tick._allot(bulk, 59, False))  # a bulk stage with under a minute left is skipped
+        self.assertEqual(tick._allot(bulk, 80, False), (80, 5))  # cut to the run's remaining time
+        self.assertEqual(tick._allot(fast, 10, False), (tick.FAST_FLOOR_SECONDS, 7))  # a fast-path stage is never below its floor
         self.assertEqual(tick._allot(Step("boards", 1080, 900, bulk=True), 2000, True), (1080, tick.QUICK_LIMITS["boards"]))
 
     def test_a_stage_blocked_in_a_lock_wait_is_stopped_by_the_alarm_on_the_sequential_path(self):
@@ -428,7 +430,7 @@ class OneCore(unittest.TestCase):
         self.assertLess(time.monotonic() - began, 6)
 
     def test_a_group_stage_blocked_where_the_thread_timer_cannot_reach_it_is_abandoned_and_named(self):
-        """A read blocked in the operating system ignores the thread timer's exception until it returns; the run must not wait for it."""
+        """A read blocked in the operating system ignores the thread timer's exception until it returns"""
         import threading
         import time
         forever = threading.Event()
@@ -439,17 +441,19 @@ class OneCore(unittest.TestCase):
                                                   {"stuck": lambda limit, live: forever.wait(), "fine": lambda limit, live: 0}, concurrency={"caps": {}, "parallel": 4})
         self.assertEqual(result, {"stuck": "timeout", "fine": "ok"})
         self.assertIn("stage abandoned: stuck", out)
-        self.assertLess(time.monotonic() - began, 6)                                         # not longest x (steps + 1) + 60 seconds
-        forever.set()                                                                        # the late return must not rewrite the result or print a second line
+        self.assertLess(time.monotonic() - began, 6)  # not longest x (steps + 1) + 60 seconds
+        forever.set()
         time.sleep(0.3)
         self.assertEqual(result["stuck"], "timeout")
 
     def test_fit_stays_out_of_every_group_because_it_reads_the_alarm_timer(self):
-        self.assertEqual({s.group for s in tick.PLAN if "fit" in s.name}, {""})                    # no Fit stage is in a group
+        self.assertEqual({s.group for s in tick.PLAN if "fit" in s.name}, {""})  # no Fit stage is in a group
 
 
 class AtsSlots(unittest.TestCase):
-    """LIFE-569: one global limit on board reads across the stages that read boards, so side by side never means more at once than a single stage's pool does today."""
+    """one global limit on board reads across the stages that read boards, so side by side never means more at once than
+    a single stage's pool does today.
+    """
     def test_reads_in_many_threads_never_exceed_the_slots_and_unset_means_no_extra_limit(self):
         import threading
         import time
@@ -483,7 +487,7 @@ class AtsSlots(unittest.TestCase):
 
 
 class StageDueTests(unittest.TestCase):
-    """LIFE-617: the board stages read their rows from lifeos/platform/due_table.json; every row hourly = today's plan; a stage not due is skipped, not red; every board has a provider cap."""
+    """the board stages read their rows from lifeos/platform/due_table.json"""
     def test_with_every_row_hourly_the_plan_is_unchanged_and_no_history_is_read(self):
         plan, left = due.split_plan(tick.planned({}), {})
         self.assertEqual(plan, tick.planned({}))
@@ -516,12 +520,14 @@ class StageDueTests(unittest.TestCase):
 
 
 class _Out(io.StringIO):
-    def reconfigure(self, **kwargs):                       # tick.main asks stdout to line-buffer
+    def reconfigure(self, **kwargs):  # tick.main asks stdout to line-buffer
         pass
 
 
 class RuntimeConfigCompareOnTheTick(unittest.TestCase):
-    """LIFE-858 Phase 1: the real hourly path (lifeos.jobs.tick) makes the compare-only read of the Runtime Configuration source, off the critical path, and never fails or changes the tick."""
+    """Phase 1: the real hourly path (lifeos.jobs.tick) makes the compare-only read of the Runtime Configuration source,
+    off the critical path, and never.
+    """
     OK = {"status": "ok", "matched": 59, "mismatched": [], "only_old": [], "only_new": [], "blocking": False, "tokens": {"NOTION_API_TOKEN": "PASS"}}
 
     def run_main(self, receipt=None, boom=None, hang=None, env=None):
@@ -579,14 +585,16 @@ class RuntimeConfigCompareOnTheTick(unittest.TestCase):
         with mock.patch("lifeos.platform.runtime_config.shadow", side_effect=lambda e, **k: started.append(1) or gate.wait(5)):
             collect = tick.shadow_in_background({})
             time.sleep(0.05)
-            self.assertEqual(started, [1])                      # the read has started and the caller is already free to run its stages
+            self.assertEqual(started, [1])
             gate.set()
             collect(1)
 
 
 class TickConcurrencyAppliesSettings(unittest.TestCase):
     def test_a_runtime_configuration_row_reaches_the_caps_and_an_unreadable_source_leaves_the_defaults(self):
-        """LIFE-856: TICK_CAP_TINYFISH set in the settings source must reach the tick's caps (it was read before the settings were applied)."""
+        """TICK_CAP_TINYFISH set in the settings source must reach the tick's caps (it was read before the settings were
+        applied).
+        """
         from unittest import mock
         env = {}
 
@@ -602,7 +610,9 @@ class TickConcurrencyAppliesSettings(unittest.TestCase):
 
 class EarlyStepAsksAfterGroupA(unittest.TestCase):
     def test_an_early_step_that_shares_a_service_with_group_a_gets_the_slot_after_group_a(self):
-        """LIFE-856: discover-jobs (early, TinyFish and LinkedIn) must not take the LinkedIn slot before resolve-linkedin and linkedin-search, which sit in group A and start with the run."""
+        """discover-jobs (early, TinyFish and LinkedIn) must not take the LinkedIn slot before resolve-linkedin and
+        linkedin-search, which sit in group A and.
+        """
         import threading
         import time
         order, lock = [], threading.Lock()
@@ -619,12 +629,13 @@ class EarlyStepAsksAfterGroupA(unittest.TestCase):
         stages = {n: stage(n) for n in ("li1", "li2", "fast", "disc", "after")}
         tick.tick(False, plan=plan, stages=stages, concurrency=tick.concurrency_from_env({}))
         self.assertLess(order.index("li1"), order.index("disc"))
-        self.assertLess(order.index("li2"), order.index("disc"))                                          # group A held the slot first, in order
+        self.assertLess(order.index("li2"), order.index("disc"))  # group A held the slot first, in order
 
 
 class ServiceCapsHoldAcrossGroups(unittest.TestCase):
     def test_an_early_step_and_group_a_never_hold_the_same_one_slot_service_at_once(self):
-        """LIFE-856: each group made its own slots, so an early step and group A could both use LinkedIn (cap 1) at the same time."""
+        """each group made its own slots, so an early step and group A could both use LinkedIn (cap 1) at the same time.
+        """
         import threading
         import time
         inside, peak, lock = [0], [0], threading.Lock()
@@ -639,7 +650,7 @@ class ServiceCapsHoldAcrossGroups(unittest.TestCase):
             return 0
         plan = (Step("a1", 20, group="A", providers=("linkedin",)), Step("a2", 20, group="A", providers=("dice",)), Step("fast", 20), Step("e", 20, bulk=True, group="B", providers=("linkedin",), early=True), Step("after", 20))
         from unittest import mock
-        with mock.patch.object(tick, "EARLY_START_DELAY", 0.0):                                              # start both at once so any missing cap shows
+        with mock.patch.object(tick, "EARLY_START_DELAY", 0.0):  # start both at once so any missing cap shows
             tick.tick(False, plan=plan, stages={"a1": stage, "a2": lambda limit, live: 0, "e": stage, "fast": lambda limit, live: 0, "after": lambda limit, live: 0}, concurrency=tick.concurrency_from_env({}))
         self.assertEqual(peak[0], 1)
 

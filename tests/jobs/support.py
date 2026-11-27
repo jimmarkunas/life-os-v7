@@ -1,4 +1,4 @@
-"""LIFE-544: test helpers that more than one test module (often in another domain) uses. Moved here out of test_*.py files, unchanged."""
+"""test helpers that more than one test module (often in another domain) uses."""
 import os
 import time
 from lifeos.jobs import private_report as pr
@@ -8,7 +8,7 @@ from lifeos.platform.notion_client import NotionError
 
 
 PARENT = pr.REPORTS_PAGE
-os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32          # D16.1: reports are created from the Full Width template; the fake applies it at once
+os.environ["LIFEOS_NOTION_FULL_WIDTH_TEMPLATE"] = "e" * 32  # reports are created from the Full Width template
 full_width.WAIT = 0
 
 
@@ -33,7 +33,9 @@ def connect():
 
 
 class FakeClient:
-    """Just enough Notion: the ledger's data source -> database -> page chain, search, page create (with its table children), and block children."""
+    """Just enough Notion: the ledger's data source -> database -> page chain, search, page create (with its table
+    children), and block children.
+    """
     source = "s" * 32
 
     def __init__(self, parent=PARENT, existing=None, fail=False, lose_rows=0):
@@ -42,7 +44,7 @@ class FakeClient:
     def call(self, method, path, body=None):
         if self.fail:
             raise NotionError("NOTION_HTTP_500")
-        if method == "DELETE" and path.startswith("/blocks/"):                    # the template's empty first paragraph goes
+        if method == "DELETE" and path.startswith("/blocks/"):  # the template's empty first paragraph goes
             for kids in self.blocks.values():
                 kids[:] = [b for b in kids if b.get("id") != path.split("/")[2]]
             return {}
@@ -58,12 +60,14 @@ class FakeClient:
         return {"results": self.blocks.get(base.split("/")[2], []), "has_more": False}
 
     def written(self):
-        """-> (the page create body, the blocks written to the page by PATCH, in order)."""
+        """> (the page create body, the blocks written to the page by PATCH, in order)."""
         create = next(b for m, p, b in self.writes if (m, p) == ("POST", "/pages"))
         return create, [c for m, p, b in self.writes if m == "PATCH" and p.endswith("/children") for c in b["children"]]
 
     def call_once(self, method, path, body=None, version=None):
-        """Page create from the template (no children allowed, one empty filler paragraph), then the blocks by PATCH, as Notion does."""
+        """Page create from the template (no children allowed, one empty filler paragraph), then the blocks by PATCH, as
+        Notion does.
+        """
         self.writes.append((method, path, body))
         if method == "POST" and path == "/pages":
             assert body.get("template") and "children" not in body, "D16.1: a page without the Full Width template"
@@ -73,7 +77,7 @@ class FakeClient:
             return {}
         assert method == "PATCH" and path == "/blocks/page1/children", (method, path)
         for index, table in enumerate(body["children"]):
-            if table.get("type") != "table":                       # LIFE-212: an intro paragraph above the tables
+            if table.get("type") != "table":  # an intro paragraph above the tables
                 continue
             rows = table["table"]["children"]
             self.blocks[f"t{index}"] = [{"id": f"r{n}"} for n in range(len(rows) - self.lose_rows)]
@@ -110,7 +114,9 @@ def alert(*ids):
 
 
 class Mailbox:
-    """A stateful Gmail: labels per message, and the three search shapes the stages use (label:, -label:, in:inbox, from:, newer_than:). Gmail flattens nested label names, so the slug is the query token."""
+    """A stateful Gmail: labels per message, and the three search shapes the stages use (label:, -label:, in:inbox,
+    from:, newer_than:).
+    """
     def __init__(self, messages):
         self.messages, self.labels, self.log = messages, {i: {"INBOX"} for i in messages}, []
 

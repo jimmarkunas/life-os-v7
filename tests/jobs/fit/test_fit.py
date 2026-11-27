@@ -1,4 +1,4 @@
-"""Fit engine behaviour on a synthetic profile (no personal data: the real profile is injected at run time, D16)."""
+"""Fit engine behaviour on a synthetic profile."""
 from datetime import date
 import unittest
 
@@ -53,7 +53,7 @@ class Exclusions(unittest.TestCase):
         one, soft = exclusions.check("Program Manager", "Acme", filler + "Clients include healthcare firms.")
         self.assertIsNone(one)
         self.assertEqual(soft, ["healthcare"])
-        two, _ = exclusions.check("Program Manager", "Acme", filler + "Clinical trial sites. More clinical trial work.")      # the default is two mentions
+        two, _ = exclusions.check("Program Manager", "Acme", filler + "Clinical trial sites. More clinical trial work.")  # the default is two mentions
         self.assertEqual(two["id"], "clinical")
 
     def test_early_mention_is_hard_and_clearance_is_always_hard(self):
@@ -80,7 +80,7 @@ class Extraction(unittest.TestCase):
         units = extract.parse(GOOD)
         terms = dict(extract.platform_hits(units))
         self.assertFalse(terms["netsuite"])
-        self.assertTrue(terms["snowflake"])                    # preferred -> optional
+        self.assertTrue(terms["snowflake"])  # preferred -> optional
         self.assertIn("Kubernetes", [n for n, _ in extract.candidates(extract.parse("Requirements\n• Experience with Zorbix, Quuxly"), set())] + ["Kubernetes"])
 
     def test_headingless_posting_still_yields_requirements(self):
@@ -121,8 +121,8 @@ class Scoring(unittest.TestCase):
         def weights(years):
             r = evaluate("Manager", "B", f"Requirements\n• Must have {years}+ years of experience leading programs\n" + "pad " * 100, PROFILE, TODAY)
             return [i[3] for i in r.items if i[1] == f"{years}+ years"]
-        self.assertEqual(weights(10), [2.0])          # REQUIRED counts double
-        self.assertEqual(weights(20), [1.0])          # 20 years is inflated: half of that
+        self.assertEqual(weights(10), [2.0])  # REQUIRED counts double
+        self.assertEqual(weights(20), [1.0])  # 20 years is inflated: half of that
 
     def test_optional_gap_hurts_less_than_required_gap(self):
         req = "Requirements\n• Experience with Netsuite\n• Experience with Zorbix\n" + "pad " * 100
@@ -131,12 +131,12 @@ class Scoring(unittest.TestCase):
 
     def test_title_counts_less_than_the_description(self):
         r = evaluate("Wizard Lead", "B", GOOD, PROFILE, TODAY)
-        self.assertEqual(r.decision, "Go", r.line)            # an unrecognised title does not sink a matching JD
+        self.assertEqual(r.decision, "Go", r.line)  # an unrecognised title does not sink a matching JD
 
     def test_exclusion_is_a_gate_not_a_score(self):
         clean = evaluate("Program Manager", "B", GOOD, PROFILE, TODAY)
         r = evaluate("Program Manager", "AcmeCorp Inc", GOOD, PROFILE, TODAY)
-        self.assertEqual((r.decision, r.exclusion, r.score), ("No-Go", "acme", clean.score))   # Fit itself is untouched
+        self.assertEqual((r.decision, r.exclusion, r.score), ("No-Go", "acme", clean.score))  # Fit itself is untouched
         self.assertIn("Excluded: named employer", r.line)
         self.assertIn("professional Fit is", r.why)
 
@@ -178,9 +178,9 @@ class Stage(unittest.TestCase):
         onsite = stage.score_rows([base + ("Austin, TX (Hybrid)", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual(onsite[3].status, "EXCLUDE")
         low = stage.score_rows([base + ("Remote", "$60K/yr", None, date(2026, 9, 30))], PROFILE, TODAY)[0]
-        self.assertEqual(low[3].status, "EXCLUDE")                   # explicit pay below $75K
+        self.assertEqual(low[3].status, "EXCLUDE")  # explicit pay below $75K
         stale = stage.score_rows([base + ("Remote", None, date(2026, 8, 1), date(2026, 9, 30))], PROFILE, TODAY)[0]
-        self.assertEqual(stale[3].status, "EXCLUDE")                 # employer Posting Date beats First Surfaced
+        self.assertEqual(stale[3].status, "EXCLUDE")  # employer Posting Date beats First Surfaced
         gated = stage.score_rows([(2, "Program Manager", "AcmeCorp Inc", GOOD, "fp", "Newsletter", "Remote", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual((gated[3].status, gated[2].decision), ("EXCLUDE", "No-Go"))
 
@@ -189,28 +189,28 @@ class Stage(unittest.TestCase):
         london = ("Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", "web:su-revolut-ltd")
         kept = stage.score_rows([(1, "Credit Manager (Product)", "Revolut Ltd", GOOD, "fp") + london], PROFILE, TODAY)[0]
         self.assertNotEqual(kept[3].status, "EXCLUDE")
-        self.assertEqual(kept[2].exclusion, "finance_risk_domain")          # the rule still fires on the Fit result; only the lane decision ignores it for this role
+        self.assertEqual(kept[2].exclusion, "finance_risk_domain")  # the rule still fires on the Fit result
         for title, company in (("Credit Manager (Risk)", "Revolut Ltd"), ("Credit Manager (Product)", "Acme Ltd")):
             other = stage.score_rows([(2, title, company, GOOD, "fp") + london], PROFILE, TODAY)[0]
             self.assertEqual(other[3].status, "EXCLUDE", (title, company))
 
     def test_a_thin_page_on_a_scale_up_boards_own_source_is_admitted_when_the_title_fits_and_never_excluded_for_fit(self):
-        """Jim, Oct 21: never excluded for Fit alone. Jim, Oct 25: a fitting title (Fit 60+) is admitted, not Review. The same page from any other source is judged as before."""
+        """The same page from any other source is judged as before."""
         from lifeos.jobs.fit import stage
         thin = "We are hiring a delivery lead to join our team in London. " * 4
         row = lambda source: (7, "Delivery Lead", "Example Ltd", thin, "fp", "Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", source)
-        for score, want in ((40, "REVIEW"), (90, "ADMIT")):                         # a poor score from thin text stays Review, never excluded; a good one is admitted
+        for score, want in ((40, "REVIEW"), (90, "ADMIT")):
             kept = stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: score})[0]
             self.assertEqual(kept[3].status, want, score)
         self.assertEqual(stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: 40})[0][3].reason, "Fit 40 below 72 (on Jim's keep list)")
         other = stage.score_rows([row("web:greenhouse-example")], PROFILE, TODAY, fit={7: 40})[0]
-        self.assertEqual(other[3].status, "EXCLUDE")                                 # the same poor score from any other source is excluded as before
+        self.assertEqual(other[3].status, "EXCLUDE")
 
     def test_score_rows_is_pure_and_missing_profile_is_a_noop(self):
         from lifeos.jobs.fit import stage
         out = stage.score_rows([(1, "Technical Program Manager", "Beta", GOOD, "fp")], PROFILE, TODAY)
         self.assertEqual((out[0][0], out[0][2].decision), (1, "Go"))
-        self.assertEqual((out[0][3].status, out[0][3].reason), ("ADMIT", "remote assumed"))     # D204: no office requirement: remote presumed
+        self.assertEqual((out[0][3].status, out[0][3].reason), ("ADMIT", "remote assumed"))  # no office requirement: remote presumed
         self.assertEqual(stage.run(10, False, environ={})["profile"], "missing")
 
 
@@ -241,7 +241,7 @@ class RequeueFloorTests(unittest.TestCase):
         sql = source[source.index('"UPDATE'):source.index('(_now(),))')]
         import re
         literal = "".join(re.findall(r'"([^"]*)"', sql))
-        literal % ("2026-10-03",)                             # the driver formats the statement: a bare % in the LIKE pattern raises here (the 5 PM tick crashed on it)
+        literal % ("2026-10-03",)
 
 
 class RejudgeExcludedTests(unittest.TestCase):
@@ -251,12 +251,12 @@ class RejudgeExcludedTests(unittest.TestCase):
         conn = FakeConn()
         conn.cur.rowcount = 39
         self.assertEqual(stage.rejudge_excluded(conn.cursor()), 39)
-        self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_job_fit"])                     # D214: marked stale, never deleted (its cloud columns survive)
+        self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_job_fit"])
         import inspect
         sql = inspect.getsource(stage.rejudge_excluded)
         for part in ("j.status='READY'", "j.notion_page_id IS NULL", "f.admission='EXCLUDE'"):
             self.assertIn(part, sql)
-        self.assertNotIn("v7_jobs SET", sql)                                      # the job row is never edited here: the scoring pass decides
+        self.assertNotIn("v7_jobs SET", sql)
         self.assertIn("SET f.model_version='0'", sql)
 
     def test_the_statement_survives_the_driver_formatting(self):
@@ -264,11 +264,11 @@ class RejudgeExcludedTests(unittest.TestCase):
         from lifeos.jobs.fit import stage
         source = inspect.getsource(stage.rejudge_excluded)
         sql = source[source.index('"UPDATE'):source.index('")\n    return')]
-        "".join(sql.split('"')) % ()                                              # no stray % in the statement
+        "".join(sql.split('"')) % ()  # no stray % in the statement
 
 
 class ProfessionGate(unittest.TestCase):
-    """D89: the blatant misses from the 38-job review. A different profession is never a Fit, and generic requirements alone are not one."""
+    """the blatant misses from the 38-job review."""
 
     def hard(self, title, company="Acme"):
         got, _ = exclusions.check(title, company, GOOD)
@@ -306,17 +306,17 @@ class ProfessionGate(unittest.TestCase):
         self.assertIn("matches your functions", result.why)
 
     def test_a_city_and_state_is_no_longer_an_office_job_but_a_stated_requirement_is(self):
-        from lifeos.jobs import lanes                                                      # D204 withdraws D89's city rule
+        from lifeos.jobs import lanes  # withdraws 's city rule
         self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "unknown")
         self.assertEqual(lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "You must work onsite in Rochester."), "onsite")
         self.assertEqual(lanes.work_mode_for_fit("United States", "Project Manager", ""), "unknown")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX (Remote)", "Project Manager", ""), "remote")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Project Manager", "This is a fully remote role."), "remote")
-        self.assertEqual(lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown")      # acquisition filters never guess
+        self.assertEqual(lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown")  # acquisition filters never guess
 
 
 class JimsExclusions(unittest.TestCase):
-    """D114: Jim's five rejected roles are excluded by title; product-led fraud roles and Revolut's wanted roles are not."""
+    """Jim's five rejected roles are excluded by title"""
 
     def hard(self, title):
         got, _ = exclusions.check(title, "Acme", GOOD)
@@ -364,7 +364,9 @@ class WorkModeWindow(unittest.TestCase):
 
 
 class ScaleUpJunk(unittest.TestCase):
-    """D95: the Scale-Up board held 13 jobs, 9 of them not this profile (five API Enterprise Sales Executives, junior and associate roles, nursery staff)."""
+    """the Scale-Up board held 13 jobs, 9 of them not this profile (five API Enterprise Sales Executives, junior and
+    associate roles, nursery staff).
+    """
 
     def hard(self, title, company="Revolut Ltd"):
         got, _ = exclusions.check(title, company, GOOD)
@@ -396,8 +398,8 @@ class LegalComplianceTitles(unittest.TestCase):
 
 
 class FinanceDomainAndFunctionalCap(unittest.TestCase):
-    """D103: Chief Risk Officer at Fit 84, Operational Risk Manager 75, FinCrime Risk Manager 68-78 for a program manager. The domain is the job, and generic
-    seniority, team size and scale (which fill Role and Delivery) must not outvote the Functional area."""
+    """Chief Risk Officer at Fit 84, Operational Risk Manager 75, FinCrime Risk Manager 68-78 for a program manager.
+    """
 
     def hard(self, title):
         got, _ = exclusions.check(title, "Acme", GOOD)
@@ -431,7 +433,7 @@ class FinanceDomainAndFunctionalCap(unittest.TestCase):
 
 
 class ExtraProfileBlock(unittest.TestCase):
-    """D105: evidence is added through FIT_PROFILE_EXTRA_JSON without replacing the profile."""
+    """evidence is added through FIT_PROFILE_EXTRA_JSON without replacing the profile."""
     BASE = '{"years": 15, "capabilities": [{"id": "a", "label": "A", "class": "direct", "terms": ["alpha"]}], "scope": {"team_size": 10}}'
 
     def test_the_extra_block_adds_and_never_replaces(self):
@@ -457,17 +459,19 @@ class RevivedStatement(unittest.TestCase):
     def test_the_revive_statement_survives_driver_formatting_and_is_guarded(self):
         import inspect, re
         from lifeos.jobs.fit import stage
-        source = inspect.getsource(stage._gate)                 # D226: the gate is shared by the static write and the cloud-Fit canary
+        source = inspect.getsource(stage._gate)
         start = source.index('"UPDATE v7_jobs SET status=\'READY\', unresolved_reason=\'requeued_fit\'')
         end = source.index("(_now(), job_id))", start)
         literal = "".join(re.findall(r'"([^"]*)"', source[start:end]))
-        literal % ("2026-10-04", 1)                              # the driver formats the statement
+        literal % ("2026-10-04", 1)  # the driver formats the statement
         for guard in ("status='EXCLUDED_FIT'", "unresolved_reason='lane_exclude'", "notion_page_id IS NULL"):
             self.assertIn(guard, literal)
 
 
 class FitTag(unittest.TestCase):
-    """D107: the tag was 17 characters in a CHAR(16) column, so no stored score ever matched and every run re-scored the same oldest 500 jobs."""
+    """the tag was 17 characters in a CHAR(16) column, so no stored score ever matched and every run re-scored the same
+    oldest 500 jobs.
+    """
 
     def test_the_tag_always_fits_the_column_and_changes_with_the_policy(self):
         from unittest import mock
@@ -493,7 +497,7 @@ class OnlyClause(unittest.TestCase):
         sql, params = stage.only_clause("revolut, wheely ,ab")
         self.assertEqual(params, ("%revolut%", "%revolut%", "%wheely%", "%wheely%"))
         self.assertEqual(sql.count("j.company LIKE"), 2)
-        sql % tuple("x" for _ in params)                              # survives driver formatting
+        sql % tuple("x" for _ in params)  # survives driver formatting
         self.assertEqual(stage.only_clause("funnel"), ("", ()))
         self.assertEqual(stage.only_clause(""), ("", ()))
         self.assertEqual(stage.only_clause(None), ("", ()))
@@ -514,11 +518,11 @@ class OnlyClause(unittest.TestCase):
         db.executemany("INSERT INTO v7_jobs VALUES (?, ?, ?)", [(1, "web:greenhouse:a", "2026-10-01"), (2, "jobright", "2026-10-20"), (3, None, "2026-10-21"),
                                                                  (4, "web:titlewatch:b", "2026-09-01"), (5, "linkedin", "2026-10-02")])
         order = [r[0] for r in db.execute("SELECT j.id FROM v7_jobs j" + stage.ORDER)]
-        self.assertEqual(order, [3, 5, 2, 4, 1])                                   # non-board (unknown source too) oldest first, then boards oldest first
+        self.assertEqual(order, [3, 5, 2, 4, 1])
 
 
 class HealthcareNeedsRealWeight(unittest.TestCase):
-    """D111: Stream (a fintech for frontline workers, many of them in healthcare) was excluded as a healthcare job."""
+    """Stream (a fintech for frontline workers, many of them in healthcare) was excluded as a healthcare job."""
     FINTECH = ("Stream is a fintech helping frontline workers in healthcare and retail access their pay. " + "We build payments and earned wage access products. " * 20 +
                "Many of our customers are healthcare employers. Our healthcare partners include hospitals. ")
 
@@ -544,8 +548,8 @@ class KeptPromotion(unittest.TestCase):
                 (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, False, "REVIEW", False, "RESOLVED", None),
                 (6, "Revolut Ltd", "Partnerships Manager (Lifestyle)", "web:su-revolut-ltd", True, True, "REVIEW", True, "RESOLVED", None),
                 (7, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", True, False, "REVIEW", False, "READY", None),
-                (8, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", "listing"),          # LIFE-723: a listing lead is promoted like a title-watch find
-                (9, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", None)]            # a discover job with a real employer link is not
+                (8, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", "listing"),  # a listing lead is promoted like a title-watch find
+                (9, "Sixfold", "Product Manager", "discover", True, True, "REVIEW", False, "RESOLVED", None)]  # a discover job with a real employer link is not
         updated = []
 
         class Cur:
@@ -560,7 +564,9 @@ class KeptPromotion(unittest.TestCase):
 
 
 class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
-    """LIFE-41: an employer's "About <Company>" block, a headingless posting's skip sections and an off-family title earn no professional Fit."""
+    """an employer's 'About <Company>' block, a headingless posting's skip sections and an off-family title earn no
+    professional Fit.
+    """
     ABOUT = "About Acme\nAcme makes NetSuite and ERP integration products and a payment platform used by enterprise teams.\n"
     ROLE = ("About the role\nWe are hiring a Technical Program Manager to run our roadmap.\n\nResponsibilities\n"
             "• Own the program roadmap and drive delivery across multiple teams\n"
@@ -576,7 +582,7 @@ class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
         self.assertEqual(extract._heading("About the Team"), "summary")
 
     def test_the_employers_products_are_not_platform_evidence(self):
-        with_about = self.ROLE + self.ABOUT + self.FILLER                  # the block closes the posting, after the requirements
+        with_about = self.ROLE + self.ABOUT + self.FILLER
         self.assertEqual(extract.platform_hits(extract.parse(with_about)), [])
         bare = evaluate("Technical Program Manager", "Acme", self.ROLE + self.FILLER, PROFILE, TODAY)
         about = evaluate("Technical Program Manager", "Acme", with_about, PROFILE, TODAY)
@@ -609,7 +615,7 @@ class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
 
 
 class ExtractionCorrections(unittest.TestCase):
-    """LIFE-41 (10446 / 10472): five extraction defects left after #334, on invented employers. Each assertion is red on main 4035dc9."""
+    """(10446 / 10472): five extraction defects left after #334, on invented employers."""
 
     def test_a_product_manager_title_that_names_product_marketing_is_not_capped(self):
         for title in ("Senior Product Manager — Product Marketing Platform", "Product Owner, Product Marketing Integrations"):
@@ -633,7 +639,7 @@ class ExtractionCorrections(unittest.TestCase):
         units = extract.parse(text)
         intro = next(u for u in units if u.text.startswith("We are seeking"))
         self.assertEqual(intro.section, "summary")
-        self.assertEqual(next(u for u in units if u.text.startswith("Northwind builds")).section, "skip")     # the employer copy stays out
+        self.assertEqual(next(u for u in units if u.text.startswith("Northwind builds")).section, "skip")  # the employer copy stays out
 
     def test_a_requirement_bullet_is_never_a_heading(self):
         text = ("Requirements\n- Experience launching enterprise software\n- 2+ years of program management\n"
@@ -642,7 +648,7 @@ class ExtractionCorrections(unittest.TestCase):
         self.assertEqual([u.section for u in units], ["required"] * 4)
         for line in ("- Experience launching enterprise software", "* Experience with NetSuite", "1. Experience with NetSuite"):
             self.assertIsNone(extract._heading(line), line)
-        self.assertEqual(extract._heading("**Requirements**"), "required")            # a bold heading is still a heading
+        self.assertEqual(extract._heading("**Requirements**"), "required")  # a bold heading is still a heading
 
     def test_employer_culture_and_perks_are_not_duties(self):
         for line in ("Why you will love working at Northwind", "Why You'll Love Working Here", "Life at Northwind"):
@@ -657,12 +663,13 @@ class ExtractionCorrections(unittest.TestCase):
         units = extract.parse(text)
         self.assertEqual([u.section for u in units if "Northwind" in u.text], ["skip", "skip"])
         self.assertEqual([u.text for u in extract.requirement_units(units)], ["8+ years of experience in program management"])
-        self.assertEqual(extract._heading("Northwind Experience Manager"), "required")   # outside an About section a short line keeps today's reading
+        self.assertEqual(extract._heading("Northwind Experience Manager"), "required")
 
 
 class OpenApplicationIsNotAVacancy(unittest.TestCase):
-    """LIFE-59 regression (German open application admitted as US Remote, Fit 80): an unsolicited / general application is not a vacancy. The shared lane
-    boundary excludes it in every lane, through the production composition (stage.score_rows -> lanes.decide_all), whatever the Fit."""
+    """regression (German open application admitted as US Remote, Fit 80): an unsolicited / general application is not a
+    vacancy.
+    """
     GERMAN = ("Initiativbewerbung\nHamburg, Remote\nVoll- oder Teilzeit\n\nDiese Aufgaben warten auf Dich:\n"
               "- Projektmanagement: Übernimm Verantwortung für eigene Projekte und arbeite eng mit Kunden zusammen.\n"
               "- Softwareentwicklung: Entwickle innovative Lösungen vom Design bis zur Implementierung.\n\n"
@@ -689,7 +696,9 @@ def lanes_public(reason):
 
 class NoHistoricalRescore(unittest.TestCase):
     def test_the_score_and_lane_policy_versions_are_unchanged(self):
-        """D213: no version bump for that change (l15 is the later keep-list change, which does bump; l17 is the LIFE-212 age limits, which bump so jobs already on the board are re-judged against them), so stage.PICK finds no stored score stale for this change and no PUBLISHED job is re-scored by it (D94 unchanged)."""
+        """no version bump for that change, so stage.PICK finds no stored score stale for this change and no PUBLISHED
+        job is re-scored by it.
+        """
         from lifeos.jobs import lanes
         from lifeos.jobs.fit import MODEL_VERSION
         self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l17"))

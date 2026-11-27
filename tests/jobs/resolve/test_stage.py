@@ -28,7 +28,8 @@ class ApplyResultTests(unittest.TestCase):
 
 
 class LinkProofTests(unittest.TestCase):
-    """A landed link that cannot be one vacancy is never RESOLVED: Enrich would reject it and send the job round again."""
+    """A landed link that cannot be one vacancy is never RESOLVED: Enrich would reject it and send the job round again.
+    """
 
     def test_a_listing_or_root_link_is_pending_not_resolved(self):
         for url in ("https://careers.acme.example/", "https://careers.acme.example/jobs/search", "https://apply.workable.com/j/ABCDEF/"):
@@ -58,11 +59,11 @@ class WhyTests(unittest.TestCase):
             dry = stage.run_rows("jobright", 10, False, lambda rows: results)
         self.assertEqual(counts["why"], {"apply_unavailable": 2, "bad_link_root": 1, "landed:ats": 1})
         self.assertEqual(counts["resolved"], 1)
-        self.assertEqual((dry["why"], dry["resolved"], dry["dry_run"]), (counts["why"], 0, True))        # a dry run applies the same test and writes nothing
+        self.assertEqual((dry["why"], dry["resolved"], dry["dry_run"]), (counts["why"], 0, True))  # a dry run applies the same test and writes nothing
 
 
 class ProvenanceTests(unittest.TestCase):
-    """An ambiguous link shape is accepted only when it was read off the job's own page; Enrich then proves it by title."""
+    """An ambiguous link shape is accepted only when it was read off the job's own page"""
     URL = "https://careers-acme.icims.com/jobs/intro"
 
     def _apply(self, **extra):

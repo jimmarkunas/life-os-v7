@@ -1,7 +1,6 @@
-"""LIFE-41 usage integrity (Jim, description requirements 2 and 3): missing, invalid or inconsistent token counts are DEGRADED(USAGE_UNAVAILABLE) in every mode and
-stop further calls; Oracle's own USAGE_UNAVAILABLE refusal (its synthetic check or latch) is the same code with no model call; and the fixed code reaches the ONE
-existing phone push (report job -> lifeos.platform.alerts -> ntfy, which Oracle forwards to WhatsApp and Telegram). The push is proven with a stand-in python3 that
-records the call: nothing is sent."""
+"""usage integrity: missing, invalid or inconsistent token counts are DEGRADED(USAGE_UNAVAILABLE) in every mode and stop
+further calls
+"""
 import contextlib
 import io
 import json
@@ -31,7 +30,9 @@ GOOD = RECEIPT["usage"]
 
 class UsageRule(unittest.TestCase):
     def test_optional_counts_may_be_omitted_or_unavailable_but_never_malformed(self):
-        """Career TL review of #353 (2efd914): a present cached / reasoning value that is not an integer was treated as clean."""
+        """Career TL review of #353 (2efd914): a present cached / reasoning value that is not an integer was treated as
+        clean.
+        """
         for key in ("cached_input_tokens", "reasoning_tokens"):
             omitted = {k: v for k, v in GOOD.items() if k != key}
             self.assertTrue(cloud.usage_ok(omitted), key)
@@ -41,22 +42,21 @@ class UsageRule(unittest.TestCase):
                 self.assertFalse(cloud.usage_ok({**GOOD, key: bad}), (key, bad))
 
     def test_only_whole_consistent_counts_are_usable(self):
-        self.assertTrue(cloud.usage_ok(GOOD))                                                   # reasoning "unavailable" (the Gateway omitted it on a real call) is allowed
+        self.assertTrue(cloud.usage_ok(GOOD))
         for bad in ("unavailable", None, {}, {**GOOD, "total_tokens": "unavailable"}, {**GOOD, "input_tokens": -1}, {**GOOD, "output_tokens": 1.5},
                     {**GOOD, "total_tokens": 9}, {**GOOD, "cached_input_tokens": 5000}, {**GOOD, "reasoning_tokens": 70}, {**GOOD, "input_tokens": True}):
             self.assertFalse(cloud.usage_ok(bad), bad)
 
 
 class CachedTokensConvention(unittest.TestCase):
-    """D245 (Oct 20, 5:15 PM CT): the Codex route reported a cache hit as input 186 + cached 1408 + output 60 = total 1654. Oracle latched and the batch stopped
-    USAGE_UNAVAILABLE. Both conventions add up exactly; anything that fits neither is still inconsistent, and nothing is estimated."""
+    """Oracle latched and the batch stopped USAGE_UNAVAILABLE."""
 
     def test_the_cache_outside_input_convention_is_consistent(self):
         real = {"cache_write_tokens": 0, "cached_input_tokens": 1408, "input_tokens": 186, "output_tokens": 60, "reasoning_tokens": "unavailable", "total_tokens": 1654}
         self.assertTrue(cloud.usage_ok(real))
         self.assertTrue(cloud.usage_ok({**real, "cache_write_tokens": "unavailable"}))
         self.assertTrue(cloud.usage_ok({"input_tokens": 100, "cached_input_tokens": 50, "cache_write_tokens": 20, "output_tokens": 10, "total_tokens": 180}))
-        self.assertTrue(cloud.usage_ok({"input_tokens": 1594, "cached_input_tokens": 1408, "output_tokens": 60, "total_tokens": 1654}))   # inside, unchanged
+        self.assertTrue(cloud.usage_ok({"input_tokens": 1594, "cached_input_tokens": 1408, "output_tokens": 60, "total_tokens": 1654}))  # inside, unchanged
 
     def test_anything_that_fits_neither_convention_is_still_inconsistent(self):
         real = {"cache_write_tokens": 0, "cached_input_tokens": 1408, "input_tokens": 186, "output_tokens": 60, "total_tokens": 1654}
@@ -66,7 +66,7 @@ class CachedTokensConvention(unittest.TestCase):
 
 
 class CanaryStopsWithoutUsage(Base):
-    CANARY, stage_run, visible = test_cloud.CloudFitCanary.CANARY, test_cloud.CloudFitCanary.stage_run, test_cloud.CloudFitCanary.visible     # its helpers, not its tests
+    CANARY, stage_run, visible = test_cloud.CloudFitCanary.CANARY, test_cloud.CloudFitCanary.stage_run, test_cloud.CloudFitCanary.visible  # its helpers, not its tests
 
     def test_a_canary_answer_without_usable_counts_is_kept_but_the_tick_reports_usage_unavailable(self):
         for usage in ("unavailable", {**GOOD, "total_tokens": 9}):
@@ -74,7 +74,7 @@ class CanaryStopsWithoutUsage(Base):
             self.job(1)
             counts = self.stage_run(self.CANARY, Endpoint(lambda d, u=usage: reply(d, receipt={**RECEIPT, "usage": u})))
             self.assertEqual((counts["cloud_fit"], counts["cloud_promoted"], counts["failed"], counts["cloud_usage_unavailable"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 1, 1), usage)
-            self.assertEqual(self.visible(1)[4], "CANARY")                                       # the answer and its promotion stand; only the measurement failed
+            self.assertEqual(self.visible(1)[4], "CANARY")  # the answer and its promotion stand
 
     def test_a_malformed_optional_count_stops_the_canary_like_a_missing_total(self):
         for bad in ("corrupt", True, {"n": 1}):
@@ -87,7 +87,7 @@ class CanaryStopsWithoutUsage(Base):
         self.job(1)
         counts = self.stage_run(self.CANARY, Endpoint(lambda d: refusal(d, "USAGE_UNAVAILABLE")))
         self.assertEqual((counts["cloud_fit"], counts["cloud_ok"], counts["failed"]), ("DEGRADED(USAGE_UNAVAILABLE)", 0, 1))
-        self.assertIsNone(self.visible(1)[4])                                                   # claim released: no model ran
+        self.assertIsNone(self.visible(1)[4])  # claim released: no model ran
 
 
 class BatchStopsWithoutUsage(Batch):
@@ -104,7 +104,7 @@ class BatchStopsWithoutUsage(Batch):
         endpoint = Endpoint(lambda d: reply(d, receipt={**RECEIPT, "usage": {**GOOD, "reasoning_tokens": "corrupt"}}))
         counts = self.batch(5, endpoint)
         self.assertEqual((counts["cloud_fit"], len(endpoint.sent), counts["cloud_tokens_total"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 0))
-        self.assertEqual(self.status(2), None)                                                   # the halt: job 2 never asked
+        self.assertEqual(self.status(2), None)  # the halt: job 2 never asked
 
     def test_oracles_usage_refusal_stops_a_batch_before_any_model_call(self):
         self.titled(1, "Program Manager A")
@@ -114,7 +114,7 @@ class BatchStopsWithoutUsage(Batch):
 
 
 class TheCodeReachesThePush(unittest.TestCase):
-    """The negative control: a degraded run names USAGE_UNAVAILABLE in the one existing push, once; a clean run pushes nothing. Nothing is sent."""
+    """The negative control: a degraded run names USAGE_UNAVAILABLE in the one existing push, once"""
 
     def run_main(self, counts, output):
         with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": output}), mock.patch.object(lifeos_run, "STAGES", {**lifeos_run.STAGES, "fit-cloud-backlog": lambda limit, live: counts}), \
@@ -130,7 +130,7 @@ class TheCodeReachesThePush(unittest.TestCase):
             self.assertEqual(self.run_main({"cloud_fit": "OK", "failed": 0}, out), 0)
             self.assertEqual(open(out).read(), "")
             self.assertEqual(self.run_main({"cloud_fit": "DEGRADED(bad; rm -rf /)", "failed": 1}, out), 1)
-            self.assertEqual(open(out).read(), "")                                                # anything but a fixed upper-case code is never written
+            self.assertEqual(open(out).read(), "")
 
     @unittest.skipIf(yaml is None, "PyYAML unavailable")
     def test_a_usage_failure_is_named_in_exactly_one_push_and_a_clean_run_pushes_nothing(self):
@@ -166,12 +166,12 @@ class TheCodeReachesThePush(unittest.TestCase):
         self.assertEqual((code, out["failed"], out["codes"]), (1, "fit_cloud_backlog", "USAGE_UNAVAILABLE"))
         rc, pushed = report_run("failure", out["failed"], out["codes"])
         self.assertEqual(rc, 1)
-        self.assertEqual(pushed[:5], ["-m", "lifeos.platform.alerts", "push", "--key", "run_failed"])        # the existing path, one call
+        self.assertEqual(pushed[:5], ["-m", "lifeos.platform.alerts", "push", "--key", "run_failed"])  # the existing path, one call
         body = pushed[pushed.index("--body") + 1]
         self.assertIn("stages: fit_cloud_backlog; codes: USAGE_UNAVAILABLE", body)
         code, out = lanes_run("success", "")
         self.assertEqual((code, out["failed"], out["codes"]), (0, "", ""))
-        self.assertEqual(report_run("success", "", ""), (0, None))                              # a clean run pushes nothing
+        self.assertEqual(report_run("success", "", ""), (0, None))  # a clean run pushes nothing
 
 
 if __name__ == "__main__":

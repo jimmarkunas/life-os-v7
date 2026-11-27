@@ -54,11 +54,11 @@ class FunnelTests(unittest.TestCase):
     def test_the_canary_gives_each_source_a_verdict_and_the_trace_of_its_newest_jobs(self):
         out, _ = self.go()
         canary = out["canary"]
-        self.assertEqual(canary["jobright"]["verdict"], "flowing")                      # a job published in the last 24 hours
+        self.assertEqual(canary["jobright"]["verdict"], "flowing")  # a job published in the last 24 hours
         self.assertEqual(canary["jobright"]["newest"][0], {"stage": "published", "status": "PUBLISHED", "reason": "none", "resolve_attempts": 0,
                                                            "enrich_attempts": 1, "link": "ats", "proof": "title", "fit": "Admitted:80_up", "age_h": 2})
         self.assertEqual(canary["jobright"]["newest"][1]["stage"], "stuck")
-        self.assertEqual(canary["unknown"]["verdict"], "stuck_at_link")                 # only NEW jobs, none published
+        self.assertEqual(canary["unknown"]["verdict"], "stuck_at_link")  # only NEW jobs, none published
         self.assertEqual(canary["lensa"]["newest"][0]["stage"], "found")
 
     def test_verdicts(self):
@@ -78,8 +78,9 @@ class FunnelTests(unittest.TestCase):
 
 
 class PublicCodes(unittest.TestCase):
-    """M6C: the funnel report and explain print to the public Actions log through funnel.public_code: a fixed store code or a bare Fit floor keeps
-    its shape; a lane reason prints only its enumerated code, never a rule name, an employer quote or other text. reason_code itself is unchanged."""
+    """M6C: the funnel report and explain print to the public Actions log through funnel.public_code: a fixed store code
+    or a bare Fit floor keeps its shape
+    """
 
     def test_store_codes_keep_their_shape_and_any_other_reason_is_enumerated(self):
         cases = {None: "none", "": "none", "lane_exclude": "lane_exclude", "no_job_id 3": "other", "http_404": "http_N", "dup_of_final_url": "dup_of_final_url",
@@ -89,9 +90,9 @@ class PublicCodes(unittest.TestCase):
         for reason, code in cases.items():
             with self.subTest(reason=reason):
                 self.assertEqual(funnel.public_code(reason), code)
-        self.assertEqual(funnel.reason_code("excluded: sales_role"), "excluded: sales_role")            # the private review page keeps its words
+        self.assertEqual(funnel.reason_code("excluded: sales_role"), "excluded: sales_role")  # the private review page keeps its words
 
-    def test_a_lowercase_word_is_never_trusted_as_a_code(self):                          # M6I: a private rule can look like a stored code
+    def test_a_lowercase_word_is_never_trusted_as_a_code(self):  # M6I: a private rule can look like a stored code
         for reason in ("private_employer_rule", "secret_company", "special_exclusions", "lane_exclude_secret", "lane_exclude secret", "http_404_acme",
                        "lane_exclude'", '"lane_exclude"', "profile: secret-alpha", "KeyError", "connection reset by peer", "Fit 67 below 68 acme"):
             with self.subTest(reason=reason):

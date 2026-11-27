@@ -26,8 +26,8 @@ class Exclusions(unittest.TestCase):
         self.assertEqual(report["by_band"], {"72_plus": 1, "68_to_71": 1, "under_60": 1, "unscored": 1})
         self.assertEqual(report["by_band_and_reason"]["72_plus/lane_exclude"], 1)
         self.assertEqual(report["by_source"], {"web:su-a": 2, "web:su-b": 2})
-        self.assertEqual(report["by_admission"]["exclude/pay_below_floor"], 1)                    # lane reasons are printed as lanes.public_reason's fixed codes, never as text
-        self.assertEqual(report["high_score"], {"lane_exclude/pay_below_floor/none": 1})            # only the job scored at or over 72 is listed here
+        self.assertEqual(report["by_admission"]["exclude/pay_below_floor"], 1)
+        self.assertEqual(report["high_score"], {"lane_exclude/pay_below_floor/none": 1})  # only the job scored at or over 72 is listed here
 
     def test_a_lane_reason_never_reaches_the_report_as_text_and_the_high_scorers_are_listed_by_rule(self):
         rows = [("web:su-a", "lane_exclude", 90, "EXCLUDE", "excluded: finance_risk_domain", "finance_risk_domain"), ("web:su-a", "lane_exclude", 85, "EXCLUDE", "market us is not uk", None),
@@ -64,7 +64,7 @@ class Review(unittest.TestCase):
         self.enterContext(mock.patch.object(stored_pages, "STORE", FakeStore()))
         cursor, client = Cursor(self.ROWS), FakeClient()
         self.assertEqual(ex.review(0, False, connect=lambda: cursor, client=client), {"rows": 2, "page": "dry", "failed": 0, "why": {}})
-        self.assertEqual((set(cursor.verbs()), client.writes), ({"SELECT"}, []))                       # a dry run reads only
+        self.assertEqual((set(cursor.verbs()), client.writes), ({"SELECT"}, []))  # a dry run reads only
         report = ex.review(0, True, connect=lambda: Cursor(self.ROWS), client=client)
         self.assertEqual((report["rows"], report["page"]), (2, "new"))
-        self.assertIn("ExampleCo", str(client.written()[1]))                                       # the plaintext only ever went to Notion
+        self.assertIn("ExampleCo", str(client.written()[1]))  # the plaintext only ever went to Notion

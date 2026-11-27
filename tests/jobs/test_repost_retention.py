@@ -19,7 +19,7 @@ class RepostTests(unittest.TestCase):
         cursor.fetchall = lambda: [(7,), (9,)]
         self.assertIsNone(repost.link(cursor, "k", "f", NOW))
         self.assertEqual(cursor.verbs(), ["SELECT", "UPDATE"])
-        self.assertEqual(cursor.sql[-1][1][-1], "k")                       # only the new row is touched; neither original is
+        self.assertEqual(cursor.sql[-1][1][-1], "k")  # only the new row is touched
 
     def test_no_match_is_a_new_job(self):
         cursor = FakeCursor(rowcount=0)
@@ -28,9 +28,9 @@ class RepostTests(unittest.TestCase):
 
     def test_ghost_is_evidence_only(self):
         young = NOW - timedelta(days=10)
-        self.assertTrue(repost.is_ghost(3, young, NOW.date(), NOW))          # 3 sightings in the window
+        self.assertTrue(repost.is_ghost(3, young, NOW.date(), NOW))  # 3 sightings in the window
         self.assertFalse(repost.is_ghost(2, young, NOW.date(), NOW))
-        self.assertTrue(repost.is_ghost(1, NOW - timedelta(days=30), None, NOW))   # undated for weeks
+        self.assertTrue(repost.is_ghost(1, NOW - timedelta(days=30), None, NOW))  # undated for weeks
         self.assertFalse(repost.is_ghost(1, NOW - timedelta(days=30), NOW.date(), NOW))
 
     def test_sync_props_note_only_for_ghosts(self):
@@ -43,17 +43,17 @@ class PurgeTests(unittest.TestCase):
 
     def test_retire_only_stale_unapplied_unprotected(self):
         d = lambda n: self.TODAY - timedelta(days=n)
-        self.assertIsNone(retention.action(d(29), None, False, None, self.TODAY))              # inside 30 days
+        self.assertIsNone(retention.action(d(29), None, False, None, self.TODAY))  # inside 30 days
         self.assertEqual(retention.action(d(30), None, False, None, self.TODAY), "retire")
-        self.assertEqual(retention.action(None, d(45), False, None, self.TODAY), "retire")     # First Surfaced when no Posting Date
-        self.assertEqual(retention.action(d(60), d(2), False, None, self.TODAY), "retire")     # the employer date wins over First Surfaced
+        self.assertEqual(retention.action(None, d(45), False, None, self.TODAY), "retire")  # First Surfaced when no Posting Date
+        self.assertEqual(retention.action(d(60), d(2), False, None, self.TODAY), "retire")  # the employer date wins over First Surfaced
         self.assertIsNone(retention.action(d(2), d(60), False, None, self.TODAY))
-        self.assertIsNone(retention.action(None, None, False, None, self.TODAY))               # no date: never retire on a guess
+        self.assertIsNone(retention.action(None, None, False, None, self.TODAY))  # no date: never retire on a guess
 
     def test_applied_and_decided_jobs_are_never_retired(self):
         old = self.TODAY - timedelta(days=200)
-        self.assertIsNone(retention.action(old, None, True, None, self.TODAY))                 # Applied: UNKNOWN until INT-7.1A
-        self.assertIsNone(retention.action(old, None, False, "Pass", self.TODAY))              # a Saturn Decision protects it
+        self.assertIsNone(retention.action(old, None, True, None, self.TODAY))  # Applied: UNKNOWN until INT-7.1A
+        self.assertIsNone(retention.action(old, None, False, "Pass", self.TODAY))  # a Saturn Decision protects it
         self.assertEqual(progression.resolve(True), progression.UNKNOWN)
         self.assertEqual(progression.resolve(False), progression.NOT_PROTECTED)
 
@@ -65,9 +65,9 @@ class PurgeTests(unittest.TestCase):
         text = str(flt)
         self.assertIn("Posting Date", text)
         self.assertIn("First Surfaced", text)
-        self.assertNotIn("Created At", text)                                                    # never Notion's Created At
-        self.assertNotIn("Lifecycle", text)                                                     # the legacy field is not read at all
-        self.assertNotIn("Expired", text)                                                       # no legacy Lifecycle writes or triggers
+        self.assertNotIn("Created At", text)  # never Notion's Created At
+        self.assertNotIn("Lifecycle", text)  # the legacy field is not read at all
+        self.assertNotIn("Expired", text)  # no legacy Lifecycle writes or triggers
 
 
 class TombstoneTests(unittest.TestCase):
@@ -77,9 +77,9 @@ class TombstoneTests(unittest.TestCase):
         self.assertTrue(tombstone.blocked(cursor, "k", "f", None, NOW))
         self.assertTrue(tombstone.blocked(FakeCursor(script={"SELECT": (retired,)}), "k", "f", retired.date() - timedelta(days=3), NOW))
         again = FakeCursor(script={"SELECT": (retired,)})
-        self.assertFalse(tombstone.blocked(again, "k", "f", NOW.date(), NOW))                    # posted after the retirement: genuinely new
+        self.assertFalse(tombstone.blocked(again, "k", "f", NOW.date(), NOW))  # posted after the retirement: genuinely new
         self.assertIn("DELETE", again.verbs())
-        self.assertFalse(tombstone.blocked(FakeCursor(), "k", "f", None, NOW))                   # no tombstone
+        self.assertFalse(tombstone.blocked(FakeCursor(), "k", "f", None, NOW))  # no tombstone
 
     def test_write_sets_a_90_day_expiry(self):
         cursor = FakeCursor()
