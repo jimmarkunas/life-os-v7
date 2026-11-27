@@ -2,7 +2,7 @@
 
 Detail that [AGENTS.md](../AGENTS.md) points to. The rules are in the [Development Policy](life-os-development-policy.md); this file adds no rule of its own beyond the test-enforced list below. Read only the section a task needs.
 
-V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references. V7 must run correctly with ChatGPT unavailable (D54).
+V7 is the active LIFE OS implementation. The retired systems are read-only references. V7 must run correctly with ChatGPT unavailable (D54).
 
 ## Readiness check
 

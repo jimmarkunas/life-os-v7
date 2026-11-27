@@ -43,12 +43,28 @@ class LiftFlat(unittest.TestCase):
             {"operation": "memory_recall", "arguments": {"workspace": "Personal", "query": "q"}},
         )
 
-    def test_nested_calls_other_operations_and_bare_calls_are_unchanged(self):
-        for args in (
-            {"operation": "memory_recall", "arguments": {"workspace": "Personal"}, "query": "q"},
-            {"operation": "list_channels", "community": "life-os", "workspace": "x"},
+    def test_a_nested_memory_call_keeps_its_arguments_and_loses_only_community(self):
+        """Codex's shape: a nested arguments object plus a community its credential is not a member of."""
+        args = {
+            "operation": "memory_recall",
+            "community": "personal",
+            "arguments": {"workspace": "Personal", "query": "q"},
+        }
+        self.assertEqual(
+            mcp_access.lift_flat(args, self.OPS),
+            {"operation": "memory_recall", "arguments": {"workspace": "Personal", "query": "q"}},
+        )
+        self.assertEqual(
+            mcp_access.lift_flat({"operation": "memory_recall", "community": "life-os"}, self.OPS),
             {"operation": "memory_recall"},
-            {"operation": "memory_recall", "community": "life-os"},
+        )
+
+    def test_other_operations_and_bare_memory_calls_are_unchanged(self):
+        for args in (
+            {"operation": "list_channels", "community": "life-os", "workspace": "x"},
+            {"operation": "list_channels", "community": "nowhere", "arguments": {"a": 1}},
+            {"operation": "memory_recall"},
+            {"operation": "memory_recall", "arguments": {"workspace": "Personal"}},
         ):
             self.assertEqual(mcp_access.lift_flat(args, self.OPS), args)
         self.assertEqual(mcp_access.lift_flat("x", self.OPS), "x")
