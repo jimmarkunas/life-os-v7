@@ -3,6 +3,7 @@
 Read it back by id, never by searching a title. An archived or missing page means "write afresh". A dry run never
 creates the table.
 """
+
 from datetime import datetime, timezone
 
 from lifeos.platform import snapshot_store

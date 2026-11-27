@@ -3,6 +3,7 @@
 Only the FREE Fetch API is called. Free limits are 150 URLs/min and 1,000 URLs/day; stay under both and count every
 URL sent.
 """
+
 from datetime import datetime, timezone
 import time
 
@@ -31,13 +32,15 @@ def reserve(connection, wanted):
     allowed = granted(used_today(connection), FETCH_DAILY_CAP, wanted)
     if allowed:
         with connection.cursor() as cursor:
-            cursor.execute("INSERT INTO v7_spend (day, fetch_urls) VALUES (%s, %s) "
-                           "ON DUPLICATE KEY UPDATE fetch_urls = fetch_urls + VALUES(fetch_urls)", (today(), allowed))
+            cursor.execute(
+                "INSERT INTO v7_spend (day, fetch_urls) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE fetch_urls = fetch_urls + VALUES(fetch_urls)",
+                (today(), allowed),
+            )
     return allowed
 
 
 class Pacer:
-
     def __init__(self, clock=time.monotonic, sleep=time.sleep):
         self._clock, self._sleep, self._last = clock, sleep, None
 

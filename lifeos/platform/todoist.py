@@ -1,4 +1,5 @@
 """Minimal READ-ONLY Todoist client (stdlib only). GET requests only; there is no write method."""
+
 # Todoist API v1: a bearer token with data:read, `GET /tasks` paged by `next_cursor`. There is no write call and the
 # single request path builds a GET (a test scans the source to keep it so). Errors are fixed codes, never a URL, token
 # or body. A listing that cannot be proven complete raises.
@@ -25,17 +26,28 @@ class Todoist:
 
     def get(self, path, params=None):
         url = API + path + ("?" + urllib.parse.urlencode(params) if params else "")
-        def build():
-            return urllib.request.Request(url, method="GET", headers={"Authorization": self._auth, "Accept": "application/json", "User-Agent": "life-os-v7"})
 
-        return rest.call(build, TodoistError, "TODOIST", self._sleep, self._timeout, bad_json="BAD_RESPONSE", honor_retry_after=True)
+        def build():
+            return urllib.request.Request(
+                url,
+                method="GET",
+                headers={"Authorization": self._auth, "Accept": "application/json", "User-Agent": "life-os-v7"},
+            )
+
+        return rest.call(
+            build, TodoistError, "TODOIST", self._sleep, self._timeout, bad_json="BAD_RESPONSE", honor_retry_after=True
+        )
 
     def tasks(self, limit):
         """Up to `limit` open tasks, following next_cursor. More than `limit` rows come back as limit rows (the caller treats that as truncated)."""
         out, cursor = [], None
         for _ in range(MAX_PAGES):
             page = self.get("/tasks", {"limit": PAGE_SIZE, **({"cursor": cursor} if cursor else {})})
-            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or any(not isinstance(task, dict) for task in page["results"]):
+            if (
+                not isinstance(page, dict)
+                or not isinstance(page.get("results"), list)
+                or any(not isinstance(task, dict) for task in page["results"])
+            ):
                 raise TodoistError("TODOIST_LISTING_INCOMPLETE")
             out += page["results"]
             cursor = page.get("next_cursor")

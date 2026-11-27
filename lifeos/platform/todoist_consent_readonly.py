@@ -4,6 +4,7 @@ Scope `data:read` only; a reply with a refresh token is refused and nothing is w
 which a read-only Bitwarden item cannot follow).
   python3 -m lifeos.platform.todoist_consent_readonly | pbcopy
 """
+
 import getpass
 import http.server
 import json
@@ -25,12 +26,20 @@ def refuse(code):
 
 
 def link(client_id, state, redirect=REDIRECT):
-    return AUTHORIZE + "?" + urllib.parse.urlencode({"client_id": client_id, "scope": SCOPE, "state": state, "redirect_uri": redirect, "response_type": "code"})
+    return (
+        AUTHORIZE
+        + "?"
+        + urllib.parse.urlencode(
+            {"client_id": client_id, "scope": SCOPE, "state": state, "redirect_uri": redirect, "response_type": "code"}
+        )
+    )
 
 
 def exchange(client_id, client_secret, code, redirect=REDIRECT, opener=urllib.request.urlopen):
     """-> (token, scope) or a refusal. The reply must grant exactly data:read and carry no refresh token."""
-    body = urllib.parse.urlencode({"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect}).encode()
+    body = urllib.parse.urlencode(
+        {"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect}
+    ).encode()
     with opener(urllib.request.Request(TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
     if sorted(str(reply.get("scope", SCOPE)).replace(",", " ").split()) != [SCOPE]:
@@ -43,18 +52,26 @@ def exchange(client_id, client_secret, code, redirect=REDIRECT, opener=urllib.re
 
 
 def receipt(outcome, code=None, scope=()):
-    return {"outcome": outcome, "code": code, "scopes_granted": list(scope), "stored": "pipe" if outcome == "stored" else "nothing"}
+    return {
+        "outcome": outcome,
+        "code": code,
+        "scopes_granted": list(scope),
+        "stored": "pipe" if outcome == "stored" else "nothing",
+    }
 
 
 def run(client_id, client_secret, stdout, tty, opener=urllib.request.urlopen, server=None, catcher=base.catch):
-    """One sign-in: the link goes to `tty`, the token only to `stdout` (a pipe). A refusal writes nothing to `stdout`.
-    """
+    """One sign-in: the link goes to `tty`, the token only to `stdout` (a pipe). A refusal writes nothing to `stdout`."""
     if stdout.isatty():
         tty.write("Refused: pipe this into the clipboard command; the token is never printed on screen.\n")
         return receipt("refused", "DENY_SECRET_EXPOSURE")
     server = server or http.server.HTTPServer(("127.0.0.1", 8765), http.server.BaseHTTPRequestHandler)
     state = secrets.token_urlsafe(24)
-    tty.write("Open this address yourself in the browser on this Mac and click Agree (read-only access to Todoist):\n" + link(client_id, state) + "\n")
+    tty.write(
+        "Open this address yourself in the browser on this Mac and click Agree (read-only access to Todoist):\n"
+        + link(client_id, state)
+        + "\n"
+    )
     tty.flush()
     code = catcher(server, state)
     if not code:

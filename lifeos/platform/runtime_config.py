@@ -4,6 +4,7 @@ The ID is V7_RUNTIME_CONFIG_SOURCE_ID. Rows: Name, Value, Kind (address | switch
 for a name apply neither. Reuses settings.py's allowlist, refusals and shadow rule. Counts and names only; never
 raises.
 """
+
 import os
 import re
 import threading
@@ -17,7 +18,15 @@ REQUIRED = {"Name": "title", "Value": "rich_text", "Kind": "select", "Revision":
 MAX_PAGES = 20  # more than 20 pages is a mistake, not a settings source
 CODE = re.compile(r"[A-Z0-9_]{3,60}")
 NAME = re.compile(r"[A-Z][A-Z0-9_]*")
-PROOF_TOKENS = ("NOTION_JIRA_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_BILLS_TOKEN", "NOTION_FIT_SYNC_TOKEN")
+PROOF_TOKENS = (
+    "NOTION_JIRA_TOKEN",
+    "NOTION_API_TOKEN",
+    "NOTION_INTERVIEW_TOKEN",
+    "NOTION_RECRUITERS_TOKEN",
+    "NOTION_AMAZON_TOKEN",
+    "NOTION_BILLS_TOKEN",
+    "NOTION_FIT_SYNC_TOKEN",
+)
 
 
 class RuntimeConfigError(RuntimeError):
@@ -35,7 +44,11 @@ def source_id(environ):
 
 
 def _text(prop):
-    return "".join(p.get("plain_text") or "" for p in (prop or {}).get("rich_text") or (prop or {}).get("title") or [] if isinstance(p, dict)).strip()
+    return "".join(
+        p.get("plain_text") or ""
+        for p in (prop or {}).get("rich_text") or (prop or {}).get("title") or []
+        if isinstance(p, dict)
+    ).strip()
 
 
 def _row(page):
@@ -55,7 +68,11 @@ def fetch(client, source):
         for _ in range(MAX_PAGES):
             body = {"page_size": 100, **({"start_cursor": cursor} if cursor else {})}
             reply = client.call("POST", f"/data_sources/{source}/query", body) or {}
-            rows += [r for r in reply.get("results") or [] if isinstance(r, dict) and not r.get("in_trash") and not r.get("archived")]
+            rows += [
+                r
+                for r in reply.get("results") or []
+                if isinstance(r, dict) and not r.get("in_trash") and not r.get("archived")
+            ]
             cursor = reply.get("next_cursor")
             if not (reply.get("has_more") and cursor):
                 return rows
@@ -93,9 +110,15 @@ def parse(pages):
         elif seen[name] > 1:
             if name not in counts["repeated"]:
                 counts["repeated"].append(name)
-        elif kind != ("address" if settings.is_address(name) else "switch") or not isinstance(revision, (int, float)) or revision < 0 \
-                or not value or "\n" in value or "\r" in value \
-                or (settings.is_address(name) and not settings.ADDRESS.match(value.replace("collection://", ""))):
+        elif (
+            kind != ("address" if settings.is_address(name) else "switch")
+            or not isinstance(revision, (int, float))
+            or revision < 0
+            or not value
+            or "\n" in value
+            or "\r" in value
+            or (settings.is_address(name) and not settings.ADDRESS.match(value.replace("collection://", "")))
+        ):
             counts["invalid"].append(name)
         else:
             found[name] = value
@@ -107,8 +130,17 @@ def read(client, environ=os.environ):
 
 
 def export_rows(found):
-    return [{"Name": n, "Value": v, "Kind": "address" if settings.is_address(n) else "switch", "Revision": 1, "Active": True} for n, v in sorted(found.items())
-            if settings.movable(n) and n not in settings.SAFETY]
+    return [
+        {
+            "Name": n,
+            "Value": v,
+            "Kind": "address" if settings.is_address(n) else "switch",
+            "Revision": 1,
+            "Active": True,
+        }
+        for n, v in sorted(found.items())
+        if settings.movable(n) and n not in settings.SAFETY
+    ]
 
 
 _ONCE = {}
@@ -121,7 +153,8 @@ def reset_once():
 
 
 def _client_for(token):
-    from lifeos.platform.notion_client import Client                    # noqa: PLC0415
+    from lifeos.platform.notion_client import Client  # noqa: PLC0415
+
     return Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
@@ -167,12 +200,24 @@ def _shadow(environ, client, make_client):
     try:
         source_id(environ)
     except RuntimeConfigError as error:
-        return {"status": "off"} if str(error) == "RUNTIME_CONFIG_SOURCE_ID_MISSING" else {"status": "unreadable:" + str(error)}
+        return (
+            {"status": "off"}
+            if str(error) == "RUNTIME_CONFIG_SOURCE_ID_MISSING"
+            else {"status": "unreadable:" + str(error)}
+        )
     began = time.monotonic()
     try:
         if client is None:
-            token = next((environ.get(t).strip() for t in settings.TOKENS if (environ.get(t) or "").strip()), "") \
-                or next((environ.get(k).strip() for k in sorted(environ) if settings.ANY_NOTION_TOKEN.fullmatch(k) and (environ.get(k) or "").strip()), "")
+            token = next(
+                (environ.get(t).strip() for t in settings.TOKENS if (environ.get(t) or "").strip()), ""
+            ) or next(
+                (
+                    environ.get(k).strip()
+                    for k in sorted(environ)
+                    if settings.ANY_NOTION_TOKEN.fullmatch(k) and (environ.get(k) or "").strip()
+                ),
+                "",
+            )
             if not token:
                 return {"status": "off"}
             client = _client_for(token)
@@ -180,7 +225,14 @@ def _shadow(environ, client, make_client):
         new, new_counts = read(client, environ)
     except Exception as error:  # noqa: BLE001
         return {"status": "unreadable:" + (str(error) if CODE.fullmatch(str(error)) else type(error).__name__)}
-    out = {"status": "ok", "rows": len(new), "kinds": {"address": sum(1 for n in new if settings.is_address(n)), "switch": sum(1 for n in new if not settings.is_address(n))}}
+    out = {
+        "status": "ok",
+        "rows": len(new),
+        "kinds": {
+            "address": sum(1 for n in new if settings.is_address(n)),
+            "switch": sum(1 for n in new if not settings.is_address(n)),
+        },
+    }
     flagged = {key: value for key, value in new_counts.items() if value}
     if flagged:
         out["new_counts"] = flagged

@@ -1,4 +1,5 @@
 """Process-wide limits on how many reads of one kind are in flight at once. Unconfigured, a slot is a no-op."""
+
 import threading
 import time
 from contextlib import contextmanager
@@ -20,6 +21,7 @@ def slot(name):
     began = time.monotonic()
     semaphore.acquire()
     from lifeos.platform import stage_timing  # noqa: PLC0415
+
     stage_timing.add_wait(time.monotonic() - began)
     try:
         yield

@@ -2,6 +2,7 @@
 
 Not a workflow engine; one run at a time is the workflow's concurrency group.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -16,7 +17,9 @@ class DeadlineExceeded(TimeoutError):
 
 
 class RunContext:
-    def __init__(self, timeout_seconds: float, run_id: str | None = None, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self, timeout_seconds: float, run_id: str | None = None, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         timeout = float(timeout_seconds)
         if timeout <= 0 or timeout > MAX_RUNTIME_SECONDS:
             raise ValueError("timeout_seconds must be positive and within the platform maximum")
@@ -26,7 +29,9 @@ class RunContext:
         self._started = clock()
 
     @classmethod
-    def start(cls, timeout_seconds: float, run_id: str | None = None, clock: Callable[[], float] = time.monotonic) -> RunContext:
+    def start(
+        cls, timeout_seconds: float, run_id: str | None = None, clock: Callable[[], float] = time.monotonic
+    ) -> RunContext:
         return cls(timeout_seconds, run_id, clock)
 
     def elapsed_seconds(self) -> float:
