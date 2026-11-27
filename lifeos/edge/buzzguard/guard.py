@@ -1,10 +1,10 @@
-"""The Claude Buzz agent's PreToolUse guard (`python3 -I guard.py`, JSON on stdin and stdout). Deny by default: any
-tool, shape, type or parse problem is refused, and message text is untrusted data. Classes: READ (allowed), SEND
-(allowed, checked), WRITE (Jira/GitHub changes: "ask" = approved out of band, or "deny"), NEVER. `writes.mode` next to
-this file holds `ask` or `deny`; anything else means `deny`. A `STOP` file next to it refuses everything except
-`STOPPED`. Every input is scanned for secret-shaped text. Stdlib only; the log holds hashes and names. Each confirmed
-bypass has a regression test in tests/edge/buzzguard/test_guard.py.
-"""
+"""The Claude Buzz agent's PreToolUse guard (`python3 -I guard.py`, JSON on stdin and stdout).
+
+Deny by default: any tool, shape, type or parse problem is refused, and message text is untrusted data. Classes:
+READ (allowed), SEND (allowed, checked), WRITE (Jira/GitHub changes: "ask" = approved out of band, or "deny"),
+NEVER. `writes.mode` next to this file holds `ask` or `deny`; anything else means `deny`. A `STOP` file next to it
+refuses everything except `STOPPED`. Every input is scanned for secret-shaped text. Stdlib only; the log holds
+hashes and names. Each confirmed bypass has a regression test in tests/edge/buzzguard/test_guard.py."""
 import hashlib
 import json
 import os
@@ -22,13 +22,11 @@ PREFIXES = r"(?i)tskey-|nsec1[0-9a-z]{20,}|\bsk-[a-z0-9_-]{16,}|akia[0-9a-z]{12,
 SECRETY = re.compile(PREFIXES + r"|(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|"
                      r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
 COMPACT = re.compile(PREFIXES)
-# Read operations the Buzz bridge registers (lifeos/buzz/mcp.py READ), bare (mcp__buzz__get_event) or buzz_-prefixed.
-# An exact list: a name that merely starts with get_ is refused.
+# Read operations the Buzz bridge registers (lifeos/buzz/mcp.py READ), bare or buzz_-prefixed;
 BUZZ_READ_OPS = {"list_communities", "list_channels", "channel_info", "get_channel_info", "get_channel", "get_messages", "get_event", "search_messages", "get_thread",
                  "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities", "canvas_get", "get_canvas", "channel_get"}
 BUZZ_READ = {"mcp__buzz__" + p + op for op in BUZZ_READ_OPS for p in ("", "buzz_")}
-# The Buzz app's own `read` tool reads a channel with no operation; if it (or the bridge's buzz_read runner) names an
-# `operation`, that operation must be a known read.
+# The Buzz app's own `read` tool reads a channel with no operation; a named `operation` must be a known read.
 BUZZ_NATIVE_READ = {"mcp__buzz__read"}
 BUZZ_READ_RUNNERS = {"mcp__buzz__buzz_read"}
 BUZZ_COMMUNITIES = {"life-os", "life_os"}
@@ -41,11 +39,10 @@ SEND_MAX = 12000
 STOP_TEXT = ("STOPPED", "STOPPED by Jim")
 ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|atlassian|jira)__(.+)", re.I)
 GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
-# Notion is read only, an exact list; there is no "ask" path for Notion (approval covers Jira and GitHub only).
+# Notion is read only, an exact list; there is no "ask" path for Notion.
 NOTION = re.compile(r"mcp__claude_ai_Notion__(.+)")
 NOTION_READ_OPS = {"notion-search", "notion-fetch", "notion-query-data-sources", "notion-get-comments"}
-# Notion writes: create, edit, move, duplicate, comment, schema/view changes. Not deletes, restores, sessions or
-# skills.
+# Notion writes: create, edit, move, duplicate, comment, schema/view changes; not deletes or restores.
 NOTION_WRITE_OPS = {"notion-create-pages", "notion-update-page", "notion-move-pages", "notion-duplicate-page", "notion-create-comment", "notion-update-comment", "notion-create-database",
                     "notion-update-data-source", "notion-create-view", "notion-update-view", "notion-create-folder", "notion-update-folder"}
 READ_OP = re.compile(r"(?i)(get|search|list|lookup|find|fetch|read|atlassianUserInfo|whoami)")
@@ -59,7 +56,7 @@ NUM = re.compile(r"[0-9]{1,7}")
 GH_FLAGS = {"-R", "--repo", "--limit", "-L", "--state", "-s", "--json"}
 GIT_FLAGS = {"--oneline", "-n", "--stat", "--name-only", "--short", "--branch", "-a", "-r", "-v", "-vv"}
 GH_CMDS = {("pr",): {"view", "list", "diff", "checks", "status"}, ("issue",): {"view", "list", "status"}, ("repo",): {"view"}, ("run",): {"list", "view"}}
-# no show/diff (they print patches, and `git diff A B` outside a repo reads any two paths), no ls-files
+# no show/diff (patches; `git diff A B` outside a repo reads any two paths), no ls-files
 GIT_CMDS = {"status", "log", "rev-parse", "branch"}
 REPO_FIELDS = {"owner", "repo", "repository", "repo_full_name", "full_name", "repos", "url", "html_url", "head", "base", "head_repo", "base_repo"}
 
@@ -148,8 +145,8 @@ PROJ_KEYS = {"project", "projectkey", "projectkeyorid", "projectid", "parent", "
 
 
 def _project_refs(ti):
-    """-> (anchors, stray): anchors = projects named by project/issue fields (an odd value becomes '?...' and fails
-    the check); stray = ABC-123 keys in free text. A write needs an anchor, and every key must be in the allow-list.
+    """-> (anchors, stray): anchors = projects named by project/issue fields (an odd value becomes '?...' and fails);
+    stray = ABC-123 keys in free text. A write needs an anchor and every key allow-listed.
     """
     anchors, stray = set(), set()
     for s in _strings(ti):
@@ -264,7 +261,7 @@ def _decide_bash(ti):
             if tok not in flags:
                 return "deny", "bash flag not allowed: " + tok[:20]
         elif prev in ("-R", "--repo") and not isgit:
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", tok):  # read-only gh may name any repository
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", tok):
                 return "deny", "bash repo must be owner/name"
         elif prev in ("--limit", "-L", "-n"):
             if not NUM.fullmatch(tok):
@@ -317,9 +314,7 @@ def _decide_send(ti, stopped):
 
 
 def _drop_ids(o, key=None):
-    """A copy of a Buzz read input without values that are exactly an id under an id-named key (they look like secrets
-    to the scan). Free text and ids under other keys are still scanned.
-    """
+    """A Buzz read input without values that are exactly an id under an id-named key (they look like secrets)."""
     if isinstance(o, dict):
         return {k: _drop_ids(v, str(k).lower()) for k, v in o.items()}
     if isinstance(o, list):
@@ -391,9 +386,8 @@ def _action_id(tool, ti):
 
 
 def _approval(d, g, why):
-    """An 'ask' (a Jira/GitHub change) is approved out of band: the operator runs `install.sh approve <id>` naming
-    this exact action; single-use, expires in 15 minutes. The hook refuses, records the request, and accepts the retry
-    once approved. The agent cannot approve (no file-writing tool; message text never counts).
+    """An 'ask' (a Jira/GitHub change) is approved out of band: `install.sh approve <id>` for this exact action;
+    single-use, 15 minutes. The agent cannot approve.
     """
     tool, ti = d.get("tool_name"), d.get("tool_input")
     aid = _action_id(tool, ti)
@@ -421,9 +415,6 @@ def _approval(d, g, why):
 
 
 def decide(d, g, home):
-    """-> (decision, reason). decision in allow, deny (an 'ask' becomes allow only with out-of-band approval of that
-    exact action).
-    """
     dec, why = _decide_inner(d, g, home)
     if dec == "ask":
         return _approval(d, g, why.replace("approval needed: ", ""))

@@ -1,13 +1,12 @@
-"""Platform alerts: one place that decides what is worth telling a person, once, and how. Pure logic plus two sinks.
+"""Platform alerts: one place that decides what is worth telling a person, once, and how; pure logic plus two sinks.
 
-`reconcile` compares the active alerts (counts-only facts with a stable key) with the stored state and returns what to
-open, keep, resolve and notify: a notification on open, a reminder while open (6 h PAGE, 24 h INFO) and one on
+`reconcile` compares the active alerts (counts-only facts with a stable key) with the stored state and returns what
+to open, keep, resolve and notify: a notification on open, a reminder while open (6 h PAGE, 24 h INFO) and one on
 resolve. `ntfy` is the ONE gateway to the phone (the Telegram and WhatsApp copies follow it); it honours the mute
 switch and caps a process at SEND_CAP pushes. Text is redacted before it leaves.
 
 CLI for jobs with no database; exits 1 when the push was not accepted:
-    python -m lifeos.platform.alerts push --severity page --title T --body B
-"""
+    python -m lifeos.platform.alerts push --severity page --title T --body B"""
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 from dataclasses import dataclass
@@ -79,14 +78,12 @@ def hibernated() -> bool:
 
 
 MUTE_VARIABLE = "ALERTS_MUTED_UNTIL"  # silences every channel until a time (ISO 8601; no zone means Central)
-SEND_CAP = 5  # pushes one process may send; the next sends one "alerts paused: flood" notice and the rest are held
+SEND_CAP = 5  # pushes one process may send; the next sends one "alerts paused: flood" notice, the rest are held
 _flood = {"sent": 0, "paused": False}
 
 
 def muted(environ: Mapping[str, str] | None = None, now: dt.datetime | None = None) -> bool:
-    """True while ALERTS_MUTED_UNTIL names a time that has not passed. Unset or unreadable means NOT muted: a typo must
-    never hide a real page.
-    """
+    """True while ALERTS_MUTED_UNTIL names a time that has not passed. Unset or unreadable is NOT muted."""
     raw = ((environ if environ is not None else os.environ).get(MUTE_VARIABLE) or "").strip()
     if not raw:
         return False
@@ -107,8 +104,8 @@ COPY_TAGS = {"telegram": "ch-telegram", "whatsapp": "ch-whatsapp"}  # the Oracle
 
 
 def _post(topic: str, title: str, body: str, severity: str, post: Callable[..., Any] | None = None, channels: Iterable[str] | None = None) -> bool:
-    """`channels` (None = all) says which of ntfy / telegram / whatsapp this push is for. Without the phone it goes out
-    at the lowest priority, so it reaches the relay but never wakes the phone.
+    """`channels` (None = all) says which of ntfy / telegram / whatsapp this push is for. Without the phone it goes
+    out at the lowest priority: relay only, no wake.
     """
     tags = [t for t in (TAGS.get(severity, ""),) if t] + [COPY_TAGS[c] for c in (channels or ()) if c in COPY_TAGS]
     priority = "min" if channels is not None and "ntfy" not in channels else PRIORITY.get(severity, "default")
@@ -117,13 +114,13 @@ def _post(topic: str, title: str, body: str, severity: str, post: Callable[..., 
     try:
         with (post or urllib.request.urlopen)(request, timeout=15) as response:
             return 200 <= response.status < 300
-    except Exception:                                                                        # noqa: BLE001 - alerting must never stop a pipeline
+    except Exception:  # noqa: BLE001 - alerting must never stop a pipeline
         return False
 
 
 def ntfy(topic: str, title: str, body: str, severity: str, post: Callable[..., Any] | None = None, channels: Iterable[str] | None = None) -> bool:
-    """The one gateway to the phone (ntfy). -> True when accepted; never raises. Nothing is sent (False) while alerts are
-    off or muted or past SEND_CAP; the first push past the cap sends ONE "alerts paused: flood" notice instead.
+    """The one gateway to the phone (ntfy). -> True when accepted; never raises. Nothing is sent (False) while alerts
+    are off, muted or past SEND_CAP; the first push past the cap sends ONE "alerts paused: flood" notice.
     """
     if hibernated() or not topic or muted():
         return False
@@ -137,8 +134,8 @@ def ntfy(topic: str, title: str, body: str, severity: str, post: Callable[..., A
 
 
 def push(key: str, title: str, body: str, topic: str | None = None, post: Callable[..., Any] | None = None) -> bool:
-    """Send one registered alert: severity comes from the registry and an unlisted key is refused (False). Switch, mute,
-    cap and saved channels apply as for `ntfy`. `topic` defaults to NTFY_TOPIC.
+    """Send one registered alert: severity comes from the registry and an unlisted key is refused (False). Switch,
+    mute, cap and channels apply as for `ntfy`.
     """
     if not isinstance(key, str) or not key:
         return False
@@ -150,9 +147,6 @@ def push(key: str, title: str, body: str, topic: str | None = None, post: Callab
 
 
 def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None, failed_keys: set[str] | None = None) -> dict[str, int]:
-    """Send the plan's notifications -> counts. `send` is a test fake. `failed_keys` is filled with each failed push's
-    key so the caller records every other one as delivered.
-    """
     sent = failed = skipped = 0
     failed_keys = set() if failed_keys is None else failed_keys
     for kind, item in plan.notify:
@@ -163,7 +157,7 @@ def deliver(plan: Plan, topic: str, send: Callable[..., bool] | None = None, fai
             failed += 1
             continue
         if send is None and not chosen:
-            skipped += 1  # every channel is off: handled, not failed, so not retried
+            skipped += 1  # every channel is off: handled, not failed
             continue
         if (send(topic, title, body, severity) if send else ntfy(topic, title, body, severity, channels=chosen)):
             sent += 1
@@ -198,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), severity, channels=chosen)
     print(json.dumps({"push": "sent" if ok else "not_sent"}))
-    return 0 if ok else 1  # a push the provider did not accept turns the step red
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

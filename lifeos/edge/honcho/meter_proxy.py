@@ -1,29 +1,30 @@
 #!/usr/bin/python3 -I
-"""Spend guard in front of every Anthropic call Honcho makes, plus a free path to local embeddings. POST /v1/messages
-is metered then forwarded to api.anthropic.com with the real key; /v1/messages/count_tokens is forwarded unmetered;
-/v1/embeddings goes to the local Ollama; GET /health reports spend; anything else is 404.
+"""Spend guard in front of every Anthropic call Honcho makes, plus a free path to local embeddings.
+
+POST /v1/messages is metered, then forwarded to api.anthropic.com with the real key; /v1/messages/count_tokens is
+forwarded unmetered; /v1/embeddings goes to the local Ollama; GET /health reports spend; anything else is 404.
 
 Before forwarding, the worst-case cost (1 input token per 3 body bytes plus max_tokens, at the PRICES tier for its
-size) is reserved; if spent + reservations + this one would pass CAP_USD (default 25) the request is refused with HTTP
-400. When the reply ends the reservation becomes the actual usage (a reply that breaks off keeps the full
-reservation). A STOP file next to the ledger refuses everything. The cap is per window (the 5th at 6:00 PM CT to the
-next 5th): the first request after the boundary archives the old window to windows.jsonl and starts at zero.
+size) is reserved; if spent + reservations + this one would pass CAP_USD (default 25) the request is refused with
+HTTP 400. When the reply ends the reservation becomes the actual usage (a broken-off reply keeps the full
+reservation). The cap is per window (the 5th at 6:00 PM CT to the next 5th): the first request after the boundary
+archives the old window to windows.jsonl and starts at zero. A STOP file next to the ledger refuses everything;
+METER_STOP_AFTER (optional, UTC) is a hard stop; the first refusal in a window leaves an EXHAUSTED file (one alert
+per window). Fail closed: an unreadable or unwritable ledger, or a missing one while the audit file shows spend,
+refuses every Anthropic request. The real key arrives as a systemd credential; keys and bodies are never logged.
+Stdlib only.
 
-Fail closed: a ledger that cannot be read or written, or is missing while the audit file shows spend, means every
-Anthropic request is refused (embeddings stay free) and no new window resets it. METER_STOP_AFTER (optional, UTC) is a
-hard stop. The first refusal in a window leaves an EXHAUSTED file for one alert per window. The real key arrives as a
-systemd credential; keys and bodies are never logged. Stdlib only.
-
-Scope budget (off unless an operator writes scope.json next to the ledger): one hard dollar cap, in whole nano-dollars, across all metered calls, reserved together with the monthly cap; STOP still comes first. While a scope
-stands a request is forwarded only when its worst case is proven from the request itself: a priced model, an explicit max_tokens inside the scope limit (the API never returns more output), allowlisted fields, text-only
-content (SCOPE_KEYS, SCOPE_BLOCKS), no beta header, and an input bound of one token per body byte plus SCOPE_OVERHEAD_TOKENS (assumption A1: no token covers less than one byte and the API's own framing adds less than that),
-priced at the dearest input class and the tier the bound falls in. Anything else is refused before forwarding.
-Every reservation is saved to the ledger before the request is forwarded; after a restart each open reservation is charged in full to the month and the scope, because the reply may have been billed. A reply with no usage,
-a reply that broke off, or a connection that failed after it opened keeps its full reservation; a reply that cost more than its reservation marks the scope breached and refuses everything.
-The scope's spend never resets (it survives restarts and monthly windows). Removing or editing scope.json, or letting it expire, while the scope is open refuses every metered request. A file SCOPE-CLOSE naming the scope
-id closes it, and only when this proxy has nothing in flight (the operator first confirms Honcho has nothing queued; the proxy cannot see that). Closing archives one line in scopes.jsonl; a closed id is never reused.
-Embeddings stay free and unscoped.
-"""
+Scope budget (off unless an operator writes scope.json next to the ledger): one hard cap, in whole nano-dollars,
+across all metered calls, reserved together with the monthly cap; STOP still comes first. While a scope stands a
+request is forwarded only when its worst case is proven from the request itself (a priced model, an explicit
+max_tokens inside the scope limit, allowlisted fields, text-only content, no beta header, an input bound of one
+token per body byte plus SCOPE_OVERHEAD_TOKENS at the dearest input class); anything else is refused. Every
+reservation is saved before the request is forwarded; after a restart each open one is charged in full, because the
+reply may have been billed. A reply with no usage, one that broke off, or a connection that failed after it opened
+keeps its full reservation; a reply that cost more than its reservation marks the scope breached and refuses
+everything. The scope's spend never resets. Removing, editing or letting scope.json expire while the scope is open
+refuses every metered request. A SCOPE-CLOSE file naming the scope id closes it, only when nothing is in flight;
+closing archives one line in scopes.jsonl and an id is never reused. Embeddings stay free and unscoped."""
 import http.client
 import http.server
 import json
@@ -42,7 +43,6 @@ OLLAMA = ("127.0.0.1", 11434)
 UPSTREAM = "api.anthropic.com"
 KEY_NAME = "honcho_proof_anthropic_api_key"
 PRICES = {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01, "output": 0.50}
-# the over-100,000-token tier
 LONG_PRICES = {"input": 0.50, "cache_write": 1.00, "cache_read": 0.05, "output": 2.50}
 # input tokens (new + cache write + cache read) above which the long tier applies
 LONG_AT = 100_000
@@ -50,9 +50,9 @@ BYTES_PER_TOKEN = 3
 MAX_BODY = 4_000_000
 DEFAULT_MAX_TOKENS = 4096
 SCOPE_FILE, SCOPE_CLOSE = "scope.json", "SCOPE-CLOSE"
-SCOPE_OVERHEAD_TOKENS = 4096                                                                 # assumption A1: the API's own framing (role markers, the tool-use preamble) adds fewer tokens than this
+SCOPE_OVERHEAD_TOKENS = 4096  # the API's own framing adds fewer tokens than this
 SCOPE_KEYS = frozenset({"model", "max_tokens", "messages", "system", "temperature", "top_p", "top_k", "stop_sequences", "stream", "metadata", "tools", "tool_choice", "thinking"})
-SCOPE_BLOCKS = frozenset({"text", "tool_use", "tool_result"})                                # content kinds whose tokens cannot outnumber their bytes (no images, documents or server tools)
+SCOPE_BLOCKS = frozenset({"text", "tool_use", "tool_result"})  # tokens cannot outnumber bytes
 SCOPE_CONFIG = ("id", "cap_usd", "expires", "models", "max_tokens")
 NANO = 1_000_000_000
 
@@ -67,9 +67,7 @@ CENTRAL = ZoneInfo("America/Chicago")
 
 
 def window(epoch):
-    """-> (start, end) epochs of the window holding `epoch`: the 5th at 6:00 PM CT (America/Chicago) to the next. A
-    test pins that this, credit_window.py and the report reader agree.
-    """
+    """-> (start, end) epochs of the window holding `epoch`: the 5th at 6:00 PM CT (America/Chicago) to the next."""
     now = datetime.fromtimestamp(epoch, CENTRAL)
     year, month = now.year, now.month
     if now < datetime(year, month, 5, 18, tzinfo=CENTRAL):
@@ -105,12 +103,11 @@ def usage_cost(usage):
 
 
 def nano_rate(kind, prices=PRICES):
-    """-> whole nano-dollars per token (a USD-per-million price times 1000: every published price is a whole number of them)."""
+    """-> whole nano-dollars per token (a USD-per-million price times 1000)."""
     return round(prices[kind] * 1000)
 
 
 def usage_nano(usage):
-    """-> the integer nano-dollar twin of usage_cost."""
     u = usage or {}
     new, written, read, out = (int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
     prices = table(new + written + read)
@@ -118,7 +115,7 @@ def usage_nano(usage):
 
 
 def _text_only(content):
-    """True when message or system content is a string or a list of text, tool_use and tool_result blocks (tool_result content checked the same way)."""
+    """True when message or system content is a string or a list of text, tool_use and tool_result blocks."""
     if isinstance(content, str):
         return True
     if not isinstance(content, list):
@@ -132,8 +129,9 @@ def _text_only(content):
 
 
 def scope_bound(body, config, beta=False):
-    """-> (worst-case nano-dollars, "") for a /v1/messages body under a scope, or (0, why) when the worst case cannot be proven from the request: nothing is forwarded then.
-    Output: max_tokens (the API never returns more). Input: one token per body byte plus SCOPE_OVERHEAD_TOKENS (assumption A1), at the dearest input-side class and the tier that bound falls in."""
+    """-> (worst-case nano-dollars, "") for a /v1/messages body under a scope, or (0, why) when the worst case cannot
+    be proven: nothing is forwarded then.
+    """
     if beta:
         return 0, "scope: beta features are not priced"
     try:
@@ -166,7 +164,7 @@ class Ledger:
         self.path, self.audit_path, self.stop_path, self.windows_path = (os.path.join(state_dir, n) for n in ("ledger.json", "audit.jsonl", "STOP", "windows.jsonl"))
         os.makedirs(state_dir, mode=0o750, exist_ok=True)
         self.spent, self.reserved, self.calls = 0.0, 0.0, 0
-        self.inflight, self.scope, self.closed, self.rid = {}, None, [], 0          # reservations saved before forwarding; the open scope (frozen config, spend, state); closed scope ids
+        self.inflight, self.scope, self.closed, self.rid = {}, None, [], 0  # reservations; open scope; closed ids
         self.scopes_path = os.path.join(state_dir, "scopes.jsonl")
         self.start, self.end = window(self.clock())
         # why the budget cannot be verified ("" when it can): metered requests are refused while set
@@ -191,7 +189,9 @@ class Ledger:
         self.recover()
 
     def recover(self):
-        """After a restart every reservation still open may have been billed: charge each in full to the month and to its scope, save, and leave one audit line per reservation. Nothing is released."""
+        """After a restart every open reservation may have been billed: charge each in full to the month and its
+        scope.
+        """
         with self.lock:
             if self.unverified or not self.inflight:
                 return
@@ -212,9 +212,6 @@ class Ledger:
                 self.unverified = "ledger unwritable"
 
     def roll(self):
-        """Start the current window when the saved one has ended (archive it, zero spend). Never on an unverifiable
-        ledger.
-        """
         with self.lock:
             if self.unverified or self.clock() < self.end:
                 return
@@ -244,7 +241,9 @@ class Ledger:
         return self.scope_block()
 
     def scope_file(self):
-        """-> (config dict, "") from scope.json, (None, "") when there is none, (None, why) when it is unreadable or invalid."""
+        """-> (config dict, "") from scope.json, (None, "") when there is none, (None, why) when unreadable or
+        invalid.
+        """
         try:
             with open(os.path.join(self.dir, SCOPE_FILE)) as handle:
                 doc = json.load(handle)
@@ -259,7 +258,9 @@ class Ledger:
             return None, "scope file invalid"
 
     def scope_block(self):
-        """-> "" when no scope stands or the open one may spend, else why nothing is forwarded: a changed, removed, expired, breached or unreadable scope never reopens spend. Also opens a scope and closes a drained one."""
+        """-> "" when no scope stands or the open one may spend, else why nothing is forwarded; a changed, removed,
+        expired or breached scope never reopens spend.
+        """
         with self.lock:
             config, bad = self.scope_file()
             if self.scope is None:
@@ -288,7 +289,9 @@ class Ledger:
             return ""
 
     def try_close(self):
-        """Close the open scope when SCOPE-CLOSE names its id and nothing is in flight; otherwise keep refusing. -> "" once closed, else the reason."""
+        """Close the open scope when SCOPE-CLOSE names its id and nothing is in flight; otherwise keep refusing. -> ""
+        once closed, else the reason.
+        """
         try:
             with open(os.path.join(self.dir, SCOPE_CLOSE)) as handle:
                 named = str(json.load(handle).get("scope"))
@@ -313,9 +316,6 @@ class Ledger:
         return ""
 
     def mark_exhausted(self, why):
-        """Leave one EXHAUSTED file the first time a request is refused for budget reasons in a window (one alert per
-        window).
-        """
         path = os.path.join(self.dir, "EXHAUSTED")
         try:
             with open(path) as handle:
@@ -342,8 +342,9 @@ class Ledger:
         return os.path.lexists(self.stop_path)
 
     def reserve(self, worst, nano=0):
-        """-> a reservation number (truthy) and hold `worst` USD, or False (nothing held) when the cap, the STOP file or a scope forbids this request. The reservation is saved before this returns: a crash after it is still counted.
-        A request with no scope proof (nano=0) is refused while a scope stands."""
+        """-> a reservation number (truthy) holding `worst` USD, or False when the cap, STOP file or a scope forbids
+        it. Saved before returning.
+        """
         with self.lock:
             if self.why_blocked():
                 return False
@@ -368,7 +369,9 @@ class Ledger:
             return self.rid
 
     def admit(self, body, beta=False):
-        """-> (reservation, worst USD, "") for a /v1/messages request, or (False, 0.0, why). Without a scope the old estimate; with one, the proven bound of scope_bound or a refusal."""
+        """-> (reservation, worst USD, "") for a /v1/messages request, or (False, 0.0, why): the proven bound under a
+        scope, else the estimate.
+        """
         with self.lock:
             blocked = self.why_blocked()
             if blocked:
@@ -383,7 +386,9 @@ class Ledger:
             return rid, nano / NANO, "cap reached or stopped"
 
     def settle(self, worst, actual, route, status, usage=None, broke=False, rid=None):
-        """Replace the reservation with the actual cost (or keep the whole reservation when the reply broke off) and append one audit line. Under a scope a reply with no output count counts as broken, and a cost above the reservation marks the scope breached."""
+        """Replace the reservation with the actual cost (all of it when the reply broke off) and append one audit
+        line; a cost above the reservation breaches the scope.
+        """
         with self.lock:
             self.roll()
             held = self.inflight.pop(rid, None) if rid else None
@@ -502,7 +507,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             conn = http.client.HTTPSConnection(UPSTREAM, timeout=600)
             conn.connect()
-            sent = True                                                   # from here the request may reach Anthropic: a failure is ambiguous, not free
+            sent = True  # from here the request may reach Anthropic: a failure is ambiguous, not free
             conn.request("POST", path, body, headers)
             answer = conn.getresponse()
             status = answer.status
@@ -533,13 +538,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     pass
         finally:
             if metered:
-                # an error reply (status >= 400) carries no usage and no charge; a reply that broke off keeps its full reservation
-                ambiguous = sent and status == 502 and self.ledger.scope is not None                 # under a scope a failure after connecting keeps the whole reservation
+                # an error reply has no usage and no charge; a broken-off reply keeps its full reservation
+                ambiguous = sent and status == 502 and self.ledger.scope is not None
                 self.ledger.settle(worst, usage_cost(usage) if status < 400 else 0.0, path, status, usage, broke=(broke and status < 400) or ambiguous, rid=rid)
 
 
 def scope_view(scope):
-    """-> the scope facts /health may show: id, cap, spend and state (dollars and words only), or None."""
+    """-> the scope facts /health may show: id, cap, spend and state, or None."""
     if scope is None:
         return None
     return {"id": scope["config"]["id"], "cap_usd": scope["config"]["cap_usd"], "spent_usd": scope["spent_nano"] / NANO, "state": scope["state"]}
@@ -556,9 +561,6 @@ def complete(raw, streaming):
 
 
 def parse_usage(raw, streaming):
-    """-> the reply's usage: the JSON body's `usage`, or for a stream message_start usage with the final
-    output_tokens.
-    """
     if not streaming:
         try:
             return json.loads(raw).get("usage") or {}
