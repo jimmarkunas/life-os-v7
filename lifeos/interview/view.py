@@ -1,9 +1,7 @@
 """Source-keyed view models the opportunity and interview pages are rendered from.
 
-Built only from canonical evidence (the exact Ledger row, request message and machine interview pages). A source not
-connected is `None`, which the template renders as not verified; nothing is guessed. The submitted resume comes
-only from the row's human-owned Submitted Résumé field, never from the Resume column.
-"""
+Built only from canonical evidence. A source not connected is `None`, rendered as not verified; nothing is guessed.
+The submitted resume comes only from the row's human-owned Submitted Résumé field."""
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -14,8 +12,7 @@ from .identity import valid_date
 UNCONNECTED = ("Calendar", "Recruiter email threads", "LinkedIn contacts", "Submitted résumé and sent materials",
                "Original job description", "Interview transcripts")
 SUBMITTED = "Submitted Résumé"
-# Lines Manage writes for a hand-set hold or next action (page fold or Ledger row HAND_SET property). The formats are
-# duplicated in lifeos.hiring.models and lifeos.hiring.decision; a contract test holds them equal.
+# Hand-set hold and next-action line formats; duplicated in lifeos.hiring.models and lifeos.hiring.decision, held equal by a contract test.
 HAND_SET = "LIFE OS Hand-Set"
 _AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
 HOLD_LINE = re.compile(rf"v7-hold:1;state=(paused|waiting|active);at=({_AT});op=([0-9a-f]{{16}})")
@@ -30,7 +27,7 @@ class Round:
     ordinal: int | None
     date: str | None
     interviewer: str | None
-    calendar: str | None = None                  # "accepted" | "cancelled" from the round page's own Logistics reference, else not verified
+    calendar: str | None = None  # "accepted" | "cancelled" from the round page's Logistics reference, else not verified
     joining: bool = False
     created: str | None = field(default=None, compare=False)
 
@@ -50,20 +47,20 @@ class Opportunity:
     apply_url: str | None = None
     fit_summary: str | None = None
     rounds: tuple = ()
-    recruiters: tuple = ()                       # (person, company, thread url) from Recruiters rows linked to this job's request message
-    recruiters_state: str | None = None          # None = not connected; "linked" | "none" | "unreadable"
+    recruiters: tuple = ()  # (person, company, thread url) of Recruiters rows linked to the request message
+    recruiters_state: str | None = None  # None = not connected; "linked" | "none" | "unreadable"
     contacts: tuple = ()
-    contacts_state: str | None = None            # None = no Ledger row linked; "linked" | "none" | "unreadable"
+    contacts_state: str | None = None  # None = no Ledger row linked; "linked" | "none" | "unreadable"
     done: tuple = ()
     decisions: tuple = ()
     page_id: str | None = None
     close_base: str | None = None
     resume: tuple = ()
-    resume_state: str | None = None              # None = Ledger row not verified; "recorded" | "not_recorded" | "not_connected"
+    resume_state: str | None = None  # None = Ledger row not verified; "recorded" | "not_recorded" | "not_connected"
     hand: tuple = ()
     repaired: str = ""
     hand_ledger: tuple = ()
-    sent_mail: tuple = ()                        # (sent time ISO, subject) of the user's messages on the request thread, read from Gmail
+    sent_mail: tuple = ()  # (sent time ISO, subject) of the user's messages on the request thread
     sent_mail_state: str | None = None
 
 
@@ -94,8 +91,7 @@ def ledger_facts(client, page_id, stable_job_key):
 
 
 def submitted_resume(props):
-    """The files recorded as sent: uploaded files keep only their name (their URL expires); external https links are
-    kept."""
+    """The files recorded as sent: uploads keep only their name (the URL expires); external https links are kept."""
     prop = props.get(SUBMITTED)
     if not isinstance(prop, dict) or prop.get("type") != "files":
         return (), "not_connected"
@@ -135,8 +131,7 @@ def _live(r):
 
 
 def sort_rounds(rounds, today):
-    """Upcoming confirmed interviews first (nearest first), then Scheduling Pending, then past ones (most recent
-    first)."""
+    """Upcoming confirmed interviews (nearest first), then Scheduling Pending, then past (most recent first)."""
     def key(r):
         number = r.ordinal if type(r.ordinal) is int else 10 ** 6
         if valid_date(r.date) and r.date >= today and _live(r):
@@ -160,9 +155,8 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
 
 
 def primary_action(view, today):
-    """One primary action derived from verified evidence. -> (label, action, due, source_url, basis); `basis` says what it
-    rests on.
-    """
+    """One primary action from verified evidence -> (label, action, due, source_url, basis); `basis` says what it
+    rests on."""
     if not view.rounds and view.request_url and (view.stable_job_key or "").startswith("recruiter-"):
         return "PRIMARY ACTION", "Reply to the recruiter's message, or close this lead.", "No verified deadline", view.request_url, "derived from the linked recruiter message"
     for r in view.rounds:
@@ -191,8 +185,8 @@ def _latest(view, pattern):
 
 
 def hand_action(view):
-    """The hand-set next action. -> (key, text, due or None), or None. The latest line on either record wins; evidence
-    never overwrites it, and Mark Complete clears it."""
+    """The hand-set next action -> (key, text, due or None), or None. The latest line on either record wins; Mark
+    Complete clears it."""
     m = _latest(view, NEXT_LINE)
     if m is None:
         return None
@@ -215,15 +209,14 @@ def _created(value):
 
 
 def evidence_since(view, since):
-    """The first round page created after `since`. -> (aware datetime, what), or None."""
+    """The first round page created after `since` -> (aware datetime, what), or None."""
     found = sorted((t, f"Interview {r.ordinal} page added" if r.ordinal else "an interview page added")
                    for r in view.rounds if (t := _created(r.created)) is not None and since is not None and t > since)
     return found[0] if found else None
 
 
 def sent_material(view):
-    """Sent material recorded on Manage, oldest first, each op once, none that was removed. -> [(kind, text, url,
-    datetime)]."""
+    """Sent material recorded on Manage, oldest first, each op once, none removed -> [(kind, text, url, datetime)]."""
     found, seen = [], {m.group(3) for m in map(UNSENT_LINE.fullmatch, view.hand_ledger + view.hand) if m}
     for m in sorted(filter(None, map(SENT_LINE.fullmatch, view.hand_ledger + view.hand)), key=lambda m: datetime.fromisoformat(m.group(2))):
         if m.group(3) not in seen:
@@ -233,8 +226,8 @@ def sent_material(view):
 
 
 def hold(view):
-    """The hand-set Paused / Waiting state. -> (state, set at, op, cleared) or None; `cleared` is (when, what) when
-    newer interview evidence arrived."""
+    """The hand-set Paused / Waiting state -> (state, set at, op, cleared) or None; `cleared` is (when, what) once
+    newer evidence arrived."""
     m = _latest(view, HOLD_LINE)
     if m is None or m.group(1) == "active":
         return None

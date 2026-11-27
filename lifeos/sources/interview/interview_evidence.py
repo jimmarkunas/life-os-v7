@@ -1,9 +1,8 @@
 """The `interview` stage: compose the evidence V7 can read into the Interview writer's queries.
 
 Evidence, never inference: an opportunity page names its job and request message, a round page supplies the round
-identity, and an accepted Calendar event adds a round only when its title states the number. Anything else is a fixed
-code for that item alone. Writes need INTERVIEW_OS_WRITER=v7; otherwise a dry run. Counts and fixed codes only.
-"""
+identity, and an accepted Calendar event adds a round only when its title states the number. Anything else is a
+fixed code for that item. Writes need INTERVIEW_OS_WRITER=v7, else a dry run."""
 import os
 import re
 import time
@@ -37,7 +36,7 @@ REQUEST = "Request message ↗"
 LEAD_LANE = "Recruiter"
 HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)")
 STAGE_SECONDS = 720
-HELD_BLOCKS = ("human_page",)          # a hand-written page is never written to: `permanent`, not `failed`
+HELD_BLOCKS = ("human_page",)  # a hand-written page is never written to: `permanent`, not `failed`
 LEADS_PER_RUN = 5
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
                   r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
@@ -94,7 +93,7 @@ def squash(text):
 
 def matches(records, roster):
     """Pure. ({Applied row id: (row, message, requisition)}, codes) for messages that ask to schedule and name exactly
-    one Applied row. The newest per row wins."""
+    one Applied row; the newest per row wins."""
     found, codes = {}, []
     for message in sorted(records, key=lambda m: m["received"]):
         text = f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}"
@@ -136,10 +135,7 @@ def mint(company, role, requisition=None):
 
 def lead_of(message):
     """Pure. A recruiter outreach that names a role -> (company, role, requisition, minted key, message link), else
-    None.
-
-    The company is the client, else the recruiter's, else the LinkedIn sender's headline employer or name.
-    """
+    None. Company: the client, else the recruiter's, else the sender's headline employer."""
     shape, reason, evidence = classify.classify(message)
     verdict, found = qualify.qualify(message, shape, reason, evidence)
     company = (found["client"] or found["company"] or ((headline_company(message) or f"LinkedIn · {found['person']}") if shape == classify.HUMAN_NAMED_RELAY else "")) if verdict == "CANDIDATE" else ""
@@ -147,7 +143,7 @@ def lead_of(message):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
     link = posting_link(message)
-    requisition = req.group(1) if req else None                          # no posting: only the employer's requisition names the job; none -> key None (REVIEW)
+    requisition = req.group(1) if req else None  # no posting: only the employer's requisition names the job
     key = identity.url_hash(link) if link else (mint(company, found["role"], requisition) if requisition else None)
     return company, found["role"], requisition, key, message["url"]
 
@@ -158,22 +154,22 @@ def window(environ, live):
 
 
 def lead_job(company, role, link, message, now, connect=store.connect):
-    """Enter a recruiter's posting link into Jobs OS like any job. -> True when the job is new."""
+    """Enter a recruiter's posting link into Jobs OS like any job; True when the job is new."""
     received = datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
     with connect() as connection, connection.cursor() as cursor:
         return manual_job.enter(cursor, link, company, role, "recruiter", "Recruiter outreach", received, now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None), "ats")[1]
 
 
 def lead_row(writer, company, role, key, url, today):
-    """Create the lead's Job Ledger row once per Stable Job Key, read back. -> 'created' | 'present'; a wrong target
-    or differing read-back raises NotionError."""
+    """Create the lead's Ledger row once per Stable Job Key, read back -> 'created' | 'present'; a wrong target or
+    differing read-back raises NotionError."""
     if jobs_ledger.verify(writer) != jobs_ledger.OK:
         raise NotionError("lead_row_target")
     claimant = ledger_claim.who("lead")
     state, _ = ledger_claim.claim(key, claimant)
     if state == ledger_claim.CREATED:
         return "present"
-    if state == ledger_claim.HELD:                                              # adopt only: a held key may already have its page
+    if state == ledger_claim.HELD:  # adopt only: a held key may already have its page
         if publish.existing_page(writer, key):
             return "present"
         raise NotionError("lead_row_held")
@@ -190,12 +186,8 @@ def lead_row(writer, company, role, key, url, today):
 
 
 def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS, seconds=None, detail=None, reuse=None):
-    """-> (records, count of sources that could not be read in full). Read only.
-
-    `seconds` and `detail`, when given, are filled with timings and counts. `reuse` is {Gmail message id: record} from
-    an
-    earlier complete read; Gmail then reads only the rest.
-    """
+    """-> (records, count of sources not read in full). Read only. `seconds` and `detail`, when given, are filled with
+    timings and counts; `reuse` ({Gmail message id: record}) makes Gmail read only the rest."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
     gmail_timing = {} if detail is not None else None
     reads = [("gmail", lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, workers=MAIL_WORKERS, timing=gmail_timing, heal=True, **({"reuse": reuse} if reuse else {})))]
@@ -219,7 +211,7 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
 
 
 def recruiter_threads(environ, evidence, recruiters=None):
-    """Attach each request's Recruiters rows, matched by an exactly equal Source URL. -> (evidence, failed?)."""
+    """Attach each request's Recruiters rows, matched by an exactly equal Source URL -> (evidence, failed?)."""
     urls = sorted({q.source for _, q in evidence if (q.source or "").startswith("https://")})
     if not urls:
         return evidence, False
@@ -235,7 +227,7 @@ def recruiter_threads(environ, evidence, recruiters=None):
                 raise NotionError("RECRUITERS_QUERY_INCOMPLETE")
             rows = [r for r in map(recruiters_store.read, page["results"]) if r["source_url"] == url]
             found[url] = tuple(sorted({(r["person"].strip(), r["company"].strip(), r["source_url"]) for r in rows}))
-    except NotionError:                                                      # unknown is never "no recruiter"
+    except NotionError:  # unknown is never "no recruiter"
         return [(p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q) for p, q in evidence], True
     return [(p, replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none") if q.source in found else q)
             for p, q in evidence], False
@@ -255,11 +247,8 @@ def gmail_cause(error):
 
 
 def sent_mail(environ, evidence, gmail=None, report=None):
-    """Attach the owner's sent messages on each request's Gmail thread (metadata only). -> (evidence, failed?).
-
-    A 404 thread stays unreadable and is not `failed?`; any other error is. `report`, when given, gets each unreadable
-    thread's fixed cause code.
-    """
+    """Attach the owner's sent messages on each request's Gmail thread (metadata only) -> (evidence, failed?). A 404
+    thread is unreadable but not `failed?`; any other error is. `report` gets each unreadable thread's cause code."""
     threads = sorted({m.group(1) for _, q in evidence if (m := GMAIL_THREAD.fullmatch((q.source or "").strip()))})
     if not threads:
         return evidence, False
@@ -302,8 +291,7 @@ CONTACTS_SHOWN = 5
 
 
 def network_contacts(client, evidence, context=None, seconds=60):
-    """Attach each request's job page Network Leads, at most CONTACTS_SHOWN, as (name, why). -> (evidence,
-    failed?)."""
+    """Attach each request's job page Network Leads, at most CONTACTS_SHOWN, as (name, why) -> (evidence, failed?)."""
     from lifeos.network import surface as network
     out, failed, seen = [], False, {}
     clock = context or RunContext.start(seconds)
@@ -504,7 +492,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live), mail_seconds, mail_detail)
         snapshot_why = None if taken["why"] == "no_tick" else taken["why"]
         if down:
-            flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
+            flag("mail_unavailable")  # a source read in part is never a trustworthy "no request"
     lap("mail")
     asked, codes = matches(records or [], roster + pursuits)
     for code in codes:
@@ -614,7 +602,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
-        elif not kids.items and job:        # a keyed machine page with no rounds is refreshed from its key, never given a round
+        elif not kids.items and job:  # a keyed machine page with no rounds is refreshed from its key, never given a round
             leads_refresh.append((ParentQuery(company, role), RoundQuery(True, None, None, None, source=url, stable_job_key=job, refresh_only=True)))
     evidence += [item for item in leads_refresh if (item[0].company, item[0].role) not in {(p.company, p.role) for p, _ in evidence}]
     lap("decisions")

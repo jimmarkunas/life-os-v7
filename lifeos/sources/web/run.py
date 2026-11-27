@@ -1,6 +1,6 @@
 """Web acquisition, one bounded run: list due boards, classify against the accepted state, admit the rest.
 
-The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and never implies a removal."""
+The accepted state advances only on a COMPLETE listing; a FAILED board keeps its state and never implies a removal."""
 from concurrent.futures import ThreadPoolExecutor
 import contextlib
 from contextlib import ExitStack, contextmanager
@@ -48,11 +48,9 @@ class Outcome:
 
 
 def pick_due(sources, states, now, limit, select=None, forced=()):
-    """Never-run or due sources, oldest first, at most `limit`.
-
-    `select`: None reads both; "known" only boards read before (plus curated extras); "unread" only never-read boards.
-    A forced board skips only the due-time check and goes first.
-    """
+    """Never-run or due sources, oldest first, at most `limit`. `select`: None reads both; "known" only boards read
+    before (plus curated extras); "unread" only never-read ones. A forced board skips only the due check and goes
+    first."""
     if select == "known":
         sources = [s for s in sources if s["id"] in states or s.get("extra")]
     elif select == "unread":
@@ -84,13 +82,13 @@ def slot_due(source_id, now, hours):
 
 
 def next_due(source_id, now, complete, failures, pending, hours=None, quiet_runs=0, dead=False):
-    hours = (hours or limits.WEB_REFRESH_HOURS) * min(1 + max(quiet_runs - 1, 0), limits.WEB_BACKOFF_MAX)   # A seed board carries its own refresh; a quiet board backs off.
+    hours = (hours or limits.WEB_REFRESH_HOURS) * min(1 + max(quiet_runs - 1, 0), limits.WEB_BACKOFF_MAX)  # a seed board carries its own refresh; a quiet board backs off
     if pending:
         return now
     if complete:
         return slot_due(source_id, now, hours)
     if dead:
-        return now + timedelta(days=limits.BOARDS_DEAD_RETRY_DAYS)      # Repeated not_found: a slow retry, never a removal of anything the board held.
+        return now + timedelta(days=limits.BOARDS_DEAD_RETRY_DAYS)  # repeated not_found: a slow retry, never a removal
     return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, hours))
 
 def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE, listed=None):
@@ -136,11 +134,8 @@ def update_in_chunks(cursor, head, lead, ids, size=500):
 
 
 class SqlRepo:
-    """Short connections, one per read or save.
-
-    Inside `holding()` the pass reuses one connection (opening one through the store tunnel is slow): an idle one is
-    pinged first, a failed use drops it, and a timed-out save detaches it so nothing shares it.
-    """
+    """Short connections, one per read or save; inside `holding()` one connection is reused (pinged when idle, dropped
+    on failure, detached after a timed-out save)."""
     HELD_IDLE_SECONDS = 3
     _holding = False
     _live = None
@@ -277,7 +272,7 @@ class SqlRepo:
                 proof = "unproven" if source.get("tier") == "employer" and quality.link_problem(job["url"]) in quality.AMBIGUOUS else None
                 cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, link_proof=%s, updated_at=%s WHERE id=%s",
                                (job["url"], source.get("route_evidence"), proof, now, job_id))
-            else:                                                       # A stored job whose listed title or place changed is put right and judged again; an exclusion that rested on the old place is lifted.
+            else:  # a stored job whose listed title or place changed is put right and judged again
                 title, place = job["title"][:300], (job["location"] or "")[:2000]
                 cursor.execute("UPDATE v7_jobs SET title=%s, location_text=%s, status=IF(status='EXCLUDED_FIT' AND unresolved_reason='lane_exclude', 'READY', status),"
                                " updated_at=%s WHERE id=%s AND notion_page_id IS NULL AND (title<>%s OR COALESCE(location_text, '')<>%s)", (title, place, now, job_id, title, place))
@@ -297,10 +292,8 @@ class SqlRepo:
 
 
 def refresh_description(cursor, job_id, job, lane):
-    """Rewrite a held posting's stored description only when its fingerprint differs; True when rewritten.
-
-    Fit re-scores on its own. Nothing here touches status, link, posting date or Notion fields.
-    """
+    """Rewrite a held posting's stored description only when its fingerprint differs; True when rewritten. Status,
+    link, posting date and Notion fields are untouched."""
     from lifeos.jobs import jd                                                      # noqa: PLC0415
     result = enrich.finish(job["title"], jd.describe(job["content"], is_html=False), job["title"], job["posted"], "ats_list", None, lane)
     if result["outcome"] not in ("ready", "stale"):
@@ -314,12 +307,9 @@ def refresh_description(cursor, job_id, job, lane):
 
 
 def save_bounded(commit, seconds, stuck=None):
-    """Run `commit` under a wall-clock limit and return (saved, seconds taken).
-
-    Past `seconds` the write keeps running on a daemon thread and the board fails `save_timeout` without advancing its
-    state. An error inside the write is raised. `stuck` (kept by the caller) holds a timed-out write; the next save
-    waits for it and fails the same way if it is still running.
-    """
+    """Run `commit` under a wall-clock limit -> (saved, seconds taken). Past `seconds` the write keeps running on a
+    daemon thread and the board fails `save_timeout`; an error inside the write is raised. `stuck` (kept by the
+    caller) holds a timed-out write the next save waits for."""
     box = {}
     began = time.monotonic()
     if stuck:
@@ -365,10 +355,8 @@ def summary_markdown(lane, rows, limit=10):
 
 
 def bounded(lister_fn, seconds, timings=None):
-    """Give one board read a wall-clock limit: past `seconds` it is FAILED "board_timeout" and the read is abandoned.
-
-    The request timeout only bounds the wait for the next bytes, so a trickling host could otherwise hold a worker.
-    """
+    """Limit one board read to `seconds`: past it the board is FAILED "board_timeout" and the read abandoned (the
+    request timeout only bounds the wait for the next bytes)."""
     def call(source):
         with read_slots.slot("ats"):
             return read(source)
@@ -402,12 +390,9 @@ def overdue_hours(source, states, now):
 
 def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None, select=None,
         board_seconds=None, save_seconds=None, stop=None):
-    """Run one acquisition pass and return its counts.
-
-    `screen` (job to reason) is applied to a COMPLETE listing before the diff: only "kept_" jobs are stored, and a
-    stored job screened out while still listed stays CURRENT. Board failures never fail the stage or the tick; each is
-    counted and retried on its own schedule.
-    """
+    """Run one acquisition pass and return its counts. `screen` (job to reason) is applied to a COMPLETE listing
+    before the diff: only "kept_" jobs are stored, and a stored job screened out while still listed stays CURRENT.
+    Board failures never fail the stage or the tick."""
     now = now or _now()
     sources = sources if sources is not None else registry.for_lane(lane)
     if lane == "Scale-Up":
@@ -448,7 +433,6 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             counts["dead_ids"].append(source["id"])
 
     def save(source, outcome, failures, result):
-        """Return None when saved (or a dry run), else the failure reason; a slow save fails that board only."""
         saved, took, before, lost = True, 0.0, list(stuck_saves), False
         if live:
             try:
@@ -456,7 +440,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             except Exception as error:                                                   # noqa: BLE001
                 if not (getattr(repo, "_holding", False) and db_lost(error)):
                     raise
-                repo.release()                                                           # The held session dropped between boards; this board is not advanced (read again next window) and the pass goes on.
+                repo.release()  # the held session dropped between boards: this board is not advanced and the pass goes on
                 saved, lost = False, True
         reason = None if saved else ("save_lost" if lost else "save_blocked" if before and stuck_saves == before else "save_timeout")
         if reason:
@@ -476,7 +460,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         if screen:
             counts["screen"], counts["still_listed"] = {}, 0
         for source in due:
-            if stop and stop():                                                   # Soft deadline: no new board is started, so the receipt is always written; the rest stay due, oldest first.
+            if stop and stop():  # soft deadline: no new board starts, so the receipt is always written
                 counts["stopped_at_deadline"] = True
                 break
             waiting = source["id"]
@@ -516,7 +500,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             previous = repo.items(source["id"])
             outcome = plan(source, listing, previous, now, budget, lane, listed)
             if raw:
-                outcome.frontier = raw                                       # Stored as the whole-board fingerprint, so a screened-out job leaving the board is never skipped.
+                outcome.frontier = raw  # stored as the whole-board fingerprint, so a screened-out job leaving the board is never skipped
             hot = previous or outcome.items
             quiet = outcome.status == "COMPLETE" and not any(outcome.counts.get(k) for k in ("added", "changed", "removed", "admit", "pending"))
             outcome.unchanged_runs = state.get("unchanged_runs", 0) + 1 if quiet else 0
