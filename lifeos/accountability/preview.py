@@ -12,7 +12,7 @@ from lifeos.platform.jira import JiraError
 
 CODE = re.compile(r"^[A-Z][A-Z0-9_]{2,80}$")
 NOT_APPROVED = "ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED"
-NEEDS, MISSING = "NEEDS Q1 MEMBER LIST", "DATA MISSING"
+NEEDS, MISSING, GAP = "NEEDS Q1 MEMBER LIST", "DATA MISSING", "BASELINE GAP"
 DASH = "—"
 
 
@@ -29,7 +29,11 @@ def reading(jira, person, mine, first, last):
         counts = read.tally(jira, mine, first, last, mej_metric_version="v2")
     except JiraError as error:
         return {"applies": True, "counts": None, "code": _code(error)}
-    return {"applies": True, "counts": {e["key"]: tuple(counts[e["key"]]) for e in mine}, "code": None}
+    return {
+        "applies": True,
+        "counts": {e["key"]: None if counts[e["key"]] is None else tuple(counts[e["key"]]) for e in mine},
+        "code": None,
+    }
 
 
 def cells(found, view):
@@ -41,6 +45,8 @@ def cells(found, view):
             new, status = DASH, ("OK", render.GREEN)
         elif view["counts"] is None:
             new, status = DASH, ((NEEDS if view["code"] == NOT_APPROVED else MISSING), render.RED)
+        elif view["counts"][key] is None:
+            new, status = DASH, (GAP, render.RED)
         else:
             new, status = render.goal_cell(*view["counts"][key]), ("OK", render.GREEN)
         out[lane] = [

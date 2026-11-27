@@ -304,11 +304,18 @@ class FrozenQuarterAndFirstDone(unittest.TestCase):
             read.tally(fake, GOALS, FIRST, LAST, frozen_membership=FROZEN), read.tally(Jira(), GOALS, FIRST, LAST)
         )
 
-    def test_the_shipped_membership_manifest_is_empty_and_invents_nothing(self):
+    def test_the_shipped_manifest_holds_only_the_approved_q4_career_baseline_and_invents_nothing(self):
         manifest = json.loads(read.MEJ_MEMBERSHIP.read_text(encoding="utf-8"))
-        self.assertEqual(manifest["quarters"], {})
-        with self.assertRaises(JiraError) as caught:
-            read.tally(Jira(), GOALS, FIRST, LAST, mej_metric_version="v2")
+        self.assertEqual(manifest["schema_version"], 2)
+        self.assertEqual(list(manifest["quarters"]), ["2026-q4"])
+        row = manifest["quarters"]["2026-q4"]
+        self.assertEqual((row["approved"], len(row["tasks"])), (True, 29))
+        self.assertEqual({t["goal"] for t in row["tasks"].values()}, {"MEJ-1"})  # Career only
+        self.assertEqual(sorted(row["gaps"]), ["MEJ-2", "MEJ-3", "MEJ-4"])  # reported, not reconstructed
+        for task in row["tasks"].values():
+            self.assertTrue(task["reason"] and task["approval"] and task["effective"])
+        with self.assertRaises(JiraError) as caught:  # JFM has no approved list
+            read._frozen_row(FIRST, None, "JFM")
         self.assertIn("ACCOUNTABILITY_MEJ_MEMBERSHIP_NOT_APPROVED", str(caught.exception))
 
     def test_unknown_kpi_version_is_blocked(self):
