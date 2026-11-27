@@ -468,7 +468,7 @@ class Scope(unittest.TestCase):
 
 
 class Blind(unittest.TestCase):
-    """LIFE-1043: while a step is armed the third consecutive failed meter read disarms and stops (the trip cannot be seen blind); one or two failures recover; nothing retries around the meter."""
+    """While a step is armed the third consecutive failed meter read disarms and stops (the trip cannot be seen blind); one or two failures recover; nothing retries around the meter."""
 
     def blind(self, pattern, cost="typical", **change):
         w = World(cost)
