@@ -1,11 +1,12 @@
-"""Transport gate of the private Close Opportunity service: one process per connection (127.0.0.1:47344, Accept=yes)
-as an isolated DynamicUser behind Tailscale Serve (TLS on 47443, PROXY v2). Before the app sees a request the loopback
-peer must be root (tailscaled), the PROXY source must resolve via tailscaled whois to the approved untagged login on
-an approved StableID, and it must be one bounded GET or POST (exact Host, no duplicate header or chunked body; POST
-same-origin, form-encoded). GET gets a read-only Notion client, POST the token. Refusals are fixed statuses; nothing
-is logged. The `bwsalerts` credential reaches the app only for /alerts. After a POST's response, a refresh the app
-asked for is one GitHub workflow_dispatch made with the optional `github` credential, which the app never sees.
-"""
+"""Transport gate of the private Close Opportunity service: one process per connection (127.0.0.1:47344, Accept=yes) behind
+Tailscale Serve (TLS on 47443, PROXY v2), as an isolated DynamicUser.
+
+Before the app sees a request the loopback peer must be root (tailscaled), the PROXY source must resolve via tailscaled
+whois to the approved untagged login on an approved StableID, and it must be one bounded GET or POST (exact Host, no
+duplicate header or chunked body; POST same-origin, form-encoded). GET gets a read-only Notion client, POST the token.
+Refusals are fixed statuses; nothing is logged. The `bwsalerts` credential reaches the app only for /alerts. A refresh
+the app asked for after a POST is one GitHub workflow_dispatch made with the optional `github` credential, which the
+app never sees."""
 import json
 import os
 import subprocess
@@ -23,27 +24,22 @@ REFRESH = {"hiring": {"refresh": "hiring", "live": "true"},
 WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
-# same-origin, never no-referrer: under no-referrer a browser sends `Origin: null` on the form POST and the origin
-# check refuses it
+# same-origin, never no-referrer: no-referrer makes browsers send `Origin: null` on the form POST, which is refused
 SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Connection", "close"))
 REFERRER = "same-origin"
 CSP = "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
-# The Manage hub alone may load Google's Drive picker and sign-in; every other screen keeps CSP. No inline script, and
-# the page itself is never framed.
+# Only the Manage hub may load Google's Drive picker and sign-in; the page itself is never framed.
 PICKER_CSP = ("default-src 'self'; script-src 'self' https://apis.google.com https://accounts.google.com; frame-src https://docs.google.com https://drive.google.com "
               "https://accounts.google.com https://content.googleapis.com; connect-src 'self' https://accounts.google.com https://www.googleapis.com https://content.googleapis.com; "
               "img-src 'self' data: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; "
               "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 PICKER_PATHS = ("/manage",)
-# Google checks the picker's API key against the page's address, so the Manage hub alone sends Google its origin
-# (never the path or ?o=); same-origin posts still carry their Origin.
+# Google checks the picker's API key against the page's address, so only the Manage hub sends its origin (never the path).
 PICKER_REFERRER = "strict-origin-when-cross-origin"
 
 
 class ReadOnly:
-    """GET's Notion client: reads pass through, every write is refused before anything is sent; the token stays inside
-    the wrapped client.
-    """
+    """GET's Notion client: reads pass through, every write is refused before anything is sent."""
 
     def __init__(self, client):
         self._client, self.source = client, client.source
@@ -65,7 +61,6 @@ def notion_client(token, policy):
 
 
 def identity(ip, policy, lookup=ep.whois):
-    """The verified caller {login, node} or None: the approved login, untagged, and an approved node StableID."""
     try:
         found = lookup(ip) or {}
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -101,7 +96,6 @@ def read_request(stream):
 
 
 def admitted(req, policy):
-    """0 when the request may reach the application, else the fixed status."""
     h = req["headers"]
     if h.get("host") != policy["host"]:
         return 400
@@ -121,10 +115,7 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=(), 
 
 
 def refresh(token, wants, opener=urllib.request.urlopen):
-    """One workflow_dispatch per refresh the app asked for, unless any run in the repository is already waiting (a
-    second waiting run in the shared concurrency group would replace the first). Best effort and silent. -> codes, for
-    tests.
-    """
+    """One workflow_dispatch per refresh the app asked for, unless a run is already waiting in the repository (a second would replace it). Best effort -> codes, for tests."""
     def call(method, path, body=None):
         req = urllib.request.Request(API + path, None if body is None else json.dumps(body).encode(), method=method, headers={
             "Authorization": "Bearer " + token.decode(), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-close"})
@@ -144,9 +135,7 @@ def refresh(token, wants, opener=urllib.request.urlopen):
 
 
 def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
-    """app(req, who, secrets) -> (status, content type, body bytes, extra headers). secrets: GET {"link", "reader",
-    "config"}; POST {"link", "notion", "config", "after", "gdrive"?}.
-    """
+    """app(req, who, secrets) -> (status, content type, body bytes, extra headers). secrets: GET {"link", "reader", "config"}; POST {"link", "notion", "config", "after", "gdrive"?}."""
     stdin, stdout = stdin or sys.stdin.buffer, stdout or sys.stdout.buffer
     try:
         if uid() != 0:
@@ -178,7 +167,6 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         gdrive = b""
     bws_path = os.path.join(creds, "bwsalerts")
     try:
-        # optional: the Alert settings screen; only /alerts ever gets it
         bwsalerts = open(bws_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(bws_path) else b""
     except OSError:
         bwsalerts = b""
@@ -191,7 +179,6 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if isinstance(picker, dict):
         secrets["picker"] = {k: picker[k] for k in ("client_id", "api_key", "app_id") if isinstance(picker.get(k), str)}
-    # Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
     if policy.get("recruiters"):
         secrets["config"]["recruiters"] = policy["recruiters"]
     try:

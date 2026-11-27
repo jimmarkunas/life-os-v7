@@ -1,17 +1,14 @@
 #!/usr/bin/python3 -I
-"""LIFE-987: the Concord gateway on Oracle. One process per connection, as the `concord` user (systemd socket activation, Accept=yes: the connection is stdin/stdout), exactly like concord_helper.py.
+"""The Concord gateway on Oracle: one process per connection, run as the `concord` user by systemd socket activation.
 
-The Buzz bridge (`buzz-mcp`, no sudo, no home) is the only caller: it connects to a Unix socket only that account can use and sends ONE JSON line `{"op", "client", "args"}`. The gateway answers ONE JSON line
-`{"ok": true, "data": ...}` or `{"ok": false, "reason": <fixed word>}`. It exposes exactly three operations and nothing else:
-  agent_status    who is present, their claims and last messages (Concord `inspect_work`, workspace view);
-  agent_dispatch  one prompt or an acceptably scoped child-task handoff to one named agent. The result distinguishes handoff_offered, message_only, queued_pull, offline, and unknown;
-  agent_messages  the orchestrator's own inbox and outbox with receipts (Concord `inspect_work` with its own agent id), newest first, paged.
-`concord-mcp` is launched per request over stdio JSON-RPC with CONCORD_REPO_ROOT=/home/concord/life-os-v7, CONCORD_TELEMETRY_DISABLED=1 and CONCORD_AGENT_ID=orchestrator-<client>, so every dispatch is attributable
-to the chat that sent it. It never reads Jira (the bridge decides whether a ticket is released), holds no credential, writes no log and prints nothing but the one reply line. Stdlib only.
-
-NAMES (the pre-made decision, LIFE-987): Concord ids are per session, so an agent is found by a DECLARED name. AGENT_IDS lists, per name, the Concord ids and owner/name labels it registers under; `oc` runs on Oracle,
-`mc01`, `mc02` and `codex` on the Mac. If Concord cannot give MC01 and MC02 separate identities they share one Mac identity and every message and claim carries the session name; the prompt text built here always
-begins with the target name for that reason. Live Concord shapes are UNVERIFIED until the first real dispatch: every parser here fails closed to a fixed reason."""
+The Buzz bridge sends ONE JSON line `{"op", "client", "args"}` over a Unix socket only that account can use; the gateway
+answers ONE line `{"ok": true, "data": ...}` or `{"ok": false, "reason": <fixed word>}`. Operations: agent_status,
+agent_dispatch (one prompt or child-task handoff to one named agent; state handoff_offered, message_only, queued_pull,
+not_delivered or unknown) and agent_messages (the orchestrator's own inbox, newest first, paged). `concord-mcp` runs per
+request over stdio JSON-RPC as agent orchestrator-<client>. The gateway never reads Jira, holds no credential and prints
+only the reply line. Agents are found by declared name (AGENT_IDS); the prompt always begins with the target name
+because two agents may share one Concord identity. Every parser fails closed to a fixed reason. Stdlib only.
+"""
 import json
 import os
 import subprocess
@@ -45,7 +42,7 @@ def _clip(value, size=CONTENT_MAX):
 
 
 def parse_request(raw):
-    """-> (op, client, args) from one request line, or Refuse with a fixed word. Strict: unknown ops, unknown clients and unknown argument names are all refused."""
+    """-> (op, client, args), or Refuse with a fixed word; unknown ops, clients and argument names are refused."""
     if not isinstance(raw, (bytes, bytearray)) or not raw.endswith(b"\n") or len(raw) > MAX_LINE:
         raise Refuse("bad_frame")
     try:
@@ -69,7 +66,7 @@ def parse_request(raw):
 
 
 class Mcp:
-    """One `concord-mcp` stdio session (JSON-RPC lines). `popen` is injectable for the tests."""
+    """One `concord-mcp` stdio session (JSON-RPC lines). `popen` is injectable."""
 
     def __init__(self, client, popen=subprocess.Popen, cli=CLI, repo=REPO, deadline=None):
         env = {"PATH": "/usr/bin:/bin", "HOME": HOME, "CONCORD_REPO_ROOT": repo, "CONCORD_TELEMETRY_DISABLED": "1", "CONCORD_AGENT_ID": f"orchestrator-{client}"}
@@ -112,7 +109,7 @@ class Mcp:
                 return message.get("result") or {}
 
     def call(self, tool, arguments):
-        """-> the parsed result of one tools/call: the structured content, else the text content parsed as JSON, else the raw text. A tool error is `concord_refused`."""
+        """-> the structured content of one tools/call, else its text parsed as JSON, else raw text; a tool error is `concord_refused`."""
         ident = self._id()
         self._send({"jsonrpc": "2.0", "id": ident, "method": "tools/call", "params": {"name": tool, "arguments": arguments}})
         result = self._read(ident)
@@ -137,7 +134,7 @@ class Mcp:
 
 
 def _find(value, names, depth=0):
-    """The first value stored under any of `names`, searched through dicts and lists (bounded)."""
+    """The first value under any of `names`, searched through dicts and lists (bounded)."""
     if depth > 5:
         return None
     if isinstance(value, dict):
@@ -157,7 +154,6 @@ def _find(value, names, depth=0):
 
 
 def _people(workspace):
-    """-> [dict] of the agents the workspace view lists (any of `agents`, `presence`, `who`)."""
     rows = _find(workspace, ("agents", "presence", "who", "participants"))
     return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
 
@@ -184,7 +180,7 @@ def _task(result):
 
 
 def _inspect_task(mcp, task_id):
-    """An absent task is reported by Concord as a tool error; the gateway treats it as unowned/not-created and lets the next guarded operation decide."""
+    """-> the task dict, or {} when Concord reports it absent (a tool error)."""
     try:
         return _task(mcp.call("inspect_work", {"task_id": task_id}))
     except Refuse as error:
@@ -217,7 +213,7 @@ def _name_of(row):
 
 
 def status(mcp):
-    """-> {"agents": [{"agent", "id", "online", "claim", "last"}]} for the four named agents (all four always listed, offline when not found), plus the others present by id only."""
+    """-> {"agents": [...]}: the four named agents always (offline when absent), then others by id."""
     workspace = mcp.call("inspect_work", {})
     rows = _people(workspace)
     out, seen = [], set()
@@ -235,7 +231,7 @@ def status(mcp):
 
 
 def _state(result):
-    """-> delivered | acknowledged | offline | None (unknown) from Concord's reply to a prompt."""
+    """-> delivered | acknowledged | queued | offline | None, from Concord's reply to a prompt."""
     for key in STATE_KEYS:
         found = _find(result, (key,))
         if isinstance(found, str) and found.lower() in KNOWN_STATES:
@@ -244,7 +240,7 @@ def _state(result):
 
 
 def dispatch(mcp, client, args):
-    """-> the delivery result. The text always names its target and says it is untrusted data for the ticket that approves nothing new (LIFE-987 target 5)."""
+    """-> the delivery result; the prompt names its target and is untrusted data that approves nothing."""
     name = args["agent"]
     rows = _people(mcp.call("inspect_work", {}))
     mine = [r for r in rows if _name_of(r) == name and _ident(r)]
@@ -290,7 +286,7 @@ def dispatch(mcp, client, args):
     state = _state(result)
     if state in ("delivered", "acknowledged"):
         return {"delivered": True, "state": "message_only", "delivery": state, "agent": name, "message": _clip(str(_find(result, ("messageId", "message_id", "id")) or ""), 80)}
-    if state == "queued":                                       # LIFE-992 (found live Nov 26 2026): the agent IS present but idle, so Concord stored the prompt for pull; it is not offline and nobody needs to start it
+    if state == "queued":                                       # present but idle: Concord stored the prompt for pull
         return {"delivered": False, "reason": "queued_for_pull", "state": "queued_pull", "agent": name, "message": _clip(str(_find(result, ("messageId", "message_id", "id")) or ""), 80)}
     if state == "offline":
         return {"delivered": False, "reason": "agent_offline", "state": "not_delivered", "agent": name}
@@ -298,7 +294,7 @@ def dispatch(mcp, client, args):
 
 
 def messages(mcp, args):
-    """-> {"messages": [...], "next_cursor": str|None}: the orchestrator's own inbox first, newest first, content clipped, never more than PAGE_MAX."""
+    """-> {"messages": [...], "next_cursor": str|None}: newest first, clipped, at most PAGE_MAX."""
     box = mcp.call("inspect_work", {"agent_id": mcp.agent_id})
     rows = _find(box, ("inbox", "messages", "received"))
     rows = [m for m in rows if isinstance(m, dict)] if isinstance(rows, list) else []
@@ -311,7 +307,7 @@ def messages(mcp, args):
 
 
 def answer(raw, popen=subprocess.Popen, cli=CLI, repo=REPO):
-    """-> the reply dict for one raw request line. Never raises; a reason is always one fixed word."""
+    """-> the reply dict for one raw request line. Never raises."""
     mcp = None
     try:
         op, client, args = parse_request(raw)

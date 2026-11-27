@@ -1,9 +1,11 @@
-"""LIFE-987: the orchestrator operations of the Buzz bridge (agent_status, agent_dispatch, agent_messages), for the two chat clients only.
+"""The orchestrator operations of the Buzz bridge (agent_status, agent_dispatch, agent_messages) for the two chat clients.
 
-(Grants: mcp_access.json; never part of the frozen contract.) The bridge reaches Concord through ONE fixed Unix socket, /run/lifeos-concord-gateway/orchestrator.sock (lifeos/edge/concord/gateway.py, run as `concord`); the path is a constant. With no socket every operation answers `gateway_unavailable`.
-Trust boundary: before a normal dispatch the ticket must be Agent Go or In Progress; `mode=dry_run` instead requires the `needs-dry-run` label and a status other than Done or Cancelled. A read-only `ticket_state(key)` lookup enforces this (injectable; the bridge holds no Jira credential, so without one it fails closed `ticket_state_unavailable`), the text
-is untrusted data (refused when it holds a secret or plainly asks for a credential, spend, deletion, scope change or permission), and the idempotency key makes a repeat safe. Nothing here starts a session: an offline agent gets
-ONE deduplicated Agent Inbox item "Start <agent>: go", with ORCHESTRATOR_CAN_START on or off. Reasons are fixed words; message text never reaches a log."""
+The bridge reaches Concord through ONE fixed Unix socket (lifeos/edge/concord/gateway.py); without it every operation
+answers `gateway_unavailable`. A normal dispatch needs the ticket Agent Go or In Progress; `mode=dry_run` needs the
+`needs-dry-run` label and a status other than Done or Cancelled, checked by an injectable read-only `ticket_state(key)`
+that fails closed `ticket_state_unavailable`. The text is untrusted data (refused when it holds a secret or asks for a
+credential, spend, deletion, scope change or permission) and the idempotency key makes a repeat safe. An offline agent
+gets ONE deduplicated Agent Inbox item; nothing here starts a session. Reasons are fixed words."""
 import base64
 import json
 import os
@@ -50,12 +52,12 @@ class OrchestratorError(ValueError):
 
 
 def route(op, args, tenant):
-    """-> (tenant, action, account, service) for the gate: personal, read or write, account `orchestrator`, service `buzz` (the bridge is the only connector, so the policy level is the Buzz one)."""
+    """-> (tenant, action, account, service) for the gate: personal, read or write, `orchestrator`, `buzz`."""
     return "personal", NEEDS.get(op, "write"), "orchestrator", "buzz"
 
 
 def can_start(environ=None):
-    """ORCHESTRATOR_CAN_START: on only when exactly "on" (case and spaces ignored); anything else, unset or unreadable is off. No start mechanism exists in this release, so on and off both fall back to the inbox item."""
+    """ORCHESTRATOR_CAN_START: on only when exactly "on" (case and spaces ignored). Informational."""
     environ = os.environ if environ is None else environ
     try:
         return str(environ.get("ORCHESTRATOR_CAN_START") or "").strip().lower() == "on"
@@ -64,7 +66,7 @@ def can_start(environ=None):
 
 
 def gateway(op, client, args, connect=socket.socket, path=SOCKET):
-    """One request/reply over the fixed socket -> the gateway's reply dict. A missing socket, a refusal to connect, a timeout or a bad reply is `gateway_unavailable` or `gateway_bad_reply`; never any text from either side."""
+    """One request/reply over the fixed socket -> the gateway's reply dict; `gateway_unavailable` or `gateway_bad_reply`, never its text."""
     frame = (json.dumps({"op": op, "client": client, "args": args}, separators=(",", ":"), sort_keys=True) + "\n").encode()
     try:
         s = connect(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -94,12 +96,12 @@ def gateway(op, client, args, connect=socket.socket, path=SOCKET):
 
 
 
-JIRA_NAMES = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")      # LIFE-991 (Jim, comment 14371): the existing OpenClaw Atlassian token, shared with the bridge (Bitwarden LIFEOS-OpenClaw-Jira and openclaw/jira/email in LIFE OS EDGE/OPENCLAW, placed with place-credentials; the base address is in the bridge config); never logged, never returned. It can read and write as Jim's account; this module only reads one status and its labels
+JIRA_NAMES = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")
 JIRA_TIMEOUT = 8
 
 
 def jira_status(base, email, token, opener=urllib.request.urlopen):
-    """-> status and labels for one issue, or None when it cannot be read. One read-only GET; the caller checks the key's shape first."""
+    """-> lookup(key): {"status", "labels"}, "unknown" for a 404, None when unreadable. One read-only GET."""
     def lookup(key):
         if not TICKET.match(key):
             return None
@@ -122,7 +124,7 @@ def jira_status(base, email, token, opener=urllib.request.urlopen):
 
 
 def wire(environ, state):
-    """The ticket-state lookup from the service's own environment: all three JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN names, with an https base address, or None (ticket_state_unavailable, fail closed) until they are placed. Replaces nothing that is already wired."""
+    """Set state["ticket_state"] from JIRA_BASE_URL (https), JIRA_EMAIL and JIRA_API_TOKEN; any missing leaves it unset."""
     base, email, token = (str(environ.get("JIRA_BASE_URL") or "").strip(), str(environ.get("JIRA_EMAIL") or "").strip(), str(environ.get("JIRA_API_TOKEN") or "").strip())
     if base.startswith("https://") and email and token and "\n" not in base + email + token:
         state["ticket_state"] = jira_status(base, email, token)
@@ -151,7 +153,7 @@ def _check_dispatch(args, state):
     if isinstance(seen, dict):
         status = seen.get("status")
         labels = seen.get("labels")
-    else:                                                       # compatibility with injected legacy status lookups
+    else:
         status, labels = seen, []
     if mode == "dry_run":
         if not isinstance(labels, list) or "needs-dry-run" not in labels or not isinstance(status, str) or status.lower() in ("done", "cancelled"):
@@ -162,7 +164,7 @@ def _check_dispatch(args, state):
 
 
 def _fallback(agent, ticket, state):
-    """The pre-made decision: an offline agent gets ONE Agent Inbox item per agent (same key, so a repeat updates it). -> "created" | "updated" | "duplicate" | "unavailable"."""
+    """Send ONE Agent Inbox item per offline agent (same key, so a repeat updates it) -> "created" | "updated" | "duplicate" | "unavailable"."""
     inbox = state.get("inbox") or {}
     client = inbox.get("client")
     if client is None:
@@ -209,7 +211,7 @@ def run(op, args, state):
         out["not_delivered"] = str(data.get("reason") or "delivery_unknown")[:40]
         if out["not_delivered"] == "agent_offline":
             out["start_item"] = _fallback(agent, ticket, state)
-            out["can_start"] = can_start()                       # recorded only: no start mechanism exists, so the inbox item is always the answer
+            out["can_start"] = can_start()
     if len(seen) >= SEEN_MAX:
         seen.pop(next(iter(seen)))
     seen[key] = out
