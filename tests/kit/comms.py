@@ -5,7 +5,7 @@ four rows), with Jim's custom.
 from copy import deepcopy
 
 LAUNCH = "https://example.com/launch/%s/"
-EMOJI = {"e-msg": "messages", "e-tg": "telegram", "e-wa": "whatsapp", "e-dc": "discord"}
+EMOJI = {"e-msg": "messages", "e-tg": "telegram", "e-wa": "whatsapp", "e-dc": "discord", "e-td": "todoist"}
 
 
 def text(content, link=None):
@@ -52,6 +52,11 @@ class Report:
         for i, line in enumerate(("Latest: unavailable", "Latest: unavailable", "Latest: unavailable", "Launch only")):
             self.add("r%d" % i, "paragraph", "right", [text(line)])
         self.add("bills", "callout", "col", [text("Bills")])
+
+    def add_dashboard(self, label=" Todoist (-)", link=None, kind="paragraph", extra=()):
+        """The LIFE OS Dashboard's own Todoist label (a paragraph: the icon, then the text), on another page."""
+        self.add("dcol", "column", "droot")
+        self.add("dash", kind, "dcol", [emoji("e-td"), text(label, link), *extra])
 
     def add(self, block_id, kind, parent, rich=None):
         self.blocks[block_id] = {

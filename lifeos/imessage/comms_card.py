@@ -318,6 +318,53 @@ def todoist_count(environ, tasks=None):
         return None
 
 
+def _launch_url(block, at):
+    return str((((_items(block)[at]).get("text") or {}).get("link") or {}).get("url") or "")
+
+
+def locate_dashboard(client, block_id):
+    """-> (the LIFE OS Dashboard's Todoist label paragraph, index of its label text, its leading space).
+
+    One paragraph that holds exactly one text item reading `Todoist (...)`; its other items (the emoji mention) are never
+    touched. Any other shape, or a link that is not the Todoist launcher, is CARD_NOT_OWNED and nothing is written."""
+    block = client.call("GET", f"/blocks/{quote(report_region.clean_id(block_id), safe='')}")
+    if not isinstance(block, dict) or block.get("type") != "paragraph":
+        raise _fail("CARD_NOT_OWNED")
+    hits = [
+        i
+        for i, item in enumerate(_items(block))
+        if item.get("type") == "text" and (item.get("text") or {}).get("content", "").strip().startswith("Todoist (")
+    ]
+    if len(hits) != 1:
+        raise _fail("CARD_NOT_OWNED")
+    link = ((_items(block)[hits[0]].get("text") or {}).get("link") or {}).get("url")
+    if link and TODOIST_LAUNCH not in str(link):
+        raise _fail("CARD_NOT_OWNED")
+    return block, hits[0]
+
+
+def write_dashboard(client, block, at, label, launch):
+    """Writes the label text (keeping its leading space) and, when it has no link yet, the same launcher link the Daily
+    Report label uses, so a click opens the native app; reads both back. -> 1 when changed, 0 when already so."""
+    before = _items(block)
+    items = [_sendable(i) for i in before]
+    text = items[at]["text"]
+    lead = text["content"][: len(text["content"]) - len(text["content"].lstrip())]
+    text["content"] = lead + label
+    if launch and not text.get("link"):
+        text["link"] = {"url": launch}
+    expect = _plain(before)
+    expect[at] = lead + label
+    if _plain(before) == expect and (not launch or (before[at].get("text") or {}).get("link")):
+        return 0
+    _patch_text(client, block, items)
+    after = _items(client.call("GET", f"/blocks/{quote(block['id'], safe='')}"))
+    linked = ((after[at].get("text") or {}).get("link") or {}).get("url") if len(after) > at else None
+    if _plain(after) != expect or (launch and TODOIST_LAUNCH not in str(linked or "")):
+        raise _fail("COMMS_READBACK_MISMATCH")
+    return 1
+
+
 def write(client, heading, rows, lines, heading_text):
     expected = {}
     for channel, (row, latest_block) in rows.items():
@@ -378,6 +425,13 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     heading, blocks, todoist = locate(client, anchor)
     count = todoist_count(environ, tasks) if todoist is not None else None
     previous = _plain(_items(todoist))[_todoist_item(todoist)] if todoist is not None else None
+    dash_id = (environ.get("DASHBOARD_TODOIST_BLOCK_ID") or "").strip()
+    dashboard, dash_state = None, "not_configured"
+    if dash_id and todoist is not None:
+        try:
+            dashboard, dash_state = locate_dashboard(client, dash_id), "located"
+        except (CommsError, NotionError) as e:
+            dash_state = "unreadable" if isinstance(e, NotionError) else str(e).lower()
     counts = {
         "unread_7d": rows["messages"][0],
         "latest": rows["messages"][1].lower(),
@@ -390,17 +444,32 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
         else "stale"
         if kept_count(previous)
         else "unavailable",
+        "dashboard": dash_state,
         "written": 0,
     }
     if not live:
         return counts
     report_region.require_configured({region: (environ.get(var) or "").strip() for var, region in PROTECTED}, _fail)
     scoped = report_region.ScopedClient(client, heading["id"], _fail).adopt(
-        *(b["id"] for pair in blocks.values() for b in pair), *([todoist["id"]] if todoist else [])
+        *(b["id"] for pair in blocks.values() for b in pair),
+        *([todoist["id"]] if todoist else []),
+        *([dashboard[0]["id"]] if dashboard else []),
     )  # only the blocks located above can be written
     with fixed(NotionError, _fail, "COMMS_WRITE_FAILED"):
         write(scoped, heading, blocks, lines, heading_text)
         counts["written"] = 2 * len(blocks) + 1
         if todoist is not None:
-            counts["written"] += write_todoist(scoped, todoist, todoist_label(count, previous))
+            label = todoist_label(count, previous)
+            counts["written"] += write_todoist(scoped, todoist, label)
+            if dashboard is not None:  # the same label, from the same calculation, on the second target
+                try:
+                    counts["written"] += write_dashboard(
+                        scoped, dashboard[0], dashboard[1], label, _launch_url(todoist, _todoist_item(todoist))
+                    )
+                    counts["dashboard"] = "written"
+                except (CommsError, NotionError) as e:
+                    counts["dashboard"] = "write_failed"
+                    print("imessage-comms: dashboard todoist label", json.dumps({"code": str(e)[:40]}))
+    if counts["dashboard"] in ("unreadable", "card_not_owned", "write_failed"):
+        raise _fail("COMMS_TODOIST_DIVERGED")  # one target changed and the other did not: DEGRADED, never fresh
     return counts

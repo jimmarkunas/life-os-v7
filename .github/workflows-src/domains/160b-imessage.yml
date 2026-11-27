@@ -14,6 +14,7 @@
           CALENDAR_CARD_BLOCK_ID: ""
           JIRA_CARD_BLOCK_ID: ""
           HIRING_CARD_BLOCK_ID: ""
+          DASHBOARD_TODOIST_BLOCK_ID: ""
         run: python -m lifeos.run imessage-comms --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Communications card warning (does not fail the run)
         if: ${{ always() && steps.comms.outcome == 'failure' }}
