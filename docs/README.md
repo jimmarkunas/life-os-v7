@@ -5,6 +5,7 @@ Every markdown file under `docs/`, grouped by area, with what it is for and whet
 ## Policy and canon
 
 - [life-os-development-policy.md](life-os-development-policy.md): the whole development rule set, one file. Current.
+- [life-os-production-contract.md](life-os-production-contract.md): the Production Contract, authority for schedules and runtime; canonical here since Nov 27 2026 (v2.15.19, moved unchanged from `life-os-automation`). Current.
 - [agent-reference.md](agent-reference.md): code map, commands and epic delivery rules that AGENTS.md points to. Current.
 - [DECISIONS.md](DECISIONS.md): numbered, dated decisions owned by Jim; wins over any other doc. Current.
 - [DECISIONS_INDEX.md](DECISIONS_INDEX.md): one line per decision, to find a number without reading DECISIONS.md. Current.

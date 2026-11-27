@@ -1,6 +1,6 @@
 # LIFE OS V7: agent rules (one page)
 
-The [Development Policy](docs/life-os-development-policy.md) is the whole rule set. Code map and commands: [docs/agent-reference.md](docs/agent-reference.md).
+The [Development Policy](docs/life-os-development-policy.md) is the whole rule set. The [Production Contract](docs/life-os-production-contract.md) is the authority for schedules and runtime (canonical here since Nov 27 2026; the V1 copy is historical). Code map and commands: [docs/agent-reference.md](docs/agent-reference.md).
 
 ## The job
 

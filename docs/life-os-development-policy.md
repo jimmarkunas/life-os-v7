@@ -5,7 +5,7 @@
 ## 1. Authority
 
 1. Jim's current instruction.
-2. The Production Contract, for schedules and runtime.
+2. The Production Contract (`docs/life-os-production-contract.md`), for schedules and runtime.
 3. This policy, for how development works.
 4. Notion LIFE OS Platform canon, for architecture.
 5. Jira `LIFE` for product priority, delivery status, blockers and order. The `LOS` project is retired (Jim, Nov 21, 2026): history only. It stays, read-only.
