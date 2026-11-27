@@ -5,6 +5,9 @@
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_agenda == 'true' && needs.gate.outputs.early == 'true')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write  # LIFE-1023: the keyless Google calendar sign-in
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -53,7 +56,6 @@
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
           GCAL_CALENDAR_ID: ""
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}

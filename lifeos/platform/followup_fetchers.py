@@ -501,6 +501,8 @@ def build_fetchers(environ, factories=None, clock=None, token_store=None):
                 read = functools.partial(read, save=lambda token, label=credential_ref: store.save(label, token))
             else:
                 secret = (environ.get(CREDENTIAL_NAMES[key]) or "").strip()
+                if not secret and source == "calendar" and gcal.keyless_available(environ):
+                    secret = gcal.KEYLESS  # LIFE-1023: the calendar key is retired; the job signs in with its OIDC token
             if not secret:
                 raise FetchError("FOLLOWUP_CREDENTIAL_MISSING")
             rows = read(make[source], environ, key[1], secret, since, now())[: MAX_ROWS + 1]

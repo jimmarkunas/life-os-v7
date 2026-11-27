@@ -7,7 +7,6 @@
           JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_followup.outputs.OUTLOOK_CLIENT_ID }}
           NOTION_API_TOKEN: ${{ steps.bws_followup.outputs.NOTION_API_TOKEN }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_followup.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}

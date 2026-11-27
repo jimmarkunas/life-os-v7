@@ -5,6 +5,9 @@
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_megibow == 'true' && needs.gate.outputs.late == 'true') || inputs.megibow) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write  # LIFE-1023: the keyless Google calendar sign-in
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -58,7 +61,6 @@
           MEGIBOW_BLOCK_ID: ""
           MEGIBOW_REVIEW_DB_ID: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
           MEGIBOW_EXCLUDED_DOMAINS: ""  # declared empty so the V7 settings page can fill it; the code's own default applies when both are empty
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_megibow.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_NAME }}

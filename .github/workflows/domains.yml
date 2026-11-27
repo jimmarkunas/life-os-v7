@@ -453,6 +453,9 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -499,7 +502,6 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_followup.outputs.JIRA_EMAIL }}
           OUTLOOK_CLIENT_ID: ${{ steps.bws_followup.outputs.OUTLOOK_CLIENT_ID }}
           NOTION_API_TOKEN: ${{ steps.bws_followup.outputs.NOTION_API_TOKEN }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_followup.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_ID }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_followup.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
@@ -525,6 +527,9 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_outlook == 'true' && needs.gate.outputs.early == 'true') || inputs.calendar_sync) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -569,7 +574,6 @@ jobs:
           GCAL_CALENDAR_ID: ""
           CALENDAR_ALLOW_MASS_DELETE: ${{ inputs.allow_mass_delete && 'true' || '' }}
           NTFY_TOPIC: ${{ steps.bws_outlook.outputs.NTFY_TOPIC }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_outlook.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
@@ -687,6 +691,9 @@ jobs:
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_agenda == 'true' && needs.gate.outputs.early == 'true')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -728,7 +735,6 @@ jobs:
           V7_RUNTIME_CONFIG_SOURCE_ID: *a18
           NOTION_JIRA_TOKEN: &a47 ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
           GCAL_CALENDAR_ID: ""
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: &a48 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: &a49 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: &a50 ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
@@ -1007,6 +1013,9 @@ jobs:
     if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_hiring == 'true' && needs.gate.outputs.early == 'true') || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -1056,7 +1065,6 @@ jobs:
           HIRING_AUTO_CLOSE: ""
           JIRA_CARD_BLOCK_ID: ""
           GCAL_CALENDAR_ID: ""
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_USER }}
@@ -1083,6 +1091,9 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_megibow == 'true' && needs.gate.outputs.late == 'true') || inputs.megibow) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -1129,7 +1140,6 @@ jobs:
           MEGIBOW_BLOCK_ID: ""
           MEGIBOW_REVIEW_DB_ID: ""
           MEGIBOW_EXCLUDED_DOMAINS: ""
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_megibow.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -1764,6 +1774,9 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.late == 'true') || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
     concurrency:
       group: &a90 life-os-v7-interview-writer
       cancel-in-progress: false
@@ -1827,7 +1840,6 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
           HIRING_PIPELINE_PAGE_ID: ""
           GCAL_CALENDAR_ID: ""
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_interview.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_API_TOKEN: ${{ steps.bws_interview.outputs.NOTION_API_TOKEN }}
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_interview.outputs.NOTION_RECRUITERS_TOKEN }}

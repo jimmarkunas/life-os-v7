@@ -4,6 +4,9 @@
     if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.late == 'true') || inputs.recruiters) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # LIFE-1023: the keyless Google calendar sign-in
     concurrency:
       group: life-os-v7-interview-writer  # the Interview OS step is the one writer of the opportunity pages: an after-tick and a manual run take turns, never write the same page together
       cancel-in-progress: false
