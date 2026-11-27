@@ -54,7 +54,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,IMESSAGE_ALERTS_HOST
-          bitwarden: ${{ toJSON(steps.bws_fit_edge.outputs) }}
+          bitwarden: '{}'
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: ./.github/actions/tailscale
         with:

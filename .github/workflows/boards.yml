@@ -97,7 +97,7 @@ jobs:
         with:
           token: ${{ secrets.DOPPLER_TOKEN }}
           names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,LIFEOS_ACQ_SSH_JUMP_KEY,TAILSCALE_OAUTH_CLIENT_ID,TAILSCALE_OAUTH_CLIENT_SECRET,LIFEOS_ACQ_SSH_JUMP_HOST,LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS
-          bitwarden: ${{ toJSON(steps.bws_boards.outputs) }}
+          bitwarden: '{}'
       - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, pipeline parked, port fails - names and codes only)
         uses: ./.github/actions/bws-plain
         with:

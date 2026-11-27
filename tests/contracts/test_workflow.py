@@ -1525,7 +1525,7 @@ class DopplerParityTests(unittest.TestCase):
                 for i, step in enumerate(steps):
                     with_ = step.get("with") or {}
                     if step.get("uses") == "./.github/actions/bws-load" and step.get("id") and "LIFEOS_BWS_RUNTIME_TOKEN" in str(with_.get("access_token")):
-                        old = next((s for s in steps[i + 1:] if is_parity(s) and f"steps.{step['id']}.outputs" in str((s.get("with") or {}).get("bitwarden"))), None)
+                        old = next((s for s in steps[i + 1:i + 3] if is_parity(s)), None)   # LIFE-1021: matched by position; the compare no longer receives the loader's outputs
                         out.append((name, job, step, step if with_.get("doppler_compare") else old))      # LIFE-1010: the compare is the loader's own doppler_compare input in domains, hourly and v3-pages; the other workflows still carry the separate step
         return out
 
@@ -1541,7 +1541,7 @@ class DopplerParityTests(unittest.TestCase):
             names = [line.split(">")[1].strip() for line in str(loader["with"]["secrets"]).splitlines() if ">" in line]
             self.assertEqual(str(compare["with"]["names"]).split(","), names, (name, job))
             self.assertEqual(compare["with"]["token"], "${{ secrets.DOPPLER_TOKEN }}", (name, job))
-            self.assertEqual(compare["with"]["bitwarden"], f"${{{{ toJSON(steps.{loader['id']}.outputs) }}}}", (name, job))
+            self.assertEqual(compare["with"]["bitwarden"], "{}", (name, job))   # LIFE-1021: never pass secret values as an action input (inputs are echoed into public logs)
             self.assertTrue(compare.get("continue-on-error") is True, (name, job))
             self.assertEqual(compare.get("if"), f"${{{{ steps.{loader['id']}.outcome == 'success' }}}}", (name, job))
 

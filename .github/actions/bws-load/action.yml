@@ -88,4 +88,4 @@ runs:
       with:
         token: ${{ inputs.doppler_compare }}
         names: ${{ steps.names.outputs.list }}
-        bitwarden: ${{ toJSON(steps.first.outcome == 'success' && steps.first.outputs || steps.retry.outputs) }}
+        bitwarden: '{}'
