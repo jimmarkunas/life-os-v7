@@ -2,6 +2,7 @@
 
 A region is a heading, one gray stamp paragraph, the body, then the `Summary for Claude: <page>` line; anything
 else raises ACCOUNTABILITY_SHAPE and writes nothing. A write outside the callout is refused (ScopedClient)."""
+
 import re
 from urllib.parse import quote, unquote
 
@@ -56,7 +57,7 @@ def _title(obj):
 def _page_of(notion, block_id):
     current = block_id
     for _ in range(4):
-        parent = (notion.call("GET", f"/blocks/{quote(current, safe='')}").get("parent") or {})
+        parent = notion.call("GET", f"/blocks/{quote(current, safe='')}").get("parent") or {}
         if parent.get("page_id"):
             return _title(notion.call("GET", f"/pages/{quote(parent['page_id'], safe='')}")).strip()
         current = parent.get("block_id") or ""
@@ -68,8 +69,22 @@ def _page_of(notion, block_id):
 def register_row(notion, key):
     """The block id the V3 register names for `key`, or None. Exactly one register page must exist, else
     ACCOUNTABILITY_TARGET_NOT_FOUND."""
-    found = notion_pages.search_all(notion, REGISTER_TITLE, "page", fail, incomplete="ACCOUNTABILITY_TARGET_NOT_FOUND", capped="ACCOUNTABILITY_TARGET_NOT_FOUND")
-    hits = [r["id"] for r in found if isinstance(r, dict) and _title(r).strip() == REGISTER_TITLE and not r.get("in_trash") and not r.get("archived")]
+    found = notion_pages.search_all(
+        notion,
+        REGISTER_TITLE,
+        "page",
+        fail,
+        incomplete="ACCOUNTABILITY_TARGET_NOT_FOUND",
+        capped="ACCOUNTABILITY_TARGET_NOT_FOUND",
+    )
+    hits = [
+        r["id"]
+        for r in found
+        if isinstance(r, dict)
+        and _title(r).strip() == REGISTER_TITLE
+        and not r.get("in_trash")
+        and not r.get("archived")
+    ]
     if len(hits) != 1:
         raise fail("ACCOUNTABILITY_TARGET_NOT_FOUND")
     pattern = re.compile(r"(?:^|\s)" + re.escape(key) + r"\s+([0-9a-fA-F-]{32,36})\b")
@@ -94,7 +109,11 @@ def locate(client, block_id):
     if len(kids) < 3 or kids[0].get("type") not in HEADINGS or kids[1].get("type") != "paragraph":
         raise fail("ACCOUNTABILITY_SHAPE")
     last = kids[-1]
-    mention = [p for p in (last.get("paragraph") or {}).get("rich_text") or [] if p.get("type") == "mention" and (p.get("mention") or {}).get("type") == "page"]
+    mention = [
+        p
+        for p in (last.get("paragraph") or {}).get("rich_text") or []
+        if p.get("type") == "mention" and (p.get("mention") or {}).get("type") == "page"
+    ]
     if last.get("type") != "paragraph" or not text(last).lower().startswith(SUMMARY) or len(mention) != 1:
         raise fail("ACCOUNTABILITY_SHAPE")
     return {"heading": kids[0], "stamp": kids[1], "middle": kids[2:-1], "summary": mention[0]["mention"]["page"]["id"]}
@@ -131,7 +150,12 @@ def signature(block):
     pieces = []
     for item in (block.get(block.get("type")) or {}).get("rich_text") or []:
         link = (item.get("text") or {}).get("link") or {}
-        pieces.append((item.get("plain_text") or (item.get("text") or {}).get("content") or "", item.get("href") or link.get("url")))
+        pieces.append(
+            (
+                item.get("plain_text") or (item.get("text") or {}).get("content") or "",
+                item.get("href") or link.get("url"),
+            )
+        )
     return _normalise(pieces)
 
 
@@ -156,9 +180,14 @@ def write_parts(client, block_id, stamp, parts, live):
     if signature(found["middle"][0]) != want:
         changed += 1
         if live:
-            client.call_once("PATCH", f"/blocks/{quote(found['middle'][0]['id'], safe='')}", {kind: {"rich_text": _nodes(parts)}})
+            client.call_once(
+                "PATCH", f"/blocks/{quote(found['middle'][0]['id'], safe='')}", {kind: {"rich_text": _nodes(parts)}}
+            )
     if live and changed:
-        ok, _ = readback.confirmed(lambda: locate(client, block_id), lambda a: text(a["stamp"]) == stamp.strip() and signature(a["middle"][0]) == want)
+        ok, _ = readback.confirmed(
+            lambda: locate(client, block_id),
+            lambda a: text(a["stamp"]) == stamp.strip() and signature(a["middle"][0]) == want,
+        )
         if not ok:
             raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     return {"changed": changed, "summary_page": found["summary"]}
@@ -180,8 +209,17 @@ def _rich_sig(items):
 
 
 def _live_rich(block):
-    return _rich_sig([(p.get("plain_text") or (p.get("text") or {}).get("content") or "", p.get("href") or ((p.get("text") or {}).get("link") or {}).get("url"),
-                       (p.get("annotations") or {}).get("bold"), (p.get("annotations") or {}).get("color")) for p in (block.get(block.get("type")) or {}).get("rich_text") or []])
+    return _rich_sig(
+        [
+            (
+                p.get("plain_text") or (p.get("text") or {}).get("content") or "",
+                p.get("href") or ((p.get("text") or {}).get("link") or {}).get("url"),
+                (p.get("annotations") or {}).get("bold"),
+                (p.get("annotations") or {}).get("color"),
+            )
+            for p in (block.get(block.get("type")) or {}).get("rich_text") or []
+        ]
+    )
 
 
 def _spec_sig(item):
@@ -219,7 +257,11 @@ def _complete(client, block_id, item, left):
     if _depth(item) <= left:
         return
     if left <= 0:
-        client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [_payload(c, INLINE_LEVELS) for c in item["children"]]})
+        client.call_once(
+            "PATCH",
+            f"/blocks/{quote(block_id, safe='')}/children",
+            {"children": [_payload(c, INLINE_LEVELS) for c in item["children"]]},
+        )
         left = INLINE_LEVELS + 1
     for kid, child in zip(report_region.children(client, block_id, AccountabilityError), item["children"]):
         _complete(client, kid["id"], child, left - 1)
@@ -238,9 +280,15 @@ def write_tree(client, block_id, stamp, specs, live):
     if [_tree_sig(client, b) for b in old] != want:
         changed += 1
         if live:
-            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [_payload(s, INLINE_LEVELS) for s in specs], "after": found["stamp"]["id"]})
+            client.call_once(
+                "PATCH",
+                f"/blocks/{quote(block_id, safe='')}/children",
+                {"children": [_payload(s, INLINE_LEVELS) for s in specs], "after": found["stamp"]["id"]},
+            )
             gone = {b["id"] for b in old}
-            created = [k for k in report_region.children(client, block_id, AccountabilityError) if k["id"] not in gone][2:-1][:len(specs)]
+            created = [k for k in report_region.children(client, block_id, AccountabilityError) if k["id"] not in gone][
+                2:-1
+            ][: len(specs)]
             if len(created) != len(specs):
                 raise fail("ACCOUNTABILITY_VERIFY_FAILED")
             for block, item in zip(created, specs):
@@ -250,6 +298,7 @@ def write_tree(client, block_id, stamp, specs, live):
 
     def matches(after):
         return text(after["stamp"]) == stamp.strip() and [_tree_sig(client, b) for b in after["middle"]] == want
+
     if live and changed:
         ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
         if not ok:
@@ -269,7 +318,11 @@ def write_directory(client, block_id, stamp, lines, bulleted, live):
             break
         tail.insert(0, block)
     owned = tail or middle[-1:]
-    if not middle or any(b.get("type") not in ("paragraph", "bulleted_list_item") for b in owned) or (not tail and owned[0].get("type") != "paragraph"):
+    if (
+        not middle
+        or any(b.get("type") not in ("paragraph", "bulleted_list_item") for b in owned)
+        or (not tail and owned[0].get("type") != "paragraph")
+    ):
         raise fail("ACCOUNTABILITY_SHAPE")
     kind = "bulleted_list_item" if bulleted else "paragraph"
     want = [_normalise([(c, u) for c, u, _ in parts]) for parts in lines]
@@ -279,25 +332,42 @@ def write_directory(client, block_id, stamp, lines, bulleted, live):
         if signature(block) != expected:
             changed += 1
             if live:
-                client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {kind: {"rich_text": _nodes(parts)}})
-    added = lines[len(keep):]
+                client.call_once(
+                    "PATCH", f"/blocks/{quote(block['id'], safe='')}", {kind: {"rich_text": _nodes(parts)}}
+                )
+    added = lines[len(keep) :]
     if added:
         changed += len(added)
         if live:
-            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": kind, kind: {"rich_text": _nodes(parts)}} for parts in added], "after": middle[-1]["id"]})
-    removed = owned[len(lines):] if keep else owned
+            client.call_once(
+                "PATCH",
+                f"/blocks/{quote(block_id, safe='')}/children",
+                {
+                    "children": [
+                        {"object": "block", "type": kind, kind: {"rich_text": _nodes(parts)}} for parts in added
+                    ],
+                    "after": middle[-1]["id"],
+                },
+            )
+    removed = owned[len(lines) :] if keep else owned
     if found["legacy"] is not None:
         removed = removed + [found["legacy"]]
     for block in removed:
         changed += 1
         if live:
             client.call_once("DELETE", f"/blocks/{quote(block['id'], safe='')}")
-    lead = [b["id"] for b in middle[:len(middle) - len(owned)]]
+    lead = [b["id"] for b in middle[: len(middle) - len(owned)]]
 
     def matches(after):
-        body = after["middle"][len(lead):]
-        return (after["legacy"] is None and text(after["stamp"]) == stamp.strip() and [b["id"] for b in after["middle"][:len(lead)]] == lead
-                and [b.get("type") for b in body] == [kind] * len(lines) and [signature(b) for b in body] == want)
+        body = after["middle"][len(lead) :]
+        return (
+            after["legacy"] is None
+            and text(after["stamp"]) == stamp.strip()
+            and [b["id"] for b in after["middle"][: len(lead)]] == lead
+            and [b.get("type") for b in body] == [kind] * len(lines)
+            and [signature(b) for b in body] == want
+        )
+
     if live and changed:
         ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), matches)
         if not ok:
@@ -306,7 +376,10 @@ def write_directory(client, block_id, stamp, lines, bulleted, live):
 
 
 def _cells(row):
-    return [report_region.plain({"type": "x", "x": {"rich_text": cell}}).strip() for cell in (row.get("table_row") or {}).get("cells") or []]
+    return [
+        report_region.plain({"type": "x", "x": {"rich_text": cell}}).strip()
+        for cell in (row.get("table_row") or {}).get("cells") or []
+    ]
 
 
 def _linked(content, url=None):
@@ -330,7 +403,11 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
     found = locate_combined(client, block_id)
     kinds = [b.get("type") for b in found["middle"]]
     width = (found["middle"][0].get("table") or {}).get("table_width") if kinds and kinds[0] == "table" else None
-    if kinds not in (["table"], ["table", "paragraph"], ["table", "paragraph", "toggle"]) or width != (2 if wide is None else width) or (wide is not None and width not in (2, 5)):
+    if (
+        kinds not in (["table"], ["table", "paragraph"], ["table", "paragraph", "toggle"])
+        or width != (2 if wide is None else width)
+        or (wide is not None and width not in (2, 5))
+    ):
         raise fail("ACCOUNTABILITY_SHAPE")
     replaced = 0
     if wide is not None and width == 2:
@@ -338,7 +415,11 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
         if live:
             old_rows = report_region.children(client, found["middle"][0]["id"], AccountabilityError)[1:]
             labels = [_cells(r)[0] for r in old_rows]
-            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [_table_payload(labels, lanes, wide)], "after": found["stamp"]["id"]})
+            client.call_once(
+                "PATCH",
+                f"/blocks/{quote(block_id, safe='')}/children",
+                {"children": [_table_payload(labels, lanes, wide)], "after": found["stamp"]["id"]},
+            )
             client.call_once("DELETE", f"/blocks/{quote(found['middle'][0]['id'], safe='')}")
             found = locate_combined(client, block_id)
             kinds = [b.get("type") for b in found["middle"]]
@@ -349,12 +430,18 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
     inner = report_region.children(client, toggle["id"], AccountabilityError) if toggle else []
     if toggle and (len(inner) != 1 or inner[0].get("type") != "paragraph"):
         raise fail("ACCOUNTABILITY_SHAPE")
-    every = report_region.children(client, table["id"], AccountabilityError) if (wide is None or not replaced or live) else []
+    every = (
+        report_region.children(client, table["id"], AccountabilityError)
+        if (wide is None or not replaced or live)
+        else []
+    )
     rows = every[1:]
     wanted = []
     for row in rows:
         label = _cells(row)[0]
-        value, url = next(((v, u) for lane, (v, u) in lanes.items() if label.lower().startswith(lane.lower())), ("–", None))
+        value, url = next(
+            ((v, u) for lane, (v, u) in lanes.items() if label.lower().startswith(lane.lower())), ("–", None)
+        )
         if wide is not None:
             cells = next((c for lane, c in wide.items() if label.lower().startswith(lane.lower())), _EMPTY_WIDE)
             wanted.append((row, [[(label, url, False, None)]] + [list(c) for c in cells]))
@@ -368,23 +455,57 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
         if _wide_signature(every[0]) != _rich_cells(header):
             changed += 1
             if live:
-                client.call_once("PATCH", f"/blocks/{quote(every[0]['id'], safe='')}", {"table_row": {"cells": [[_node(*p) for p in cell] for cell in header]}})
+                client.call_once(
+                    "PATCH",
+                    f"/blocks/{quote(every[0]['id'], safe='')}",
+                    {"table_row": {"cells": [[_node(*p) for p in cell] for cell in header]}},
+                )
     for row, cells in wanted:
         if wide is not None:
             if _wide_signature(row) != _rich_cells(cells):
                 changed += 1
                 if live:
-                    client.call_once("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]}})
+                    client.call_once(
+                        "PATCH",
+                        f"/blocks/{quote(row['id'], safe='')}",
+                        {"table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]}},
+                    )
         elif _row_signature(row) != _normalise_cells(cells):
             changed += 1
             if live:
-                client.call_once("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": [_linked(c, u) for c, u in cells]}})
-    pending = ([{"object": "block", "type": "paragraph", "paragraph": {"rich_text": _rich(extra or " ")}}] if note is None else []) + (
-        [{"object": "block", "type": "toggle", "toggle": {"rich_text": _rich(REVIEWS_TITLE), "children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": _nodes(review_parts)}}]}}] if toggle is None else [])
+                client.call_once(
+                    "PATCH",
+                    f"/blocks/{quote(row['id'], safe='')}",
+                    {"table_row": {"cells": [_linked(c, u) for c, u in cells]}},
+                )
+    pending = (
+        [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": _rich(extra or " ")}}]
+        if note is None
+        else []
+    ) + (
+        [
+            {
+                "object": "block",
+                "type": "toggle",
+                "toggle": {
+                    "rich_text": _rich(REVIEWS_TITLE),
+                    "children": [
+                        {"object": "block", "type": "paragraph", "paragraph": {"rich_text": _nodes(review_parts)}}
+                    ],
+                },
+            }
+        ]
+        if toggle is None
+        else []
+    )
     if pending:
         changed += len(pending)
         if live:
-            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": pending, "after": (note or table)["id"]})
+            client.call_once(
+                "PATCH",
+                f"/blocks/{quote(block_id, safe='')}/children",
+                {"children": pending, "after": (note or table)["id"]},
+            )
     if note is not None:
         changed += _set(client, note, extra or "", live)
     if toggle is not None:
@@ -392,7 +513,11 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
         if signature(inner[0]) != want_review:
             changed += 1
             if live:
-                client.call_once("PATCH", f"/blocks/{quote(inner[0]['id'], safe='')}", {"paragraph": {"rich_text": _nodes(review_parts)}})
+                client.call_once(
+                    "PATCH",
+                    f"/blocks/{quote(inner[0]['id'], safe='')}",
+                    {"paragraph": {"rich_text": _nodes(review_parts)}},
+                )
     if found["legacy"] is not None:
         changed += 1
         if live:
@@ -404,9 +529,20 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
             return False
         rows_after = report_region.children(client, mid[0]["id"], AccountabilityError)[1:]
         again = report_region.children(client, mid[2]["id"], AccountabilityError)
-        same = ([_wide_signature(r) for r in rows_after] == [_rich_cells(c) for _, c in wanted]) if wide is not None else ([_row_signature(r) for r in rows_after] == [_normalise_cells(c) for _, c in wanted])
-        return (text(after["heading"]) == heading.strip() and text(after["stamp"]) == stamp.strip() and same
-                and (not extra or text(mid[1]) == extra.strip()) and len(again) == 1 and signature(again[0]) == want_review)
+        same = (
+            ([_wide_signature(r) for r in rows_after] == [_rich_cells(c) for _, c in wanted])
+            if wide is not None
+            else ([_row_signature(r) for r in rows_after] == [_normalise_cells(c) for _, c in wanted])
+        )
+        return (
+            text(after["heading"]) == heading.strip()
+            and text(after["stamp"]) == stamp.strip()
+            and same
+            and (not extra or text(mid[1]) == extra.strip())
+            and len(again) == 1
+            and signature(again[0]) == want_review
+        )
+
     if live and changed:
         ok, _ = readback.confirmed(lambda: locate_combined(client, block_id), matches)
         if not ok:
@@ -415,7 +551,12 @@ def write_combined(client, block_id, heading, stamp, lanes, extra, review_parts,
 
 
 WIDE_HEADER = ("Lane", "Progress", "Done / all", "New count (preview)", "Status")
-_EMPTY_WIDE = ([("–", None, False, None)], [("–", None, False, None)], [("—", None, False, None)], [("—", None, False, None)])
+_EMPTY_WIDE = (
+    [("–", None, False, None)],
+    [("–", None, False, None)],
+    [("—", None, False, None)],
+    [("—", None, False, None)],
+)
 
 
 def _rich_cells(cells):
@@ -423,23 +564,44 @@ def _rich_cells(cells):
 
 
 def _wide_signature(row):
-    return [_live_rich({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
+    return [
+        _live_rich({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []
+    ]
 
 
 def _table_payload(labels, lanes, wide):
     def row(cells):
-        return {"object": "block", "type": "table_row", "table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]}}
+        return {
+            "object": "block",
+            "type": "table_row",
+            "table_row": {"cells": [[_node(*p) for p in cell] for cell in cells]},
+        }
+
     rows = [row([[(h, None, False, None)] for h in WIDE_HEADER])]
     for label in labels:
         url = next((u for lane, (_, u) in lanes.items() if label.lower().startswith(lane.lower())), None)
         cells = next((c for lane, c in wide.items() if label.lower().startswith(lane.lower())), _EMPTY_WIDE)
         rows.append(row([[(label, url, False, None)]] + [list(c) for c in cells]))
-    return {"object": "block", "type": "table", "table": {"table_width": 5, "has_column_header": True, "has_row_header": False, "children": rows}}
+    return {
+        "object": "block",
+        "type": "table",
+        "table": {"table_width": 5, "has_column_header": True, "has_row_header": False, "children": rows},
+    }
 
 
 def _row_signature(row):
-    return [_normalise([(piece.get("plain_text") or (piece.get("text") or {}).get("content") or "", piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url"))
-                        for piece in cell]) for cell in (row.get("table_row") or {}).get("cells") or []]
+    return [
+        _normalise(
+            [
+                (
+                    piece.get("plain_text") or (piece.get("text") or {}).get("content") or "",
+                    piece.get("href") or ((piece.get("text") or {}).get("link") or {}).get("url"),
+                )
+                for piece in cell
+            ]
+        )
+        for cell in (row.get("table_row") or {}).get("cells") or []
+    ]
 
 
 def _normalise_cells(cells):
@@ -466,7 +628,10 @@ def write_summary(client, page_id, content, live):
     if text(kids[0]) == content.strip() or not live:
         return False
     _patch(client, kids[0], "paragraph", content)
-    ok, _ = readback.confirmed(lambda: report_region.children(client, page_id, AccountabilityError), lambda after: len(after) == 1 and text(after[0]) == content.strip())
+    ok, _ = readback.confirmed(
+        lambda: report_region.children(client, page_id, AccountabilityError),
+        lambda after: len(after) == 1 and text(after[0]) == content.strip(),
+    )
     if not ok:
         raise fail("ACCOUNTABILITY_VERIFY_FAILED")
     return True
@@ -479,12 +644,28 @@ def append_bullet(client, block_id, content, live):
         raise fail("ACCOUNTABILITY_SHAPE")
     before = [text(b) for b in found["middle"]]
     if content.strip() in before or not live:
-        return {"appended": 0, "lines": len(before), "last": before[-1] if before else "", "summary_page": found["summary"], "would_append": int(content.strip() not in before)}
+        return {
+            "appended": 0,
+            "lines": len(before),
+            "last": before[-1] if before else "",
+            "summary_page": found["summary"],
+            "would_append": int(content.strip() not in before),
+        }
     after_id = found["middle"][-1]["id"] if found["middle"] else found["stamp"]["id"]
-    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _rich(content)}}], "after": after_id})
+    client.call_once(
+        "PATCH",
+        f"/blocks/{quote(block_id, safe='')}/children",
+        {
+            "children": [
+                {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": _rich(content)}}
+            ],
+            "after": after_id,
+        },
+    )
 
     def matches(now):
         return [text(b) for b in now["middle"]] == before + [content.strip()]
+
     ok, _ = readback.confirmed(lambda: locate(client, block_id), matches)
     if not ok:
         raise fail("ACCOUNTABILITY_VERIFY_FAILED")

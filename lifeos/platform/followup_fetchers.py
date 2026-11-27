@@ -6,6 +6,7 @@ setting is a fixed code. Rows keep only id, link, time and a title or subject; M
 visible. TGP mail is dropped. Outlook credentials are labels for rotating tokens in the v7_outlook_token store; Jira's
 token can write, so its client is GET-only in code and a test pins that.
 """
+
 from datetime import datetime, timedelta, timezone
 import functools
 import json
@@ -34,17 +35,51 @@ OUTLOOK_LABELS = {1: "personal", 2: "work"}
 STORED_TOKENS = {"outlook"}
 NOT_USED = {("outlook", "bytalos"), ("todoist", "bytalos")}
 TGP_ADDRESS = re.compile(r"(?<![a-z0-9-])(?:[a-z0-9-]+\.)*tgpinternational\.com(?![a-z0-9-])", re.I)
-GMAIL_HEADERS = ("Subject", "From", "To", "Cc", "Reply-To", "Sender", "Return-Path", "Resent-From", "Resent-To", "Delivered-To", "X-Forwarded-For", "X-Forwarded-To", "X-Original-From",
-                 "X-Original-To", "X-Original-Sender")
-OUTLOOK_TRACE = {"return-path", "resent-from", "resent-to", "delivered-to", "x-forwarded-for", "x-forwarded-to", "x-original-from", "x-original-to", "x-original-sender", "reply-to", "sender"}
-OUTLOOK_FIELDS = "id,receivedDateTime,subject,webLink,from,sender,toRecipients,ccRecipients,replyTo,internetMessageHeaders"
+GMAIL_HEADERS = (
+    "Subject",
+    "From",
+    "To",
+    "Cc",
+    "Reply-To",
+    "Sender",
+    "Return-Path",
+    "Resent-From",
+    "Resent-To",
+    "Delivered-To",
+    "X-Forwarded-For",
+    "X-Forwarded-To",
+    "X-Original-From",
+    "X-Original-To",
+    "X-Original-Sender",
+)
+OUTLOOK_TRACE = {
+    "return-path",
+    "resent-from",
+    "resent-to",
+    "delivered-to",
+    "x-forwarded-for",
+    "x-forwarded-to",
+    "x-original-from",
+    "x-original-to",
+    "x-original-sender",
+    "reply-to",
+    "sender",
+}
+OUTLOOK_FIELDS = (
+    "id,receivedDateTime,subject,webLink,from,sender,toRecipients,ccRecipients,replyTo,internetMessageHeaders"
+)
 
 
 def _name(source, tenant, kind):
     return f"FOLLOWUP_{source}_{tenant.upper()}_{kind}"
 
 
-EXISTING = {"jira": "JIRA_API_TOKEN", "notion": "NOTION_API_TOKEN", "interview_os": "NOTION_API_TOKEN", "calendar": "GCAL_SERVICE_ACCOUNT_JSON"}
+EXISTING = {
+    "jira": "JIRA_API_TOKEN",
+    "notion": "NOTION_API_TOKEN",
+    "interview_os": "NOTION_API_TOKEN",
+    "calendar": "GCAL_SERVICE_ACCOUNT_JSON",
+}
 EXISTING_GMAIL = {"personal": "GMAIL_OAUTH_REFRESH_TOKEN"}
 
 
@@ -55,27 +90,47 @@ def _credential_name(source, tenant, slot):
         return EXISTING_GMAIL[tenant]
     if source == "outlook":
         return OUTLOOK_LABELS[slot]
-    return {"gmail": f"FOLLOWUP_GMAIL_{tenant.upper()}_READONLY_REFRESH", "todoist": f"FOLLOWUP_TODOIST_{tenant.upper()}_TOKEN"}[source]
+    return {
+        "gmail": f"FOLLOWUP_GMAIL_{tenant.upper()}_READONLY_REFRESH",
+        "todoist": f"FOLLOWUP_TODOIST_{tenant.upper()}_TOKEN",
+    }[source]
 
 
-CREDENTIAL_NAMES = {(source, tenant, slot): _credential_name(source, tenant, slot) for source in SOURCES for tenant in TENANTS if (source, tenant) not in NOT_USED
-                    for slot in range(1, SLOTS.get((source, tenant), 1) + 1)}
+CREDENTIAL_NAMES = {
+    (source, tenant, slot): _credential_name(source, tenant, slot)
+    for source in SOURCES
+    for tenant in TENANTS
+    if (source, tenant) not in NOT_USED
+    for slot in range(1, SLOTS.get((source, tenant), 1) + 1)
+}
 _SHARED = {name for name in CREDENTIAL_NAMES.values() if list(CREDENTIAL_NAMES.values()).count(name) > 1}
-GRANT_REFS = {key: (f"{name}:{key[0]}.{key[1]}" if name in _SHARED else name) for key, name in CREDENTIAL_NAMES.items()}  # what a grant names; a secret shared by several grants carries source.workspace
+GRANT_REFS = {
+    key: (f"{name}:{key[0]}.{key[1]}" if name in _SHARED else name) for key, name in CREDENTIAL_NAMES.items()
+}  # what a grant names; a secret shared by several grants carries source.workspace
 NEW_NAMES = sorted({name for name in CREDENTIAL_NAMES.values() if name.startswith("FOLLOWUP_")})
-REUSED_NAMES = sorted({name for key, name in CREDENTIAL_NAMES.items() if key[0] not in STORED_TOKENS and not name.startswith("FOLLOWUP_")})
+REUSED_NAMES = sorted(
+    {name for key, name in CREDENTIAL_NAMES.items() if key[0] not in STORED_TOKENS and not name.startswith("FOLLOWUP_")}
+)
 ACCOUNT_SOURCE = {"calendar": "CALENDAR", "interview_os": "INTERVIEW"}
 
 
 def _account_name(key):
     source, tenant, slot = key
-    return f"FOLLOWUP_ACCOUNT_{ACCOUNT_SOURCE.get(source, source.upper())}_{tenant.upper()}" + (f"_{slot}" if (source, tenant) in SLOTS else "")
+    return f"FOLLOWUP_ACCOUNT_{ACCOUNT_SOURCE.get(source, source.upper())}_{tenant.upper()}" + (
+        f"_{slot}" if (source, tenant) in SLOTS else ""
+    )
 
 
 ACCOUNT_NAMES = {key: _account_name(key) for key in CREDENTIAL_NAMES}
 CONFIG_NAMES = {  # settings that are identifiers, not secrets ({T} is PERSONAL or BYTALOS)
-    "jira": ("JIRA_BASE_URL", "JIRA_EMAIL"), "calendar": ("FOLLOWUP_GCAL_{T}_CALENDAR_ID",), "gmail": GMAIL_APP, "outlook": (OUTLOOK_APP,),
-    "todoist": (), "notion": (), "interview_os": ()}
+    "jira": ("JIRA_BASE_URL", "JIRA_EMAIL"),
+    "calendar": ("FOLLOWUP_GCAL_{T}_CALENDAR_ID",),
+    "gmail": GMAIL_APP,
+    "outlook": (OUTLOOK_APP,),
+    "todoist": (),
+    "notion": (),
+    "interview_os": (),
+}
 _BY_REF = {ref: key for key, ref in GRANT_REFS.items()}
 
 
@@ -84,7 +139,13 @@ class FetchError(RuntimeError):
 
 
 def missing(environ):
-    return sorted({name for key, name in CREDENTIAL_NAMES.items() if key[0] not in STORED_TOKENS and not (environ.get(name) or "").strip()})
+    return sorted(
+        {
+            name
+            for key, name in CREDENTIAL_NAMES.items()
+            if key[0] not in STORED_TOKENS and not (environ.get(name) or "").strip()
+        }
+    )
 
 
 def _refuse_write(*_args, **_kwargs):
@@ -119,7 +180,9 @@ class ReadOnlyGmail(gmail.Gmail):
     def message_metadata(self, message_id):
         """One message's time and the headers the reader needs (subject, routing headers for the TGP filter); never the body."""
         query = "&".join("metadataHeaders=" + urllib.parse.quote(name) for name in GMAIL_HEADERS)
-        return self._request("GET", f"{gmail.API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=metadata&{query}")
+        return self._request(
+            "GET", f"{gmail.API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=metadata&{query}"
+        )
 
 
 class ReadOnlyOutlook(outlook.Outlook):
@@ -131,7 +194,13 @@ class ReadOnlyOutlook(outlook.Outlook):
 
 class ReadOnlyNotion(notion_client.Client):
     def call(self, method, path, body=None):
-        if not (method == "GET" or (method == "POST" and (path == "/search" or (path.startswith("/data_sources/") and path.endswith("/query"))))):
+        if not (
+            method == "GET"
+            or (
+                method == "POST"
+                and (path == "/search" or (path.startswith("/data_sources/") and path.endswith("/query")))
+            )
+        ):
             raise FetchError("FOLLOWUP_READ_ONLY")
         return super().call(method, path, body)
 
@@ -142,12 +211,14 @@ class DbTokens:
     """The private refresh-token store: load by label, save a rotated token. The write-back is the only write here."""
 
     def load(self, label):
-        from lifeos.platform import db, outlook_tokens as store              # noqa: PLC0415
+        from lifeos.platform import db, outlook_tokens as store  # noqa: PLC0415
+
         with db.connect() as connection:
             return store.load(connection, label)
 
     def save(self, label, token):
-        from lifeos.platform import db, outlook_tokens as store              # noqa: PLC0415
+        from lifeos.platform import db, outlook_tokens as store  # noqa: PLC0415
+
         with db.connect() as connection:
             store.save(connection, label, token)
 
@@ -186,14 +257,18 @@ def _own_id(client):
     """The id of the bot behind this Notion token (one GET), or None when unreadable."""
     try:
         me = client.call("GET", "/users/me")
-    except Exception:                                                                   # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
     ident = me.get("id") if isinstance(me, dict) else None
     return ident if isinstance(ident, str) and ident else None
 
 
 def _utc(text):
-    parsed = datetime.fromisoformat(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", text.replace("Z", "+00:00"))) if isinstance(text, str) else None
+    parsed = (
+        datetime.fromisoformat(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", text.replace("Z", "+00:00")))
+        if isinstance(text, str)
+        else None
+    )
     return parsed.astimezone(timezone.utc).isoformat() if parsed and parsed.tzinfo else None
 
 
@@ -208,7 +283,15 @@ def _read_jira(make, environ, tenant, secret, since, now):
     jql = f"project in ({', '.join(keys)}) AND (assignee = currentUser() OR reporter = currentUser()) AND updated >= -{minutes}m ORDER BY updated ASC"
     rows, token = [], None
     for _ in range(MAX_PAGES):
-        page = client.get("/rest/api/3/search/jql", {"jql": jql, "fields": "summary,updated,duedate", "maxResults": 100, **({"nextPageToken": token} if token else {})})
+        page = client.get(
+            "/rest/api/3/search/jql",
+            {
+                "jql": jql,
+                "fields": "summary,updated,duedate",
+                "maxResults": 100,
+                **({"nextPageToken": token} if token else {}),
+            },
+        )
         if not isinstance(page, dict) or not isinstance(page.get("issues"), list):
             raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
         for issue in page["issues"]:
@@ -216,7 +299,16 @@ def _read_jira(make, environ, tenant, secret, since, now):
             if not isinstance(key, str) or key.split("-")[0] not in keys:
                 continue
             fields = issue.get("fields") or {}
-            rows.append({"key": key, "fields": {"updated": _utc(fields.get("updated")), "summary": fields.get("summary"), "duedate": fields.get("duedate")}})
+            rows.append(
+                {
+                    "key": key,
+                    "fields": {
+                        "updated": _utc(fields.get("updated")),
+                        "summary": fields.get("summary"),
+                        "duedate": fields.get("duedate"),
+                    },
+                }
+            )
         token = page.get("nextPageToken")
         if len(rows) > MAX_ROWS or page.get("isLast", not token):
             return rows
@@ -227,8 +319,18 @@ def _read_jira(make, environ, tenant, secret, since, now):
 
 def _read_calendar(make, environ, tenant, secret, since, now):
     client = make(secret, _config(environ, f"FOLLOWUP_GCAL_{tenant.upper()}_CALENDAR_ID"))
-    events = client.list_events((now - timedelta(days=LOOKBACK_DAYS)).isoformat(), (now + timedelta(days=CALENDAR_AHEAD_DAYS)).isoformat())
-    return [{"id": e.get("id"), "htmlLink": e.get("htmlLink"), "updated": _utc(e.get("updated")), "summary": e.get("summary")} for e in events]
+    events = client.list_events(
+        (now - timedelta(days=LOOKBACK_DAYS)).isoformat(), (now + timedelta(days=CALENDAR_AHEAD_DAYS)).isoformat()
+    )
+    return [
+        {
+            "id": e.get("id"),
+            "htmlLink": e.get("htmlLink"),
+            "updated": _utc(e.get("updated")),
+            "summary": e.get("summary"),
+        }
+        for e in events
+    ]
 
 
 def _bare_token(secret):
@@ -258,7 +360,14 @@ def _read_gmail(make, environ, tenant, secret, since, now):
             at = datetime.fromtimestamp(int(reply["internalDate"]) / 1000, timezone.utc).isoformat()
         except (KeyError, TypeError, ValueError, OverflowError, OSError):
             at = None
-        rows.append({"id": str(reply.get("id") or message_id), "link": f"https://mail.google.com/mail/u/0/#all/{urllib.parse.quote(str(message_id), safe='')}", "at": at, "subject": subject})
+        rows.append(
+            {
+                "id": str(reply.get("id") or message_id),
+                "link": f"https://mail.google.com/mail/u/0/#all/{urllib.parse.quote(str(message_id), safe='')}",
+                "at": at,
+                "subject": subject,
+            }
+        )
     return rows
 
 
@@ -273,27 +382,59 @@ def _addresses(*people):
 
 
 def _outlook_tgp(message):
-    traced = [h.get("value") for h in message.get("internetMessageHeaders") or [] if isinstance(h, dict) and str(h.get("name")).lower() in OUTLOOK_TRACE]
-    return _is_tgp(*_addresses(message.get("from"), message.get("sender"), message.get("toRecipients"), message.get("ccRecipients"), message.get("replyTo")), *traced)
+    traced = [
+        h.get("value")
+        for h in message.get("internetMessageHeaders") or []
+        if isinstance(h, dict) and str(h.get("name")).lower() in OUTLOOK_TRACE
+    ]
+    return _is_tgp(
+        *_addresses(
+            message.get("from"),
+            message.get("sender"),
+            message.get("toRecipients"),
+            message.get("ccRecipients"),
+            message.get("replyTo"),
+        ),
+        *traced,
+    )
 
 
 def _read_outlook(make, environ, tenant, secret, since, now, save=None):
     client = make(_config(environ, OUTLOOK_APP), secret, save)
     start = _start(since, now).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     messages = client.messages(folder="inbox", since=start, limit=MAX_ROWS + 1, fields=OUTLOOK_FIELDS)
-    return [{"id": m.get("id"), "link": m.get("webLink"), "at": _utc(m.get("receivedDateTime")), "subject": m.get("subject")} for m in messages if not _outlook_tgp(m)]
+    return [
+        {
+            "id": m.get("id"),
+            "link": m.get("webLink"),
+            "at": _utc(m.get("receivedDateTime")),
+            "subject": m.get("subject"),
+        }
+        for m in messages
+        if not _outlook_tgp(m)
+    ]
 
 
 def _read_todoist(make, environ, tenant, secret, since, now):
     tasks = make(secret).tasks(MAX_ROWS + 1)
-    return [{"id": t.get("id"), "url": f"https://app.todoist.com/app/task/{urllib.parse.quote(str(t.get('id')), safe='')}", "updated_at": _utc(t.get("updated_at") or t.get("added_at")),
-             "content": t.get("content"), "due": (t.get("due") or {}).get("date") if isinstance(t.get("due"), dict) else None} for t in tasks]
+    return [
+        {
+            "id": t.get("id"),
+            "url": f"https://app.todoist.com/app/task/{urllib.parse.quote(str(t.get('id')), safe='')}",
+            "updated_at": _utc(t.get("updated_at") or t.get("added_at")),
+            "content": t.get("content"),
+            "due": (t.get("due") or {}).get("date") if isinstance(t.get("due"), dict) else None,
+        }
+        for t in tasks
+    ]
 
 
 def _title(page):
     for prop in (page.get("properties") or {}).values():
         if isinstance(prop, dict) and prop.get("type") == "title":
-            return "".join(str(part.get("plain_text") or "") for part in prop.get("title") or [] if isinstance(part, dict))
+            return "".join(
+                str(part.get("plain_text") or "") for part in prop.get("title") or [] if isinstance(part, dict)
+            )
     return ""
 
 
@@ -301,7 +442,11 @@ def _read_notion_like(time_key, title_key):
     def read(make, environ, tenant, secret, since, now):
         client, start = make(secret), _start(since, now, NOTION_LOOKBACK_DAYS)
         own = _own_id(client)
-        body = {"page_size": 100, "filter": {"property": "object", "value": "page"}, "sort": {"direction": "descending", "timestamp": "last_edited_time"}}
+        body = {
+            "page_size": 100,
+            "filter": {"property": "object", "value": "page"},
+            "sort": {"direction": "descending", "timestamp": "last_edited_time"},
+        }
         rows, cursor = [], None
         for _ in range(MAX_PAGES):
             reply = client.call("POST", "/search", {**body, **({"start_cursor": cursor} if cursor else {})})
@@ -324,12 +469,19 @@ def _read_notion_like(time_key, title_key):
             if not isinstance(cursor, str) or not cursor:
                 raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
         raise FetchError("FOLLOWUP_LISTING_INCOMPLETE")
+
     return read
 
 
-READ = {"jira": _read_jira, "calendar": _read_calendar, "gmail": _read_gmail, "outlook": _read_outlook, "todoist": _read_todoist,
-        "notion": _read_notion_like("last_edited_time", "title"),
-        "interview_os": _read_notion_like("at", "title")}
+READ = {
+    "jira": _read_jira,
+    "calendar": _read_calendar,
+    "gmail": _read_gmail,
+    "outlook": _read_outlook,
+    "todoist": _read_todoist,
+    "notion": _read_notion_like("last_edited_time", "title"),
+    "interview_os": _read_notion_like("at", "title"),
+}
 
 
 def build_fetchers(environ, factories=None, clock=None, token_store=None):
@@ -351,13 +503,26 @@ def build_fetchers(environ, factories=None, clock=None, token_store=None):
                 secret = (environ.get(CREDENTIAL_NAMES[key]) or "").strip()
             if not secret:
                 raise FetchError("FOLLOWUP_CREDENTIAL_MISSING")
-            rows = read(make[source], environ, key[1], secret, since, now())[:MAX_ROWS + 1]
+            rows = read(make[source], environ, key[1], secret, since, now())[: MAX_ROWS + 1]
             if readers.SECRET.search(repr(rows)):
                 raise FetchError("FOLLOWUP_SECRET_IN_REPLY")
             return rows
+
         return fetch
 
     return {source: wrap(source) for source in SOURCES}
 
 
-__all__ = ["SOURCES", "CREDENTIAL_NAMES", "GRANT_REFS", "NEW_NAMES", "REUSED_NAMES", "ACCOUNT_NAMES", "CONFIG_NAMES", "JIRA_PROJECTS", "FetchError", "build_fetchers", "missing"]
+__all__ = [
+    "SOURCES",
+    "CREDENTIAL_NAMES",
+    "GRANT_REFS",
+    "NEW_NAMES",
+    "REUSED_NAMES",
+    "ACCOUNT_NAMES",
+    "CONFIG_NAMES",
+    "JIRA_PROJECTS",
+    "FetchError",
+    "build_fetchers",
+    "missing",
+]

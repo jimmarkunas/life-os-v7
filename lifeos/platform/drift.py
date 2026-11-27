@@ -6,16 +6,25 @@ UNIT_STATE_FROM_ENABLED). An unreadable piece is UNKNOWN, never DEPLOYED; a diff
 running is DRIFT. The ticker calls `incident_signal` once per run to open or close one INFO issue (`deploy_drift`).
 Pure logic: every read is passed in.
 """
+
 import hashlib
 from typing import NamedTuple
 
 DEPLOYED, DRIFT, UNKNOWN = "DEPLOYED", "DRIFT", "UNKNOWN"
-ACTIVE, ENABLED = "active", "enabled"  # systemd said "active", or (in the ticker sandbox, which cannot reach systemd) the enablement link exists
+ACTIVE, ENABLED = (
+    "active",
+    "enabled",
+)  # systemd said "active", or (in the ticker sandbox, which cannot reach systemd) the enablement link exists
 UNIT_STATE_FROM_ENABLED = "UNIT_STATE_FROM_ENABLED"
 MISSING = object()  # the read said "no such file"; an unreadable file is None
 
 
-EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE, EXPECTED_UNREADABLE = ("EXPECTED_NETWORK", "INSTALLED_UNREADABLE", "UNIT_UNREADABLE", "EXPECTED_UNREADABLE")
+EXPECTED_NETWORK, INSTALLED_UNREADABLE, UNIT_UNREADABLE, EXPECTED_UNREADABLE = (
+    "EXPECTED_NETWORK",
+    "INSTALLED_UNREADABLE",
+    "UNIT_UNREADABLE",
+    "EXPECTED_UNREADABLE",
+)
 
 
 class Unreadable(Exception):
@@ -35,15 +44,58 @@ class Surface(NamedTuple):
     unit: str
 
 
-_TICKER_MODULES = ("gate.py", "alerts.py", "alert_registry.py", "alert_settings.py", "alert_store.py", "redact.py", "drift.py", "health.py", "release_proof.py")
+_TICKER_MODULES = (
+    "gate.py",
+    "alerts.py",
+    "alert_registry.py",
+    "alert_settings.py",
+    "alert_store.py",
+    "redact.py",
+    "drift.py",
+    "health.py",
+    "release_proof.py",
+)
 SURFACES = (
     Surface("ticker", "lifeos/edge/ticker/ticker.py", "/opt/lifeos-ticker/ticker.py", "lifeos-ticker-watch.timer"),
-    *(Surface("ticker/" + m, "lifeos/platform/" + m, "/opt/lifeos-ticker/lifeos/platform/" + m, "lifeos-ticker-watch.timer") for m in _TICKER_MODULES),
-    Surface("offsite-backup", "lifeos/edge/backup/offsite_backup.py", "/opt/lifeos-offsite/offsite_backup.py", "lifeos-offsite-backup.timer"),
-    Surface("ticker/install-ticker.sh", "lifeos/edge/ticker/oracle/install-ticker.sh", "/opt/lifeos-ticker/install-ticker.sh", "lifeos-ticker-watch.timer"),
-    Surface("offsite-installer", "lifeos/edge/backup/oracle/install-offsite.sh", "/opt/lifeos-offsite/install-offsite.sh", "lifeos-offsite-backup.timer"),
-    Surface("close/close_release.py", "lifeos/edge/oracle/close_release.py", "/opt/lifeos-close/bin/close_release.py", "lifeos-close-release.timer"),
-    Surface("close/install-close.sh", "lifeos/edge/oracle/install-close.sh", "/opt/lifeos-close/bin/install-close.sh", "lifeos-close-release.timer"),
+    *(
+        Surface(
+            "ticker/" + m,
+            "lifeos/platform/" + m,
+            "/opt/lifeos-ticker/lifeos/platform/" + m,
+            "lifeos-ticker-watch.timer",
+        )
+        for m in _TICKER_MODULES
+    ),
+    Surface(
+        "offsite-backup",
+        "lifeos/edge/backup/offsite_backup.py",
+        "/opt/lifeos-offsite/offsite_backup.py",
+        "lifeos-offsite-backup.timer",
+    ),
+    Surface(
+        "ticker/install-ticker.sh",
+        "lifeos/edge/ticker/oracle/install-ticker.sh",
+        "/opt/lifeos-ticker/install-ticker.sh",
+        "lifeos-ticker-watch.timer",
+    ),
+    Surface(
+        "offsite-installer",
+        "lifeos/edge/backup/oracle/install-offsite.sh",
+        "/opt/lifeos-offsite/install-offsite.sh",
+        "lifeos-offsite-backup.timer",
+    ),
+    Surface(
+        "close/close_release.py",
+        "lifeos/edge/oracle/close_release.py",
+        "/opt/lifeos-close/bin/close_release.py",
+        "lifeos-close-release.timer",
+    ),
+    Surface(
+        "close/install-close.sh",
+        "lifeos/edge/oracle/install-close.sh",
+        "/opt/lifeos-close/bin/install-close.sh",
+        "lifeos-close-release.timer",
+    ),
 )
 
 # Installers that are deliberately NOT surfaces; a new install-*.sh must be a surface above or be listed here.
@@ -76,26 +128,48 @@ def classify(expected, installed, unit_state):
 def check(expected_for, read, unit_state_for, surfaces=SURFACES):
     """-> [{"surface", "state", "installed_hash", "unit", "unit_state", "why"}], one per surface; a reader that raises reads as
     unknown. `why` is "" when decided, else a fixed code naming the unreadable piece."""
+
     def safe(why, call, *args):
         try:
             return call(*args)
         except Unreadable as error:
             why.append(error.code)
             return None
-        except Exception as error:                                             # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             why.append("READER_FAILED:" + type(error).__name__)
             return None
+
     rows = []
     for s in surfaces:
         why = []
-        expected, installed, unit_state = safe(why, expected_for, s.repo_path), safe(why, read, s.installed), safe(why, unit_state_for, s.unit)
+        expected, installed, unit_state = (
+            safe(why, expected_for, s.repo_path),
+            safe(why, read, s.installed),
+            safe(why, unit_state_for, s.unit),
+        )
         state = classify(expected, installed, unit_state)
         if state == DEPLOYED and unit_state == ENABLED:
             why.append(UNIT_STATE_FROM_ENABLED)
         elif state == UNKNOWN and not why:
-            why.append(EXPECTED_UNREADABLE if expected is None else INSTALLED_UNREADABLE if installed is None else UNIT_UNREADABLE)
-        rows.append({"surface": s.name, "state": state, "unit": s.unit, "unit_state": unit_state or UNKNOWN, "why": why[0] if why and (state == UNKNOWN or why[0] == UNIT_STATE_FROM_ENABLED) else "",
-                     "installed_hash": blob_sha(installed)[:12] if isinstance(installed, bytes) else ("missing" if installed is MISSING else UNKNOWN)})
+            why.append(
+                EXPECTED_UNREADABLE
+                if expected is None
+                else INSTALLED_UNREADABLE
+                if installed is None
+                else UNIT_UNREADABLE
+            )
+        rows.append(
+            {
+                "surface": s.name,
+                "state": state,
+                "unit": s.unit,
+                "unit_state": unit_state or UNKNOWN,
+                "why": why[0] if why and (state == UNKNOWN or why[0] == UNIT_STATE_FROM_ENABLED) else "",
+                "installed_hash": blob_sha(installed)[:12]
+                if isinstance(installed, bytes)
+                else ("missing" if installed is MISSING else UNKNOWN),
+            }
+        )
     return rows
 
 
@@ -119,9 +193,19 @@ def explain(rows):
     for r in rows:
         if r["state"] == UNKNOWN:
             groups.setdefault(r.get("why") or UNKNOWN, []).append(r["surface"])
-    undecided = [f"{code}:{len(names)}({','.join(names[:3])}{',...' if len(names) > 3 else ''})" for code, names in sorted(groups.items())]
+    undecided = [
+        f"{code}:{len(names)}({','.join(names[:3])}{',...' if len(names) > 3 else ''})"
+        for code, names in sorted(groups.items())
+    ]
     signal = incident_signal(rows)
     enabled_only = sum(1 for r in rows if r.get("why") == UNIT_STATE_FROM_ENABLED)
-    return (f"drift: deployed={counts[DEPLOYED]} drift={counts[DRIFT]} unknown={counts[UNKNOWN]} signal={'open' if signal else 'recovered' if signal is False else 'unchanged'}"
-            + (" drifted=" + ",".join(drifted) if drifted else "") + (" undecided=" + ";".join(undecided) if undecided else "")
-            + (f" {UNIT_STATE_FROM_ENABLED}={enabled_only} (enabled, not proof the unit is running)" if enabled_only else ""))
+    return (
+        f"drift: deployed={counts[DEPLOYED]} drift={counts[DRIFT]} unknown={counts[UNKNOWN]} signal={'open' if signal else 'recovered' if signal is False else 'unchanged'}"
+        + (" drifted=" + ",".join(drifted) if drifted else "")
+        + (" undecided=" + ";".join(undecided) if undecided else "")
+        + (
+            f" {UNIT_STATE_FROM_ENABLED}={enabled_only} (enabled, not proof the unit is running)"
+            if enabled_only
+            else ""
+        )
+    )

@@ -3,6 +3,7 @@
 Ownership is the marker, never position: a callout (or older toggle) carrying a marker and a hash of the lead set.
 Nothing else on the page is read for change or written. Reasons come from fixed templates; no outreach text is
 drafted."""
+
 import hashlib
 import re
 import time
@@ -29,7 +30,10 @@ STATUS = ("Contacted", "Referral", "Closed")
 # carried until every card is written, so a cut-short block never reads as the wanted one
 PENDING = "building"
 PROFILE = "LinkedIn profile ↗"
-ICON = {"type": "external", "external": {"url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"}}
+ICON = {
+    "type": "external",
+    "external": {"url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"},
+}
 
 
 class SurfaceError(NotionError):
@@ -37,11 +41,19 @@ class SurfaceError(NotionError):
 
 
 def evidence_hash(lead, company_key, title, verified):
-    return hashlib.sha256(f"{lead['person_id']}|{lead['tier']}|{company_key}|{title or ''}|{verified}".encode()).hexdigest()[:12]
+    return hashlib.sha256(
+        f"{lead['person_id']}|{lead['tier']}|{company_key}|{title or ''}|{verified}".encode()
+    ).hexdigest()[:12]
 
 
 def set_hash(leads):
-    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + "|ui5").encode()).hexdigest()[:12] if leads else ""
+    return (
+        hashlib.sha256(
+            ("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + "|ui5").encode()
+        ).hexdigest()[:12]
+        if leads
+        else ""
+    )
 
 
 def _day(moment):
@@ -65,7 +77,11 @@ def _para(runs):
 
 
 def _todo(ref, text):
-    return {"object": "block", "type": "to_do", "to_do": {"rich_text": [hidden.run(ref)] + rich_text(text), "checked": False}}
+    return {
+        "object": "block",
+        "type": "to_do",
+        "to_do": {"rich_text": [hidden.run(ref)] + rich_text(text), "checked": False},
+    }
 
 
 def _bold(text):
@@ -87,7 +103,16 @@ def build_block(leads):
         if lead["tier"] == match.POSSIBLE:
             kids.append(_todo(f"Same company {ref}", SAME_TEXT))
     title = [hidden.run(f"{MARK2} {set_hash(leads)}")] + _bold(TITLE)
-    return {"object": "block", "type": "callout", "callout": {"rich_text": title, "icon": {"type": "emoji", "emoji": "🔗"}, "color": "gray_background", "children": kids}}
+    return {
+        "object": "block",
+        "type": "callout",
+        "callout": {
+            "rich_text": title,
+            "icon": {"type": "emoji", "emoji": "🔗"},
+            "color": "gray_background",
+            "children": kids,
+        },
+    }
 
 
 def _employee(lead):
@@ -104,39 +129,80 @@ def card_columns(lead, carried=None):
     """One contact card's column_list. Its "Referral status" ticks go in by a second request (two-level limit);
     `carried` ({kind: checked}) keeps existing ticks across a rewrite."""
     carried = carried or {}
-    profile = ([{"type": "text", "text": {"content": PROFILE, "link": {"url": BASE_URL + lead["url_key"]}}}] if lead.get("url_key") else rich_text("Profile unavailable"))
-    left = [_para(_bold(lead["name"])), _para(rich_text(_employee(lead))), _para(profile + rich_text(" · " + ("Contacted" if carried.get("Contacted") else "Not contacted")))]
+    profile = (
+        [{"type": "text", "text": {"content": PROFILE, "link": {"url": BASE_URL + lead["url_key"]}}}]
+        if lead.get("url_key")
+        else rich_text("Profile unavailable")
+    )
+    left = [
+        _para(_bold(lead["name"])),
+        _para(rich_text(_employee(lead))),
+        _para(profile + rich_text(" · " + ("Contacted" if carried.get("Contacted") else "Not contacted"))),
+    ]
     right = [{"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text("Referral status")}}]
-    return {"object": "block", "type": "column_list", "column_list": {"children": [
-        {"object": "block", "type": "column", "column": {"width_ratio": 0.65, "children": left}},
-        {"object": "block", "type": "column", "column": {"width_ratio": 0.35, "children": right}}]}}
+    return {
+        "object": "block",
+        "type": "column_list",
+        "column_list": {
+            "children": [
+                {"object": "block", "type": "column", "column": {"width_ratio": 0.65, "children": left}},
+                {"object": "block", "type": "column", "column": {"width_ratio": 0.35, "children": right}},
+            ]
+        },
+    }
 
 
 def status_ticks(lead, carried=None):
     carried = carried or {}
     ref = f"{lead['person_id']}:{lead['evidence_hash']}"
     kinds = STATUS + ((SAME_TEXT,) if lead["tier"] == match.POSSIBLE else ())
-    return [{"object": "block", "type": "to_do", "to_do": {"rich_text": [hidden.run(f"{kind} {ref}")] + rich_text(kind), "checked": bool(carried.get(kind))}} for kind in kinds]
+    return [
+        {
+            "object": "block",
+            "type": "to_do",
+            "to_do": {"rich_text": [hidden.run(f"{kind} {ref}")] + rich_text(kind), "checked": bool(carried.get(kind))},
+        }
+        for kind in kinds
+    ]
 
 
 def write_cards(client, parent_id, leads, want, carried=None):
     """Write the block into parent_id; the outer title carries the PENDING hash until the last card is in -> outer
     block id."""
     carried = carried or {}
-    shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "icon": ICON, "children": [
-        {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": ICON}} for _ in leads]}}
+    shell = {
+        "object": "block",
+        "type": "callout",
+        "callout": {
+            "rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE),
+            "icon": ICON,
+            "children": [
+                {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": ICON}} for _ in leads
+            ],
+        },
+    }
     outer_id = _append_last(client, parent_id, shell)
     cards = [b for b in children(client, outer_id) if b.get("type") == "callout"]
     if len(cards) != len(leads):
         raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
     for card, lead in zip(cards, leads):
         mine = carried.get(lead["person_id"]) or {}
-        columns = [b for b in children(client, _append_last(client, card["id"], card_columns(lead, mine))) if b.get("type") == "column"]
-        toggles = [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"] if len(columns) == 2 else []
+        columns = [
+            b
+            for b in children(client, _append_last(client, card["id"], card_columns(lead, mine)))
+            if b.get("type") == "column"
+        ]
+        toggles = (
+            [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"] if len(columns) == 2 else []
+        )
         if len(toggles) != 1:
             raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
         _write(client, f"/blocks/{quote(toggles[0]['id'], safe='')}/children", {"children": status_ticks(lead, mine)})
-    client.call("PATCH", f"/blocks/{quote(outer_id, safe='')}", {"callout": {"rich_text": [hidden.run(f"{MARK2} {want}")] + _bold(TITLE)}})
+    client.call(
+        "PATCH",
+        f"/blocks/{quote(outer_id, safe='')}",
+        {"callout": {"rich_text": [hidden.run(f"{MARK2} {want}")] + _bold(TITLE)}},
+    )
     return outer_id
 
 
@@ -179,17 +245,33 @@ def _cards(client, inner, names=True):
         ticks = []
         for toggle in [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"]:
             ticks += [t for t in (_tick(c) for c in children(client, toggle["id"])) if t]
-        out.append({"name": lines[0].strip() if lines else "", "reason": lines[1].strip() if len(lines) > 1 else "", "ticks": ticks})
+        out.append(
+            {
+                "name": lines[0].strip() if lines else "",
+                "reason": lines[1].strip() if len(lines) > 1 else "",
+                "ticks": ticks,
+            }
+        )
     return out
 
 
 def _plain(block):
     inner = block.get(block.get("type")) or {}
-    return "".join((p.get("plain_text") or (p.get("text") or {}).get("content") or "") for p in inner.get("rich_text") or [] if isinstance(p, dict))
+    return "".join(
+        (p.get("plain_text") or (p.get("text") or {}).get("content") or "")
+        for p in inner.get("rich_text") or []
+        if isinstance(p, dict)
+    )
 
 
 def children(client, block_id):
-    return [c for page in notion_children(client, block_id, SurfaceError, incomplete="NETWORK_SURFACE_PAGE_INCOMPLETE", limit=50) for c in page["results"]]
+    return [
+        c
+        for page in notion_children(
+            client, block_id, SurfaceError, incomplete="NETWORK_SURFACE_PAGE_INCOMPLETE", limit=50
+        )
+        for c in page["results"]
+    ]
 
 
 def _tick(child):
@@ -209,17 +291,20 @@ def _owned_head(client, block):
     if kind == "callout":
         for ref in hidden.refs(block):
             if ref.startswith(MARK2 + " "):
-                return ref[len(MARK2):].strip(), children(client, block["id"]) if block.get("has_children", True) else []
+                return ref[len(MARK2) :].strip(), children(client, block["id"]) if block.get(
+                    "has_children", True
+                ) else []
         return None
     if kind == "toggle" and block.get("has_children", True):
         inner = children(client, block["id"])
         if inner and inner[0].get("type") == "paragraph" and _plain(inner[0]).startswith(MARK):
-            return _plain(inner[0])[len(MARK):].strip(), inner[1:]
+            return _plain(inner[0])[len(MARK) :].strip(), inner[1:]
     return None
 
 
 class Top(list):
     """The page's top-level blocks, plus `right`: the right column's id on a two-column Ledger page, else None."""
+
     right = None
 
 
@@ -249,7 +334,15 @@ def read_page(client, page_id, deep=True, key=None):
             head = _owned_head(client, block)
             if head:
                 cards = [c for c in head[1] if c.get("type") == "callout"]
-                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t] + ([t for card in _cards(client, cards, names=False) for t in card["ticks"]] if deep else [])})
+                owned.append(
+                    {
+                        "id": block["id"],
+                        "parent": parent,
+                        "hash": head[0],
+                        "ticks": [t for t in (_tick(c) for c in head[1]) if t]
+                        + ([t for card in _cards(client, cards, names=False) for t in card["ticks"]] if deep else []),
+                    }
+                )
     return top, owned
 
 
@@ -270,7 +363,9 @@ def leads_on_page(client, page_id, limit=10):
             if not card["name"] or not ids:
                 raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
             if not any(t[0] == "Closed" and t[3] for t in card["ticks"]):
-                found.append({"person_id": ids[0][0], "evidence_hash": ids[0][1], "name": card["name"], "reason": card["reason"]})
+                found.append(
+                    {"person_id": ids[0][0], "evidence_hash": ids[0][1], "name": card["name"], "reason": card["reason"]}
+                )
         return found[:limit]
     leads = []
     for child in inner or []:
@@ -287,7 +382,11 @@ def leads_on_page(client, page_id, limit=10):
             leads[-1].update(person_id=tick[1], evidence_hash=tick[2], dismissed=tick[3])
     if any(lead["person_id"] is None or not lead["name"] for lead in leads):
         raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
-    return [{k: lead[k] for k in ("person_id", "evidence_hash", "name", "reason")} for lead in leads if not lead["dismissed"]][:limit]
+    return [
+        {k: lead[k] for k in ("person_id", "evidence_hash", "name", "reason")}
+        for lead in leads
+        if not lead["dismissed"]
+    ][:limit]
 
 
 def guard(page, top, job_key, source_id):
@@ -298,7 +397,10 @@ def guard(page, top, job_key, source_id):
     parent_source = str(parent.get("data_source_id") or "").replace("-", "").lower()
     if not parent_source or parent_source != str(source_id or "").replace("-", "").lower().replace("collection://", ""):
         return "wrong_data_source"
-    key = "".join(t.get("plain_text", "") for t in ((page.get("properties") or {}).get("Stable Job Key") or {}).get("rich_text") or [])
+    key = "".join(
+        t.get("plain_text", "")
+        for t in ((page.get("properties") or {}).get("Stable Job Key") or {}).get("rich_text") or []
+    )
     if key != job_key:
         return "key_mismatch"
     if not any(body.is_marker(b, job_key) for b in top or []):
@@ -324,7 +426,11 @@ def _description_parts(client, list_id):
 def remove_duplicate_descriptions(client, page_id, top, key, live):
     """Remove V7's repeated job description from a Ledger row: the top-most is kept; an extra goes only when provably
     V7's identical write, else it is left and counted. Live only. -> "removed" | "would_remove" | "left" | "none"."""
-    pairs = [(b, top[i + 1]) for i, b in enumerate(top[:-1]) if body.is_marker(b, key) and top[i + 1].get("type") == "column_list"]
+    pairs = [
+        (b, top[i + 1])
+        for i, b in enumerate(top[:-1])
+        if body.is_marker(b, key) and top[i + 1].get("type") == "column_list"
+    ]
     if len(pairs) < 2:
         return "none"
     kept = _description_parts(client, pairs[0][1]["id"])
@@ -407,7 +513,11 @@ def apply(client, page_id, top, owned, desired_leads, live):
         write_cards(client, column or page_id, desired_leads, want, carried)
         _, now_owned = read_page(client, page_id, deep=False)
         fresh = [o for o in now_owned if o["id"] not in {x["id"] for x in owned}]
-        if len(fresh) != 1 or fresh[0]["hash"] != want or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]:
+        if (
+            len(fresh) != 1
+            or fresh[0]["hash"] != want
+            or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]
+        ):
             # the old block is still there: nothing known-good was retired
             raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
         retire = list(owned)

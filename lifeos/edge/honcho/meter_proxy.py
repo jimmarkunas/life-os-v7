@@ -25,6 +25,7 @@ keeps its full reservation; a reply that cost more than its reservation marks th
 everything. The scope's spend never resets. Removing, editing or letting scope.json expire while the scope is open
 refuses every metered request. A SCOPE-CLOSE file naming the scope id closes it, only when nothing is in flight;
 closing archives one line in scopes.jsonl and an id is never reused. Embeddings stay free and unscoped."""
+
 import http.client
 import http.server
 import json
@@ -51,7 +52,23 @@ MAX_BODY = 4_000_000
 DEFAULT_MAX_TOKENS = 4096
 SCOPE_FILE, SCOPE_CLOSE = "scope.json", "SCOPE-CLOSE"
 SCOPE_OVERHEAD_TOKENS = 4096  # the API's own framing adds fewer tokens than this
-SCOPE_KEYS = frozenset({"model", "max_tokens", "messages", "system", "temperature", "top_p", "top_k", "stop_sequences", "stream", "metadata", "tools", "tool_choice", "thinking"})
+SCOPE_KEYS = frozenset(
+    {
+        "model",
+        "max_tokens",
+        "messages",
+        "system",
+        "temperature",
+        "top_p",
+        "top_k",
+        "stop_sequences",
+        "stream",
+        "metadata",
+        "tools",
+        "tool_choice",
+        "thinking",
+    }
+)
 SCOPE_BLOCKS = frozenset({"text", "tool_use", "tool_result"})  # tokens cannot outnumber bytes
 SCOPE_CONFIG = ("id", "cap_usd", "expires", "models", "max_tokens")
 NANO = 1_000_000_000
@@ -59,6 +76,7 @@ NANO = 1_000_000_000
 
 def _epoch(text):
     import calendar
+
     return calendar.timegm(time.strptime(text, "%Y-%m-%dT%H:%M:%SZ"))
 
 
@@ -73,7 +91,9 @@ def window(epoch):
     if now < datetime(year, month, 5, 18, tzinfo=CENTRAL):
         year, month = (year - 1, 12) if month == 1 else (year, month - 1)
     nyear, nmonth = (year + 1, 1) if month == 12 else (year, month + 1)
-    return int(datetime(year, month, 5, 18, tzinfo=CENTRAL).timestamp()), int(datetime(nyear, nmonth, 5, 18, tzinfo=CENTRAL).timestamp())
+    return int(datetime(year, month, 5, 18, tzinfo=CENTRAL).timestamp()), int(
+        datetime(nyear, nmonth, 5, 18, tzinfo=CENTRAL).timestamp()
+    )
 
 
 def table(input_tokens):
@@ -97,9 +117,17 @@ def estimate(body):
 
 def usage_cost(usage):
     u = usage or {}
-    new, written, read, out = (int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
+    new, written, read, out = (
+        int(u.get(k) or 0)
+        for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+    )
     prices = table(new + written + read)
-    return usd(new, "input", prices) + usd(written, "cache_write", prices) + usd(read, "cache_read", prices) + usd(out, "output", prices)
+    return (
+        usd(new, "input", prices)
+        + usd(written, "cache_write", prices)
+        + usd(read, "cache_read", prices)
+        + usd(out, "output", prices)
+    )
 
 
 def nano_rate(kind, prices=PRICES):
@@ -109,9 +137,17 @@ def nano_rate(kind, prices=PRICES):
 
 def usage_nano(usage):
     u = usage or {}
-    new, written, read, out = (int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
+    new, written, read, out = (
+        int(u.get(k) or 0)
+        for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+    )
     prices = table(new + written + read)
-    return new * nano_rate("input", prices) + written * nano_rate("cache_write", prices) + read * nano_rate("cache_read", prices) + out * nano_rate("output", prices)
+    return (
+        new * nano_rate("input", prices)
+        + written * nano_rate("cache_write", prices)
+        + read * nano_rate("cache_read", prices)
+        + out * nano_rate("output", prices)
+    )
 
 
 def _text_only(content):
@@ -146,22 +182,31 @@ def scope_bound(body, config, beta=False):
     if type(max_tokens) is not int or not 1 <= max_tokens <= config["max_tokens"]:
         return 0, "scope: max_tokens missing or over the scope limit"
     messages = doc.get("messages")
-    if not isinstance(messages, list) or not all(isinstance(m, dict) and _text_only(m.get("content")) for m in messages) or not _text_only(doc.get("system", "")):
+    if (
+        not isinstance(messages, list)
+        or not all(isinstance(m, dict) and _text_only(m.get("content")) for m in messages)
+        or not _text_only(doc.get("system", ""))
+    ):
         return 0, "scope: content is not text"
     tools = doc.get("tools", [])
-    if not isinstance(tools, list) or any(not isinstance(t, dict) or t.get("type") not in (None, "custom") for t in tools):
+    if not isinstance(tools, list) or any(
+        not isinstance(t, dict) or t.get("type") not in (None, "custom") for t in tools
+    ):
         return 0, "scope: server tools are not priced"
     tokens = len(body) + SCOPE_OVERHEAD_TOKENS
     prices = table(tokens)
-    return tokens * max(nano_rate("input", prices), nano_rate("cache_write", prices)) + max_tokens * nano_rate("output", prices), ""
+    return tokens * max(nano_rate("input", prices), nano_rate("cache_write", prices)) + max_tokens * nano_rate(
+        "output", prices
+    ), ""
 
 
 class Ledger:
-
     def __init__(self, state_dir=STATE_DIR, cap=CAP_USD, clock=time.time):
         self.dir, self.cap, self.clock = state_dir, cap, clock
         self.lock = threading.RLock()
-        self.path, self.audit_path, self.stop_path, self.windows_path = (os.path.join(state_dir, n) for n in ("ledger.json", "audit.jsonl", "STOP", "windows.jsonl"))
+        self.path, self.audit_path, self.stop_path, self.windows_path = (
+            os.path.join(state_dir, n) for n in ("ledger.json", "audit.jsonl", "STOP", "windows.jsonl")
+        )
         os.makedirs(state_dir, mode=0o750, exist_ok=True)
         self.spent, self.reserved, self.calls = 0.0, 0.0, 0
         self.inflight, self.scope, self.closed, self.rid = {}, None, [], 0  # reservations; open scope; closed ids
@@ -176,9 +221,18 @@ class Ledger:
             if saved.get("window_start") is not None:
                 self.start = int(saved["window_start"])
                 self.end = window(self.start)[1]
-            self.inflight = {int(k): {"worst": float(v["worst"]), "nano": int(v["nano"])} for k, v in (saved.get("inflight") or {}).items()}
-            self.scope, self.closed, self.rid = saved.get("scope"), list(saved.get("closed_scopes") or []), int(saved.get("rid") or 0)
-            if self.scope is not None and not (isinstance(self.scope, dict) and {"config", "spent_nano", "state"} <= set(self.scope)):
+            self.inflight = {
+                int(k): {"worst": float(v["worst"]), "nano": int(v["nano"])}
+                for k, v in (saved.get("inflight") or {}).items()
+            }
+            self.scope, self.closed, self.rid = (
+                saved.get("scope"),
+                list(saved.get("closed_scopes") or []),
+                int(saved.get("rid") or 0),
+            )
+            if self.scope is not None and not (
+                isinstance(self.scope, dict) and {"config", "spent_nano", "state"} <= set(self.scope)
+            ):
                 raise ValueError("scope")
         except FileNotFoundError:
             if os.path.exists(self.audit_path) and os.path.getsize(self.audit_path) > 0:
@@ -202,7 +256,20 @@ class Ledger:
                     self.scope["spent_nano"] += held["nano"]
                 try:
                     with open(self.audit_path, "a") as handle:
-                        handle.write(json.dumps({"epoch": int(self.clock()), "route": "/v1/messages", "status": 0, "recovered": True, "cost_usd": round(held["worst"], 6), "spent_usd": round(self.spent, 6)}, sort_keys=True) + "\n")
+                        handle.write(
+                            json.dumps(
+                                {
+                                    "epoch": int(self.clock()),
+                                    "route": "/v1/messages",
+                                    "status": 0,
+                                    "recovered": True,
+                                    "cost_usd": round(held["worst"], 6),
+                                    "spent_usd": round(self.spent, 6),
+                                },
+                                sort_keys=True,
+                            )
+                            + "\n"
+                        )
                 except OSError:
                     self.unverified = self.unverified or "audit unwritable"
             self.inflight, self.reserved = {}, 0.0
@@ -217,7 +284,19 @@ class Ledger:
                 return
             try:
                 with open(self.windows_path, "a") as handle:
-                    handle.write(json.dumps({"start": self.start, "end": self.end, "spent_usd": round(self.spent, 6), "calls": self.calls, "cap_usd": self.cap}, sort_keys=True) + "\n")
+                    handle.write(
+                        json.dumps(
+                            {
+                                "start": self.start,
+                                "end": self.end,
+                                "spent_usd": round(self.spent, 6),
+                                "calls": self.calls,
+                                "cap_usd": self.cap,
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
             except OSError:
                 pass
             self.start, self.end = window(self.clock())
@@ -247,8 +326,20 @@ class Ledger:
         try:
             with open(os.path.join(self.dir, SCOPE_FILE)) as handle:
                 doc = json.load(handle)
-            config = {"id": str(doc["id"]), "cap_usd": float(doc["cap_usd"]), "expires": int(doc["expires"]), "models": sorted(str(m) for m in doc["models"]), "max_tokens": int(doc["max_tokens"])}
-            if not config["id"] or config["cap_usd"] <= 0 or config["max_tokens"] < 1 or not config["models"] or set(doc) - set(SCOPE_CONFIG):
+            config = {
+                "id": str(doc["id"]),
+                "cap_usd": float(doc["cap_usd"]),
+                "expires": int(doc["expires"]),
+                "models": sorted(str(m) for m in doc["models"]),
+                "max_tokens": int(doc["max_tokens"]),
+            }
+            if (
+                not config["id"]
+                or config["cap_usd"] <= 0
+                or config["max_tokens"] < 1
+                or not config["models"]
+                or set(doc) - set(SCOPE_CONFIG)
+            ):
                 raise ValueError("scope")
             config["cap_nano"] = round(config["cap_usd"] * NANO)
             return config, ""
@@ -302,7 +393,13 @@ class Ledger:
             return "scope close names another scope"
         if self.inflight:
             return "scope close waits for requests in flight"
-        row = {"id": held["id"], "cap_usd": held["cap_usd"], "spent_nano": self.scope["spent_nano"], "state": self.scope["state"], "closed": int(self.clock())}
+        row = {
+            "id": held["id"],
+            "cap_usd": held["cap_usd"],
+            "spent_nano": self.scope["spent_nano"],
+            "state": self.scope["state"],
+            "closed": int(self.clock()),
+        }
         try:
             with open(self.scopes_path, "a") as handle:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
@@ -332,8 +429,21 @@ class Ledger:
     def save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w") as handle:
-            json.dump({"spent_usd": round(self.spent, 6), "calls": self.calls, "cap_usd": self.cap, "window_start": self.start, "window_end": self.end, "saved": int(self.clock()),
-                       "inflight": {str(k): v for k, v in self.inflight.items()}, "scope": self.scope, "closed_scopes": self.closed, "rid": self.rid}, handle)
+            json.dump(
+                {
+                    "spent_usd": round(self.spent, 6),
+                    "calls": self.calls,
+                    "cap_usd": self.cap,
+                    "window_start": self.start,
+                    "window_end": self.end,
+                    "saved": int(self.clock()),
+                    "inflight": {str(k): v for k, v in self.inflight.items()},
+                    "scope": self.scope,
+                    "closed_scopes": self.closed,
+                    "rid": self.rid,
+                },
+                handle,
+            )
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, self.path)
@@ -411,8 +521,20 @@ class Ledger:
                 self.save()
             except OSError:
                 self.unverified = "ledger unwritable"
-            row = {"epoch": int(self.clock()), "route": route, "status": status, "cost_usd": round(cost, 6), "broke": bool(broke), "spent_usd": round(self.spent, 6)}
-            row.update({k: int((usage or {}).get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")})
+            row = {
+                "epoch": int(self.clock()),
+                "route": route,
+                "status": status,
+                "cost_usd": round(cost, 6),
+                "broke": bool(broke),
+                "spent_usd": round(self.spent, 6),
+            }
+            row.update(
+                {
+                    k: int((usage or {}).get(k) or 0)
+                    for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+                }
+            )
             try:
                 with open(self.audit_path, "a") as handle:
                     handle.write(json.dumps(row, sort_keys=True) + "\n")
@@ -425,7 +547,19 @@ class Ledger:
                 self.mark_exhausted(why)
             try:
                 with open(self.audit_path, "a") as handle:
-                    handle.write(json.dumps({"epoch": int(self.clock()), "route": route, "status": 400, "refused": why, "spent_usd": round(self.spent, 6)}, sort_keys=True) + "\n")
+                    handle.write(
+                        json.dumps(
+                            {
+                                "epoch": int(self.clock()),
+                                "route": route,
+                                "status": 400,
+                                "refused": why,
+                                "spent_usd": round(self.spent, 6),
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
             except OSError:
                 pass
 
@@ -448,13 +582,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def refuse(self, route, why):
         self.ledger.refuse(route, why)
-        self.reply(400, {"type": "error", "error": {"type": "invalid_request_error", "message": "lifeos meter: " + why}})
+        self.reply(
+            400, {"type": "error", "error": {"type": "invalid_request_error", "message": "lifeos meter: " + why}}
+        )
 
     def do_GET(self):
         if self.path == "/health":
-            blocked = self.ledger.why_blocked() or None                                 
-            self.reply(200, {**({"scope": scope_view(self.ledger.scope)} if self.ledger.scope is not None else {}), "ok": True, "spent_usd": round(self.ledger.spent, 6), "cap_usd": self.ledger.cap, "stopped": self.ledger.stopped(), "blocked": blocked,
-                             "window": {"start": datetime.fromtimestamp(self.ledger.start, CENTRAL).isoformat(), "end": datetime.fromtimestamp(self.ledger.end, CENTRAL).isoformat()}})
+            blocked = self.ledger.why_blocked() or None
+            self.reply(
+                200,
+                {
+                    **({"scope": scope_view(self.ledger.scope)} if self.ledger.scope is not None else {}),
+                    "ok": True,
+                    "spent_usd": round(self.ledger.spent, 6),
+                    "cap_usd": self.ledger.cap,
+                    "stopped": self.ledger.stopped(),
+                    "blocked": blocked,
+                    "window": {
+                        "start": datetime.fromtimestamp(self.ledger.start, CENTRAL).isoformat(),
+                        "end": datetime.fromtimestamp(self.ledger.end, CENTRAL).isoformat(),
+                    },
+                },
+            )
         else:
             self.reply(404, {"error": "not_found"})
 
@@ -500,7 +649,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def forward_anthropic(self, path, body, worst, metered, rid=None):
-        headers = {"x-api-key": self.key, "anthropic-version": self.headers.get("anthropic-version") or "2023-06-01", "content-type": "application/json"}
+        headers = {
+            "x-api-key": self.key,
+            "anthropic-version": self.headers.get("anthropic-version") or "2023-06-01",
+            "content-type": "application/json",
+        }
         if self.headers.get("anthropic-beta"):
             headers["anthropic-beta"] = self.headers["anthropic-beta"]
         usage, broke, status, sent = {}, True, 502, False
@@ -540,14 +693,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if metered:
                 # an error reply has no usage and no charge; a broken-off reply keeps its full reservation
                 ambiguous = sent and status == 502 and self.ledger.scope is not None
-                self.ledger.settle(worst, usage_cost(usage) if status < 400 else 0.0, path, status, usage, broke=(broke and status < 400) or ambiguous, rid=rid)
+                self.ledger.settle(
+                    worst,
+                    usage_cost(usage) if status < 400 else 0.0,
+                    path,
+                    status,
+                    usage,
+                    broke=(broke and status < 400) or ambiguous,
+                    rid=rid,
+                )
 
 
 def scope_view(scope):
     """-> the scope facts /health may show: id, cap, spend and state, or None."""
     if scope is None:
         return None
-    return {"id": scope["config"]["id"], "cap_usd": scope["config"]["cap_usd"], "spent_usd": scope["spent_nano"] / NANO, "state": scope["state"]}
+    return {
+        "id": scope["config"]["id"],
+        "cap_usd": scope["config"]["cap_usd"],
+        "spent_usd": scope["spent_nano"] / NANO,
+        "state": scope["state"],
+    }
 
 
 def complete(raw, streaming):

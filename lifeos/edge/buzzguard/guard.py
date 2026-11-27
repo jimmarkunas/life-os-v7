@@ -5,6 +5,7 @@ READ (allowed), SEND (allowed, checked), WRITE (Jira/GitHub changes: "ask" = app
 NEVER. `writes.mode` next to this file holds `ask` or `deny`; anything else means `deny`. A `STOP` file next to it
 refuses everything except `STOPPED`. Every input is scanned for secret-shaped text. Stdlib only; the log holds
 hashes and names. Each confirmed bypass has a regression test in tests/edge/buzzguard/test_guard.py."""
+
 import hashlib
 import json
 import os
@@ -16,21 +17,80 @@ import unicodedata
 JIRA_PROJECTS = {"LIFE"}
 GITHUB_REPOS = {"jimmarkunas/life-os-v7", "jimmarkunas/bot-studio"}
 READ_ROOTS = (".buzz", "Developer/LIFEOS/life-os-v7")
-READ_EXT = {".md", ".txt", ".py", ".sh", ".json", ".yaml", ".yml", ".toml", ".html", ".css", ".js", ".ts", ".vue", ".rs", ".csv", ".rst", ".manifest"}
-SECRET_PATH = re.compile(r"(?i)(^|/)(\.git|\.claude|\.ssh|\.gnupg|\.aws|\.env[^/]*|keys?|keystore|private|secrets?|credentials?)(/|$)|(?i:id_[a-z0-9]+|\.netrc|nsec|priv|key|hook\.log|state\.db|identity|settings|token|secret|cred|passw|\.pem|\.key|\.jsonl|keychain|\.zsh_history|\.bash_history)")
+READ_EXT = {
+    ".md",
+    ".txt",
+    ".py",
+    ".sh",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".html",
+    ".css",
+    ".js",
+    ".ts",
+    ".vue",
+    ".rs",
+    ".csv",
+    ".rst",
+    ".manifest",
+}
+SECRET_PATH = re.compile(
+    r"(?i)(^|/)(\.git|\.claude|\.ssh|\.gnupg|\.aws|\.env[^/]*|keys?|keystore|private|secrets?|credentials?)(/|$)|(?i:id_[a-z0-9]+|\.netrc|nsec|priv|key|hook\.log|state\.db|identity|settings|token|secret|cred|passw|\.pem|\.key|\.jsonl|keychain|\.zsh_history|\.bash_history)"
+)
 PREFIXES = r"(?i)tskey-|nsec1[0-9a-z]{20,}|\bsk-[a-z0-9_-]{16,}|akia[0-9a-z]{12,}|aiza[0-9a-z_-]{20,}|gh[pousr]_[a-z0-9]{20,}|github_pat_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY"
-SECRETY = re.compile(PREFIXES + r"|(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|"
-                     r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
+SECRETY = re.compile(
+    PREFIXES
+    + r"|(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|"
+    r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}"
+)
 COMPACT = re.compile(PREFIXES)
 # Read operations the Buzz bridge registers (lifeos/buzz/mcp.py READ), bare or buzz_-prefixed;
-BUZZ_READ_OPS = {"list_communities", "list_channels", "channel_info", "get_channel_info", "get_channel", "get_messages", "get_event", "search_messages", "get_thread",
-                 "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities", "canvas_get", "get_canvas", "channel_get"}
+BUZZ_READ_OPS = {
+    "list_communities",
+    "list_channels",
+    "channel_info",
+    "get_channel_info",
+    "get_channel",
+    "get_messages",
+    "get_event",
+    "search_messages",
+    "get_thread",
+    "get_addressed",
+    "list_agents",
+    "get_evidence",
+    "whoami",
+    "capabilities",
+    "canvas_get",
+    "get_canvas",
+    "channel_get",
+}
 BUZZ_READ = {"mcp__buzz__" + p + op for op in BUZZ_READ_OPS for p in ("", "buzz_")}
 # The Buzz app's own `read` tool reads a channel with no operation; a named `operation` must be a known read.
 BUZZ_NATIVE_READ = {"mcp__buzz__read"}
 BUZZ_READ_RUNNERS = {"mcp__buzz__buzz_read"}
 BUZZ_COMMUNITIES = {"life-os", "life_os"}
-BUZZ_ID_KEYS = {"channel", "channel_id", "channelid", "event_id", "eventid", "id", "message_id", "root", "root_id", "thread", "thread_id", "reply", "reply_to", "before", "after", "cursor", "since", "until"}
+BUZZ_ID_KEYS = {
+    "channel",
+    "channel_id",
+    "channelid",
+    "event_id",
+    "eventid",
+    "id",
+    "message_id",
+    "root",
+    "root_id",
+    "thread",
+    "thread_id",
+    "reply",
+    "reply_to",
+    "before",
+    "after",
+    "cursor",
+    "since",
+    "until",
+}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 BUZZ_SEND_KEYS = {"audience", "final", "text", "reply", "channel", "thread", "reply_to", "recipient", "mention"}
 EVENT_ID = re.compile(r"[0-9a-f]{64}")
@@ -43,11 +103,27 @@ GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
 NOTION = re.compile(r"mcp__claude_ai_Notion__(.+)")
 NOTION_READ_OPS = {"notion-search", "notion-fetch", "notion-query-data-sources", "notion-get-comments"}
 # Notion writes: create, edit, move, duplicate, comment, schema/view changes; not deletes or restores.
-NOTION_WRITE_OPS = {"notion-create-pages", "notion-update-page", "notion-move-pages", "notion-duplicate-page", "notion-create-comment", "notion-update-comment", "notion-create-database",
-                    "notion-update-data-source", "notion-create-view", "notion-update-view", "notion-create-folder", "notion-update-folder"}
+NOTION_WRITE_OPS = {
+    "notion-create-pages",
+    "notion-update-page",
+    "notion-move-pages",
+    "notion-duplicate-page",
+    "notion-create-comment",
+    "notion-update-comment",
+    "notion-create-database",
+    "notion-update-data-source",
+    "notion-create-view",
+    "notion-update-view",
+    "notion-create-folder",
+    "notion-update-folder",
+}
 READ_OP = re.compile(r"(?i)(get|search|list|lookup|find|fetch|read|atlassianUserInfo|whoami)")
-WRITE_WORD = re.compile(r"(?i)(create|edit|update|transition(?!s)|assign|set|move|post|send|publish|upload|write|push|close|reopen|add|link(?!s|type)|rank|vote|clone|bulk|apply|run|enable|share|restore|approve|cancel|import|copy|exec|install|spawn|register|join|kick|ban|mute|pin|react|rename|subscribe|resolve|clear|export|reply|change|patch|mutat|fix)")
-NEVER_OP = re.compile(r"(?i)(delete|destructive|remove|archive|purge|merge|fork|force|transfer|admin|secret|token|key|webhook|permission|collaborator|invite|workflow|create_or_update_file|push_files|update_file)")
+WRITE_WORD = re.compile(
+    r"(?i)(create|edit|update|transition(?!s)|assign|set|move|post|send|publish|upload|write|push|close|reopen|add|link(?!s|type)|rank|vote|clone|bulk|apply|run|enable|share|restore|approve|cancel|import|copy|exec|install|spawn|register|join|kick|ban|mute|pin|react|rename|subscribe|resolve|clear|export|reply|change|patch|mutat|fix)"
+)
+NEVER_OP = re.compile(
+    r"(?i)(delete|destructive|remove|archive|purge|merge|fork|force|transfer|admin|secret|token|key|webhook|permission|collaborator|invite|workflow|create_or_update_file|push_files|update_file)"
+)
 KEY_RX = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-\d+\b")
 SHELL_META = re.compile(r"[;&|`$<>\\\n\r(){}\"'*?!~#]|--admin")
 POS = re.compile(r"[A-Za-z0-9._,-]{1,80}")
@@ -55,10 +131,28 @@ REV = re.compile(r"(?:HEAD|main|master|origin/main|[0-9a-f]{7,40}|life-[0-9a-z-]
 NUM = re.compile(r"[0-9]{1,7}")
 GH_FLAGS = {"-R", "--repo", "--limit", "-L", "--state", "-s", "--json"}
 GIT_FLAGS = {"--oneline", "-n", "--stat", "--name-only", "--short", "--branch", "-a", "-r", "-v", "-vv"}
-GH_CMDS = {("pr",): {"view", "list", "diff", "checks", "status"}, ("issue",): {"view", "list", "status"}, ("repo",): {"view"}, ("run",): {"list", "view"}}
+GH_CMDS = {
+    ("pr",): {"view", "list", "diff", "checks", "status"},
+    ("issue",): {"view", "list", "status"},
+    ("repo",): {"view"},
+    ("run",): {"list", "view"},
+}
 # no show/diff (patches; `git diff A B` outside a repo reads any two paths), no ls-files
 GIT_CMDS = {"status", "log", "rev-parse", "branch"}
-REPO_FIELDS = {"owner", "repo", "repository", "repo_full_name", "full_name", "repos", "url", "html_url", "head", "base", "head_repo", "base_repo"}
+REPO_FIELDS = {
+    "owner",
+    "repo",
+    "repository",
+    "repo_full_name",
+    "full_name",
+    "repos",
+    "url",
+    "html_url",
+    "head",
+    "base",
+    "head_repo",
+    "base_repo",
+}
 
 
 def _norm(s):
@@ -97,7 +191,9 @@ def _leaves(v):
             yield from _leaves(x)
 
 
-EXFIL = re.compile(r"(?i)!\[[^\]]*\]\(|/Users/[A-Za-z0-9_.-]+/\.|\.buzz/|\.ssh|(?:password|passwd|passphrase|api[ _-]?key|secret|token)\s+(?:is|was)\s+\S{3,}|\b(?:pw|pwd)\s*[:=]")
+EXFIL = re.compile(
+    r"(?i)!\[[^\]]*\]\(|/Users/[A-Za-z0-9_.-]+/\.|\.buzz/|\.ssh|(?:password|passwd|passphrase|api[ _-]?key|secret|token)\s+(?:is|was)\s+\S{3,}|\b(?:pw|pwd)\s*[:=]"
+)
 
 
 SPLIT_HEX = re.compile(r"(?i)(?:\b[0-9a-f]{4,16}\b[\s-]+){3,}\b[0-9a-f]{4,16}\b")
@@ -133,15 +229,40 @@ def _writes_mode(g):
 
 
 def _write(g, why):
-    return ("ask", "approval needed: " + why) if _writes_mode(g) == "ask" else ("deny", "writes are not enabled yet (approval prompt not verified): " + why)
+    return (
+        ("ask", "approval needed: " + why)
+        if _writes_mode(g) == "ask"
+        else ("deny", "writes are not enabled yet (approval prompt not verified): " + why)
+    )
 
 
 def _is_read(op):
     return bool(READ_OP.match(op)) and not WRITE_WORD.search(op)
 
 
-JIRA_WRITE_OPS = {"createJiraIssue", "editJiraIssue", "addCommentToJiraIssue", "addOrEditJiraIssueComment", "transitionJiraIssue", "createIssueLink", "addWorklogToJiraIssue"}
-PROJ_KEYS = {"project", "projectkey", "projectkeyorid", "projectid", "parent", "epic", "inwardissue", "outwardissue", "issueidorkey", "issuekey", "issueid", "issue"}
+JIRA_WRITE_OPS = {
+    "createJiraIssue",
+    "editJiraIssue",
+    "addCommentToJiraIssue",
+    "addOrEditJiraIssueComment",
+    "transitionJiraIssue",
+    "createIssueLink",
+    "addWorklogToJiraIssue",
+}
+PROJ_KEYS = {
+    "project",
+    "projectkey",
+    "projectkeyorid",
+    "projectid",
+    "parent",
+    "epic",
+    "inwardissue",
+    "outwardissue",
+    "issueidorkey",
+    "issuekey",
+    "issueid",
+    "issue",
+}
 
 
 def _project_refs(ti):
@@ -154,8 +275,18 @@ def _project_refs(ti):
     for path, v in _items(ti):
         name = path[-1].lower()
         parents = [p.lower() for p in path[:-1]]
-        flagged = (name in PROJ_KEYS or "project" in name or ("issue" in name and name != "issuetype")
-                   or (name in ("id", "key") and (len(path) == 1 or any(p in ("project", "parent", "epic") or ("issue" in p and p != "issuetype") for p in parents))))
+        flagged = (
+            name in PROJ_KEYS
+            or "project" in name
+            or ("issue" in name and name != "issuetype")
+            or (
+                name in ("id", "key")
+                and (
+                    len(path) == 1
+                    or any(p in ("project", "parent", "epic") or ("issue" in p and p != "issuetype") for p in parents)
+                )
+            )
+        )
         if not flagged:
             continue
         for s in _leaves(v):
@@ -176,7 +307,11 @@ def _decide_atlassian(op, ti, g):
         if not isinstance(inner, str) or NEVER_OP.search(inner):
             return "deny", "runner operation missing or never allowed"
         if op == "executeRead":
-            return ("allow", "jira read via runner") if _is_read(inner) else ("deny", "executeRead names a non-read operation")
+            return (
+                ("allow", "jira read via runner")
+                if _is_read(inner)
+                else ("deny", "executeRead names a non-read operation")
+            )
         op, force_write = inner, True
     if _is_read(op) and not force_write:
         return "allow", "jira read"
@@ -184,7 +319,10 @@ def _decide_atlassian(op, ti, g):
         return "deny", "write operation not on the Jira allow-list: " + op
     anchors, stray = _project_refs(ti)
     if not anchors or not anchors <= JIRA_PROJECTS or not stray <= JIRA_PROJECTS:
-        return "deny", "jira write outside allowed projects, without a project or issue field, or naming one that cannot be checked"
+        return (
+            "deny",
+            "jira write outside allowed projects, without a project or issue field, or naming one that cannot be checked",
+        )
     return _write(g, "jira %s on %s" % (op, ",".join(sorted(anchors | stray))))
 
 
@@ -217,7 +355,16 @@ def _repo_refs(ti):
     return refs, bad
 
 
-GH_WRITE_OPS = {"create_issue", "add_issue_comment", "issue_write", "update_issue", "create_pull_request", "update_pull_request", "add_pull_request_review_comment", "create_branch"}
+GH_WRITE_OPS = {
+    "create_issue",
+    "add_issue_comment",
+    "issue_write",
+    "update_issue",
+    "create_pull_request",
+    "update_pull_request",
+    "add_pull_request_review_comment",
+    "create_branch",
+}
 GH_READ_EXTRA = {"issue_read", "pull_request_read", "actions_list", "actions_get", "projects_list", "projects_get"}
 
 
@@ -226,7 +373,9 @@ def _decide_github(op, ti, g):
         return "deny", "never allowed: " + op
     refs, bad = _repo_refs(ti)
     meth = ti.get("method")
-    if (isinstance(meth, str) and NEVER_OP.search(meth)) or any(re.search(r"(?i)\b(approve|request_changes|dismiss)\b", x) for x in _strings(ti)):
+    if (isinstance(meth, str) and NEVER_OP.search(meth)) or any(
+        re.search(r"(?i)\b(approve|request_changes|dismiss)\b", x) for x in _strings(ti)
+    ):
         return "deny", "github input names an approval or forbidden method"
     refs = {r.lower() for r in refs}
     allowed = {r.lower() for r in GITHUB_REPOS}
@@ -245,7 +394,12 @@ def _decide_github(op, ti, g):
 
 def _decide_bash(ti):
     cmd = ti.get("command")
-    if set(ti) - {"command", "description", "timeout"} or not isinstance(cmd, str) or SHELL_META.search(cmd) or len(cmd) > 400:
+    if (
+        set(ti) - {"command", "description", "timeout"}
+        or not isinstance(cmd, str)
+        or SHELL_META.search(cmd)
+        or len(cmd) > 400
+    ):
         return "deny", "bash input not a plain read-only command"
     t = cmd.split()
     if t[:1] == ["git"] and len(t) >= 2 and t[1] in GIT_CMDS:
@@ -253,7 +407,10 @@ def _decide_bash(ti):
     elif t[:1] == ["gh"] and len(t) >= 3 and (t[1],) in GH_CMDS and t[2] in GH_CMDS[(t[1],)]:
         sub, rest, isgit, flags = t[2], t[3:], False, GH_FLAGS
     else:
-        return "deny", "bash command not on the read-only list (GitHub changes go through the GitHub tool with approval)"
+        return (
+            "deny",
+            "bash command not on the read-only list (GitHub changes go through the GitHub tool with approval)",
+        )
     allowed_repos = {r.lower() for r in GITHUB_REPOS}
     prev = None
     for tok in rest:
@@ -283,30 +440,57 @@ def _decide_bash(ti):
 
 def _read_ok(ti, home):
     p = ti.get("file_path")
-    if set(ti) - {"file_path", "offset", "limit"} or not isinstance(p, str) or not p or any(not isinstance(ti.get(k, 0), int) or isinstance(ti.get(k), bool) for k in ("offset", "limit")):
+    if (
+        set(ti) - {"file_path", "offset", "limit"}
+        or not isinstance(p, str)
+        or not p
+        or any(not isinstance(ti.get(k, 0), int) or isinstance(ti.get(k), bool) for k in ("offset", "limit"))
+    ):
         return False
     real = os.path.realpath(os.path.expanduser(p))
     roots = [os.path.realpath(os.path.join(home, r)) for r in READ_ROOTS]
     inside = any(real == r or real.startswith(r + os.sep) for r in roots)
-    rel = real[len(os.path.realpath(home)):]
-    return inside and os.path.isfile(real) and os.path.splitext(real)[1].lower() in READ_EXT and not SECRET_PATH.search(rel)
+    rel = real[len(os.path.realpath(home)) :]
+    return (
+        inside
+        and os.path.isfile(real)
+        and os.path.splitext(real)[1].lower() in READ_EXT
+        and not SECRET_PATH.search(rel)
+    )
 
 
 def _decide_send(ti, stopped):
     t = ti.get("text")
-    if not (set(ti) <= BUZZ_SEND_KEYS and {"audience", "final", "text"} <= set(ti) and ti["audience"] == "everyone" and isinstance(ti["final"], bool) and isinstance(t, str)):
+    if not (
+        set(ti) <= BUZZ_SEND_KEYS
+        and {"audience", "final", "text"} <= set(ti)
+        and ti["audience"] == "everyone"
+        and isinstance(ti["final"], bool)
+        and isinstance(t, str)
+    ):
         return "deny", "send input not allowed"
     if stopped:
-        return ("allow", "stopped notice") if set(ti) == {"audience", "final", "text"} and t in STOP_TEXT else ("deny", "STOP is on")
+        return (
+            ("allow", "stopped notice")
+            if set(ti) == {"audience", "final", "text"} and t in STOP_TEXT
+            else ("deny", "STOP is on")
+        )
     if not t.strip() or len(t) > SEND_MAX:
         return "deny", "send text empty or too long"
     for k in ("channel", "thread", "reply_to", "recipient"):
         if k in ti and not (isinstance(ti[k], str) and IDENT.fullmatch(ti[k])):
             return "deny", "send %s must be a plain identifier" % k
-    if "mention" in ti and not (isinstance(ti["mention"], list) and len(ti["mention"]) <= 20 and all(isinstance(m, str) and IDENT.fullmatch(m) for m in ti["mention"])):
+    if "mention" in ti and not (
+        isinstance(ti["mention"], list)
+        and len(ti["mention"]) <= 20
+        and all(isinstance(m, str) and IDENT.fullmatch(m) for m in ti["mention"])
+    ):
         return "deny", "send mention must be a short list of plain identifiers"
     if any(k in ti for k in ("reply", "reply_to", "thread")):
-        return "deny", "post top level: omit reply, reply_to and thread, and @mention the asker (Jim, Nov 7: no threads unless he starts them)"
+        return (
+            "deny",
+            "post top level: omit reply, reply_to and thread, and @mention the asker (Jim, Nov 7: no threads unless he starts them)",
+        )
 
     if _secret(ti):
         return "deny", "secret-shaped text in a message"
@@ -330,7 +514,9 @@ def _decide_buzz_read(tool, ti):
         if not isinstance(op, str) or op not in BUZZ_READ_OPS:
             return "deny", "buzz read runner names an operation that is not a known read"
     for path, v in _items(ti):
-        if path[-1].lower() in ("community", "community_id", "communityid") and not (isinstance(v, str) and v.lower() in BUZZ_COMMUNITIES):
+        if path[-1].lower() in ("community", "community_id", "communityid") and not (
+            isinstance(v, str) and v.lower() in BUZZ_COMMUNITIES
+        ):
             return "deny", "buzz read outside the LIFE OS community"
     if _secret(_drop_ids(ti)):
         return "deny", "secret-shaped text in a tool input"
@@ -348,9 +534,17 @@ def _decide_inner(d, g, home):
         return "deny", "STOP is on"
     if tool == "ToolSearch":
         q = ti.get("query")
-        return ("allow", "tool search") if set(ti) <= {"query", "max_results"} and isinstance(q, str) and 0 < len(q) <= 200 and not _secret(ti) else ("deny", "tool search input not allowed")
+        return (
+            ("allow", "tool search")
+            if set(ti) <= {"query", "max_results"} and isinstance(q, str) and 0 < len(q) <= 200 and not _secret(ti)
+            else ("deny", "tool search input not allowed")
+        )
     if tool == "Read":
-        return ("allow", "read in allowed folder") if _read_ok(ti, home) else ("deny", "read outside allowed folders, a secret-shaped path or a bad argument")
+        return (
+            ("allow", "read in allowed folder")
+            if _read_ok(ti, home)
+            else ("deny", "read outside allowed folders, a secret-shaped path or a bad argument")
+        )
     if tool in BUZZ_READ or tool in BUZZ_READ_RUNNERS or tool in BUZZ_NATIVE_READ:
         return _decide_buzz_read(tool, ti)
     if _secret(ti):
@@ -373,7 +567,11 @@ def _decide_inner(d, g, home):
         return _decide_github(m.group(1), ti, g)
     m = NOTION.fullmatch(tool)
     if m:
-        return ("allow", "notion read" if m.group(1) in NOTION_READ_OPS else "notion write (Jim, Nov 8)") if m.group(1) in NOTION_READ_OPS | NOTION_WRITE_OPS else ("deny", "notion tool is not on the allowlist (no deletes, restores, sessions, skills or user tools)")
+        return (
+            ("allow", "notion read" if m.group(1) in NOTION_READ_OPS else "notion write (Jim, Nov 8)")
+            if m.group(1) in NOTION_READ_OPS | NOTION_WRITE_OPS
+            else ("deny", "notion tool is not on the allowlist (no deletes, restores, sessions, skills or user tools)")
+        )
     return "deny", "tool not on allowlist"
 
 
@@ -382,7 +580,9 @@ APPROVAL_TTL = 15 * 60
 
 
 def _action_id(tool, ti):
-    return hashlib.sha256(json.dumps({"tool": tool, "input": ti}, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    return hashlib.sha256(json.dumps({"tool": tool, "input": ti}, sort_keys=True, default=str).encode()).hexdigest()[
+        :16
+    ]
 
 
 def _approval(d, g, why):
@@ -408,10 +608,23 @@ def _approval(d, g, why):
             if now - os.stat(os.path.join(pend, f)).st_mtime > 86400:
                 os.remove(os.path.join(pend, f))
         with open(os.path.join(pend, aid + ".json"), "w") as f:
-            json.dump({"id": aid, "t": time.strftime("%Y-%m-%d %I:%M:%S %p local"), "tool": tool, "why": why, "preview": json.dumps(ti, sort_keys=True, default=str)[:1500]}, f)
+            json.dump(
+                {
+                    "id": aid,
+                    "t": time.strftime("%Y-%m-%d %I:%M:%S %p local"),
+                    "tool": tool,
+                    "why": why,
+                    "preview": json.dumps(ti, sort_keys=True, default=str)[:1500],
+                },
+                f,
+            )
     except OSError:
         pass
-    return "deny", "approval needed (%s): %s. Jim approves this exact action by running: %s %s  (valid 15 minutes, once). Then retry the same call." % (aid, why, APPROVE_CMD, aid)
+    return (
+        "deny",
+        "approval needed (%s): %s. Jim approves this exact action by running: %s %s  (valid 15 minutes, once). Then retry the same call."
+        % (aid, why, APPROVE_CMD, aid),
+    )
 
 
 def decide(d, g, home):
@@ -432,14 +645,30 @@ def main():
         dec, why = "deny", "unparseable (%s)" % type(e).__name__
     try:
         ti = d.get("tool_input") if isinstance(d, dict) and isinstance(d.get("tool_input"), dict) else {}
-        rec = {"t": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tool": d.get("tool_name") if isinstance(d, dict) else None, "decision": dec, "why": why,
-               "mode": d.get("permission_mode") if isinstance(d, dict) else None, "session": d.get("session_id") if isinstance(d, dict) else None,
-               "input_sha": hashlib.sha256(json.dumps(ti, sort_keys=True, default=str).encode()).hexdigest()[:16]}
+        rec = {
+            "t": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "tool": d.get("tool_name") if isinstance(d, dict) else None,
+            "decision": dec,
+            "why": why,
+            "mode": d.get("permission_mode") if isinstance(d, dict) else None,
+            "session": d.get("session_id") if isinstance(d, dict) else None,
+            "input_sha": hashlib.sha256(json.dumps(ti, sort_keys=True, default=str).encode()).hexdigest()[:16],
+        }
         with open(os.path.join(g, "hook.log"), "a") as f:
             f.write(json.dumps(rec, sort_keys=True) + "\n")
     except Exception:
         pass
-    sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": dec, "permissionDecisionReason": "LIFE-333 Claude Buzz policy: " + why}}))
+    sys.stdout.write(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": dec,
+                    "permissionDecisionReason": "LIFE-333 Claude Buzz policy: " + why,
+                }
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

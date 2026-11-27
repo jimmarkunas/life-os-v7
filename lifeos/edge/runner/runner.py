@@ -12,6 +12,7 @@ The terminal shows one line, `RESULT ok` or `RESULT fail <code>`; step output is
 counts in /var/lib/lifeos-runner/results/<KEY>.json and runner.log. Before the first step the runner saves what the
 pack declares under "restore" and puts it back if a step fails, times out or the run is interrupted. It keeps no
 timer, sudoers rule or credential. Standard library only (python3 -I)."""
+
 import fcntl
 import glob
 import hashlib
@@ -34,12 +35,27 @@ NAME_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 UNIT_RX = re.compile(r"^[A-Za-z0-9@._-]+\.(service|timer|socket|path|mount)$")
 MAX_FILES, MAX_BYTES, MAX_SNAPSHOT_FILE, MAX_SNAPSHOT_FILES = 200, 5 * 1024 * 1024, 1024 * 1024, 50
 STEP_TIMEOUT, STEP_TIMEOUT_MAX = 600, 1800
-DENY = ("/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/ssh/", "/root/.ssh", "/etc/credstore", "/proc", "/sys", "/dev", "/boot", "/opt/lifeos-runner", "/usr/local/sbin/lifeos-run", STATE)
+DENY = (
+    "/etc/shadow",
+    "/etc/gshadow",
+    "/etc/sudoers",
+    "/etc/ssh/",
+    "/root/.ssh",
+    "/etc/credstore",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/boot",
+    "/opt/lifeos-runner",
+    "/usr/local/sbin/lifeos-run",
+    STATE,
+)
 STEP_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
 class Refuse(Exception):
     """A run that must stop with one fixed code (after the restore, when steps had started)."""
+
     def __init__(self, code):
         super().__init__(code)
         self.code = code
@@ -51,20 +67,29 @@ class Interrupted(Exception):
 
 # redaction
 
+
 def _long(match):
     text = match.group(0)
     return text if text.startswith("/") and text.count("/") >= 2 else "[REDACTED:long]"
 
 
 _PATTERNS = [
-    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S), "[REDACTED:key]"),
+    (
+        re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S),
+        "[REDACTED:key]",
+    ),
     (re.compile(r"github_pat_[A-Za-z0-9_]{10,}"), "[REDACTED:token]"),
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}"), "[REDACTED:token]"),
     (re.compile(r"\bsk-[A-Za-z0-9_-]{12,}"), "[REDACTED:token]"),
     (re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{8,}"), "[REDACTED:token]"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED:token]"),
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"), "Bearer [REDACTED]"),
-    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_.-]*)(\s*[=:]\s*)\S+"), r"\1\2[REDACTED]"),
+    (
+        re.compile(
+            r"(?i)\b([A-Za-z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_.-]*)(\s*[=:]\s*)\S+"
+        ),
+        r"\1\2[REDACTED]",
+    ),
     (re.compile(r"[A-Za-z0-9+/_=-]{40,}"), _long),
 ]
 
@@ -78,12 +103,14 @@ def redact(text):
             new = repl(match) if callable(repl) else match.expand(repl)
             hits[0] += new != match.group(0)
             return new
+
         text = rx.sub(swap, text)
         total += hits[0]
     return text, total
 
 
 # the pack: files, hash, manifest
+
 
 def pack_files(root):
     """Sorted relative paths of every regular file in the pack; symlinks, devices, odd names and oversize packs are
@@ -118,6 +145,7 @@ def pack_files(root):
                         raise Refuse("E_PACK")
                 else:
                     raise Refuse("E_PACK")
+
     walk(root, "")
     return found
 
@@ -156,7 +184,12 @@ def load_manifest(root):
             data = json.load(handle)
     except (OSError, ValueError):
         raise Refuse("E_PACK") from None
-    if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("ticket"), str) or not KEY_RX.match(data["ticket"]):
+    if (
+        not isinstance(data, dict)
+        or data.get("schema") != 1
+        or not isinstance(data.get("ticket"), str)
+        or not KEY_RX.match(data["ticket"])
+    ):
         raise Refuse("E_PACK")
     steps, restore = data.get("steps"), data.get("restore") or {}
     if not isinstance(steps, list) or not 1 <= len(steps) <= 50 or not isinstance(restore, dict):
@@ -166,10 +199,23 @@ def load_manifest(root):
         if not isinstance(step, str) or not step.startswith("steps/") or not step.endswith(".sh") or step not in names:
             raise Refuse("E_PACK")
     files, units = restore.get("files") or [], restore.get("services") or []
-    if not isinstance(files, list) or not isinstance(units, list) or len(files) > MAX_SNAPSHOT_FILES or len(units) > 50 or len(set(files)) != len(files):
+    if (
+        not isinstance(files, list)
+        or not isinstance(units, list)
+        or len(files) > MAX_SNAPSHOT_FILES
+        or len(units) > 50
+        or len(set(files)) != len(files)
+    ):
         raise Refuse("E_PACK")
     for path in files:
-        if not isinstance(path, str) or not path.startswith("/") or ".." in path.split("/") or "//" in path or path.endswith("/") or any(path.startswith(d) for d in DENY):
+        if (
+            not isinstance(path, str)
+            or not path.startswith("/")
+            or ".." in path.split("/")
+            or "//" in path
+            or path.endswith("/")
+            or any(path.startswith(d) for d in DENY)
+        ):
             raise Refuse("E_PACK")
     for unit in units:
         if not isinstance(unit, str) or not UNIT_RX.match(unit):
@@ -181,6 +227,7 @@ def load_manifest(root):
 
 
 # the host: real paths and systemctl, swappable in tests
+
 
 class Host:
     def __init__(self, state=STATE, inbox=INBOX, require_root=True, systemctl=None, clock=time.time):
@@ -207,6 +254,7 @@ def _write_atomic(path, data, mode):
 
 # snapshot and restore
 
+
 def snapshot(manifest, host, snapdir):
     os.makedirs(snapdir, mode=0o700)
     files, meta = {}, []
@@ -225,11 +273,22 @@ def snapshot(manifest, host, snapdir):
             body = handle.read()
         files[path] = (body, stat.S_IMODE(info.st_mode), info.st_uid, info.st_gid)
         _write_atomic(os.path.join(snapdir, "%d.bin" % i), body, 0o600)
-        meta.append({"path": path, "existed": True, "mode": stat.S_IMODE(info.st_mode), "uid": info.st_uid, "gid": info.st_gid, "copy": "%d.bin" % i})
+        meta.append(
+            {
+                "path": path,
+                "existed": True,
+                "mode": stat.S_IMODE(info.st_mode),
+                "uid": info.st_uid,
+                "gid": info.st_gid,
+                "copy": "%d.bin" % i,
+            }
+        )
     units = {}
     for unit in manifest["services"]:
         units[unit] = {"enabled": host.systemctl("is-enabled", unit)[1], "active": host.systemctl("is-active", unit)[1]}
-    _write_atomic(os.path.join(snapdir, "snapshot.json"), json.dumps({"files": meta, "services": units}, indent=1).encode(), 0o600)
+    _write_atomic(
+        os.path.join(snapdir, "snapshot.json"), json.dumps({"files": meta, "services": units}, indent=1).encode(), 0o600
+    )
     return {"files": files, "services": units}
 
 
@@ -290,6 +349,7 @@ def restore(snap, host):
 
 # running the steps
 
+
 def _kill_group(proc):
     try:
         os.killpg(proc.pid, signal.SIGKILL)
@@ -300,8 +360,15 @@ def _kill_group(proc):
 def run_step(stage, rel, key, timeout):
     env = {"PATH": STEP_PATH, "LANG": "C", "LC_ALL": "C", "HOME": "/root", "LIFE_KEY": key, "PACK_DIR": stage}
     began = time.monotonic()
-    proc = subprocess.Popen(["/bin/bash", "--noprofile", "--norc", os.path.join(stage, rel)], cwd=stage, env=env, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+    proc = subprocess.Popen(
+        ["/bin/bash", "--noprofile", "--norc", os.path.join(stage, rel)],
+        cwd=stage,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
     try:
         raw, _ = proc.communicate(timeout=timeout)
         code = proc.returncode
@@ -330,6 +397,7 @@ def _ct(epoch):
     try:
         from zoneinfo import ZoneInfo
         from datetime import datetime
+
         return datetime.fromtimestamp(epoch, ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %I:%M:%S %p CT")
     except Exception:
         return None
@@ -347,7 +415,13 @@ def record(host, result, given):
             _write_atomic(os.path.join(out, result["ticket"] + ".json"), data, 0o644)
             if result.get("sha8"):
                 _write_atomic(os.path.join(out, "%s-%s.json" % (result["ticket"], result["sha8"])), data, 0o644)
-        line = "%d %s %s %s %s\n" % (result["finished_epoch"], result["ticket"] or "invalid", given if SHA8_RX.match(given or "") else "invalid", result["outcome"], result["code"] or "-")
+        line = "%d %s %s %s %s\n" % (
+            result["finished_epoch"],
+            result["ticket"] or "invalid",
+            given if SHA8_RX.match(given or "") else "invalid",
+            result["outcome"],
+            result["code"] or "-",
+        )
         with open(os.path.join(host.state, "runner.log"), "a") as log:
             log.write(line)
         os.chmod(os.path.join(host.state, "runner.log"), 0o644)
@@ -358,9 +432,23 @@ def record(host, result, given):
 def execute(key, sha8, host):
     """One approved run -> the result dict (outcome ok|fail, code). Never raises: every stop is a code."""
     started = host.clock()
-    result = {"schema": 1, "runner_version": VERSION, "ticket": key if KEY_RX.match(key or "") else None, "sha8": sha8 if SHA8_RX.match(sha8 or "") else None, "sha256": None,
-              "outcome": "fail", "code": None, "steps_total": 0, "steps_run": 0, "step_results": [], "restored": [], "restore_failed": [], "readback": [],
-              "redactions_total": 0, "started_epoch": int(started)}
+    result = {
+        "schema": 1,
+        "runner_version": VERSION,
+        "ticket": key if KEY_RX.match(key or "") else None,
+        "sha8": sha8 if SHA8_RX.match(sha8 or "") else None,
+        "sha256": None,
+        "outcome": "fail",
+        "code": None,
+        "steps_total": 0,
+        "steps_run": 0,
+        "step_results": [],
+        "restored": [],
+        "restore_failed": [],
+        "readback": [],
+        "redactions_total": 0,
+        "started_epoch": int(started),
+    }
     lock = stage = snapdir = None
     previous = {}
     snap = None
@@ -393,6 +481,7 @@ def execute(key, sha8, host):
 
         def stop(signum, frame):
             raise Interrupted()
+
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             previous[sig] = signal.signal(sig, stop)
         for number, rel in enumerate(manifest["steps"], 1):
@@ -400,7 +489,16 @@ def execute(key, sha8, host):
             result["steps_run"] = number
             result["redactions_total"] += count
             result["readback"] = (result["readback"] + readback_lines(text))[:100]
-            result["step_results"].append({"step": rel, "exit": code, "timed_out": code is None, "seconds": seconds, "output_lines": len(text.splitlines()), "redactions": count})
+            result["step_results"].append(
+                {
+                    "step": rel,
+                    "exit": code,
+                    "timed_out": code is None,
+                    "seconds": seconds,
+                    "output_lines": len(text.splitlines()),
+                    "redactions": count,
+                }
+            )
             if code is None:
                 raise Refuse("E_TIMEOUT_%d" % number)
             if code != 0:
@@ -410,7 +508,7 @@ def execute(key, sha8, host):
         result["code"] = "E_INTERRUPTED"
     except Refuse as stopped:
         result["code"] = stopped.code
-    except Exception:                                   # a runner bug is a failed run, never a traceback
+    except Exception:  # a runner bug is a failed run, never a traceback
         result["code"] = "E_RUNNER"
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -433,7 +531,10 @@ def execute(key, sha8, host):
             lock.close()
         finished = host.clock()
         result["finished_epoch"], result["finished_ct"] = int(finished), _ct(finished)
-        result["restored_count"], result["redacted_note"] = len(result["restored"]), "output is redacted; only names and counts are recorded"
+        result["restored_count"], result["redacted_note"] = (
+            len(result["restored"]),
+            "output is redacted; only names and counts are recorded",
+        )
         record(host, result, sha8)
     return result
 
@@ -470,7 +571,16 @@ def main(argv, host=None):
                 print(digest)
             else:
                 manifest = load_manifest(args[1])
-                print("PACK ok %s steps=%d restore_files=%d restore_services=%d sha256=%s" % (manifest["ticket"], len(manifest["steps"]), len(manifest["files"]), len(manifest["services"]), digest))
+                print(
+                    "PACK ok %s steps=%d restore_files=%d restore_services=%d sha256=%s"
+                    % (
+                        manifest["ticket"],
+                        len(manifest["steps"]),
+                        len(manifest["files"]),
+                        len(manifest["services"]),
+                        digest,
+                    )
+                )
             return 0
         except Refuse as stopped:
             print("PACK fail %s" % stopped.code)
