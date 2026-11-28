@@ -117,7 +117,8 @@ class WorkflowKeepsRecordsOutOfFailures(unittest.TestCase):
             run = [s["run"] for s in doc["jobs"][job]["steps"] if "Unit tests" in s.get("name", "")][0]
             self.assertIn("grep -v '^shard-seconds '", run, job)
             self.assertIn("|| true", run, job)
-            self.assertRegex(run, r'if \[ "\$status" -eq 0 \]; then echo "::group::per-module shard seconds', job)
+        run = [s["run"] for s in doc["jobs"]["tests"]["steps"] if "Unit tests" in s.get("name", "")][0]
+        self.assertRegex(run, r'if \[ "\$status" -eq 0 \]; then echo "::group::per-module shard seconds')
 
 
 if __name__ == "__main__":
