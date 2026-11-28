@@ -40,6 +40,7 @@ class Recorded(unittest.TestCase):
                 "weekly safety check": sj.ON_TIME,
                 "domain jobs": sj.ON_TIME,
                 "V3 pages": sj.UNKNOWN,
+                "run cleanup": sj.UNKNOWN,
                 "ticker watch": sj.UNKNOWN,
                 "off-site backup": sj.UNKNOWN,
                 "Honcho nightly backup": sj.UNKNOWN,
@@ -113,10 +114,10 @@ class Rules(unittest.TestCase):
         runs = sj.fetch(api)
         self.assertEqual(
             sorted(runs),
-            ["domains.yml", "hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"],
+            ["domains.yml", "hourly.yml", "run-cleanup.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"],
         )
         self.assertIsNone(runs["safety.yml"])
-        self.assertEqual(len(seen), 5)
+        self.assertEqual(len(seen), 6)
 
     def test_the_daily_check_names_late_jobs_and_says_nothing_when_none_are(self):
         stamp = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
