@@ -108,3 +108,7 @@ So deleting everything safe does **not** make the hourly run noticeably faster. 
 4. **Delete the 7 dead Inbox files (733 lines + their tests)**: nothing runs them. A) **Yes** B) No.
 5. **Ticket-management code in `lifeos/jira`** (rollover, snapshot, readiness record, stalled, watch): A) **Keep only what the Daily Report card needs, merge the rest into one status check** B) Keep as is.
 6. **Old DECISIONS.md entries** (253 entries agents re-read): A) **Move entries older than 90 days to the index only** B) Keep all.
+
+## Kept on purpose (do not delete as unreferenced)
+
+- `.github/workflows/test-index.yml` and the `build` / `check` commands of `tests/testindex.py`: the test-index build, dispatch-only by Jim's decision (Nov 28 2026) so it is off every main run but not lost. Nothing triggers it, so a reference scan finds no caller; `tests/workflows/test_test_index.py` fails if it goes. See `docs/platform/test-index.md`.

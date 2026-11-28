@@ -8,7 +8,7 @@ Measured read-only with `gh api` on Nov 16 2026. Two sets: the last 30 merged PR
 |---|---|---|---|---|
 | `unit-tests` | 31 | 83 s | 107 s | 2,298 s |
 | `unit-tests-second-date` | 31 | 82 s | 106 s | 2,283 s |
-| `test-index` | skipped on every PR (runs on a push to main only, about 3 minutes) | | | |
+| `test-index` | not in pr-tests.yml any more: the dispatch-only workflow test-index.yml (Nov 28 2026) | | | |
 
 The two test jobs run in parallel, so the PR wall time does not double, but the job time does: the second date is about half of the test minutes on every PR. A run is about 45 to 55 s when the selector picks targets and 80 to 107 s when it picks everything.
 

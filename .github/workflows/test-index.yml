@@ -1,0 +1,44 @@
+name: test-index
+# Dispatch only (Jim, Nov 28 2026: the 60 s CI rule keeps this off every main run; kept so the build is not lost): run it with `gh workflow run test-index.yml`.
+# LIFE-644: the test index is not committed. This builds it (the whole suite once under coverage) and saves it by builder, lock and commit; pull requests only restore it (pr-tests.yml), and without one they select by the import graph.
+# No schedule, no push, no workflow_run, no secret; see docs/platform/test-index.md and tests/workflows/test_test_index.py.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-test-index
+  cancel-in-progress: false
+jobs:
+  test-index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 11
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=2 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Test-only dependencies (PyYAML and coverage, from the lock)
+        run: pip install --require-hashes -r requirements-test.lock
+      - name: Restore the newest index (LIFE-770; read-only here, the save step below is the only writer)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+        with:
+          path: docs/test-index.json
+          key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
+          restore-keys: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-
+      - name: Is the newest index under a day old? (LIFE-770; a missing or older one means rebuild)
+        id: fresh
+        run: |
+          if python -m tests.testindex check --max-age-days 1; then echo "fresh=true" >> "$GITHUB_OUTPUT"; echo "test index: reused (under a day old), no rebuild" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "fresh=false" >> "$GITHUB_OUTPUT"; echo "test index: rebuilding" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+      - name: Build the test index
+        if: ${{ steps.fresh.outputs.fresh != 'true' }}
+        run: python -m tests.testindex build
+      - name: Save the test index
+        if: ${{ steps.fresh.outputs.fresh != 'true' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+        with:
+          path: docs/test-index.json
+          key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
