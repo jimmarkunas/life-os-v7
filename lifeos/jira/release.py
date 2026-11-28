@@ -137,9 +137,20 @@ def epic_reason(fields):
     return None
 
 
+# A ticket whose only work is waiting for a date or event is a UAT check under the Bug Epic, never a build ticket.
+WAIT_ONLY = re.compile(r"^\W*(watch|soak|wait for|waiting for)\b|\(not before\b", re.I)
+
+
+def wait_only_reason(fields):
+    if "uat" in (fields.get("labels") or []) or not WAIT_ONLY.search(fields.get("summary") or ""):
+        return None
+    return "wait_only_not_uat"
+
+
 def gate(fields):
     return (
         label_reason(fields.get("labels"))
+        or wait_only_reason(fields)
         or epic_reason(fields)
         or (None if blockers_done(fields.get("issuelinks")) else "blocked_by_open")
     )

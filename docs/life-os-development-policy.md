@@ -49,8 +49,9 @@ Link to the owner; never copy a fact into a second place.
 Every LIFE ticket includes **Jim must do first** checkbox items for owner-only: secrets/Bitwarden, permissions/sign-in, spend/paid models, Mac/Oracle host steps, product decisions, Notion wireframe approval, and UAT setup. `None` means no prerequisites.
 
 - **Chat approval:** Jim's explicit ChatGPT instruction naming a LIFE ticket and approved scope is sufficient human authorization. ChatGPT records it in the Jira description, checks only proven owner items, verifies live readiness/dependencies/verdict, and moves an eligible ticket to `Agent Go`; no repeat approval. Ambiguous consent does not count; it never waives safety/feasibility gates or starts an agent.
-- **Release:** A ticket with an unchecked item or no section does not move to Agent Go. `lifeos.jira.promote`, auto-release, and `python -m lifeos.sources.devtools.readiness` enforce this.
 - **Agent Go is the approval** of the written scope; agents do not re-ask.
+- **Release:** A ticket with an unchecked item or no section does not move to Agent Go. `lifeos.jira.promote`, auto-release, and `python -m lifeos.sources.devtools.readiness` enforce this.
+- **Wait-only work** (date or event) is a UAT check under LIFE-615 (§3), never a build ticket; `release.gate` refuses it.
 - **Check before claiming:** before transition 14, list every §5 item and host step the ticket will hit. If one is neither checked nor a standing approval (§5), do not claim: post one approval table, label `needs-jim`, take the next ticket. Found mid-run: take the ticket's pre-made default (§12) and keep building; with none, file the `dry-run-miss` Bug (§12) and take the next ticket instead of stopping to ask Jim. The label `dry-run-green` is checked at claim time (§12).
 
 ## 5. What always stops for Jim

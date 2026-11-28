@@ -190,6 +190,24 @@ class Decide(unittest.TestCase):
             ("skip", ["epic_status_unread"]),
         )  # the read did not return the Epic's status
 
+    def test_a_wait_only_ticket_is_a_uat_check_not_a_build_ticket(self):
+        def titled(summary, labels=("ready",)):
+            case = issue(labels=labels)
+            case["fields"]["summary"] = summary
+            return case
+
+        for summary in (
+            "Watch the nightly runs for 7 days",
+            "Soak the backup job",
+            "UAT for LIFE-9: check (not before Jan 7 CT)",
+        ):
+            self.assertEqual(promote.decide(titled(summary)), ("skip", ["wait_only_not_uat"]), summary)
+            self.assertEqual(release.eligible(titled(summary)), "wait_only_not_uat", summary)
+        self.assertEqual(
+            promote.decide(titled("UAT for LIFE-9: check (not before Jan 7 CT)", ["ready", "uat"])), ("promote", [])
+        )
+        self.assertEqual(promote.decide(titled("Add a pure helper")), ("promote", []))
+
     def test_a_done_blocker_does_not_block(self):
         self.assertEqual(promote.decide(issue(blockers=[("LIFE-2", True)])), ("promote", []))
 
