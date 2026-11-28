@@ -569,16 +569,16 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         job = doc["jobs"]["unit-tests-second-date"]
         self.assertEqual(
             (job["if"], job["timeout-minutes"], job.get("needs")),
-            ("${{ github.event_name == 'pull_request' || github.event_name == 'push' }}", 5, None),
+            ("${{ github.event_name == 'pull_request' || github.event_name == 'push' }}", 5, "pick"),
         )
+        # one job on a pull request, 4 jobs of 4 of 16 shards on a merge to main (each under 60 s)
+        self.assertEqual(job["strategy"]["matrix"], {"job": "${{ fromJSON(needs.pick.outputs.sd) }}"})
         # a red second date on main must never turn the run red: the Close release and the test gate read its verdict
         self.assertEqual(job["continue-on-error"], "${{ github.event_name == 'push' }}")
         run = [s for s in job["steps"] if "env" in s and "LIFEOS_TEST_NOW" in s["env"]]
         self.assertEqual(len(run), 1)
-        self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09"})
-        self.assertIn(
-            "python -m tests.shard 1 4", run[0]["run"]
-        )  # the same shard command as unit-tests, on a merge to main
+        self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09", "JOB": "${{ matrix.job }}"})
+        self.assertIn('python -m tests.shard "$k" 16', run[0]["run"])  # everything, on a merge to main
         self.assertIn("tests/second-date-tests.txt", run[0]["run"])  # a pull request runs the listed modules only
         self.assertNotIn("permissions", job)  # the workflow's read-only default is all it gets
         self.assertIn("unit-tests:", wftext.read(self.path))  # the required check keeps its name
