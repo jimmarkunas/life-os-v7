@@ -26,7 +26,7 @@ jobs:
         run: python -m lifeos.platform.testgate
       - name: Test-only dependency
         if: &a1 ${{ steps.testgate.outputs.skip != 'true' }}
-        run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
+        run: pip install --require-hashes -r requirements-yaml.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
         if: *a1
         run: python -m unittest discover -s tests -t . -v

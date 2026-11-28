@@ -27,12 +27,11 @@ def run(i, at, title="tick", conclusion="success", **more):
 class Github:
     """Answers the three kinds of read the module makes."""
 
-    def __init__(self, ticks=(), domains=(), recruiters=(), capacity=(), state="active", broken=False):
+    def __init__(self, ticks=(), domains=(), recruiters=(), state="active", broken=False):
         self.by = {
             "hourly.yml": list(ticks),
             "domains.yml": list(domains),
             "recruiters.yml": list(recruiters),
-            "capacity-card.yml": list(capacity),
         }
         self.state, self.broken, self.urls = state, broken, []
 
@@ -107,10 +106,7 @@ class RunsToday(unittest.TestCase):
             (out["state"], out["ok"], out["total"], out["failed"]),
             ("failed", 2, 3, ["https://github.com/o/r/actions/runs/10"]),
         )
-        for follow in (
-            {"recruiters": [run(11, "2026-11-25T07:20:00Z", title="recruiters", conclusion="failure")]},
-            {"capacity": [run(12, "2026-11-25T07:20:00Z", title="capacity-card", conclusion="failure")]},
-        ):
+        for follow in ({"recruiters": [run(11, "2026-11-25T07:20:00Z", title="recruiters", conclusion="failure")]},):
             self.assertEqual(read(Github(ticks, **follow))["ok"], 2)
         self.assertEqual(
             read(Github(ticks, [run(13, "2026-11-25T07:12:00Z", title="domains (manual)", conclusion="failure")]))[

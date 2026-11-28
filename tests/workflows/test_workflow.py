@@ -1077,7 +1077,6 @@ RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"
 RUNTIME_CONFIG_JOBS = {
     "agenda": {"agenda"},
     "branches": {"report"},
-    "capacity-card": {"capacitycard"},
     "diag": {"inbox_view_qa", "interview_ui", "sandbox"},
     "domains": {
         "agenda",
@@ -1840,9 +1839,6 @@ LOADED = {
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
-    "capacity-card": {
-        "capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "NOTION_JIRA_TOKEN"}
-    },  # the retired AI Capacity stage reads nothing
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
     "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
     "granola-auto": {

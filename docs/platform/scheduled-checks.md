@@ -8,11 +8,11 @@ Every workflow with a `cron:` trigger is in this table. `tests/contracts/test_sc
 
 | Workflow | Cadence | What it checks | Failure alert |
 |---|---|---|---|
-| `hourly.yml` | three slots an hour (7, 27, 47) | the pipeline tick: the gate picks one run an hour | Covered already: `pipeline_failing`, `pipeline_stalled` and `run_failed` page for it (`SCHEDULED_COVERED`). Its scheduled runs are ticks, so a red tick is not a second alert. |
-| `capacity-card.yml` | hourly (55), and the hourly tick starts it when its last run is 40 minutes or more old (LIFE-957: GitHub's own cron fired it only every 5 to 10 hours) | the AI Capacity card, moved out of the hourly imessage job (LIFE-793) | Covered already (`SCHEDULED_COVERED`): the one stage only warns; no second alert. |
 | `v3-pages.yml` | after each hourly domains run (LIFE-1000); the cron `40 * * * *` is only a configured fallback, because GitHub fires it about twice a day (Nov 26 2026) | the five V3 accountability page stages, moved out of the hourly jira job (LIFE-793) | Covered already (`SCHEDULED_COVERED`): the stages only warn (LIFE-730), so the run does not go red from a stage; no second alert. |
 | `watchdog.yml` | hourly (17, 47) | the pipeline-stale issue, the alert sweep and the central scheduled check | `scheduled_red_watchdog` (PAGE). A watchdog cannot see its own failure from inside, so the Oracle ticker's copy of `gate.watch` runs the same check and covers it. Closes after 3 finished scheduled passes in a row. |
 | `safety.yml` | cron `17 13 * * 1` (UTC) = Mondays 7:17 AM CST, 8:17 AM CDT. GitHub starts it late: the scheduled runs of Nov 9, Nov 16 and Nov 23 began 9 h 41 min, 9 h 35 min and 11 h 32 min after the slot | the smoke and golden checks | `scheduled_red_safety` (PAGE). Closes on one finished scheduled pass (weekly: three passes would take three weeks). |
+
+`hourly.yml` and `capacity-card.yml` are not in this table: `hourly.yml` has no cron (the Oracle ticker starts every tick; its three backup crons never added a run, LIFE-1112) and `capacity-card.yml` was deleted (the card is a stub since LIFE-975). A red tick still pages through `pipeline_failing`, `pipeline_stalled` and `run_failed`.
 
 `boards.yml` is not in this table: it has no `schedule:` or cron (retired by LIFE-905, Nov 23 2026). The hourly tick crawls the due boards itself and no longer dispatches the workflow; `boards.yml` is only a manual run. Its old failure alert, `scheduled_red_boards`, has no scheduled run left to watch.
 

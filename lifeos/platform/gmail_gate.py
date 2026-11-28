@@ -101,6 +101,9 @@ class Gate:
         self._window: deque[tuple[float, int]] = deque()
         self._in_flight = 0
         self._renewed = float("-inf")  # monotonic time of the last successful take of the lease
+        self._held_since = float("-inf")  # monotonic time this unbroken hold of the lease began
+        self._open_until = float("-inf")  # after giving up a wait, go ahead without the lease until then
+        self._lease_lock = threading.Lock()  # one thread at a time asks for, waits for or gives up the lease
         self._ready = False  # the table exists
         self._off = False  # the store is unusable for this process: go ahead without a lease
         self._exit_hooked = False
@@ -109,9 +112,24 @@ class Gate:
         return not self._off and bool(os.environ.get("LIFEOS_ACQ_DB_PASSWORD"))
 
     def _lease(self) -> None:
-        """Hold the lease, waiting for another process's to lapse; fail open on any trouble."""
+        with self._lease_lock:
+            self._lease_held()
+
+    def _lease_held(self) -> None:
+        """Hold the lease, waiting for another process's to lapse; fail open on any trouble.
+
+        A holder that has had it for `GMAIL_LEASE_HOLD_MAX_SECONDS` without a break lets go and rests, so a process
+        waiting behind a busy holder is served in turn instead of waiting out the cap. A caller that gave up waiting
+        goes ahead without the lease for `GMAIL_LEASE_OPEN_SECONDS`, so its later calls do not each wait the cap again."""
         now = time.monotonic()
-        if now - self._renewed < limits.GMAIL_LEASE_RENEW_SECONDS or not self._store():
+        if not self._store() or now < self._open_until:
+            return
+        holding = now - self._renewed <= limits.GMAIL_LEASE_SECONDS
+        if holding and now - self._held_since >= limits.GMAIL_LEASE_HOLD_MAX_SECONDS:
+            self.release()
+            time.sleep(limits.GMAIL_LEASE_REST_SECONDS)
+            api_counts.add("gmail_lease_yield", 1)
+        elif now - self._renewed < limits.GMAIL_LEASE_RENEW_SECONDS:
             return
         waited = 0.0
         try:
@@ -123,11 +141,15 @@ class Gate:
                     cursor.execute(SEED)
                     self._ready = True
                 while True:
+                    before = self._renewed
                     cursor.execute(TAKE, (self._me, limits.GMAIL_LEASE_SECONDS, self._me))
                     cursor.execute(WHO)
                     row = cursor.fetchone()
                     if row and row[0] == self._me:
-                        self._renewed = time.monotonic()
+                        now = time.monotonic()
+                        if now - before > limits.GMAIL_LEASE_SECONDS:
+                            self._held_since = now  # a new hold, not a renewal of the last one
+                        self._renewed = now
                         if not self._exit_hooked:
                             import atexit  # noqa: PLC0415
 
@@ -136,6 +158,7 @@ class Gate:
                         break
                     if waited >= limits.GMAIL_LEASE_WAIT_MAX_SECONDS:
                         api_counts.add("gmail_lease_open", 1)
+                        self._open_until = time.monotonic() + limits.GMAIL_LEASE_OPEN_SECONDS
                         break
                     time.sleep(limits.GMAIL_LEASE_POLL_SECONDS)
                     waited += limits.GMAIL_LEASE_POLL_SECONDS

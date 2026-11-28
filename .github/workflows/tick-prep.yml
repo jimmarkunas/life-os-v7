@@ -175,11 +175,11 @@ jobs:
         run: |
           status=0
           gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick" -f "inputs[tick_run]=${GITHUB_RUN_ID}" || status=$?
-          # LIFE-957: GitHub's own cron ran the AI Capacity card (capacity-card.yml, minute 55) only every 5 to 10 hours, so the card went stale. The tick, which the Oracle ticker starts every hour, starts the card whenever its last run is 40 minutes or more old; a card the cron already started leaves this a no-op. A failure here costs only a stale card until the next tick.
-          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/capacity-card.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true)
-          age=$(python3 -c 'import sys, datetime as d; t = sys.argv[1]; print(int((d.datetime.now(d.timezone.utc) - d.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()) if t else 99999)' "$last" 2>/dev/null || echo 99999)
-          if [ "$age" -ge 2400 ]; then
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/capacity-card.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[tick]=true" || true
+          # The Fit profile sync, once a day: the 11:xx UTC tick starts it when its last run is 20 hours or more old, and any tick starts it when the last run is 30 hours or more old (a missed 11:xx tick). A failure here costs only a day's wait.
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/profile-sync.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true)
+          age=$(python3 -c 'import sys, datetime as d; t = sys.argv[1]; print(int((d.datetime.now(d.timezone.utc) - d.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()) if t else 99999999)' "$last" 2>/dev/null || echo 99999999)
+          if [ "$age" -ge 108000 ] || { [ "$(date -u +%H)" = 11 ] && [ "$age" -ge 72000 ]; }; then
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/profile-sync.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[tick]=true" || true
           fi
           exit $status
       - uses: ./.github/actions/python

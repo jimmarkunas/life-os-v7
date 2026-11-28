@@ -1,7 +1,7 @@
 name: profile-sync
 # Fit profile sync: Jim's Notion page is the authority; its approved evidence block is copied into one small table of the private store (v7_fit_profile_sync) and the Fit profile loader merges it in.
 # Nothing is written to Bitwarden: the job only READS the store credentials from it, like the other store jobs. It holds one Notion read token for the one sync page and prints one fixed code.
-# Manual dispatch (dry run unless "live"), and after the successful hourly tick that started at 11:xx or 23:xx UTC (twice a day) when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own.
+# Manual dispatch (dry run unless "live"), and once a day started by the hourly tick (its prep job dispatches it with tick=true when the last run is 20 hours or more old at the 11:xx UTC tick, or 30 hours or more at any tick) when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule and no workflow_run trigger of its own, so the Actions list holds no skipped runs of it.
 on:
   workflow_dispatch:
     inputs:
@@ -9,9 +9,10 @@ on:
         description: "Write the store row (unticked = dry run: reads the page and the stored row, writes nothing)"
         type: boolean
         default: false
-  workflow_run:
-    workflows: ["hourly"]
-    types: [completed]
+      tick:
+        description: "Started by the hourly tick: runs live when the V7 settings page has the sync on; the live box is ignored"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -20,7 +21,7 @@ concurrency:
 jobs:
   settings:
     # LIFE-703: a job's own `if` cannot read its own steps, so this small first job reads the V7 settings page and publishes the one switch the sync job's condition needs.
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && (contains(github.event.workflow_run.run_started_at, 'T11:') || contains(github.event.workflow_run.run_started_at, 'T23:')) }}  # the hourly runs that started at 11:xx and 23:xx UTC (5 to 6 AM and 5 to 6 PM CT): twice a day, not 24 times; a manual dispatch still runs it at once
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.tick }}  # a manual dispatch still runs the sync at once
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -66,7 +67,7 @@ jobs:
         run: python3 -m lifeos.platform.settings --output FIT_PROFILE_SYNC
   sync:
     needs: [settings]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.settings.outputs.fit_profile_sync == 'on' && github.event.workflow_run.conclusion == 'success')) }}
+    if: ${{ !cancelled() && (!inputs.tick || needs.settings.outputs.fit_profile_sync == 'on') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -142,5 +143,5 @@ jobs:
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_USER }}
-          LIVE: ${{ github.event_name == 'workflow_run' || inputs.live }}
+          LIVE: ${{ inputs.tick || inputs.live }}
         run: python -m lifeos.run fit-profile-sync --limit 0 $([ "$LIVE" = "true" ] && echo --live)

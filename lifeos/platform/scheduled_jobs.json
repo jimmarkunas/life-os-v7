@@ -1,7 +1,6 @@
 {"jobs": [
-  {"job": "hourly run", "host": "oracle, github", "schedule": "every hour at :17 (Oracle tick); backups :07 :27 :47 (GitHub)", "rule": "gap", "source": "hourly.yml", "match": {"display_title": "tick"}, "late": 75, "missing": 150, "unit": "lifeos-ticker-tick.timer"},
+  {"job": "hourly run", "host": "oracle, github", "schedule": "every hour at :17 (Oracle tick); no GitHub cron (LIFE-1112)", "rule": "gap", "source": "hourly.yml", "match": {"display_title": "tick"}, "late": 75, "missing": 150, "unit": "lifeos-ticker-tick.timer"},
   {"job": "watchdog", "host": "github", "schedule": "every hour at :17 and :47", "rule": "gap", "source": "watchdog.yml", "late": 90, "missing": 150},
-  {"job": "AI capacity card", "host": "github", "schedule": "every hour at :55 (LIFE-793)", "rule": "gap", "source": "capacity-card.yml", "late": 180, "missing": 360},
   {"job": "V3 pages", "host": "github", "schedule": "after each hourly domains run, and every hour at :40 as a fallback (LIFE-793, LIFE-1000)", "rule": "gap", "source": "v3-pages.yml", "late": 180, "missing": 360},
   {"job": "weekly safety check", "host": "github", "rule": "weekly", "source": "safety.yml", "weekday": 0, "utc": "13:17", "late": 720, "missing": 1440},
   {"job": "domain jobs", "host": "github", "schedule": "after each tick", "rule": "after", "source": "domains.yml", "after": "hourly.yml", "late": 30},

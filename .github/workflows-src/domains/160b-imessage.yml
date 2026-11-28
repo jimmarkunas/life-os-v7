@@ -51,7 +51,6 @@
       - name: System card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
         run: echo "::warning title=System card::the System card was not updated; it keeps its previous update time"
-      # the AI Capacity card now runs in its own workflow (capacity-card.yml), not in this job.
       - name: Fail the job if any stage step failed
         if: ${{ always() && contains(steps.*.outcome, 'failure') }}
         run: echo "::error title=imessage::a stage step failed in the imessage job (see the step marked failed above)"; exit 1

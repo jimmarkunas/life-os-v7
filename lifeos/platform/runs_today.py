@@ -1,7 +1,7 @@
 """The Command Center's `Runs OK today` card: hourly ticks today that finished without a failure.
 
 Today is America/Chicago midnight on, from GitHub's run history. A tick is a completed, non-cancelled `hourly.yml` run
-titled `tick`; it FAILED if it or a follow-on run (`domains (after tick)`, `recruiters.yml`, `capacity-card.yml`)
+titled `tick`; it FAILED if it or a follow-on run (`domains (after tick)`, `recruiters.yml`)
 failed. Unreadable history is `unverified`, never a healthy count.
 """
 
@@ -17,7 +17,7 @@ TZ = ZoneInfo("America/Chicago")
 FAILED = ("failure", "timed_out", "startup_failure")
 DONE = FAILED + ("success",)
 TICKS = "hourly.yml"
-FOLLOW_ON = {"domains.yml": gate.DOMAINS_TITLE, "recruiters.yml": None, "capacity-card.yml": None}
+FOLLOW_ON = {"domains.yml": gate.DOMAINS_TITLE, "recruiters.yml": None}
 PER_PAGE, MAX_PAGES = 100, 5
 NAME = "Runs OK today"
 
