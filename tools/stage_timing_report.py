@@ -196,11 +196,12 @@ def job_rows(run, repo=REPO, runner=gh):
     jobs = json.loads(runner("api", f"repos/{repo}/actions/runs/{run}/jobs?per_page=100") or "{}").get("jobs", [])
     rows = []
     for job in jobs:
-        if job.get("name") in JOB_ROWS and job.get("started_at") and job.get("completed_at"):
+        label = str(job.get("name") or "").split(" / ")[0]  # a job that calls a reusable workflow is "finish / finish"
+        if label in JOB_ROWS and job.get("started_at") and job.get("completed_at"):
             seconds = (_t(job["completed_at"]) - _t(job["started_at"])).total_seconds()
             rows.append(
                 {
-                    "stage": f"job {job['name']}",
+                    "stage": f"job {label}",
                     "outcome": "complete" if job.get("conclusion") == "success" else "incomplete",
                     "begin": job["started_at"],
                     "end": job["completed_at"],

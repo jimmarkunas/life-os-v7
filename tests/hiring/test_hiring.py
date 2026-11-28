@@ -9,6 +9,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 from zoneinfo import ZoneInfo
+from tests import wftext  # noqa: E402
 
 from lifeos.hiring import compile as C, models as M, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
@@ -853,7 +854,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.pipeline.hiring", "run"))
         import yaml
 
-        doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
+        doc = yaml.safe_load(wftext.logical("domains"))
         self.assertEqual(doc["jobs"]["hiring"]["needs"], ["gate"])
         self.assertTrue({"jira", "agenda", "bills", "amazon", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))
         for name in ("outlook", "megibow"):  # the two that never write the Daily Report page
@@ -1073,10 +1074,10 @@ class GuardrailTests(unittest.TestCase):
         )
 
     def test_hourly_and_the_scheduler_are_untouched(self):
-        hourly = (ROOT / ".github/workflows/hourly.yml").read_text()
+        hourly = wftext.logical("hourly")
         self.assertNotIn("lifeos.run hiring", hourly)
         self.assertNotIn("HIRING_CARD_BLOCK_ID", hourly)
-        domains = (ROOT / ".github/workflows/domains.yml").read_text()
+        domains = wftext.logical("domains")
         self.assertNotIn("schedule:", domains)
         self.assertNotIn("cron", domains)
 

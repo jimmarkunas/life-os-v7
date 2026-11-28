@@ -6,6 +6,7 @@ import json
 import pathlib
 import re
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -28,7 +29,7 @@ class BoardsWorkflow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.doc = yaml.safe_load(BOARDS.read_text())
-        cls.hourly = yaml.safe_load((ROOT / ".github/workflows/hourly.yml").read_text())
+        cls.hourly = yaml.safe_load(wftext.logical("hourly"))
         cls.steps = {s.get("id"): s for s in cls.doc["jobs"]["boards"]["steps"] if s.get("id")}
 
     def test_the_four_windows_are_retired_so_there_is_no_schedule_and_manual_runs_are_dry_unless_live(self):
@@ -76,7 +77,7 @@ class BoardsWorkflow(unittest.TestCase):
             (u, n)
             for u, n in re.findall(
                 r"^\s+([0-9a-f-]{36}) > (\w+)$",
-                wfsets.expand_text((ROOT / ".github/workflows/hourly.yml").read_text()),
+                wfsets.expand_text(wftext.logical("hourly")),
                 re.M,
             )
         )
@@ -95,7 +96,7 @@ class BoardsWorkflow(unittest.TestCase):
         names = [s.name for s in tick.PLAN]
         self.assertNotIn("boards", names)
         self.assertIn("boards-backfill", names)
-        self.assertNotIn("lifeos.run boards --limit", (ROOT / ".github/workflows/hourly.yml").read_text())
+        self.assertNotIn("lifeos.run boards --limit", wftext.logical("hourly"))
 
     def test_the_table_the_production_contract_reads_lists_the_workflow_cadence_cap_and_timeout(self):
         row = json.loads((ROOT / "lifeos/platform/due_table.json").read_text())["workflows"]["boards.yml"]

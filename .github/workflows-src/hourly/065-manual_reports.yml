@@ -1,0 +1,70 @@
+  manual_reports:
+    outputs:
+      failed: ${{ steps.lanes.outputs.failed }}
+    needs: [prep, manual_scaleup]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.report != '' || inputs.probe) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 58
+    env:
+      FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Semantic layer (optional shadow; local embedding model)
+        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-v1
+      - name: Pip cache for the semantic layer (requirements-fit.lock)
+        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.cache/pip
+          key: pip-fit-${{ runner.os }}-${{ hashFiles('requirements-fit.lock') }}
+      - name: Install semantic layer
+        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
+        run: pip install --require-hashes -r requirements-fit.lock || echo "semantic layer unavailable (scoring unchanged)"
+      - name: Bitwarden helper from a saved, fingerprint-checked copy
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "600"
+      - id: bws_finish
+        name: Load the migrated credentials from Bitwarden
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: hourly-manual-reports
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,V7_CLOUD_FIT,V7_CLOUD_FIT_SCHEDULED,V7_CLOUD_FIT_BACKLOG_BUDGET,V7_CLOUD_FIT_BACKLOG_MAX,V7_CLOUD_FIT_PARALLEL,V7_CLOUD_FIT_BACKLOG_PAGE,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
+          live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
+      - name: Join the tailnet (Cloud-Fit shadow only)
+        continue-on-error: true  # the store's Oracle fallback needs the tailnet on every run; a failed join only means no fallback
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: bws_runtime_config
+        if: ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: runtime-config

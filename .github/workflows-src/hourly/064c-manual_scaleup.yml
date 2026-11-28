@@ -1,16 +1,12 @@
-      - id: fit
+      - id: sponsors
         continue-on-error: true
-        name: Step 6a - fit scoring (deterministic, private profile)
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish) }}
+        name: Step 5e - UK sponsor register (weekly refresh)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sponsors }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
-          FIT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
+          SPONSORS_FORCE: ${{ inputs.sponsors && 'true' || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
           JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -24,6 +20,16 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
+      # Only the manual cloud_backlog dispatch of Step 6a2 stays here.
+      - id: lanes
+        name: Lane failures fail the run (other stages still ran)
+        if: ${{ always() }}
+        run: |
+          failed=""
+          for pair in scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
+          if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

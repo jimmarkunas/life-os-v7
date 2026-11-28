@@ -10,6 +10,7 @@ from lifeos.interview import acceptance, notion
 from lifeos.platform.notion_client import NotionError
 from tests.interview.test_notion import ENV
 from tests.interview.test_scheduling_pending import COMPANY, ROLE, SOURCE, opportunity
+from tests import wftext  # noqa: E402
 
 KEY = "exampleco-stpm-ex1234"
 CASE = {
@@ -177,7 +178,7 @@ class WorkflowStep(unittest.TestCase):
         """The job blanks it, the three steps that read Ledger rows declare it empty, and the V7 settings page fills it
         with the step's own read-only Interview.
         """
-        text = (Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
+        text = wftext.logical("hourly")
         job = text[text.index("\n  interview:\n") : text.index("\n  report:\n")]
         self.assertNotIn("secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID", job)
         self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)  # blank for the whole job

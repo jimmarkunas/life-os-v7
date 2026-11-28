@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
+from tests import wftext  # noqa: E402
 
 from lifeos.inbox import followup_stage as S, followup_wiring as W
 from lifeos.outlook import stage as outlook_stage
@@ -427,7 +428,7 @@ class Job(unittest.TestCase):
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        text = wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text())
+        text = wfsets.expand_text(wftext.logical("domains"))
         doc = yaml.safe_load(text)
         job = doc["jobs"]["followup"]
         self.assertEqual(doc["permissions"], {"contents": "read"})  # unchanged
@@ -473,9 +474,7 @@ class Job(unittest.TestCase):
             self.skipTest("PyYAML not installed")
         from lifeos.platform.credential_list import CREDENTIALS
 
-        job = yaml.safe_load(wfsets.expand_text((self.ROOT / ".github/workflows/domains.yml").read_text()))["jobs"][
-            "followup"
-        ]
+        job = yaml.safe_load(wfsets.expand_text(wftext.logical("domains")))["jobs"]["followup"]
         loaded = next(step for step in job["steps"] if step.get("id") == "bws_followup")
         lines = [line.split() for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()]
         loaded_names = {parts[-1] for parts in lines}

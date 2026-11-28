@@ -9,23 +9,28 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FLOWS = ROOT / ".github/workflows"
 SRC = ROOT / ".github/workflows-src"
-GENERATED_MAX = 130 * 1024
+GENERATED_MAX = 20 * 1024  # no workflow file is over 20 KB; a bigger job is a reusable workflow of its own
 PART_MAX = 6 * 1024
 NAME_MAX = 60
-RATCHET = {"domains.yml": 125_000, "hourly.yml": 65_000}
-PARTS_TOTAL_MAX = 255_000
-BUDGETED = ("domains.yml", "hourly.yml", "v3-pages.yml")
+RATCHET = {}
+GENERATED_NAMES = (
+    "domain",
+    "hourly",
+    "tick-",
+    "v3-pages",
+)  # the files tools/regen.py writes keep their step names short; the size limit is for every workflow
+PARTS_TOTAL_MAX = 281_000  # the six manual-stage jobs each carry their own setup steps (about 4 KB each), so the parts grew by that much when finish was cut
 
 
 def problems(flows, src, ratchet=RATCHET):
     """> one text per breach: a generated workflow over its limit, a part over 8 KB, a step name over 80 characters."""
     out = []
     for path in sorted(pathlib.Path(flows).glob("*.yml")):
-        if path.name not in BUDGETED:
-            continue
         size = len(path.read_bytes())
         if size > ratchet.get(path.name, GENERATED_MAX):
             out.append(f"{path.name} is {size} bytes, over {ratchet.get(path.name, GENERATED_MAX)}")
+        if not path.name.startswith(GENERATED_NAMES):
+            continue
         for name, job in (yaml.safe_load(path.read_text()).get("jobs") or {}).items():
             out += [
                 f"{path.name} {name}: step name of {len(s['name'])} characters: {s['name'][:40]}"
@@ -58,7 +63,7 @@ class Budget(unittest.TestCase):
                 "jobs:\n  a:\n    steps:\n      - name: " + "n" * (NAME_MAX + 1) + "\n        run: echo\n"
             )
             (flows / "domains.yml").write_text("jobs: {}\n# " + "y" * 200 + "\n")
-            found = problems(flows, src.parent, ratchet={"domains.yml": 100})
+            found = problems(flows, src.parent, ratchet={"domains.yml": 100, "hourly.yml": 10**6})
         self.assertEqual(len(found), 3, found)
         self.assertTrue(
             any("010-a.yml" in f for f in found)
@@ -66,13 +71,11 @@ class Budget(unittest.TestCase):
             and any("domains.yml" in f for f in found)
         )
 
-    def test_a_clean_tree_has_no_problem_and_the_caps_sit_above_the_reached_sizes_with_room_to_grow(self):
+    def test_a_clean_tree_has_no_problem_and_the_largest_workflow_is_under_twenty_kilobytes(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(problems(tmp, tmp), [])
-        for name, ceiling in RATCHET.items():
-            size = len((FLOWS / name).read_bytes())
-            self.assertLess(size, ceiling, name)
-            self.assertLess(ceiling - size, 15_000, f"lower the {name} cap when the file shrinks well below it")
+        largest = max(FLOWS.glob("*.yml"), key=lambda p: len(p.read_bytes()))
+        self.assertLess(len(largest.read_bytes()), 20 * 1024, largest.name)
 
 
 if __name__ == "__main__":

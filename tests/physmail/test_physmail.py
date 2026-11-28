@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from tests import wftext  # noqa: E402
 
 from lifeos.physmail import card, chains, events, stage, state
 from lifeos.platform import report_region, router
@@ -627,7 +628,7 @@ class RuntimePathTests(unittest.TestCase):
         except ImportError:
             self.skipTest("PyYAML not installed")
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
-        domains = yaml.safe_load((root / "domains.yml").read_text())
+        domains = yaml.safe_load(wftext.logical("domains"))
         job = domains["jobs"]["mail"]
         self.assertEqual(set(job["needs"]), {"gate"})
         ingest, card_step = [s for s in job["steps"] if s.get("id") in ("mail", "mcard")]
@@ -647,7 +648,7 @@ class RuntimePathTests(unittest.TestCase):
             self.assertIn(name, domains[True]["workflow_dispatch"]["inputs"])
         self.assertIn("inputs.physical_mail", domains["jobs"]["dcc"]["if"])
         self.assertEqual(ingest["env"]["PHYSICAL_MAIL_EXPECT"], "")
-        self.assertNotIn("mail", yaml.safe_load((root / "hourly.yml").read_text())["jobs"])
+        self.assertNotIn("mail", yaml.safe_load(wftext.logical("hourly"))["jobs"])
         self.assertNotIn("schedule", domains[True])
 
     def test_missing_input_fails_closed_without_a_write_and_the_card_then_says_degraded(self):

@@ -54,9 +54,9 @@ def strip_comments(text):
 SCALAR = re.compile(r"^(\s*(?:- )?[\w.\-]+): (?!\||>|&|\*|\{|\[|#)(\S.*)$")
 SCALAR_ANCHOR = re.compile(r"^(\s*(?:- )?[\w.\-]+): &(a\d+) (.*)$")
 SCALAR_ALIAS = re.compile(r"^(\s*(?:- )?[\w.\-]+): \*(a\d+)$")
-BLOCK_HEAD = re.compile(r"^(\s*)(env|with):\s*$")
-BLOCK_ANCHOR = re.compile(r"^(\s*)(env|with): &(m\d+)$")
-BLOCK_ALIAS = re.compile(r"^(\s*)(env|with): \*(m\d+)$")
+BLOCK_HEAD = re.compile(r"^(\s*)(env|with|secrets):\s*$")
+BLOCK_ANCHOR = re.compile(r"^(\s*)(env|with|secrets): &(m\d+)$")
+BLOCK_ALIAS = re.compile(r"^(\s*)(env|with|secrets): \*(m\d+)$")
 MIN_VALUE, MIN_BLOCK = 14, 40
 
 
