@@ -4,6 +4,7 @@ splits into processes without.
 
 import pathlib
 import tempfile
+import os
 import unittest
 from unittest import mock
 
@@ -25,7 +26,7 @@ class QuickSelect(unittest.TestCase):
         )
         self.assertLess(len(got), len(everything) // 2, "a shared-path change must not escalate to the whole suite")
 
-    def test_a_change_it_cannot_place_runs_every_test_module_never_fewer(self):
+    def test_on_ci_a_change_it_cannot_place_runs_every_test_module_never_fewer(self):
         every = sorted(testindex.module_set())
         for change in (
             [".github/workflows/hourly.yml"],
@@ -33,7 +34,8 @@ class QuickSelect(unittest.TestCase):
             ["tools/blob.bin"],
             ["tests/kit/clock.py"],
         ):
-            self.assertEqual(quickselect.quick_targets(change), every, change)
+            with mock.patch.dict(os.environ, {"CI": "true"}):
+                self.assertEqual(quickselect.quick_targets(change), every, change)
 
     def test_a_changed_test_module_runs_itself(self):
         self.assertIn(

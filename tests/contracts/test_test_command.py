@@ -30,7 +30,7 @@ class TestCommand(unittest.TestCase):
         )
 
     def test_no_usable_python_names_the_missing_piece_and_exits_three_without_installing_anything(self):
-        done = self.run_script("--list", LIFEOS_PYTHON="/nonexistent/python")
+        done = self.run_script("--list", LIFEOS_PYTHON="/nonexistent/python", CI="true")
         if done.returncode == 0:
             self.skipTest("this host has a Python 3.12 with PyYAML on /usr/bin")
         self.assertEqual(done.returncode, 3, done.stderr)
@@ -39,7 +39,9 @@ class TestCommand(unittest.TestCase):
         self.assertEqual(list(self.tmp.iterdir()), [self.tmp / "tools"])  # nothing was created or installed
 
     def test_the_chosen_python_is_reported_and_everything_runs_outside_a_git_checkout(self):
-        done = self.run_script("--list", LIFEOS_PYTHON=sys.executable)
+        done = self.run_script(
+            "--list", LIFEOS_PYTHON=sys.executable, CI="true"
+        )  # the full suite is refused locally, allowed on CI
         if sys.version_info < (3, 12):
             self.assertEqual(done.returncode, 3)
             return
