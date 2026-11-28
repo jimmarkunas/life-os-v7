@@ -240,7 +240,7 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
             if re.search(r"^\s*schedule:", p.read_text(), re.M)
         ]
         self.assertEqual(
-            sorted(scheduled), ["hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"]
+            sorted(scheduled), ["hourly.yml", "run-cleanup.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"]
         )  # the watchdog only raises an alert
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):

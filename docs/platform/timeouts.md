@@ -94,6 +94,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `profile-sync.yml` | `sync` | 10 | 10 | 39 | 15 | 248 | twice the slowest run (248 s) rounds to 10 min, not below the current 10: unchanged |
 | `readiness-live.yml` | `readiness` | 10 | 10 | 1 | 8 | 8 | kept: only 1 measured runs (fewer than 10), slowest 8 s |
 | `recruiters.yml` | `recruiters` | 20 | 20 | 9 | 389 | 404 | kept: only 9 measured runs (fewer than 10), slowest 404 s |
+| `run-cleanup.yml` | `cleanup` | 15 | 15 | 0 | - | - | new job (LIFE-1117): at most 600 calls, one delete a second, about 10 minutes at the limit; no run measured yet |
 | `safety.yml` | `safety` | 20 | 20 | 12 | 22 | 44 | twice the slowest run (44 s) rounds to 20 min, not below the current 20: unchanged |
 | `suite-timing.yml` | `plan` | 2 | 2 | 4 | 3 | 4 | kept: only 4 measured runs (fewer than 10), slowest 4 s |
 | `suite-timing.yml` | `report` | 5 | 5 | 4 | 11 | 18 | kept: only 4 measured runs (fewer than 10), slowest 18 s |

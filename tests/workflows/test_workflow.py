@@ -1900,7 +1900,7 @@ LOADED = {
     },
 }
 PILOTS = ("watchdog", "safety", "amazon", "diag")
-SECRET_FREE = ("pr-tests", "suite-timing", "mariadb-race", "test-index")
+SECRET_FREE = ("pr-tests", "suite-timing", "mariadb-race", "test-index", "run-cleanup")
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
