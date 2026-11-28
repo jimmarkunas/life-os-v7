@@ -68,14 +68,6 @@
    "slowest_seconds": 18,
    "target": 15
   },
-  "capacity-card.yml::capacitycard": {
-   "basis": "not measured: new job (LIFE-793); keeps its current value",
-   "current": 10,
-   "median_seconds": null,
-   "runs_measured": 0,
-   "slowest_seconds": null,
-   "target": 10
-  },
   "diag-inbox-view-qa.yml::inbox_view_qa": {
    "basis": "new job (LIFE-711, Nov 16 2026), not yet measured: 10 min like the other diag jobs; keeps its current value",
    "current": 10,

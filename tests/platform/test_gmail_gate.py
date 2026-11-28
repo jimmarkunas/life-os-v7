@@ -210,6 +210,54 @@ class Lease(unittest.TestCase):
         self.assertEqual(sum(self.sleeps), limits.GMAIL_LEASE_WAIT_MAX_SECONDS)
         self.assertEqual(api_counts.take()["gmail_lease_open"], 1)
 
+    def test_a_caller_that_gave_up_waiting_does_not_wait_the_cap_again_on_its_next_calls(self):
+        self.store.holder, self.store.until = "someone", 10**9
+        gate = gmail_gate.Gate(enabled=True)
+        for _ in range(3):
+            self.use(gate)
+        self.assertEqual(sum(self.sleeps), limits.GMAIL_LEASE_WAIT_MAX_SECONDS)  # once, not three times
+        self.assertEqual(api_counts.take()["gmail_lease_open"], 1)
+        self.store.now += limits.GMAIL_LEASE_OPEN_SECONDS  # a minute later it asks again
+        self.use(gate)
+        self.assertEqual(sum(self.sleeps), 2 * limits.GMAIL_LEASE_WAIT_MAX_SECONDS)
+
+    def test_a_busy_holder_lets_go_after_the_hold_cap_so_a_waiter_is_served(self):
+        gate = gmail_gate.Gate(enabled=True)
+        self.use(gate)
+        served = []
+
+        def other_takes_during_the_rest(seconds):
+            self.sleeps.append(seconds)
+            self.store.now += seconds
+            if seconds == limits.GMAIL_LEASE_REST_SECONDS and not served:
+                served.append(self.store.now)  # a waiting process polls and takes the freed lease
+                self.store.holder, self.store.until = "other", self.store.now + limits.GMAIL_LEASE_SECONDS
+
+        with mock.patch("time.sleep", side_effect=other_takes_during_the_rest):
+            while self.store.now < 3 * limits.GMAIL_LEASE_HOLD_MAX_SECONDS and not served:
+                self.store.now += (
+                    limits.GMAIL_LEASE_RENEW_SECONDS
+                )  # a busy holder: a call every few seconds, never quiet
+                self.use(gate)
+        self.assertEqual(len(served), 1)
+        self.assertLessEqual(
+            served[0],
+            limits.GMAIL_LEASE_HOLD_MAX_SECONDS
+            + 2 * limits.GMAIL_LEASE_RENEW_SECONDS
+            + limits.GMAIL_LEASE_REST_SECONDS,
+        )
+        self.assertEqual(api_counts.take()["gmail_lease_yield"], 1)
+
+    def test_a_holder_nobody_waits_for_takes_the_lease_straight_back_after_its_rest(self):
+        gate = gmail_gate.Gate(enabled=True)
+        self.use(gate)
+        for _ in range(8):
+            self.store.now += limits.GMAIL_LEASE_RENEW_SECONDS
+            self.use(gate)
+        self.assertEqual(self.store.holder, gate._me)
+        self.assertIn(limits.GMAIL_LEASE_REST_SECONDS, self.sleeps)
+        self.assertNotIn("gmail_lease_open", api_counts.take())
+
     def test_an_unreachable_store_fails_open_once_and_is_not_asked_again(self):
         self.store.down = True
         gate = gmail_gate.Gate(enabled=True)

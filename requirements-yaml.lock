@@ -1,0 +1,4 @@
+# LOCK FILE: PyYAML alone, the same pin and hash as requirements-test.lock, for the hourly unit-test step (it needs only the YAML reader for the workflow contract tests; the full test lock is installed by pr-tests).
+# Do not edit by hand: change requirements-yaml.txt and keep the pin equal to requirements-test.txt.
+PyYAML==6.0.3 \
+    --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc

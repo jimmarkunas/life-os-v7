@@ -137,13 +137,13 @@ class Workflow(unittest.TestCase):
     def test_the_trial_step_cannot_fail_the_job_and_nothing_uses_doppler_values(self):
         import yaml
 
-        doc = yaml.safe_load((ROOT / ".github/workflows/capacity-card.yml").read_text())
-        steps = doc["jobs"]["capacitycard"]["steps"]
-        trial = next(s for s in steps if s.get("id") == "doppler_trial")
+        doc = yaml.safe_load((ROOT / ".github/workflows/profile-sync.yml").read_text())
+        steps = doc["jobs"]["sync"]["steps"]
+        trial = next(s for s in steps if s.get("id") == "doppler_bws_sync")
         self.assertTrue(trial["continue-on-error"])
         self.assertEqual(trial["uses"], "./.github/actions/doppler-load")
         self.assertEqual(trial["with"]["token"], "${{ secrets.DOPPLER_TOKEN }}")
-        self.assertNotIn("doppler_trial", json.dumps([s for s in steps if s is not trial]))
+        self.assertNotIn("doppler_bws_sync", json.dumps([s for s in steps if s is not trial]))
         self.assertEqual(doc["permissions"], {"contents": "read"})
         action = (ROOT / ".github/actions/doppler-load/action.yml").read_text()
         self.assertNotRegex(action, r"uses:")

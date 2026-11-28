@@ -31,7 +31,7 @@ COMPARE_NAMES input Set from the doppler-load action's names input: the secret n
 DOMAINS_PHASE input Set from the domains workflow's phase input: tick marks the early run of a tick (LIFE-775)
 DOPPLER_CONFIG input Set from the doppler-load action's config input: the Doppler config, prd (LIFE-863)
 DOPPLER_PROJECT input Set from the doppler-load action's project input: the Doppler project, life-os (LIFE-863)
-DOPPLER_TOKEN input Set from the GitHub secret DOPPLER_TOKEN (the one read-only Doppler service token, trial workflow capacity-card.yml only; LIFE-863)
+DOPPLER_TOKEN input Set from the GitHub secret DOPPLER_TOKEN (the one read-only Doppler service token, parity compares only; LIFE-863)
 FIT_PROFILE_SYNC workflow_only:workflow Switch for the Fit profile sync job; the V7 settings page can set it, GitHub's value is the fallback
 FOLLOWUP_ACCOUNT_CALENDAR_BYTALOS input Short account label for the Followup calendar source (bytalos), shown in receipts; never an address
 FOLLOWUP_ACCOUNT_CALENDAR_PERSONAL input Short account label for the Followup calendar source (personal), shown in receipts; never an address

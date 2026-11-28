@@ -1077,7 +1077,6 @@ RUNTIME_CONFIG_LOADER_ID = "bws_runtime_config"
 RUNTIME_CONFIG_JOBS = {
     "agenda": {"agenda"},
     "branches": {"report"},
-    "capacity-card": {"capacitycard"},
     "diag": {"inbox_view_qa", "interview_ui", "sandbox"},
     "domains": {
         "agenda",
@@ -1840,9 +1839,6 @@ LOADED = {
     "network": {"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
     "boards": {"boards": DB | JUMP | TS},
     "v3-pages": {"v3pages": {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}},
-    "capacity-card": {
-        "capacitycard": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "NOTION_JIRA_TOKEN"}
-    },  # the retired AI Capacity stage reads nothing
     "outlook": {"outlook": DB | {"OUTLOOK_CLIENT_ID"}},
     "profile-sync": {"sync": DB | {"NOTION_FIT_SYNC_TOKEN"}},
     "granola-auto": {
@@ -2239,7 +2235,7 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
 
     def test_it_has_no_schedule_no_top_level_secret_and_runs_one_stage(self):
         on = self.doc.get("on") or self.doc.get(True)
-        self.assertEqual(sorted(on), ["workflow_dispatch", "workflow_run"])
+        self.assertEqual(sorted(on), ["workflow_dispatch"])
         self.assertNotIn("schedule", self.text.replace("No schedule of its own", ""))
         self.assertNotIn("env", self.doc)
         self.assertEqual(self.text.count("python -m lifeos.run"), 1)
@@ -2256,8 +2252,7 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
         self.assertIn(
             "needs.settings.outputs.fit_profile_sync == 'on'", job["if"]
         )  # the switch now comes from the V7 settings page...
-        self.assertIn("github.event.workflow_run.conclusion == 'success'", job["if"])
-        self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
+        self.assertIn("inputs.tick", job["if"])  # a tick-started run needs the switch; a manual one runs at once
         self.assertEqual(
             self.doc["jobs"]["settings"]["outputs"]["fit_profile_sync"],
             "${{ steps.settings.outputs.FIT_PROFILE_SYNC }}",

@@ -7,7 +7,7 @@
 | What is a run | a completed run of `hourly.yml` titled `tick` (scheduled, or dispatched with the tick box); runs titled `manual`, test dispatches and cancelled runs are left out |
 | Today | since midnight America/Chicago (06:00 UTC in winter, 05:00 in summer) |
 | A tick failed when | the tick, or a follow-on run it started, concluded failure, timed out or failed to start |
-| Follow-on runs | `domains.yml` runs titled `domains (after tick)`, and `recruiters.yml` and `capacity-card.yml` runs; each belongs to the latest tick that started before it |
+| Follow-on runs | `domains.yml` runs titled `domains (after tick)`, and `recruiters.yml` runs; each belongs to the latest tick that started before it |
 | Source unreadable | `—` with `GitHub unreadable`, never a healthy count |
 
 | Card | When |

@@ -177,7 +177,7 @@ ALLOWED_RUNS = (
     "tick=${{ (github.event_name == 'schedule'",
     "git init -q .",
     "python3 -m lifeos.platform.gate",
-    "pip install --require-hashes -r requirements-test.lock",
+    "pip install --require-hashes -r requirements-yaml.lock",
     "python -m unittest discover",
     "python -m lifeos.platform.testgate",
     "python -m unittest tests.test_testindex.CommittedIndexIsFresh",

@@ -100,7 +100,6 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `suite-timing.yml` | `timing` | 5 | 5 | 40 | 95 | 135 | twice the slowest run (135 s) rounded up to whole minutes, 5-minute floor |
 | `boards.yml` | `window` | 5 | 5 | 0 | - | - | not measured: new job (LIFE-854): one read of this workflow's own run history; 5-minute floor |
 | `boards.yml` | `boards` | 35 | 35 | 0 | - | - | not measured: new job (LIFE-854, Jim's sizing, lowered Nov 22 2026 after the measured 172 s per 1,036 boards): the catch-up window's 25-minute crawl step plus checkout, the Bitwarden helper wait and the tailnet join |
-| `capacity-card.yml` | `capacitycard` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-793); keeps its current value |
 | `v3-pages.yml` | `v3pages` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-793); keeps its current value |
 | `watchdog.yml` | `watch` | 3 | 3 | 100 | 9 | 34 | already under the 5-minute floor; slowest run 34 s |
 | `watchdog.yml` | `alarm` | 3 | 3 | 0 | n/a | n/a | new in LIFE-704: two GitHub API calls; kept at the 3-minute limit it is created with |

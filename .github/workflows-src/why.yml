@@ -200,7 +200,7 @@ hourly/010-prep.yml:
   - {"Join the tailnet as the ephemeral tag:v7-runner node": "LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)"}
 hourly/010b-prep.yml:
   - {"Gate - skip a run when another tick started recently": "Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)"}
-  - {"Start the early domains run now": "LIFE-775 - start the early domains run now (this tick passed its gate; every domain job that reads nothing the tick writes runs while the tick runs; the run that starts when the tick finishes does megibow, interview and granola, and every job if this dispatch fails, so a failure here costs only the time it saves)"}
+  - {"Start the early domains run now": "LIFE-775 - start the early domains run now (this tick passed its gate; every domain job that reads nothing the tick writes runs while the tick runs; the run that starts when the tick finishes does megibow, interview and granola, and every job if this dispatch fails, so a failure here costs only the time it saves; LIFE-1112 - the same step starts the once-a-day Fit profile sync, which replaced profile-sync's workflow_run trigger and its 24 skipped runs a day)"}
 hourly/020-unit-tests.yml:
   - {"testgate": "Unit-test gate (LIFE-570; fail closed - the tests are skipped only when pr-tests is green on this exact commit)"}
   - {"Test-only dependency": "Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)"}

@@ -158,13 +158,13 @@ class Pages(unittest.TestCase):
         result = _check(Hub({}, unreadable=("safety.yml", "watchdog.yml")), pushes)
         self.assertEqual((result["unreadable"], pushes), (["safety.yml", "watchdog.yml"], []))
 
-    def test_one_list_call_per_workflow_and_the_hourly_runs_are_covered_elsewhere(self):
+    def test_one_list_call_per_workflow_and_the_hourly_workflow_has_no_cron(self):
         pushes, hub = [], Hub({"safety.yml": [run(1, "success")], "watchdog.yml": [run(2, "success")]})
         _check(hub, pushes)
         listed = [route for method, route in hub.calls if route.startswith("actions/workflows/")]
         self.assertEqual(sorted(listed), ["actions/workflows/safety.yml/runs", "actions/workflows/watchdog.yml/runs"])
         self.assertNotIn("hourly.yml", gate.SCHEDULED_WORKFLOWS)
-        self.assertIn("hourly.yml", gate.SCHEDULED_COVERED)
+        self.assertNotIn("hourly.yml", gate.SCHEDULED_COVERED)  # no cron left: nothing scheduled to cover
 
     def test_the_keys_are_registered_with_the_right_severity(self):
         self.assertEqual(alert_registry.severity("scheduled_red_safety"), "page")

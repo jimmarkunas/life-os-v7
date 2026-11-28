@@ -11,6 +11,7 @@ PAIRS = (
     ("requirements-browser.txt", "requirements-browser.lock"),
     ("requirements-fit.txt", "requirements-fit.lock"),
     ("requirements-test.txt", "requirements-test.lock"),
+    ("requirements-yaml.txt", "requirements-yaml.lock"),
 )
 
 
@@ -99,17 +100,29 @@ class Trims(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/pr-tests.yml").read_text()
         self.assertGreaterEqual(workflow.count('test-lock: "true"'), 2)  # unit-tests and the second-date job
 
-    def test_profile_sync_follows_only_the_hourly_runs_that_started_in_the_11_and_23_utc_hours(self):
+    def test_the_yaml_only_lock_keeps_the_pin_and_hash_of_the_full_test_lock(self):
+        full, small = lock_entries("requirements-test.lock"), lock_entries("requirements-yaml.lock")
+        self.assertEqual(small, {"pyyaml": full["pyyaml"]})
+        pattern = r"PyYAML==[^\n]*\n\s+--hash=sha256:[0-9a-f]{64}"
+        self.assertEqual(
+            re.search(pattern, (ROOT / "requirements-yaml.lock").read_text()).group(0),
+            re.search(pattern, (ROOT / "requirements-test.lock").read_text()).group(0),
+        )
+
+    def test_the_hourly_unit_test_step_installs_only_the_yaml_lock(self):
+        hourly = (ROOT / ".github/workflows-src/hourly/020-unit-tests.yml").read_text()
+        self.assertIn("pip install --require-hashes -r requirements-yaml.lock", hourly)
+        self.assertNotIn("requirements-test.lock", hourly)
+
+    def test_profile_sync_has_no_workflow_run_trigger_and_the_tick_starts_it_once_a_day(self):
         text = (ROOT / ".github/workflows/profile-sync.yml").read_text()
-        self.assertNotIn("substring(", text)  # not an Actions function: a workflow using it is invalid and never runs
-        self.assertIn("contains(github.event.workflow_run.run_started_at, 'T11:')", text)
-        self.assertIn("contains(github.event.workflow_run.run_started_at, 'T23:')", text)
-        # the same test in Python: of the 24 hours of a day exactly two pass, and a manual dispatch has no such condition
-        started = ["2026-11-27T%02d:00:11Z" % hour for hour in range(24)]
-        passing = [stamp for stamp in started if stamp[11:13] in "11 23".split(" ") or stamp[11:13] in "11 23"]
-        self.assertEqual(sorted(s[11:13] for s in passing), ["11", "23"])
-        dispatch_job = text.split("  sync:")[1] if "  sync:" in text else text
-        self.assertIn("github.event_name == 'workflow_dispatch'", dispatch_job)
+        self.assertNotIn("workflow_run", text)  # a workflow_run trigger lists one skipped run per hourly run
+        self.assertNotIn("schedule:", text)
+        self.assertIn("inputs.tick", text)
+        prep = (ROOT / ".github/workflows-src/hourly/010b-prep.yml").read_text()
+        self.assertIn("workflows/profile-sync.yml/dispatches", prep)
+        self.assertIn('"$(date -u +%H)" = 11', prep)  # the 11:xx UTC tick, 5 to 6 AM Central
+        self.assertIn("-ge 72000", prep)  # and not twice inside 20 hours
 
 
 if __name__ == "__main__":

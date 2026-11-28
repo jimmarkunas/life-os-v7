@@ -19,4 +19,8 @@ The hourly `finish` job also appends each line to `stage-timing-<run id>.jsonl` 
 
 `python tools/stage_timing_report.py --from 2026-11-23 --to 2026-11-24` (Central dates) downloads the artifacts of the hourly ticks in that range with `gh` (read only) and prints, per stage: runs, p50, p95, max, share of the run's wall time, wait p50, how often it was on the critical path and its critical seconds, how many runs were not complete and how many runs lack it. `--dir DIR` reads files already downloaded; `--steps` adds the `prep`, `finish` and `report` jobs from GitHub's own timestamps. A run with no artifact, or a stage a run lacks, is UNVERIFIED and left out of the numbers, never counted as zero. The critical path of a run is walked back from its latest end through the latest-ending stage that had ended when the previous one began.
 
+## API calls per job (LIFE-1112)
+
+A stage's row carries `api_calls` when it made outside calls: one count per service (`gmail`, `notion`, `jira`, `graph`, `todoist`, `gcal`) from `lifeos/platform/api_counts.py`, which the shared REST layer and the Notion and Gmail clients call once per HTTP attempt, plus the Gmail gate's own tallies (units, seconds waited, slowdowns, `gmail_lease_yield`, `gmail_lease_open`). `python tools/api_receipt.py RUN_ID [RUN_ID ...]` reads the runs' logs with `gh` (read only) and prints one table: a row per job, a column per service, a total row, and the gate tallies under it. A job that printed no count has no row (UNVERIFIED, never zero).
+
 Rollback: revert the pull request; nothing else reads these lines.
