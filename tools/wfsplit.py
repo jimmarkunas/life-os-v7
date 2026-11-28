@@ -124,12 +124,13 @@ def called_file(job, chunks, header, declared, prefix):
         lines += ["    outputs:"] + [
             x for o in outputs for x in (f"      {o}:", "        value: ${{ jobs." + job + ".outputs." + o + " }}")
         ]
-    lines += ["permissions:", "  contents: read"]
+    perm = [c for k, c in chunks if k == "permissions"]
+    # the file's own `permissions` are its job's block: GitHub rejects a called file whose job asks for more than the file itself allows
+    lines += [line[4:] for line in perm[0].split("\n")] if perm else ["permissions:", "  contents: read"]
     env = header_env(header)
     if env:
         lines.append(env)
     lines += ["jobs:", f"  {job}:"]
-    perm = [c for k, c in chunks if k == "permissions"]
     text = "\n".join(lines) + "\n" + "\n".join(perm + [body]) + "\n"
     return text, used, passed, secrets
 
@@ -205,7 +206,10 @@ def split(text, prefix, inline=(), orchestrator=None, pack=wfsrc.compress):
     inputs, withs = passes(used, declared)
     lines = ["name: " + orchestrator.removesuffix(".yml"), "on:", "  workflow_call:", "    inputs:"] + inputs
     lines += ["    secrets:"] + [x for s in secrets for x in (f"      {s}:", "        required: false")]
-    lines += ["permissions:", "  contents: read"]
+    lines += [
+        line[4:]
+        for line in union_permissions(re.findall(r"^    permissions:\n(?:      .*\n?)+", jobs_text, re.M)).split("\n")
+    ]
     env = header_env(header)
     if env:
         lines.append(env)
