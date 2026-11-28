@@ -22,7 +22,8 @@ This section is the highest-precedence text in this file. It supersedes every ot
 | JFM and MEJ quarterly metric promotion (legacy to v2) | V7 only; approved by v2.15.19 (LIFE-1026), DISABLED — NOT DELIVERED; see `V7 QUARTERLY METRIC PROMOTION` |
 | Recruiters region | Not asserted here: V7's `recruiters` stage writes the Recruiters data source, but the region's owner is not recorded in `OWNERS` |
 | Run stamp, audit history | DISABLED — NOT DELIVERED (the single run-stamp line is approved for V7, not yet built) |
-| Drive Index, Weekly Reports Archive, Notes lifecycle, Weekly Review, Jim & Matt accountability sync (the retired legacy dashboard sync, not the V7 V3 page writer) | DISABLED — NOT DELIVERED |
+| Drive Index, Weekly Reports Archive, Notes lifecycle, Jim & Matt accountability sync (the retired legacy dashboard sync, not the V7 V3 page writer) | DISABLED — NOT DELIVERED |
+| Weekly LIFE OS Review (Weekly Reviews row per Friday week ending) | V7 only; DELIVERED (LIFE-945, trimmed by LIFE-1108; amended by Jim's permission, November 28, 2026); see `Weekly Review` in the reports section |
 | Coverage & System Health reporting | DISABLED — NOT DELIVERED |
 | Hourly Gmail/Outlook mail acquisition, census, and routing | DISABLED — NOT DELIVERED |
 | Newsletter acquisition and cleanup orchestration | DISABLED — NOT DELIVERED |
