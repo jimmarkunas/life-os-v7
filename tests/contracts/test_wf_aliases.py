@@ -50,14 +50,20 @@ class Aliases(unittest.TestCase):
         packed = wfsrc.compress(SAMPLE)
         self.assertIn("          echo ALPHA: ${{ steps.bws_a.outputs.ALPHA_VALUE_NAME }}", packed)
 
-    def test_the_real_generated_workflows_round_trip_and_are_much_smaller_than_their_plain_text(self):
-        for name in ("domains", "hourly"):
-            text = (ROOT / ".github/workflows" / f"{name}.yml").read_text()
+    def test_the_real_generated_workflows_round_trip_and_the_big_ones_are_much_smaller_than_their_plain_text(self):
+        flows = ROOT / ".github/workflows"
+        names = sorted(p.name for p in flows.glob("*.yml") if p.name.startswith(("domain", "hourly", "tick-")))
+        self.assertIn("domain-run.yml", names)
+        for name in names:
+            text = (flows / name).read_text()
             plain = wfsrc.expand_aliases(text)
-            self.assertNotEqual(plain, text, name)  # aliases are in use
             self.assertEqual(wfsrc.compress(plain), text, name)  # the writer is deterministic
             self.assertEqual(yaml.safe_load(plain), yaml.safe_load(text), name)
-            self.assertLess(len(text), len(plain) * 0.85, name)
+        for name in ("domain-run.yml", "hourly.yml", "tick-finish.yml"):  # the cut files that repeat the most
+            text = (flows / name).read_text()
+            plain = wfsrc.expand_aliases(text)
+            self.assertNotEqual(plain, text, name)  # aliases are in use
+            self.assertLess(len(text), len(plain) * 0.9, name)
 
 
 if __name__ == "__main__":

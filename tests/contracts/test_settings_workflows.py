@@ -5,6 +5,7 @@ its phase-5 status.
 import pathlib
 import re
 import unittest
+from tests import wftext  # noqa: E402
 
 from lifeos.platform import settings
 import sys as _sys
@@ -172,7 +173,7 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
                 self.assertTrue(len(lines) == 1 or lines[1].endswith("> V7_RUNTIME_CONFIG_SOURCE_ID"), file)
 
     def test_the_gate_outputs_read_the_page_only(self):
-        data = yaml.safe_load((WORKFLOWS / "domains.yml").read_text())
+        data = yaml.safe_load(wftext.logical("domains"))
         out = data["jobs"]["gate"]["outputs"]
         self.assertEqual(out["granola_auto"].split("#")[0].strip(), "${{ steps.settings.outputs.GRANOLA_AUTO }}")
         self.assertEqual(
@@ -191,7 +192,7 @@ class SettingsStepsNeverStopAJob(unittest.TestCase):
             for permission, files in baseline.items():
                 if permission in text:
                     self.assertIn(path.name, files, f"{path.name} gained `{permission}`")
-        gate = yaml.safe_load((WORKFLOWS / "domains.yml").read_text())["jobs"]["gate"]
+        gate = yaml.safe_load(wftext.logical("domains"))["jobs"]["gate"]
         self.assertEqual(gate["permissions"], {"contents": "read", "actions": "read"})
         self.assertNotIn(
             "permissions", yaml.safe_load((WORKFLOWS / "profile-sync.yml").read_text())["jobs"]["settings"]

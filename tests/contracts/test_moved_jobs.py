@@ -2,6 +2,7 @@
 
 import pathlib
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -15,8 +16,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
 class MovedJobs(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.domains = yaml.safe_load((ROOT / "domains.yml").read_text())
-        cls.hourly = yaml.safe_load((ROOT / "hourly.yml").read_text())
+        cls.domains = yaml.safe_load(wftext.logical("domains"))
+        cls.hourly = yaml.safe_load(wftext.logical("hourly"))
 
     def test_each_runs_only_after_a_tick_that_ran_its_pipeline_and_never_on_the_early_run(self):
         for name in ("network_surface", "fit_cloud_backlog"):
@@ -51,8 +52,8 @@ class MovedJobs(unittest.TestCase):
             self.assertIn(f"::error title={name}::", steps[-1]["run"])  # the job ends red when its stage failed
 
     def test_hourly_no_longer_runs_either_after_a_tick_and_keeps_only_the_manual_cloud_backlog(self):
-        steps = self.hourly["jobs"]["finish"]["steps"]
-        self.assertFalse([s for s in steps if s.get("id") == "network_surface"])
+        self.assertFalse([s for s in self.hourly["jobs"]["finish"]["steps"] if s.get("id") == "network_surface"])
+        steps = self.hourly["jobs"]["manual_fit"]["steps"]  # the manual stages run in their own jobs
         backlog = next(s for s in steps if s.get("id") == "fit_cloud_backlog")
         self.assertIn("inputs.cloud_backlog != ''", backlog["if"])
         self.assertIn("needs.prep.outputs.pipeline != 'true'", backlog["if"])
@@ -237,7 +238,7 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.domains = yaml.safe_load((ROOT / "domains.yml").read_text())
+        cls.domains = yaml.safe_load(wftext.logical("domains"))
 
     def step(self, stage):
         return next(s for s in self.domains["jobs"][self.JOB[stage]]["steps"] if s.get("id") == stage)
@@ -284,13 +285,15 @@ class MovedJobsKeepTheEnvironmentTheirStageReads(unittest.TestCase):
         )
 
     def test_hourly_keeps_the_two_steps_for_a_manual_maintenance_dispatch_only(self):
-        hourly = yaml.safe_load((ROOT / "hourly.yml").read_text())
-        steps = {s.get("id"): s for s in hourly["jobs"]["finish"]["steps"]}
+        hourly = yaml.safe_load(wftext.logical("hourly"))
+        steps = {s.get("id"): s for s in hourly["jobs"]["manual_maintenance"]["steps"]}
+        tick = {s.get("id"): s for s in hourly["jobs"]["finish"]["steps"]}
         for stage in ("sync_seen", "purge"):
             condition = steps[stage]["if"]
             self.assertIn("inputs.maintenance", condition)
             self.assertIn("needs.prep.outputs.pipeline != 'true'", condition)
             self.assertNotIn("pipeline == 'true'", condition)
-        for ident in ("alerts", "lanes"):
-            self.assertIn(ident, steps)  # they report the finish lanes and stay
+        self.assertIn("alerts", tick)  # the tick job keeps its alerts and lanes
+        self.assertIn("lanes", tick)
+        self.assertIn("lanes", steps)
         self.assertIn("sync_seen=${{ steps.sync_seen.outcome }}", steps["lanes"]["run"])

@@ -1,5 +1,5 @@
-""".github/workflows/domains.yml is the fragments in.github/workflows-src/domains joined in file-name order, one fragment
-per job plus the header
+""".github/workflows/domains.yml, domain-run.yml and domain-<job>.yml are the fragments in .github/workflows-src/domains joined in
+file-name order (one fragment per job plus the header) and cut into a caller and reusable workflows (tools/wfsplit.py)
 """
 
 import io
@@ -29,8 +29,11 @@ def check():
 
 
 class DomainsParts(unittest.TestCase):
-    def test_the_generated_file_is_the_fragments_joined(self):
-        self.assertEqual(regen.domains_text(), GENERATED.read_text(), "run python tools/regen.py")
+    def test_the_generated_files_are_the_fragments_joined_and_cut(self):
+        made = regen.domains_files()
+        self.assertIn(GENERATED, made)
+        for path, text in made.items():
+            self.assertEqual(text, path.read_text(), f"run python tools/regen.py ({path.name})")
 
     def test_each_fragment_holds_exactly_the_job_its_file_name_says(self):
         """a long job continues in lettered files (020b-jira.yml) that start at a step and hold no job key"""
@@ -55,7 +58,7 @@ class DomainsParts(unittest.TestCase):
     def test_the_fragments_define_the_same_jobs_the_workflow_runs(self):
         import yaml
 
-        jobs = set(yaml.safe_load(GENERATED.read_text())["jobs"])
+        jobs = set(yaml.safe_load(regen.domains_text())["jobs"])
         self.assertEqual(
             jobs,
             {
@@ -69,7 +72,8 @@ class DomainsParts(unittest.TestCase):
         self.assertEqual(list((ROOT / ".github/workflows").glob("*domains*")), [GENERATED])
 
     def test_the_generated_file_has_no_comments_and_the_history_is_in_the_workflow_doc(self):
-        self.assertNotRegex(GENERATED.read_text(), r"(?m)^ {0,8}#")
+        for path in regen.domains_files():
+            self.assertNotRegex(path.read_text(), r"(?m)^ {0,8}#", path.name)
         self.assertEqual(
             regen.workflow_doc_text(), (ROOT / "docs/workflows.md").read_text(), "run python tools/regen.py"
         )
@@ -82,7 +86,7 @@ class DomainsParts(unittest.TestCase):
             with mock.patch.object(regen, "DOMAINS_PARTS", copy):
                 code, out = check()
         self.assertEqual(code, 1)
-        self.assertIn("domains.yml", out)
+        self.assertIn("domain-jira.yml", out)
 
     def test_the_generated_file_edited_alone_fails_the_check(self):
         with tempfile.TemporaryDirectory() as tmp:

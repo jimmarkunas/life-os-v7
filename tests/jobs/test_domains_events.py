@@ -4,6 +4,7 @@ import json
 import pathlib
 import sys
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -34,7 +35,7 @@ TRIGGER_INPUTS = (
 
 
 def load():
-    return yaml.safe_load(WORKFLOW.read_text())
+    return yaml.safe_load(wftext.logical("domains"))
 
 
 def order(jobs):
@@ -269,7 +270,7 @@ class DomainsEventTable(unittest.TestCase):
 
     def test_every_domain_job_waits_for_the_gate_and_the_trigger_clause_exists_once(self):
         doc = load()
-        text = WORKFLOW.read_text()
+        text = wftext.logical("domains")
         for name, job in doc["jobs"].items():
             if name != "gate":
                 self.assertIn("gate", job["needs"], name)

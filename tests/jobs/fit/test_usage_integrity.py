@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest import mock
+from tests import wftext  # noqa: E402
 
 from lifeos import run as lifeos_run
 from lifeos.jobs.fit import cloud
@@ -210,15 +211,19 @@ class TheCodeReachesThePush(unittest.TestCase):
 
     @unittest.skipIf(yaml is None, "PyYAML unavailable")
     def test_a_usage_failure_is_named_in_exactly_one_push_and_a_clean_run_pushes_nothing(self):
-        doc = yaml.safe_load(
-            (pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml").read_text()
-        )
-        finish = doc["jobs"]["finish"]
+        doc = yaml.safe_load(wftext.logical("hourly"))
+        finish = doc["jobs"][
+            "manual_fit"
+        ]  # fit and the backlog batch are the manual_fit job's stages, the tick is finish's
         lanes = next(s for s in finish["steps"] if s.get("id") == "lanes")
+        tick_lanes = next(s for s in doc["jobs"]["finish"]["steps"] if s.get("id") == "lanes")
         report = next(s for s in doc["jobs"]["report"]["steps"] if "finish job report" in s.get("name", ""))
         self.assertEqual(finish["outputs"]["codes"], "${{ steps.lanes.outputs.codes }}")
-        self.assertEqual(report["env"]["CODES"], "${{ needs.finish.outputs.codes }}")
-        for step in ("tick", "fit", "fit_cloud_backlog"):
+        self.assertEqual(
+            report["env"]["CODES"], "${{ needs.finish.outputs.codes }} ${{ needs.manual_fit.outputs.codes }}"
+        )
+        self.assertIn("${{ steps.tick.outputs.cloud_fit_code }}", tick_lanes["env"]["CODES"])
+        for step in ("fit", "fit_cloud_backlog"):
             self.assertIn(f"${{{{ steps.{step}.outputs.cloud_fit_code }}}}", lanes["env"]["CODES"])
 
         def lanes_run(backlog_outcome, code):

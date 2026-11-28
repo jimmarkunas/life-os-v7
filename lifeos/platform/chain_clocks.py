@@ -16,7 +16,7 @@ import os
 import re
 import sys
 
-from lifeos.platform import ct_stamp, due, gate
+from lifeos.platform import ct_stamp, due, gate, jobnames
 
 JOBS_STAGES = ("publish", "publish-fresh")
 CAREER_JOBS = ("hiring", "hiring_outcomes", "recruiters", "interview")
@@ -74,14 +74,15 @@ def _jobs(runs):
     rows = []
     for run in runs:
         for job in run["jobs"]:
-            if job.get("name") == "chain" or job.get("name", "").startswith(
+            name = jobnames.label(job.get("name"))
+            if name == "chain" or name.startswith(
                 "gate"
             ):  # the receipt's own job and the gates (they end at the start) are not work
                 continue
             rows.append(
                 (
                     run["id"],
-                    job["name"],
+                    name,
                     job.get("status"),
                     job.get("conclusion"),
                     job.get("started_at"),
@@ -172,7 +173,8 @@ def correlated_runs(tick_id, tick, listing, jobs_of):
         ):
             continue
         jobs = jobs_of(run["id"])
-        if any(NAME.fullmatch(j.get("name", "")) and NAME.fullmatch(j["name"]).group(1) == str(tick_id) for j in jobs):
+        labels = [jobnames.label(j.get("name")) for j in jobs]
+        if any(NAME.fullmatch(n) and NAME.fullmatch(n).group(1) == str(tick_id) for n in labels):
             found.append({"id": run["id"], "event": run["event"], "conclusion": run.get("conclusion"), "jobs": jobs})
     return found
 

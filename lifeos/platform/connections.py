@@ -12,7 +12,7 @@ import json
 import os
 import urllib.request
 
-from lifeos.platform import ct_stamp, notion_ids
+from lifeos.platform import ct_stamp, jobnames, notion_ids
 from lifeos.platform.notion_client import NotionError
 
 SOURCE_NAME = "SYSTEM_HEALTH_SOURCE"
@@ -141,7 +141,9 @@ def evidence(environ=os.environ, api=_api):
             for job in api(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100", token)["jobs"]:
                 if job.get("conclusion") not in ("success", "failure") or not job.get("completed_at"):
                     continue
-                seen = out.setdefault(job["name"], {"last_ok": None, "failed": job["conclusion"] == "failure"})
+                seen = out.setdefault(
+                    jobnames.label(job["name"]), {"last_ok": None, "failed": job["conclusion"] == "failure"}
+                )
                 if job["conclusion"] == "success" and seen["last_ok"] is None:
                     seen["last_ok"] = dt.datetime.fromisoformat(job["completed_at"].replace("Z", "+00:00"))
         return out

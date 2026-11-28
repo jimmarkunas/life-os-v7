@@ -114,999 +114,204 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prep:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
     permissions:
       contents: read
       actions: write
       issues: write
-    outputs:
-      pipeline: ${{ steps.pipeline.outputs.value }}
-      extract: ${{ steps.extract.outcome }}
-      sweep: ${{ steps.sweep.outcome }}
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - name: Cloud Fit backlog runs alone
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0' && (inputs.interview_probe || inputs.interview || inputs.interview_acceptance || inputs.discover || inputs.tick || inputs.check_store || inputs.reconcile || inputs.resolve_jobright || inputs.resolve_linkedin || inputs.enrich || inputs.web || inputs.web_scale_up || inputs.sponsors || inputs.probe || inputs.fit || inputs.fit_all || inputs.audit || inputs.publish || inputs.maintenance || inputs.finalize || inputs.quick || inputs.report != '') }}
-        run: |
-          echo "CLOUD_BACKLOG_COMBINED_INPUTS: a cloud_backlog dispatch runs alone (only live may be set with it); nothing ran"
-          exit 1
-      - name: Bitwarden helper from a saved, fingerprint-checked copy
-        uses: &a1 ./.github/actions/bws-helper
-        with:
-          wait_seconds: "600"
-      - id: bws_prep
-        name: &a2 Load the migrated credentials from Bitwarden
-        uses: &a3 ./.github/actions/bws-load
-        with:
-          access_token: &a4 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          doppler_compare: &a5 ${{ secrets.DOPPLER_TOKEN }}
-          set_env: false
-          set: hourly-prep
-      - name: Plain switches from Bitwarden
-        uses: &a6 ./.github/actions/bws-plain
-        with:
-          access_token: *a4
-          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,V7_PIPELINE,GATE_MIN_GAP_MINUTES,LIVE
-          live_mode: &a7 ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
-      - id: pipeline
-        name: Pipeline decision
-        run: |
-          tick=${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tick)) && 'true' || 'false' }}
-          if [ "$tick" = true ] && [ "$V7_PIPELINE" = true ]; then v=true; else v=false; fi
-          echo "PIPELINE=$v" >> "$GITHUB_ENV"
-          echo "value=$v" >> "$GITHUB_OUTPUT"
-      - name: Join the tailnet as the ephemeral tag:v7-runner node
-        continue-on-error: true
-        uses: &a8 ./.github/actions/tailscale
-        with:
-          oauth-client-id: ${{ steps.bws_prep.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_prep.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:v7-runner
-      - name: Gate - skip a run when another tick started recently
-        env:
-          GITHUB_TOKEN: &a9 ${{ github.token }}
-          TICK: ${{ inputs.tick }}
-          GMAIL_OAUTH_CLIENT_SECRET: &a10 ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: &a11 ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: &a12 ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: &a13 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a14 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a15 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a16 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a17 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a18 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a19 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a20 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a21 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a22 ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: &a23 ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
-        run: python3 -m lifeos.platform.gate
-      - name: Start the early domains run now
-        if: ${{ (github.event_name == 'schedule' || inputs.tick) && github.run_attempt == 1 && !cancelled() }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: *a9
-        run: |
-          status=0
-          gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick" -f "inputs[tick_run]=${GITHUB_RUN_ID}" || status=$?
-          # LIFE-957: GitHub's own cron ran the AI Capacity card (capacity-card.yml, minute 55) only every 5 to 10 hours, so the card went stale. The tick, which the Oracle ticker starts every hour, starts the card whenever its last run is 40 minutes or more old; a card the cron already started leaves this a no-op. A failure here costs only a stale card until the next tick.
-          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/capacity-card.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true)
-          age=$(python3 -c 'import sys, datetime as d; t = sys.argv[1]; print(int((d.datetime.now(d.timezone.utc) - d.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()) if t else 99999)' "$last" 2>/dev/null || echo 99999)
-          if [ "$age" -ge 2400 ]; then
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/capacity-card.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[tick]=true" || true
-          fi
-          exit $status
-      - uses: &a24 ./.github/actions/python
-      - id: sweep
-        continue-on-error: true
-        name: Stage 1 - sweep
-        if: &a25 ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}
-        env: &m1
-          GMAIL_OAUTH_CLIENT_SECRET: *a10
-          GMAIL_OAUTH_CLIENT_ID: *a11
-          GMAIL_OAUTH_REFRESH_TOKEN: *a12
-          LIFEOS_ACQ_DB_NAME: *a13
-          LIFEOS_ACQ_DB_PASSWORD: *a14
-          LIFEOS_ACQ_DB_USER: *a15
-          LIFEOS_ACQ_SSH_HOST: *a16
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a17
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a18
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a19
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a20
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a21
-          LIFEOS_ACQ_SSH_USER: *a22
-          NOTION_API_TOKEN: *a23
-        run: python -m lifeos.sources.newsletters.sweep $([ "$LIVE" = "true" ] && echo --live)
-      - name: Step 3b - reconcile (repair, manual only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
-        env: *m1
-        run: python -m lifeos.sources.newsletters.ingest --reconcile --live --limit 300
-      - name: Step 2 - store check
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
-        env: *m1
-        run: python -m lifeos.jobs.store
-      - id: extract
-        continue-on-error: true
-        name: Stage - extract cards from mail
-        if: ${{ (github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true') && !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}
-        env: *m1
-        run: python -m lifeos.sources.newsletters.ingest $([ "$LIVE" = "true" ] && echo --live)
-
+    uses: ./.github/workflows/tick-prep.yml
+    with:
+      audit: &a1 ${{ inputs.audit || false }}
+      check_store: ${{ inputs.check_store || false }}
+      cloud_backlog: &a2 ${{ inputs.cloud_backlog || '' }}
+      discover: &a3 ${{ inputs.discover || false }}
+      enrich: &a4 ${{ inputs.enrich || false }}
+      finalize: &a5 ${{ inputs.finalize || false }}
+      fit: &a6 ${{ inputs.fit || false }}
+      fit_all: &a7 ${{ inputs.fit_all || false }}
+      interview: &a8 ${{ inputs.interview || false }}
+      interview_acceptance: &a9 ${{ inputs.interview_acceptance || false }}
+      interview_probe: &a10 ${{ inputs.interview_probe || false }}
+      live: &a11 ${{ inputs.live || false }}
+      maintenance: &a12 ${{ inputs.maintenance || false }}
+      probe: &a13 ${{ inputs.probe || false }}
+      publish: &a14 ${{ inputs.publish || false }}
+      quick: &a15 ${{ inputs.quick || false }}
+      reconcile: ${{ inputs.reconcile || false }}
+      report: &a16 ${{ inputs.report || '' }}
+      resolve_jobright: &a17 ${{ inputs.resolve_jobright || false }}
+      resolve_linkedin: &a18 ${{ inputs.resolve_linkedin || false }}
+      sponsors: &a19 ${{ inputs.sponsors || false }}
+      tick: &a20 ${{ inputs.tick || false }}
+      web: &a21 ${{ inputs.web || false }}
+      web_scale_up: &a22 ${{ inputs.web_scale_up || false }}
+    secrets: &m1
+      DOPPLER_TOKEN: &a23 ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: &a24 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
   unit-tests:
-    if: *a25
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: *a24
-      - name: Unit-test gate
-        id: testgate
-        env:
-          GITHUB_TOKEN: *a9
-        run: python -m lifeos.platform.testgate
-      - name: Test-only dependency
-        if: &a26 ${{ steps.testgate.outputs.skip != 'true' }}
-        run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
-      - name: Unit tests
-        if: *a26
-        run: python -m unittest discover -s tests -t . -v
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}
+    uses: ./.github/workflows/tick-unit-tests.yml
   jobright:
     needs: prep
-    if: &a27 ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - name: Python and the Bitwarden helper
-        uses: &a28 ./.github/actions/job-start
-        with:
-          wait_seconds: "600"
-      - id: bws_jobright
-        name: *a2
-        uses: *a3
-        with: &m2
-          access_token: *a4
-          doppler_compare: *a5
-          set_env: false
-          set: hourly-jobright
-      - name: Plain switches from Bitwarden
-        uses: *a6
-        with: &m3
-          access_token: *a4
-          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: *a7
-      - name: Join the tailnet as the ephemeral tag:v7-runner node
-        continue-on-error: true
-        uses: *a8
-        with:
-          oauth-client-id: ${{ steps.bws_jobright.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_jobright.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:v7-runner
-      - id: jobright_browser
-        name: Browser install for the Jobright resolver
-        if: &a29 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
-        uses: &a30 ./.github/actions/browser
-        with:
-          cache_bust: life576a
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: &a31 Runtime Configuration source ID from Bitwarden
-        uses: *a3
-        with: &m4
-          access_token: *a4
-          doppler_compare: *a5
-          set_env: false
-          set: runtime-config
-      - id: jobright
-        name: Step 5 - resolve Jobright jobs (free Chromium)
-        if: *a29
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: &a32 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_jobright.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_jobright.outputs.FIT_PROFILE_JSON }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_jobright.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_jobright.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_jobright.outputs.NOTION_API_TOKEN }}
-          TINYFISH_API_KEY: ${{ steps.bws_jobright.outputs.TINYFISH_API_KEY }}
-        run: |
-          python -m lifeos.run resolve-jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
-
+    if: &a25 ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}
+    uses: ./.github/workflows/tick-jobright.yml
+    with:
+      live: *a11
+      resolve_jobright: *a17
+      tick: *a20
+      prep_pipeline: &a26 ${{ needs.prep.outputs.pipeline }}
+    secrets: *m1
   linkedin:
     needs: prep
-    if: *a27
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - name: Python and the Bitwarden helper
-        uses: *a28
-        with:
-          wait_seconds: "600"
-      - id: bws_linkedin
-        name: *a2
-        uses: *a3
-        with: *m2
-      - name: Plain switches from Bitwarden
-        uses: *a6
-        with: *m3
-      - name: Join the tailnet as the ephemeral tag:v7-runner node
-        continue-on-error: true
-        uses: *a8
-        with:
-          oauth-client-id: ${{ steps.bws_linkedin.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_linkedin.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:v7-runner
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: *a31
-        uses: *a3
-        with: *m4
-      - id: linkedin
-        name: Step 5 - resolve LinkedIn jobs (no login, no browser)
-        if: &a33 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_linkedin.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_linkedin.outputs.FIT_PROFILE_JSON }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_linkedin.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_linkedin.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: &a34 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a35 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a36 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a37 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a38 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a39 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a40 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a41 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a42 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a43 ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_linkedin.outputs.NOTION_API_TOKEN }}
-          TINYFISH_API_KEY: ${{ steps.bws_linkedin.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run resolve-linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
-      - id: linkedin_search
-        continue-on-error: true
-        timeout-minutes: 4
-        name: Step 5a - LinkedIn job search
-        if: *a33
-        env:
-          LIFEOS_ACQ_DB_NAME: *a34
-          LIFEOS_ACQ_DB_PASSWORD: *a35
-          LIFEOS_ACQ_DB_USER: *a36
-          LIFEOS_ACQ_SSH_HOST: *a37
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a38
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a39
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a40
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a41
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a42
-          LIFEOS_ACQ_SSH_USER: *a43
-        run: python -m lifeos.run linkedin-search --limit 40 $([ "$LIVE" = "true" ] && echo --live)
-
+    if: *a25
+    uses: ./.github/workflows/tick-linkedin.yml
+    with:
+      live: *a11
+      resolve_linkedin: *a18
+      tick: *a20
+      prep_pipeline: *a26
+    secrets: *m1
   lensa:
     needs: prep
-    if: *a27
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - name: Python and the Bitwarden helper
-        uses: *a28
-        with:
-          wait_seconds: "600"
-      - id: bws_lensa
-        name: *a2
-        uses: *a3
-        with: *m2
-      - name: Plain switches from Bitwarden
-        uses: *a6
-        with: *m3
-      - name: Join the tailnet as the ephemeral tag:v7-runner node
-        continue-on-error: true
-        uses: *a8
-        with:
-          oauth-client-id: ${{ steps.bws_lensa.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_lensa.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:v7-runner
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: *a31
-        uses: *a3
-        with: *m4
-      - id: discover
-        continue-on-error: true
-        name: Step 5f - Scale-Up sponsors with no job board (web search)
-        if: ${{ always() && (needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.discover)) }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_JSON }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_lensa.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_lensa.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_lensa.outputs.NOTION_API_TOKEN }}
-          TINYFISH_API_KEY: ${{ steps.bws_lensa.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
-
+    if: *a25
+    uses: ./.github/workflows/tick-lensa.yml
+    with:
+      discover: *a3
+      live: *a11
+      tick: *a20
+      prep_pipeline: *a26
+    secrets: *m1
   finish:
-    outputs:
-      failed: ${{ steps.lanes.outputs.failed }}
-      codes: ${{ steps.lanes.outputs.codes }}
     needs: [prep]
     if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') }}
-    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
-    timeout-minutes: 58
-    env:
-      FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: *a24
-      - name: Semantic layer (optional shadow; local embedding model)
-        if: &a44 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
-        uses: &a45 actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: .cache/fastembed
-          key: fastembed-bge-small-v1
-      - name: Pip cache for the semantic layer (requirements-fit.lock)
-        if: *a44
-        uses: *a45
-        with:
-          path: ~/.cache/pip
-          key: pip-fit-${{ runner.os }}-${{ hashFiles('requirements-fit.lock') }}
-      - name: Install semantic layer
-        if: *a44
-        run: pip install --require-hashes -r requirements-fit.lock || echo "semantic layer unavailable (scoring unchanged)"
-      - name: Bitwarden helper from a saved, fingerprint-checked copy
-        uses: *a1
-        with:
-          wait_seconds: "600"
-      - id: bws_finish
-        name: *a2
-        uses: *a3
-        with:
-          access_token: *a4
-          doppler_compare: *a5
-          set_env: false
-          set: hourly-finish
-      - name: Plain switches from Bitwarden
-        uses: *a6
-        with:
-          access_token: *a4
-          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,V7_CLOUD_FIT,V7_CLOUD_FIT_SCHEDULED,V7_CLOUD_FIT_BACKLOG_BUDGET,V7_CLOUD_FIT_BACKLOG_MAX,V7_CLOUD_FIT_PARALLEL,V7_CLOUD_FIT_BACKLOG_PAGE,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
-          live_mode: *a7
-      - name: Join the tailnet (Cloud-Fit shadow only)
-        continue-on-error: true
-        uses: *a8
-        with:
-          oauth-client-id: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:v7-runner
-      - id: browser
-        continue-on-error: true
-        name: Browser install
-        if: &a46 ${{ needs.prep.outputs.pipeline == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}
-        uses: *a30
-        with:
-          cache_bust: life576a
-      - id: bws_runtime_config
-        if: *a46
-        continue-on-error: true
-        name: *a31
-        uses: *a3
-        with: *m4
-      - id: tick
-        continue-on-error: true
-        name: Jobs tick - the whole chain in one process
-        if: *a46
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: &a47 ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: &a48 ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: &a49 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: &a50 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: &a51 ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: &a52 ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: &a53 ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: &a54 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: &a55 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: &a56 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: &a57 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: &a58 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: &a59 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a60 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a61 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a62 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: &a63 ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: &a64 ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: &a65 ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: &a66 ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-          IMESSAGE_ALERTS_HOST: &a67 ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST }}
-          V7_CLOUD_FIT: ${{ env.V7_CLOUD_FIT || 'off' }}
-          V7_CLOUD_FIT_PROFILE_REF: ""
-          TICK_CAP_LINKEDIN: ""
-          TICK_CAP_TINYFISH: ""
-          TICK_CAP_JOBRIGHT: ""
-          TICK_CAP_DICE: ""
-          TICK_CAP_ATS: ""
-          TICK_MAX_PARALLEL: ""
-          GITHUB_TOKEN: *a9
-          TICK_SKIP_STAGES: ${{ steps.browser.outcome == 'failure' && 'resolve-jobright' || '' }}
-          STAGE_TIMING_FILE: &a68 ${{ runner.temp }}/stage-timing-${{ github.run_id }}.jsonl
-        run: |
-          python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
-      - name: Stage timing receipt
-        if: ${{ always() && !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: stage-timing-${{ github.run_id }}
-          path: *a68
-          retention-days: 14
-          if-no-files-found: ignore
-      - id: web
-        continue-on-error: true
-        name: Step 5b - US Remote web acquisition (due ATS boards)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web }}
-        env: &m5
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run web --limit 12 $([ "$LIVE" = "true" ] && echo --live)
-      - id: enrich
-        continue-on-error: true
-        name: Step 6 - enrich RESOLVED jobs (final page)
-        timeout-minutes: 15
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.enrich }}
-        env: *m5
-        run: python -m lifeos.run enrich --limit 450 $([ "$LIVE" = "true" ] && echo --live)
-      - id: fit
-        continue-on-error: true
-        name: Step 6a - fit scoring (deterministic, private profile)
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish) }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
-          FIT_ONLY: &a69 ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
-      - id: fit_cloud_backlog
-        continue-on-error: true
-        name: Step 6a2 - Cloud Fit backlog batch
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0' && needs.prep.outputs.pipeline != 'true' }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          CLOUD_BACKLOG: ${{ needs.prep.outputs.pipeline == 'true' && env.V7_CLOUD_FIT_SCHEDULED || inputs.cloud_backlog }}
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          IMESSAGE_ALERTS_HOST: *a67
-          V7_CLOUD_FIT_BACKLOG_MAX: ${{ needs.prep.outputs.pipeline == 'true' && env.V7_CLOUD_FIT_SCHEDULED || env.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}
-          V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ needs.prep.outputs.pipeline != 'true' && env.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}
-          V7_CLOUD_FIT_BACKLOG_PAGE: ${{ needs.prep.outputs.pipeline != 'true' && env.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}
-          V7_CLOUD_FIT_PROFILE_REF: ""
-          V7_CLOUD_FIT_PARALLEL: ${{ env.V7_CLOUD_FIT_PARALLEL || '1' }}
-        run: |
-          if [ "$PIPELINE" = "true" ]; then
-            # LIFE-41 (Jim, Oct 20 2026: "fill every hour"): the scheduled batch runs until about :55, so the next tick never waits, never past the
-            # code's 45-minute batch cap (D238), and never past this job's 58 minutes (5 minutes kept for the steps after it). Too little time: skipped, not failed.
-            now=$(date +%s); m=$((10#$(date +%M))); s=$((10#$(date +%S))); started=$(stat -c %Y "$GITHUB_WORKSPACE/.git")     # the checkout: this job's first seconds
-            to_55=$(( m < 55 ? (55 - m) * 60 - s : 0 )); job_left=$(( 58 * 60 - (now - started) - 300 ))
-            budget=$(( to_55 < job_left ? to_55 : job_left )); budget=$(( budget > 2700 ? 2700 : budget ))
-            if [ "$budget" -lt 300 ]; then echo "fit-cloud-backlog: skipped this hour (${budget}s left before :55 or the job limit)"; exit 0; fi
-            export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
-          fi
-          python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
-      - id: audit
-        continue-on-error: true
-        name: Step 6b - precision audit (before publish)
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish) }}
-        env: *m5
-        run: python -m lifeos.run audit $([ "$LIVE" = "true" ] && echo --live)
-      - id: publish
-        continue-on-error: true
-        name: Step 7 - publish READY jobs to Notion
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
-        env: *m5
-        run: python -m lifeos.run publish --limit 60 $([ "$LIVE" = "true" ] && echo --live)
-      - id: holds
-        continue-on-error: true
-        name: Step 7a - exclude jobs that have sat on HOLD for 7 days
-        if: &a70 ${{ github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
-        env: *m5
-        run: python -m lifeos.run expire-holds $([ "$LIVE" = "true" ] && echo --live)
-      - id: finalize
-        continue-on-error: true
-        name: Step 7b - close out newsletter mail with outcomes
-        if: *a70
-        env:
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
-      - id: web_scale_up
-        continue-on-error: true
-        name: Step 5c - UK Scale-Up web acquisition (scheduled)
-        if: &a71 ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
-        env: &m6
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          WEB_FORCE: *a69
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
-      - id: titlewatch
-        continue-on-error: true
-        name: Step 5d - Scale-Up title watch
-        if: *a71
-        env: *m6
-        run: python -m lifeos.run web-titlewatch $([ "$LIVE" = "true" ] && echo --live)
-      - id: sponsors
-        continue-on-error: true
-        name: Step 5e - UK sponsor register (weekly refresh)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sponsors }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          SPONSORS_FORCE: ${{ inputs.sponsors && 'true' || '' }}
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
-      - id: review
-        continue-on-error: true
-        name: Fit review (dispatch only; private Notion page)
-        if: &a72 ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && !startsWith(inputs.report, 'board:') }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          REVIEW_COMPANY: &a73 ${{ inputs.report }}
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run fit-review $([ "$LIVE" = "true" ] && echo --live)
-      - id: explain
-        continue-on-error: true
-        name: Explain (dispatch only; company names, counts, hashes)
-        if: *a72
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          EXPLAIN_COMPANY: *a73
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run explain
-      - id: boardcheck
-        continue-on-error: true
-        name: Board check
-        if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.report, 'board:') }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          BOARD_COMPANY: *a73
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run board-check $([ "$LIVE" = "true" ] && echo --live)
-      - id: funnel
-        continue-on-error: true
-        name: Funnel report (dispatch only, read-only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'funnel' }}
-        env: *m5
-        run: python -m lifeos.run funnel
-      - id: boards_preview
-        continue-on-error: true
-        timeout-minutes: 10
-        name: Employer boards acceptance preview (dispatch only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'boards-preview' }}
-        env:
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-        run: python -m lifeos.run boards-preview --limit 600
-      - id: probe
-        continue-on-error: true
-        name: Probe - source shapes (dispatch only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
-        env: *m5
-        run: python -m lifeos.run probe
-      - id: sync_seen
-        continue-on-error: true
-        name: Step 8 - Last Seen sync
-        if: &a74 ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
-        env: *m5
-        run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
-      - id: purge
-        continue-on-error: true
-        name: Step 8b - retention purge
-        if: *a74
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-          NTFY_TOPIC: &a75 ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
-          PURGE_FORCE: ${{ inputs.maintenance }}
-        run: |
-          # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
-          status=0
-          out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
-          echo "$out"
-          last=$(printf '%s\n' "$out" | tail -n 1)
-          if [ "$status" = "0" ]; then
-            case "$last" in
-              *not_due*|*skipped_dry_run*) ;;
-              *) python3 -m lifeos.platform.alerts push --key purge_done --title "V7 weekly purge done" --body "$last" || true ;;
-            esac
-          else
-            python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
-            exit 1
-          fi
-      - id: alerts
-        continue-on-error: true
-        name: Alerts - detect, dedupe and push to the phone
-        if: ${{ needs.prep.outputs.pipeline == 'true' }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          FIT_PROFILE_EXTRA_JSON: *a47
-          FIT_PROFILE_JSON: *a48
-          GMAIL_OAUTH_CLIENT_SECRET: *a49
-          GMAIL_OAUTH_CLIENT_ID: *a50
-          GMAIL_OAUTH_REFRESH_TOKEN: *a51
-          JOBRIGHT_EMAIL: *a52
-          JOBRIGHT_PASSWORD: *a53
-          LIFEOS_ACQ_DB_NAME: *a54
-          LIFEOS_ACQ_DB_PASSWORD: *a55
-          LIFEOS_ACQ_DB_USER: *a56
-          LIFEOS_ACQ_SSH_HOST: *a57
-          LIFEOS_ACQ_SSH_JUMP_KEY: *a58
-          LIFEOS_ACQ_SSH_JUMP_HOST: *a59
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a60
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a61
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a62
-          LIFEOS_ACQ_SSH_USER: *a63
-          NOTION_API_TOKEN: *a64
-          NTFY_TOPIC: *a75
-          OPEN_JOBS_CONTACT: *a65
-          TINYFISH_API_KEY: *a66
-        run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
-      - id: lanes
-        name: Lane failures fail the run (other stages still ran)
-        if: ${{ always() }}
-        env:
-          CODES: ${{ steps.tick.outputs.cloud_fit_code }} ${{ steps.fit.outputs.cloud_fit_code }} ${{ steps.fit_cloud_backlog.outputs.cloud_fit_code }}
-        run: |
-          codes=$(printf '%s\n' $CODES | grep -E '^[A-Z0-9_]{1,48}$' | sort -u | tr '\n' ' ' || true)   # no code is the normal case (bash -e, pipefail)
-          echo "codes=${codes% }" >> "$GITHUB_OUTPUT"
-          failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ steps.browser.outcome }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }} alerts=${{ steps.alerts.outcome }}; do
-            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
-          done
-          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
-          if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
-
+    uses: ./.github/workflows/tick-finish.yml
+    with:
+      fit: *a6
+      live: *a11
+      publish: *a14
+      quick: *a15
+      tick: *a20
+      prep_extract: ${{ needs.prep.outputs.extract }}
+      prep_pipeline: *a26
+    secrets: *m1
+  manual_acquire:
+    needs: [prep, finish]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.web || inputs.enrich) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/tick-manual-acquire.yml
+    with:
+      enrich: *a4
+      fit: *a6
+      live: *a11
+      publish: *a14
+      quick: *a15
+      tick: *a20
+      web: *a21
+      prep_pipeline: *a26
+    secrets: *m1
+  manual_fit:
+    needs: [prep, manual_acquire]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.audit || (inputs.cloud_backlog != '' && inputs.cloud_backlog != '0')) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/tick-manual-fit.yml
+    with:
+      audit: *a1
+      cloud_backlog: *a2
+      fit: *a6
+      fit_all: *a7
+      live: *a11
+      publish: *a14
+      quick: *a15
+      report: *a16
+      tick: *a20
+      prep_pipeline: *a26
+    secrets: *m1
+  manual_publish:
+    needs: [prep, manual_fit]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/tick-manual-publish.yml
+    with:
+      finalize: *a5
+      fit: *a6
+      live: *a11
+      publish: *a14
+      quick: *a15
+      tick: *a20
+      prep_pipeline: *a26
+    secrets: *m1
+  manual_scaleup:
+    needs: [prep, manual_publish]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.web_scale_up || inputs.sponsors) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/tick-manual-scaleup.yml
+    with:
+      fit: *a6
+      live: *a11
+      publish: *a14
+      quick: *a15
+      report: *a16
+      sponsors: *a19
+      tick: *a20
+      web_scale_up: *a22
+      prep_pipeline: *a26
+    secrets: *m1
+  manual_reports:
+    needs: [prep, manual_scaleup]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.report != '' || inputs.probe) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/tick-manual-reports.yml
+    with:
+      fit: *a6
+      live: *a11
+      probe: *a13
+      publish: *a14
+      quick: *a15
+      report: *a16
+      tick: *a20
+      prep_pipeline: *a26
+    secrets: *m1
+  manual_maintenance:
+    needs: [prep, manual_reports]
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || needs.prep.outputs.pipeline == 'true') && github.event_name == 'workflow_dispatch' && (inputs.maintenance) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/tick-manual-maintenance.yml
+    with:
+      fit: *a6
+      live: *a11
+      maintenance: *a12
+      publish: *a14
+      quick: *a15
+      tick: *a20
+      prep_pipeline: *a26
+    secrets: *m1
   interview:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.interview || inputs.interview_probe || inputs.interview_acceptance) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      NOTION_API_TOKEN: ""
-      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-      GMAIL_OAUTH_CLIENT_ID: ""
-      GMAIL_OAUTH_CLIENT_SECRET: ""
-      GMAIL_OAUTH_REFRESH_TOKEN: ""
-      TINYFISH_API_KEY: ""
-      JOBRIGHT_EMAIL: ""
-      JOBRIGHT_PASSWORD: ""
-      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
-      LIFEOS_ACQ_DB_PASSWORD: ""
-      LIFEOS_ACQ_SSH_HOST: ""
-      LIFEOS_ACQ_SSH_PORT: ""
-      LIFEOS_ACQ_SSH_USER: ""
-      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
-      LIFEOS_ACQ_DB_NAME: ""
-      LIFEOS_ACQ_DB_USER: ""
-      FIT_PROFILE_JSON: ""
-      FIT_PROFILE_EXTRA_JSON: ""
-      OPEN_JOBS_CONTACT: ""
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - name: Python and the Bitwarden helper
-        uses: *a28
-        with:
-          wait_seconds: "300"
-      - id: bws_interview
-        name: *a2
-        uses: *a3
-        with:
-          access_token: *a4
-          doppler_compare: *a5
-          set_env: false
-          set: hourly-interview
-      - name: Plain switches from Bitwarden
-        uses: *a6
-        with: &m7
-          access_token: *a4
-          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,LIVE
-          live_mode: *a7
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: *a31
-        uses: *a3
-        with: *m4
-      - id: iprobe
-        continue-on-error: true
-        name: Interview shape probe (counts only, writes nothing)
-        if: ${{ inputs.interview_probe }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          NOTION_INTERVIEW_TOKEN: &a76 ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
-        run: python -m lifeos.run interview-probe
-      - id: irun
-        continue-on-error: true
-        name: Interview stage (live only when move mail is ticked)
-        if: ${{ inputs.interview }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          LIFEOS_NOTION_IDS: ""
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-          NOTION_INTERVIEW_TOKEN: *a76
-        run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
-      - id: iacc
-        continue-on-error: true
-        name: Interview private acceptance (manual dispatch only)
-        if: &a77 ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON }}
-          NOTION_INTERVIEW_TOKEN: *a76
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-        run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
-      - id: iaccneg
-        continue-on-error: true
-        name: Interview private acceptance - negative case
-        if: *a77
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: *a32
-          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}
-          NOTION_INTERVIEW_TOKEN: *a76
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-        run: |
-          if [ -z "$INTERVIEW_ACCEPTANCE_JSON" ]; then echo "INTERVIEW-ACCEPTANCE NEGATIVE CASE NOT SET"; exit 0; fi
-          python -m lifeos.run interview-acceptance --limit 1
-      - name: Interview warning (does not fail the run)
-        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure' || steps.iaccneg.outcome == 'failure') }}
-        run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
-
+    uses: ./.github/workflows/tick-interview.yml
+    with:
+      interview: *a8
+      interview_acceptance: *a9
+      interview_probe: *a10
+      live: *a11
+      tick: *a20
+    secrets: *m1
   report:
-    needs: [prep, unit-tests, jobright, linkedin, lensa, finish]
+    needs: [prep, unit-tests, jobright, linkedin, lensa, finish, manual_acquire, manual_fit, manual_publish, manual_scaleup, manual_reports, manual_maintenance]
     if: ${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1118,32 +323,36 @@ jobs:
           for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
           git checkout -q --detach FETCH_HEAD
       - name: Bitwarden helper from a saved, fingerprint-checked copy
-        uses: *a1
+        uses: ./.github/actions/bws-helper
         with:
           wait_seconds: "100"
       - id: bws_report
-        name: *a2
-        uses: *a3
+        name: Load the migrated credentials from Bitwarden
+        uses: ./.github/actions/bws-load
         with:
-          access_token: *a4
-          doppler_compare: *a5
+          access_token: *a24
+          doppler_compare: *a23
           set_env: false
           set: report
       - name: Plain switches from Bitwarden
-        uses: *a6
-        with: *m7
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a24
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,LIVE
+          live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
       - name: Lanes and the finish job report (fails if a lane failed)
         env:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
-          STAGES: ${{ needs.finish.outputs.failed }}
-          CODES: ${{ needs.finish.outputs.codes }}
+          STAGES: ${{ needs.finish.outputs.failed }} ${{ needs.manual_acquire.outputs.failed }} ${{ needs.manual_fit.outputs.failed }} ${{ needs.manual_publish.outputs.failed }} ${{ needs.manual_scaleup.outputs.failed }} ${{ needs.manual_reports.outputs.failed }} ${{ needs.manual_maintenance.outputs.failed }}
+          CODES: ${{ needs.finish.outputs.codes }} ${{ needs.manual_fit.outputs.codes }}
         run: |
+          STAGES=$(echo $STAGES)
+          CODES=$(echo $CODES)
           failed=""
-          for pair in prep=${{ needs.prep.result }} unit-tests=${{ needs.unit-tests.result }} sweep=${{ needs.prep.outputs.sweep }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
+          for pair in prep=${{ needs.prep.result }} unit-tests=${{ needs.unit-tests.result }} sweep=${{ needs.prep.outputs.sweep }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }} manual_acquire=${{ needs.manual_acquire.result }} manual_fit=${{ needs.manual_fit.result }} manual_publish=${{ needs.manual_publish.result }} manual_scaleup=${{ needs.manual_scaleup.result }} manual_reports=${{ needs.manual_reports.result }} manual_maintenance=${{ needs.manual_maintenance.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
             python3 -m lifeos.platform.alerts push --key run_failed --title "V7 run failed" --body "Failed lanes:$failed${STAGES:+; stages: $STAGES}${CODES:+; codes: $CODES}. Open the Actions tab."
             echo "FAILED LANES:$failed"; exit 1
           fi
-

@@ -3,6 +3,7 @@
 import pathlib
 import re
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -189,14 +190,16 @@ ALLOWED_RUNS = (
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
 class CloudBacklogRunsAlone(unittest.TestCase):
     def setUp(self):
-        self.doc = yaml.safe_load(WORKFLOW.read_text())
+        self.doc = yaml.safe_load(wftext.logical("hourly"))
         self.inputs = self.doc[True]["workflow_dispatch"]["inputs"]
 
     def test_a_cloud_backlog_only_live_dispatch_runs_only_the_batch_and_never_a_source_newsletter_gmail_or_tinyfish_stage(
         self,
     ):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
-        self.assertEqual(sorted(p), ["finish", "prep", "report"])
+        self.assertEqual(
+            sorted(p), ["finish", "manual_fit", "prep", "report"]
+        )  # the batch step lives in the manual_fit job
         self.assertTrue(all(result == "success" for result, _ in p.values()))
         ran = [s for _, steps in p.values() for s in steps]
         names = [s.get("id") or s.get("name") or s.get("uses") for s in ran]
@@ -274,7 +277,7 @@ class CloudBacklogRunsAlone(unittest.TestCase):
 
     def test_a_failed_batch_still_fails_the_run(self):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
-        lanes = next(s for s in p["finish"][1] if s.get("id") == "lanes")
+        lanes = next(s for s in p["manual_fit"][1] if s.get("id") == "lanes")
         self.assertIn("fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }}", lanes["run"])
 
 
@@ -283,8 +286,8 @@ class ScheduledBatch(unittest.TestCase):
     """'the canary is too little - we need the jobs coming in on schedule'."""
 
     def setUp(self):
-        self.doc = yaml.safe_load(WORKFLOW.read_text())
-        self.step = next(s for s in self.doc["jobs"]["finish"]["steps"] if s.get("id") == "fit_cloud_backlog")
+        self.doc = yaml.safe_load(wftext.logical("hourly"))
+        self.step = next(s for s in self.doc["jobs"]["manual_fit"]["steps"] if s.get("id") == "fit_cloud_backlog")
 
     def names(self, p):
         return [s.get("id") or s.get("name") for s in p["finish"][1]]
@@ -306,7 +309,7 @@ class ScheduledBatch(unittest.TestCase):
             self.assertIn("tick", names, event)
             self.assertNotIn("fit_cloud_backlog", names, event)
             self.assertTrue(any("join the tailnet" in str(n).lower() for n in names), event)
-        domains = yaml.safe_load((WORKFLOW.parent / "domains.yml").read_text())["jobs"]["fit_cloud_backlog"]
+        domains = yaml.safe_load(wftext.logical("domains"))["jobs"]["fit_cloud_backlog"]
         step = next(s for s in domains["steps"] if s.get("id") == "fit_cloud_backlog")
         self.assertEqual(
             {k: v for k, v in step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))},
@@ -362,9 +365,7 @@ class TheHourIsFilled(unittest.TestCase):
         import tempfile
         import yaml
 
-        doc = yaml.safe_load(
-            open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "domains.yml"))
-        )
+        doc = yaml.safe_load(wftext.logical("domains"))
         script = next(s["run"] for s in doc["jobs"]["fit_cloud_backlog"]["steps"] if s.get("id") == "fit_cloud_backlog")
         now = 1792500000 - (1792500000 % 3600) + minute * 60 + second
         with tempfile.TemporaryDirectory() as d:

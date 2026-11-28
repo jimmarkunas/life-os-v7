@@ -7,13 +7,13 @@ bounded and repeat harmlessly.
 import os
 import sys
 
-from lifeos.platform import gate
+from lifeos.platform import gate, jobnames
 
 RAN = ("success", "failure")
 
 
 def ran(jobs):
-    return any(job.get("name") == "finish" and job.get("conclusion") in RAN for job in jobs)
+    return any(jobnames.label(job.get("name")) == "finish" and job.get("conclusion") in RAN for job in jobs)
 
 
 def main(environ=os.environ, api=gate._api):

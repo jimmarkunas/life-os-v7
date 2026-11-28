@@ -94,7 +94,7 @@ class Workflows(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.hourly = yaml.safe_load((ROOT / ".github/workflows/hourly.yml").read_text())
+        cls.hourly = yaml.safe_load(wftext.logical("hourly"))
         cls.domains = yaml.safe_load(wftext.text(ROOT / ".github/workflows/domains.yml"))
 
     def dispatch_step(self):

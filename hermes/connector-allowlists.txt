@@ -5,7 +5,5 @@
 # `main` is the default profile (the "Hermes" bot). Jim decides the lists; edit by pull request, then run hermes/deploy_plugin.sh --all.
 main: ALL
 claude-hermes: notion, mcp:lifeos-buzz
-developer: mcp:lifeos-buzz
 librarian: notion, mcp:lifeos-buzz
-research: notion, mcp:lifeos-buzz
 writer: notion, mcp:lifeos-buzz

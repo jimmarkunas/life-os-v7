@@ -1,0 +1,10 @@
+      - id: lanes
+        name: Lane failures fail the run (other stages still ran)
+        if: ${{ always() }}
+        run: |
+          failed=""
+          for pair in sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
+          if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
