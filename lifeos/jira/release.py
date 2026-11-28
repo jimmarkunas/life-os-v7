@@ -8,6 +8,7 @@ run unless live.
 import os
 import re
 
+from lifeos.jira import package
 from lifeos.jira.search import search
 from lifeos.platform.jira import Jira, JiraError
 
@@ -122,13 +123,16 @@ def label_reason(labels):
 
 
 def epic_reason(fields):
-    """Epics in Scoping refuse build work except research or verdict children."""
+    """Epics in Scoping refuse build work except research or verdict children and a complete experimental package."""
     if not fields.get("parent"):
         return None
     status = parent_status(fields)
     if not status:
         return "epic_status_unread"
-    if status == "Scoping" and not (SCOPING_CHILD & set(fields.get("labels") or [])):
+    labels = set(fields.get("labels") or [])
+    if status == "Scoping" and not (SCOPING_CHILD & labels):
+        if package.PACKAGE_LABEL in labels:
+            return "package_incomplete" if package.missing(fields.get("description")) else None
         return "epic_scoping"
     return None
 

@@ -2,6 +2,7 @@ import datetime as dt
 import os
 import unittest
 from unittest import mock
+from tests import wftext  # noqa: E402
 
 from lifeos.platform import gate
 
@@ -215,7 +216,7 @@ class Tick(unittest.TestCase):
         import pathlib
 
         root = pathlib.Path(__file__).resolve().parents[2]
-        text = (root / ".github/workflows/hourly.yml").read_text()
+        text = wftext.logical("hourly")
         self.assertIn("      tick:", text)
         self.assertIn(
             "inputs.tick", text.split("      - id: pipeline\n")[1].split("\n      - ")[0]
@@ -810,7 +811,7 @@ class CheckinOncePerDay(unittest.TestCase):
 class PurgeIsNamed(unittest.TestCase):
     """the Sunday purge failed twice and the push only said 'finish'."""
 
-    text = (__import__("pathlib").Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
+    text = wftext.plain("hourly")
 
     def test_the_lane_step_lists_purge_and_hands_the_stage_names_to_the_report_job(self):
         self.assertIn("purge=${{ steps.purge.outcome }}", self.text)
@@ -819,7 +820,7 @@ class PurgeIsNamed(unittest.TestCase):
         self.assertIn("STAGES: ${{ needs.finish.outputs.failed }}", self.text)
 
     def test_the_purge_step_pushes_success_and_failure(self):
-        step = self.text.split("- id: purge")[1].split("- id: alerts")[0]
+        step = self.text.split("- id: purge")[1].split("- id: lanes")[0]
         self.assertIn('--title "V7 weekly purge FAILED"', step)
         self.assertIn('--title "V7 weekly purge done"', step)
         self.assertIn("exit 1", step)

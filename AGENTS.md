@@ -19,7 +19,7 @@ Jim starts every run; no scheduler, timer or loop. One exception: an orchestrato
 
 Every ticket lists what only Jim can do. An unchecked item or a missing section keeps it out of Agent Go.
 
-Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. Feasibility (`research` + `verdict`) only for a new Epic Jim asks for. Claude writes tickets; ChatGPT reviews them. LOS is retired.
+Epics go `Scoping → Ready → In Progress → Done`; every child carries one label (`ready`, `needs-prep` or `needs-jim`) and only `ready` tickets move to Agent Go. An experiment is one package ticket and PR (policy §7). Claude writes tickets; ChatGPT reviews them. LOS is retired.
 
 ## Always
 

@@ -1,0 +1,90 @@
+name: domain-weekly-review
+on:
+  workflow_call:
+    inputs:
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  weekly_review:
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "200"
+      - id: bws_weekly_review
+        name: Load the Weekly Review credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: weekly-review
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - name: Join the tailnet as an ephemeral tag:v7-runner node
+        continue-on-error: true
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_weekly_review.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_weekly_review.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: weeklyreview
+        continue-on-error: true
+        name: Weekly LIFE OS Review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          JIRA_CARD_BLOCK_ID: ""
+          WEEKLY_REVIEW: ""
+          WEEKLY_REVIEW_PAGE_ID: ""
+          LIFEOS_NOTION_IDS: ""
+          NOTION_WEEKLY_REVIEWS_DATA_SOURCE_ID: ""
+          NOTION_JIRA_TOKEN: ${{ steps.bws_weekly_review.outputs.NOTION_JIRA_TOKEN }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_weekly_review.outputs.IMESSAGE_ALERTS_HOST }}
+        run: python -m lifeos.run weekly-review --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Weekly LIFE OS Review warning (does not fail the Jobs run)
+        if: ${{ always() && steps.weeklyreview.outcome == 'failure' }}
+        run: echo "::warning title=Weekly LIFE OS Review::the weekly row could not be written or read back; the week's row is made by the next run inside 48 hours"
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=weekly_review::a stage step failed in the weekly_review job (see the step marked failed above)"; exit 1

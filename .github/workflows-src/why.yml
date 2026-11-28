@@ -224,33 +224,131 @@ hourly/050-lensa.yml:
   - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
   - {"discover": "Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)"}
 hourly/060-finish.yml:
-  - {"Bitwarden helper from a saved, fingerprint-checked copy": "Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)"}
-  - {"bws_finish": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
-  - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
-  - {"Join the tailnet (Cloud-Fit shadow only)": "Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)"}
-  - {"browser": "Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)"}
-  - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)"}
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {browser: 'Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
 hourly/060b-finish.yml:
-  - {"tick": "Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)"}
-  - {"Stage timing receipt": "Stage timing receipt (LIFE-855; the tick's stage_timing lines, names and numbers only, kept 14 days; the pinned upload action, no new permission)"}
-hourly/060e-finish.yml:
-  - {"fit_cloud_backlog": "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual dispatch only here (the scheduled batch after each tick runs in domains.yml since LIFE-856); one Oracle request at a time)"}
-hourly/060g-finish.yml:
-  - {"holds": "Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)"}
-hourly/060h-finish.yml:
-  - {"titlewatch": "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)"}
-hourly/060j-finish.yml:
-  - {"explain": "Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)"}
-  - {"boardcheck": "Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)"}
-hourly/060l-finish.yml:
-  - {"sync_seen": "Step 8 - Last Seen sync (daily; manual maintenance dispatch only here, the tick's run is in domains.yml since LIFE-856)"}
-  - {"purge": "Step 8b - retention purge (manual maintenance dispatch only here, the tick's run is in domains.yml since LIFE-856; about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)"}
-hourly/060m-finish.yml:
-  - {"alerts": "Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)"}
+  - {tick: 'Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)'}
+  - {Stage timing receipt: 'Stage timing receipt (LIFE-855; the tick''s stage_timing lines, names and numbers only, kept 14 days; the pinned upload action, no new permission)'}
+hourly/060c-finish.yml:
+  - {alerts: 'Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)'}
+hourly/061-manual_acquire.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/062-manual_fit.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/062c-manual_fit.yml:
+  - {fit_cloud_backlog: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual dispatch only here (the scheduled batch after each tick runs in domains.yml since LIFE-856); one Oracle request at a time)}
+hourly/063-manual_publish.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/063b-manual_publish.yml:
+  - {holds: Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)}
+hourly/064-manual_scaleup.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/064b-manual_scaleup.yml:
+  - {titlewatch: 'Step 5d - Scale-Up title watch (roles a company''s own site lists but its board listing does not carry; free search, found roles arrive as Review)'}
+hourly/065-manual_reports.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/065b-manual_reports.yml:
+  - {explain: 'Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)'}
+hourly/065c-manual_reports.yml:
+  - {boardcheck: 'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)'}
+hourly/066-manual_maintenance.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/066b-manual_maintenance.yml:
+  - {sync_seen: 'Step 8 - Last Seen sync (daily; manual maintenance dispatch only here, the tick''s run is in domains.yml since LIFE-856)'}
+  - {purge: 'Step 8b - retention purge (manual maintenance dispatch only here, the tick''s run is in domains.yml since LIFE-856; about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)'}
 hourly/070-interview.yml:
   - {"bws_interview": "Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 3, the Interview token and (LIFE-699) the two private acceptance cases that only the manual acceptance steps use; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)"}
   - {"Plain switches from Bitwarden": "Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)"}
   - {"bws_runtime_config": "Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)"}
+hourly/060-finish.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {browser: 'Browser install (LIFE-573, LIFE-576, LIFE-604 item 13; the one shared step in .github/actions/browser, its own timed step with one log line naming the path)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/060b-finish.yml:
+  - {tick: 'Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)'}
+  - {Stage timing receipt: 'Stage timing receipt (LIFE-855; the tick''s stage_timing lines, names and numbers only, kept 14 days; the pinned upload action, no new permission)'}
+hourly/060c-finish.yml:
+  - {alerts: 'Alerts - detect, dedupe and push to the phone (counts only; a failure is the `alerts` lane (LIFE-653), so the run ends red and the report job pushes once)'}
+hourly/061-manual_acquire.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/062-manual_fit.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/062c-manual_fit.yml:
+  - {fit_cloud_backlog: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual dispatch only here (the scheduled batch after each tick runs in domains.yml since LIFE-856); one Oracle request at a time)}
+hourly/063-manual_publish.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/063b-manual_publish.yml:
+  - {holds: Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)}
+hourly/064-manual_scaleup.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/064b-manual_scaleup.yml:
+  - {titlewatch: 'Step 5d - Scale-Up title watch (roles a company''s own site lists but its board listing does not carry; free search, found roles arrive as Review)'}
+hourly/065-manual_reports.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/065b-manual_reports.yml:
+  - {explain: 'Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)'}
+hourly/065c-manual_reports.yml:
+  - {boardcheck: 'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)'}
+hourly/066-manual_maintenance.yml:
+  - {'Bitwarden helper from a saved, fingerprint-checked copy': 'Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)'}
+  - {bws_finish: 'Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 21, the last 3 used only by the cloud-Fit shadow, D214; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)'}
+  - {Plain switches from Bitwarden: 'Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)'}
+  - {Join the tailnet (Cloud-Fit shadow only): 'Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)'}
+  - {bws_runtime_config: 'Runtime Configuration source ID from Bitwarden for the compare-only read (LIFE-858; read only, an address not a secret; if it fails the step runs exactly as before)'}
+hourly/066b-manual_maintenance.yml:
+  - {sync_seen: 'Step 8 - Last Seen sync (daily; manual maintenance dispatch only here, the tick''s run is in domains.yml since LIFE-856)'}
+  - {purge: 'Step 8b - retention purge (manual maintenance dispatch only here, the tick''s run is in domains.yml since LIFE-856; about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)'}
 hourly/070b-interview.yml:
   - {"iaccneg": "Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)"}
 hourly/080-report.yml:

@@ -1,0 +1,123 @@
+name: domain-last-seen-purge
+on:
+  workflow_call:
+    inputs:
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  last_seen_purge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "400"
+      - id: bws_last_seen_purge
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: last-seen-purge
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
+        continue-on-error: true
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_last_seen_purge.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_last_seen_purge.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: sync_seen
+        continue-on-error: true
+        name: Step 8 - Last Seen sync
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: &a4 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          HIRING_PIPELINE_PAGE_ID: ""
+          V7_FIT_GATE: ""
+          LIFEOS_ACQ_DB_NAME: &a5 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a6 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a7 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a8 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a9 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a10 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a11 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a12 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a13 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a14 ${{ steps.bws_last_seen_purge.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: &a15 ${{ steps.bws_last_seen_purge.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
+      - id: purge
+        continue-on-error: true
+        name: Step 8b - retention purge
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          HIRING_PIPELINE_PAGE_ID: ""
+          V7_FIT_GATE: ""
+          PURGE_FORCE: ""
+          LIFEOS_ACQ_DB_NAME: *a5
+          LIFEOS_ACQ_DB_PASSWORD: *a6
+          LIFEOS_ACQ_DB_USER: *a7
+          LIFEOS_ACQ_SSH_HOST: *a8
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a9
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a10
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a11
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a12
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a13
+          LIFEOS_ACQ_SSH_USER: *a14
+          NOTION_API_TOKEN: *a15
+          NTFY_TOPIC: ${{ steps.bws_last_seen_purge.outputs.NTFY_TOPIC }}
+        run: |
+          # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
+          status=0
+          out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
+          echo "$out"
+          last=$(printf '%s\n' "$out" | tail -n 1)
+          if [ "$status" = "0" ]; then
+            case "$last" in
+              *not_due*|*skipped_dry_run*) ;;
+              *) python3 -m lifeos.platform.alerts push --key purge_done --title "V7 weekly purge done" --body "$last" || true ;;
+            esac
+          else
+            python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
+            exit 1
+          fi
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=last_seen_purge::a stage step failed in the last_seen_purge job (see the step marked failed above)"; exit 1

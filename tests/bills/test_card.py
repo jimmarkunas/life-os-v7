@@ -7,6 +7,7 @@ import unittest
 from datetime import date, datetime
 from unittest import mock
 from zoneinfo import ZoneInfo
+from tests import wftext  # noqa: E402
 
 from lifeos.bills import card, paid, snapshot
 from lifeos.platform import report_region, router
@@ -320,9 +321,7 @@ class RuntimePathTests(unittest.TestCase):
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        doc = yaml.safe_load(
-            (pathlib.Path(card.__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text()
-        )
+        doc = yaml.safe_load(wftext.logical("domains"))
         job = doc["jobs"]["bills"]
         runs = [step.get("run", "") for step in job["steps"]]
         order = [

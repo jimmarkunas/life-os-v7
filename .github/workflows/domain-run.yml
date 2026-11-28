@@ -1,0 +1,354 @@
+name: domain-run
+on:
+  workflow_call:
+    inputs:
+      all:
+        type: boolean
+        default: false
+      allow_mass_delete:
+        type: boolean
+        default: false
+      amazon:
+        type: boolean
+        default: false
+      bills_paid:
+        type: boolean
+        default: false
+      calendar_sync:
+        type: boolean
+        default: false
+      dcc:
+        type: boolean
+        default: false
+      followup:
+        type: boolean
+        default: false
+      hiring:
+        type: boolean
+        default: false
+      hiring_outcome_stale_hours:
+        type: string
+        default: ""
+      imessage:
+        type: boolean
+        default: false
+      interview_convert:
+        type: string
+        default: ""
+      interview_journey_proof:
+        type: string
+        default: ""
+      interview_mail_days:
+        type: string
+        default: ""
+      jira:
+        type: string
+        default: "none"
+      live:
+        type: boolean
+        default: false
+      megibow:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+      physical_mail:
+        type: boolean
+        default: false
+      physical_mail_anchor:
+        type: string
+        default: ""
+      physical_mail_tracking:
+        type: string
+        default: ""
+      reconcile_force:
+        type: boolean
+        default: false
+      recruiters:
+        type: boolean
+        default: false
+      refresh:
+        type: string
+        default: "none"
+      tick_run:
+        type: string
+        default: ""
+      verify:
+        type: string
+        default: ""
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  gate:
+    name: ${{ (inputs.tick_run || github.event.workflow_run.id) && format('gate (tick {0})', inputs.tick_run || github.event.workflow_run.id) || 'gate' }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'tick') || inputs.all }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/domain-gate.yml
+    with:
+      all: &a1 ${{ inputs.all || false }}
+      live: &a2 ${{ inputs.live || false }}
+      phase: &a3 ${{ inputs.phase || 'none' }}
+    secrets: &m1
+      DOPPLER_TOKEN: &a4 ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: &a5 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+  jira:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_jira == 'true' && needs.gate.outputs.early == 'true') || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none')) }}
+    uses: ./.github/workflows/domain-jira.yml
+    with:
+      jira: ${{ inputs.jira || 'none' }}
+      live: *a2
+      phase: *a3
+      reconcile_force: ${{ inputs.reconcile_force || false }}
+      verify: ${{ inputs.verify || '' }}
+      gate_due_jira: ${{ needs.gate.outputs.due_jira }}
+    secrets: *m1
+  followup:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_followup == 'true' && needs.gate.outputs.early == 'true') || inputs.followup) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/domain-followup.yml
+    with: &m2
+      live: *a2
+      phase: *a3
+    secrets: *m1
+  outlook:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_outlook == 'true' && needs.gate.outputs.early == 'true') || inputs.calendar_sync) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/domain-outlook.yml
+    with:
+      allow_mass_delete: ${{ inputs.allow_mass_delete || false }}
+      live: *a2
+      phase: *a3
+    secrets: *m1
+  bills:
+    needs: [gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_bills == 'true' && needs.gate.outputs.early == 'true') || inputs.bills_paid) }}
+    uses: ./.github/workflows/domain-bills.yml
+    with:
+      all: *a1
+      bills_paid: ${{ inputs.bills_paid || false }}
+      live: *a2
+      phase: *a3
+    secrets: *m1
+  agenda:
+    needs: [gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_agenda == 'true' && needs.gate.outputs.early == 'true')) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/domain-agenda.yml
+    with: *m2
+    secrets: *m1
+  amazon:
+    needs: [gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
+    uses: ./.github/workflows/domain-amazon.yml
+    with: *m2
+    secrets: *m1
+  amazon_retention:
+    needs: [amazon, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_amazon_retention == 'true' && needs.gate.outputs.early == 'true') || inputs.amazon) }}
+    uses: ./.github/workflows/domain-amazon-retention.yml
+    with: *m2
+    secrets: *m1
+  mail:
+    needs: [gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_mail == 'true' && needs.gate.outputs.early == 'true') || inputs.physical_mail) }}
+    uses: ./.github/workflows/domain-mail.yml
+    with:
+      live: *a2
+      phase: *a3
+      physical_mail_anchor: ${{ inputs.physical_mail_anchor || '' }}
+      physical_mail_tracking: ${{ inputs.physical_mail_tracking || '' }}
+    secrets: *m1
+  hiring:
+    needs: [gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_hiring == 'true' && needs.gate.outputs.early == 'true') || inputs.hiring || inputs.refresh == 'hiring') }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/domain-hiring.yml
+    with:
+      hiring_outcome_stale_hours: ${{ inputs.hiring_outcome_stale_hours || '' }}
+      live: *a2
+      phase: *a3
+    secrets: *m1
+  megibow:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_megibow == 'true' && needs.gate.outputs.late == 'true') || inputs.megibow) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/domain-megibow.yml
+    with: *m2
+    secrets: *m1
+  dcc:
+    needs: [jira, agenda, bills, amazon, mail, hiring, imessage, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_dcc == 'true' && needs.gate.outputs.early == 'true') || inputs.dcc || inputs.physical_mail) }}
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    uses: ./.github/workflows/domain-dcc.yml
+    with: *m2
+    secrets: *m1
+  weekly_review:
+    needs: [dcc, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_weekly_review == 'true' && needs.gate.outputs.early == 'true') || inputs.dcc) }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/domain-weekly-review.yml
+    with: *m2
+    secrets: *m1
+  recruiters:
+    needs: [gate, jira, hiring]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.due_recruiters == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters || inputs.refresh == 'recruiters') }}
+    uses: ./.github/workflows/domain-recruiters.yml
+    with: &m3
+      live: *a2
+      phase: *a3
+      refresh: &a6 ${{ inputs.refresh || 'none' }}
+    secrets: *m1
+  network_surface:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_network_surface == 'true' }}
+    uses: ./.github/workflows/domain-network-surface.yml
+    with: *m2
+    secrets: *m1
+  fit_cloud_backlog:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_fit_cloud_backlog == 'true' }}
+    uses: ./.github/workflows/domain-fit-cloud-backlog.yml
+    with: *m2
+    secrets: *m1
+  last_seen_purge:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && needs.gate.outputs.late == 'true' && needs.gate.outputs.tick == 'true' && needs.gate.outputs.pipeline == 'true' && needs.gate.outputs.due_last_seen_purge == 'true' }}
+    uses: ./.github/workflows/domain-last-seen-purge.yml
+    with: *m2
+    secrets: *m1
+  hiring_outcomes:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_hiring_outcomes == 'true' && needs.gate.outputs.early == 'true') || inputs.recruiters) }}
+    uses: ./.github/workflows/domain-hiring-outcomes.yml
+    with: *m3
+    secrets: *m1
+  interview_mail:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.phase == 'tick' && needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.early == 'true' }}
+    uses: ./.github/workflows/domain-interview-mail.yml
+    with: *m2
+    secrets: *m1
+  interview:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.result != 'failure' && inputs.refresh != 'recruiters' && ((needs.gate.outputs.due_interview == 'true' && needs.gate.outputs.late == 'true') || inputs.recruiters) }}
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: &a7 life-os-v7-interview-writer
+      cancel-in-progress: false
+    uses: ./.github/workflows/domain-interview.yml
+    with:
+      interview_convert: ${{ inputs.interview_convert || '' }}
+      interview_journey_proof: ${{ inputs.interview_journey_proof || '' }}
+      interview_mail_days: ${{ inputs.interview_mail_days || '' }}
+      live: *a2
+      phase: *a3
+      refresh: *a6
+    secrets: *m1
+  imessage:
+    needs: [gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.early == 'true' && needs.gate.outputs.due_imessage == 'true' && needs.gate.outputs.imessage_alerts == 'true') || inputs.imessage) }}
+    uses: ./.github/workflows/domain-imessage.yml
+    with: *m2
+    secrets: *m1
+  granola:
+    needs: [interview, gate]
+    if: ${{ always() && needs.gate.result != 'failure' && ((needs.gate.outputs.tick == 'true' && needs.gate.outputs.late == 'true' && needs.gate.outputs.due_granola == 'true' && needs.gate.outputs.granola_auto != 'off') || needs.gate.outputs.all == 'true') }}
+    concurrency:
+      group: *a7
+      cancel-in-progress: false
+    uses: ./.github/workflows/domain-granola.yml
+    with:
+      live: *a2
+      phase: *a3
+      gate_granola_auto: ${{ needs.gate.outputs.granola_auto }}
+    secrets: *m1
+  report:
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola, network_surface, fit_cloud_backlog, last_seen_purge]
+    if: ${{ always() && needs.gate.outputs.tick == 'true' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Bitwarden helper from a saved, fingerprint-checked copy
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "100"
+      - id: bws_report
+        name: Load the migrated credentials from Bitwarden
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: *a5
+          doppler_compare: *a4
+          set_env: false
+          set: report
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a5
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - name: Domain jobs report here (pushes the phone)
+        env:
+          NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
+        run: |
+          failed=""
+          for pair in jira=${{ needs.jira.result }} followup=${{ needs.followup.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} amazon_retention=${{ needs.amazon_retention.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} hiring_outcomes=${{ needs.hiring_outcomes.result }} interview_mail=${{ needs.interview_mail.result }} interview=${{ needs.interview.result }} dcc=${{ needs.dcc.result }} weekly_review=${{ needs.weekly_review.result }} imessage=${{ needs.imessage.result }} granola=${{ needs.granola.result }} network_surface=${{ needs.network_surface.result }} fit_cloud_backlog=${{ needs.fit_cloud_backlog.result }} last_seen_purge=${{ needs.last_seen_purge.result }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          python3 -m lifeos.platform.alerts push --key domain_jobs_failed --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
+  chain:
+    needs: [gate, jira, followup, outlook, bills, agenda, amazon, amazon_retention, mail, hiring, megibow, recruiters, hiring_outcomes, interview_mail, interview, dcc, weekly_review, imessage, granola, network_surface, fit_cloud_backlog, last_seen_purge]
+    if: ${{ always() && needs.gate.outputs.tick == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Chain receipt - Jobs, career and platform clocks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHAIN_TICK_ID: ${{ inputs.tick_run || github.event.workflow_run.id }}
+          CHAIN_ROLE: ${{ inputs.phase == 'tick' && 'early' || 'late' }}
+        run: python3 -m lifeos.platform.chain_clocks

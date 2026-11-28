@@ -3,6 +3,7 @@
 import re
 import unittest
 from pathlib import Path
+from tests import wftext  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -17,7 +18,7 @@ class RefreshLoadsSettings(unittest.TestCase):
         source = "".join(
             p.read_text() for p in sorted((ROOT / ".github/workflows-src/domains").glob("130*-recruiters.yml"))
         )  # a long job continues in lettered parts
-        generated = (ROOT / ".github/workflows/domains.yml").read_text()
+        generated = wftext.logical("domains")
         self.assertNotIn("inputs.refresh", self.step(source))
         job = generated[generated.index("\n  recruiters:\n") :]
         job = job[: job.index("\n  interview:\n")] if "\n  interview:\n" in job else job

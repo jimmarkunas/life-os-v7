@@ -1,0 +1,72 @@
+name: diag-trace
+on:
+  workflow_call:
+    inputs:
+      message_ref:
+        type: string
+        default: ""
+      stage:
+        type: string
+        default: "scale-up-holds"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
+      - id: bws_trace
+        name: Load the database, SSH and Gmail values from Bitwarden (the job fails if retrieval fails, no fallback)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
+      - id: doppler_bws_trace
+        if: ${{ steps.bws_trace.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 10 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,GMAIL_OAUTH_CLIENT_ID
+          bitwarden: '{}'
+      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          names: LIFEOS_ACQ_SSH_PORT
+      - name: Newsletter trace (read-only; counts only)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_trace.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          STAGE: ${{ inputs.stage }}
+          ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
+        run: python -m lifeos.run "$STAGE"
+  # LIFE-10: the two stages that reach Notion. Their own job, so the Jobs Notion token (the VS Code connection) never reaches the database or Gmail diagnostics above, and
+  # no other value reaches this one. Both are pinned to the fixed synthetic sandbox ids: notion-sandbox-access only reads (TL comment 10754); notion-sandbox-outreach-proof
+  # writes only its one synthetic sandbox page, and only with confirm = SYNTHETIC (Jim's plan approval, LIFE-10 comment 10773). Codes and counts only.

@@ -1,0 +1,122 @@
+name: domain-bills
+on:
+  workflow_call:
+    inputs:
+      all:
+        type: boolean
+        default: false
+      bills_paid:
+        type: boolean
+        default: false
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  bills:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "300"
+      - id: bws_bills
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: bills
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
+        continue-on-error: true
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_bills.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_bills.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: bpaid
+        continue-on-error: true
+        name: Bills Paid processor
+        if: ${{ github.event_name == 'workflow_run' || inputs.phase == 'tick' || inputs.all || inputs.bills_paid }}
+        env: &m1
+          V7_RUNTIME_CONFIG_SOURCE_ID: &a4 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_BILLS_DATA_SOURCE_ID: ""
+          LIFEOS_ACQ_DB_NAME: &a5 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a6 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a7 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a8 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a9 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a10 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a11 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a12 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a13 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a14 ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
+        run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
+      - id: bsnap
+        continue-on-error: true
+        name: Bills snapshot (read-only; saved only when live)
+        env: *m1
+        run: python -m lifeos.run bills-snapshot $([ "$LIVE" = "true" ] && echo --live)
+      - id: bcard
+        continue-on-error: true
+        name: Bills card
+        if: ${{ always() }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          BILLS_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          JIRA_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+          LIFEOS_ACQ_DB_NAME: *a5
+          LIFEOS_ACQ_DB_PASSWORD: *a6
+          LIFEOS_ACQ_DB_USER: *a7
+          LIFEOS_ACQ_SSH_HOST: *a8
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a9
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a10
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a11
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a12
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a13
+          LIFEOS_ACQ_SSH_USER: *a14
+          NOTION_JIRA_TOKEN: ${{ steps.bws_bills.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run bills-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Bills warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
+        run: echo "::warning title=Bills::the Bill Tracker snapshot or card failed; the Jobs pipeline is unaffected"
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=bills::a stage step failed in the bills job (see the step marked failed above)"; exit 1

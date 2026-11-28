@@ -81,9 +81,7 @@ SQLITE = (
     ("hermes/kanban.db", HERMES + "/kanban.db", "hermes", False),
     ("hermes/projects.db", HERMES + "/projects.db", "hermes", False),
     ("hermes/profiles/claude-hermes/state.db", HERMES + "/profiles/claude-hermes/state.db", "hermes", False),
-    ("hermes/profiles/developer/state.db", HERMES + "/profiles/developer/state.db", "hermes", False),
     ("hermes/profiles/librarian/state.db", HERMES + "/profiles/librarian/state.db", "hermes", False),
-    ("hermes/profiles/research/state.db", HERMES + "/profiles/research/state.db", "hermes", False),
     ("hermes/profiles/writer/state.db", HERMES + "/profiles/writer/state.db", "hermes", False),
 )
 FILES = (
@@ -102,12 +100,8 @@ FILES = (
     ("hermes/SOUL.md", HERMES + "/SOUL.md", False),
     ("hermes/profiles/claude-hermes/config.yaml", HERMES + "/profiles/claude-hermes/config.yaml", False),
     ("hermes/profiles/claude-hermes/SOUL.md", HERMES + "/profiles/claude-hermes/SOUL.md", False),
-    ("hermes/profiles/developer/config.yaml", HERMES + "/profiles/developer/config.yaml", False),
-    ("hermes/profiles/developer/SOUL.md", HERMES + "/profiles/developer/SOUL.md", False),
     ("hermes/profiles/librarian/config.yaml", HERMES + "/profiles/librarian/config.yaml", False),
     ("hermes/profiles/librarian/SOUL.md", HERMES + "/profiles/librarian/SOUL.md", False),
-    ("hermes/profiles/research/config.yaml", HERMES + "/profiles/research/config.yaml", False),
-    ("hermes/profiles/research/SOUL.md", HERMES + "/profiles/research/SOUL.md", False),
     ("hermes/profiles/writer/config.yaml", HERMES + "/profiles/writer/config.yaml", False),
     ("hermes/profiles/writer/SOUL.md", HERMES + "/profiles/writer/SOUL.md", False),
 )
@@ -122,9 +116,7 @@ TREES = (
     ("openclaw/jira-approvals", UBUNTU + "/.openclaw/jira-approvals"),
     ("hermes/memories", HERMES + "/memories"),
     ("hermes/profiles/claude-hermes/memories", HERMES + "/profiles/claude-hermes/memories"),
-    ("hermes/profiles/developer/memories", HERMES + "/profiles/developer/memories"),
     ("hermes/profiles/librarian/memories", HERMES + "/profiles/librarian/memories"),
-    ("hermes/profiles/research/memories", HERMES + "/profiles/research/memories"),
     ("hermes/profiles/writer/memories", HERMES + "/profiles/writer/memories"),
 )
 SECRET_TREES = (("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),)

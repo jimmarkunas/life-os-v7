@@ -7,6 +7,7 @@ import pathlib
 import unittest
 from urllib.parse import unquote
 from datetime import date, datetime, timedelta, timezone
+from tests import wftext  # noqa: E402
 
 from lifeos.network import store, surface
 from lifeos.network.errors import NetworkError
@@ -651,10 +652,10 @@ class Contract(unittest.TestCase):
                 "Hiring Pipeline page",
             ):
                 self.assertNotIn(banned, text, name)
-        hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
+        hourly = wftext.logical("hourly")
         self.assertNotIn("id: network_surface", hourly)
         self.assertNotIn("network_surface=${{ steps.network_surface.outcome }}", hourly)
-        text = (self.ROOT / ".github/workflows/domains.yml").read_text()
+        text = wftext.logical("domains")
         step = text[text.index("id: network_surface") :]
         step = step[: step.index("      - name: Fail the job if any stage step failed")]
         self.assertIn("continue-on-error: true", step)

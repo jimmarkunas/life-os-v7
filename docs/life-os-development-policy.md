@@ -105,7 +105,7 @@ Keep the description under 4,000 characters; one ticket is one PR. Reference sec
 
 **Epic lifecycle (Jim, Nov 21, 2026):** `Scoping → Ready → In Progress → Done`.
 - A new product outcome starts as a LIFE Epic in Scoping. Children are written only while the Epic is in Scoping.
-- **Feasibility first, new Epics only:** a new Epic (only when Jim asks) first runs `research` children (read-only, comments only) and one `verdict` ticket blocked by them, whose only writes are the GO / NO-GO comment, its own children's descriptions, labels and Jim must do first, and a Feasibility section on its spec. Build tickets wait for the verdict. A change inside an existing Epic goes straight to a build ticket.
+- **New Epics and experiments (Jim, Nov 27, 2026):** an experimental outcome is one package Task and PR (candidate POCs, integrated proof, conditional promotion), not research then verdict tickets; research-only requests keep those: [detail](policy/integrated-delivery.md).
 - **One ticket at a time** per session: finish (Done, Human UAT or `needs-jim`) before claiming the next.
 - Each Epic links one Notion spec page for long rationale. Tickets stay self-contained: an agent builds from the ticket alone.
 - **Claude writes, ChatGPT reviews:** Claude writes the Epic's children; ChatGPT reviews each against this section and §4 (`docs/jira/review-checklist.md`) before it moves to Ready.

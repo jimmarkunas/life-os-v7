@@ -24,346 +24,55 @@ concurrency:
 jobs:
   diag:
     if: ${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'jobs-backlog' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' && inputs.stage != 'inbox-proof' && inputs.stage != 'inbox-recount' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "200"
-      - id: bws_diag
-        name: Load the database and SSH values from Bitwarden (EDGE-1.3, exactly these 7; the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          secrets: |
-            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
-            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
-            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
-            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
-            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
-            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
-            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
-      - id: doppler_bws_diag
-        if: ${{ steps.bws_diag.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 7 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER
-          bitwarden: '{}'
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
-        uses: ./.github/actions/bws-plain
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          names: LIFEOS_ACQ_SSH_PORT
-      - name: Diagnostic (read-only; counts only)
-        env:
-          STAGE: ${{ inputs.stage }}
-          SCHEMA_CONFIRM: ${{ inputs.confirm }}
-          ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
-        run: python -m lifeos.run "$STAGE"
-  # LIFE-64: the one stage that reads Gmail. Its own job, so the Gmail values never reach the database-only diagnostics above. Read-only: the code can list ids and read one message, and select from the store.
+    uses: ./.github/workflows/diag-main.yml
+    with:
+      confirm: ${{ inputs.confirm || '' }}
+      message_ref: ${{ inputs.message_ref || '' }}
+      stage: ${{ inputs.stage || 'scale-up-holds' }}
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
   trace:
     if: ${{ inputs.stage == 'newsletter-trace' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "200"
-      - id: bws_trace
-        name: Load the database, SSH and Gmail values from Bitwarden (the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          secrets: |
-            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
-            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
-            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
-            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
-            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
-            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
-            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
-            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
-            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
-            8657d1ed-2cde-4298-bd62-b50301523e01 > GMAIL_OAUTH_CLIENT_ID
-      - id: doppler_bws_trace
-        if: ${{ steps.bws_trace.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 10 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,GMAIL_OAUTH_CLIENT_SECRET,GMAIL_OAUTH_REFRESH_TOKEN,GMAIL_OAUTH_CLIENT_ID
-          bitwarden: '{}'
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
-        uses: ./.github/actions/bws-plain
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          names: LIFEOS_ACQ_SSH_PORT
-      - name: Newsletter trace (read-only; counts only)
-        env:
-          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_trace.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          STAGE: ${{ inputs.stage }}
-          ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
-        run: python -m lifeos.run "$STAGE"
-  # LIFE-10: the two stages that reach Notion. Their own job, so the Jobs Notion token (the VS Code connection) never reaches the database or Gmail diagnostics above, and
-  # no other value reaches this one. Both are pinned to the fixed synthetic sandbox ids: notion-sandbox-access only reads (TL comment 10754); notion-sandbox-outreach-proof
-  # writes only its one synthetic sandbox page, and only with confirm = SYNTHETIC (Jim's plan approval, LIFE-10 comment 10773). Codes and counts only.
+    uses: ./.github/workflows/diag-trace.yml
+    with:
+      message_ref: ${{ inputs.message_ref || '' }}
+      stage: ${{ inputs.stage || 'scale-up-holds' }}
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
   sandbox:
     if: ${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "100"
-      - id: bws_sandbox
-        name: Load the Jobs Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
-      - id: doppler_bws_sandbox
-        if: ${{ steps.bws_sandbox.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_API_TOKEN
-          bitwarden: '{}'
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: '{}'
-      - name: Notion sandbox access (read-only; codes and counts only)
-        if: ${{ inputs.stage == 'notion-sandbox-access' }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          LIFEOS_NOTION_IDS: ""
-          NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
-        run: python -m lifeos.run notion-sandbox-access --limit 0
-      - name: Notion sandbox outreach proof (one synthetic sandbox page; typed confirmation; codes and counts only)
-        if: ${{ inputs.stage == 'notion-sandbox-outreach-proof' }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          LIFEOS_NOTION_IDS: ""
-          NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
-          PROOF_CONFIRM: ${{ inputs.confirm }}
-        run: python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live
-  # LIFE-88: the UI 3c REST capability probe. Its own job, so the Interview Notion token (LIFE OS Interview OS) reaches nothing else and no other value reaches it.
-  # Reads the accepted UI 3c QA preview and writes only its one probe page under the QA Interview OS parent, only with confirm = QA. Codes, block types and counts only.
+    uses: ./.github/workflows/diag-sandbox.yml
+    with:
+      confirm: ${{ inputs.confirm || '' }}
+      stage: ${{ inputs.stage || 'scale-up-holds' }}
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
   interview_ui:
     if: ${{ inputs.stage == 'interview-ui-probe' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "100"
-      - id: bws_interview
-        name: Load the Interview Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
-      - id: doppler_bws_interview
-        if: ${{ steps.bws_interview.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_INTERVIEW_TOKEN
-          bitwarden: '{}'
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: '{}'
-      - name: Interview UI 3c REST capability probe (one QA probe page; typed confirmation; codes, block types and counts only)
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          LIFEOS_NOTION_IDS: ""
-          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
-          PROBE_CONFIRM: ${{ inputs.confirm }}
-        run: python -m lifeos.run interview-ui-probe --limit 0 --live
-  # LIFE-121: the two private reports. Their own job: the Jobs Notion token reaches only these stages (and the sandbox job above), the database values only the review. The text is written straight to ONE private Notion page
-  # (a child of the page that holds the Job Ledger) and never reaches a log; the log has counts and fixed codes. A dry run unless confirm = REPORT (Jim, Oct 26: "list the 59 in Notion").
+    uses: ./.github/workflows/diag-interview-ui.yml
+    with:
+      confirm: ${{ inputs.confirm || '' }}
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
   report:
     if: ${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' || inputs.stage == 'jobs-backlog' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "200"
-      - id: bws_report
-        name: Load the database, SSH and Jobs Notion values from Bitwarden (the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          secrets: |
-            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
-            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
-            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
-            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
-            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
-            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
-            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
-            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
-      - id: doppler_bws_report
-        if: ${{ steps.bws_report.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 8 names read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: LIFEOS_ACQ_DB_NAME,LIFEOS_ACQ_DB_PASSWORD,LIFEOS_ACQ_DB_USER,LIFEOS_ACQ_SSH_HOST,LIFEOS_ACQ_SSH_KNOWN_HOSTS,LIFEOS_ACQ_SSH_PRIVATE_KEY,LIFEOS_ACQ_SSH_USER,NOTION_API_TOKEN
-          bitwarden: '{}'
-      - name: Plain switches from Bitwarden (LIFE-704; read WITHOUT masking, validated; fixed fail modes - dry run, cloud fit off, alerts on, port fails - names and codes only)
-        uses: ./.github/actions/bws-plain
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          names: LIFEOS_ACQ_SSH_PORT
-      - name: Private report (counts and fixed codes only; writes the one Notion page only with confirm = REPORT)
-        env:
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
-          STAGE: ${{ inputs.stage }}
-          REPORT_CONFIRM: ${{ inputs.confirm }}
-        run: |
-          if [ "$REPORT_CONFIRM" = "REPORT" ]; then python -m lifeos.run "$STAGE" --live; else python -m lifeos.run "$STAGE"; fi
-  # LIFE-791: the Agent Inbox proof and tile recount. Its own job, so the main Notion integration reaches only this stage here. It finds the one database called "Agent Inbox list" and writes only test rows into it, removed again,
-  # and the five tile numbers of the Agent Inbox page, only with confirm = INBOX (Jim, Nov 16 2026: existing integration, owned rows only). Counts and fixed codes only.
+    uses: ./.github/workflows/diag-report.yml
+    with:
+      confirm: ${{ inputs.confirm || '' }}
+      stage: ${{ inputs.stage || 'scale-up-holds' }}
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
   inbox_view_qa:
     if: ${{ inputs.stage == 'inbox-proof' || inputs.stage == 'inbox-recount' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout the exact commit (own fetch, token never stored)
-        run: |
-          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
-          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
-          git checkout -q --detach FETCH_HEAD
-      - uses: ./.github/actions/python
-      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
-        uses: ./.github/actions/bws-helper
-        with:
-          wait_seconds: "100"
-      - id: bws_inbox_view
-        name: Load the Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
-      - id: doppler_bws_inbox_view
-        if: ${{ steps.bws_inbox_view.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: NOTION_API_TOKEN
-          bitwarden: '{}'
-      - id: bws_runtime_config
-        continue-on-error: true
-        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
-        uses: ./.github/actions/bws-load
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
-      - id: doppler_bws_runtime_config
-        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
-        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
-        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
-        uses: ./.github/actions/doppler-load
-        with:
-          token: ${{ secrets.DOPPLER_TOKEN }}
-          names: V7_RUNTIME_CONFIG_SOURCE_ID
-          bitwarden: '{}'
-      - name: Agent Inbox proof or tile recount (test rows only, removed again; typed confirmation; counts and fixed codes only)
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          LIFEOS_NOTION_IDS: ""
-          NOTION_API_TOKEN: ${{ steps.bws_inbox_view.outputs.NOTION_API_TOKEN }}
-          INBOX_VIEW_CONFIRM: ${{ inputs.confirm }}
-          INBOX_VIEW_MODE: ${{ inputs.stage == 'inbox-recount' && 'recount' || 'proof' }}
-        run: python -m lifeos.run inbox-view --limit 0 --live
+    uses: ./.github/workflows/diag-inbox-view-qa.yml
+    with:
+      confirm: ${{ inputs.confirm || '' }}
+      stage: ${{ inputs.stage || 'scale-up-holds' }}
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      LIFEOS_BWS_RUNTIME_TOKEN: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}

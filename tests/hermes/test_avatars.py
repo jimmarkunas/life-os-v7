@@ -13,7 +13,7 @@ HERMES = os.path.join(ROOT, "hermes")
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 40
 WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8L" + b"y" * 30
 JPG = b"\xff\xd8\xff\xe0" + b"z" * 40
-PROFILES = ("main", "claude-hermes", "developer", "librarian", "research", "writer")
+PROFILES = ("main", "claude-hermes", "librarian", "writer")
 
 
 def sha(blob):
@@ -85,7 +85,7 @@ class Avatars(unittest.TestCase):
         status, out = self.run_script()
         self.assertEqual(status, 0, out)
         self.assertIn("DRY RUN", out)
-        self.assertIn("6 profile(s) would change", out)
+        self.assertIn("4 profile(s) would change", out)
         for p in PROFILES:
             self.assertTrue(self.read(self.avatar(p, "png")).startswith(b"\x89PNG\r\n\x1a\nOLD"), p)
         self.assertFalse(os.path.exists(self.backup))
@@ -113,14 +113,14 @@ class Avatars(unittest.TestCase):
     def test_a_webp_replaces_the_png_so_one_canonical_file_remains(self):
         rows = {p: ("%s.png" % p, PNG + p.encode()) for p in PROFILES}
         rows["writer"] = ("writer.webp", WEBP)
-        rows["research"] = ("research.jpg", JPG)
+        rows["librarian"] = ("librarian.jpg", JPG)
         self.write_manifest(rows)
         status, out = self.run_script("--apply", "--backup", self.backup)
         self.assertEqual(status, 0, out)
         self.assertEqual(self.read(self.avatar("writer", "webp")), WEBP)
         self.assertFalse(os.path.exists(self.avatar("writer", "png")))
-        self.assertEqual(self.read(self.avatar("research", "jpg")), JPG)
-        self.assertFalse(os.path.exists(self.avatar("research", "png")))
+        self.assertEqual(self.read(self.avatar("librarian", "jpg")), JPG)
+        self.assertFalse(os.path.exists(self.avatar("librarian", "png")))
         self.assertTrue(os.path.exists(os.path.join(self.backup, "writer", "avatar.png")))
 
     def test_the_rollback_line_removes_the_new_file_only_when_its_extension_differs(self):

@@ -7,7 +7,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERMES = os.path.join(ROOT, "hermes")
-ROLES = ("main", "claude-hermes", "developer", "librarian", "research", "writer")
+ROLES = ("main", "claude-hermes", "librarian", "writer")
 SECRET = re.compile(
     r"sk-[A-Za-z0-9]{10,}|nsec1[a-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|password|token|secret)\s*[:=]\s*\S{6,}",
     re.I,
@@ -28,7 +28,7 @@ class RoleFiles(unittest.TestCase):
             "Store only explicitly approved non-sensitive owner decisions/preferences with provenance when granted. No automatic capture or metered ask by default.",
             'Recall call: lifeos-buzz memory_recall with {"workspace": "Personal", "query": "<the question>"}.',
         )
-        for name in ("main", "claude-hermes", "developer", "librarian", "research", "writer"):
+        for name in ROLES:
             text = open(os.path.join(ROOT, "hermes", "roles", name, "SOUL.md")).read()
             for line in lines:
                 self.assertEqual(text.count(line), 1, (name, line[:30]))
@@ -90,9 +90,7 @@ class Deploy(unittest.TestCase):
         self.home = os.path.join(self.tmp, "home")
         for sub in (
             "profiles/claude-hermes",
-            "profiles/developer",
             "profiles/librarian",
-            "profiles/research",
             "profiles/writer",
         ):
             os.makedirs(os.path.join(self.home, sub))
@@ -100,9 +98,7 @@ class Deploy(unittest.TestCase):
         for rel in (
             "SOUL.md",
             "profiles/claude-hermes/SOUL.md",
-            "profiles/developer/SOUL.md",
             "profiles/librarian/SOUL.md",
-            "profiles/research/SOUL.md",
             "profiles/writer/SOUL.md",
         ):
             with open(os.path.join(self.home, rel), "w") as handle:
@@ -124,7 +120,7 @@ class Deploy(unittest.TestCase):
         status, out = self.run_script()
         self.assertEqual(status, 0, out)
         self.assertIn("DRY RUN", out)
-        self.assertIn("6 file(s) would change", out)
+        self.assertIn("4 file(s) would change", out)
         with open(os.path.join(self.home, "SOUL.md")) as handle:
             self.assertEqual(handle.read(), self.old)
         self.assertFalse(os.path.exists(self.backup))
@@ -173,10 +169,10 @@ class Deploy(unittest.TestCase):
         self.assertIn("over 4096 bytes", out)
 
     def test_a_missing_repo_file_is_refused(self):
-        os.remove(os.path.join(self.pack, "roles", "research", "SOUL.md"))
+        os.remove(os.path.join(self.pack, "roles", "writer", "SOUL.md"))
         status, out = self.run_script()
         self.assertEqual(status, 1, out)
-        self.assertIn("missing repo file for research", out)
+        self.assertIn("missing repo file for writer", out)
 
 
 class Canon(unittest.TestCase):

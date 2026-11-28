@@ -17,7 +17,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-MAP="main:SOUL.md claude-hermes:profiles/claude-hermes/SOUL.md developer:profiles/developer/SOUL.md librarian:profiles/librarian/SOUL.md research:profiles/research/SOUL.md writer:profiles/writer/SOUL.md"
+MAP="main:SOUL.md claude-hermes:profiles/claude-hermes/SOUL.md librarian:profiles/librarian/SOUL.md writer:profiles/writer/SOUL.md"
 SECRET='sk-[A-Za-z0-9]{10,}|nsec1[a-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|password|token|secret)[[:space:]]*[:=][[:space:]]*[^[:space:]]{6,}'
 h12() { sha256sum "$1" | cut -c1-12; }
 echo "== $([ "$APPLY" = yes ] && echo APPLY || echo 'DRY RUN (nothing is written)'): repo roles -> $HOME_DIR =="

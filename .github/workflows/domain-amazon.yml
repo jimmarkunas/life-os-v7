@@ -1,0 +1,94 @@
+name: domain-amazon
+on:
+  workflow_call:
+    inputs:
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  amazon:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "300"
+      - id: bws_amazon
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: amazon
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: amazon
+        continue-on-error: true
+        name: Amazon Orders (Gmail to Notion; archive after read-back)
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: &a4 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          GMAIL_OAUTH_CLIENT_ID: &a5 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          NOTION_AMAZON_DATA_SOURCE_ID: ""
+          GMAIL_OAUTH_CLIENT_SECRET: &a6 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: &a7 ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: &a8 ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
+        run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
+      - id: acard
+        continue-on-error: true
+        name: Amazon card
+        if: ${{ always() }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          NOTION_AMAZON_DATA_SOURCE_ID: ""
+          AMAZON_CARD_BLOCK_ID: ""
+          BILLS_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          JIRA_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+          AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
+          GMAIL_OAUTH_CLIENT_ID: *a5
+          GMAIL_OAUTH_CLIENT_SECRET: *a6
+          GMAIL_OAUTH_REFRESH_TOKEN: *a7
+          NOTION_AMAZON_TOKEN: *a8
+          NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Amazon Orders warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure') }}
+        run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
+
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=amazon::a stage step failed in the amazon job (see the step marked failed above)"; exit 1
