@@ -578,6 +578,9 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09", "JOB": "${{ matrix.job }}"})
         self.assertIn('python -m tests.shard "$k" 16', run[0]["run"])  # everything, on a merge to main
         self.assertIn("tests/second-date-tests.txt", run[0]["run"])  # a pull request runs the listed modules only
+        self.assertIn(
+            "run-list selected.txt --jobs 4", run[0]["run"]
+        )  # in four processes, like the test jobs, so it ends with the verdict
         self.assertNotIn("permissions", job)  # the workflow's read-only default is all it gets
         self.assertIn("unit-tests:", wftext.read(self.path))  # the required check keeps its name
 
