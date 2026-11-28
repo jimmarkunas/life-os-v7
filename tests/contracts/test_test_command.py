@@ -30,7 +30,7 @@ class TestCommand(unittest.TestCase):
         )
 
     def test_no_usable_python_names_the_missing_piece_and_exits_three_without_installing_anything(self):
-        done = self.run_script("--list", LIFEOS_PYTHON="/nonexistent/python")
+        done = self.run_script("--list", LIFEOS_PYTHON="/nonexistent/python", CI="true")
         if done.returncode == 0:
             self.skipTest("this host has a Python 3.12 with PyYAML on /usr/bin")
         self.assertEqual(done.returncode, 3, done.stderr)
