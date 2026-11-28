@@ -85,7 +85,7 @@ class Pure(Fake):
 class Live(Fake):
     def setUp(self):
         super().setUp()
-        sys.path.insert(0, str(ROOT / "tests" / "contracts"))
+        sys.path.insert(0, str(ROOT / "tests" / "um"))
         from test_um_retrieval_live import FakeHonchoHttp  # noqa: PLC0415
 
         self.http = FakeHonchoHttp()
@@ -171,7 +171,7 @@ class Protocol(Fake):
 
 class Seed7(Fake):
     def test_the_fresh_workspace_seed_fits_the_limit_and_names_the_ids_honcho_gave(self):
-        sys.path.insert(0, str(ROOT / "tests" / "contracts"))
+        sys.path.insert(0, str(ROOT / "tests" / "um"))
         from test_um_retrieval_live import FakeHonchoHttp  # noqa: PLC0415
 
         http = FakeHonchoHttp()

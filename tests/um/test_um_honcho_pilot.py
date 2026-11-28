@@ -22,7 +22,7 @@ def load(name, path):
     return module
 
 
-sim = load("test_um_budget_guard", ROOT / "tests" / "contracts" / "test_um_budget_guard.py")
+sim = load("test_um_budget_guard", ROOT / "tests" / "um" / "test_um_budget_guard.py")
 pilot = load("um_honcho_pilot", ROOT / "tools" / "um_honcho_pilot.py")
 um = pilot.um
 DOC = json.loads(um.CORPUS.read_text())
