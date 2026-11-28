@@ -1,7 +1,7 @@
 """LIFE-1117: delete old completed workflow runs of this repository so the run list stays at about 30 days.
 
     python tools/run_cleanup.py            dry run (the default): inventory, validate, delete nothing
-    python tools/run_cleanup.py --live     delete
+    python tools/run_cleanup.py --live     delete (--dry-run beside it keeps the dry run)
 
 Reads GITHUB_TOKEN and GITHUB_REPOSITORY from the environment. The token is the workflow's own, with job-scoped
 `actions: write` and nothing else. Rules (pre-made in the ticket):
@@ -208,7 +208,7 @@ def main(argv=None, env=None, opener=urllib.request.urlopen, now=None, sleep=tim
     if not token or not repo:
         print("RUN_CLEANUP_NO_TOKEN_OR_REPO", file=out)
         return 2
-    live = "--live" in argv
+    live = "--live" in argv and "--dry-run" not in argv  # an explicit --dry-run always wins
     receipt = run(Client(token, repo, opener), now or datetime.now(timezone.utc), live, load_protected(), sleep)
     text = summary(receipt)
     print(text, file=out)
