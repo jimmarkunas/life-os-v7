@@ -16,7 +16,7 @@
   "CARD_TIME_UNREADABLE": ["dcc", "degraded", false, "A card heading carries no readable time, so its Weekly Review lane cannot be dated.", "Check the card's heading format."],
   "CARD_SUMMARY_MISSING": ["dcc", "degraded", false, "The Jira card shows no summary line for the Weekly Review.", "Check the Jira card text."],
   "DAILY_REPORT_NOT_RECENT": ["dcc", "degraded", false, "The Daily Report was not edited within the last 3 hours when the Weekly Review read it.", "Check the hourly report stages."],
-  "SOURCE_CARD_LINE_MISSING": ["dcc", "degraded", false, "The Daily Report's source-card line was not found for the Weekly Review.", "Check the report header."],
+  "SOURCE_CARD_LINE_MISSING": ["dcc", "degraded", false, "No Daily Report source card (Calendar, Jira, Bills, Mail Alerts, Amazon) was found for the Weekly Review.", "Check the card headings on the Daily Report."],
   "SOURCE_CARDS_NOT_CURRENT": ["dcc", "degraded", false, "Fewer than all Daily Report source cards were current for the Weekly Review.", "Find the card that stopped updating."],
   "WEEKLY_HUB_UNREADABLE": ["dcc", "degraded", false, "The Weekly LIFE OS Review page could not be read.", "Check the page's sharing with the Notion integration."],
   "GITHUB_UNREADABLE": ["dcc", "degraded", false, "The workflow runs could not be read from GitHub for the Weekly Review.", "None; the next run tries again."],
