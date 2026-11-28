@@ -93,7 +93,8 @@ def add_tools(reply, msg, who, access):
 
 
 def unwrap(reply, msg):
-    """A first-class memory call's reply -> its data, or {"error", "reason"} for a refusal; other replies unchanged."""
+    """A first-class memory call's reply -> {"ok": true, ...its data}, or {"ok": false, "error", "reason"} for a refusal;
+    other replies unchanged. `ok` is always present so no client has to infer success from a missing field."""
     if not msg.get("_memory_tool") or not isinstance(reply.get("result"), dict):
         return reply
     content = reply["result"].get("content") or []
@@ -102,9 +103,12 @@ def unwrap(reply, msg):
     except (IndexError, KeyError, TypeError, ValueError):
         return reply
     if isinstance(payload, dict) and payload.get("ok") is True and "data" in payload:
-        text = json.dumps(payload["data"])
+        data = payload["data"] if isinstance(payload["data"], dict) else {"data": payload["data"]}
+        text = json.dumps({"ok": True, **data})
     elif isinstance(payload, dict):
-        text = json.dumps({k: v for k, v in payload.items() if k not in ("contract", "operation", "ok")})
+        text = json.dumps(
+            {"ok": False, **{k: v for k, v in payload.items() if k not in ("contract", "operation", "ok")}}
+        )
     else:
         return reply
     return {**reply, "result": {**reply["result"], "content": [{"type": "text", "text": text}]}}
