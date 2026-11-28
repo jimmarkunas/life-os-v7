@@ -82,7 +82,7 @@ GMAIL_LEASE_WAIT_MAX_SECONDS = (
     90  # past this a caller goes ahead without the lease (fail open); under every stage budget that calls Gmail
 )
 GMAIL_LEASE_HOLD_MAX_SECONDS = (
-    15  # a holder lets go after holding this long without a break, so a waiting process is served (LIFE-1112)
+    15  # a holder lets go after holding this long without a break, so a waiting process is served
 )
 GMAIL_LEASE_REST_SECONDS = 2  # and rests this long (more than the poll), then queues like any other
 GMAIL_LEASE_OPEN_SECONDS = 60  # after a caller gave up waiting it does not wait again for this long: one wait per minute at most, not one per call
