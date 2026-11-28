@@ -56,7 +56,9 @@ def make(state_dir=None, clock=None, approvals=None):
 
 
 def run(guard, op, args, client="claude-chat", effect=None):
-    with mock.patch.object(T, "_run", side_effect=effect or (lambda o, a, s: {"task_id": "t1", "verified": True})) as run:
+    with mock.patch.object(
+        T, "_run", side_effect=effect or (lambda o, a, s: {"task_id": "t1", "verified": True})
+    ) as run:
         out = T.run(op, {**args, "_client": client}, {"guard": guard})
         return out, run
 
@@ -70,7 +72,9 @@ class Denied(unittest.TestCase):
             for op in T.OPS:
                 tenant, action, account, service = T.route(op, {}, "personal")
                 receipts = []
-                out = mcp_access.call(access, client, tenant, op, action, account, service, lambda: self.fail("ran"), receipts.append)
+                out = mcp_access.call(
+                    access, client, tenant, op, action, account, service, lambda: self.fail("ran"), receipts.append
+                )
                 self.assertFalse(out.executed, (client["id"], op))
                 self.assertEqual(receipts[-1]["outcome"], "deny")
 
@@ -81,7 +85,9 @@ class Denied(unittest.TestCase):
                 continue
             for op in T.OPS:
                 tenant, action, account, service = T.route(op, {}, "bytalos")
-                out = mcp_access.call(access, client, tenant, op, action, account, service, lambda: self.fail("ran"), lambda r: None)
+                out = mcp_access.call(
+                    access, client, tenant, op, action, account, service, lambda: self.fail("ran"), lambda r: None
+                )
                 self.assertFalse(out.executed, (client["id"], op, "bytalos"))
 
 
@@ -116,7 +122,9 @@ class AllowList(unittest.TestCase):
         out, inner = run(guard, "todoist_task_complete", {"task_id": "t1"})
         self.assertEqual(out["verified"], True)
         self.assertEqual(inner.call_args.args[1], {"task_id": "t1"})
-        self.assertEqual([(r["c"], r["op"], r["r"]) for r in guard.ledger], [("claude-chat", "todoist_task_complete", "ok")])
+        self.assertEqual(
+            [(r["c"], r["op"], r["r"]) for r in guard.ledger], [("claude-chat", "todoist_task_complete", "ok")]
+        )
         self.assertEqual(sent, [])
 
     def test_a_read_is_not_guarded_or_recorded_as_a_write(self):
@@ -137,7 +145,9 @@ class Approval(unittest.TestCase):
         guard, sent, _ = make(approvals=approvals)
         with self.assertRaises(T.GovernedError) as caught:
             run(guard, "todoist_task_move", self.args())
-        self.assertEqual((caught.exception.reason, caught.exception.detail["approval_id"]), ("approval_required", self.rid()))
+        self.assertEqual(
+            (caught.exception.reason, caught.exception.detail["approval_id"]), ("approval_required", self.rid())
+        )
         self.assertEqual(len(approvals.asked), 1)
         with self.assertRaises(T.GovernedError):
             run(guard, "todoist_task_move", self.args())
@@ -238,7 +248,9 @@ class Rows(unittest.TestCase):
 
     def test_asking_sends_one_urgent_item_keyed_by_the_request(self):
         sent = []
-        G.InboxApprovals(mock.Mock(), "src", sent.append).ask("abc123", "claude-chat", "todoist_task_move", "move", NOON)
+        G.InboxApprovals(mock.Mock(), "src", sent.append).ask(
+            "abc123", "claude-chat", "todoist_task_move", "move", NOON
+        )
         self.assertEqual((sent[0]["key"], sent[0]["urgency"]), ("todoist-approval-abc123", "Now"))
         self.assertIn("within 5 minutes", sent[0]["details"])
 
@@ -255,7 +267,9 @@ class Alerts(unittest.TestCase):
         self.assertIn("quiet", sent[0]["subject"])
 
     def test_a_write_outside_the_usual_hours_alerts_once_a_day(self):
-        guard, sent, clock = make(clock=Clock(datetime(2026, 11, 28, 9, 30, tzinfo=timezone.utc).timestamp()))  # 3:30 AM CT
+        guard, sent, clock = make(
+            clock=Clock(datetime(2026, 11, 28, 9, 30, tzinfo=timezone.utc).timestamp())
+        )  # 3:30 AM CT
         run(guard, "todoist_task_complete", {"task_id": "t1"})
         run(guard, "todoist_task_complete", {"task_id": "t2"})
         self.assertEqual([("outside" in s["subject"]) for s in sent], [True])
@@ -302,7 +316,11 @@ class LedgerAndReceipt(unittest.TestCase):
 
 class Wiring(unittest.TestCase):
     def test_the_guard_is_off_unless_the_switch_is_exactly_on_and_the_inbox_is_configured(self):
-        for environ, inbox in (({}, {"client": object()}), ({"TODOIST_GUARD": "ON"}, {"client": object()}), ({"TODOIST_GUARD": "on"}, {"client": None})):
+        for environ, inbox in (
+            ({}, {"client": object()}),
+            ({"TODOIST_GUARD": "ON"}, {"client": object()}),
+            ({"TODOIST_GUARD": "on"}, {"client": None}),
+        ):
             state = {}
             G.wire(environ, state, mock.Mock(), inbox)
             self.assertIsNone(state["guard"], (environ, inbox))

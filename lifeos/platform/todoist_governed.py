@@ -67,7 +67,10 @@ OPS = {
         {"task_id": ("str", True), "project_id": ("str", True), "source": ("str", False)},
     ),
     "todoist_task_complete": ("Complete one task, read back.", {"task_id": ("str", True), "source": ("str", False)}),
-    "todoist_task_reopen": ("Reopen one completed task, read back.", {"task_id": ("str", True), "source": ("str", False)}),
+    "todoist_task_reopen": (
+        "Reopen one completed task, read back.",
+        {"task_id": ("str", True), "source": ("str", False)},
+    ),
     "todoist_comment_add": (
         "Add one comment to a task, read back.",
         {"task_id": ("str", True), "content": ("str", True), "source": ("str", False)},

@@ -141,9 +141,7 @@ class InboxApprovals:
 
     def reset(self, row, now):
         """A stale approval goes back to New so a fresh Done is needed."""
-        self.client.call_once(
-            "PATCH", f"/pages/{row['id']}", {"properties": {"Status": {"select": {"name": "New"}}}}
-        )
+        self.client.call_once("PATCH", f"/pages/{row['id']}", {"properties": {"Status": {"select": {"name": "New"}}}})
 
     def consume(self, row):
         self.client.call_once(
