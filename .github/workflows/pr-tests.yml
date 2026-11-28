@@ -32,14 +32,14 @@ jobs:
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$BASE_SHA"
-      - uses: ./.github/actions/python
+      - uses: ./.github/actions/python   # LIFE-1100: test-lock installs the test lock too (PyYAML for the workflow contract tests) and caches the whole environment
+        with:
+          test-lock: "true"
       - name: Agent trailer (LIFE-1096, policy section 3; pull requests only; every commit and the description carry an Agent line, no secret read)
         if: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python tools/agent_trailer_check.py
-      - name: Test-only dependency (PyYAML, for the workflow contract tests)
-        run: pip install --require-hashes -r requirements-test.lock
       - name: Restore the newest test index main built (LIFE-644; a pull request only reads it, never writes it; no cache, a missing file, an unreadable one or one older than 7 days all mean FULL)
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
@@ -187,11 +187,10 @@ jobs:
         id: scope
         run: |
           if git diff --name-only HEAD^1 HEAD | grep -qvE '^(docs/|[^/]+\.md$)'; then echo "docs_only=false" >> "$GITHUB_OUTPUT"; else echo "docs_only=true" >> "$GITHUB_OUTPUT"; echo "second date: skipped, docs-only change" | tee -a "$GITHUB_STEP_SUMMARY"; fi
-      - uses: ./.github/actions/python
+      - uses: ./.github/actions/python   # LIFE-1100: test-lock installs the test lock too and caches the whole environment
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
-      - name: Test-only dependency (PyYAML, for the workflow contract tests)
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
-        run: pip install --require-hashes -r requirements-test.lock
+        with:
+          test-lock: "true"
       - name: Unit tests on a second fixed date (LIFEOS_TEST_NOW; LIFE-1100 - a pull request runs the date-sensitive modules in tests/second-date-tests.txt, a merge to main runs everything in four parallel shards)
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         env:
