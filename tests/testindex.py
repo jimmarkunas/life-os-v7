@@ -214,7 +214,7 @@ def _targets_for(path, index, reaching, root, why=None):
         return full("under %s (run-everything prefix)" % prefix)
     suffix = os.path.splitext(name)[1]
     if "/" not in path:
-        return set() if path.endswith(".md") else full("a top-level file that is not markdown")
+        return data_readers(path, root) if path.endswith(".md") else full("a top-level file that is not markdown")
     if path.startswith("tests/"):
         if path.endswith(".py"):
             if not name.startswith("test_"):
