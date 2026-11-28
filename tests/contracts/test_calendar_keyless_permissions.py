@@ -23,7 +23,13 @@ class CalendarKeyless(unittest.TestCase):
         for path in sorted((ROOT / "workflows").glob("*.yml")):
             doc = yaml.safe_load(path.read_text())
             for job, body in (doc.get("jobs") or {}).items():
-                yield path.stem, job, doc, body, yaml.safe_dump(body) + wftext.called(body)  # a caller job is read with what it calls
+                yield (
+                    path.stem,
+                    job,
+                    doc,
+                    body,
+                    yaml.safe_dump(body) + wftext.called(body),
+                )  # a caller job is read with what it calls
 
     def test_every_job_that_reads_the_calendar_has_id_token_write(self):
         readers = [(w, j, doc, body) for w, j, doc, body, text in self.jobs() if CALENDAR_READER.search(text)]

@@ -321,9 +321,7 @@ class RuntimePathTests(unittest.TestCase):
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        doc = yaml.safe_load(
-            wftext.logical("domains")
-        )
+        doc = yaml.safe_load(wftext.logical("domains"))
         job = doc["jobs"]["bills"]
         runs = [step.get("run", "") for step in job["steps"]]
         order = [

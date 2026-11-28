@@ -265,9 +265,7 @@ class Main(unittest.TestCase):
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
 class TableMatchesTheWorkflow(unittest.TestCase):
     def test_every_domain_job_has_exactly_one_row_and_every_row_is_valid(self):
-        jobs = yaml.safe_load(
-            wftext.logical("domains")
-        )["jobs"]
+        jobs = yaml.safe_load(wftext.logical("domains"))["jobs"]
         domain = set(jobs) - {"gate", "report", "chain"}
         table = due.load_table()
         self.assertEqual(set(table), domain)

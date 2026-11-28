@@ -474,9 +474,7 @@ class Job(unittest.TestCase):
             self.skipTest("PyYAML not installed")
         from lifeos.platform.credential_list import CREDENTIALS
 
-        job = yaml.safe_load(wfsets.expand_text(wftext.logical("domains")))["jobs"][
-            "followup"
-        ]
+        job = yaml.safe_load(wfsets.expand_text(wftext.logical("domains")))["jobs"]["followup"]
         loaded = next(step for step in job["steps"] if step.get("id") == "bws_followup")
         lines = [line.split() for line in str(loaded["with"].get("secrets", "")).splitlines() if line.strip()]
         loaded_names = {parts[-1] for parts in lines}

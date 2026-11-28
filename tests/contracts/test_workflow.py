@@ -154,9 +154,7 @@ class WorkflowTests(unittest.TestCase):
         """
         from pathlib import Path
 
-        condition = yaml.safe_load(wftext.logical("domains"))[
-            "jobs"
-        ]["jira"]["if"]
+        condition = yaml.safe_load(wftext.logical("domains"))["jobs"]["jira"]["if"]
         self.assertIn("(github.event_name == 'workflow_dispatch' && inputs.jira != 'none')", condition)
         self.assertIn("needs.gate.outputs.due_jira == 'true'", condition)
         self.assertNotIn("|| inputs.jira != 'none'", condition)
@@ -292,7 +290,15 @@ class WorkflowTests(unittest.TestCase):
         diag = yaml.safe_load(wftext.read(flows / "diag.yml"))
         text = "\n".join(  # the caller and the reusable workflows in the order their jobs have, the comments between them kept
             (flows / n).read_text()
-            for n in ("diag.yml", "diag-main.yml", "diag-trace.yml", "diag-sandbox.yml", "diag-interview-ui.yml", "diag-report.yml", "diag-inbox-view-qa.yml")
+            for n in (
+                "diag.yml",
+                "diag-main.yml",
+                "diag-trace.yml",
+                "diag-sandbox.yml",
+                "diag-interview-ui.yml",
+                "diag-report.yml",
+                "diag-inbox-view-qa.yml",
+            )
         )
         moved = {
             "LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda",
@@ -700,9 +706,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.jobs = yaml.safe_load(
-                wftext.logical("domains")
-            )["jobs"]
+            cls.jobs = yaml.safe_load(wftext.logical("domains"))["jobs"]
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
 
@@ -738,9 +742,7 @@ class UnitTestGateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.doc = yaml.safe_load(
-                wftext.logical("hourly")
-            )
+            cls.doc = yaml.safe_load(wftext.logical("hourly"))
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
 
@@ -1464,9 +1466,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
             if path.name not in ("domains.yml", "hourly.yml") and not path.name.startswith(wftext.CALLED):
                 self.assertNotIn("V7_CLOSE_BASE_URL", wftext.read(path), path.name)
-        hourly = yaml.safe_load(
-            wftext.logical("hourly")
-        )
+        hourly = yaml.safe_load(wftext.logical("hourly"))
         named = [
             (job, step.get("id"))
             for job, spec in hourly["jobs"].items()
@@ -1665,9 +1665,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         )  # a workflow_run start follows V7_LIVE
         self.assertEqual(data["permissions"], {"contents": "read"})
         self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})
-        domains_name = yaml.safe_load(
-            wftext.logical("domains")
-        )["run-name"]
+        domains_name = yaml.safe_load(wftext.logical("domains"))["run-name"]
         self.assertIn("'domains (after tick)'", domains_name)  # the title the condition depends on
 
     def test_a_new_jira_step_must_be_put_on_the_red_list_or_among_the_v3_stages(self):
@@ -1791,7 +1789,13 @@ HRL_LANE = HRL - {
     "GMAIL_OAUTH_REFRESH_TOKEN",
     "OPEN_JOBS_CONTACT",
 }
-HRL_FINISH = DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}
+HRL_FINISH = (
+    DB
+    | JUMP
+    | TS
+    | HRL
+    | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}
+)
 _GMAIL = {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}
 MANUAL_UNREAD = {  # what the old finish job loaded that no stage of the manual job reads (tools/secret_usage.py)
     "manual_acquire": _GMAIL | {"IMESSAGE_ALERTS_HOST", "NTFY_TOPIC", "OPEN_JOBS_CONTACT"},
@@ -1811,8 +1815,11 @@ LOADED = {
         "jobright": DB | JUMP | TS | HRL_LANE,
         "linkedin": DB | JUMP | TS | HRL_LANE,
         "lensa": DB | JUMP | TS | HRL_LANE,
-        "finish": HRL_FINISH - {"OPEN_JOBS_CONTACT"},  # the tick never reads the open-jobs contact (only the manual probe does)
-        **{job: HRL_FINISH - drop for job, drop in MANUAL_UNREAD.items()},  # each manual-stage job loads what its stages read
+        "finish": HRL_FINISH
+        - {"OPEN_JOBS_CONTACT"},  # the tick never reads the open-jobs contact (only the manual probe does)
+        **{
+            job: HRL_FINISH - drop for job, drop in MANUAL_UNREAD.items()
+        },  # each manual-stage job loads what its stages read
         "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"},
         "report": {"NTFY_TOPIC"},
     },
@@ -1991,7 +1998,9 @@ class BitwardenConsumerTests(unittest.TestCase):
                     (name, job),
                 )
                 if name not in PILOTS:
-                    self.assertEqual(loader["id"], "bws_finish" if job.startswith("manual_") else f"bws_{job}", (name, job))  # deterministic, unique id; the manual-stage jobs cut from finish keep its id
+                    self.assertEqual(
+                        loader["id"], "bws_finish" if job.startswith("manual_") else f"bws_{job}", (name, job)
+                    )  # deterministic, unique id; the manual-stage jobs cut from finish keep its id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))  # nothing is exported job-wide
                     self.assertEqual(set(loader), {"id", "name", "uses", "with"}, (name, job))
 
@@ -2248,9 +2257,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.doc = yaml.safe_load(
-                wftext.logical("hourly")
-            )
+            cls.doc = yaml.safe_load(wftext.logical("hourly"))
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
         cls.steps = cls.doc["jobs"]["prep"]["steps"]
@@ -2339,9 +2346,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.doc = yaml.safe_load(
-                wftext.logical("hourly")
-            )
+            cls.doc = yaml.safe_load(wftext.logical("hourly"))
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
         cls.steps = cls.doc["jobs"]["finish"]["steps"]
@@ -2370,7 +2375,15 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
 
     def test_every_continue_on_error_step_is_a_lane_or_listed_as_silent_with_a_reason(self):
         every = set()
-        for name in ("finish", "manual_acquire", "manual_fit", "manual_publish", "manual_scaleup", "manual_reports", "manual_maintenance"):
+        for name in (
+            "finish",
+            "manual_acquire",
+            "manual_fit",
+            "manual_publish",
+            "manual_scaleup",
+            "manual_reports",
+            "manual_maintenance",
+        ):
             steps = self.doc["jobs"][name]["steps"]
             lanes = next(s for s in steps if s.get("id") == "lanes")
             listed = set(re.findall(r"=\$\{\{ steps\.(\w+)\.outcome \}\}", lanes["run"]))

@@ -197,7 +197,9 @@ class CloudBacklogRunsAlone(unittest.TestCase):
         self,
     ):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
-        self.assertEqual(sorted(p), ["finish", "manual_fit", "prep", "report"])  # the batch step lives in the manual_fit job
+        self.assertEqual(
+            sorted(p), ["finish", "manual_fit", "prep", "report"]
+        )  # the batch step lives in the manual_fit job
         self.assertTrue(all(result == "success" for result, _ in p.values()))
         ran = [s for _, steps in p.values() for s in steps]
         names = [s.get("id") or s.get("name") or s.get("uses") for s in ran]

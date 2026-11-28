@@ -22,7 +22,9 @@ SECRET = re.compile(r"\bsecrets\.([A-Za-z0-9_]+)")
 
 
 def disk(prefix_names):
-    return {p.name: p.read_text() for p in FLOWS.glob("*.yml") if p.name in prefix_names or p.name.startswith(prefix_names)}
+    return {
+        p.name: p.read_text() for p in FLOWS.glob("*.yml") if p.name in prefix_names or p.name.startswith(prefix_names)
+    }
 
 
 def load(name):
@@ -48,7 +50,9 @@ class Split(unittest.TestCase):
     def test_each_cut_job_has_its_own_file_and_no_file_holds_two_jobs(self):
         for name, caller, prefix in self.PAIRS:
             for job in self.logical(name)["jobs"]:
-                holders = [n for n in disk(prefix) if "uses" not in ((load(n).get("jobs") or {}).get(job) or {"uses": 1})]
+                holders = [
+                    n for n in disk(prefix) if "uses" not in ((load(n).get("jobs") or {}).get(job) or {"uses": 1})
+                ]
                 self.assertEqual(len(holders), 1, (name, job, holders))
             for n in disk(prefix):
                 if n.startswith(prefix[0]) and n != "domain-run.yml":
@@ -64,7 +68,9 @@ class Split(unittest.TestCase):
             body = text.split("\njobs:\n", 1)[1]
             self.assertEqual(set(INPUT.findall(body)) - set(call.get("inputs") or {}), set(), n.name)
             self.assertEqual(set(SECRET.findall(body)) - set(call.get("secrets") or {}), set(), n.name)
-            if n.name != "domain-run.yml":  # the orchestrator holds the jobs and their needs; every other called file is one job
+            if (
+                n.name != "domain-run.yml"
+            ):  # the orchestrator holds the jobs and their needs; every other called file is one job
                 self.assertNotRegex(body, r"\$\{\{[^}]*\bneeds\.", n.name)
             self.assertNotIn("inherit", text, n.name)
 
@@ -78,8 +84,12 @@ class Split(unittest.TestCase):
                 called = load(uses.rsplit("/", 1)[1])
                 declared = set(((called.get(True) or {}).get("workflow_call") or {}).get("secrets") or {})
                 self.assertEqual(set(body.get("secrets") or {}), declared, (n.name, job))
-                for key in (body.get("with") or {}):
-                    self.assertIn(key, ((called.get(True) or {}).get("workflow_call") or {}).get("inputs") or {}, (n.name, job, key))
+                for key in body.get("with") or {}:
+                    self.assertIn(
+                        key,
+                        ((called.get(True) or {}).get("workflow_call") or {}).get("inputs") or {},
+                        (n.name, job, key),
+                    )
 
     def test_a_called_job_never_holds_more_permissions_than_its_caller_grants(self):
         order = {"none": 0, "read": 1, "write": 2}
@@ -107,14 +117,20 @@ class Split(unittest.TestCase):
             needs = body.get("needs") or []
             needs = [needs] if isinstance(needs, str) else needs
             self.assertIn("gate", needs, job)
-            self.assertTrue(body["if"].startswith(("${{ !cancelled()", "${{ always()")), job)  # runs whatever a sibling did
+            self.assertTrue(
+                body["if"].startswith(("${{ !cancelled()", "${{ always()")), job
+            )  # runs whatever a sibling did
             self.assertNotRegex(body["if"], r"needs\.(?!gate\b)\w+\.result\s*==\s*'success'", job)
             self.assertIn("needs.gate.result != 'failure'", body["if"], job)
         hourly = self.logical("hourly")["jobs"]
         for job, body in hourly.items():
             if job.startswith("manual_"):
-                self.assertTrue(body["if"].startswith("${{ always()"), job)  # a failed manual stage group never skips the next one
-        self.assertTrue(set(domains["report"]["needs"]) >= set(domains) - sinks)  # a failed domain is named and pushed to the phone
+                self.assertTrue(
+                    body["if"].startswith("${{ always()"), job
+                )  # a failed manual stage group never skips the next one
+        self.assertTrue(
+            set(domains["report"]["needs"]) >= set(domains) - sinks
+        )  # a failed domain is named and pushed to the phone
         self.assertTrue(set(hourly["report"]["needs"]) >= {j for j in hourly if j.startswith("manual_")} | {"finish"})
 
     def test_the_generated_files_equal_the_parts(self):

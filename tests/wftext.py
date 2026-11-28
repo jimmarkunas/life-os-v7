@@ -41,38 +41,11 @@ def plain(name):
 
 
 WORKFLOWS = ROOT / ".github" / "workflows"
-CALLED = ("domain-", "tick-", "diag-")  # the reusable workflows the three callers (domains, hourly, diag) hand their jobs to
-
-
-def _flat_diag():
-    import yaml
-
-    files = {p.name: p.read_text() for p in WORKFLOWS.glob("diag*.yml")}
-    return yaml.safe_dump(wfsplit.flatten(files, "diag.yml"), sort_keys=False, width=10**6)
-
-
-def read(path):
-    """the text of the workflow at `path`; for domains, hourly and diag (callers now) the one logical document with every job's steps, else the file as it is"""
-    path = pathlib.Path(path)
-    if path.parent.name == "workflows" and path.name in LOGICAL:
-        return logical(LOGICAL[path.name])
-    if path.parent.name == "workflows" and path.name == "diag.yml":
-        return _flat_diag()
-    return path.read_text()
-
-
-def workflow_texts(expand=True):
-    """{stem: text} of every top-level workflow (the reusable ones a caller hands jobs to are read through their caller), aliases and `set:` names written out when `expand`"""
-    out = {}
-    for path in sorted(WORKFLOWS.glob("*.yml")):
-        if path.name.startswith(CALLED):
-            continue
-        out[path.stem] = wfsets.expand_text(read(path)) if expand else read(path)
-    return out
-
-
-WORKFLOWS = ROOT / ".github" / "workflows"
-CALLED = ("domain-", "tick-", "diag-")  # the reusable workflows the three callers (domains, hourly, diag) hand their jobs to
+CALLED = (
+    "domain-",
+    "tick-",
+    "diag-",
+)  # the reusable workflows the three callers (domains, hourly, diag) hand their jobs to
 
 
 def _flat_diag():

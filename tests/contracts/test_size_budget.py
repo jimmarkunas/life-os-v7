@@ -13,7 +13,12 @@ GENERATED_MAX = 20 * 1024  # no workflow file is over 20 KB; a bigger job is a r
 PART_MAX = 6 * 1024
 NAME_MAX = 60
 RATCHET = {}
-GENERATED_NAMES = ("domain", "hourly", "tick-", "v3-pages")  # the files tools/regen.py writes keep their step names short; the size limit is for every workflow
+GENERATED_NAMES = (
+    "domain",
+    "hourly",
+    "tick-",
+    "v3-pages",
+)  # the files tools/regen.py writes keep their step names short; the size limit is for every workflow
 PARTS_TOTAL_MAX = 281_000  # the six manual-stage jobs each carry their own setup steps (about 4 KB each), so the parts grew by that much when finish was cut
 
 

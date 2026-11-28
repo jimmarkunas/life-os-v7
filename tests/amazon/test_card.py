@@ -334,9 +334,7 @@ class OwnershipTests(unittest.TestCase):
             import yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        doc = yaml.safe_load(
-            wftext.logical("domains")
-        )
+        doc = yaml.safe_load(wftext.logical("domains"))
         job = doc["jobs"]["amazon"]
         runs = [s.get("run", "") for s in job["steps"]]
         order_ = [

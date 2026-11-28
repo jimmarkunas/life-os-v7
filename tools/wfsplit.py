@@ -171,7 +171,11 @@ def passes(names, declared):
     for name in sorted(names):
         spec = declared[name]
         kind = "boolean" if spec.get("type") == "boolean" else "string"
-        default = str(spec.get("default", False if kind == "boolean" else "")).lower() if kind == "boolean" else '"' + str(spec.get("default", "")) + '"'
+        default = (
+            str(spec.get("default", False if kind == "boolean" else "")).lower()
+            if kind == "boolean"
+            else '"' + str(spec.get("default", "")) + '"'
+        )
         inputs += [f"      {name}:", f"        type: {kind}", f"        default: {default}"]
         empty = EMPTY["boolean"] if kind == "boolean" else "'" + str(spec.get("default", "")) + "'"
         withs.append(f"      {name}: ${{{{ inputs.{name} || {empty} }}}}")
