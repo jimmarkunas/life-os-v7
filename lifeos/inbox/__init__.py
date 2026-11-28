@@ -1,3 +1,3 @@
-"""Unified Action Inbox: normalized records, the action matrix, exact authorization and the Notion binding."""
+"""Agent Inbox and Followup lane: records, the ledger, sources and the Notion binding."""
 
-__all__ = ["actions", "adapters", "inbox", "model", "notion_binding", "policy"]
+__all__ = ["adapters", "inbox", "model", "policy"]

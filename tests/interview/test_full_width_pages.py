@@ -70,8 +70,6 @@ class FullWidth(unittest.TestCase):
     def test_the_writers_that_create_pages_through_the_shared_helper_use_it(self):
         for module in (
             "lifeos/dcc/weekly_archive.py",
-            "lifeos/interview/advisor_queue.py",
-            "lifeos/interview/advisor_store.py",
             "lifeos/interview/granola_write.py",
             "lifeos/jobs/private_report.py",
         ):
