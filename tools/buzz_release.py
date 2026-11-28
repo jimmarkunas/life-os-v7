@@ -20,7 +20,12 @@ import tarfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "deploy" / "buzz-mcp" / "release-manifest.txt"
 ENTRY = "lifeos.buzz.mcp"
-DATA = ("lifeos/platform/mcp_access.json", "lifeos/platform/capability_catalog.json")
+DATA = (
+    "lifeos/platform/mcp_access.json",
+    "lifeos/platform/capability_catalog.json",
+    "lifeos/platform/graph_switch.json",
+)
+VENDOR = "deploy/buzz-mcp/vendor"  # packages the service imports that the system Python does not have; shipped as vendor/<package>/...
 BIN = ("honcho-alert", "place-credentials", "selfhost-probe", "store-credential")
 
 
@@ -39,6 +44,26 @@ def _imports(source):
     return {m for m in out if m == "lifeos" or m.startswith("lifeos.")}
 
 
+def _vendored(source, root):
+    """-> the release paths of the vendored packages this source imports (none when it imports none)."""
+    names = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.add(node.module.split(".")[0])
+    out = []
+    for name in sorted(names):
+        folder = root / VENDOR / name
+        if folder.is_dir():
+            out += [
+                f"vendor/{p.relative_to(root / VENDOR).as_posix()}"
+                for p in sorted(folder.rglob("*"))
+                if p.is_file() and "__pycache__" not in p.parts
+            ]
+    return out
+
+
 def _path(module, root):
     base = root.joinpath(*module.split("."))
     for candidate in (base.with_suffix(".py"), base / "__init__.py"):
@@ -50,7 +75,7 @@ def _path(module, root):
 def closure(root=ROOT):
     """-> sorted release paths: every lifeos module the service imports (packages' __init__ included), the two access
     files it reads, and the bin/ tools."""
-    seen, todo, files = set(), [ENTRY], set()
+    seen, todo, files, vendor = set(), [ENTRY], set(), set()
     while todo:
         module = todo.pop()
         if module in seen:
@@ -60,14 +85,17 @@ def closure(root=ROOT):
         if path is None:
             continue
         files.add(path.relative_to(root).as_posix())
+        vendor.update(_vendored(path.read_text(), root))
         parts = module.split(".")
         todo += [".".join(parts[:i]) for i in range(1, len(parts))]
         todo += sorted(_imports(path.read_text()))
-    return sorted(files | set(DATA)) + [f"bin/{name}" for name in BIN]
+    return sorted(files | set(DATA)) + sorted(vendor) + [f"bin/{name}" for name in BIN]
 
 
 def source_of(release_path):
-    return f"deploy/buzz-mcp/{release_path[4:]}" if release_path.startswith("bin/") else release_path
+    if release_path.startswith("bin/"):
+        return f"deploy/buzz-mcp/{release_path[4:]}"
+    return f"deploy/buzz-mcp/{release_path}" if release_path.startswith("vendor/") else release_path
 
 
 def _show(commit, path):
@@ -108,6 +136,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("closure")
+    sub.add_parser("manifest")  # rewrite deploy/buzz-mcp/release-manifest.txt from the closure
     b = sub.add_parser("build")
     b.add_argument("commit")
     b.add_argument("out")
@@ -117,6 +146,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.cmd == "closure":
         print("\n".join(closure()))
+        return 0
+    if args.cmd == "manifest":
+        head = [ln for ln in MANIFEST.read_text().splitlines() if ln.startswith("#")]
+        MANIFEST.write_text("\n".join(head + closure()) + "\n")
         return 0
     if args.cmd == "build":
         build(args.commit, args.out)

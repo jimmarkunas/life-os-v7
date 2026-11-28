@@ -44,5 +44,31 @@ class Manifest(unittest.TestCase):
         self.assertEqual((out.returncode, out.stdout.strip()), (0, "ok"), out.stderr[-500:])
 
 
+class GraphReader(unittest.TestCase):
+    def test_the_release_ships_the_graph_reader_its_switch_and_the_vendored_driver_with_its_license(self):
+        entries = buzz_release.read_manifest()
+        for needed in (
+            "lifeos/platform/graph_tools.py",
+            "lifeos/platform/graph_index.py",
+            "lifeos/platform/graph_switch.json",
+            "vendor/pymysql/__init__.py",
+            "vendor/pymysql/connections.py",
+            "vendor/pymysql/LICENSE",
+        ):
+            self.assertIn(needed, entries)
+        self.assertNotIn("lifeos/platform/graph_tools.py", [e for e in entries if e.startswith("vendor/")])
+        self.assertEqual(buzz_release.source_of("vendor/pymysql/err.py"), "deploy/buzz-mcp/vendor/pymysql/err.py")
+
+    def test_a_package_with_no_vendored_copy_adds_nothing_and_a_vendored_one_adds_its_files(self):
+        self.assertEqual(buzz_release._vendored("import json\nfrom pathlib import Path\n", ROOT), [])
+        files = buzz_release._vendored("def f():\n    import pymysql\n", ROOT)
+        self.assertIn("vendor/pymysql/__init__.py", files)
+        self.assertTrue(all(f.startswith("vendor/pymysql/") for f in files))
+        self.assertEqual(files, sorted(files))
+
+    def test_the_switch_file_ships_off(self):
+        self.assertEqual((ROOT / "lifeos/platform/graph_switch.json").read_text().strip(), '{"enabled": false}')
+
+
 if __name__ == "__main__":
     unittest.main()
