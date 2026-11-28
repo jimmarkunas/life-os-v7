@@ -540,9 +540,7 @@ class SuiteTimingWorkflow(unittest.TestCase):
         pr = (self.path.parent / "pr-tests.yml").read_text()
         self.assertIn('python -m tests.shard "$k" "$n"', timing)
         self.assertIn("python -m tests.shard", pr)  # the same module, the same split rule
-        self.assertIn(
-            "-ge 60", pr
-        )  # the CI limit is 60 s (this dispatch-only diagnostic keeps its own LIMIT below)
+        self.assertIn("-ge 60", pr)  # the CI limit is 60 s (this dispatch-only diagnostic keeps its own LIMIT below)
         self.assertIn(
             "LIMIT = 120", (pathlib.Path(__file__).resolve().parents[2] / "tests" / "suite_timing.py").read_text()
         )
