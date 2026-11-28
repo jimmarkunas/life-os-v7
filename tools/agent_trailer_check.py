@@ -15,6 +15,13 @@ import urllib.request
 
 # Pull requests opened before this moment (Nov 27 2026, 6:00 PM CT) are never checked, so work already in flight is not held up.
 FROM = "2026-11-28T00:00:00Z"
+# From this moment (Nov 27 2026, 8:00 PM CT) a pull request description also needs the two receipt lines (policy local-tests.md).
+RECEIPT_FROM = "2026-11-28T02:00:00Z"
+LOCAL_TESTS = re.compile(r"^Local tests: \S.*$", re.MULTILINE)
+TIME = re.compile(
+    r"^Time: total \d+(\.\d+)? min, local tests \d+(\.\d+)? min, CI waits \d+(\.\d+)? min, rework \d+(\.\d+)? min",
+    re.MULTILINE,
+)
 TRAILER = re.compile(r"^Agent: (MC01|OC|Codex|Jim)[ \t]*$", re.MULTILINE)
 NAMES = "MC01, OC, Codex or Jim"
 
@@ -22,6 +29,11 @@ NAMES = "MC01, OC, Codex or Jim"
 def missing(body, commits):
     """-> (description_ok, [short ids of commits without the trailer]) for a description and [(sha, message)]."""
     return bool(TRAILER.search(body or "")), [sha[:7] for sha, message in commits if not TRAILER.search(message or "")]
+
+
+def receipt_lines(body):
+    """True when the description has a `Local tests:` line (not empty) and a well-formed `Time:` line."""
+    return bool(LOCAL_TESTS.search(body or "")) and bool(TIME.search(body or ""))
 
 
 def fetch_commits(repo, number, token, opener=urllib.request.urlopen):
@@ -54,7 +66,8 @@ def run(event_name, event, repo, token, fetch=fetch_commits, out=sys.stdout):
         out.write("::warning::agent trailer: the commit list could not be read, so the commits were not checked\n")
         commits = None
     body_ok, bad = missing(pull.get("body"), commits or [])
-    if body_ok and not bad:
+    receipt = str(pull.get("created_at") or "") < RECEIPT_FROM or receipt_lines(pull.get("body"))
+    if body_ok and not bad and receipt:
         out.write("agent trailer: ok (%s commits and the description)\n" % ("?" if commits is None else len(commits)))
         return 0
     if not body_ok:
@@ -64,6 +77,11 @@ def run(event_name, event, repo, token, fetch=fetch_commits, out=sys.stdout):
     if bad:
         out.write(
             f"::error::{len(bad)} commit(s) have no `Agent:` trailer ({', '.join(bad[:10])}); add it as the last line of the message\n"
+        )
+    if not receipt:
+        out.write(
+            "::error::the description needs `Local tests: <sh scripts/test-local line, or none>` and "
+            "`Time: total N min, local tests N min, CI waits N min, rework N min` (docs/policy/local-tests.md)\n"
         )
     return 1
 

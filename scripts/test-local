@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# The ONE way an agent runs tests locally (LIFE-1099): only the tests selected for the files changed against main, plus the
+# contracts and repo-wide scanners. The full suite is refused here and runs on CI (the CI variable must be set for it).
+# Prints the line to paste into a pull request description: `Local tests: <count> tests, <seconds> s`.
+#   sh scripts/test-local        run the selection (commit first; CI sees commits only)
+#   sh scripts/test-local --list print the selection without running it
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT" || exit 3
+case "${1:-}" in
+  ''|--list) ;;
+  *) echo "test-local: no options but --list: the full suite is CI's job" >&2; exit 4 ;;
+esac
+if [ "${1:-}" = --list ]; then exec bash "$ROOT/tools/test.sh" --quick --list; fi
+start="$(date +%s)"
+out="$(mktemp)"; trap 'rm -f "$out"' EXIT
+bash "$ROOT/tools/test.sh" --quick > "$out" 2>&1; status=$?
+tail -n 30 "$out"
+ran="$(grep -oE '[0-9]+ tests ran' "$out" | tail -n 1 | grep -oE '^[0-9]+' || true)"
+echo "Local tests: ${ran:-0} tests, $(( $(date +%s) - start )) s, exit ${status}"
+exit "$status"

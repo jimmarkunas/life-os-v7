@@ -54,9 +54,16 @@
   {
    "path": "docs/policy/agent-coordination.md",
    "authority": "Canonical: policy section 3 detail (LIFE-1096)",
-   "purpose": "Agent trailers, one Production Contract editor, paths line in tickets, the merge queue",
+   "purpose": "Agent trailers, one Production Contract editor, the paths line in tickets",
    "owner": "Jim (change by reviewed PR; Q04)",
    "retrieval": "When starting a ticket, editing the contract or opening a PR"
+  },
+  {
+   "path": "docs/policy/local-tests.md",
+   "authority": "Canonical: policy section 3 detail (LIFE-1099)",
+   "purpose": "Local tests only via scripts/test-local, the Local tests and Time receipt lines",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Before running any test locally and when opening a PR"
   },
   {
    "path": "docs/notion-query-conservation-policy.md",

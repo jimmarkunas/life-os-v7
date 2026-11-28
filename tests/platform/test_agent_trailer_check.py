@@ -7,12 +7,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 
 import agent_trailer_check as check  # noqa: E402
 
+RECEIPT = "\nLocal tests: 12 tests, 9 s, exit 0\nTime: total 20 min, local tests 1 min, CI waits 5 min, rework 2 min"
 OK = "[LIFE-1] x\n\nCo-Authored-By: Someone\nAgent: MC01"
 EVENT = {"pull_request": {"number": 7, "body": "text\n\nAgent: OC"}}
 
 
-def go(body, commits, name="pull_request", raises=False, created="2026-12-01T00:00:00Z"):
-    event = {"pull_request": {"number": 7, "body": body, "created_at": created}}
+def go(body, commits, name="pull_request", raises=False, created="2026-12-01T00:00:00Z", receipt=True):
+    event = {"pull_request": {"number": 7, "body": body + (RECEIPT if receipt else ""), "created_at": created}}
 
     def fetch(*_):
         if raises:
@@ -52,6 +53,24 @@ class Trailer(unittest.TestCase):
         code, text = go("none", [("a" * 40, "none")], created="2026-11-27T22:00:00Z")
         self.assertEqual((code, "before the rule began" in text), (0, True))
         self.assertEqual(go("none", [("a" * 40, "none")], created="2026-11-28T00:00:00Z")[0], 1)  # from the cutoff on
+
+    def test_a_description_needs_the_local_tests_and_time_lines_from_the_receipt_cutoff(self):
+        ok = "a\nAgent: MC01"
+        self.assertEqual(go(ok, [("a" * 40, OK)])[0], 0)
+        code, text = go(ok, [("a" * 40, OK)], receipt=False)
+        self.assertEqual((code, "Local tests:" in text), (1, True))
+        for bad in (
+            "Local tests:\nTime: total 1 min, local tests 1 min, CI waits 1 min, rework 1 min",
+            "Local tests: x\nTime: some time",
+        ):
+            event = {"pull_request": {"number": 7, "body": ok + "\n" + bad, "created_at": "2026-12-01T00:00:00Z"}}
+            self.assertEqual(
+                check.run("pull_request", event, "o/r", "", fetch=lambda *_: [], out=io.StringIO()), 1, bad
+            )
+        before = go(
+            ok, [("a" * 40, OK)], receipt=False, created="2026-11-28T01:00:00Z"
+        )  # opened before 8:00 PM CT: only the trailer is needed
+        self.assertEqual(before[0], 0)
 
     def test_only_a_pull_request_event_is_checked(self):
         self.assertEqual(go("none", [("a" * 40, "none")], name="merge_group")[0], 0)

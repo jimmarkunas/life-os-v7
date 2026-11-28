@@ -119,7 +119,16 @@ def quick_targets(changed, root=ROOT):
         return reaching_tests({m for m in names if m in modules}, root)
 
     picked = testindex.select(changed, None, root, reaching)
-    return sorted(testindex.module_set(root)) if picked == testindex.FULL else picked
+    if picked != testindex.FULL:
+        return picked
+    if os.environ.get("CI"):
+        return sorted(testindex.module_set(root))
+    # Locally the full suite is refused: CI runs it on every pull request. Run the contracts and scanners only.
+    print(
+        "quickselect: the selector cannot place this change; the full suite is CI's job, not run locally",
+        file=sys.stderr,
+    )
+    return testindex.select([], None, root, reaching)
 
 
 def partition(modules, n):
