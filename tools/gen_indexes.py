@@ -1,6 +1,6 @@
 """LIFE-1098: INDEX.md, docs/index.json, docs/README.md and docs/DECISIONS_INDEX.md are generated; nobody edits them by hand.
 
-  docs/DECISIONS_INDEX.md  one line per `## D<n> ...` heading of docs/DECISIONS.md (a decision whose body says `Amends D<m>.` marks D<m> `(amended by D<n>)`)
+  docs/DECISIONS_INDEX.md  one line per `## D<n> ...` heading of docs/DECISIONS.md and docs/archive/DECISIONS-*.md (a decision whose body says `Amends D<m>.` marks D<m> `(amended by D<n>)`)
   INDEX.md, docs/index.json, docs/README.md  from the one hand-edited file docs/index-source.json
 
 Add a decision: write its heading in docs/DECISIONS.md (number from `python -m lifeos.sources.devtools.decisions claim`), then run this.
@@ -23,6 +23,12 @@ DECISION_HEAD = re.compile(r"^## (D\d+)\b")
 AMENDS = re.compile(r"^Amends (D\d+)\b")
 
 
+def decisions_log():
+    """docs/DECISIONS.md (current) after the older entries in docs/archive/DECISIONS-*.md, in decision order."""
+    older = [f.read_text() for f in sorted((ROOT / "docs/archive").glob("DECISIONS-*.md"))]
+    return "\n".join(older + [(ROOT / "docs/DECISIONS.md").read_text()])
+
+
 def decisions_index(decisions_text):
     """The DECISIONS_INDEX.md text for a DECISIONS.md text."""
     heads, amended, current = [], {}, None
@@ -40,8 +46,10 @@ def decisions_index(decisions_text):
     return (
         "# Decision index\n\n"
         + NOTE.format(how="add the decision's `## D<n>` heading to docs/DECISIONS.md, then run it")
-        + "\n\nOne line per decision in `docs/DECISIONS.md`. Do not read that file whole: find the number here, then "
-        '`grep -n "^## D<n> " -A6 docs/DECISIONS.md`.\n\n' + "\n".join(lines) + "\n"
+        + "\n\nOne line per decision in `docs/DECISIONS.md` and the older `docs/archive/DECISIONS-*.md`. Do not read those files "
+        'whole: find the number here, then `python -m lifeos.sources.devtools.decisions show D<n>`.\n\n'
+        + "\n".join(lines)
+        + "\n"
     )
 
 
@@ -90,7 +98,7 @@ def outputs():
         "INDEX.md": index_md(src),
         "docs/index.json": index_json(src),
         "docs/README.md": docs_readme(src),
-        "docs/DECISIONS_INDEX.md": decisions_index((ROOT / "docs/DECISIONS.md").read_text()),
+        "docs/DECISIONS_INDEX.md": decisions_index(decisions_log()),
     }
 
 
