@@ -137,7 +137,7 @@ def epic_reason(fields):
     return None
 
 
-# A ticket whose only work is waiting for a date or event is a UAT check under LIFE-615, never a build ticket.
+# A ticket whose only work is waiting for a date or event is a UAT check under the Bug Epic, never a build ticket.
 WAIT_ONLY = re.compile(r"^\W*(watch|soak|wait for|waiting for)\b|\(not before\b", re.I)
 
 
