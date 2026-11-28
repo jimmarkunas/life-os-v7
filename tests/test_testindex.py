@@ -271,6 +271,28 @@ class TenChanges(unittest.TestCase):
     def test_the_local_gate_does_not_treat_the_platform_layer_as_everything(self):
         self.assertIn("tests.platform.test_db", ti.select(["lifeos/platform/db.py"], None, self.root, reach))
 
+    def test_docs_of_any_kind_never_force_a_full_run(self):
+        """the production contract, the archive, any other docs file and a top-level markdown file run the contracts, the
+        repo-wide scanners and the tests that name the file; never everything (docs/PRIVACY.md is the one deliberate
+        exception)."""
+        (self.root / "tests/platform/test_tool_one_name_long.py").write_text(
+            "NAMED = 'docs/archive/decisions-old.md'\n"
+        )
+        ti.test_texts.cache_clear()
+        for path in (
+            "docs/production-contract/01-overrides.md",
+            "docs/archive/decisions-old.md",
+            "docs/guide.md",
+            "docs/data.json",
+            "README.md",
+        ):
+            for picked in (ti.select([path], self.idx, self.root), ti.select([path], None, self.root, reach)):
+                self.assertNotEqual(picked, ti.FULL, path)
+                self.assertLessEqual(set(CONTRACTS), set(picked), path)
+        picked = ti.select(["docs/archive/decisions-old.md"], self.idx, self.root)
+        self.assertIn(ROW_TOOL, picked)  # the test that names the file runs
+        self.assertEqual(ti.select(["docs/PRIVACY.md"], self.idx, self.root), ti.FULL)
+
     def test_a_full_names_the_path_and_the_rule_for_each_cause(self):
         cases = {
             "pyproject.toml": "a repo-wide file",
