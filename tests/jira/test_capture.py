@@ -38,12 +38,12 @@ class FakeMemory:
         if any(word in text for word in self.refuse):
             return {"ok": False, "error": "sensitive_refused"}
         self.n += 1
-        return {"ok": True, "data": {"id": f"m{self.n}"}}
+        return {"ok": True, "id": f"m{self.n}"}
 
     def correct(self, memory_id, text, source):
         self.log.append(("correct", memory_id, text))
         self.n += 1
-        return {"ok": True, "data": {"id": f"m{self.n}"}}
+        return {"ok": True, "id": f"m{self.n}"}
 
     def revoke(self, memory_id):
         self.log.append(("revoke", memory_id))
@@ -223,22 +223,24 @@ class MemoryClient(unittest.TestCase):
 
         def opener(request, timeout=0):
             sent.append(
-                (request.full_url, request.headers["Authorization"], json.loads(request.data)["params"]["arguments"])
+                (
+                    request.full_url,
+                    request.headers["Authorization"],
+                    json.loads(request.data)["params"]["arguments"],
+                    request.data,
+                )
             )
-            return Reply({"ok": True, "data": {"id": "m1"}})
+            return Reply({"ok": True, "id": "m1"})
 
         memory = C.Memory("https://example.invalid/mcp", "lm1.jira-capture.TESTSECRET", opener)
         self.assertTrue(memory.store("a decision", "jira-decision:LIFE-1#1")["ok"])
         self.assertEqual(
-            sent[0][2],
-            {
-                "operation": "memory_store",
-                "arguments": {"workspace": "Personal", "text": "a decision", "source": "jira-decision:LIFE-1#1"},
-            },
+            (json.loads(sent[0][3])["params"]["name"], sent[0][2]),
+            ("memory_store", {"workspace": "Personal", "text": "a decision", "source": "jira-decision:LIFE-1#1"}),
         )
         self.assertEqual(sent[0][1], "Bearer lm1.jira-capture.TESTSECRET")
         memory.revoke("m1")
-        self.assertEqual(sent[1][2]["operation"], "memory_revoke")
+        self.assertEqual(json.loads(sent[1][3])["params"]["name"], "memory_revoke")
 
         def broken(request, timeout=0):
             raise OSError("down")
@@ -289,7 +291,7 @@ class MemoryClient(unittest.TestCase):
                 "pinned_open",
                 lambda address: (
                     seen.append(address),
-                    lambda request, timeout=0: self._reply({"ok": True, "data": {"id": "m9"}}, True),
+                    lambda request, timeout=0: self._reply({"ok": True, "id": "m9"}, True),
                 )[1],
             ),
         ):

@@ -74,3 +74,20 @@ class Entries(unittest.TestCase):
         listing = {"result": {"tools": [{"name": "buzz_read"}]}}
         out = T.add_tools(listing, {"method": "tools/list"}, {"facts": {"credential": "nobody"}}, object())
         self.assertEqual(out["result"]["tools"], [{"name": "buzz_read"}])
+
+
+class Retired(unittest.TestCase):
+    def test_a_memory_operation_through_the_alias_gets_one_refusal_naming_its_tool(self):
+        for name in ("buzz_read", "buzz_publish"):
+            out = T.retired(call(name, {"operation": "memory_store", "arguments": {}}), OPS)
+            body = json.loads(out["result"]["content"][0]["text"])
+            self.assertEqual(
+                (out["id"], body),
+                (7, {"ok": False, "error": "use_memory_tool", "reason": "memory_store", "tool": "memory_store"}),
+            )
+            self.assertTrue(out["result"]["isError"])
+
+    def test_a_first_class_call_and_any_other_operation_pass(self):
+        self.assertIsNone(T.retired(T.as_buzz_read(call("memory_recall", {"workspace": "Personal"}), OPS), OPS))
+        self.assertIsNone(T.retired(call("buzz_read", {"operation": "list_channels"}), OPS))
+        self.assertIsNone(T.retired({"method": "tools/list"}, OPS))

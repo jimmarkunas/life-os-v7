@@ -103,7 +103,7 @@ class Memory:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/call",
-                "params": {"name": "buzz_read", "arguments": {"operation": operation, "arguments": arguments}},
+                "params": {"name": operation, "arguments": arguments},
             }
         ).encode()
         request = urllib.request.Request(
@@ -233,7 +233,7 @@ def capture_issue(jira, key, memory, state, live, now, total):
             if prior and prior.get("state") == "stored"
             else memory.store(text, source)
         )
-        new = (reply.get("data") or {}).get("id")
+        new = reply.get("id")
         if reply.get("ok") and new:
             _tick(total, "corrected" if prior and prior.get("state") == "stored" else "stored")
             if not _state_write(

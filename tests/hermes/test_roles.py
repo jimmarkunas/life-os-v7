@@ -23,10 +23,10 @@ class RoleFiles(unittest.TestCase):
     def test_every_role_carries_the_approved_memory_lines_exactly_once_and_not_the_old_answer_from_it_line(self):
         """Every Hermes profile recalls first and treats recalled items as candidates, not answers (Jim, Nov 27 2026)."""
         lines = (
-            "At task start, recall relevant memory from the permitted workspace via buzz_capabilities and buzz_read/memory_recall.",
+            "At task start, recall relevant memory from the permitted workspace with the lifeos-buzz memory_recall tool.",
             "Candidates, not answers: use only what explicitly answers; otherwise say nothing stored answers. Canonical sources win.",
             "Store only explicitly approved non-sensitive owner decisions/preferences with provenance when granted. No automatic capture or metered ask by default.",
-            'Recall call: lifeos-buzz buzz_read with operation "memory_recall" and arguments {"workspace": "Personal", "query": "<the question>"}.',
+            'Recall call: lifeos-buzz memory_recall with {"workspace": "Personal", "query": "<the question>"}.',
         )
         for name in ("main", "claude-hermes", "developer", "librarian", "research", "writer"):
             text = open(os.path.join(ROOT, "hermes", "roles", name, "SOUL.md")).read()
