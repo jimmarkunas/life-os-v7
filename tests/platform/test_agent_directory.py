@@ -39,13 +39,13 @@ def claimed(agent_id, **extra):
 
 
 class Catalog(unittest.TestCase):
-    def test_the_24_row_directory_parses_by_platform_and_kind(self):
+    def test_the_22_row_directory_parses_by_platform_and_kind(self):
         d = build()
-        self.assertEqual(len(d.entries), 24)
+        self.assertEqual(len(d.entries), 22)
         by = {}
         for e in d.entries:
             by[e.platform] = by.get(e.platform, 0) + 1
-        self.assertEqual(by, {"Claude": 5, "ChatGPT": 3, "Buzz": 8, "Orca": 2, "Hermes": 6})
+        self.assertEqual(by, {"Claude": 5, "ChatGPT": 3, "Buzz": 8, "Orca": 2, "Hermes": 4})
         kinds = {e.agent_id: e.kind for e in d.entries}
         self.assertEqual(kinds["bot_hermes_main"], "agent_identity")
         self.assertEqual(kinds["buzz_lifeos_codex"], "agent_identity")
@@ -68,11 +68,9 @@ class Catalog(unittest.TestCase):
             status["buzz_persona_council-auditor"], "manual-only"
         )  # a persona is never an addressable agent
 
-    def test_one_hermes_runtime_six_profiles_match_the_repo_table(self):
+    def test_one_hermes_runtime_four_profiles_match_the_repo_table(self):
         text = (ROOT / "hermes" / "connector-allowlists.txt").read_text()
-        self.assertEqual(
-            sorted(D.hermes_profiles(text)), ["claude-hermes", "developer", "librarian", "main", "research", "writer"]
-        )
+        self.assertEqual(sorted(D.hermes_profiles(text)), ["claude-hermes", "librarian", "main", "writer"])
         self.assertEqual(D.check_hermes(build(), text), [])
         self.assertEqual({e.host for e in build().entries if e.platform == "Hermes"}, {"Oracle"})
         rows = [r for r in F.rows() if r["Agent ID"] != "bot_hermes_writer"] + [
@@ -317,7 +315,7 @@ class Snapshot(unittest.TestCase):
         a, b = D.snapshot(build(), NOW), D.snapshot(build(list(reversed(F.rows()))), NOW)
         self.assertEqual(json.dumps(a, sort_keys=True), json.dumps(b, sort_keys=True))
         self.assertEqual([e["agent_id"] for e in a["entries"]], sorted(e["agent_id"] for e in a["entries"]))
-        self.assertEqual((a["count"], a["source"], a["principal"]), (24, "fixture", READER[:8]))
+        self.assertEqual((a["count"], a["source"], a["principal"]), (22, "fixture", READER[:8]))
         self.assertNotIn(READER, json.dumps(a))
         self.assertTrue(all(e["last_checked"].startswith("2026-11-16") and e["stale"] is False for e in a["entries"]))
         self.assertTrue(all(set(e) == set(a["entries"][0]) for e in a["entries"]))
