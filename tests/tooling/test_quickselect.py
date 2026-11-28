@@ -39,7 +39,7 @@ class QuickSelect(unittest.TestCase):
 
     def test_a_changed_test_module_runs_itself(self):
         self.assertIn(
-            "tests.contracts.test_quickselect", quickselect.quick_targets(["tests/contracts/test_quickselect.py"])
+            "tests.tooling.test_quickselect", quickselect.quick_targets(["tests/tooling/test_quickselect.py"])
         )
 
     def test_partition_covers_each_module_exactly_once(self):

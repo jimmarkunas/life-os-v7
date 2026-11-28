@@ -72,5 +72,5 @@ On a throwaway branch (`scratch/LIFE-540-anchor-test`, a workflow with no secret
 
 * An alias on a real `sm-action` step (needs a live run).
 * What `set_env` defaults to when omitted (the 6 pairs above).
-* The remaining text-regex assertions in tests/contracts/test_bws_helper.py, test_guardrails.py and tests/jobs/fit/test_backlog_workflow.py (I found the doubled-mapping checks in test_workflow.py only).
+* The remaining text-regex assertions in tests/tooling/test_bws_helper.py, test_guardrails.py and tests/jobs/fit/test_backlog_workflow.py (I found the doubled-mapping checks in test_workflow.py only).
 * Option B's redaction behavior and option C's output behavior (from documentation memory, not tested).

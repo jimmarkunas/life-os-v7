@@ -154,7 +154,7 @@ Run history for the baseline is in section F.
 | widgets/world-clock | 1 | 435 | 2026-10-14 | no | GitHub Pages | LIVE | keep | same hosting copy and same limit as the row above (its README names this folder as the canonical source) |
 | muse-persona-export/ | removed | | | yes | n/a | n/a | already deleted by LIFE-537 (PR 863) | moved to the Notion Product Requirements entry REQ-34 |
 | requirements.txt | 1 | 2 | 2026-10-01 | no | GitHub | LIVE | keep | pinned requirements used by CI |
-| requirements-browser.txt | 1 | 1 | 2026-10-01 | no | GitHub | LIVE | keep | source of requirements-browser.lock, which hourly.yml installs with `pip install --require-hashes`; tests/contracts/test_lockfiles.py pairs the two |
+| requirements-browser.txt | 1 | 1 | 2026-10-01 | no | GitHub | LIVE | keep | source of requirements-browser.lock, which hourly.yml installs with `pip install --require-hashes`; tests/tooling/test_lockfiles.py pairs the two |
 | requirements-fit.txt | 1 | 1 | 2026-10-01 | no | GitHub (semantic layer) | LIVE | keep; do not move (LIFE-529) | source of requirements-fit.lock, which hourly.yml installs for the optional semantic layer (lifeos/jobs/fit/semantic.py imports fastembed); the same pairing test covers it |
 | docs/ (33 top-level files plus contracts/ and development-policy/) | | | | no | n/a | LIVE | keep; check stale paths in a later ticket | read by agents and listed in INDEX.md (the repo check enforces the index); one summary row; PRIVACY.md line 17 names tests/test_privacy.py, the real guard is tests/contracts/test_privacy.py (drift only, protected file, Jim approves any fix) |
 | INDEX.md, AGENTS.md, CLAUDE.md | 3 | 222 | | no | every session | LIVE | keep | bootstrap files |

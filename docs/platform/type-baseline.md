@@ -4,10 +4,10 @@ Nov 10 2026. An **advisory** type checker on `lifeos/platform` and ten platform 
 
 ## The checker
 
-* **mypy 2.3.1**, lenient mode (no strict flags), configured in `mypy.ini` (`files = lifeos/platform`). `pyproject.toml` stays ruff-only on purpose: `tests/contracts/test_ruff_advisory.py` pins it, and this ticket's Done-when says no existing test is edited.
+* **mypy 2.3.1**, lenient mode (no strict flags), configured in `mypy.ini` (`files = lifeos/platform`). `pyproject.toml` stays ruff-only on purpose: `tests/tooling/test_ruff_advisory.py` pins it, and this ticket's Done-when says no existing test is edited.
 * Chosen over pyright because mypy installs from hashed wheels with no download at run time; pyright's pip package fetches Node when it first runs, which would break "nothing is installed unpinned" (LIFE-536).
 * Pinned in `requirements-test.txt` and `requirements-test.lock` with its dependencies (`ast_serialize`, `librt`, `mypy_extensions`, `pathspec`, `typing_extensions`), each with a sha256 for CPython 3.12 Linux x86_64.
-* The pull-request step "Type check advisory" in `.github/workflows/pr-tests.yml` runs after the unit tests on the `lifeos/platform/*.py` files the change touches, prints counts only, is `continue-on-error`, and ends in `exit 0`. It cannot fail the job or change the required `unit-tests` check. `tests/contracts/test_mypy_advisory.py` pins all of this.
+* The pull-request step "Type check advisory" in `.github/workflows/pr-tests.yml` runs after the unit tests on the `lifeos/platform/*.py` files the change touches, prints counts only, is `continue-on-error`, and ends in `exit 0`. It cannot fail the job or change the required `unit-tests` check. `tests/tooling/test_mypy_advisory.py` pins all of this.
 
 ## Baseline (lenient mode, `python -m mypy`, 45 files in `lifeos/platform`)
 
