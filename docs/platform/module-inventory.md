@@ -165,7 +165,7 @@ lifeos-fit (8 files), lifeos-resume (5), claude-handoff (3), Hermes launch scrip
 
 ## E. Scalability baseline (before)
 
-**(a) Files changed to add one new source.** Example: commit bac7831 (scale_up_register). Needed: the source module, its test, one line in lifeos/run.py STAGES, error codes in lifeos/platform/codes.py, a workflow step, tests/contracts/test_workflow.py, docs/CODEMAP.md, docs/codemap.json. **8 files** minimum (the commit touched 12 because it added two other modules too).
+**(a) Files changed to add one new source.** Example: commit bac7831 (scale_up_register). Needed: the source module, its test, one line in lifeos/run.py STAGES, error codes in lifeos/platform/codes.py, a workflow step, tests/workflows/test_workflow.py, docs/CODEMAP.md, docs/codemap.json. **8 files** minimum (the commit touched 12 because it added two other modules too).
 
 **(b) Workflow durations, last 10 runs each, from the GitHub API (times in CT, runs started Nov 9 7:00 PM CT to 10:17 PM CT):**
 

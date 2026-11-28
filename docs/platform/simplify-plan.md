@@ -51,7 +51,7 @@ Conflicts: `domains.yml` (PR 1261 now, LIFE-752 next, then LIFE-764), `stage_bud
 Today 46 files, 5,626 lines. Inventory by what they protect: stage rules (timeouts, isolation, budgets, workflow shape, codes, shards, settings, checkout step, source registry, readiness), policy and docs (development_policy_split, agent_files, privacy, borrowed_code, boundaries), runtime and hygiene (lockfiles, node_install, frozen_clock, suite_timing, ruff/mypy advisory), and small one-offs (callout stamps 159, delivery_rules 35, typed_high_fan_in 43). Target: about 6 modules. `test_stages.py` loops the manifest and asserts every stage has a timeout, a budget, isolation, a workflow job, secrets named only from the allowed list, and permissions no wider than the job. The workflow-shape and codes tests become loops over all workflow files. Keep every distinct invariant as a named assertion; delete only duplicate per-stage pins, and list each removed test with the check that now covers it in the PR description.
 Acceptance: mutation proof for each removed class (introduce the violation, the new check fails); contracts runtime does not go up.
 Risk: losing a real guard. Mitigation: the mutation list above is the gate.
-Conflicts: `tests/contracts/test_workflow.py`, `test_timeouts.py`, `test_stage_isolation.py`; order after A for the stage loops and after LIFE-765 for pinned counts. The non-stage files (policy, privacy, hygiene) can merge into fewer files at any time.
+Conflicts: `tests/workflows/test_workflow.py`, `test_timeouts.py`, `test_stage_isolation.py`; order after A for the stage loops and after LIFE-765 for pinned counts. The non-stage files (policy, privacy, hygiene) can merge into fewer files at any time.
 
 ### C. Changed-only CI (LIFE-770)
 
