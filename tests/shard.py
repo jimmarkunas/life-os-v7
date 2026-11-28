@@ -198,12 +198,39 @@ def write_weights(seconds, path=None):
     )
 
 
+def module_names():
+    """Dotted names of the test modules `unittest discover -s tests -t .` would import (a `test*.py` file in `tests` or in
+    a package below it), found from file names alone, so a shard does not import the other 31/32 of the suite.
+    """
+    found = []
+
+    def walk(directory, prefix):
+        for path in sorted(directory.iterdir()):
+            if path.is_dir():
+                if (path / "__init__.py").is_file():
+                    walk(path, prefix + path.name + ".")
+            elif path.name.startswith("test") and path.suffix == ".py" and path.stem.isidentifier():
+                found.append(prefix + path.stem)
+
+    walk(ROOT / "tests", "tests.")
+    return found
+
+
 def shard_suite(k, n, loader=None):
     loader = loader or unittest.defaultTestLoader
     everything = list(tests_of(loader.discover("tests", top_level_dir=str(ROOT))))
-    where = assignment({module_of(t) for t in everything if module_of(t)}, n)
+    where = assignment({module_of(t) for t in everything if module_of(t)} | set(module_names()), n)
     keep = [t for t in everything if (0 if module_of(t) is None else where[module_of(t)]) == k - 1]
     return unittest.TestSuite(keep), len(everything)
+
+
+def fast_suite(k, n, loader=None):
+    """The same tests as `shard_suite(k, n)`, loaded by module name: only this shard's modules are imported."""
+    loader = loader or unittest.defaultTestLoader
+    names = module_names()
+    where = assignment(set(names), n)
+    mine = [name for name in names if where[name] == k - 1]
+    return loader.loadTestsFromNames(mine)
 
 
 def main(argv=None):
@@ -249,8 +276,8 @@ def main(argv=None):
         raise SystemExit(
             "usage: python -m tests.shard K N   (1 <= K <= N)   |   python -m tests.shard --measure   |   python -m tests.shard --from-logs LOG..."
         )
-    suite, total = shard_suite(k, n)
-    print(f"shard {k}/{n}: {suite.countTestCases()} of {total} tests")
+    suite = fast_suite(k, n)
+    print(f"shard {k}/{n}: {suite.countTestCases()} tests")
     result = unittest.TextTestRunner(verbosity=1, resultclass=TimedResult).run(suite)
     for line in timing_report(k, n, result.module_seconds):
         print(line)
