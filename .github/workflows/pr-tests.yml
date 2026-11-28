@@ -248,7 +248,7 @@ jobs:
             for j in 1 2 3 4; do grep -v '^shard-seconds ' "shard-$(( (JOB - 1) * 4 + j )).log" || true; done
           else
             grep -v '^#' tests/second-date-tests.txt | sed -e '/^$/d' -e 's#/#.#g' -e 's#\.py$##' > selected.txt
-            python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
+            python -m tests.quickselect run-list selected.txt --jobs 4 > shard-1.log 2>&1 || status=$?   # four processes: 14 s instead of 41 s for the 41 listed modules, so the job ends with the verdict
             cat shard-1.log
           fi
           echo "unit tests on ${LIFEOS_TEST_NOW}: exit ${status}" | tee -a "$GITHUB_STEP_SUMMARY"
