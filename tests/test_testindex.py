@@ -311,6 +311,12 @@ class TenChanges(unittest.TestCase):
         ):
             self.assertEqual(ti.select([path], self.idx, self.root), ti.FULL, path)
 
+    def test_a_top_level_markdown_file_runs_the_tests_that_name_it_so_the_agents_size_rule_runs_locally(self):
+        picked = ti.select(["AGENTS.md"], None, ti.ROOT, lambda modules: set())
+        self.assertNotEqual(picked, ti.FULL)
+        self.assertIn("tests.docs.test_net_size_rule", picked)  # the byte cap of AGENTS.md
+        self.assertIn("tests.docs.test_development_policy", ti.select(["CLAUDE.md"], None, ti.ROOT, lambda m: set()))
+
     def test_a_full_names_the_path_and_the_rule_for_each_cause(self):
         cases = {
             "pyproject.toml": "a repo-wide file",
