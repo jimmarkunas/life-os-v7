@@ -27,7 +27,7 @@ def module_of(test):
 # Measured seconds for the modules that take 1.5 s or more.
 SECONDS = {
     "tests.buzz.test_remote_mcp": 17.7,
-    "tests.sources.test_readiness": 11.7,
+    "tests.contracts.test_readiness": 11.7,
     "tests.edge.botstudio.test_install": 9.7,
     "tests.jobs.fit.test_backlog": 7.0,
     "tests.hermes.test_connector_allowlist": 5.9,
@@ -42,7 +42,7 @@ SECONDS = {
     "tests.jobs.fit.test_cloud": 2.8,
     "tests.buzz.test_bridge": 2.7,
     "tests.edge.openclaw.test_deploy_avatar": 2.1,
-    "tests.workflows.test_workflow": 1.9,
+    "tests.contracts.test_workflow": 1.9,
     "tests.jobs.fit.test_stage_chunks": 1.8,
     "tests.edge.runner.test_runner": 1.7,
     "tests.jira.test_readiness_mcp": 1.5,
