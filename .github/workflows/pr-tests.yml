@@ -69,6 +69,7 @@ jobs:
         id: plan
         run: python3 -m tests.splitsel selected.txt | tee -a "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"
   tests:
+    name: tests (${{ matrix.job }})   # the matrix also carries each job's target list; keep it out of the check name
     needs: pick
     runs-on: ubuntu-24.04
     timeout-minutes: 5
