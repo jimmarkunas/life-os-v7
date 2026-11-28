@@ -57,7 +57,7 @@
     {"name": "linkedin-search", "module": "lifeos.sources.discovery.linkedin_search", "tick": {"budget": 180, "limit": 40, "group": "A", "providers": ["linkedin"]}, "after": "resolve-linkedin"},
     {"name": "boards-backfill", "module": "lifeos.sources.web.boards", "function": "backfill", "tick": {"budget": 600, "limit": 450, "bulk": true}, "after": "sponsors"},
     {"name": "board-check", "module": "lifeos.sources.web.boardcheck"},
-    {"name": "boards-tick", "module": "lifeos.sources.web.boards", "function": "tick", "tick": {"budget": 300, "limit": 1800, "group": "A", "providers": ["ats"]}, "after": "web"},
+    {"name": "boards-tick", "module": "lifeos.sources.web.boards", "function": "tick", "tick": {"budget": 300, "limit": 1800, "group": "A", "providers": ["ats"], "early": true, "until": "enrich"}, "after": "web"},
     {"name": "boards-preview", "module": "lifeos.sources.web.boards", "function": "preview"},
     {"name": "granola-auto", "module": "lifeos.sources.interview.granola_auto", "function": "stage", "partial_failure": "GRAN_AUTO_FAILED"},
     {"name": "hiring", "module": "lifeos.sources.pipeline.hiring"},

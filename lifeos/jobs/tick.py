@@ -35,6 +35,8 @@ class Step:
     providers: tuple = ()  # outside services it calls; each has a TICK_CAP_* cap
     # runs in its own thread; the run waits for it where its group ends
     early: bool = False
+    # an early step with `until` is waited for just before the step it names, not where its group ends
+    until: str = ""
 
 
 PLAN = (
@@ -285,7 +287,7 @@ def tick(
     started, outcome = clock(), {}
     timings = {} if timings is None else timings
     previous = signal.signal(signal.SIGALRM, _alarm)
-    early = {}
+    early, pending = {}, {}
     try:
         if concurrency:
             for step in plan:
@@ -312,6 +314,8 @@ def tick(
         position = 0
         while position < len(plan):
             step = plan[position]
+            for waiting in pending.pop(step.name, ()):
+                waiting.join()
             if concurrency and step.group:
                 run_of = []
                 for candidate in plan[position:]:
@@ -334,7 +338,10 @@ def tick(
                         )
                     for c in run_of:
                         if c.name in early:
-                            early[c.name].join()
+                            if c.until:
+                                pending.setdefault(c.until, []).append(early[c.name])
+                            else:
+                                early[c.name].join()
                     position += len(run_of)
                     continue
             position += 1
@@ -357,6 +364,8 @@ def tick(
                 signal.alarm(0)
                 _report(step, label, clock() - stage_started, outcome, timings)
     finally:
+        for waiting in [t for threads in pending.values() for t in threads]:
+            waiting.join()
         signal.signal(signal.SIGALRM, previous)
     return {step.name: outcome[step.name] for step in plan if step.name in outcome}
 
