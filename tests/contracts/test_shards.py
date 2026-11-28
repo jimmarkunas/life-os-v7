@@ -37,6 +37,19 @@ class ShardsPartitionTheSuite(unittest.TestCase):
         modules = lambda ids: {i.rsplit(".", 2)[0] for i in ids}
         self.assertEqual(modules(first) & modules(second), set())
 
+    def test_loading_by_module_name_gives_the_same_split_and_every_test_exactly_once_in_32_shards(self):
+        """CI runs shard K of 32 per process; each loads only its own modules, never the whole suite."""
+        seen = []
+        for k in range(1, 33):
+            seen.extend(t.id() for t in shard.tests_of(shard.fast_suite(k, 32)))
+        everything = [
+            t.id() for t in shard.tests_of(unittest.defaultTestLoader.discover("tests", top_level_dir=str(shard.ROOT)))
+        ]
+        self.assertEqual(len(seen), len(set(seen)))  # no test twice
+        self.assertEqual(set(seen), set(everything))  # none missing
+        full, _ = self.ids(5, 32)
+        self.assertEqual(sorted(full), sorted(t.id() for t in shard.tests_of(shard.fast_suite(5, 32))))
+
     def test_bad_arguments_are_refused(self):
         for argv in (["0", "2"], ["3", "2"]):
             with self.assertRaises(SystemExit):

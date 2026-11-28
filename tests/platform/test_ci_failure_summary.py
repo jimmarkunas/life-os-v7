@@ -113,10 +113,12 @@ class SmallLogs(unittest.TestCase):
 class WorkflowKeepsRecordsOutOfFailures(unittest.TestCase):
     def test_both_unit_test_jobs_drop_shard_seconds_from_the_printed_log_and_print_them_only_on_green(self):
         doc = yaml.safe_load((ROOT / ".github" / "workflows" / "pr-tests.yml").read_text())
-        for job in ("unit-tests", "unit-tests-second-date"):
+        for job in ("tests", "unit-tests-second-date"):
             run = [s["run"] for s in doc["jobs"][job]["steps"] if "Unit tests" in s.get("name", "")][0]
-            self.assertIn("| grep -v '^shard-seconds ' || true", run, job)
-            self.assertRegex(run, r'if \[ "\$status" -eq 0 \]; then echo "::group::per-module shard seconds', job)
+            self.assertIn("grep -v '^shard-seconds '", run, job)
+            self.assertIn("|| true", run, job)
+        run = [s["run"] for s in doc["jobs"]["tests"]["steps"] if "Unit tests" in s.get("name", "")][0]
+        self.assertRegex(run, r'if \[ "\$status" -eq 0 \]; then echo "::group::per-module shard seconds')
 
 
 if __name__ == "__main__":

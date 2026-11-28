@@ -84,7 +84,10 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `mariadb-race.yml` | `race` | 10 | 10 | 0 | - | - | new job (LIFE-903): a MariaDB container start (about 30 s), pip install and a 10 s race; 10-minute guard, no run measured yet |
 | `network.yml` | `network` | 30 | 30 | 100 | 539 | 1818 | slowest run 1818 s reached 90% of the current limit: keeps 30 min and is listed for Jim (the job is at its limit) |
 | `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
+| `pr-tests.yml` | `lint` | 5 | 5 | 0 | - | - | new job (LIFE-1100): ruff, mypy and the Node tests, each under 5 s; 5-minute floor; no run measured yet |
+| `pr-tests.yml` | `pick` | 5 | 5 | 0 | - | - | new job (LIFE-1100): chooses the tests and runs a small selection; 5-minute floor; no run measured yet |
 | `pr-tests.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
+| `pr-tests.yml` | `tests` | 5 | 5 | 0 | - | - | new job (LIFE-1100): one of 8 parallel test jobs of 4 shards each, 60 s time gate; 5-minute floor; no run measured yet |
 | `pr-tests.yml` | `unit-tests` | 5 | 5 | 99 | 105 | 136 | twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor |
 | `pr-tests.yml` | `unit-tests-second-date` | 5 | 5 | 0 | - | - | new job (LIFE-692): the same tests as `unit-tests` (slowest 136 s) with the test clock fixed at a second date, pull requests only; 5-minute floor; no run measured yet |
 | `profile-sync.yml` | `settings` | 5 | 5 | 0 | - | - | new job (LIFE-703): reads the V7 settings page once for the Fit profile sync switch, the Bitwarden helper wait is 60 s; 5-minute floor; no run measured yet |
