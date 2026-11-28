@@ -9,6 +9,7 @@ What moves where. A cut job keeps `runs-on`, `timeout-minutes`, `permissions`, `
 A called workflow does not see the caller's `inputs`, `needs` or secrets, so each is passed by name and only what the job reads: `inputs.x` keeps its name (declared on `workflow_call`, handed over as `${{ inputs.x || <empty value> }}`, so the dispatch inputs mean the same thing inside), `needs.<job>.outputs.<name>` and `needs.<job>.result` become the string inputs `<job>_<name>` and `<job>_result`, and exactly the secrets the job names are declared and passed (never `secrets: inherit`). The workflow-level `env` is copied into each called workflow (the caller's does not reach it); the workflow-level `concurrency` and `run-name` stay on the caller.
 """
 
+import functools
 import pathlib
 import re
 
@@ -248,12 +249,14 @@ def flatten(files, caller):
     return out
 
 
+@functools.lru_cache(maxsize=None)
 def logical_text(name):
     """-> the logical workflow `name` ("domains" or "hourly") as one plain text: the parts under `.github/workflows-src/<name>` joined in file-name order, without comments."""
     parts = sorted((ROOT / ".github/workflows-src" / name).glob("*.yml"))
     return wfsrc.strip_comments("".join(p.read_text() for p in parts))
 
 
+@functools.lru_cache(maxsize=None)
 def logical_compressed(name):
     """-> the same with repeats written as anchors, which is what the single generated file held before the split."""
     return wfsrc.compress(logical_text(name))

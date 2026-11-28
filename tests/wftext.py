@@ -1,5 +1,6 @@
 """the generated workflows write repeats as YAML anchors and aliases; domains.yml and hourly.yml are callers, so the pipeline's own structure is read from its logical text"""
 
+import functools
 import pathlib
 import sys
 
@@ -48,6 +49,7 @@ CALLED = (
 )  # the reusable workflows the three callers (domains, hourly, diag) hand their jobs to
 
 
+@functools.lru_cache(maxsize=None)
 def _flat_diag():
     import yaml
 

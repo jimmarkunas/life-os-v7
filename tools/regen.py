@@ -19,6 +19,7 @@ Rows the contract tests mirror from code (this writes the missing ones and drops
 
 A stage whose module loops over external items with no try inside is not classified here: that needs a human verdict (docs/platform/stage-isolation.md); the script says which."""
 
+import functools
 import json
 import pathlib
 import re
@@ -55,6 +56,7 @@ SINGLE_WHY = "No loop over external items: one read or write unit, so its failur
 GUARDED_WHY = "Loops over its items with error handling inside; one failed item does not stop the others."
 
 
+@functools.lru_cache(maxsize=8)
 def logical_text(parts):
     """LIFE-1098: the workflow as one logical document (every job and step in one text, without comments): what the contract tests and every reader of the pipeline read, and what tools/wfsplit.py cuts into the files GitHub runs."""
     return wfsrc.strip_comments("".join(path.read_text() for path in sorted(parts.glob("*.yml"))))
@@ -87,14 +89,19 @@ def _files(split, caller):
     return out
 
 
+@functools.lru_cache(maxsize=8)
+def _cut(text, prefix, inline, orchestrator):
+    return wfsplit.split(text, prefix, inline, orchestrator)
+
+
 def domains_files():
     """LIFE-1098: {path: text} of every generated domains workflow: the caller domains.yml (triggers and one job that calls the orchestrator), domain-run.yml (the jobs and their gate logic) and one domain-<job>.yml per job."""
-    return _files(wfsplit.split(domains_logical(), DOMAINS_PREFIX, ("report", "chain"), ORCHESTRATOR), DOMAINS)
+    return _files(_cut(domains_logical(), DOMAINS_PREFIX, ("report", "chain"), ORCHESTRATOR), DOMAINS)
 
 
 def hourly_files():
     """LIFE-1098: {path: text} of every generated hourly workflow: the caller hourly.yml (triggers, the report job and one `uses:` job per job) and one tick-<job>.yml per job."""
-    return _files(wfsplit.split(hourly_logical(), HOURLY_PREFIX, ("report",)), HOURLY)
+    return _files(_cut(hourly_logical(), HOURLY_PREFIX, ("report",), None), HOURLY)
 
 
 def split_files():

@@ -2,6 +2,7 @@
 runner, timeout, permissions and steps, and one domain failing cannot stop another.
 """
 
+import functools
 import pathlib
 import re
 import sys
@@ -21,12 +22,18 @@ INPUT = re.compile(r"\binputs\.([A-Za-z_][A-Za-z0-9_]*)")
 SECRET = re.compile(r"\bsecrets\.([A-Za-z0-9_]+)")
 
 
-def disk(prefix_names):
+@functools.lru_cache(maxsize=None)
+def _disk(prefix_names):
     return {
         p.name: p.read_text() for p in FLOWS.glob("*.yml") if p.name in prefix_names or p.name.startswith(prefix_names)
     }
 
 
+def disk(prefix_names):
+    return dict(_disk(prefix_names))
+
+
+@functools.lru_cache(maxsize=None)
 def load(name):
     return yaml.safe_load(wfsrc.expand_aliases((FLOWS / name).read_text()))
 
