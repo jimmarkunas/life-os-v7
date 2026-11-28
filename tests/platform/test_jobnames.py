@@ -37,7 +37,7 @@ class Readers(unittest.TestCase):
         run = {"run_started_at": "2026-11-27T12:00:00Z", "created_at": "2026-11-27T12:00:00Z"}
         for names in (["jira", "mail"], ["run / jira / jira", "run / mail / mail"]):
             jobs = [job(n) for n in names]
-            found = due.last_success([run], lambda r: jobs, {"jira", "mail"})
+            found = due.last_success([run], lambda r, jobs=jobs: jobs, {"jira", "mail"})
             self.assertEqual(found, {"jira": started, "mail": started}, names)
         failed = [job("run / jira / jira", "failure")]
         self.assertEqual(due.last_success([run], lambda r: failed, {"jira"}), {})
@@ -58,7 +58,7 @@ class Readers(unittest.TestCase):
                     "display_title": gate.DOMAINS_TITLE,
                 }
             ]
-            found = chain_clocks.correlated_runs(55, tick, listing, lambda rid: [job(n) for n in names])
+            found = chain_clocks.correlated_runs(55, tick, listing, lambda rid, names=names: [job(n) for n in names])
             self.assertEqual([r["id"] for r in found], [9], names)  # the run is tied to its tick by the gate's name
 
     def test_the_pipeline_ran_check_reads_the_finish_job_under_both_names(self):
