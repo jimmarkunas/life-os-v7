@@ -1,5 +1,5 @@
 {
- "about": "Machine-readable twin of INDEX.md: which global source answers which question. Routing only, no rules. AGENTS.md is the master entrypoint; every other entry is a detail source it routes to. A contract test keeps this file and INDEX.md identical.",
+ "about": "Generated twin of INDEX.md: which global source answers which question. Routing only, no rules. AGENTS.md is the master entrypoint; every other entry is a detail source it routes to. Generated from docs/index-source.json by tools/gen_indexes.py; do not edit by hand.",
  "master": "AGENTS.md",
  "sources": [
   {
