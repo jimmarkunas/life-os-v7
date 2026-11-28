@@ -147,6 +147,30 @@ def wait_only_reason(fields):
     return "wait_only_not_uat"
 
 
+def wait_only_message(key):
+    """The words a refused wait-only build ticket is given, once."""
+    return f"File as UAT for {key} under the Bug Epic."
+
+
+def _already_said(jira, key, text):
+    page = jira.get(f"/rest/api/3/issue/{key}/comment") or {}
+    return any(text in text_of(c.get("body")) for c in page.get("comments") or [])
+
+
+def say_wait_only(jira, key):
+    """Post the refusal message on the ticket unless it is already there -> True when posted."""
+    message = wait_only_message(key)
+    if _already_said(jira, key, message):
+        return False
+    body = {
+        "type": "doc",
+        "version": 1,
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": f"[agent-v7] {message}"}]}],
+    }
+    jira.post(f"/rest/api/3/issue/{key}/comment", {"body": body})
+    return True
+
+
 def gate(fields):
     return (
         label_reason(fields.get("labels"))
@@ -227,6 +251,11 @@ def run(limit, live, environ=None, jira=None):
         why = eligible(issue)
         if why:
             out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            if why == "wait_only_not_uat" and live:
+                try:
+                    out["messaged"] = out.get("messaged", 0) + say_wait_only(jira, issue["key"])
+                except JiraError:
+                    out["failed"] = out.get("failed", 0) + 1
             continue
         decision = promote.act(issue)
         if decision["decision"] == "wait":
