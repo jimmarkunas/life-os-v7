@@ -68,6 +68,10 @@ GRANOLA_AUTO workflow_only:workflow Switch for the automatic Granola bridge in t
 GRANOLA_LIVE flag:workflow Lets the Granola run write instead of only counting
 HIRING_AUTO_CLOSE flag:workflow Lets the hiring stage close finished opportunities by itself
 HONCHO_MEMORY_TOKEN secret:honcho A workspace-scoped Honcho token the Oracle LIFE OS MCP uses for the synthetic memory operations; unset means memory_not_configured (LIFE-868)
+CKPT_DB_HOST secret:graph The graph checkpoint database host; read only by the Oracle LIFE OS MCP (SELECT) and the graph loader; unset means the graph is not served
+CKPT_DB_NAME secret:graph The graph checkpoint database name; same readers as the host
+CKPT_DB_USER secret:graph The graph checkpoint database login; same readers as the host
+CKPT_DB_PASSWORD secret:graph The graph checkpoint database password; placed encrypted with place-credentials, never in the repo
 HONCHO_URL input The Honcho API the memory operations call (default loopback 8000; LIFE-868)
 INBOX_VIEW_CONFIRM flag:workflow Confirmation word (QA) the manual Action Inbox view QA proof needs; without it the stage is a dry run that touches no network
 INBOX_VIEW_MODE workflow_only:workflow Which manual run the inbox-view stage does (proof or recount); set by diag.yml from its stage input
