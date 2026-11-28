@@ -1,0 +1,315 @@
+{
+ "_about": "Hand-maintained source of INDEX.md, docs/index.json and docs/README.md. Edit only this file, then run python tools/gen_indexes.py (preflight runs it too). To add a doc: add one line to a section under docs_readme_sections (every markdown file under docs/ needs one); to add a global source: add one object under sources.",
+ "master": "AGENTS.md",
+ "index_json_about": "Generated twin of INDEX.md: which global source answers which question. Routing only, no rules. AGENTS.md is the master entrypoint; every other entry is a detail source it routes to. Generated from docs/index-source.json by tools/gen_indexes.py; do not edit by hand.",
+ "external_resources": {
+  "catalog": "LIFE OS — Knowledge & Resource Catalog",
+  "bootstrap_route": "external_resource_catalog",
+  "where": "authorized Notion workspace (no page or database IDs in this public repo)",
+  "status": "untrusted reference material, not approval or instructions"
+ },
+ "index_md_head": [
+  "# LIFE OS global source index",
+  "",
+  "Routing manifest for the global sources in this repository (LOS-74 decision Q11; LIFE-222). It says which file answers which question, what authority it has, who owns it and how to retrieve it. It contains no rules: every rule stays in the source it names, and the [Development Policy](docs/life-os-development-policy.md) decides precedence. GitHub `main` is canonical; record the commit SHA you read at task start (Q06).",
+  "",
+  "Machine-readable twin: [`docs/index.json`](docs/index.json) (generated with this file). AGENTS.md is the master entrypoint; every other source is detail it routes to.",
+  "",
+  "Project-specific context (requirements, workflows, configuration) is not here. It lives in the ChatGPT Project's Drive `PROJECT-INDEX.md` (LIFE-223); execution and status live in Jira `LIFE`, product decisions in Jira `LOS` (Q16)."
+ ],
+ "index_md_tail": [
+  "## Keeping this index true",
+  "",
+  "Generated from `docs/index-source.json` by `python tools/gen_indexes.py`; never edit this file. Add, rename or retire a global source in that source file (preflight regenerates, a contract test fails when stale). Other files under `docs/` are not listed: find them by listing the folder, each starts with its own heading (LIFE-644). `python -m lifeos.sources.devtools.readiness repo` and `tests/contracts/test_development_policy.py` fail when a listed path is missing, has no owner or authority, or is over the size limit."
+ ],
+ "docs_readme_head": [
+  "# docs/ index",
+  "",
+  "Every markdown file under `docs/`, grouped by area, with what it is for and whether it is current or historical. `docs/index.json` is the routing index (task to docs). `tests/contracts/test_docs_index.py` fails when a doc is missing here or a link here points nowhere. Generated from `docs/index-source.json` by `python tools/gen_indexes.py`; never edit this file. Add a new doc as one line in that source file."
+ ],
+ "docs_readme_sections": [
+  {
+   "title": "Policy and canon",
+   "lines": [
+    "- [life-os-development-policy.md](life-os-development-policy.md): the development rule set, under 15 KB. Current.",
+    "- [policy/dry-run-gate.md](policy/dry-run-gate.md): policy section 12, moved unchanged. Current.",
+    "- [policy/proof-and-tests.md](policy/proof-and-tests.md): task-specific proof rules from policy section 9, moved unchanged. Current.",
+    "- [policy/writing-tickets.md](policy/writing-tickets.md): two ticket-writing paragraphs from policy section 7, moved unchanged. Current.",
+    "- [policy/agent-coordination.md](policy/agent-coordination.md): agent trailers, one Production Contract editor, the paths line, the merge queue. Current.",
+    "- [notion-query-conservation-policy.md](notion-query-conservation-policy.md): how agents and runs read Notion cheaply; metered queries need Jim's yes per query. Current.",
+    "- [life-os-production-contract.md](life-os-production-contract.md): the Production Contract, authority for schedules and runtime; canonical here since Nov 27 2026 (v2.15.19, moved unchanged from the retired system's repository). Current.",
+    "- [agent-reference.md](agent-reference.md): code map, commands and epic delivery rules that AGENTS.md points to. Current.",
+    "- [DECISIONS.md](DECISIONS.md): numbered, dated decisions owned by Jim; wins over any other doc. Current.",
+    "- [DECISIONS_INDEX.md](DECISIONS_INDEX.md): one line per decision, to find a number without reading DECISIONS.md. Current.",
+    "- [PRIVACY.md](PRIVACY.md): the hard privacy rule for this public repository. Current.",
+    "- [LIMITS.md](LIMITS.md): provider limits canon, mirrored by `lifeos/platform/limits.py`. Current.",
+    "- [SETUP.md](SETUP.md): one-time setup of secrets and variables. Current.",
+    "- [templates/ticket.md](templates/ticket.md): the ticket template agents and Claude chat use. Current.",
+    "- [archive/development-policy-2026-11-20.md](archive/development-policy-2026-11-20.md): the 11-part policy before Nov 21, 2026; no authority. Historical."
+   ]
+  },
+  {
+   "title": "Platform",
+   "lines": [
+    "- [platform/action-inbox-readiness.md](platform/action-inbox-readiness.md): Action Inbox platform readiness and synthetic contract (LIFE-685). Historical inventory.",
+    "- [platform/agent-directory-discovery.md](platform/agent-directory-discovery.md): Agent Directory resolver and live-discovery gate (LIFE-736). Current.",
+    "- [platform/agent-inbox.md](platform/agent-inbox.md): the Agent Inbox where agents write to Jim (LIFE-791). Current.",
+    "- [platform/agent-jira-settings.md](platform/agent-jira-settings.md): how to keep Jira tool answers small (LIFE-605). Current.",
+    "- [platform/agent-loop-baseline.md](platform/agent-loop-baseline.md): agent-loop timing baseline from 20 merged PRs (LIFE-556). Historical measurement.",
+    "- [platform/authorization-gate.md](platform/authorization-gate.md): the central authorization gate, synthetic only (LIFE-811). Current.",
+    "- [platform/bitwarden-layout.md](platform/bitwarden-layout.md): the three-project Bitwarden layout (LIFE-733). Current.",
+    "- [platform/boards-in-tick.md](platform/boards-in-tick.md): the `BOARDS_IN_TICK` switch and employer boards in the hourly tick (LIFE-905). Current.",
+    "- [platform/branch-protection.md](platform/branch-protection.md): what GitHub enforces on `main` (LIFE-604). Current.",
+    "- [platform/capability-catalog.md](platform/capability-catalog.md): capability catalog and agent identity contract (LIFE-810). Current.",
+    "- [platform/ci-cost.md](platform/ci-cost.md): PR CI cost and escapes measured Nov 16 2026 (LIFE-744). Historical measurement.",
+    "- [platform/codebase-value-audit.md](platform/codebase-value-audit.md): read-only codebase value audit (LIFE-806). Historical.",
+    "- [platform/config-registry.md](platform/config-registry.md): checked list of every environment-variable name (LIFE-560). Current.",
+    "- [platform/fake-conformance.md](platform/fake-conformance.md): how fakes are kept faithful to the real thing (LIFE-549). Current.",
+    "- [platform/health-model.md](platform/health-model.md): what pages the phone, what only shows on the report (LIFE-690). Current.",
+    "- [platform/ledger-claim.md](platform/ledger-claim.md): the claim every Job Ledger row creation takes first (LIFE-903). Current.",
+    "- [platform/lint-baseline.md](platform/lint-baseline.md): advisory Ruff starting counts (LIFE-558). Historical baseline.",
+    "- [platform/memory-gateway-plan.md](platform/memory-gateway-plan.md): the plan to finish unified memory and the LIFE OS gateway, phases 1 to 4 with rules, smoke matrix and owner decisions (LIFE-848, LIFE-1078). Current.",
+    "- [platform/mcp-grants-proposed.md](platform/mcp-grants-proposed.md): Buzz publish grants for the chat clients (LIFE-865). Current, active despite the filename.",
+    "- [platform/module-inventory.md](platform/module-inventory.md): inventory of `lifeos/` and the repo as of Nov 9 (LIFE-524). Historical.",
+    "- [platform/monitoring-finish.md](platform/monitoring-finish.md): monitoring wrap-up as of Nov 10 (LIFE-528). Historical.",
+    "- [platform/notion-rate-limits.md](platform/notion-rate-limits.md): Notion API limits and the one rule, tied to `limits.py` (LIFE-682). Current.",
+    "- [platform/notion-writers.md](platform/notion-writers.md): list of every writer on the Daily Report page (LIFE-688). Current.",
+    "- [platform/receipt-template.md](platform/receipt-template.md): the shape of every ticket receipt and summary (LIFE-605). Current.",
+    "- [platform/release-proof.md](platform/release-proof.md): proof run after every deploy (LIFE-693). Current.",
+    "- [platform/runs-today.md](platform/runs-today.md): the Runs OK today card (LIFE-975). Current.",
+    "- [platform/runtime-config-cutover.md](platform/runtime-config-cutover.md): Runtime Configuration cutover map and rollback (LIFE-844). Current, cutover done.",
+    "- [platform/runtime-profile.md](platform/runtime-profile.md): where the hourly and domains workflows spend time, Nov 10 (LIFE-555). Historical measurement.",
+    "- [platform/scheduled-checks.md](platform/scheduled-checks.md): scheduled-check failure paging and the test clock (LIFE-692). Current.",
+    "- [platform/shared-layer-matrix.md](platform/shared-layer-matrix.md): which pieces are shared across lanes (LIFE-526). Historical.",
+    "- [platform/simplify-plan.md](platform/simplify-plan.md): measured baseline and plan to simplify, Nov 16 (LIFE-763). Historical plan.",
+    "- [platform/stage-isolation.md](platform/stage-isolation.md): one bad item never fails a stage (LIFE-689). Current.",
+    "- [platform/stage-timing.md](platform/stage-timing.md): `stage_timing` receipts per stage (LIFE-855). Current.",
+    "- [platform/switch-exits.md](platform/switch-exits.md): every live switch with its default and exit condition (LIFE-604). Current.",
+    "- [platform/system-table.md](platform/system-table.md): the System table callout on the Daily Report (LIFE-975). Current.",
+    "- [platform/test-diet-manifest.md](platform/test-diet-manifest.md): which tests were removed and why, Nov 10 (LIFE-527). Historical.",
+    "- [platform/test-index.md](platform/test-index.md): the test index and affected-test runs (LIFE-548). Current.",
+    "- [platform/timeouts.md](platform/timeouts.md): timeouts and stage budgets (LIFE-691). Current.",
+    "- [platform/type-baseline.md](platform/type-baseline.md): advisory type-check pilot baseline (LIFE-559). Historical baseline.",
+    "- [platform/weekly-review.md](platform/weekly-review.md): the Weekly LIFE OS Review, V7 as sole writer (LIFE-945). Current.",
+    "- [workflows.md](workflows.md): generated why-lines for every workflow step; edit the sources, not this file. Current, generated."
+   ]
+  },
+  {
+   "title": "Jira and V3",
+   "lines": [
+    "- [jira/review-checklist.md](jira/review-checklist.md): epic review checklist (LIFE-851). Current.",
+    "- [MASTER_ROADMAP.md](MASTER_ROADMAP.md): Oct 13 technical WBS and acceptance evidence, not a planning authority; Jira is. Historical.",
+    "- [ROADMAP.md](ROADMAP.md): early V7 roadmap and Codex prompts. Historical.",
+    "- [PLAN.md](PLAN.md): the original Job Newsletter pipeline plan (Phase 1). Historical.",
+    "- [SCHEDULER_AUTHORITY_DELTA.md](SCHEDULER_AUTHORITY_DELTA.md): the Oct 4 scheduler authority conflict and fix. Historical."
+   ]
+  },
+  {
+   "title": "Buzz and agents",
+   "lines": [
+    "- [buzz-implementation-roadmap-v1.md](buzz-implementation-roadmap-v1.md): frozen baseline of the 25 approved Buzz steps, approved Nov 1. Current baseline, not execution status.",
+    "- [buzz-remote-mcp-deploy.md](buzz-remote-mcp-deploy.md): the Buzz remote MCP service on lifeos-edge-01 (LIFE-216). Current.",
+    "- [buzz-selfhost-pilot.md](buzz-selfhost-pilot.md): the pinned private Buzz relay pilot on Oracle (LIFE-870). Current.",
+    "- [concord-oracle.md](concord-oracle.md): Concord's one shared store on Oracle for Mac and Oracle agents (LIFE-872). Current.",
+    "- [EDGE_GATEWAY_SCOPE.md](EDGE_GATEWAY_SCOPE.md): Oracle edge gateway and OpenClaw live contract. Current.",
+    "- [SCRIPT_PACK_RUNNER.md](SCRIPT_PACK_RUNNER.md): the script-pack runner for approved host changes (LIFE-310). Current.",
+    "- [hermes-files.md](hermes-files.md): where every Hermes file lives (LIFE-315). Current.",
+    "- [NOTION_INTEGRATIONS.md](NOTION_INTEGRATIONS.md): map of Notion connections and their credentials. Current.",
+    "- [platform/shared-read-acceptance.md](platform/shared-read-acceptance.md): two clients reading one Jira source (LIFE-721). Historical acceptance.",
+    "- [platform/shared-read-oracle-runbook.md](platform/shared-read-oracle-runbook.md): Oracle runbook for the shared Jira read proof (LIFE-754). Historical."
+   ]
+  },
+  {
+   "title": "Followup and Action Inbox",
+   "lines": [
+    "- [platform/inbox-access-contract.md](platform/inbox-access-contract.md): Action Inbox tool paths, grants and evidence (LIFE-707). Historical.",
+    "- [platform/inbox-schema-rollout.md](platform/inbox-schema-rollout.md): Action Inbox schema rollout proposal (LIFE-712). Historical proposal.",
+    "- [platform/followup-contract-draft.md](platform/followup-contract-draft.md): draft Production Contract text for Followup (LIFE-750). Historical draft.",
+    "- [platform/followup-credentials.md](platform/followup-credentials.md): Followup credentials in one sitting (LIFE-757). Historical.",
+    "- [platform/followup-loop-markers.md](platform/followup-loop-markers.md): which title markers start a Followup open loop (LIFE-716). Current.",
+    "- [platform/followup-os-8-1-promotion.md](platform/followup-os-8-1-promotion.md): Followup OS 8.1 slice and promotion proposal (LIFE-737). Historical.",
+    "- [platform/followup-schema-rollout.md](platform/followup-schema-rollout.md): Followup tables check, apply and rollback (LIFE-756). Historical."
+   ]
+  },
+  {
+   "title": "Jobs and Interview",
+   "lines": [
+    "- [LANES.md](LANES.md): the three opportunity lanes and shared Jobs OS rules. Current.",
+    "- [FIT_MODEL.md](FIT_MODEL.md): deterministic professional Fit model (Phase 2). Current.",
+    "- [US_REMOTE_WEB.md](US_REMOTE_WEB.md): incremental US Remote web acquisition plan. Current.",
+    "- [NETWORK_INTELLIGENCE_SCOPE.md](NETWORK_INTELLIGENCE_SCOPE.md): Network Intelligence requirements; the top approved section governs, the rest is historical. Current at top.",
+    "- [INTERVIEW_HANDOFF.md](INTERVIEW_HANDOFF.md): how to build Interview OS in V7. Current.",
+    "- [DCC_CARD_CONTRACT.md](DCC_CARD_CONTRACT.md): Daily Command Center card contract; V7 became the writer in D175. Partly historical.",
+    "- [platform/life-973-recruiter-view.md](platform/life-973-recruiter-view.md): Recruiter Outreach and Hiring Pipeline cards as live Notion views (LIFE-973). Current.",
+    "- [DRIVE_RESUMES.md](DRIVE_RESUMES.md): Google Drive résumé saves (LIFE-88). Current."
+   ]
+  },
+  {
+   "title": "Providers",
+   "lines": [
+    "- [LIMITS.md](LIMITS.md): provider limit numbers, also listed under Policy. Current.",
+    "- [platform/notion-rate-limits.md](platform/notion-rate-limits.md): Notion limits, also listed under Platform. Current.",
+    "- [design/bitwarden-load-pairs.md](design/bitwarden-load-pairs.md): design to collapse Bitwarden load and retry step pairs (LIFE-540). Design only, historical."
+   ]
+  },
+  {
+   "title": "Proposals",
+   "lines": [
+    "- [delivery-flow-v2-proposal.md](delivery-flow-v2-proposal.md): why delivery hurts and a simpler flow; proposal, not built. Findings historical.",
+    "- [BIG_FEATURES_ROADMAP.md](BIG_FEATURES_ROADMAP.md): one-sequence roadmap of big features; proposal, nothing built.",
+    "- [DELIVERY_TRACKING_SCOPE.md](DELIVERY_TRACKING_SCOPE.md): delivery tracking scope; proposal, nothing built.",
+    "- [MEGIBOW_SCOPE.md](MEGIBOW_SCOPE.md): Automated MegIBOW scope; proposal, nothing built."
+   ]
+  },
+  {
+   "title": "Machine files and non-markdown",
+   "lines": [
+    "- `index.json`: the routing index mapping tasks to docs.",
+    "- `contracts/career-lifecycle.requirements.v1.json`, `jira/issue-schema.v1.json`: JSON contracts read by code and tests.",
+    "- `prototypes/hiring-decision-center.html`: static prototype page. Historical."
+   ]
+  }
+ ],
+ "sources": [
+  {
+   "path": "INDEX.md",
+   "authority": "Routing only: no rule of its own",
+   "purpose": "This manifest: which global source answers which question, who owns it and how to fetch it",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Read first in a fresh session, then fetch only the rows the task needs"
+  },
+  {
+   "path": "AGENTS.md",
+   "authority": "Bootstrap pointer, subordinate to the Development Policy",
+   "purpose": "Agent start-up: the job, Jim must do first, what stops for Jim",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Read on every coding task"
+  },
+  {
+   "path": "CLAUDE.md",
+   "authority": "Bootstrap pointer, subordinate to the Development Policy",
+   "purpose": "Claude Code entrypoint: Central Time, end-to-end runs, approvals",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Read on every Claude Code task"
+  },
+  {
+   "path": "docs/life-os-development-policy.md",
+   "authority": "Canonical: the whole Development Policy (one file)",
+   "purpose": "Authority, delivery, release rule, guardrails, privacy, tickets, architecture, proof",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Read the section the task needs"
+  },
+  {
+   "path": "docs/policy/dry-run-gate.md",
+   "authority": "Canonical: policy section 12, moved unchanged",
+   "purpose": "The dry run, `Dry run` comment, `dry-run-green`, `release LIFE-nnn`",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When scoping or releasing a ticket"
+  },
+  {
+   "path": "docs/policy/proof-and-tests.md",
+   "authority": "Canonical: policy section 9 detail, moved unchanged",
+   "purpose": "Real-shape fixes, runtime-facing proof, Jobs increments, full width, code comments",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a change touches runtime code, Jobs or Notion pages"
+  },
+  {
+   "path": "docs/policy/writing-tickets.md",
+   "authority": "Canonical: policy section 7 detail, moved unchanged",
+   "purpose": "Replacing cancelled work; new or changed UI",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a ticket replaces cancelled work or changes UI"
+  },
+  {
+   "path": "docs/policy/agent-coordination.md",
+   "authority": "Canonical: policy section 3 detail (LIFE-1096)",
+   "purpose": "Agent trailers, one Production Contract editor, paths line in tickets, the merge queue",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When starting a ticket, editing the contract or opening a PR"
+  },
+  {
+   "path": "docs/notion-query-conservation-policy.md",
+   "authority": "Canonical: how agents and runs read Notion cheaply, and the per-query approval for metered reads",
+   "purpose": "Query precedence, the SQL and rows approval gate, DEGRADED on quota failure",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Before the first Notion database or data-source query"
+  },
+  {
+   "path": "docs/life-os-production-contract.md",
+   "authority": "Canonical: the Production Contract, for schedules and runtime (v2.15.19, moved unchanged from the retired system's repository)",
+   "purpose": "What may run, when, with which secrets and owners; each scheduled workload's section",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Read the section for the workload a task changes"
+  },
+  {
+   "path": "lifeos/platform/public_repo_guard.py",
+   "authority": "Enforced by test: the one scan for personal emails and real Notion ids; list in `tools/public_repo_guard_allow.txt`",
+   "purpose": "What a public repo may not hold and how a finding reads",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a commit or PR is blocked, or a value needs listing"
+  },
+  {
+   "path": "tools/install_hooks.sh",
+   "authority": "Tool: installs the pre-commit and commit-msg guard hooks",
+   "purpose": "Step 0 of the agent loop; one install per clone",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Once per clone"
+  },
+  {
+   "path": "docs/agent-reference.md",
+   "authority": "Reference: no rule of its own beyond its test-enforced list",
+   "purpose": "Code map, commands, the nine epic delivery rules",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a task needs a command or the map"
+  },
+  {
+   "path": "docs/jira/issue-schema.v1.json",
+   "authority": "Derived: machine-readable form of the issue-writing contract; the policy part wins",
+   "purpose": "LIFE issue fields and readiness shape",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When writing, checking or validating a LIFE issue"
+  },
+  {
+   "path": "docs/DECISIONS.md",
+   "authority": "Canonical for numbered V7 decisions (D-numbers)",
+   "purpose": "Dated product, runtime and architecture decisions",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Only when a ticket cites a D-number: `python -m lifeos.sources.devtools.decisions show D<n>`; never read whole"
+  },
+  {
+   "path": "docs/DECISIONS_INDEX.md",
+   "authority": "Index of DECISIONS.md: no rule of its own",
+   "purpose": "One line per decision",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "To find a decision number"
+  },
+  {
+   "path": "docs/PRIVACY.md",
+   "authority": "Canonical hard rule for this public repository",
+   "purpose": "What may never be committed, written in a PR or logged",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Before any commit, PR text or log line"
+  },
+  {
+   "path": "docs/LIMITS.md",
+   "authority": "Canonical provider limits (code in lifeos/platform/limits.py)",
+   "purpose": "Provider rate and volume ceilings",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When a change calls an external provider"
+  },
+  {
+   "path": ".github/pull_request_template.md",
+   "authority": "Format only",
+   "purpose": "PR layout: Jira key, changes, evidence, not proven",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When opening a PR"
+  },
+  {
+   "path": "README.md",
+   "authority": "Pointer only",
+   "purpose": "Repository one-paragraph summary and links",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "Optional"
+  }
+ ]
+}

@@ -206,9 +206,9 @@ def _item(row, env, dead):
 
 
 def _provenance(source):
-    """`referenced` when the stored source names a ticket key or a link (not checked against it), else
+    """`verified` when the stored source names a ticket key or a link (not checked against it), else
     `client-attested`: the storing client's word only (Jim, Nov 27 2026: keep such items, labelled)."""
-    return "referenced" if isinstance(source, str) and REFERENCED.search(source) else "client-attested"
+    return "verified" if isinstance(source, str) and REFERENCED.search(source) else "client-attested"
 
 
 def _tombstones(honcho, ws):

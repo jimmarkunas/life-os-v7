@@ -1,4 +1,4 @@
-"""docs/README.md lists every markdown file under docs/ as a relative link, and every doc path it links exists."""
+"""docs/README.md (generated from docs/index-source.json) lists every markdown file under docs/ as a relative link, and every doc path it links exists."""
 
 import re
 import unittest
@@ -32,7 +32,11 @@ class DocsIndex(unittest.TestCase):
     README = (DOCS / "README.md").read_text()
 
     def test_every_doc_is_listed(self):
-        self.assertEqual(missing(self.README, doc_files()), [], "add these to docs/README.md")
+        self.assertEqual(
+            missing(self.README, doc_files()),
+            [],
+            "add these as lines in docs/index-source.json, then run python tools/gen_indexes.py",
+        )
 
     def test_every_link_exists(self):
         self.assertEqual(dangling(self.README, lambda p: (DOCS / p).exists()), [])
