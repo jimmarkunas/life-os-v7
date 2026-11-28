@@ -289,7 +289,6 @@
   "tests.platform.test_bws_plain": 0.01,
   "tests.platform.test_callout_stamps": 0.08,
   "tests.platform.test_capability_catalog": 0.01,
-  "tests.platform.test_capacity_dispatch": 1.08,
   "tests.platform.test_chain_clocks": 0.89,
   "tests.platform.test_ci_failure_summary": 0.01,
   "tests.platform.test_connections": 0.01,

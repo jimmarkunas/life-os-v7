@@ -1,7 +1,7 @@
 name: profile-sync
 # Fit profile sync: Jim's Notion page is the authority; its approved evidence block is copied into one small table of the private store (v7_fit_profile_sync) and the Fit profile loader merges it in.
 # Nothing is written to Bitwarden: the job only READS the store credentials from it, like the other store jobs. It holds one Notion read token for the one sync page and prints one fixed code.
-# Manual dispatch (dry run unless "live"), and once a day started by the hourly tick (its prep job dispatches it with tick=true when the last run is 20 hours or more old at the 11:xx UTC tick, or 30 hours or more at any tick) when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule and no workflow_run trigger of its own, so the Actions list holds no skipped runs of it.
+# Manual dispatch (dry run unless "live"), and once a day started by the hourly tick (its prep job dispatches it with tick=true when the last run is 20 hours or more old at the 11:xx UTC tick, or 30 hours or more at any tick) when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own and no trigger on another workflow's runs, so the Actions list holds no skipped runs of it.
 on:
   workflow_dispatch:
     inputs:
