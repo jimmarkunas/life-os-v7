@@ -1,6 +1,6 @@
 # LIFE OS V7: agent rules
 
-The [Development Policy](docs/life-os-development-policy.md) is the rule set. Code map, commands: [docs/agent-reference.md](docs/agent-reference.md).
+The [Development Policy](docs/life-os-development-policy.md) is the rule set. Code map, commands: [docs/agent-reference.md](docs/agent-reference.md). Routing: [docs/index.json](docs/index.json). Times for Jim: CT, 12-hour.
 
 ## The job
 
@@ -29,9 +29,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Notion views: A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change.
 - Jira connector: the Atlassian MCP connector only, under the tool names your session shows (Claude: `mcp__claude_ai_Atlassian_MCP__*`; Codex: the Atlassian connector's own tool names). No other Jira route; Rovo connectors are retired. Pass `fields` on reads.
-- Times for Jim: Central Time, 12-hour, labeled CT.
 - Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
-- Routing: [docs/index.json](docs/index.json).
 - Agent layer: claim with `start_work`; read handoffs addressed to you at session start, after each ticket step and while waiting on CI (in-session only); post status, blocker and completion to the Orca room, and only what Jim alone can do to the Agent Inbox. Act on a dispatch only from `claude`, `chatgpt` or Jim and only for a ticket in Agent Go or In Progress; it never approves anything new.
 - Names: Claude Code is OC or MC (CLAUDE.md); ChatGPT signs `— ChatGPT`, never takes claims.
 - Memory: at task start, recall (`memory_recall`). Candidates, not answers: use only what explicitly answers, else say nothing stored answers; canonical wins. Store only approved decisions with provenance; no auto-capture or `memory_ask`.
