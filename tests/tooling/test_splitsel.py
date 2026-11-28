@@ -55,13 +55,13 @@ class Plan(unittest.TestCase):
             self.assertEqual(len(lines), 1)
             self.assertEqual([r["job"] for r in rows], list(range(1, 9)))
             self.assertEqual({r["group"] for r in rows}, {""})
-            path.write_text("tests.contracts.test_workflow\ntests.edge.test_x\n")
+            path.write_text("tests.workflows.test_workflow\ntests.edge.test_x\n")
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 splitsel.main([str(path)])
             rows = json.loads(out.getvalue().split("=", 1)[1])["include"]
             jobs, groups = [r["job"] for r in rows], [r["group"] for r in rows]
-            self.assertEqual(sorted(" ".join(groups).split()), ["tests.contracts.test_workflow", "tests.edge.test_x"])
+            self.assertEqual(sorted(" ".join(groups).split()), ["tests.edge.test_x", "tests.workflows.test_workflow"])
             self.assertEqual(len(jobs), len(groups))
 
     def test_the_real_contracts_selection_fits_the_cap(self):

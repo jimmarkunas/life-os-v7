@@ -6,7 +6,7 @@ import ast
 import sys
 import unittest
 
-from tests.contracts.test_mypy_advisory import ROOT, unannotated
+from tests.tooling.test_mypy_advisory import ROOT, unannotated
 
 MODULES = ("notion_client", "gmail", "db")
 

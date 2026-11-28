@@ -82,18 +82,18 @@ class ShardWeights(unittest.TestCase):
 
     def test_negative_control_a_module_that_does_not_exist_is_reported(self):
         problems = shard.check_weights(
-            {"tests.nothing.test_gone": 3.0, "tests.contracts.test_shards": 1.0, "tests.contracts.test_x": -1},
-            {"tests.contracts.test_shards", "tests.contracts.test_x"},
+            {"tests.nothing.test_gone": 3.0, "tests.tooling.test_shards": 1.0, "tests.contracts.test_x": -1},
+            {"tests.tooling.test_shards", "tests.contracts.test_x"},
         )
         self.assertEqual(len(problems), 2)
         self.assertTrue(any("test_gone" in p for p in problems) and any("bad time" in p for p in problems))
 
     def test_a_module_missing_from_the_weights_is_still_placed_exactly_once(self):
         modules = self.modules()
-        weights = {m: v for m, v in shard.load_weights().items() if m != "tests.contracts.test_shards"}
+        weights = {m: v for m, v in shard.load_weights().items() if m != "tests.tooling.test_shards"}
         where = shard.assignment(modules, 2, weights)
         self.assertEqual(set(where), modules)
-        self.assertIn(where["tests.contracts.test_shards"], (0, 1))
+        self.assertIn(where["tests.tooling.test_shards"], (0, 1))
         self.assertEqual(where, shard.assignment(modules, 2, weights))  # deterministic for the same tree
 
     def test_without_a_weights_file_the_older_split_still_works(self):

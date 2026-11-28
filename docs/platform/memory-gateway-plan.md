@@ -42,7 +42,7 @@ own tools (phase 1) and, later, to move the gateway out of the Buzz package (pha
    `current` and restart. Before the switch, confirm `current` still names the release you last saw (another agent may
    have released). Rollback is always `ln -sfn releases/<previous> current` and a restart.
 3. **The manifest follows the code.** A new module the service imports must appear in the manifest
-   (`tests/contracts/test_buzz_release.py` fails otherwise); rebuild it with `tools/buzz_release.py closure`.
+   (`tests/buzz/test_buzz_release.py` fails otherwise); rebuild it with `tools/buzz_release.py closure`.
 4. **Contracts change only on purpose.** A phase that changes the tool list updates `test_contract.py` in the same PR
    and says so in the PR body. The 3 permanent schemas and `SCHEMA_FINGERPRINT` never change.
 5. **No grant, credential or identity change** unless the ticket names it. Grants live in

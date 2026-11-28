@@ -128,7 +128,7 @@ Estimated effect on a typical host change: from about 3–4 of your steps (appro
 **Draft PR contents (not merged, marked PENDING):**
 1. `AGENTS.md`: step 5 changed from "merge when CI is green" to "Jim merges" (pending your decision F5); a one-paragraph pointer to this document.
 2. `docs/development-policy/07-bootstrap-bounded-autonomy.md`: items 3 and 3a marked "PENDING Jim's decision to retire", and a short PENDING paragraph for the flow. `manifest.json` gets a new hash and an amendment entry whose approval says PENDING (same pattern as PR #752).
-3. `lifeos/readiness.py` and `tests/contracts/test_readiness.py`: the `needs` and `decisions` checks (rule C).
+3. `lifeos/readiness.py` and `tests/sources/test_readiness.py`: the `needs` and `decisions` checks (rule C).
 4. This document.
 
 **Jira changes for you to approve one by one (nothing done yet):**

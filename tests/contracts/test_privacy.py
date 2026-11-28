@@ -66,7 +66,7 @@ RANDOM_ID_FILES = {
     "lifeos/platform/todoist_refresh.py": "Bitwarden secret ids for the Todoist token items",
     "lifeos/probe.py": "public vendor job ids the live probe requests",
     "tests/contracts/test_privacy.py": "this check's own random sample",
-    "tests/contracts/test_workflow.py": "the Bitwarden secret ids the workflow loaders are checked against",
+    "tests/workflows/test_workflow.py": "the Bitwarden secret ids the workflow loaders are checked against",
     "tests/edge/secrets/test_lifeos_secret_use.py": "the Jira cloud id inside an Atlassian gateway URL",
     "tests/platform/test_alert_store.py": "Bitwarden secret ids for the alert settings",
 }
@@ -208,7 +208,7 @@ class BareIdsAndNames(unittest.TestCase):
 
     def test_a_real_shaped_notion_id_fails_dashed_or_plain_wherever_it_is(self):
         real = "1a2b3c4d" + "-5926-4e5f-9a8b-7c6d5e4f3a2b"  # made up, with the workspace marker
-        for name in ("docs/x.md", "tests/x.py", "tests/contracts/test_workflow.py"):
+        for name in ("docs/x.md", "tests/x.py", "tests/workflows/test_workflow.py"):
             for value in (real, real.replace("-", "")):
                 self.assertEqual(bare_id_findings([(name, f'ID = "{value}"')]), [(name, "real Notion id")])
 

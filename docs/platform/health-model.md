@@ -1,6 +1,6 @@
 # Health model (LIFE-690)
 
-One place that says what pages the phone, what only shows on the Daily Report, and when an incident closes. The code is `lifeos/platform/health.py` (the rules), `lifeos/platform/gate.py` (the pipeline incidents), `lifeos/platform/alerts.py` (the one gateway) and `lifeos/platform/alert_registry.py` (every alert, its severity and channels). A contract test (`tests/contracts/test_health_model.py`) fails if an alert in the registry is missing from the table below.
+One place that says what pages the phone, what only shows on the Daily Report, and when an incident closes. The code is `lifeos/platform/health.py` (the rules), `lifeos/platform/gate.py` (the pipeline incidents), `lifeos/platform/alerts.py` (the one gateway) and `lifeos/platform/alert_registry.py` (every alert, its severity and channels). A contract test (`tests/platform/test_health_model.py`) fails if an alert in the registry is missing from the table below.
 
 ## Severities
 

@@ -12,7 +12,7 @@ The ticket's rule: twice the slowest run of the last 100, rounded up to whole mi
 
 * A timeout is never raised; it is only tightened.
 * Floor of 5 minutes: a job's own set-up (checkout, Python, the Bitwarden helper that waits up to 400 s) varies.
-* A job whose Bitwarden helper waits W seconds keeps at least 3 x W: `tests/contracts/test_bws_helper.py` already requires that the helper's retry never takes more than a third of the job's limit, so those jobs (most domain jobs) stay at 15 to 30 minutes. The stage budgets below are what stops a slow stage early inside such a job.
+* A job whose Bitwarden helper waits W seconds keeps at least 3 x W: `tests/tooling/test_bws_helper.py` already requires that the helper's retry never takes more than a third of the job's limit, so those jobs (most domain jobs) stay at 15 to 30 minutes. The stage budgets below are what stops a slow stage early inside such a job.
 * A job whose slowest run reached 90% of its current limit keeps it and is listed for Jim below: it is at its limit and a smaller number would only cut real work.
 * A job with fewer than 10 measured runs, or none, keeps its value: too little evidence to tighten.
 * `amazon.yml` keeps 330 minutes: its backfill stage reads every historical month and runs for hours by design (D140).

@@ -41,7 +41,7 @@ Exists: the credential list (`lifeos/platform/credential_list.py`, dated entries
 |---|---|---|
 | Run coverage (LIFETMP-62) | Done (counts) | `gate.coverage` and the daily check-in line "Coverage: N of 24 expected, M missed" (`tests/platform/test_gate.py`). A per-run health record store is not built. |
 | Alert routes and fault injection (LIFETMP-63) | Partial | Unlisted key refused, wrong severity caught, direct send caught: `tests/edge/test_alert_registry.py` (`test_the_checks_turn_red_for_an_unlisted_alert_a_wrong_severity_and_a_direct_send`, `test_an_unlisted_key_is_refused_and_nothing_is_sent`). Missing: a live fault that shows one alert arriving once; Jim's own test push does that. |
-| Failure isolation (LIFETMP-67) | Covered | Isolated jobs blank workflow secrets and `domains.yml` declares none at the top: `tests/contracts/test_workflow.py` (`IsolatedJobTests`, `DomainsWorkflowTests`). |
+| Failure isolation (LIFETMP-67) | Covered | Isolated jobs blank workflow secrets and `domains.yml` declares none at the top: `tests/workflows/test_workflow.py` (`IsolatedJobTests`, `DomainsWorkflowTests`). |
 | Troubleshooting page | Not done | The cause-to-action text exists as the `meaning` and `action` fields of every code in `lifeos/platform/codes.py`; the private Notion page is not written. |
 | Failure-mode register | Decision | The code registry (`codes.py`, LIFE-72) is the register; no second list. |
 | Alert-noise root cause | Decision | Not evidenced in the repo. Next step is to read reminder counts after the drift check ships; no cause is claimed. |

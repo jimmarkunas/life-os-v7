@@ -37,7 +37,7 @@ Out of scope: sending, replying, filing or deleting mail; ordering anything; scr
 | Daily quota counting | `lifeos/platform/usage.py` (`v7_spend`) | TinyFish-specific, but the count-before-send pattern is the model. |
 | Private storage | `lifeos/platform/db.py`, `snapshot_store.py`, `lifeos/jobs/store.py`, `lifeos/jira/store.py` | Hostinger MySQL through an SSH tunnel. Domain-owned tables are an established pattern; `ensure_schema` creates and migrates. |
 | Alerts | `lifeos/platform/alerts.py` | Counts-only alerts with ntfy push; state in `v7_alerts`. No delivery detector yet. |
-| Scheduling | `lifeos/run.py`, `.github/workflows/domains.yml` | One `lazy(...)` line per stage. Domain jobs run after each hourly tick and see only their own secrets (enforced by `tests/contracts/test_workflow.py`). `hourly.yml` is at the 25-input limit; `domains.yml` is not. |
+| Scheduling | `lifeos/run.py`, `.github/workflows/domains.yml` | One `lazy(...)` line per stage. Domain jobs run after each hourly tick and see only their own secrets (enforced by `tests/workflows/test_workflow.py`). `hourly.yml` is at the 25-input limit; `domains.yml` is not. |
 | Carrier tracking | nowhere | Not in V7 or the retired systems. The retired system's Amazon contract says never to persist "tracking tokens". |
 
 ## 3. Gap analysis

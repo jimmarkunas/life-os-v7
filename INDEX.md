@@ -37,4 +37,4 @@ Project-specific context (requirements, workflows, configuration) is not here. I
 
 ## Keeping this index true
 
-Generated from `docs/index-source.json` by `python tools/gen_indexes.py`; never edit this file. Add, rename or retire a global source in that source file (preflight regenerates, a contract test fails when stale). Other files under `docs/` are not listed: find them by listing the folder, each starts with its own heading (LIFE-644). `python -m lifeos.sources.devtools.readiness repo` and `tests/contracts/test_development_policy.py` fail when a listed path is missing, has no owner or authority, or is over the size limit.
+Generated from `docs/index-source.json` by `python tools/gen_indexes.py`; never edit this file. Add, rename or retire a global source in that source file (preflight regenerates, a contract test fails when stale). Other files under `docs/` are not listed: find them by listing the folder, each starts with its own heading (LIFE-644). `python -m lifeos.sources.devtools.readiness repo` and `tests/docs/test_development_policy.py` fail when a listed path is missing, has no owner or authority, or is over the size limit.

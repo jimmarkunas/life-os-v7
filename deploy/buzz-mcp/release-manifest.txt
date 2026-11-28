@@ -1,5 +1,5 @@
 # Buzz MCP release manifest: exactly these files, from one merged commit (tools/buzz_release.py build/verify).
-# Must equal tools/buzz_release.py closure (tests/contracts/test_buzz_release.py). bin/<name> comes from deploy/buzz-mcp/<name>.
+# Must equal tools/buzz_release.py closure (tests/buzz/test_buzz_release.py). bin/<name> comes from deploy/buzz-mcp/<name>.
 lifeos/__init__.py
 lifeos/buzz/__init__.py
 lifeos/buzz/auth.py

@@ -65,7 +65,7 @@ class WorkflowJobTimeouts(unittest.TestCase):
                 self.assertLessEqual(row["slowest_seconds"], 600, key)
 
     def test_a_target_never_breaks_the_bitwarden_helper_rule(self):
-        """tests/contracts/test_bws_helper.py: the helper's retry never takes more than a third of the job's limit: 3 x
+        """tests/tooling/test_bws_helper.py: the helper's retry never takes more than a third of the job's limit: 3 x
         its wait must fit in the TARGET too, so.
         """
         for key, job in jobs().items():
