@@ -55,6 +55,27 @@ def as_buzz_read(msg, memory_ops):
     }
 
 
+def retired(msg, memory_ops):
+    """A memory operation sent through the old `buzz_read` or `buzz_publish` alias -> one fixed refusal naming the
+    first-class tool to call instead; None for anything else (a first-class call is marked and passes)."""
+    params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+    arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+    operation = arguments.get("operation")
+    if (
+        msg.get("method") != "tools/call"
+        or msg.get("_memory_tool")
+        or params.get("name") not in ("buzz_read", "buzz_publish")
+        or operation not in memory_ops
+    ):
+        return None
+    text = json.dumps({"ok": False, "error": "use_memory_tool", "reason": operation, "tool": operation})
+    return {
+        "jsonrpc": "2.0",
+        "id": msg.get("id"),
+        "result": {"content": [{"type": "text", "text": text}], "isError": True},
+    }
+
+
 def listed(reply, msg, who, access, gate_tool, memory_ops):
     """`tools/list`: a credential client sees only the tools it holds a live grant for (moved here unchanged from
     lifeos/buzz/mcp.py, `_only_granted`), then every caller gains its granted first-class memory tools."""

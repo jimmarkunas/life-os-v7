@@ -988,9 +988,7 @@ class Credentials(Server):
         )
         self.start(access=self.access())
         for _ in range(3):  # a known client asking for Bytalos memory: a policy denial, never an unknown caller
-            status, out = self.tool(
-                self.tok(), "buzz_read", operation="memory_recall", arguments={"workspace": "Bytalos", "query": "x"}
-            )
+            status, out = self.tool(self.tok(), "memory_recall", workspace="Bytalos", query="x")
             self.assertEqual((status, out["error"]), (200, "access_denied"))
         self.assertEqual(sent, [])
         for _ in range(3):
@@ -999,54 +997,32 @@ class Credentials(Server):
         self.assertIn(memory_monitor.fingerprint("cred:no-such-client"), sent[0]["subject"])
         self.assertNotIn("no-such-client", json.dumps(sent))
 
-    def test_memory_arguments_sent_as_a_json_string_route_to_personal_and_bad_shapes_say_what_arrived(self):
-        """Some clients send the nested `arguments` object as a JSON string; it is read as that object. A shape that
-        still names no exact workspace is refused unknown_tenant with a fixed word for what arrived, never its content."""
+    def test_the_retired_memory_alias_refuses_every_shape_and_names_the_tool_to_call(self):
+        """Memory moved to its own tools; any memory operation sent through buzz_read or buzz_publish, nested, flat, as a
+        JSON string or with a community, gets one fixed refusal naming the tool, and never reaches the gate."""
         self.start(access=self.access())
-        args = json.dumps({"workspace": "Personal", "query": "probe"})
-        status, out = self.tool(self.tok(), "buzz_read", operation="memory_recall", arguments=args)
-        self.assertEqual(status, 200)
-        self.assertNotEqual(out.get("reason"), "unknown_tenant")
-        self.assertEqual(self.receipts[-2]["tenant"], "personal")  # it reached the gate as a Personal call
-        for arguments, shape in (
-            ({"workspace": "personal", "query": "probe"}, "object"),
-            ({"query": "probe"}, "object_without_workspace"),
-            ("not json", "string"),
+        before = len(self.receipts)
+        for name, args in (
+            ("buzz_read", {"operation": "memory_recall", "arguments": {"workspace": "Personal", "query": "probe"}}),
+            ("buzz_read", {"operation": "memory_recall", "arguments": json.dumps({"workspace": "Personal"})}),
+            (
+                "buzz_read",
+                {"operation": "memory_recall", "community": "life-os", "workspace": "Personal", "query": "p"},
+            ),
+            (
+                "buzz_read",
+                {"operation": "memory_store", "community": "bytalos", "arguments": {"workspace": "Personal"}},
+            ),
+            ("buzz_publish", {"operation": "memory_store", "arguments": {"workspace": "Personal", "text": "t"}}),
         ):
-            status, out = self.tool(self.tok(), "buzz_read", operation="memory_recall", arguments=arguments)
+            status, out = self.tool(self.tok(), name, **args)
             self.assertEqual(
-                (status, out["error"], out["reason"], out["arguments_shape"]),
-                (200, "access_denied", "unknown_tenant", shape),
+                (status, out["ok"], out["error"], out["tool"]), (200, False, "use_memory_tool", args["operation"])
             )
             self.assertNotIn("probe", json.dumps(out))
-
-    def test_a_flat_memory_call_with_community_beside_operation_routes_to_personal_like_the_nested_one(self):
-        """Muse's shape: operation, community, workspace and query all at the top level of buzz_read."""
-        self.start(access=self.access())
-        status, out = self.tool(
-            self.tok(), "buzz_read", operation="memory_recall", community="life-os", workspace="Personal", query="probe"
-        )
-        self.assertEqual(status, 200)
-        self.assertNotIn(out.get("reason"), ("unknown_tenant", "invalid_argument"))
-        self.assertEqual(self.receipts[-2]["tenant"], "personal")  # it reached the gate as a Personal call
-        status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="life-os", workspace="x")
-        self.assertEqual((status, out["error"]), (200, "invalid_argument"))  # only memory calls are lifted
-
-    def test_a_memory_call_naming_a_community_the_credential_lacks_still_routes_by_workspace(self):
-        """Codex's shape: nested arguments plus a community outside its credential; Buzz calls keep the check."""
-        self.start(access=self.access())
-        status, out = self.tool(
-            self.tok(),
-            "buzz_read",
-            operation="memory_recall",
-            community="bytalos",
-            arguments={"workspace": "Personal", "query": "probe"},
-        )
-        self.assertEqual(status, 200)
-        self.assertNotIn(out.get("error"), ("community_not_authorized",))
-        self.assertEqual(self.receipts[-2]["tenant"], "personal")
+        self.assertEqual(len(self.receipts), before)
         status, out = self.tool(self.tok(), "buzz_read", operation="list_channels", community="bytalos")
-        self.assertEqual((status, out["error"]), (200, "community_not_authorized"))  # non-memory calls unchanged
+        self.assertEqual((status, out["error"]), (200, "community_not_authorized"))  # other buzz_read calls unchanged
 
     def test_one_credential_never_becomes_another_client_whatever_the_caller_sends(self):
         self.start(access=self.access())
@@ -1598,7 +1574,11 @@ class Credentials(Server):
         )  # another client's secret is a 401
 
     def memory(self, cid, op, **arguments):
-        return self.tool(self.tok(cid), "buzz_read", operation=op, arguments=arguments)
+        """A first-class memory call, its reply put back in the {ok, data} shape these tests read."""
+        status, out = self.tool(self.tok(cid), op, **arguments)
+        if out.get("ok") is True:
+            return status, {"ok": True, "data": {k: v for k, v in out.items() if k != "ok"}}
+        return status, out
 
     def with_memory(self):
         """the shipped grants and a fake Honcho behind the real handler."""
@@ -1698,10 +1678,7 @@ class Credentials(Server):
     def test_a_credential_cannot_name_the_client_and_an_expired_grant_refuses(self):
         self.with_memory()
         status, out = self.tool(
-            self.tok("openclaw"),
-            "buzz_read",
-            operation="memory_store",
-            arguments={"workspace": "Personal", "text": "t", "source": "s", "_client": "someone-else"},
+            self.tok("openclaw"), "memory_store", workspace="Personal", text="t", source="s", _client="someone-else"
         )
         self.assertEqual(out["error"], "invalid_argument")  # the schema has no client argument
         from datetime import datetime, timezone
@@ -2293,10 +2270,8 @@ class FirstClassMemoryTools(Server):
         self.assertIn(out["reason"], ("no_grant", "catalog_unknown_capability"))  # refused before any source call
         self.assertNotIn("probe", json.dumps(out))
 
-    def test_the_buzz_read_alias_still_answers_with_its_envelope(self):
+    def test_a_first_class_reply_always_carries_ok(self):
         self.start(access=self.access())
-        status, out = self.tool(
-            self.tok("codex"), "buzz_read", operation="memory_recall", arguments={"workspace": "Personal", "query": "p"}
-        )
+        status, out = self.tool(self.tok("codex"), "memory_recall", workspace="Personal", query="p")
         self.assertEqual(status, 200)
-        self.assertIn("operation", out) if out.get("ok") else self.assertIn("error", out)
+        self.assertIn(out["ok"], (True, False))

@@ -1,19 +1,43 @@
 name: Python and dependencies
-description: Python 3.12 from the runner image in a virtual environment (LIFE-639; no third-party setup action), then the locked requirements (requirements.lock, exact versions and hashes; the one place this is declared).
+description: Python 3.12 from the runner image in a virtual environment (LIFE-639; no third-party setup action), then the locked requirements (requirements.lock, exact versions and hashes; the one place this is declared). With test-lock true (pr-tests.yml only, LIFE-1100) the test lock is installed in the same environment and the whole environment is cached, so a warm job skips the venv, the pip cache restore and both installs.
+inputs:
+  test-lock:
+    description: "true: also install requirements-test.lock and cache the finished virtual environment (key = Python version + both lock hashes). A miss installs exactly as before with --require-hashes; a hit restores a directory a previous run of the same locks built."
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
     - name: Python 3.12 from the runner image, in a virtual environment
+      id: py
       shell: bash
       run: |
         python3 --version | grep -q '^Python 3\.12\.' || { echo "::error::the runner image's python3 is not 3.12"; exit 1; }
-        python3 -m venv "$RUNNER_TEMP/venv"
+        echo "version=$(python3 --version | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+        if [ "${{ inputs.test-lock }}" != "true" ]; then python3 -m venv "$RUNNER_TEMP/venv"; fi
         echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+    - name: Whole environment cache (LIFE-1100; only with test-lock; keyed on the Python version and both locks)
+      id: env
+      if: ${{ inputs.test-lock == 'true' }}
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ${{ runner.temp }}/venv
+        key: venv-${{ runner.os }}-${{ steps.py.outputs.version }}-${{ hashFiles('requirements.lock', 'requirements-test.lock') }}
+    - name: Virtual environment (only when the environment cache missed)
+      if: ${{ inputs.test-lock == 'true' && steps.env.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: python3 -m venv "$RUNNER_TEMP/venv"
     - name: Pip download cache (keyed on requirements.lock; a miss installs exactly as before, the hashes are still checked)
+      if: ${{ inputs.test-lock != 'true' || steps.env.outputs.cache-hit != 'true' }}
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
       with:
         path: ~/.cache/pip
         key: pip-${{ runner.os }}-${{ hashFiles('requirements.lock') }}
     - name: Install dependencies
+      if: ${{ inputs.test-lock != 'true' || steps.env.outputs.cache-hit != 'true' }}
       shell: bash
       run: pip install --require-hashes -r requirements.lock
+    - name: Install the test lock (only when the environment cache missed; hashes checked)
+      if: ${{ inputs.test-lock == 'true' && steps.env.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: pip install --require-hashes -r requirements-test.lock

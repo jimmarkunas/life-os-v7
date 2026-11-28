@@ -323,6 +323,8 @@ def handler(relays, auth, base, origins=(), audit=_audit, access=None, receipts=
                 msg = None
             if not isinstance(msg, dict):
                 return self._send(400, {"error": "bad request"})
+            if memory_tools and (moved := memory_tools.retired(msg, MEMORY_OPS)):  # the memory alias is retired
+                return self._send(200, moved)
             msg = memory_tools.as_buzz_read(msg, MEMORY_OPS) if memory_tools else msg
             params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
             spec = {**TOOLS, **FROZEN}.get(params.get("name")) if msg.get("method") == "tools/call" and isinstance(params.get("name"), str) else None
