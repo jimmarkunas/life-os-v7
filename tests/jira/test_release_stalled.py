@@ -41,6 +41,11 @@ OPEN_JIM_FIRST = {
         },
     ],
 }
+NEEDS_API_KEY = {
+    "type": "doc",
+    "content": DONE_WHEN["content"]
+    + [{"type": "paragraph", "content": [{"type": "text", "text": "Needs a read-only API key for Jira."}]}],
+}
 NO_DONE_WHEN = {
     "type": "doc",
     "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Just do the thing."}]}],
@@ -104,6 +109,10 @@ class FakeJira:
             else {"comments": []}
         )
 
+    def put(self, path, payload, retry=False):
+        self.posts.append((path, payload))
+        return {}
+
     def post(self, path, payload, retry=False):
         if self.fail_post:
             raise JiraError("JIRA_HTTP_500")
@@ -120,6 +129,16 @@ class Release(unittest.TestCase):
             [p for p, _ in fake.posts], ["/rest/api/3/issue/LIFE-11/transitions", "/rest/api/3/issue/LIFE-11/comment"]
         )
         self.assertEqual(fake.posts[0][1], {"transition": {"id": "17"}})
+
+    def test_a_ticket_naming_a_protected_step_is_held_for_jim_not_released_and_a_dry_run_changes_nothing(self):
+        fake = FakeJira(["LIFE-10"], [issue("LIFE-11", description=NEEDS_API_KEY)])
+        dry = release.run(0, False, jira=fake)
+        self.assertEqual((dry["skipped"], dry["would_release"], fake.posts), ({"protected": 1}, 0, []))
+        out = release.run(0, True, jira=fake)
+        self.assertEqual((out["released"], out["skipped"]), (0, {"protected": 1}))
+        self.assertEqual([p for p, _ in fake.posts], ["/rest/api/3/issue/LIFE-11", "/rest/api/3/issue/LIFE-11/comment"])
+        self.assertEqual(fake.posts[0][1], {"update": {"labels": [{"remove": "ready"}, {"add": "needs-jim"}]}})
+        self.assertIn("[waiting on] Jim: approve credential", str(fake.posts[1][1]))
 
     def test_nothing_is_released_for_an_open_blocker_a_missing_done_when_or_a_skip_label(self):
         children = [

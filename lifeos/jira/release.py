@@ -206,7 +206,20 @@ def release(jira, key, epic):
     jira.post(f"/rest/api/3/issue/{key}/comment", {"body": body})
 
 
+def hold(jira, key, comment):
+    """Swap `ready` for `needs-jim` and say what Jim must approve (the same words `promote.act` gives)."""
+    jira.put(f"/rest/api/3/issue/{key}", {"update": {"labels": [{"remove": "ready"}, {"add": NEEDS_JIM}]}})
+    body = {
+        "type": "doc",
+        "version": 1,
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": f"[agent-v7] {comment}"}]}],
+    }
+    jira.post(f"/rest/api/3/issue/{key}/comment", {"body": body})
+
+
 def run(limit, live, environ=None, jira=None):
+    from lifeos.jira import promote  # noqa: PLC0415  (promote builds on this module)
+
     jira = jira or Jira.from_env(os.environ if environ is None else environ)
     epics, children = candidates(jira)
     out = {"epics": len(epics), "candidates": len(children), "released": 0, "would_release": 0, "skipped": {}}
@@ -214,6 +227,17 @@ def run(limit, live, environ=None, jira=None):
         why = eligible(issue)
         if why:
             out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            continue
+        decision = promote.act(issue)
+        if decision["decision"] == "wait":
+            # A ticket that names a credential, live access, a host step, spend and so on waits for Jim's yes (policy
+            # section 4); the `needs-jim` label then keeps it out of every later pass.
+            out["skipped"]["protected"] = out["skipped"].get("protected", 0) + 1
+            if live:
+                try:
+                    hold(jira, issue["key"], decision["comment"])
+                except JiraError:
+                    out["failed"] = out.get("failed", 0) + 1
             continue
         if out["released"] + out["would_release"] >= RELEASE_LIMIT:
             out["skipped"]["over_limit"] = out["skipped"].get("over_limit", 0) + 1
