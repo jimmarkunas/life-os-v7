@@ -446,13 +446,95 @@ class SideBySide(unittest.TestCase):
             )  # a failing early step never stops the next stage
             self.assertEqual(seen, [40])
 
+    def test_an_early_step_with_until_overlaps_the_fast_path_and_is_waited_for_just_before_the_step_it_names(self):
+        import threading
+
+        log, lock, gate = [], threading.Lock(), threading.Event()
+
+        def note(event, name):
+            with lock:
+                log.append((event, name))
+
+        def slow(limit, live):
+            note("start", "slow")
+            gate.wait(5)
+            note("end", "slow")
+            return {"ok": 1}
+
+        def publish(limit, live):
+            note("start", "publish")
+            gate.set()  # the slow early step only ends after publish has started: they overlap
+            note("end", "publish")
+            return 0
+
+        def enrich(limit, live):
+            note("start", "enrich")
+            return 0
+
+        plan = (
+            Step("slow", 20, group="A", providers=("ats",), early=True, until="enrich"),
+            Step("quick", 20, group="A"),
+            Step("publish", 20),
+            Step("enrich", 20),
+        )
+        stages = {"slow": slow, "quick": lambda limit, live: 0, "publish": publish, "enrich": enrich}
+        result, _ = self.run_tick(plan, stages)
+        self.assertEqual(result, {"slow": "ok", "quick": "ok", "publish": "ok", "enrich": "ok"})
+        self.assertLess(log.index(("start", "publish")), log.index(("end", "slow")))  # publish no longer waits for it
+        self.assertLess(log.index(("end", "slow")), log.index(("start", "enrich")))  # enrich always does
+
+    def test_boards_tick_overlaps_publish_but_enrich_and_every_other_stage_keeps_its_place(self):
+        """Jim, Nov 28 2026: publish may start before boards-tick ends; enrich waits for it. The drain pass publishes later."""
+        names = [s.name for s in tick.PLAN]
+        step = next(s for s in tick.PLAN if s.name == "boards-tick")
+        self.assertEqual((step.early, step.until, step.group), (True, "enrich", "A"))
+        self.assertLess(names.index("boards-tick"), names.index("audit-ready"))
+        self.assertLess(names.index("publish"), names.index("enrich"))
+        self.assertLess(
+            names.index("finalize"), names.index("drain-publish")
+        )  # the drain pass still publishes what it left
+        self.assertEqual(
+            names,
+            [
+                "resolve-jobright",
+                "resolve-linkedin",
+                "linkedin-search",
+                "resolve-dice",
+                "web",
+                "boards-tick",
+                "audit-ready",
+                "publish",
+                "enrich",
+                "fit",
+                "audit-fresh",
+                "publish-fresh",
+                "audit",
+                "expire-holds",
+                "finalize",
+                "web-scale-up",
+                "web-titlewatch",
+                "discover-jobs",
+                "sponsors",
+                "boards-backfill",
+                "drain-audit-ready",
+                "drain-publish",
+                "drain-enrich",
+                "drain-fit",
+            ],
+        )  # the stage order, before and after: unchanged; only when boards-tick is waited for changed
+
+    def test_an_until_step_that_is_never_reached_is_still_joined_at_the_end_of_the_run(self):
+        plan = (Step("slow", 20, group="A", early=True, until="gone"), Step("quick", 20, group="A"), Step("last", 20))
+        result, _ = self.run_tick(plan, {n: (lambda limit, live: 0) for n in ("slow", "quick", "last")})
+        self.assertEqual(result, {"slow": "ok", "quick": "ok", "last": "ok"})
+
     def test_early_changes_nothing_when_concurrency_is_off_and_the_real_plan_has_one_early_step(self):
         calls = []
         plan = (Step("fast", 20), Step("boards", 20, bulk=True, group="B", early=True), Step("after", 20))
         stages = {n: (lambda limit, live, n=n: calls.append(n) or 0) for n in ("fast", "boards", "after")}
         tick.tick(False, plan=plan, stages=stages)  # concurrency=None: the old sequential order
         self.assertEqual(calls, ["fast", "boards", "after"])
-        self.assertEqual([s.name for s in tick.PLAN if s.early], ["web-titlewatch", "discover-jobs"])
+        self.assertEqual([s.name for s in tick.PLAN if s.early], ["boards-tick", "web-titlewatch", "discover-jobs"])
 
     def test_the_stage_thread_limit_is_honoured(self):
         state, stage = self.gate()
