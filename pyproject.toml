@@ -2,7 +2,7 @@
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-extend-exclude = ["__pycache__", "node_modules", "docs/codemap.json"]
+extend-exclude = ["__pycache__", "node_modules", "docs/codemap.json", "deploy/buzz-mcp/vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]       # pycodestyle errors, pyflakes, bugbear

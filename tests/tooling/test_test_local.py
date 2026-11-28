@@ -39,6 +39,40 @@ class FullSuiteRefusedLocally(unittest.TestCase):
         self.assertTrue(os.access(ROOT / "scripts/test-local", os.X_OK))
 
 
+class LintMirrorsCi(unittest.TestCase):
+    def test_the_wrapper_runs_lint_first_and_runs_exactly_the_blocking_commands_of_the_ci_lint_job(self):
+        import yaml
+
+        workflow = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())
+        blocking = []
+        for step in workflow["jobs"]["lint"]["steps"]:
+            if step.get("continue-on-error"):
+                continue  # the advisory steps never fail the job
+            for line in str(step.get("run", "")).splitlines():
+                line = line.strip()
+                if line.startswith(("python -m ruff", "python -m mypy", "node --test")):
+                    blocking.append(line)
+        self.assertEqual(len(blocking), 4, blocking)  # format check, correctness rules, blocking types, Node tests
+        text = (ROOT / "tools/test.sh").read_text()
+        for command in blocking:
+            self.assertIn(command.replace("python -m", '"$PY" -m'), text, command)
+        wrapper = (ROOT / "scripts/test-local").read_text()
+        self.assertLess(wrapper.index("tools/test.sh\" --lint"), wrapper.index("tools/test.sh\" --quick >"))
+
+    def test_an_unformatted_file_fails_the_lint_step_and_is_fixed_for_the_rerun(self):
+        probe = ROOT / "tests" / "zz_unformatted_lint_probe.py"
+        try:
+            probe.write_text("def  f( a ,b ):\n  return a+b\n")
+            first = sh("tools/test.sh", "--lint")
+            if first.returncode == 3:
+                self.skipTest("no environment with ruff and mypy here (sh tools/setup-dev.sh)")
+            self.assertEqual(first.returncode, 1)
+            self.assertIn("would have failed", first.stderr)
+            self.assertEqual(probe.read_text(), "def f(a, b):\n    return a + b\n")
+        finally:
+            probe.unlink(missing_ok=True)
+
+
 class QuickSelectOnAnUnplaceableChange(unittest.TestCase):
     def test_locally_only_the_contracts_and_scanners_run_never_every_module(self):
         with mock.patch.dict(os.environ, {}, clear=False):

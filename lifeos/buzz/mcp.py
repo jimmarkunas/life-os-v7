@@ -78,7 +78,7 @@ TODOIST = {"read_token": None, "write_token": None, "writes_enabled": False, "al
 # shared memory on Honcho, one gate tool per operation; memory_not_configured until HONCHO_MEMORY_TOKEN is set
 MEMORY, MEMORY_OPS = {"client": None, "now": None}, ("memory_store", "memory_recall", "memory_correct", "memory_revoke", "memory_ask")
 # ORCH: gateway None = the fixed Concord socket; INBOX: the Agent Inbox write; ROUTES: operation -> route(op, args, tenant)
-INBOX, ROUTES = {"client": None, "now": None}, {}; ORCH = {"gateway": None, "ticket_state": None, "inbox": INBOX, "seen": {}}
+INBOX, ROUTES = {"client": None, "now": None}, {}; ORCH = {"gateway": None, "ticket_state": None, "inbox": INBOX, "seen": {}}; GRAPH = {"client": None, "store": None, "now": None, "switch": None}  # the graph index reader: off (switch file) and ungranted
 
 
 def _lift(module, op, state):
@@ -91,12 +91,12 @@ def _lift(module, op, state):
 
 
 try:
-    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup, todoist_governed, todoist_guard
-    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX), (orchestrator, ORCH), (todoist_governed, TODOIST)):
+    from lifeos.platform import call_limit, google_read, graph_tools, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup, todoist_governed, todoist_guard
+    for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX), (orchestrator, ORCH), (todoist_governed, TODOIST), (graph_tools, GRAPH)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
         ROUTES.update({op: _module.route for op in _module.OPS})
 except ImportError:
-    call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = todoist_governed = todoist_guard = None
+    call_limit = google_read = graph_tools = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = todoist_governed = todoist_guard = None
 try:
     from lifeos.platform import memory_honcho, memory_monitor, memory_tools
     memory_honcho.register(READ, _lift, MEMORY)
@@ -434,7 +434,7 @@ def main():
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))
         todoist_governed and todoist_governed.wire(credentials(os.environ), TODOIST)
         todoist_guard and todoist_guard.wire(credentials(os.environ), TODOIST, inbox_send, INBOX)  # off unless TODOIST_GUARD=on
-        source_lookup.wire(credentials(os.environ), LOOKUP)
+        source_lookup.wire(credentials(os.environ), LOOKUP); graph_tools and graph_tools.wire(credentials(os.environ), GRAPH)
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
 
 

@@ -158,3 +158,20 @@ Not a new server, unit, URL, port, credential or store.
 
 Conversation learning (LIFE-1080 is DEFER until its prerequisites (a) to (f) are met), a second gateway, direct agent
 connections to Honcho, the Neo4j graph in production, and any change to Buzz messaging behavior.
+
+## Graph retrieval (GI-2): shipped OFF
+
+The gateway carries five read-only relationship questions over the derived graph index (`docs/platform/graph-index-ontology.md`): `graph_dependency_chain`, `graph_blockers_of`, `graph_tickets_for_requirement`, `graph_requirements_for_ticket` and `graph_delivered_by` (`lifeos/platform/graph_tools.py`), registered through the same operation loop as `source_read`. They are `buzz_read` operations, so `memory_tools.py` and the first-class memory tool list are unchanged.
+
+| Control | Setting |
+| --- | --- |
+| Switch | `lifeos/platform/graph_switch.json` is `{"enabled": false}`; a missing or broken file is off. Flip it only by a released change |
+| Grants | none: `mcp_access.json` and the catalog are unchanged, the operations have no tool purpose, so the gate refuses every caller |
+| Input | a plain `LIFE-n` or `REQ-n` key, Personal workspace only; anything else is `invalid_argument` before the graph is read |
+| Freshness | answers only from the newest published checkpoint at most 24 hours old and equal to what is stored; building, missing, stale, mismatched or unreadable gives `source_unavailable` or `stale_source` |
+| Aura | the service has no Aura credential and no Aura driver: until a later ticket wires one, a switched-on graph still answers `source_unavailable` and callers use the canonical source |
+| Checkpoint | read from the separate checkpoint database with the pinned PyMySQL, shipped in the release under `vendor/pymysql/` (`deploy/buzz-mcp/vendor/README.md`); credentials `ckpt_db_host`, `_name`, `_user`, `_password` placed with `bin/place-credentials` |
+
+`lifeos/platform/memory_router.py` chooses one store per question: dependency wording to the graph, "what do I usually do or decide" to Honcho, a plain fact or anything unclear to the canonical source. A graph answer that cannot be served falls back to the canonical source only after both the graph operation and the canonical source are authorized again, and says `fallback: true`; a canonical answer that is missing, incomplete or unauthorized is `DEGRADED` or a denial. The router is a library with injected providers; no gateway tool calls it yet.
+
+Rollback: release the previous release id and restart; nothing else changed (no data, grant or switch).

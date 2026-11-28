@@ -212,5 +212,23 @@ class PlaceCredentials(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(SCRIPT.stat().st_mode) & 0o111, 0o111)
 
 
+class CheckpointNames(unittest.TestCase):
+    run_script = PlaceCredentials.run_script
+    everything_written = PlaceCredentials.everything_written
+
+    def test_the_four_checkpoint_names_place_their_own_credentials_and_are_loaded_by_the_service(self):
+        names = [f"lifeos/edge/CKPT_DB_{part}" for part in ("HOST", "NAME", "USER", "PASSWORD")]
+        done, tmp, creds = self.run_script([{"key": n, "value": SENTINEL} for n in names], *names)
+        self.assertEqual(done.stdout.splitlines(), [f"{n} ok" for n in names])
+        self.assertEqual(
+            sorted(p.name for p in creds.iterdir()),
+            ["ckpt_db_host.cred", "ckpt_db_name.cred", "ckpt_db_password.cred", "ckpt_db_user.cred"],
+        )
+        dropin = (tmp / "dropin.conf").read_text()
+        for credential in ("ckpt_db_host", "ckpt_db_name", "ckpt_db_user", "ckpt_db_password"):
+            self.assertIn("LoadCredentialEncrypted=" + credential + ":", dropin)
+        self.assertNotIn(SENTINEL, self.everything_written(tmp))
+
+
 if __name__ == "__main__":
     unittest.main()
