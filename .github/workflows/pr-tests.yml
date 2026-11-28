@@ -14,13 +14,14 @@ concurrency:
   group: life-os-v7-pr-tests-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}   # LIFE-604: a newer push replaces the older check of the same pull request; every merge to main keeps its own group
 jobs:
-  # LIFE-1100: `pick` chooses the tests (a small selection runs inside it), `tests` fans a FULL pick out over 8 jobs (4 of the 32 shards each, one per vCPU), `lint` runs ruff, mypy and Node beside them, and the last job `unit-tests` (the required check, name unchanged)
+  # LIFE-1100: `pick` chooses the tests (a selection is planned into 1 to 4 test jobs), `tests` fans a FULL pick out over 8 jobs (4 of the 32 shards each, one per vCPU), `lint` runs ruff, mypy and Node beside them, and the last job `unit-tests` (the required check, name unchanged)
   # waits for all three and gates the whole run: a job or run over 60 s fails with "TIME GATE ONLY" when every test passed; 45 s warns. At most 8 + lint + second-date jobs run at once per run; GitHub Free allows 20.
   pick:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      full: ${{ steps.pick.outputs.full }}
+      jobs: ${{ steps.plan.outputs.jobs }}
+      groups: ${{ steps.plan.outputs.groups }}
       t0: ${{ steps.start.outputs.t0 }}
       sd: ${{ steps.start.outputs.sd }}
     steps:
@@ -65,30 +66,17 @@ jobs:
             echo "full=false" >> "$GITHUB_OUTPUT"
             echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: ./.github/actions/python   # LIFE-1100: test-lock
-        if: ${{ steps.pick.outputs.full != 'true' }}
-        with:
-          test-lock: "true"
-      - name: Unit tests of a selected run (the picked targets in four processes in this job; a FULL pick skips it; warn at 45 s, fail at 60 s)
-        if: ${{ steps.pick.outputs.full != 'true' }}
-        run: |
-          status=0
-          python -m tests.quickselect run-list selected.txt --jobs 4 > shard-1.log 2>&1 || status=$?     # the contracts alone are about 50 s on one process
-          cat shard-1.log
-          elapsed=$(( $(date +%s) - JOB_T0 ))
-          echo "unit tests (selected run): exit ${status}, ${elapsed} s from the start of the job" | tee -a "$GITHUB_STEP_SUMMARY"
-          if [ "$status" -ne 0 ]; then exit "$status"; fi
-          if [ "$elapsed" -ge 60 ]; then echo "TIME GATE ONLY: every test passed; the job took ${elapsed} s and the limit is 60 s (LIFE-1100)" | tee -a "$GITHUB_STEP_SUMMARY"; echo "::error::The selected tests took ${elapsed} s; the limit is 60 s"; exit 1; fi
-          if [ "$elapsed" -ge 45 ]; then echo "::warning::The selected tests took ${elapsed} s; the warning level is 45 s"; fi
+      - name: Plan the test jobs (LIFE-1100; a FULL pick is 8 jobs of shards, a selection is 1 to 4 jobs sized by measured seconds)
+        id: plan
+        run: python3 -m tests.splitsel selected.txt | tee -a "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"
   tests:
     needs: pick
-    if: ${{ needs.pick.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        job: [1, 2, 3, 4, 5, 6, 7, 8]
+        job: ${{ fromJSON(needs.pick.outputs.jobs) }}
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -102,22 +90,31 @@ jobs:
       - uses: ./.github/actions/python   # LIFE-1100: test-lock
         with:
           test-lock: "true"
-      - name: Unit tests (shards 4i-3 to 4i of 32 in four processes; warn at 45 s, fail at 60 s)
+      - name: Unit tests (a FULL pick runs shards 4i-3 to 4i of 32, a selection its group of targets, in four processes; warn at 45 s, fail at 60 s)
         env:
           JOB: ${{ matrix.job }}
+          GROUP: ${{ fromJSON(needs.pick.outputs.groups)[matrix.job - 1] }}
         run: |
           status=0
-          pids=""
-          for j in 1 2 3 4; do
-            k=$(( (JOB - 1) * 4 + j ))
-            ( t0=$(date +%s); python -m tests.shard "$k" 32 > "shard-$k.log" 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > "shard-$k.sec"; exit $rc ) &
-            pids="$pids $!"
-          done
-          for p in $pids; do wait "$p" || status=$?; done
-          for j in 1 2 3 4; do k=$(( (JOB - 1) * 4 + j )); grep -v '^shard-seconds ' "shard-$k.log" || true; done
-          if [ "$status" -eq 0 ]; then echo "::group::per-module shard seconds (input of python -m tests.shard --from-logs; LIFE-1076: left out of a failing run's log)"; for j in 1 2 3 4; do k=$(( (JOB - 1) * 4 + j )); grep -h '^shard-seconds ' "shard-$k.log" || true; done; echo "::endgroup::"; fi
+          if [ -n "$GROUP" ]; then
+            printf '%s\n' $GROUP > selected.txt
+            python -m tests.quickselect run-list selected.txt --jobs 4 > shard-1.log 2>&1 || status=$?
+            cat shard-1.log
+            what="selected targets"
+          else
+            pids=""
+            for j in 1 2 3 4; do
+              k=$(( (JOB - 1) * 4 + j ))
+              ( python -m tests.shard "$k" 32 > "shard-$k.log" 2>&1 ) &
+              pids="$pids $!"
+            done
+            for p in $pids; do wait "$p" || status=$?; done
+            for j in 1 2 3 4; do k=$(( (JOB - 1) * 4 + j )); grep -v '^shard-seconds ' "shard-$k.log" || true; done
+            if [ "$status" -eq 0 ]; then echo "::group::per-module shard seconds (input of python -m tests.shard --from-logs; LIFE-1076: left out of a failing run's log)"; for j in 1 2 3 4; do k=$(( (JOB - 1) * 4 + j )); grep -h '^shard-seconds ' "shard-$k.log" || true; done; echo "::endgroup::"; fi
+            what="shards $(( (JOB - 1) * 4 + 1 ))-$(( JOB * 4 )) of 32"
+          fi
           elapsed=$(( $(date +%s) - JOB_T0 ))
-          echo "tests ${JOB} (shards $(( (JOB - 1) * 4 + 1 ))-$(( JOB * 4 )) of 32): exit ${status}, shard seconds $(for j in 1 2 3 4; do cat "shard-$(( (JOB - 1) * 4 + j )).sec"; echo -n ' '; done), ${elapsed} s from the start of the job" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "tests ${JOB} (${what}): exit ${status}, ${elapsed} s from the start of the job" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           if [ "$elapsed" -ge 60 ]; then echo "TIME GATE ONLY: every test passed; the job took ${elapsed} s and the limit is 60 s (LIFE-1100)" | tee -a "$GITHUB_STEP_SUMMARY"; echo "::error::Test job ${JOB} took ${elapsed} s; the limit is 60 s"; exit 1; fi
           if [ "$elapsed" -ge 45 ]; then echo "::warning::Test job ${JOB} took ${elapsed} s; the warning level is 45 s"; fi
@@ -184,7 +181,7 @@ jobs:
       - uses: ./.github/actions/node
       - name: Concord Room plugin tests (node:test)
         run: node --test tools/orca-concord-room/test/worker.test.mjs
-  # THE REQUIRED CHECK (docs/platform/branch-protection.md): runs after the jobs above even if one failed; fails unless each succeeded (`tests` may be skipped only when `pick` ran a small selection) and gates the whole run.
+  # THE REQUIRED CHECK (docs/platform/branch-protection.md): runs after the jobs above even if one failed; fails unless each succeeded and gates the whole run.
   unit-tests:
     needs: [pick, tests, lint]
     if: ${{ always() }}
@@ -196,15 +193,14 @@ jobs:
           PICK: ${{ needs.pick.result }}
           TESTS: ${{ needs.tests.result }}
           LINT: ${{ needs.lint.result }}
-          FULL: ${{ needs.pick.outputs.full }}
           T0_PICK: ${{ needs.pick.outputs.t0 }}
           T0_LINT: ${{ needs.lint.outputs.t0 }}
         run: |
           bad=0
           [ "$PICK" = "success" ] || bad=1
           [ "$LINT" = "success" ] || bad=1
-          if [ "$FULL" = "true" ]; then [ "$TESTS" = "success" ] || bad=1; else [ "$TESTS" = "skipped" ] || bad=1; fi
-          echo "pick=${PICK} tests=${TESTS} lint=${LINT} full=${FULL:-unknown}" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$TESTS" = "success" ] || bad=1
+          echo "pick=${PICK} tests=${TESTS} lint=${LINT}" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$bad" -ne 0 ]; then echo "::error::a needed job did not succeed (pick=${PICK}, tests=${TESTS}, lint=${LINT})"; exit 1; fi
           t0=${T0_PICK:-0}; if [ -n "$T0_LINT" ] && [ "$T0_LINT" -lt "$t0" ]; then t0=$T0_LINT; fi
           elapsed=$(( $(date +%s) - t0 ))
