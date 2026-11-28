@@ -1,6 +1,6 @@
 # Notion writers on the Daily Report page (LIFE-688)
 
-One card owns one region of the Daily Report page and writes only its own blocks, by block id. This file is the list of every writer. `tests/contracts/test_notion_writers.py` reads it: a module that writes the page but is not listed here fails CI, and so does a whole-page digest caller that is not listed.
+One card owns one region of the Daily Report page and writes only its own blocks, by block id. This file is the list of every writer. `tests/platform/test_notion_writers.py` reads it: a module that writes the page but is not listed here fails CI, and so does a whole-page digest caller that is not listed.
 
 ## The rules
 

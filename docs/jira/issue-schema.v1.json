@@ -314,7 +314,7 @@
       },
       "human_actions": [],
       "ui": {"scope": "no_user_visible_change"},
-      "fast_proof": {"kind": "deterministic_test", "steps": "python -m unittest tests.contracts.test_jira_issue_schema", "read_back": "the policy on main contains the contract and links this schema", "schedule_independent": true},
+      "fast_proof": {"kind": "deterministic_test", "steps": "python -m unittest tests.jira.test_jira_issue_schema", "read_back": "the policy on main contains the contract and links this schema", "schedule_independent": true},
       "human_uat": {"required": true, "owner": "Jim", "scenario": "Review the policy diff and approve or reject it"},
       "authorization": {"agent_go": false, "lane_labels": [], "pull_ready": false}
     }

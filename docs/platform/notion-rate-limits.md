@@ -1,6 +1,6 @@
 # Notion API limits and the one rule (LIFE-682)
 
-Read from Notion's own documentation on Nov 14 2026, 1:20 PM CT. When the pages change, change this file and `lifeos/platform/limits.py` together: a contract test (`tests/contracts/test_limits.py`) fails when they disagree.
+Read from Notion's own documentation on Nov 14 2026, 1:20 PM CT. When the pages change, change this file and `lifeos/platform/limits.py` together: a contract test (`tests/platform/test_limits.py`) fails when they disagree.
 
 Sources: https://developers.notion.com/reference/request-limits and https://developers.notion.com/reference/status-codes (no "last updated" date is shown on either page).
 
