@@ -97,7 +97,7 @@ def markdown(m):
         "",
         "A routing page. Find a stage here, then its module. For anything else ask one question instead of reading the whole map: "
         "`python -m lifeos.sources.devtools.codemap find <text>` (a package, module, stage, workflow, table or decision number/word; prints only the matching entries). "
-        "Full machine-readable map: `docs/codemap.json`. Decisions: `docs/DECISIONS_INDEX.md` (find), then `grep -n \"^## D<n>\" docs/DECISIONS.md`.",
+        "Full machine-readable map: `docs/codemap.json`. Decisions: `docs/DECISIONS_INDEX.md` (find), then `python -m lifeos.sources.devtools.decisions show D<n>`.",
         "",
         "## Stages (`python -m lifeos.run <stage>`)",
     ]

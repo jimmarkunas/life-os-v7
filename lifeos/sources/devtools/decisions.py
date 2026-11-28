@@ -1,10 +1,11 @@
 """Claim a decision number before writing a decision, so parallel sessions never take the same one.
 
-`claim` finds the highest D-number in use (the `## D###` headings of docs/DECISIONS.md on the remote's main plus
-every `decision-claim/D###` tag) and creates the tag for the next number on the remote. Ref creation is atomic: if
+`claim` finds the highest D-number in use (the `## D###` headings of docs/DECISIONS.md and docs/archive/DECISIONS-*.md
+on the remote's main plus every `decision-claim/D###` tag) and creates the tag for the next number on the remote. Ref creation is atomic: if
 another session took the number first, the push is rejected and the next is tried. Prints only the claimed number;
 an unused claim leaves a harmless gap. `duplicates` lists numbers used twice; `show D139` prints one decision's
-section. Fixed error codes only.
+section. Older decisions live in docs/archive/DECISIONS-*.md (LIFE-1098); every command reads them too. Fixed error
+codes only.
 """
 
 # Each claim is its own annotated tag object (random claim id in its message), so a repeat claim never looks like an
@@ -31,6 +32,12 @@ class ClaimError(RuntimeError):
 
 def _git(*args, cwd=None, data=None):
     return subprocess.run(["git", *args], cwd=cwd, input=data, capture_output=True, text=True, timeout=60)
+
+
+def log_text(docs):
+    """docs/DECISIONS.md (current) followed by every docs/archive/DECISIONS-*.md (older entries), as one text."""
+    parts = [Path(docs, "DECISIONS.md")] + sorted(Path(docs, "archive").glob("DECISIONS-*.md"))
+    return "\n".join(part.read_text() for part in parts)
 
 
 def numbers(text, pattern=HEADING):
@@ -70,7 +77,15 @@ def highest(remote="origin", cwd=None, branch="main"):
     log = _git("show", f"{sha}:docs/DECISIONS.md", cwd=cwd)
     if log.returncode != 0 or not sha:
         raise ClaimError("DECISION_CLAIM_LOG_UNREADABLE")
-    return max(numbers(log.stdout) | claimed(remote, cwd) | {0}), sha
+    found = numbers(log.stdout)
+    listing = _git("ls-tree", "--name-only", sha, "docs/archive/", cwd=cwd).stdout.split()
+    for name in listing:
+        if re.fullmatch(r"docs/archive/DECISIONS-[^/]+\.md", name):
+            older = _git("show", f"{sha}:{name}", cwd=cwd)
+            if older.returncode != 0:
+                raise ClaimError("DECISION_CLAIM_LOG_UNREADABLE")
+            found |= numbers(older.stdout)
+    return max(found | claimed(remote, cwd) | {0}), sha
 
 
 def _claim_object(n, sha, cwd=None):
@@ -108,7 +123,7 @@ def main(argv=None):
     if argv == ["duplicates"]:
         docs = Path(__file__).resolve().parents[3] / "docs"
         found = {
-            **{f"DECISIONS.md D{n}": t for n, t in duplicates((docs / "DECISIONS.md").read_text()).items()},
+            **{f"DECISIONS.md D{n}": t for n, t in duplicates(log_text(docs)).items()},
             **{
                 f"DECISIONS_INDEX.md D{n}": t
                 for n, t in duplicates((docs / "DECISIONS_INDEX.md").read_text(), INDEX_ENTRY).items()
@@ -119,8 +134,8 @@ def main(argv=None):
         return 1 if found else 0
     if len(argv) == 2 and argv[0] == "show" and re.fullmatch(r"[Dd]\d+", argv[1]):
         docs = Path(__file__).resolve().parents[3] / "docs"
-        found = section((docs / "DECISIONS.md").read_text(), int(argv[1][1:]))
-        print(found if found else f"{argv[1].upper()} is not in docs/DECISIONS.md")
+        found = section(log_text(docs), int(argv[1][1:]))
+        print(found if found else f"{argv[1].upper()} is not in docs/DECISIONS.md or docs/archive/")
         return 0 if found else 1
     print("usage: python -m lifeos.sources.devtools.decisions claim | duplicates | show D<n>", file=sys.stderr)
     return 2
