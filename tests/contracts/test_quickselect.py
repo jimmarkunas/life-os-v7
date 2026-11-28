@@ -50,6 +50,19 @@ class QuickSelect(unittest.TestCase):
             self.assertEqual(sorted(flat), sorted(set(modules)))
             self.assertLessEqual(len(groups), n)
 
+    def test_run_list_runs_the_listed_targets_in_parallel_processes_and_refuses_full(self):
+        listed = pathlib.Path(tempfile.mkdtemp()) / "selected.txt"
+        listed.write_text("tests.contracts.test_a\ntests.contracts.test_b\n\ntests.contracts.test_c.C.test_one\n")
+        with mock.patch.object(quickselect, "run", return_value=0) as ran:
+            self.assertEqual(quickselect.main(["run-list", str(listed), "--jobs", "3"]), 0)
+        ran.assert_called_once_with(
+            ["tests.contracts.test_a", "tests.contracts.test_b", "tests.contracts.test_c.C.test_one"], 3
+        )
+        listed.write_text("FULL\nFULL because x: y\n")
+        with mock.patch.object(quickselect, "run", return_value=0) as ran:
+            self.assertEqual(quickselect.main(["run-list", str(listed)]), 2)
+        ran.assert_not_called()
+
     def test_every_target_is_a_real_test_module(self):
         known = testindex.module_set()
         for change in (
