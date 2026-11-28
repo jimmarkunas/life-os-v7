@@ -22,6 +22,8 @@ A pull request used to run all ~4,300 tests. It now runs the tests its change ca
 | docs and `*.md` files | nothing extra |
 | always | every module in `tests/contracts` |
 
+`tests/contracts` holds only the checks that scan the whole repository (privacy, size, generated indexes, registries, every workflow's structure, secret least-privilege). A test about one feature lives with it: `tests/workflows/` (one workflow's wiring and the workflow tools), `tests/tooling/` (the test runner, selector and CI setup), `tests/um/` (the memory pilots), or the package folder (`tests/buzz/`, `tests/jira/`, `tests/platform/`, `tests/sources/`, `tests/docs/`). The selector picks them by the usual rules when their feature's files change (LIFE-1098 step B).
+
 ## CI
 
 `.github/workflows/pr-tests.yml` (required check `unit-tests`, unchanged): the step "Pick the tests" runs the selector on pull requests only; on a push to main it writes FULL. A FULL pick runs the two parallel shards as before; a subset runs `python -m unittest <targets>`. Any trouble picking (the selector fails, the base is missing, the index is unreadable) means FULL. The 90 s warning and 120 s limit still apply.
