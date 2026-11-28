@@ -125,7 +125,7 @@ class Show(unittest.TestCase):
 
 
 class ArchivedDecisions(Remote):
-    """LIFE-1098: older entries live in docs/archive/DECISIONS-*.md; claim, show and duplicates still see them."""
+    """Older entries live in docs/archive/DECISIONS-*.md; claim, show and duplicates still see them."""
 
     def test_claim_counts_the_archive_and_show_and_duplicates_read_it(self):
         seed = self.clone("seed2")

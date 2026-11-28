@@ -4,7 +4,7 @@
 on the remote's main plus every `decision-claim/D###` tag) and creates the tag for the next number on the remote. Ref creation is atomic: if
 another session took the number first, the push is rejected and the next is tried. Prints only the claimed number;
 an unused claim leaves a harmless gap. `duplicates` lists numbers used twice; `show D139` prints one decision's
-section. Older decisions live in docs/archive/DECISIONS-*.md (LIFE-1098); every command reads them too. Fixed error
+section. Older decisions live in docs/archive/DECISIONS-*.md; every command reads them too. Fixed error
 codes only.
 """
 
