@@ -4,6 +4,7 @@
 #   sh tools/test.sh            the CI selection for the commits on this branch (needs the changes committed: CI also sees commits only)
 #   sh tools/test.sh --all      everything, like a merge to main (parallel shards, one per core up to 8)
 #   sh tools/test.sh --quick    the contracts, the repo-wide scanners and the tests that name or mirror each changed file, in parallel (what preflight runs); --quick --list prints them
+#   sh tools/test.sh --lint     (scripts/test-local runs it first) auto-format, then the blocking commands of the `lint` job in pr-tests.yml, with CI's own messages
 #   sh tools/test.sh --list     only print which Python and which tests it would use
 #   sh tools/test.sh --workflow-gate   (preflight runs it) LIFE-779: the standing pre-approval check on the workflow files this branch changed (tools/workflow_gate.py); exit 5 = ask Jim once
 #   sh tools/test.sh --regen    (preflight runs it) write and commit the registry rows a new stage needs, with the same Python; refuses a dirty tree
@@ -18,6 +19,7 @@ for arg in "$@"; do
     --all) mode=all ;;
     --quick) mode=quick ;;   # LIFE-763: the contracts, the repo-wide scanners and the tests that name or mirror each changed file, in parallel processes; never the whole suite (CI runs that)
     --list) list=1 ;;
+    --lint) lint=1 ;;
     --regen) regen=1 ;;
     --workflow-gate) wfgate=1 ;;
     --setup) setup=1 ;;
@@ -44,6 +46,24 @@ if [ -z "$PY" ]; then
 fi
 version="$("$PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
 
+if [ "${lint:-}" = 1 ]; then   # LIFE-1110: what the `lint` job of pr-tests.yml runs, so a lint failure is found before the first push; a test keeps these lines equal to that job
+  for candidate in "$PY" "$HOME/.venvs/lifeos-tests/bin/python" "$ROOT/.venv/bin/python" "$common/../.venv/bin/python"; do   # the first environment with the lint tools of the lock (ruff and mypy)
+    [ -x "$candidate" ] && "$candidate" -m ruff --version >/dev/null 2>&1 && "$candidate" -m mypy --version >/dev/null 2>&1 && { PY="$candidate"; break; }
+  done
+  "$PY" -m ruff --version >/dev/null 2>&1 && "$PY" -m mypy --version >/dev/null 2>&1 || { echo "test.sh: no Python with ruff and mypy (the locked versions): run sh tools/setup-dev.sh" >&2; exit 3; }
+  export PATH="$(dirname "$PY"):$PATH"
+  if ! found="$("$PY" -m ruff format --check --no-cache lifeos tools tests 2>&1)"; then   # CI's own format check; on a miss fix the files so the second run is clean
+    "$PY" -m ruff format --no-cache lifeos tools tests >/dev/null
+    printf '%s\n' "$found" | grep -v '^warning:' >&2
+    echo "lint: CI's format check would have failed on the files above; ruff format has now fixed them. Commit them (git add -u; git commit --amend --no-edit, or a new commit) and rerun." >&2
+    exit 1
+  fi
+  "$PY" -m ruff check --no-cache --select B023,B904,F811,B017 --output-format concise . || exit 1
+  "$PY" -m mypy --no-incremental $(cat mypy-blocking.txt) || exit 1
+  if command -v node >/dev/null 2>&1; then node --test tools/orca-concord-room/test/worker.test.mjs >/dev/null || { echo "lint: the Concord Room plugin tests failed: node --test tools/orca-concord-room/test/worker.test.mjs" >&2; exit 1; }; else echo "lint: node not found, the Concord Room plugin tests were not run here (CI runs them)"; fi
+  echo "lint: ok (format, ruff correctness, blocking mypy$(command -v node >/dev/null 2>&1 && echo ', node tests'))"
+  exit 0
+fi
 if [ "${wfgate:-}" = 1 ]; then   # LIFE-779: a workflow change with no new secret and no wider permissions needs no approval; this says so, or names the one thing Jim must answer
   wbase="$(git merge-base HEAD origin/main 2>/dev/null || true)"
   [ -n "$wbase" ] || { echo "workflow gate: no origin/main to compare with"; exit 3; }
