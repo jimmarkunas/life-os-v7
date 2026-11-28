@@ -271,6 +271,31 @@ class TenChanges(unittest.TestCase):
     def test_the_local_gate_does_not_treat_the_platform_layer_as_everything(self):
         self.assertIn("tests.platform.test_db", ti.select(["lifeos/platform/db.py"], None, self.root, reach))
 
+    def test_a_full_names_the_path_and_the_rule_for_each_cause(self):
+        cases = {
+            "pyproject.toml": "a repo-wide file",
+            "requirements-test.lock": "a repo-wide file",
+            "tests/kit/db.py": "under tests/kit/",
+            "tests/shard.py": "a tests/ helper",
+            "tools/blob.bin": "a docs/ or tools/ file of a type the selector cannot place (.bin)",
+            "lifeos/newpkg/z.py": "a lifeos/ file no test",
+            "setup.exe": "a top-level file that is not markdown",
+            "scripts/x.py": "a path outside lifeos/",
+        }
+        for path, rule in cases.items():
+            why = []
+            self.assertEqual(ti.select([path], None, self.root, reach, why), ti.FULL, path)
+            self.assertEqual(len(why), 1, path)
+            self.assertTrue(why[0].startswith(path + ": " + rule), why)
+        why = []
+        self.assertEqual(ti.select(["docs/guide.md"], None, self.root, None, why), ti.FULL)
+        self.assertEqual(why, ["no usable test index and no import graph"])
+        why = []
+        self.assertEqual(
+            ti.select(["tests/kit/a.py", ".github/x.yml", "docs/guide.md"], None, self.root, reach, why), ti.FULL
+        )
+        self.assertEqual(len(why), 2)  # every path that forces FULL is named
+
     def test_with_neither_an_index_nor_an_import_graph_the_answer_is_everything(self):
         self.assertEqual(ti.select(["docs/guide.md"], None, self.root), ti.FULL)
         self.assertEqual(ti.select([], None, self.root), ti.FULL)
@@ -348,23 +373,49 @@ class SelectCommand(unittest.TestCase):
             mock.patch.object(datetime, "datetime", clock.FrozenDateTime),
         ):
             self.assertEqual(ti.main(["select", "--base", "HEAD^1"]), 0)
-        return out.getvalue().split()
+        return out.getvalue().split("\n")[:-1]
 
     def test_no_index_an_old_one_or_a_damaged_one_prints_full(self):
         fresh_now = clock.now()
         idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
-        self.assertNotEqual(self.run_select(idx), ["FULL"])  # control: a fresh, sound index gives a subset
-        self.assertEqual(self.run_select(None), ["FULL"])
+        self.assertNotEqual(self.run_select(idx)[0], "FULL")  # control: a fresh, sound index gives a subset
+        self.assertEqual(self.run_select(None)[0], "FULL")
         self.assertEqual(
             self.run_select(
                 {**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-            ),
-            ["FULL"],
+            )[0],
+            "FULL",
         )
         self.assertEqual(
-            self.run_select(index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now)), ["FULL"]
+            self.run_select(index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now))[0], "FULL"
         )  # a number outside the test list
-        self.assertEqual(self.run_select({"schema": 1, "generated_at": idx["generated_at"]}), ["FULL"])  # keys missing
+        self.assertEqual(self.run_select({"schema": 1, "generated_at": idx["generated_at"]})[0], "FULL")  # keys missing
+
+    def test_full_says_why_on_the_lines_after_the_first(self):
+        fresh_now = clock.now()
+        idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
+        self.assertEqual(
+            self.run_select(None), ["FULL", "FULL because test index: the test index is missing or unreadable"]
+        )
+        old = {**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        self.assertIn("8 days old", self.run_select(old)[1])
+        broken = self.run_select({"schema": 1, "generated_at": idx["generated_at"]})
+        self.assertEqual(broken, ["FULL", "FULL because selector error: KeyError"])
+        workflow = self.run_select(idx, changed=(".github/workflows/pr-tests.yml", "tests/kit/db.py"))
+        self.assertEqual(workflow[0], "FULL")
+        self.assertIn("FULL because .github/workflows/pr-tests.yml: under .github/ (run-everything prefix)", workflow)
+        self.assertIn("FULL because tests/kit/db.py: under tests/kit/ (run-everything prefix)", workflow)
+
+    def test_a_platform_change_in_a_pull_request_uses_the_import_graph_not_everything(self):
+        fresh_now = clock.now()
+        idx = index({}, tests=("tests.platform.test_settings.S.test_one",), made=fresh_now)
+        picked = self.run_select(idx, changed=("lifeos/platform/settings.py",))
+        self.assertNotEqual(picked[0], "FULL")
+        self.assertIn("tests.platform.test_settings", picked)
+        self.assertIn("tests.contracts.test_privacy", picked)
+        self.assertEqual(
+            self.run_select(None, changed=("lifeos/platform/settings.py",))[0], "FULL"
+        )  # no index: fail open
 
     def test_an_index_that_lies_about_a_file_still_runs_the_tests_named_after_it(self):
         idx = index({"jobs/a.py": [2]})  # says only a sources test covers jobs/a.py

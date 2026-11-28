@@ -56,7 +56,10 @@ jobs:
           else
             echo FULL > selected.txt
           fi
-          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked: everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
+            echo "tests picked: everything" | tee -a "$GITHUB_STEP_SUMMARY"
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then tail -n +2 selected.txt | grep '^FULL because ' | tee -a "$GITHUB_STEP_SUMMARY" || echo "FULL because the selector gave no reason" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "FULL because a merge to main always runs everything" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          else echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
       - name: Unit tests (four parallel shards when everything runs, balanced on CI seconds; warn at 90 s, fail at 120 s)
         run: |
           start=$(date +%s)
