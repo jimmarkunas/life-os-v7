@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import pathlib
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -243,15 +244,15 @@ class Main(unittest.TestCase):
 @unittest.skipIf(yaml is None, "pyyaml unavailable")
 class Workflows(unittest.TestCase):
     def test_the_early_dispatch_passes_the_tick_run_id_and_the_domains_workflow_names_its_gate_by_it(self):
-        hourly = (ROOT / ".github/workflows/hourly.yml").read_text()
+        hourly = wftext.logical("hourly")
         self.assertIn('-f "inputs[tick_run]=${GITHUB_RUN_ID}"', hourly)
-        domains = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
+        domains = yaml.safe_load(wftext.logical("domains"))
         self.assertIn("tick_run", domains[True]["workflow_dispatch"]["inputs"])
         self.assertIn("gate (tick", domains["jobs"]["gate"]["name"])
         self.assertIn("workflow_run.id", domains["jobs"]["gate"]["name"])
 
     def test_the_chain_job_runs_after_every_domain_job_reads_only_and_cannot_fail_the_run(self):
-        domains = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
+        domains = yaml.safe_load(wftext.logical("domains"))
         chain = domains["jobs"]["chain"]
         self.assertEqual(set(chain["needs"]), set(domains["jobs"]["report"]["needs"]))
         self.assertEqual(chain["permissions"], {"contents": "read", "actions": "read"})

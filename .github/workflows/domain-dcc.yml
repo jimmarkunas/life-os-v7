@@ -1,0 +1,100 @@
+name: domain-dcc
+on:
+  workflow_call:
+    inputs:
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  dcc:
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "200"
+      - id: bws_dcc
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: dcc
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: dcccard
+        continue-on-error: true
+        name: Daily Command Center
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: &a4 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          GITHUB_TOKEN: &a5 ${{ github.token }}
+          DCC_CARD_BLOCK_ID: &a6 ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          BILLS_CARD_BLOCK_ID: ""
+          AMAZON_CARD_BLOCK_ID: ""
+          MAIL_ALERTS_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+          NOTION_JIRA_TOKEN: &a7 ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: archive
+        continue-on-error: true
+        name: Weekly Reports Archive
+        env:
+          GITHUB_TOKEN: *a5
+          DCC_CARD_BLOCK_ID: *a6
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          WEEKLY_ARCHIVE_PAGE_ID: ""
+          LIFEOS_NOTION_IDS: ""
+          NOTION_JIRA_TOKEN: *a7
+        run: python -m lifeos.run report-archive --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Weekly Reports Archive warning (does not fail the Jobs run)
+        if: ${{ always() && steps.archive.outcome == 'failure' }}
+        run: echo "::warning title=Weekly Reports Archive::today's snapshot could not be written or read back; the archive keeps its earlier pages and the next run tries again"
+      - name: Daily Command Center warning (does not fail the Jobs run)
+        if: ${{ always() && steps.dcccard.outcome == 'failure' }}
+        run: echo "::warning title=Daily Command Center::the Command Center could not be written; its callout keeps the last text and the Jobs pipeline is unaffected"
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=dcc::a stage step failed in the dcc job (see the step marked failed above)"; exit 1

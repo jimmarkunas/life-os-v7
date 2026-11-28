@@ -26,7 +26,7 @@ def violations(files, inventory):
                 continue
             where = f"{path}:{number}"
             used = USES.match(line)
-            if used and not used.group(1).startswith("./.github/actions/"):
+            if used and not used.group(1).startswith(("./.github/actions/", "./.github/workflows/")):  # a local composite action or reusable workflow is this repo's own code
                 pinned = PINNED.match(used.group(1))
                 if not pinned:
                     problems.append(f"{where} action not pinned to a 40-character fingerprint: {used.group(1)}")

@@ -4,6 +4,7 @@ of those regions, or the other.
 
 import pathlib
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -59,7 +60,7 @@ def unordered_pairs(graph):
 @unittest.skipIf(yaml is None, "PyYAML unavailable")
 class ComparingCardsAreOrdered(unittest.TestCase):
     def setUp(self):
-        self.jobs = yaml.safe_load(WORKFLOW.read_text())["jobs"]
+        self.jobs = yaml.safe_load(wftext.logical("domains"))["jobs"]
         self.graph = needs_of(self.jobs)
 
     def test_every_card_that_compares_regions_is_ordered_against_the_cards_it_compares(self):

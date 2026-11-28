@@ -5,6 +5,7 @@ import json
 import pathlib
 import tempfile
 import unittest
+from tests import wftext  # noqa: E402
 
 try:
     import yaml
@@ -265,7 +266,7 @@ class Main(unittest.TestCase):
 class TableMatchesTheWorkflow(unittest.TestCase):
     def test_every_domain_job_has_exactly_one_row_and_every_row_is_valid(self):
         jobs = yaml.safe_load(
-            (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text()
+            wftext.logical("domains")
         )["jobs"]
         domain = set(jobs) - {"gate", "report", "chain"}
         table = due.load_table()

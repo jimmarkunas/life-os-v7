@@ -1,4 +1,4 @@
-""".github/workflows/hourly.yml is the parts in.github/workflows-src/hourly joined in file-name order, like domains.yml"""
+""".github/workflows/hourly.yml and tick-<job>.yml are the parts in .github/workflows-src/hourly joined in file-name order and cut into a caller and reusable workflows, like domains.yml"""
 
 import io
 import pathlib
@@ -27,9 +27,12 @@ def check():
 
 
 class HourlyParts(unittest.TestCase):
-    def test_the_generated_file_is_the_parts_joined_without_comments(self):
-        self.assertEqual(regen.hourly_text(), GENERATED.read_text(), "run python tools/regen.py")
-        self.assertNotRegex(GENERATED.read_text(), r"(?m)^ {0,8}#")
+    def test_the_generated_files_are_the_parts_joined_and_cut_without_comments(self):
+        made = regen.hourly_files()
+        self.assertIn(GENERATED, made)
+        for path, text in made.items():
+            self.assertEqual(text, path.read_text(), f"run python tools/regen.py ({path.name})")
+            self.assertNotRegex(path.read_text(), r"(?m)^ {0,8}#", path.name)
 
     def test_each_part_holds_the_job_its_file_name_says_and_long_jobs_continue_in_lettered_files(self):
         files = sorted(PARTS.glob("*.yml"))
@@ -49,7 +52,7 @@ class HourlyParts(unittest.TestCase):
     def test_the_parts_define_the_jobs_the_workflow_runs(self):
         import yaml
 
-        jobs = list(yaml.safe_load(GENERATED.read_text())["jobs"])
+        jobs = list(yaml.safe_load(regen.hourly_text())["jobs"])
         self.assertEqual(
             jobs,
             [

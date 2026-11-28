@@ -22,7 +22,6 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT: ${{ env.V7_CLOUD_FIT || 'off' }}  # off unless the repository variable says shadow or canary; on is refused in code

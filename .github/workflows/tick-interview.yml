@@ -1,0 +1,131 @@
+name: tick-interview
+on:
+  workflow_call:
+    inputs:
+      interview:
+        type: boolean
+        default: false
+      interview_acceptance:
+        type: boolean
+        default: false
+      interview_probe:
+        type: boolean
+        default: false
+      live:
+        type: boolean
+        default: false
+      tick:
+        type: boolean
+        default: false
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+  V7_FIT_GATE: ""
+  HIRING_PIPELINE_PAGE_ID: ""
+jobs:
+  interview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      FIT_PROFILE_EXTRA_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "300"
+      - id: bws_interview
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: hourly-interview
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,LIVE
+          live_mode: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || 'follow' }}
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: iprobe
+        continue-on-error: true
+        name: Interview shape probe (counts only, writes nothing)
+        if: ${{ inputs.interview_probe }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: &a4 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          NOTION_INTERVIEW_TOKEN: &a5 ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
+        run: python -m lifeos.run interview-probe
+      - id: irun
+        continue-on-error: true
+        name: Interview stage (live only when move mail is ticked)
+        if: ${{ inputs.interview }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          LIFEOS_NOTION_IDS: ""
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          NOTION_INTERVIEW_TOKEN: *a5
+        run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - id: iacc
+        continue-on-error: true
+        name: Interview private acceptance (manual dispatch only)
+        if: &a6 ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_JSON }}
+          NOTION_INTERVIEW_TOKEN: *a5
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+        run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
+      - id: iaccneg
+        continue-on-error: true
+        name: Interview private acceptance - negative case
+        if: *a6
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a4
+          INTERVIEW_ACCEPTANCE_JSON: ${{ steps.bws_interview.outputs.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}
+          NOTION_INTERVIEW_TOKEN: *a5
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+        run: |
+          if [ -z "$INTERVIEW_ACCEPTANCE_JSON" ]; then echo "INTERVIEW-ACCEPTANCE NEGATIVE CASE NOT SET"; exit 0; fi
+          python -m lifeos.run interview-acceptance --limit 1
+      - name: Interview warning (does not fail the run)
+        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure' || steps.iaccneg.outcome == 'failure') }}
+        run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"

@@ -127,7 +127,8 @@ class Workflow(unittest.TestCase):
             self.assertEqual(
                 len(re.findall(r"secrets\.DOPPLER_TOKEN", text)),
                 text.count("uses: ./.github/actions/doppler-load")
-                + len(re.findall(r"^\s+doppler_compare: \$\{\{ secrets\.DOPPLER_TOKEN \}\}$", text, re.M)),
+                + len(re.findall(r"^\s+doppler_compare: \$\{\{ secrets\.DOPPLER_TOKEN \}\}$", text, re.M))
+                + len(re.findall(r"^\s+DOPPLER_TOKEN: \$\{\{ secrets\.DOPPLER_TOKEN \}\}$", text, re.M)),  # a caller hands it on
                 str(path),
             )  # a loader's doppler_compare input is a compare too
 

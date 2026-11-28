@@ -1,6 +1,7 @@
 import pathlib
 import re
 import unittest
+from tests import wftext  # noqa: E402
 
 from lifeos.platform import due
 import sys as _sys
@@ -21,7 +22,7 @@ class WorkflowTests(unittest.TestCase):
         """A workflow that is not valid YAML is silently not runnable (safety.yml shipped that way once)."""
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
         for path in sorted(root.glob("*.y*ml")):
-            data = yaml.safe_load(path.read_text())
+            data = yaml.safe_load(wftext.read(path))
             self.assertIn("jobs", data, path.name)
             self.assertTrue("on" in data or True in data, path.name)
 
@@ -38,7 +39,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_hourly_workflow_is_valid_yaml_with_dispatch_inputs(self):
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(wftext.read(path))
         self.assertIn("workflow_dispatch", data[True])
         self.assertIn("live", data[True]["workflow_dispatch"]["inputs"])
 
@@ -49,7 +50,7 @@ class WorkflowTests(unittest.TestCase):
         import tempfile
 
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(wftext.read(path))
         steps = data["jobs"]["finish"]["steps"]
         index = next(i for i, step in enumerate(steps) if step.get("id") == "publish")
         publish = steps[index]
@@ -108,7 +109,7 @@ class WorkflowTests(unittest.TestCase):
         from lifeos.jobs import tick
 
         path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(wftext.read(path))
         self.assertNotIn("resolve_dice", data[True]["workflow_dispatch"]["inputs"])
         self.assertNotIn("dice", data["jobs"])
         self.assertIn("resolve-dice", [s.name for s in tick.PLAN])
@@ -151,7 +152,7 @@ class WorkflowTests(unittest.TestCase):
         """
         from pathlib import Path
 
-        condition = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())[
+        condition = yaml.safe_load(wftext.logical("domains"))[
             "jobs"
         ]["jira"]["if"]
         self.assertIn("(github.event_name == 'workflow_dispatch' && inputs.jira != 'none')", condition)
@@ -162,8 +163,8 @@ class WorkflowTests(unittest.TestCase):
         from pathlib import Path
 
         root = Path(__file__).resolve().parents[2] / ".github/workflows"
-        hourly = yaml.safe_load((root / "hourly.yml").read_text())
-        domains = yaml.safe_load((root / "domains.yml").read_text())
+        hourly = yaml.safe_load(wftext.logical("hourly"))
+        domains = yaml.safe_load(wftext.logical("domains"))
         for name in ("jira", "outlook", "bills", "agenda", "amazon"):
             self.assertNotIn(name, hourly["jobs"], name)
             self.assertIn(f"needs.gate.outputs.due_{name} == 'true'", domains["jobs"][name]["if"], name)
@@ -179,7 +180,7 @@ class WorkflowTests(unittest.TestCase):
     def test_bills_paid_runs_on_a_tick_before_the_snapshot_and_follows_the_live_flag(self):
         from pathlib import Path
 
-        domains = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())
+        domains = yaml.safe_load(wftext.logical("domains"))
         steps = domains["jobs"]["bills"]["steps"]
         ids = [s.get("id") for s in steps]
         self.assertLess(ids.index("bpaid"), ids.index("bsnap"))  # the snapshot sees the advanced dates
@@ -194,7 +195,7 @@ class WorkflowTests(unittest.TestCase):
 
         root = Path(__file__).resolve().parents[2]
         amazon = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
-        domains = yaml.safe_load((root / ".github/workflows/domains.yml").read_text())
+        domains = yaml.safe_load(wftext.logical("domains"))
         group = amazon["concurrency"]["group"]
         self.assertIn("inputs.stage == 'orders'", group)
         self.assertIn("inputs.phase == 'tick')) && 'life-os-v7-domains' ||", domains["concurrency"]["group"])
@@ -214,7 +215,7 @@ class WorkflowTests(unittest.TestCase):
         from pathlib import Path
 
         root = Path(__file__).resolve().parents[2]
-        hourly = yaml.safe_load((root / ".github/workflows/hourly.yml").read_text())
+        hourly = yaml.safe_load(wftext.logical("hourly"))
         manual = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
         self.assertNotIn("amazon", hourly[True]["workflow_dispatch"]["inputs"])
         self.assertIs(manual[True]["workflow_dispatch"]["inputs"]["live"]["default"], False)
@@ -285,7 +286,7 @@ class WorkflowTests(unittest.TestCase):
         import re
         from pathlib import Path
 
-        text = (Path(__file__).resolve().parents[2] / ".github/workflows/diag.yml").read_text()
+        text = wftext.read(Path(__file__).resolve().parents[2] / ".github/workflows/diag.yml")
         diag = yaml.safe_load(text)
         moved = {
             "LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda",
@@ -506,7 +507,7 @@ class SuiteTimingWorkflow(unittest.TestCase):
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "suite-timing.yml"
 
     def test_it_is_dispatch_only_read_only_and_holds_no_secret(self):
-        text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
+        text, doc = wftext.read(self.path), yaml.safe_load(wftext.read(self.path))
         self.assertEqual(list(doc[True]), ["workflow_dispatch"])  # no schedule, no push, no pull request
         self.assertEqual(doc["permissions"], {"contents": "read", "actions": "read"})
         for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live", "bws-load"):
@@ -519,7 +520,7 @@ class SuiteTimingWorkflow(unittest.TestCase):
     def test_the_timing_job_runs_the_same_shard_command_as_pr_tests(self):
         timing = next(
             s
-            for s in yaml.safe_load(self.path.read_text())["jobs"]["timing"]["steps"]
+            for s in yaml.safe_load(wftext.read(self.path))["jobs"]["timing"]["steps"]
             if s.get("name", "").startswith("Full suite")
         )["run"]
         pr = (self.path.parent / "pr-tests.yml").read_text()
@@ -536,7 +537,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-tests.yml"
 
     def test_it_runs_on_pull_requests_and_main_only_read_only_and_holds_no_secret(self):
-        text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
+        text, doc = wftext.read(self.path), yaml.safe_load(wftext.read(self.path))
         self.assertEqual(list(doc[True]), ["pull_request", "merge_group", "push"])
         self.assertEqual(doc[True]["merge_group"], {"types": ["checks_requested"]})  # the merge queue
         self.assertEqual(doc[True]["push"], {"branches": ["main"]})
@@ -564,11 +565,11 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         )  # the same shard command as unit-tests, on a merge to main
         self.assertIn("tests/second-date-tests.txt", run[0]["run"])  # a pull request runs the listed modules only
         self.assertNotIn("permissions", job)  # the workflow's read-only default is all it gets
-        self.assertIn("unit-tests:", self.path.read_text())  # the required check keeps its name
+        self.assertIn("unit-tests:", wftext.read(self.path))  # the required check keeps its name
 
     def test_the_test_index_is_built_on_main_after_the_tests_and_only_restored_in_pull_requests(self):
         """docs/test-index.json is not committed."""
-        doc = yaml.safe_load(self.path.read_text())
+        doc = yaml.safe_load(wftext.read(self.path))
         unit, build = doc["jobs"]["unit-tests"]["steps"], doc["jobs"]["test-index"]
         key = "test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-"
         restore = next(s for s in unit if str(s.get("uses", "")).startswith("actions/cache/restore@"))
@@ -626,7 +627,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_a_merge_to_main_never_cancels_the_previous_merges_check_but_a_pull_request_push_still_replaces_its_older_one(
         self,
     ):
-        concurrency = yaml.safe_load(self.path.read_text())["concurrency"]
+        concurrency = yaml.safe_load(wftext.read(self.path))["concurrency"]
 
         def settings(name, **context):
             ctx = {"github": {"event_name": name, **context}}
@@ -643,7 +644,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertNotEqual(pr_one[0], other_pr[0])
 
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
-        doc = yaml.safe_load(self.path.read_text())
+        doc = yaml.safe_load(wftext.read(self.path))
         steps = doc["jobs"]["unit-tests"]["steps"]
         names = [s.get("name") or s.get("uses") for s in steps]
         self.assertEqual(names[0], "Checkout the exact commit (own fetch, token never stored)")
@@ -668,7 +669,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 90 \]; then echo "::warning::')
 
     def test_it_also_runs_the_concord_room_plugin_tests_after_the_python_suite_with_no_secret_or_install(self):
-        doc = yaml.safe_load(self.path.read_text())
+        doc = yaml.safe_load(wftext.read(self.path))
         steps = doc["jobs"]["unit-tests"]["steps"]
         names = [s.get("name", "") for s in steps]
         python_suite = next(i for i, n in enumerate(names) if "Unit tests" in n)
@@ -692,7 +693,7 @@ class AmazonRetentionOffTheChainTests(unittest.TestCase):
     def setUpClass(cls):
         try:
             cls.jobs = yaml.safe_load(
-                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/domains.yml").read_text()
+                wftext.logical("domains")
             )["jobs"]
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
@@ -730,7 +731,7 @@ class UnitTestGateTests(unittest.TestCase):
     def setUpClass(cls):
         try:
             cls.doc = yaml.safe_load(
-                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text()
+                wftext.logical("hourly")
             )
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
@@ -818,7 +819,7 @@ class UnitTestGateTests(unittest.TestCase):
             [s.get("id") for s in jobright].index("jobright_browser"), [s.get("id") for s in jobright].index("jobright")
         )
         self.assertNotIn("playwright install", resolve["run"])  # no second install path left in the workflow
-        self.assertNotIn("playwright install", (root / ".github/workflows/hourly.yml").read_text())
+        self.assertNotIn("playwright install", wftext.logical("hourly"))
         action = yaml.safe_load((root / ".github/actions/browser/action.yml").read_text())
         inner = action["runs"]["steps"]
         inner_ids = [s.get("id") for s in inner]
@@ -868,7 +869,7 @@ class BrowserStepBehaviourTests(unittest.TestCase):
         path = (
             pathlib.Path(__file__).resolve().parents[2] / ".github/actions/browser/action.yml"
         )  # item 13: the one shared step
-        steps = yaml.safe_load(path.read_text())["runs"]["steps"]
+        steps = yaml.safe_load(wftext.read(path))["runs"]["steps"]
         cls.script = next(s for s in steps if s.get("id") == "browser")["run"]
 
     def run_step(self, hit, fail_first, libs_hit="false", saved=None, dpkg_fails=False, download_fails=False):
@@ -983,7 +984,7 @@ class FastPathFirstTests(unittest.TestCase):
         except ImportError:
             raise unittest.SkipTest("PyYAML not installed") from None
         root = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows"
-        cls.hourly = yaml.safe_load((root / "hourly.yml").read_text())
+        cls.hourly = yaml.safe_load(wftext.logical("hourly"))
 
     def test_bulk_discovery_runs_after_publish_and_finalize(self):
         ids = [s.get("id") for s in self.hourly["jobs"]["finish"]["steps"]]
@@ -996,7 +997,7 @@ class FastPathFirstTests(unittest.TestCase):
         inputs = self.hourly[True]["workflow_dispatch"]["inputs"]
         self.assertEqual((inputs["quick"]["type"], inputs["quick"]["default"]), ("boolean", False))
         self.assertNotIn("boards", [s.get("id") for s in self.hourly["jobs"]["finish"]["steps"]])
-        text = (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
+        text = wftext.logical("hourly")
         self.assertNotIn("lifeos.run boards --limit", text)
 
 
@@ -1012,7 +1013,7 @@ class IsolatedJobTests(unittest.TestCase):
         import yaml
         from pathlib import Path
 
-        doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
+        doc = yaml.safe_load(wftext.logical("hourly"))
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
         self.assertEqual(sorted(shared), [])
         needs = {"interview": {"HIRING_PIPELINE_PAGE_ID"}}
@@ -1025,7 +1026,7 @@ class IsolatedJobTests(unittest.TestCase):
         from pathlib import Path
 
         for path in (Path(__file__).resolve().parents[2] / ".github/workflows").glob("*.yml"):
-            self.assertNotIn("setup-python", path.read_text(), path.name)
+            self.assertNotIn("setup-python", wftext.read(path), path.name)
 
 
 DB = {
@@ -1386,7 +1387,7 @@ class DomainsWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "domains.yml"
-        cls.doc = yaml.safe_load(path.read_text())
+        cls.doc = yaml.safe_load(wftext.read(path))
 
     def test_no_secret_is_declared_at_the_top(self):
         self.assertEqual([k for k, v in (self.doc.get("env") or {}).items() if "secrets." in str(v)], [])
@@ -1438,9 +1439,9 @@ class DomainsWorkflowTests(unittest.TestCase):
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "")  # declared empty
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
             if path.name not in ("domains.yml", "hourly.yml"):
-                self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
+                self.assertNotIn("V7_CLOSE_BASE_URL", wftext.read(path), path.name)
         hourly = yaml.safe_load(
-            (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text()
+            wftext.logical("hourly")
         )
         named = [
             (job, step.get("id"))
@@ -1624,7 +1625,7 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_v3_pages_runs_after_successful_after_tick_domains_runs_and_keeps_its_cron_fallback_and_live_rule(self):
         """only a successful after-tick domains run starts the V3 page path"""
         path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/v3-pages.yml"
-        text = path.read_text()
+        text = wftext.read(path)
         data = yaml.safe_load(text)
         trigger = data.get("on") or data[True]
         self.assertEqual(trigger["workflow_run"], {"workflows": ["domains"], "types": ["completed"]})
@@ -1641,7 +1642,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(data["permissions"], {"contents": "read"})
         self.assertEqual(data["concurrency"], {"group": "life-os-v7-v3-pages", "cancel-in-progress": False})
         domains_name = yaml.safe_load(
-            (pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text()
+            wftext.logical("domains")
         )["run-name"]
         self.assertIn("'domains (after tick)'", domains_name)  # the title the condition depends on
 
@@ -1863,9 +1864,7 @@ class BitwardenConsumerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
-        cls.text = {
-            p.stem: wfsets.expand_text(p.read_text()) for p in sorted(root.glob("*.yml")) if p.stem not in SECRET_FREE
-        }
+        cls.text = {stem: text for stem, text in wftext.workflow_texts().items() if stem not in SECRET_FREE}
         cls.doc = {n: yaml.safe_load(t) for n, t in cls.text.items()}
 
     def loaders(self, name, job):
@@ -2005,7 +2004,7 @@ class BitwardenConsumerTests(unittest.TestCase):
         for path in sorted(root.rglob("*.y*ml")):
             if path != root / "actions" / "bws-load" / "action.yml":
                 self.assertNotRegex(
-                    path.read_text(), r"uses:\s*bitwarden/", path.name
+                    wftext.read(path), r"uses:\s*bitwarden/", path.name
                 )  # the third-party action is used nowhere else
 
     def test_only_steps_that_run_a_command_receive_a_loaded_value_and_the_loader_carries_exactly_what_they_use(self):
@@ -2182,7 +2181,7 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
     def test_only_it_can_see_the_notion_sync_token(self):
         for path in self.root.glob("*.yml"):
             if path.stem != "profile-sync":
-                self.assertNotIn("NOTION_FIT_SYNC_TOKEN", path.read_text(), path.stem)
+                self.assertNotIn("NOTION_FIT_SYNC_TOKEN", wftext.read(path), path.stem)
 
     def test_it_has_no_schedule_no_top_level_secret_and_runs_one_stage(self):
         on = self.doc.get("on") or self.doc.get(True)
@@ -2219,7 +2218,7 @@ class SweepFailureIsItsOwnLaneTests(unittest.TestCase):
     def setUpClass(cls):
         try:
             cls.doc = yaml.safe_load(
-                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text()
+                wftext.logical("hourly")
             )
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
@@ -2310,7 +2309,7 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
     def setUpClass(cls):
         try:
             cls.doc = yaml.safe_load(
-                pathlib.Path(__file__).resolve().parents[2].joinpath(".github/workflows/hourly.yml").read_text()
+                wftext.logical("hourly")
             )
         except NameError:
             raise unittest.SkipTest("pyyaml unavailable") from None
@@ -2425,8 +2424,8 @@ class ConcurrencyHasNoSwitch(unittest.TestCase):
             root / "lifeos/jobs/tick.py",
             root / "lifeos/platform/credential_list.py",
         ]:
-            self.assertNotIn("TICK_CONCURRENCY", path.read_text(), path.name)
-            self.assertNotIn("BENCH_TICK_CONCURRENCY", path.read_text(), path.name)
+            self.assertNotIn("TICK_CONCURRENCY", wftext.read(path), path.name)
+            self.assertNotIn("BENCH_TICK_CONCURRENCY", wftext.read(path), path.name)
 
 
 LEAN = ("v3-pages", "domains", "hourly")
@@ -2442,8 +2441,8 @@ class DopplerParityTests(unittest.TestCase):
         except ImportError:
             raise unittest.SkipTest("pyyaml unavailable") from None
         root = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows"
-        cls.docs = {p.stem: _yaml.safe_load(p.read_text()) for p in sorted(root.glob("*.yml"))}
-        cls.texts = {p.stem: wfsets.expand_text(p.read_text()) for p in sorted(root.glob("*.yml"))}
+        cls.docs = {stem: _yaml.safe_load(text) for stem, text in wftext.workflow_texts(expand=False).items()}
+        cls.texts = wftext.workflow_texts()
 
     def loaders_with_compare(self):
         """> [(workflow, job, loader step, the compare step that follows it or None)] for every runtime-token Bitwarden

@@ -1,31 +1,3 @@
-      - id: explain
-        continue-on-error: true
-        name: Explain (dispatch only; company names, counts, hashes)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && !startsWith(inputs.report, 'board:') }}
-        env:
-          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
-          EXPLAIN_COMPANY: ${{ inputs.report }}
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
-          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
-          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run explain
       - id: boardcheck
         continue-on-error: true
         name: Board check
@@ -35,9 +7,6 @@
           BOARD_COMPANY: ${{ inputs.report }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
           JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -54,3 +23,27 @@
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run board-check $([ "$LIVE" = "true" ] && echo --live)
+      - id: funnel
+        continue-on-error: true
+        name: Funnel report (dispatch only, read-only, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'funnel' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+        run: python -m lifeos.run funnel

@@ -1,0 +1,126 @@
+name: domain-recruiters
+on:
+  workflow_call:
+    inputs:
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+      refresh:
+        type: string
+        default: "none"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  recruiters:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "600"
+      - id: bws_recruiters
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: recruiters
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
+        continue-on-error: true
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_recruiters.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: recruiters
+        if: &a4 ${{ inputs.refresh != 'recruiters' }}
+        continue-on-error: true
+        name: Recruiters (read-only mail to its data source; counts)
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: &a5 ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          DOMAINS_PHASE: ${{ inputs.phase }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          OUTLOOK_CLIENT_ID: ${{ steps.bws_recruiters.outputs.OUTLOOK_CLIENT_ID }}
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_RECRUITERS_TOKEN: &a6 ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+        run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: routreach
+        continue-on-error: true
+        name: Recruiter Outreach
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a5
+          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}
+          RECRUITERS_SCAN: ${{ steps.recruiters.outputs.scan_kind }}
+          RECRUITERS_SCAN_AT: ${{ steps.recruiters.outputs.scan_at }}
+          RECRUITER_OUTREACH: ""
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
+          HIRING_TABLE_BLOCK_ID: ""
+          RECRUITER_COUNT_BLOCK_ID: ""
+          V7_CLOSE_BASE_URL: ""
+          NOTION_RECRUITERS_TOKEN: *a6
+          NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: jpoutreach
+        if: *a4
+        continue-on-error: true
+        name: Job-page outreach
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: *a5
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ""
+          JOB_PAGE_OUTREACH: ""
+          V7_CLOSE_BASE_URL: ""
+          NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN }}
+          NOTION_RECRUITERS_TOKEN: *a6
+        run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Recruiters warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
+        run: echo "::warning title=Recruiters::the Recruiters stage, the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=recruiters::a stage step failed in the recruiters job (see the step marked failed above)"; exit 1

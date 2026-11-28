@@ -1,7 +1,7 @@
-      - id: sync_seen
+      - id: publish
         continue-on-error: true
-        name: Step 8 - Last Seen sync
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
+        name: Step 7 - publish READY jobs to Notion
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -22,13 +22,12 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
-      - id: purge
+        run: python -m lifeos.run publish --limit 60 $([ "$LIVE" = "true" ] && echo --live)
+      - id: holds
         continue-on-error: true
-        name: Step 8b - retention purge
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance && needs.prep.outputs.pipeline != 'true' }}
+        name: Step 7a - exclude jobs that have sat on HOLD for 7 days
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
         env:
           V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -49,22 +48,5 @@
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-          NTFY_TOPIC: ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
-          PURGE_FORCE: ${{ inputs.maintenance }}
-        run: |
-          # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
-          status=0
-          out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
-          echo "$out"
-          last=$(printf '%s\n' "$out" | tail -n 1)
-          if [ "$status" = "0" ]; then
-            case "$last" in
-              *not_due*|*skipped_dry_run*) ;;
-              *) python3 -m lifeos.platform.alerts push --key purge_done --title "V7 weekly purge done" --body "$last" || true ;;
-            esac
-          else
-            python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
-            exit 1
-          fi
+        run: python -m lifeos.run expire-holds $([ "$LIVE" = "true" ] && echo --live)

@@ -1,0 +1,132 @@
+name: domain-mail
+on:
+  workflow_call:
+    inputs:
+      live:
+        type: boolean
+        default: false
+      phase:
+        type: string
+        default: "none"
+      physical_mail_anchor:
+        type: string
+        default: ""
+      physical_mail_tracking:
+        type: string
+        default: ""
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+env:
+  STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
+jobs:
+  mail:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Python and the Bitwarden helper
+        uses: ./.github/actions/job-start
+        with:
+          wait_seconds: "200"
+      - id: bws_mail
+        name: Load the migrated credentials from Bitwarden
+        uses: &a1 ./.github/actions/bws-load
+        with:
+          access_token: &a2 ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          doppler_compare: &a3 ${{ secrets.DOPPLER_TOKEN }}
+          set_env: false
+          set: mail
+      - name: Plain switches from Bitwarden
+        uses: ./.github/actions/bws-plain
+        with:
+          access_token: *a2
+          names: ALERTS_ENABLED,ALERTS_MUTED_UNTIL,ALERT_SETTINGS,LIFEOS_ACQ_SSH_PORT,V7_STORE_VIA,LIVE
+          live_mode: ${{ (github.event_name == 'workflow_run' || inputs.phase == 'tick') && 'follow' || github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || 'false' }}
+      - name: Join the tailnet as the ephemeral tag:v7-runner node
+        continue-on-error: true
+        uses: ./.github/actions/tailscale
+        with:
+          oauth-client-id: ${{ steps.bws_mail.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_mail.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+      - id: mail
+        continue-on-error: true
+        name: Physical Mail (Gmail read-only; saved with read-back)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: &a4 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_ID }}
+          PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
+          PHYSICAL_MAIL_EXPECT: ""
+          PHYSICAL_MAIL_TRACKING_ENTRY: ${{ inputs.physical_mail_tracking }}
+          GMAIL_OAUTH_CLIENT_SECRET: &a5 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: &a6 ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: &a7 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: &a8 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: &a9 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: &a10 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: &a11 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: &a12 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: &a13 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: &a14 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: &a15 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: &a16 ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: ${{ steps.bws_mail.outputs.NTFY_TOPIC }}
+        run: python -m lifeos.run mail-alerts $([ "$LIVE" = "true" ] && echo --live)
+      - id: mfile
+        continue-on-error: true
+        name: Physical Mail filing
+        if: &a17 ${{ always() }}
+        env:
+          GMAIL_OAUTH_CLIENT_ID: *a4
+          GMAIL_OAUTH_CLIENT_SECRET: *a5
+          GMAIL_OAUTH_REFRESH_TOKEN: *a6
+        run: python -m lifeos.run mail-filing $([ "$LIVE" = "true" ] && echo --live)
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden
+        uses: *a1
+        with:
+          access_token: *a2
+          doppler_compare: *a3
+          set_env: false
+          set: runtime-config
+      - id: mcard
+        continue-on-error: true
+        name: Mail Alerts card
+        if: *a17
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          MAIL_ALERTS_CARD_BLOCK_ID: ""
+          AMAZON_CARD_BLOCK_ID: ""
+          BILLS_CARD_BLOCK_ID: ""
+          CALENDAR_CARD_BLOCK_ID: ""
+          JIRA_CARD_BLOCK_ID: ""
+          HIRING_CARD_BLOCK_ID: ""
+          MAIL_SYNC_OUTCOME: ${{ steps.mail.outcome }}
+          LIFEOS_ACQ_DB_NAME: *a7
+          LIFEOS_ACQ_DB_PASSWORD: *a8
+          LIFEOS_ACQ_DB_USER: *a9
+          LIFEOS_ACQ_SSH_HOST: *a10
+          LIFEOS_ACQ_SSH_JUMP_KEY: *a11
+          LIFEOS_ACQ_SSH_JUMP_HOST: *a12
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: *a13
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: *a14
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: *a15
+          LIFEOS_ACQ_SSH_USER: *a16
+          NOTION_JIRA_TOKEN: ${{ steps.bws_mail.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run mail-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Mail Alerts warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
+        run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
+      - name: Fail the job if any stage step failed
+        if: ${{ always() && contains(steps.*.outcome, 'failure') }}
+        run: echo "::error title=mail::a stage step failed in the mail job (see the step marked failed above)"; exit 1

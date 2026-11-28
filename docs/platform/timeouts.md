@@ -31,48 +31,54 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `branches.yml` | `archive` | 5 | 5 | 96 | 14 | 24 | twice the slowest run (24 s) rounded up to whole minutes, 5-minute floor |
 | `branches.yml` | `report` | 10 | 10 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
 | `calendar.yml` | `calendar` | 15 | 15 | 6 | 12 | 18 | kept: only 6 measured runs (fewer than 10), slowest 18 s |
-| `diag.yml` | `diag` | 10 | 10 | 33 | 14 | 97 | twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged |
-| `diag.yml` | `inbox_view_qa` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-711); keeps its current value |
-| `diag.yml` | `interview_ui` | 5 | 5 | 10 | 240 | 302 | slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit) |
-| `diag.yml` | `report` | 10 | 10 | 10 | 14 | 19 | twice the slowest run (19 s) rounds to 10 min, not below the current 10: unchanged |
-| `diag.yml` | `sandbox` | 5 | 5 | 4 | 10 | 30 | kept: only 4 measured runs (fewer than 10), slowest 30 s |
-| `diag.yml` | `trace` | 10 | 10 | 5 | 13 | 16 | kept: only 5 measured runs (fewer than 10), slowest 16 s |
-| `domains.yml` | `agenda` | 15 | 15 | 45 | 32 | 87 | twice the slowest run (87 s) rounds to 15 min, not below the current 15: unchanged |
-| `domains.yml` | `amazon` | 15 | 15 | 45 | 19 | 30 | twice the slowest run (30 s) rounds to 15 min, not below the current 15: unchanged |
-| `domains.yml` | `amazon_retention` | 15 | 15 | 45 | 255 | 556 | twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged |
-| `domains.yml` | `bills` | 15 | 15 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 15 min, not below the current 15: unchanged |
-| `domains.yml` | `chain` | 5 | 5 | 0 | 0 | 0 | kept: new job (LIFE-904), reads the Actions API only |
-| `domains.yml` | `dcc` | 10 | 10 | 45 | 31 | 57 | twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged |
-| `domains.yml` | `gate` | 5 | 5 | 45 | 4 | 9 | twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged |
-| `domains.yml` | `granola` | 20 | 20 | 45 | 36 | 56 | twice the slowest run (56 s) rounds to 20 min, not below the current 20: unchanged |
-| `domains.yml` | `hiring` | 15 | 15 | 46 | 92 | 124 | twice the slowest run (124 s) rounds to 15 min, not below the current 15: unchanged |
-| `domains.yml` | `hiring_outcomes` | 30 | 30 | 31 | 18 | 22 | twice the slowest run (22 s) rounds to 30 min, not below the current 30: unchanged |
-| `domains.yml` | `imessage` | 10 | 10 | 45 | 113 | 162 | twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged |
-| `domains.yml` | `interview_mail` | 30 | 30 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `domains.yml` | `interview` | 30 | 30 | 31 | 442 | 678 | twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged |
-| `domains.yml` | `fit_cloud_backlog` | 58 | 58 | 12 | 58 | 107 | LIFE-856: moved from the hourly finish job unchanged; its batch ends by :55 and the 58 minute limit it had there |
-| `domains.yml` | `followup` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `domains.yml` | `jira` | 15 | 15 | 45 | 82 | 117 | twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged |
-| `domains.yml` | `mail` | 10 | 10 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged |
-| `domains.yml` | `megibow` | 20 | 20 | 45 | 36 | 334 | twice the slowest run (334 s) rounds to 20 min, not below the current 20: unchanged |
-| `domains.yml` | `outlook` | 10 | 10 | 45 | 22 | 498 | twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged |
-| `domains.yml` | `last_seen_purge` | 20 | 20 | 12 | 24 | 51 | LIFE-856 change 5: Steps 8 and 8b moved from the hourly finish job unchanged (about 14 s and 10 s p50 there); the 20 minute limit of the other late jobs kept |
-| `domains.yml` | `network_surface` | 20 | 20 | 12 | 109 | 209 | LIFE-856: moved from the hourly finish job unchanged (109 s p50, 209 s slowest as Step 7c there); the 20 minute limit of the other late jobs kept |
-| `domains.yml` | `recruiters` | 30 | 30 | 54 | 86 | 1501 | twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged |
-| `domains.yml` | `report` | 5 | 5 | 8 | 8 | 10 | kept: only 8 measured runs (fewer than 10), slowest 10 s |
-| `domains.yml` | `weekly_review` | 10 | 10 | 0 | - | - | new job (LIFE-945): not measured yet; 10 min like the other card jobs, the stage budget is 600 s |
+| `diag-main.yml` | `diag` | 10 | 10 | 33 | 14 | 97 | twice the slowest run (97 s) rounds to 10 min, not below the current 10: unchanged |
+| `diag-inbox-view-qa.yml` | `inbox_view_qa` | 10 | 10 | 0 | - | - | not measured: new job (LIFE-711); keeps its current value |
+| `diag-interview-ui.yml` | `interview_ui` | 5 | 5 | 10 | 240 | 302 | slowest run 302 s reached 90% of the current limit: keeps 5 min and is listed for Jim (the job is at its limit) |
+| `diag-report.yml` | `report` | 10 | 10 | 10 | 14 | 19 | twice the slowest run (19 s) rounds to 10 min, not below the current 10: unchanged |
+| `diag-sandbox.yml` | `sandbox` | 5 | 5 | 4 | 10 | 30 | kept: only 4 measured runs (fewer than 10), slowest 30 s |
+| `diag-trace.yml` | `trace` | 10 | 10 | 5 | 13 | 16 | kept: only 5 measured runs (fewer than 10), slowest 16 s |
+| `domain-agenda.yml` | `agenda` | 15 | 15 | 45 | 32 | 87 | twice the slowest run (87 s) rounds to 15 min, not below the current 15: unchanged |
+| `domain-amazon.yml` | `amazon` | 15 | 15 | 45 | 19 | 30 | twice the slowest run (30 s) rounds to 15 min, not below the current 15: unchanged |
+| `domain-amazon-retention.yml` | `amazon_retention` | 15 | 15 | 45 | 255 | 556 | twice the slowest run (556 s) rounds to 19 min, not below the current 15: unchanged |
+| `domain-bills.yml` | `bills` | 15 | 15 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 15 min, not below the current 15: unchanged |
+| `domain-run.yml` | `chain` | 5 | 5 | 0 | 0 | 0 | kept: new job (LIFE-904), reads the Actions API only |
+| `domain-dcc.yml` | `dcc` | 10 | 10 | 45 | 31 | 57 | twice the slowest run (57 s) rounds to 10 min, not below the current 10: unchanged |
+| `domain-gate.yml` | `gate` | 5 | 5 | 45 | 4 | 9 | twice the slowest run (9 s) rounds to 5 min, not below the current 5: unchanged |
+| `domain-granola.yml` | `granola` | 20 | 20 | 45 | 36 | 56 | twice the slowest run (56 s) rounds to 20 min, not below the current 20: unchanged |
+| `domain-hiring.yml` | `hiring` | 15 | 15 | 46 | 92 | 124 | twice the slowest run (124 s) rounds to 15 min, not below the current 15: unchanged |
+| `domain-hiring-outcomes.yml` | `hiring_outcomes` | 30 | 30 | 31 | 18 | 22 | twice the slowest run (22 s) rounds to 30 min, not below the current 30: unchanged |
+| `domain-imessage.yml` | `imessage` | 10 | 10 | 45 | 113 | 162 | twice the slowest run (162 s) rounds to 10 min, not below the current 10: unchanged |
+| `domain-interview-mail.yml` | `interview_mail` | 30 | 30 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
+| `domain-interview.yml` | `interview` | 30 | 30 | 31 | 442 | 678 | twice the slowest run (678 s) rounds to 30 min, not below the current 30: unchanged |
+| `domain-fit-cloud-backlog.yml` | `fit_cloud_backlog` | 58 | 58 | 12 | 58 | 107 | LIFE-856: moved from the hourly finish job unchanged; its batch ends by :55 and the 58 minute limit it had there |
+| `domain-followup.yml` | `followup` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
+| `domain-jira.yml` | `jira` | 15 | 15 | 45 | 82 | 117 | twice the slowest run (117 s) rounds to 15 min, not below the current 15: unchanged |
+| `domain-mail.yml` | `mail` | 10 | 10 | 45 | 28 | 90 | twice the slowest run (90 s) rounds to 10 min, not below the current 10: unchanged |
+| `domain-megibow.yml` | `megibow` | 20 | 20 | 45 | 36 | 334 | twice the slowest run (334 s) rounds to 20 min, not below the current 20: unchanged |
+| `domain-outlook.yml` | `outlook` | 10 | 10 | 45 | 22 | 498 | twice the slowest run (498 s) rounds to 17 min, not below the current 10: unchanged |
+| `domain-last-seen-purge.yml` | `last_seen_purge` | 20 | 20 | 12 | 24 | 51 | LIFE-856 change 5: Steps 8 and 8b moved from the hourly finish job unchanged (about 14 s and 10 s p50 there); the 20 minute limit of the other late jobs kept |
+| `domain-network-surface.yml` | `network_surface` | 20 | 20 | 12 | 109 | 209 | LIFE-856: moved from the hourly finish job unchanged (109 s p50, 209 s slowest as Step 7c there); the 20 minute limit of the other late jobs kept |
+| `domain-recruiters.yml` | `recruiters` | 30 | 30 | 54 | 86 | 1501 | twice the slowest run (1501 s) rounds to 51 min, not below the current 30: unchanged |
+| `domain-run.yml` | `report` | 5 | 5 | 8 | 8 | 10 | kept: only 8 measured runs (fewer than 10), slowest 10 s |
+| `domain-weekly-review.yml` | `weekly_review` | 10 | 10 | 0 | - | - | new job (LIFE-945): not measured yet; 10 min like the other card jobs, the stage budget is 600 s |
 | `fit-edge-test.yml` | `fit_edge` | 5 | 5 | 12 | 27 | 76 | twice the slowest run (76 s) rounds to 5 min, not below the current 5: unchanged |
 | `granola-auto.yml` | `auto` | 20 | 20 | 10 | 43 | 109 | twice the slowest run (109 s) rounds to 20 min, not below the current 20: unchanged |
 | `granola.yml` | `granola` | 15 | 15 | 4 | 28 | 41 | kept: only 4 measured runs (fewer than 10), slowest 41 s |
 | `hermes-stage.yml` | `hermes` | 10 | 10 | 5 | 10 | 12 | kept: only 5 measured runs (fewer than 10), slowest 12 s |
-| `hourly.yml` | `finish` | 58 | 58 | 100 | 116 | 815 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): the tick's 35-minute budget and the D238 backlog batch to :55; revisit after a week of runs |
-| `hourly.yml` | `interview` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `jobright` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `lensa` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `linkedin` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
-| `hourly.yml` | `prep` | 45 | 45 | 100 | 25 | 235 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs |
+| `tick-finish.yml` | `finish` | 58 | 58 | 100 | 116 | 815 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): the tick's 35-minute budget and the D238 backlog batch to :55; revisit after a week of runs |
+| `tick-manual-acquire.yml` | `manual_acquire` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-fit.yml` | `manual_fit` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-publish.yml` | `manual_publish` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-scaleup.yml` | `manual_scaleup` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-reports.yml` | `manual_reports` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-maintenance.yml` | `manual_maintenance` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-interview.yml` | `interview` | 15 | 15 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
+| `tick-jobright.yml` | `jobright` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
+| `tick-lensa.yml` | `lensa` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
+| `tick-linkedin.yml` | `linkedin` | 40 | 40 | 0 | - | - | not measured: no completed run in the last 100; keeps its current value |
+| `tick-prep.yml` | `prep` | 45 | 45 | 100 | 25 | 235 | kept at Jim's decision (Nov 15 2026, approve, leave prep and finish): up to 25 min gate wait for an older run (D210) plus the Bitwarden helper wait plus the tests; revisit after a week of runs |
 | `hourly.yml` | `report` | 5 | 5 | 100 | 2 | 16 | twice the slowest run (16 s) rounds to 5 min, not below the current 5: unchanged |
-| `hourly.yml` | `unit-tests` | 20 | 20 | 0 | - | - | new job (LIFE-856 change 1): the unit tests took 125 to 235 s inside `prep` (slowest prep run 235 s); 20 minutes keeps generous room; revisit after a week of runs |
+| `tick-unit-tests.yml` | `unit-tests` | 20 | 20 | 0 | - | - | new job (LIFE-856 change 1): the unit tests took 125 to 235 s inside `prep` (slowest prep run 235 s); 20 minutes keeps generous room; revisit after a week of runs |
 | `interview-proof.yml` | `proof` | 30 | 30 | 18 | 506 | 1614 | twice the slowest run (1614 s) rounds to 54 min, not below the current 30: unchanged |
 | `manual-job.yml` | `manual` | 15 | 15 | 4 | 47 | 71 | kept: only 4 measured runs (fewer than 10), slowest 71 s |
 | `mariadb-race.yml` | `race` | 10 | 10 | 0 | - | - | new job (LIFE-903): a MariaDB container start (about 30 s), pip install and a 10 s race; 10-minute guard, no run measured yet |
@@ -98,16 +104,22 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 
 ### At their limit (for Jim)
 
-* `diag.yml::interview_ui`: slowest run 302 s against a limit of 5 min: this job reaches its limit. It keeps 5 min; whether it should run longer or do less is a decision for Jim.
+* `diag-interview-ui.yml::interview_ui`: slowest run 302 s against a limit of 5 min: this job reaches its limit. It keeps 5 min; whether it should run longer or do less is a decision for Jim.
 * `network.yml::network`: slowest run 1818 s against a limit of 30 min: this job reaches its limit. It keeps 30 min; whether it should run longer or do less is a decision for Jim.
 
 ## Steps with their own timeout
 
 | Workflow | Job | Step timeout (min) |
 | --- | --- | ---: |
-| `hourly.yml` | `linkedin` | 4 |
+| `tick-linkedin.yml` | `linkedin` | 4 |
 | `boards.yml` | `boards` | 15 (window), 25 (catch-up) |
-| `hourly.yml` | `finish` | 15, 10 |
+| `tick-finish.yml` | `finish` | 15, 10 |
+| `tick-manual-acquire.yml` | `manual_acquire` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-fit.yml` | `manual_fit` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-publish.yml` | `manual_publish` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-scaleup.yml` | `manual_scaleup` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-reports.yml` | `manual_reports` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
+| `tick-manual-maintenance.yml` | `manual_maintenance` | 58 | 58 | 0 | - | - | cut from the finish job: the manual stages that ran in it, the same 58-minute limit; not measured as its own job yet |
 
 A step has no timeout of its own unless listed: it is bounded by its job's `timeout-minutes` and, for a stage, by its stage budget.
 

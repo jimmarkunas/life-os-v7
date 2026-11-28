@@ -15,7 +15,12 @@ DOC = (ROOT / "docs" / "platform" / "timeouts.md").read_text()
 
 
 def jobs():
-    return {f"{wf}::{name}": job for wf, doc in WORKFLOWS.items() for name, job in (doc.get("jobs") or {}).items()}
+    return {
+        f"{wf}::{name}": job
+        for wf, doc in WORKFLOWS.items()
+        for name, job in (doc.get("jobs") or {}).items()
+        if "uses" not in job  # a job that calls a reusable workflow has no runner and no timeout of its own: the called job does
+    }
 
 
 class WorkflowJobTimeouts(unittest.TestCase):

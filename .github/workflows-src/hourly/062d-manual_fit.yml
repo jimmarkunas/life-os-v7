@@ -1,0 +1,37 @@
+      - id: audit
+        continue-on-error: true
+        name: Step 6b - precision audit (before publish)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish) }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+        run: python -m lifeos.run audit $([ "$LIVE" = "true" ] && echo --live)
+      - id: lanes
+        name: Lane failures fail the run (other stages still ran)
+        if: ${{ always() }}
+        env:
+          CODES: ${{ steps.fit.outputs.cloud_fit_code }} ${{ steps.fit_cloud_backlog.outputs.cloud_fit_code }}
+        run: |
+          codes=$(printf '%s\n' $CODES | grep -E '^[A-Z0-9_]{1,48}$' | sort -u | tr '\n' ' ' || true)   # no code is the normal case (bash -e, pipefail)
+          echo "codes=${codes% }" >> "$GITHUB_OUTPUT"
+          failed=""
+          for pair in fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
+          if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
