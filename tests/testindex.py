@@ -408,16 +408,15 @@ def build_command(out):
 
 
 def pick(base, root=ROOT):
-    """> (FULL or the sorted targets, the reasons for FULL). An index that is missing, unreadable or older than 7 days is
-    never used and means FULL; so does any error. A fresh index plus the import graph place a change under
-    lifeos/platform/.
+    """> (FULL or the sorted targets, the reasons for FULL). The import graph (what the local gate uses) places every
+    change under lifeos/, so a missing, unreadable or old (over 7 days) test index only loses the coverage hints: it is
+    never used, and the import graph alone selects. A path nothing can place, and any error, still means FULL.
     """
     why = []
     try:
         index = load()
-        problems = check(index)
-        if problems:
-            return FULL, ["test index: " + problems[0]]
+        if check(index):
+            index = None
         from tests import quickselect
 
         modules = quickselect.lifeos_modules(root)
