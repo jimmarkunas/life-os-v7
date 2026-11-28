@@ -317,6 +317,11 @@
    "required": false,
    "seconds": 150
   },
+  "jira-decisions": {
+   "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
+   "required": false,
+   "seconds": 600
+  },
   "jira-fill": {
    "basis": "no measured step: the table default 600 s; in each workflow never above that job's limit minus 2 minutes; the largest of its workflows' values",
    "required": false,

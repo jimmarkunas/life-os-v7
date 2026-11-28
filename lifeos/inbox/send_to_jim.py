@@ -40,7 +40,7 @@ def _client(env):
     )
 
 
-def deliver(item, environ=None, client=None, now=None):
+def deliver(item, environ=None, client=None, now=None, details_max=None):
     """Returns {"ok": true, "created"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}. Never
     raises or carries content.
     """
@@ -49,7 +49,7 @@ def deliver(item, environ=None, client=None, now=None):
         client = client or _client(env)
     except InboxError as error:
         return {"ok": False, "reason": error.reason}
-    return inbox_send.deliver(item, client, now)
+    return inbox_send.deliver(item, client, now, details_max)
 
 
 def _reply(request_id, result=None, error=None):

@@ -111,7 +111,7 @@ def _link(value):
     return text
 
 
-def normalize(item, now=None):
+def normalize(item, now=None, details_max=DETAILS_MAX):
     """A validated item; `due` is the sender's own, else the one its urgency means at `now`. Raises InboxError."""
     if not isinstance(item, dict):
         raise InboxError("item_invalid")
@@ -134,7 +134,7 @@ def normalize(item, now=None):
         "due": given or due_for(urgency, now or datetime.now(timezone.utc)),
         "due_given": bool(given),
         "link": _link(item.get("link")),
-        "details": _text(item.get("details"), DETAILS_MAX, "details"),
+        "details": _text(item.get("details"), details_max, "details"),
     }
     key = str(item.get("key") or "").strip()
     if key and not _KEY.match(key):
@@ -317,10 +317,10 @@ def _select(name, value):
     return {"property": name, "select": {"equals": value}}
 
 
-def send(client, item, now=None, source=None):
+def send(client, item, now=None, source=None, details_max=DETAILS_MAX):
     """Add one row -> {"created": 1} or {"duplicate": 1}. Raises InboxError when refused or over the rate, NotionError from Notion."""
     now = now or datetime.now(timezone.utc)
-    item = normalize(item, now)
+    item = normalize(item, now, details_max)
     source = source or locate(client)
     matched = (
         client.query_data_source(

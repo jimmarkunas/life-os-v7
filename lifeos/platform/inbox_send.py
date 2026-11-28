@@ -35,11 +35,13 @@ class InboxSendError(ValueError):
         self.reason = reason
 
 
-def deliver(item, client, now=None):
+def deliver(item, client, now=None, details_max=None):
     """-> {"ok": true, "created"|"updated"|"duplicate": 1, "tiles_changed": n} or {"ok": false, "reason": word}."""
     try:
         source = agent_inbox.locate(client)
-        result = agent_inbox.send(client, item, now=now, source=source)
+        result = agent_inbox.send(
+            client, item, now=now, source=source, **({"details_max": details_max} if details_max else {})
+        )
         try:
             result.update(agent_inbox.recount_page(client, source=source))
         except (InboxError, NotionError):
