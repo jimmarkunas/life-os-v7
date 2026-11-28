@@ -190,27 +190,36 @@ def _mirror(rel, package, stem, root, whole):
     return set()
 
 
-def _targets_for(path, index, reaching, root):
+def _targets_for(path, index, reaching, root, why=None):
     """> FULL, or the set of test modules and ids one changed path calls for beyond the contracts. Anything this cannot
-    place is FULL.
+    place is FULL; `why` (a list) then gets one line saying which path and which rule.
     """
     root = pathlib.Path(root)
     name = os.path.basename(path)
-    full_prefixes = FULL_PREFIXES + (INDEX_FULL_PREFIXES if reaching is None else ())
-    if path in FULL_FILES or path.endswith(FULL_SUFFIXES) or path.startswith(full_prefixes):
+
+    def full(rule):
+        if why is not None:
+            why.append("%s: %s" % (path, rule))
         return FULL
+
+    full_prefixes = FULL_PREFIXES + (INDEX_FULL_PREFIXES if reaching is None else ())
+    if path in FULL_FILES or path.endswith(FULL_SUFFIXES):
+        return full("a repo-wide file (FULL_FILES or a lock): any test may depend on it")
+    if path.startswith(full_prefixes):
+        prefix = next(p for p in full_prefixes if path.startswith(p))
+        return full("under %s (run-everything prefix)" % prefix)
     suffix = os.path.splitext(name)[1]
     if "/" not in path:
-        return set() if path.endswith(".md") else FULL
+        return set() if path.endswith(".md") else full("a top-level file that is not markdown")
     if path.startswith("tests/"):
         if path.endswith(".py"):
             if not name.startswith("test_"):
-                return FULL  # a helper, the shard runner or the selector itself: anything may use it
+                return full("a tests/ helper, shard runner or selector: anything may use it")
             return {dotted(path)} if (root / path).is_file() else set()
-        return data_readers(path, root) or FULL
+        return data_readers(path, root) or full("a tests/ data file no test names")
     if path.startswith(IGNORED_PREFIXES):
         if suffix not in DATA_SUFFIXES and suffix != ".py":
-            return FULL
+            return full("a docs/ or tools/ file of a type the selector cannot place (%s)" % (suffix or "no suffix"))
         return data_readers(path, root)
     if path.startswith("lifeos/"):
         rel = path[len("lifeos/") :]
@@ -230,25 +239,31 @@ def _targets_for(path, index, reaching, root):
             found |= _mirror(rel, package, stem, root, whole)
         elif suffix in DATA_SUFFIXES:
             found |= data_readers(path, root) | _mirror(rel, package, stem, root, True)
-        return found or FULL
-    return FULL
+        return found or full("a lifeos/ file no test, mirror or import reaches")
+    return full("a path outside lifeos/, tests/, docs/ and tools/")
 
 
-def select(changed, index, root=ROOT, reaching=None):
+def select(changed, index, root=ROOT, reaching=None, why=None):
     """> FULL, or a sorted list of unittest targets (dotted modules, or dotted test ids). The ONE selector: PR CI calls it
     with the coverage `index`, the local gate with `reaching` (a function from changed lifeos modules to the test modules
     that reach them through the import graph). With neither it cannot judge, and says FULL; a path it cannot place is
-    FULL too.
+    FULL too. `why`, a list, receives the reasons for a FULL.
     """
     if index is None and reaching is None:
+        if why is not None:
+            why.append("no usable test index and no import graph")
         return FULL
     known = module_set(root)
     targets = set(contract_modules(root)) | {m for m in REPO_WIDE if m in known}
+    reasons = []
     for path in (c for c in changed if c):
-        found = _targets_for(path, index, reaching, root)
-        if found == FULL:
-            return FULL
-        targets |= found
+        found = _targets_for(path, index, reaching, root, reasons)
+        if found != FULL:
+            targets |= found
+    if reasons:
+        if why is not None:
+            why.extend(reasons)
+        return FULL
     targets = {t for t in targets if t in known or any(t.startswith(m + ".") for m in known)}
     targets = {_current(t, known, root) for t in targets}  # a renamed test method runs as its module
     modules = {t for t in targets if t in known}
@@ -392,6 +407,30 @@ def build_command(out):
     return index
 
 
+def pick(base, root=ROOT):
+    """> (FULL or the sorted targets, the reasons for FULL). An index that is missing, unreadable or older than 7 days is
+    never used and means FULL; so does any error. A fresh index plus the import graph place a change under
+    lifeos/platform/.
+    """
+    why = []
+    try:
+        index = load()
+        problems = check(index)
+        if problems:
+            return FULL, ["test index: " + problems[0]]
+        from tests import quickselect
+
+        modules = quickselect.lifeos_modules(root)
+
+        def reaching(names):
+            return quickselect.reaching_tests({m for m in names if m in modules}, root)
+
+        picked = select(changed_files(base, root), index, root, reaching, why)
+        return picked, why
+    except Exception as error:
+        return FULL, ["selector error: %s" % type(error).__name__]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m tests.testindex")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -410,14 +449,13 @@ def main(argv=None):
         )
         return 0
     if args.command == "select":
-        try:
-            index = load()
-            picked = select(
-                changed_files(args.base), None if check(index) else index
-            )  # an index older than 7 days is never used
-        except Exception:
-            picked = FULL
+        picked, reasons = pick(args.base)
         print(FULL if picked == FULL else "\n".join(picked))
+        if picked == FULL:
+            for reason in reasons[:20]:
+                print("FULL because " + reason)  # line 1 stays FULL; the workflow shows the rest in the job summary
+            if len(reasons) > 20:
+                print("FULL because ... and %d more" % (len(reasons) - 20))
         return 0
     problems = check(load(), max_age_days=args.max_age_days)
     for problem in problems:
