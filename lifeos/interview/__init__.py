@@ -1,10 +1,7 @@
-"""Interview OS: identity, protection contract, pages, prep, advisor and Granola transcripts."""
+"""Interview OS: identity, protection contract, pages, prep and Granola transcripts."""
 
 __all__ = [
     "acceptance",
-    "advisor",
-    "advisor_queue",
-    "advisor_store",
     "create",
     "granola_bridge",
     "granola_match",
@@ -13,7 +10,6 @@ __all__ = [
     "identity",
     "models",
     "notion",
-    "post_interview",
     "prep",
     "progression",
     "stage",
