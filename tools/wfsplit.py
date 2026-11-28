@@ -124,14 +124,12 @@ def called_file(job, chunks, header, declared, prefix):
         lines += ["    outputs:"] + [
             x for o in outputs for x in (f"      {o}:", "        value: ${{ jobs." + job + ".outputs." + o + " }}")
         ]
-    perm = [c for k, c in chunks if k == "permissions"]
-    # the file's own `permissions` are its job's block: GitHub rejects a called file whose job asks for more than the file itself allows
-    lines += [line[4:] for line in perm[0].split("\n")] if perm else ["permissions:", "  contents: read"]
+    lines += ["permissions:", "  contents: read"]
     env = header_env(header)
     if env:
         lines.append(env)
     lines += ["jobs:", f"  {job}:"]
-    text = "\n".join(lines) + "\n" + "\n".join(perm + [body]) + "\n"
+    text = "\n".join(lines) + "\n" + body + "\n"
     return text, used, passed, secrets
 
 

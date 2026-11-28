@@ -35,16 +35,12 @@ on:
         value: ${{ jobs.finish.outputs.failed }}
 permissions:
   contents: read
-  actions: read
 env:
   NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
   V7_FIT_GATE: ""
   HIRING_PIPELINE_PAGE_ID: ""
 jobs:
   finish:
-    permissions:
-      contents: read
-      actions: read
     outputs:
       failed: ${{ steps.lanes.outputs.failed }}
       codes: ${{ steps.lanes.outputs.codes }}

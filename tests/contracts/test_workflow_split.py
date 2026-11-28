@@ -140,6 +140,23 @@ class Split(unittest.TestCase):
         )  # a failed domain is named and pushed to the phone
         self.assertTrue(set(hourly["report"]["needs"]) >= {j for j in hourly if j.startswith("manual_")} | {"finish"})
 
+    def test_no_workflow_defines_a_key_twice(self):
+        """GitHub refuses a file with a repeated key ('permissions' is already defined) and starts nothing from it; PyYAML keeps the last one silently."""
+
+        class Strict(yaml.SafeLoader):
+            pass
+
+        def mapping(loader, node, deep=False):
+            keys = [loader.construct_object(k, deep=deep) for k, _ in node.value]
+            repeated = {k for k in keys if keys.count(k) > 1}
+            if repeated:
+                raise yaml.constructor.ConstructorError(None, None, f"repeated key {repeated}", node.start_mark)
+            return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+        Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+        for path in sorted(FLOWS.glob("*.yml")):
+            yaml.load(wfsrc.expand_aliases(path.read_text()), Loader=Strict)
+
     def test_the_generated_files_equal_the_parts(self):
         for path, text in regen.split_files().items():
             self.assertEqual(path.read_text(), text, path.name)
