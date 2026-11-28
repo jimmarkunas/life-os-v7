@@ -35,6 +35,7 @@ lifeos/platform/pilot_community.py
 lifeos/platform/relay_choice.py
 lifeos/platform/source_lookup.py
 lifeos/platform/todoist_governed.py
+lifeos/platform/todoist_guard.py
 lifeos/platform/todoist_refresh.py
 bin/honcho-alert
 bin/place-credentials

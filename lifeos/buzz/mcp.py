@@ -91,12 +91,12 @@ def _lift(module, op, state):
 
 
 try:
-    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup, todoist_governed
+    from lifeos.platform import call_limit, google_read, inbox_send, mcp_access, orchestrator, pilot_community, source_lookup, todoist_governed, todoist_guard
     for _module, _state in ((source_lookup, LOOKUP), (google_read, GOOGLE), (inbox_send, INBOX), (orchestrator, ORCH), (todoist_governed, TODOIST)):
         READ.update({op: (text, params, _lift(_module, op, _state)) for op, (text, params) in _module.OPS.items()})
         ROUTES.update({op: _module.route for op in _module.OPS})
 except ImportError:
-    call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = todoist_governed = None
+    call_limit = google_read = inbox_send = mcp_access = orchestrator = pilot_community = source_lookup = todoist_governed = todoist_guard = None
 try:
     from lifeos.platform import memory_honcho, memory_monitor, memory_tools
     memory_honcho.register(READ, _lift, MEMORY)
@@ -151,7 +151,7 @@ def dispatch(relay, name, args, who):
         raise BuzzError("community_required")
     if comm is not None and comm not in who["communities"]:
         raise BuzzError("community_not_authorized")
-    a = {**a, "_client": (who.get("facts") or {}).get("credential") or who.get("client") or "unknown"} if op in (*MEMORY_OPS, "send_to_jim", "agent_status", "agent_dispatch", "agent_messages") else a
+    a = {**a, "_client": (who.get("facts") or {}).get("credential") or who.get("client") or "unknown"} if op in (*MEMORY_OPS, "send_to_jim", "agent_status", "agent_dispatch", "agent_messages", *(todoist_governed.OPS if todoist_governed else ())) else a
     data, nxt = ([c for c in who["communities"] if c in relay.keys], None) if op == "list_communities" else READ[op][2](relay, comm, a)
     return {"ok": True, "contract": CONTRACT, "operation": op, "data": data, "next_cursor": nxt}
 
@@ -249,6 +249,8 @@ def governed(who, name, args, msg, effect, receipts, access=None, now=None):
         memory_monitor and code == "identity_unknown" and memory_monitor.unknown(MEMORY, "client:" + str(who.get("client")), code)
         return _fail(msg, "access_denied" if code in ("identity_unknown", "identity_ambiguous", "unknown_tool", "unknown_tenant", "account_required", "unknown_account") else "governance_unavailable", reason=code, **({"arguments_shape": mcp_access.arguments_shape(args)} if code == "unknown_tenant" and mcp_access else {}))
     if not out.executed:
+        guard = TODOIST.get("guard")
+        guard and op in ROUTES and ROUTES[op] is todoist_governed.route and guard.denied((who.get("facts") or {}).get("credential") or who.get("client") or "unknown", op, out.reason)  # a refused Todoist call raises one alert
         return _fail(msg, "access_denied", reason=out.reason)
     return mcp_access.capabilities_for_client(out.result, who, access, tuple(ROUTES), MAX_RESPONSE) if out.reason == "ok" and name == "buzz_capabilities" else out.result if out.reason == "ok" else _fail(msg, "governance_unavailable", reason=out.reason)
 
@@ -431,6 +433,7 @@ def main():
         memory_monitor and memory_monitor.wire(MEMORY, inbox_send, INBOX)  # event-driven memory alerts; no timer
         GOOGLE["creds"] = google_read.creds_from_env(credentials(os.environ))
         todoist_governed and todoist_governed.wire(credentials(os.environ), TODOIST)
+        todoist_guard and todoist_guard.wire(credentials(os.environ), TODOIST, inbox_send, INBOX)  # off unless TODOIST_GUARD=on
         source_lookup.wire(credentials(os.environ), LOOKUP)
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relays, auth, base, origins)).serve_forever()
 
