@@ -45,13 +45,13 @@ class Unwrap(unittest.TestCase):
         out = T.unwrap(
             reply({"contract": "c", "operation": "memory_recall", "ok": True, "data": {"count": 1}}), self.marked
         )
-        self.assertEqual(self.text(out), {"count": 1})
+        self.assertEqual(self.text(out), {"ok": True, "count": 1})
 
     def test_a_refusal_keeps_only_its_fixed_fields(self):
         out = T.unwrap(
             reply({"contract": "c", "ok": False, "error": "access_denied", "reason": "no_grant"}), self.marked
         )
-        self.assertEqual(self.text(out), {"error": "access_denied", "reason": "no_grant"})
+        self.assertEqual(self.text(out), {"ok": False, "error": "access_denied", "reason": "no_grant"})
 
     def test_an_alias_call_or_an_unreadable_reply_is_unchanged(self):
         r = reply({"ok": True, "data": {}})
