@@ -1,6 +1,6 @@
 # Agent Directory: V7 resolver, status classification and live-discovery gate (LIFE-736, Nov 16 2026)
 
-Code: `lifeos/platform/agent_directory.py`, tests: `tests/platform/test_agent_directory.py`, fixture: `tests/platform/agent_directory_fixture.py` (the 24 rows read back from the Notion LIFE OS Agent Directory on 2026-11-16, read-only; public partial aliases only).
+Code: `lifeos/platform/agent_directory.py`, tests: `tests/platform/test_agent_directory.py`, fixture: `tests/platform/agent_directory_fixture.py` (the rows read back from the Notion LIFE OS Agent Directory on 2026-11-16, read-only; public partial aliases only; 22 since the two retired Hermes rows left on 2026-11-27).
 
 ## A. What was built (synthetic, no live access)
 
