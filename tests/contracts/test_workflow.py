@@ -664,7 +664,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         for job in ("pick", "tests", "lint"):
             names = [s.get("name") or s.get("uses") for s in doc["jobs"][job]["steps"]]
             self.assertEqual(names[0], "Checkout the exact commit (own fetch, token never stored)", job)
-            self.assertIn("./.github/actions/python", names, job)
+            if job != "pick":  # pick is standard library only (the selector and the planner)
+                self.assertIn("./.github/actions/python", names, job)
         steps = doc["jobs"]["pick"]["steps"]
         base = next(s for s in steps if s.get("name", "").startswith("Fetch the merge group's base"))
         self.assertEqual(
@@ -675,8 +676,13 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertEqual(trailer["run"], "python tools/agent_trailer_check.py")
         # the matrix: 8 jobs of 4 inner shards of a 32-way split, a 60 s gate per job and a warning at 45 s
         matrix = doc["jobs"]["tests"]
-        self.assertEqual(matrix["strategy"]["matrix"], {"job": [1, 2, 3, 4, 5, 6, 7, 8]})
-        self.assertEqual(matrix["if"], "${{ needs.pick.outputs.full == 'true' }}")
+        # a FULL pick is 8 jobs of shards, a selected run 1 to 4 jobs planned by tests/splitsel.py
+        self.assertEqual(
+            matrix["strategy"]["matrix"], {"include": "${{ fromJSON(needs.pick.outputs.matrix).include }}"}
+        )
+        self.assertNotIn("if", matrix)  # the verdict job needs every test job to succeed, always
+        plan = next(s for s in doc["jobs"]["pick"]["steps"] if s.get("id") == "plan")
+        self.assertIn("python3 -m tests.splitsel selected.txt", plan["run"])
         run = next(s["run"] for s in matrix["steps"] if "Unit tests" in s.get("name", ""))
         self.assertIn('python -m tests.shard "$k" 32', run)
         self.assertIn("for j in 1 2 3 4", run)
@@ -684,11 +690,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 60 \]; then .*exit 1')
         self.assertIn("TIME GATE ONLY: every test passed", run)
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
-        small = next(
-            s for s in doc["jobs"]["pick"]["steps"] if s.get("name", "").startswith("Unit tests of a selected")
-        )
-        self.assertEqual(small["if"], "${{ steps.pick.outputs.full != 'true' }}")
-        self.assertRegex(small["run"], r'-ge 60 \]; then .*exit 1')
+        self.assertIn("python -m tests.quickselect run-list selected.txt --jobs 4", run)  # a selection's group
 
     def test_the_required_check_is_the_last_job_waits_for_all_the_others_and_gates_the_whole_run(self):
         doc = yaml.safe_load(wftext.read(self.path))
@@ -699,8 +701,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         run = verdict["steps"][0]["run"]
         self.assertIn('[ "$PICK" = "success" ] || bad=1', run)
         self.assertIn('[ "$LINT" = "success" ] || bad=1', run)
-        self.assertIn('[ "$TESTS" = "success" ] || bad=1', run)  # a FULL pick needs every matrix job green
-        self.assertIn('[ "$TESTS" = "skipped" ] || bad=1', run)  # a small selection ran inside `pick`
+        self.assertIn('[ "$TESTS" = "success" ] || bad=1', run)  # every test job green, FULL or selected
+        self.assertNotIn("skipped", run)
         self.assertRegex(run, r'-ge 60 \]; then .*exit 1')
         self.assertIn("TIME GATE ONLY: every test passed", run)
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
