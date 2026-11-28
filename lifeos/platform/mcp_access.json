@@ -97,7 +97,8 @@
    },
    "68bf39346fc506c33e84041304b353e37b99c9bae5ace3d6c1dc153ca92e5274": {
     "buzz": "read",
-    "honcho": "read"
+    "honcho": "read",
+    "todoist": "write"
    }
   }
  },
