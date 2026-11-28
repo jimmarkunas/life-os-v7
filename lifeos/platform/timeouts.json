@@ -412,8 +412,8 @@
    "slowest_seconds": null,
    "target": 5
   },
-  "pr-tests.yml::test-index": {
-   "basis": "twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor",
+  "test-index.yml::test-index": {
+   "basis": "twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor; dispatch-only workflow since Nov 28 2026 (LIFE-1100)",
    "current": 11,
    "median_seconds": 247,
    "runs_measured": 39,

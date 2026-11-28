@@ -559,9 +559,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         for word in ("secrets.", "bitwarden", "NOTION_", "GMAIL_", "--live"):
             self.assertNotIn(word, text)
         self.assertEqual(sorted(set(re.findall(r"LIFEOS_[A-Z_]+", text))), ["LIFEOS_TEST_NOW"])
-        self.assertEqual(
-            [j for j in doc["jobs"]], ["pick", "tests", "lint", "unit-tests", "test-index", "unit-tests-second-date"]
-        )
+        self.assertEqual([j for j in doc["jobs"]], ["pick", "tests", "lint", "unit-tests", "unit-tests-second-date"])
 
     def test_the_second_date_job_runs_date_sensitive_tests_on_pull_requests_and_everything_on_main(self):
         """today's date changing changes no test result (a pull request runs the listed modules only)."""
@@ -583,10 +581,10 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertNotIn("permissions", job)  # the workflow's read-only default is all it gets
         self.assertIn("unit-tests:", wftext.read(self.path))  # the required check keeps its name
 
-    def test_the_test_index_is_built_on_main_after_the_tests_and_only_restored_in_pull_requests(self):
-        """docs/test-index.json is not committed."""
+    def test_the_test_index_is_only_restored_in_pull_requests_and_is_no_longer_built_on_main(self):
+        """docs/test-index.json is not committed; its build lives in the dispatch-only test-index.yml."""
         doc = yaml.safe_load(wftext.read(self.path))
-        unit, build = doc["jobs"]["pick"]["steps"], doc["jobs"]["test-index"]
+        unit = doc["jobs"]["pick"]["steps"]
         key = "test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-"
         restore = next(s for s in unit if str(s.get("uses", "")).startswith("actions/cache/restore@"))
         names = [s.get("name", "") for s in unit]
@@ -603,17 +601,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertFalse(
             [s for s in unit if "cache/save" in str(s.get("uses", ""))]
         )  # a pull request never writes the cache
-        self.assertEqual((build["needs"], build["if"]), ("unit-tests", "${{ github.event_name == 'push' }}"))
-        self.assertLessEqual(build["timeout-minutes"], 15)
-        save = next(s for s in build["steps"] if str(s.get("uses", "")).startswith("actions/cache/save@"))
-        self.assertEqual(
-            (save["with"]["path"], save["with"]["key"]), ("docs/test-index.json", key + "${{ github.sha }}")
-        )
-        runs = [s["run"] for s in build["steps"] if "run" in s]
-        self.assertIn("pip install --require-hashes -r requirements-test.lock", runs)
-        built = next(i for i, s in enumerate(build["steps"]) if s.get("run") == "python -m tests.testindex build")
-        self.assertLess(built, build["steps"].index(save))
-        self.assertIn("coverage", (self.path.parent.parent.parent / "requirements-test.lock").read_text())
+        self.assertNotIn("test-index", doc["jobs"])  # a main push ends at the `unit-tests` verdict (Jim, Nov 28 2026)
+        self.assertNotIn("testindex build", wftext.read(self.path))
 
     def evaluate(self, expression, context):
         """Just enough of the Actions expression language for this file: ${{ a || b }}, == and string quotes."""
@@ -708,7 +697,6 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
         for job in ("tests", "lint"):
             self.assertNotIn("unit-tests", str(doc["jobs"][job].get("needs", "")))
-        self.assertEqual(doc["jobs"]["test-index"]["needs"], "unit-tests")  # after the verdict, as before
 
     def test_it_also_runs_the_concord_room_plugin_tests_in_the_lint_job_with_no_secret_or_install(self):
         doc = yaml.safe_load(wftext.read(self.path))

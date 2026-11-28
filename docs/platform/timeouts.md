@@ -86,7 +86,7 @@ The job timeouts in `.github/workflows` change in one separate workflow pull req
 | `outlook.yml` | `outlook` | 20 | 20 | 20 | 11 | 227 | twice the slowest run (227 s) rounds to 20 min, not below the current 20: unchanged |
 | `pr-tests.yml` | `lint` | 5 | 5 | 0 | - | - | new job (LIFE-1100): ruff, mypy and the Node tests, each under 5 s; 5-minute floor; no run measured yet |
 | `pr-tests.yml` | `pick` | 5 | 5 | 0 | - | - | new job (LIFE-1100): chooses the tests and runs a small selection; 5-minute floor; no run measured yet |
-| `pr-tests.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
+| `test-index.yml` | `test-index` | 11 | 11 | 39 | 247 | 305 | twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor |
 | `pr-tests.yml` | `tests` | 5 | 5 | 0 | - | - | new job (LIFE-1100): one of 8 parallel test jobs of 4 shards each, 60 s time gate; 5-minute floor; no run measured yet |
 | `pr-tests.yml` | `unit-tests` | 5 | 5 | 99 | 105 | 136 | twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor |
 | `pr-tests.yml` | `unit-tests-second-date` | 5 | 5 | 0 | - | - | new job (LIFE-692): the same tests as `unit-tests` (slowest 136 s) with the test clock fixed at a second date, pull requests only; 5-minute floor; no run measured yet |
