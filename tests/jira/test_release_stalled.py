@@ -121,6 +121,22 @@ class FakeJira:
 
 
 class Release(unittest.TestCase):
+    def test_a_wait_only_build_ticket_is_refused_with_the_uat_message_once(self):
+        kid = issue("LIFE-12")
+        kid["fields"]["summary"] = "Watch the nightly runs for 7 days"
+        fake = FakeJira(["LIFE-10"], [kid])
+        dry = release.run(0, False, jira=fake)
+        self.assertEqual((dry["skipped"], fake.posts), ({"wait_only_not_uat": 1}, []))  # a dry run says nothing
+        out = release.run(0, True, jira=fake)
+        self.assertEqual((out["released"], out["messaged"]), (0, 1))
+        ((path, payload),) = fake.posts
+        self.assertTrue(path.endswith("/issue/LIFE-12/comment"))
+        said = payload["body"]["content"][0]["content"][0]["text"]
+        self.assertEqual(said, "[agent-v7] File as UAT for LIFE-12 under the Bug Epic.")
+        again = FakeJira(["LIFE-10"], [kid], comments={"LIFE-12": said})
+        out = release.run(0, True, jira=again)
+        self.assertEqual((out["messaged"], again.posts), (0, []))  # said once, never twice
+
     def test_a_ready_child_of_an_approved_epic_is_moved_once_with_one_comment(self):
         fake = FakeJira(["LIFE-10"], [issue("LIFE-11")])
         out = release.run(0, True, jira=fake)
