@@ -176,7 +176,7 @@ jobs:
           status=0
           gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/domains.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[phase]=tick" -f "inputs[tick_run]=${GITHUB_RUN_ID}" || status=$?
           # The Fit profile sync, once a day: the 11:xx UTC tick starts it when its last run is 20 hours or more old, and any tick starts it when the last run is 30 hours or more old (a missed 11:xx tick). A failure here costs only a day's wait.
-          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/profile-sync.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true)
+          last=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/profile-sync.yml/runs?event=workflow_dispatch&per_page=1" --jq '.workflow_runs[0].created_at // ""' 2>/dev/null || true)
           age=$(python3 -c 'import sys, datetime as d; t = sys.argv[1]; print(int((d.datetime.now(d.timezone.utc) - d.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()) if t else 99999999)' "$last" 2>/dev/null || echo 99999999)
           if [ "$age" -ge 108000 ] || { [ "$(date -u +%H)" = 11 ] && [ "$age" -ge 72000 ]; }; then
             gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/profile-sync.yml/dispatches" -f ref="${GITHUB_REF_NAME}" -f "inputs[tick]=true" || true
