@@ -410,7 +410,7 @@ def build_command(out):
 def pick(base, root=ROOT):
     """> (FULL or the sorted targets, the reasons for FULL). An index that is missing, unreadable or older than 7 days is
     never used and means FULL; so does any error. A fresh index plus the import graph place a change under
-    lifeos/platform/ (LIFE-1100).
+    lifeos/platform/.
     """
     why = []
     try:
