@@ -12,7 +12,7 @@
 
 ## Weekly Review
 
-**Status: DISABLED — NOT DELIVERED** under this contract. The Sunday 6 PM Weekly Review belonged to the retired `LIFE OS Daily Runs`. Existing Weekly Reviews rows (natural key: Week Ending) are preserved, and any Decision Queue source mutation still requires Jim's approval. The former `LIFE OS Daily Runs` procedure for this area is removed as authority; it survives only in git history (through v2.15.14) as provenance.
+**Status: DELIVERED (V7)** under this contract (LIFE-945; trimmed by LIFE-1108; Jim's written permission to amend, November 28, 2026: "You have my permission"). The V7 `weekly_review` job in the domains run writes one Weekly Reviews row per Friday week ending (natural key: Week Ending), at the first run at or after Friday 10 PM CT; it adds no schedule. The page carries the content callout, the Decision Queue and the Drive hygiene note, and nothing else. Reviewed and Applied are Jim's and no executor sets them. Any Decision Queue source mutation still requires Jim's approval. The switch is `WEEKLY_REVIEW`; rollback is that switch off plus archiving the row, and existing Weekly Reviews rows are preserved either way. The retired Sunday 6 PM Weekly Review of the former `LIFE OS Daily Runs` is void and leaves no obligation; that procedure survives only in git history (through v2.15.14) as provenance.
 
 ## Full-report branch procedures
 
