@@ -547,7 +547,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertEqual([j for j in doc["jobs"]], ["unit-tests", "test-index", "unit-tests-second-date"])
 
     def test_the_second_date_job_runs_date_sensitive_tests_on_pull_requests_and_everything_on_main(self):
-        """today's date changing changes no test result (LIFE-1100: a pull request runs the listed modules only)."""
+        """today's date changing changes no test result (a pull request runs the listed modules only)."""
         doc = yaml.safe_load(self.path.read_text())
         job = doc["jobs"]["unit-tests-second-date"]
         self.assertEqual(

@@ -1,4 +1,4 @@
-"""tests/second-date-tests.txt (LIFE-1100) names every test module whose result can depend on today's date: the pull
+"""tests/second-date-tests.txt names every test module whose result can depend on today's date: the pull
 request run of `unit-tests-second-date` runs exactly those, the full suite on a second date runs on merge to main only.
 The list may be longer than the rule below, never shorter."""
 
