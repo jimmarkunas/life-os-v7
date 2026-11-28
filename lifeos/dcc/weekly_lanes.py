@@ -187,12 +187,13 @@ def jira(regions, now):
     summary = next((t for t in _texts(lines) if "Overdue" in t and "Today" in t and "This Week" in t), "")
     if summary:
         lane.lines.append(summary)
-        counts = {k: int(v) for v, k in re.findall(r"(\d+) (Overdue/Blocked|Today|This Week|Done)", summary)}
-        if counts.get("Overdue/Blocked"):
+        counts = {k: int(v) for v, k in re.findall(r"(\d+) (Today|This Week|Done)", summary)}
+        late = dcc_card._overdue_blocked(summary)
+        if late:
             lane.items.append(
                 (
                     "Reprioritize",
-                    f"{counts['Overdue/Blocked']} Jira items are Overdue or Blocked: decide the disposition of each in Jira.",
+                    f"{late} Jira items are Overdue or Blocked: decide the disposition of each in Jira.",
                 )
             )
         if counts.get("Today", 0) > 3:

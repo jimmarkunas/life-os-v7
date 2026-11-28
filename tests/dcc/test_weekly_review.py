@@ -431,6 +431,19 @@ class LiveShape(unittest.TestCase):
         }
         self.assertEqual(wl.mail(legacy, self.NOW).items[0][1].split(" ")[0], "2")
 
+    def test_the_jira_late_count_reads_the_split_form_and_the_older_slash_form(self):
+        for line, total in (("7 Overdue · 6 Blocked", 13), ("16 Overdue/Blocked", 16)):
+            n = self.page()
+            for block in n.blocks.values():
+                for kind in ("paragraph", "callout"):
+                    part = block.get(kind)
+                    if part and part["rich_text"]:
+                        text = part["rich_text"][0]["text"]["content"]
+                        part["rich_text"] = rich_text(text.replace("16 Overdue/Blocked", line))
+            go(n, now=self.NOW, drive=drive_ok)
+            todos = " ".join(b["to_do"]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b["type"] == "to_do")
+            self.assertIn(f"{total} Jira items are Overdue or Blocked", todos)
+
     def test_a_missing_card_degrades_gmail_and_outlook_with_card_missing(self):
         for gone in ("Hiring Pipeline", "Recruiter Outreach", "Mail Alerts"):
             n = self.page(missing=(gone,))
