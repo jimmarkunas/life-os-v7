@@ -50,6 +50,10 @@ if [ "${wfgate:-}" = 1 ]; then   # LIFE-779: a workflow change with no new secre
   exec "$PY" "$ROOT/tools/workflow_gate.py" --base "$wbase" --head HEAD
 fi
 [ "${regen:-}" = 1 ] && exec "$PY" "$ROOT/tools/regen.py" --commit   # LIFE-765: what preflight runs so a new stage needs no hand-run regen
+if [ "$mode" = all ] && [ -z "${CI:-}" ]; then   # LIFE-1099: the full suite is CI's job; a local run costs minutes CI spends anyway
+  echo "test.sh: the full suite is refused locally: push and let CI run it. Targeted tests: sh scripts/test-local" >&2
+  exit 4
+fi
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"; [ "$cores" -gt 8 ] && cores=8; [ "$cores" -lt 2 ] && cores=2   # LIFE-763: shards = cores (2 to 8), not a fixed 2
 if [ "$mode" = quick ]; then
@@ -66,6 +70,10 @@ if [ "$mode" = all ] || [ "$branch" = main ] || ! git rev-parse --verify -q orig
 else
   base="$(git merge-base HEAD origin/main)"
   [ "$base" = "$(git rev-parse HEAD)" ] && echo FULL > "$selected" || "$PY" -m tests.testindex select --base "$base" > "$selected" 2>/dev/null || echo FULL > "$selected"
+fi
+if [ "$(head -n 1 "$selected")" = FULL ] && [ -z "${CI:-}" ]; then   # LIFE-1099: the selection came out FULL (a change it cannot place, or no index)
+  echo "test.sh: the selector chose the full suite; refused locally, CI runs it. Targeted tests: sh scripts/test-local" >&2
+  exit 4
 fi
 if [ "$(head -n 1 "$selected")" = FULL ]; then what="everything ($cores parallel shards)"; else what="$(wc -l < "$selected" | tr -d ' ') selected test targets"; fi
 if [ "$mode" != all ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then echo "test.sh: note: uncommitted changes are not part of the selection (CI sees commits only); commit first, or use --all"; fi

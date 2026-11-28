@@ -4,6 +4,11 @@ Jira: LIFE-
 
 ## Evidence (exact SHA, input, read-back)
 
+## Local tests and time (policy: docs/policy/local-tests.md)
+
+Local tests: 
+Time: total N min, local tests N min, CI waits N min, rework N min
+
 ## Net size (python -m lifeos.platform.net_size)
 
 Paste the command's output. If lifeos/ net is above zero: what this removes, or why nothing can be removed.

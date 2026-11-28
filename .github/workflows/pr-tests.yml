@@ -162,11 +162,15 @@ jobs:
         with:
           path: docs/test-index.json
           key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
-  # LIFE-692 (Stability 5/7): "today's date changing changes no test result" is enforced here. The same tests as `unit-tests`, in a second job that runs in parallel (the wall time of the pull request check does not grow), with the test clock
-  # fixture (tests/kit/clock.py) set to a fixed second date through LIFEOS_TEST_NOW. A test that passes today but reads the real clock then fails on this date instead of failing months later (LIFE-349, LIFE-264). Pull requests only: a failing
-  # run here never turns a merge-to-main run red, so it can never hold back the Close release, which waits for main's own run. It is an additional check, not the required `unit-tests` check (branch protection is unchanged: docs/platform/branch-protection.md).
+  # LIFE-692 (Stability 5/7): "today's date changing changes no test result" is enforced here, in a second job that runs in parallel (the wall time of the pull request check does not grow), with the test clock
+  # fixture (tests/kit/clock.py) set to a fixed second date through LIFEOS_TEST_NOW. A test that passes today but reads the real clock then fails on this date instead of failing months later (LIFE-349, LIFE-264).
+  # It is an additional check, not the required `unit-tests` check (branch protection is unchanged: docs/platform/branch-protection.md).
+  # LIFE-1100 RULE (also in docs/platform/scheduled-checks.md): on a pull request this job runs ONLY the date-sensitive test modules listed in tests/second-date-tests.txt (tests/contracts/test_second_date_list.py keeps that list a superset of every module that
+  # imports the clock fixture, reads the real clock or imports a helper that does), about 20 s of tests; the FULL suite on the second date runs only on a merge to main (push). On main the job is continue-on-error: a red second date there shows in the job but never turns the
+  # run red, because the Close release and the test gate read that run's verdict (lifeos/edge/oracle/close_release.py, lifeos/platform/testgate.py) and only the required `unit-tests` job may decide it.
   unit-tests-second-date:
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    continue-on-error: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -185,25 +189,20 @@ jobs:
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: pip install --require-hashes -r requirements-test.lock
-      - name: Restore the newest test index main built (the same read-only restore as unit-tests; a missing or old file means FULL)
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
-        with:
-          path: docs/test-index.json
-          key: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-${{ github.sha }}
-          restore-keys: test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-
-      - name: Pick the tests (the same rule as unit-tests, the tests the change can affect plus tests/contracts; any trouble picking means everything)
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
-        run: |
-          python -m tests.testindex select --base HEAD^1 > selected.txt || echo FULL > selected.txt
-          if [ "$(head -n 1 selected.txt)" = "FULL" ]; then echo "tests picked (second date): everything" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "tests picked (second date): $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"; fi
-      - name: Unit tests on a second fixed date (LIFEOS_TEST_NOW; four parallel shards when everything runs)
+      - name: Unit tests on a second fixed date (LIFEOS_TEST_NOW; LIFE-1100 - a pull request runs the date-sensitive modules in tests/second-date-tests.txt, a merge to main runs everything in four parallel shards)
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         env:
           LIFEOS_TEST_NOW: "2027-03-09"
         run: |
           start=$(date +%s)
           status=0
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo FULL > selected.txt
+            echo "tests picked (second date): everything (merge to main)" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            grep -v '^#' tests/second-date-tests.txt | sed -e '/^$/d' -e 's#/#.#g' -e 's#\.py$##' > selected.txt
+            echo "tests picked (second date): $(wc -l < selected.txt) date-sensitive modules from tests/second-date-tests.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
           if [ "$(head -n 1 selected.txt)" = "FULL" ]; then
             ( t0=$(date +%s); python -m tests.shard 1 4 > shard-1.log 2>&1; rc=$?; echo $(( $(date +%s) - t0 )) > shard-1.sec; exit $rc ) &
             first=$!

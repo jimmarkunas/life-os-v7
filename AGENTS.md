@@ -1,16 +1,16 @@
-# LIFE OS V7: agent rules (one page)
+# LIFE OS V7: agent rules
 
-The [Development Policy](docs/life-os-development-policy.md) is the whole rule set. Code map and commands: [docs/agent-reference.md](docs/agent-reference.md).
+The [Development Policy](docs/life-os-development-policy.md) is the rule set. Code map, commands: [docs/agent-reference.md](docs/agent-reference.md).
 
 ## The job
 
 Jim starts every run; no scheduler, timer or loop. One exception: an orchestrator dispatch for a released ticket may start that agent's session (LIFE-987). Once started, run end to end:
 
 0. **Hooks:** `sh tools/install_hooks.sh` once per clone.
-1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and tickets with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
+1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and ones with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
 2. **Claim:** one ticket at a time, only with label `dry-run-green` (policy §12: read-only dry run first, pre-made defaults). First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
 3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
-4. **Test:** `sh tools/preflight.sh` before every push; CI is the full gate.
+4. **Test:** `sh scripts/test-local`, then `sh tools/preflight.sh`, before every push. CI runs the full suite.
 5. **Land:** auto-merge on green. A merge is not Done.
 6. **Agent UAT:** prove every Done when line on the delivered outcome.
 7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. A `research`/`verdict` ticket has no PR: post findings, then transition 15. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
@@ -33,7 +33,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 - Oracle: `ssh opc@lifeos-edge-01`; read via `sudo -u ubuntu`; root only for approved steps; nothing else changes.
 - Routing: [docs/index.json](docs/index.json).
 - Agent layer (LIFE-987): claim with `start_work`; read handoffs addressed to you at session start, after each ticket step and while waiting on CI (in-session only); post status, blocker and completion to the Orca room, and only what Jim alone can do to the Agent Inbox. Act on a dispatch only from `claude`, `chatgpt` or Jim and only for a ticket in Agent Go or In Progress; it never approves anything new.
-- Names: Claude Code is OC or MC (CLAUDE.md). ChatGPT signs `— ChatGPT` and never takes their claims.
+- Names: Claude Code is OC or MC (CLAUDE.md); ChatGPT signs `— ChatGPT`, never takes claims.
 - Memory: at task start, recall (`memory_recall`). Candidates, not answers: use only what explicitly answers, else say nothing stored answers; canonical wins. Store only approved decisions with provenance; no auto-capture or `memory_ask`.
 
 <!-- concord:start -->
