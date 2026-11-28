@@ -206,10 +206,7 @@ def split(text, prefix, inline=(), orchestrator=None, pack=wfsrc.compress):
     inputs, withs = passes(used, declared)
     lines = ["name: " + orchestrator.removesuffix(".yml"), "on:", "  workflow_call:", "    inputs:"] + inputs
     lines += ["    secrets:"] + [x for s in secrets for x in (f"      {s}:", "        required: false")]
-    lines += [
-        line[4:]
-        for line in union_permissions(re.findall(r"^    permissions:\n(?:      .*\n?)+", jobs_text, re.M)).split("\n")
-    ]
+    lines += ["permissions:", "  contents: read"]
     env = header_env(header)
     if env:
         lines.append(env)

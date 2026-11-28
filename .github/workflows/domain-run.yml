@@ -83,10 +83,7 @@ on:
       LIFEOS_BWS_RUNTIME_TOKEN:
         required: false
 permissions:
-  actions: read
   contents: read
-  id-token: write
-  issues: read
 env:
   STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
 jobs:
