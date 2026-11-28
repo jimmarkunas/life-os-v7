@@ -46,6 +46,7 @@ class Recorded(unittest.TestCase):
                 "Honcho nightly backup": sj.UNKNOWN,
                 "Honcho token renewal": sj.UNKNOWN,
                 "Close release": sj.UNKNOWN,
+                "Mac backup": sj.UNKNOWN,
                 "iMessage attention": sj.UNKNOWN,
                 "iMessage relay": sj.UNKNOWN,
                 "private Buzz pilot health": sj.UNKNOWN,
