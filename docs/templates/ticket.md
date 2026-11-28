@@ -37,6 +37,10 @@ The checklist of everything the build will touch. The executing agent runs it re
 
 Jim does them in one batch, then says `release LIFE-nnn`.
 
+## Experimental package (only for POC work; policy section 7, `docs/policy/integrated-delivery.md`)
+
+One Task and one PR for the whole outcome. Label it `package`. Sections, each non-empty: **Outcome**, **Candidate POCs**, **Integration**, **Deployment**, **Rollback**, **Acceptance matrix** (frozen criteria for outcome, security, cost and rollback), **Budget** (time, calls, spend), **Alternatives** (approved fallbacks), **Approval** (one line per protected act: `act: target ...; budget ...`). Agent Go approves this envelope, not an unconditional production GO.
+
 ## Done when
 
 One `Given ... when ... then ...` line or bullet per behavior. A tick without cited proof is not Done.
