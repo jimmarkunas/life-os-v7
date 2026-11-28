@@ -51,7 +51,7 @@ class WorkflowTests(unittest.TestCase):
 
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
         data = yaml.safe_load(wftext.read(path))
-        steps = data["jobs"]["finish"]["steps"]
+        steps = data["jobs"]["manual_publish"]["steps"]
         index = next(i for i, step in enumerate(steps) if step.get("id") == "publish")
         publish = steps[index]
         self.assertTrue(publish.get("continue-on-error"))
@@ -63,7 +63,7 @@ class WorkflowTests(unittest.TestCase):
             )  # a failed publish never skips a later stage
         lanes = next(step for step in steps if step.get("id") == "lanes")
         self.assertEqual(lanes.get("if"), "${{ always() }}")
-        self.assertEqual(data["jobs"]["finish"]["outputs"]["failed"], "${{ steps.lanes.outputs.failed }}")
+        self.assertEqual(data["jobs"]["manual_publish"]["outputs"]["failed"], "${{ steps.lanes.outputs.failed }}")
 
         def lane_result(failed_step):
             script = re.sub(
@@ -91,7 +91,9 @@ class WorkflowTests(unittest.TestCase):
 
         report = next(step for step in data["jobs"]["report"]["steps"] if "finish job report" in step.get("name", ""))
         self.assertIn("finish", data["jobs"]["report"]["needs"])
-        self.assertEqual(report["env"]["STAGES"], "${{ needs.finish.outputs.failed }}")
+        self.assertIn("manual_publish", data["jobs"]["report"]["needs"])
+        self.assertIn("${{ needs.finish.outputs.failed }}", report["env"]["STAGES"])
+        self.assertIn("${{ needs.manual_publish.outputs.failed }}", report["env"]["STAGES"])
         self.assertIn("alerts push --key run_failed", report["run"])
         self.assertIn("stages: $STAGES", report["run"])
         self.assertFalse(report.get("continue-on-error"))  # a push the provider refuses turns the job red
@@ -286,8 +288,12 @@ class WorkflowTests(unittest.TestCase):
         import re
         from pathlib import Path
 
-        text = wftext.read(Path(__file__).resolve().parents[2] / ".github/workflows/diag.yml")
-        diag = yaml.safe_load(text)
+        flows = Path(__file__).resolve().parents[2] / ".github/workflows"
+        diag = yaml.safe_load(wftext.read(flows / "diag.yml"))
+        text = "\n".join(  # the caller and the reusable workflows in the order their jobs have, the comments between them kept
+            (flows / n).read_text()
+            for n in ("diag.yml", "diag-main.yml", "diag-trace.yml", "diag-sandbox.yml", "diag-interview-ui.yml", "diag-report.yml", "diag-inbox-view-qa.yml")
+        )
         moved = {
             "LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda",
             "LIFEOS_ACQ_DB_PASSWORD": "00d82e0d-be10-4c8c-bdbe-b4db015ed389",
@@ -341,7 +347,9 @@ class WorkflowTests(unittest.TestCase):
         )
         message = diag[True]["workflow_dispatch"]["inputs"]["message_ref"]
         self.assertEqual((message["type"], message["default"]), ("string", ""))
-        self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])  # the database and Gmail diagnostics never write
+        flows = Path(__file__).resolve().parents[2] / ".github/workflows"
+        reads = "".join((flows / name).read_text() for name in ("diag-main.yml", "diag-trace.yml"))
+        self.assertNotIn("--live", reads.split("\n  # LIFE-10:")[0])  # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
         self.assertEqual(
@@ -987,7 +995,11 @@ class FastPathFirstTests(unittest.TestCase):
         cls.hourly = yaml.safe_load(wftext.logical("hourly"))
 
     def test_bulk_discovery_runs_after_publish_and_finalize(self):
-        ids = [s.get("id") for s in self.hourly["jobs"]["finish"]["steps"]]
+        ids = [
+            s.get("id")
+            for job in ("finish", "manual_acquire", "manual_fit", "manual_publish", "manual_scaleup")
+            for s in self.hourly["jobs"][job]["steps"]
+        ]  # the manual stages run in their own jobs, chained in this order
         fast = [ids.index(i) for i in ("enrich", "fit", "audit", "publish", "holds", "finalize")]
         bulk = [ids.index(i) for i in ("web_scale_up", "titlewatch", "sponsors")]
         self.assertEqual(fast, sorted(fast))
@@ -1069,7 +1081,19 @@ RUNTIME_CONFIG_JOBS = {
         "recruiters",
         "weekly_review",
     },
-    "hourly": {"finish", "interview", "jobright", "lensa", "linkedin"},
+    "hourly": {
+        "finish",
+        "interview",
+        "jobright",
+        "lensa",
+        "linkedin",
+        "manual_acquire",
+        "manual_fit",
+        "manual_maintenance",
+        "manual_publish",
+        "manual_reports",
+        "manual_scaleup",
+    },
     "network": {"network"},
     "v3-pages": {"v3pages"},
 }  # the exact jobs that carry it: nothing else may
@@ -1438,7 +1462,7 @@ class DomainsWorkflowTests(unittest.TestCase):
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "")  # declared empty
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
-            if path.name not in ("domains.yml", "hourly.yml"):
+            if path.name not in ("domains.yml", "hourly.yml") and not path.name.startswith(wftext.CALLED):
                 self.assertNotIn("V7_CLOSE_BASE_URL", wftext.read(path), path.name)
         hourly = yaml.safe_load(
             wftext.logical("hourly")
@@ -1767,6 +1791,16 @@ HRL_LANE = HRL - {
     "GMAIL_OAUTH_REFRESH_TOKEN",
     "OPEN_JOBS_CONTACT",
 }
+HRL_FINISH = DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}
+_GMAIL = {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}
+MANUAL_UNREAD = {  # what the old finish job loaded that no stage of the manual job reads (tools/secret_usage.py)
+    "manual_acquire": _GMAIL | {"IMESSAGE_ALERTS_HOST", "NTFY_TOPIC", "OPEN_JOBS_CONTACT"},
+    "manual_fit": _GMAIL | {"NTFY_TOPIC", "OPEN_JOBS_CONTACT"},
+    "manual_publish": {"IMESSAGE_ALERTS_HOST", "NTFY_TOPIC", "OPEN_JOBS_CONTACT"},
+    "manual_scaleup": _GMAIL | {"IMESSAGE_ALERTS_HOST", "NTFY_TOPIC", "OPEN_JOBS_CONTACT"},
+    "manual_reports": _GMAIL | {"IMESSAGE_ALERTS_HOST", "NTFY_TOPIC"},
+    "manual_maintenance": _GMAIL | {"IMESSAGE_ALERTS_HOST", "OPEN_JOBS_CONTACT"},
+}
 LOADED = {
     "branches": {"report": {"NOTION_JIRA_TOKEN"}},
     "agenda": {"agenda": DB | {"NOTION_JIRA_TOKEN"}},
@@ -1777,11 +1811,8 @@ LOADED = {
         "jobright": DB | JUMP | TS | HRL_LANE,
         "linkedin": DB | JUMP | TS | HRL_LANE,
         "lensa": DB | JUMP | TS | HRL_LANE,
-        "finish": DB
-        | JUMP
-        | TS
-        | HRL
-        | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"},
+        "finish": HRL_FINISH - {"OPEN_JOBS_CONTACT"},  # the tick never reads the open-jobs contact (only the manual probe does)
+        **{job: HRL_FINISH - drop for job, drop in MANUAL_UNREAD.items()},  # each manual-stage job loads what its stages read
         "interview": {"NOTION_INTERVIEW_TOKEN", "INTERVIEW_ACCEPTANCE_JSON", "INTERVIEW_ACCEPTANCE_NEGATIVE_JSON"},
         "report": {"NTFY_TOPIC"},
     },
@@ -1960,7 +1991,7 @@ class BitwardenConsumerTests(unittest.TestCase):
                     (name, job),
                 )
                 if name not in PILOTS:
-                    self.assertEqual(loader["id"], f"bws_{job}", (name, job))  # deterministic, unique id
+                    self.assertEqual(loader["id"], "bws_finish" if job.startswith("manual_") else f"bws_{job}", (name, job))  # deterministic, unique id; the manual-stage jobs cut from finish keep its id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))  # nothing is exported job-wide
                     self.assertEqual(set(loader), {"id", "name", "uses", "with"}, (name, job))
 
@@ -2338,18 +2369,23 @@ class FinishFailuresAreSurfacedTests(unittest.TestCase):
             return done.returncode, next(line for line in output.read_text().splitlines() if line.startswith("failed="))
 
     def test_every_continue_on_error_step_is_a_lane_or_listed_as_silent_with_a_reason(self):
-        listed = set(re.findall(r"=\$\{\{ steps\.(\w+)\.outcome \}\}", self.lanes["run"]))
-        for step in self.steps:
-            if step.get("continue-on-error") and step.get("id") != "lanes" and not is_parity(step):
-                ident = step.get("id")
-                self.assertTrue(
-                    ident in listed or (ident in self.SILENT and self.SILENT[ident]),
-                    f"silent and unlisted: {ident or step.get('name')}",
-                )
-        self.assertTrue(listed.isdisjoint(self.SILENT))  # a step is one or the other, never both
+        every = set()
+        for name in ("finish", "manual_acquire", "manual_fit", "manual_publish", "manual_scaleup", "manual_reports", "manual_maintenance"):
+            steps = self.doc["jobs"][name]["steps"]
+            lanes = next(s for s in steps if s.get("id") == "lanes")
+            listed = set(re.findall(r"=\$\{\{ steps\.(\w+)\.outcome \}\}", lanes["run"]))
+            every |= {s.get("id") for s in steps}
+            for step in steps:
+                if step.get("continue-on-error") and step.get("id") != "lanes" and not is_parity(step):
+                    ident = step.get("id")
+                    self.assertTrue(
+                        ident in listed or (ident in self.SILENT and self.SILENT[ident]),
+                        f"silent and unlisted in {name}: {ident or step.get('name')}",
+                    )
+            self.assertTrue(listed.isdisjoint(self.SILENT))  # a step is one or the other, never both
         for ident in self.SILENT:
             if ident:
-                self.assertIn(ident, [s.get("id") for s in self.steps])  # a stale entry fails here
+                self.assertIn(ident, every)  # a stale entry fails here
 
     def test_the_network_surface_and_alerts_steps_are_lanes_and_still_do_not_stop_the_steps_after_them(self):
         for ident in ("alerts",):
