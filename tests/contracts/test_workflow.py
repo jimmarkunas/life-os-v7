@@ -664,7 +664,8 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         for job in ("pick", "tests", "lint"):
             names = [s.get("name") or s.get("uses") for s in doc["jobs"][job]["steps"]]
             self.assertEqual(names[0], "Checkout the exact commit (own fetch, token never stored)", job)
-            self.assertIn("./.github/actions/python", names, job)
+            if job != "pick":  # pick is standard library only (the selector and the planner)
+                self.assertIn("./.github/actions/python", names, job)
         steps = doc["jobs"]["pick"]["steps"]
         base = next(s for s in steps if s.get("name", "").startswith("Fetch the merge group's base"))
         self.assertEqual(
