@@ -27,9 +27,9 @@ UPDATE_FIELDS = ("content", "description", "due_string")
 class GovernedError(ValueError):
     """The message and `reason` are always the same fixed lower-case code (the MCP shows a ValueError's reason to the caller)."""
 
-    def __init__(self, reason):
+    def __init__(self, reason, **detail):
         super().__init__(reason)
-        self.reason = reason
+        self.reason, self.detail = reason, detail
 
 
 OPS = {
@@ -49,6 +49,7 @@ OPS = {
             "project_id": ("str", True),
             "description": ("str", False),
             "due_string": ("str", False),
+            "source": ("str", False),
         },
     ),
     "todoist_task_update": (
@@ -58,17 +59,18 @@ OPS = {
             "content": ("str", False),
             "description": ("str", False),
             "due_string": ("str", False),
+            "source": ("str", False),
         },
     ),
     "todoist_task_move": (
         "Move one task to a configured project, read back.",
-        {"task_id": ("str", True), "project_id": ("str", True)},
+        {"task_id": ("str", True), "project_id": ("str", True), "source": ("str", False)},
     ),
-    "todoist_task_complete": ("Complete one task, read back.", {"task_id": ("str", True)}),
-    "todoist_task_reopen": ("Reopen one completed task, read back.", {"task_id": ("str", True)}),
+    "todoist_task_complete": ("Complete one task, read back.", {"task_id": ("str", True), "source": ("str", False)}),
+    "todoist_task_reopen": ("Reopen one completed task, read back.", {"task_id": ("str", True), "source": ("str", False)}),
     "todoist_comment_add": (
         "Add one comment to a task, read back.",
-        {"task_id": ("str", True), "content": ("str", True)},
+        {"task_id": ("str", True), "content": ("str", True), "source": ("str", False)},
     ),
 }
 READS = ("todoist_tasks", "todoist_projects", "todoist_comments")
@@ -191,6 +193,35 @@ def _projects(state):
 
 
 def run(op, args, state):
+    """-> the result dict. With `state["guard"]` (off unless TODOIST_GUARD=on) a write first passes the guard:
+    a client allow-list, an approval for a move or outside-driven content, a ledger and alert-only monitoring."""
+    given = dict(args)
+    client = given.pop("_client", None)
+    guard = state.get("guard")
+    if guard is None or op not in OPS:
+        given.pop("source", None)
+        return _run(op, given, state)
+    guard.tick()
+    try:
+        clean, row = guard.before(client, op, given)
+    except _guard_refused() as error:
+        raise GovernedError(error.reason, **error.detail) from None
+    try:
+        out = _run(op, clean, state)
+    except GovernedError as error:
+        guard.after(client, op, str(error), None)
+        raise
+    guard.after(client, op, "ok", row)
+    return out
+
+
+def _guard_refused():
+    from lifeos.platform import todoist_guard  # noqa: PLC0415 - installed beside this module
+
+    return todoist_guard.Refused
+
+
+def _run(op, args, state):
     """-> the result dict. `state`: read_token, write_token, writes_enabled, allowed_projects (a set of project ids),
     opener (tests)."""
     if op not in OPS:

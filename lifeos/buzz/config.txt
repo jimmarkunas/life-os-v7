@@ -10,3 +10,4 @@ BUZZ_URL_LIFE_OS input Buzz setting (url life os)
 BWSALERTS secret The Bitwarden machine-account token the Oracle ticker already holds (credential bwsalerts), loaded by the governed MCP only to read the two one-hour Todoist access items by id; LIFE-1094 narrows it
 TODOIST_WRITES flag Todoist write operations of the governed MCP: only the exact value on enables them; unset or anything else leaves every write refused
 TODOIST_ALLOWED_PROJECTS input Comma separated Todoist project ids that Todoist create and move may target through the governed MCP; empty refuses both
+TODOIST_GUARD flag Guard on the governed Todoist writes (client allow-list, approvals for a move or outside content, ledger, alerts): only the exact value on enables it; unset or anything else leaves writes as they were
