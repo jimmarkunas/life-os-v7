@@ -111,6 +111,15 @@ The former `LIFE OS Daily Runs` procedure for this area is removed as authority;
 
 Use the live `docs/run-reliability-policy.md` within this contract's boundaries. The ordinary transient recovery cadence is immediate, then approximately 20 / 60 / 180 seconds, with retries scoped to the smallest failed unit. For correlated GitHub artifacts, use a unique current-run trigger, poll/re-fetch the exact artifact, and retry the trigger only within the bounded policy. `DEGRADED` is a last-resort safe state after recovery exhaustion or when retry is unsafe.
 
+### Run cleanup (LIFE-1117; Jim, November 28, 2026: "approve cleanup daily", "protect list ok")
+
+- **Workload.** Deletes completed GitHub Actions workflow runs of `jimmarkunas/life-os-v7` so the run list stays at about 30 days. Nothing else: no artifacts, caches, retention settings, other repositories or other workflows.
+- **Cadence.** `.github/workflows/run-cleanup.yml`, its own workflow and never part of the hourly job, daily at 07:17 UTC (1:17 AM CT in winter, 2:17 AM CT in summer). The scheduled run is live; a manual dispatch has the input `dry_run`, default true, and deletes nothing unless it is unticked.
+- **Scope.** A candidate is a completed run created strictly more than 30 days before the cleanup starts. Queued and in-progress runs, newer runs and the IDs in `.github/protected-runs` are never touched; that file is the one list of protected runs (a ticket that cites a run as evidence adds its ID there in the same pull request).
+- **Permission.** The workflow's own `GITHUB_TOKEN` with job-scoped `actions: write` and no other grant; no new credential.
+- **Limits.** Inventory and validate the whole candidate set first, then delete oldest first, one request at a time, at most one per second, no retry. At most 600 calls per run; stop when `x-ratelimit-remaining` is below 300 (the token's 1,000 calls an hour are shared with the hourly jobs); stop at once on a 403, a 429 or `retry-after`. Every run starts from a fresh inventory, so a stop leaves the rest for the next run.
+- **Receipt.** Each run writes to its summary the cutoff, candidate and deleted counts, the last run ID, the rate remaining and its reset (CT) and the stop reason. Code: `tools/run_cleanup.py`. Rollback: disable the workflow; deleted runs cannot be restored.
+
 ## Shared Platform Runtime — PRODUCTION AUTHORITY
 
 The locked GitHub production topology is exactly four workflows:

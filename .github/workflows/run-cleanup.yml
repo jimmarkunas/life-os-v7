@@ -1,0 +1,36 @@
+name: run-cleanup
+# LIFE-1117 (Jim, Nov 28 2026: "approve cleanup daily", "protect list ok"): deletes completed workflow runs of this repository created more than 30 days ago, so the run list stays at about 30 days.
+# A separate workflow, never part of the hourly job. The schedule runs live; a manual dispatch is a dry run unless dry_run is unticked. Rules and limits: tools/run_cleanup.py. Protected run IDs: .github/protected-runs.
+# Approved in the Production Contract (Run cleanup). Rollback: disable this workflow (deleted runs cannot be restored).
+on:
+  schedule:
+    - cron: "17 7 * * *"            # 07:17 UTC daily = 1:17 AM Chicago in winter (2:17 AM in summer)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: inventory and report, delete nothing (untick to delete)"
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-run-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: write                       # delete workflow runs of this repository, with the job's own token; nothing else
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - name: Inventory, validate and (live only) delete old completed runs; receipt on the run summary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+        run: python3 tools/run_cleanup.py $([ "$DRY_RUN" = "true" ] && echo "" || echo --live)
