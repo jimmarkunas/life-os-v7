@@ -89,6 +89,16 @@ class Trims(unittest.TestCase):
         self.assertIn("hashFiles('requirements-fit.lock')", finish)
         self.assertLess(finish.index("Pip cache for the semantic layer"), finish.index("Install semantic layer"))
 
+    def test_the_whole_environment_cache_is_opt_in_keyed_on_both_locks_and_never_skips_the_hash_check(self):
+        action = (ROOT / ".github/actions/python/action.yml").read_text()
+        self.assertIn('default: "false"', action)  # every other workflow keeps the plain install
+        self.assertIn("hashFiles('requirements.lock', 'requirements-test.lock')", action)
+        self.assertIn("path: ${{ runner.temp }}/venv", action)
+        self.assertIn("pip install --require-hashes -r requirements-test.lock", action)
+        self.assertNotIn("pip install -r", action)
+        workflow = (ROOT / ".github/workflows/pr-tests.yml").read_text()
+        self.assertGreaterEqual(workflow.count('test-lock: "true"'), 2)  # unit-tests and the second-date job
+
     def test_profile_sync_follows_only_the_hourly_runs_that_started_in_the_11_and_23_utc_hours(self):
         text = (ROOT / ".github/workflows/profile-sync.yml").read_text()
         self.assertNotIn("substring(", text)  # not an Actions function: a workflow using it is invalid and never runs

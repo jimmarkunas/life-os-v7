@@ -91,11 +91,21 @@ class NoSetupActions(unittest.TestCase):
         steps = yaml.safe_load((ROOT / ".github" / "actions" / "python" / "action.yml").read_text())["runs"]["steps"]
         first = steps[0]["run"]
         self.assertIn("Python 3\\.12\\.", first)
-        self.assertIn('python3 -m venv "$RUNNER_TEMP/venv"', first)
+        self.assertIn(
+            'python3 -m venv "$RUNNER_TEMP/venv"', first
+        )  # the plain path; with test-lock the venv is made on a cache miss
         self.assertIn('"$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"', first)
-        self.assertTrue(steps[1]["uses"].startswith("actions/cache@"))  # the pip download cache, before the install
-        self.assertEqual(steps[1]["with"]["path"], "~/.cache/pip")
-        self.assertEqual(steps[2]["run"], "pip install --require-hashes -r requirements.lock")
+        pip = next(
+            s
+            for s in steps
+            if str(s.get("uses", "")).startswith("actions/cache@") and s["with"]["path"] == "~/.cache/pip"
+        )
+        install = next(s for s in steps if s.get("run") == "pip install --require-hashes -r requirements.lock")
+        self.assertLess(steps.index(pip), steps.index(install))  # the pip download cache, before the install
+        self.assertEqual(
+            sum(1 for s in steps if "pip install" in s.get("run", "")), 2
+        )  # the runtime lock and (test-lock only) the test lock, both with hashes
+        self.assertTrue(all("--require-hashes" in s["run"] for s in steps if "pip install" in s.get("run", "")))
 
 
 if __name__ == "__main__":
