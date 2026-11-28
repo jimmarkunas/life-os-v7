@@ -3,7 +3,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from lifeos.jira import decisions
+from lifeos.jira import waiting_on_jim as decisions
 
 
 def adf(*items, heading="Jim must do first"):
