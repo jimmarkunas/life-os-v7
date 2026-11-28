@@ -196,10 +196,16 @@ class Decide(unittest.TestCase):
             case["fields"]["summary"] = summary
             return case
 
-        for summary in ("Watch the nightly runs for 7 days", "Soak the backup job", "UAT for LIFE-9: check (not before Jan 7 CT)"):
+        for summary in (
+            "Watch the nightly runs for 7 days",
+            "Soak the backup job",
+            "UAT for LIFE-9: check (not before Jan 7 CT)",
+        ):
             self.assertEqual(promote.decide(titled(summary)), ("skip", ["wait_only_not_uat"]), summary)
             self.assertEqual(release.eligible(titled(summary)), "wait_only_not_uat", summary)
-        self.assertEqual(promote.decide(titled("UAT for LIFE-9: check (not before Jan 7 CT)", ["ready", "uat"])), ("promote", []))
+        self.assertEqual(
+            promote.decide(titled("UAT for LIFE-9: check (not before Jan 7 CT)", ["ready", "uat"])), ("promote", [])
+        )
         self.assertEqual(promote.decide(titled("Add a pure helper")), ("promote", []))
 
     def test_a_done_blocker_does_not_block(self):
