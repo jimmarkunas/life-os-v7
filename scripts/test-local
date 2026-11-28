@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The ONE way an agent runs tests locally (LIFE-1099): only the tests selected for the files changed against main, plus the
 # contracts and repo-wide scanners. The full suite is refused here and runs on CI (the CI variable must be set for it).
+# It first formats and lints exactly like the `lint` job of pr-tests.yml (tools/test.sh --lint).
 # Prints the line to paste into a pull request description: `Local tests: <count> tests, <seconds> s`.
 #   sh scripts/test-local        run the selection (commit first; CI sees commits only)
 #   sh scripts/test-local --list print the selection without running it
@@ -13,6 +14,7 @@ case "${1:-}" in
 esac
 if [ "${1:-}" = --list ]; then exec bash "$ROOT/tools/test.sh" --quick --list; fi
 start="$(date +%s)"
+bash "$ROOT/tools/test.sh" --lint || exit $?   # LIFE-1110: format and CI's blocking lint first, so a lint failure never costs a second push
 out="$(mktemp)"; trap 'rm -f "$out"' EXIT
 bash "$ROOT/tools/test.sh" --quick > "$out" 2>&1; status=$?
 tail -n 30 "$out"

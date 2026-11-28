@@ -10,7 +10,7 @@ Jim starts every run; no scheduler, timer or loop. One exception: an orchestrato
 1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and ones with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
 2. **Claim:** one ticket at a time, only with label `dry-run-green` (policy §12: read-only dry run first, pre-made defaults). First list its stops (policy §4-5); any not checked or standing-approved: one approval table, `needs-jim`, next ticket. Else transition 14.
 3. **Build** on `life/LIFE-nnn/<slug>`, one PR `[LIFE-nnn] <outcome>`. Never change a ticket's scope without asking Jim.
-4. **Test:** `sh scripts/test-local`, then `sh tools/preflight.sh`, before every push. CI runs the full suite.
+4. **Test:** `sh scripts/test-local` (it also formats and lints like CI: run it before the first push), then `sh tools/preflight.sh`. CI runs the full suite.
 5. **Land:** auto-merge on green. A merge is not Done.
 6. **Agent UAT:** prove every Done when line on the delivered outcome.
 7. **Close:** `python -m lifeos.jira.closeout KEY... --pr N --sha S --run R --proof KEY=text --live`, or stop at Human UAT (transition 19) when the ticket has `needs-uat` or names Jim as verifier. A `research`/`verdict` ticket has no PR: post findings, then transition 15. Then the next ticket (`NO_ELIGIBLE_WORK` if none).
