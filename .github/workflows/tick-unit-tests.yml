@@ -1,0 +1,32 @@
+name: tick-unit-tests
+on:
+  workflow_call:
+permissions:
+  contents: read
+env:
+  NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+  V7_FIT_GATE: ""
+  HIRING_PIPELINE_PAGE_ID: ""
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Unit-test gate
+        id: testgate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m lifeos.platform.testgate
+      - name: Test-only dependency
+        if: &a1 ${{ steps.testgate.outputs.skip != 'true' }}
+        run: pip install --require-hashes -r requirements-test.lock || echo "pyyaml unavailable; the workflow contract tests will skip"
+      - name: Unit tests
+        if: *a1
+        run: python -m unittest discover -s tests -t . -v

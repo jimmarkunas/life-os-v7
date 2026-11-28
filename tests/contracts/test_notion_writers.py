@@ -5,6 +5,7 @@ whole-page reads happen only.
 import pathlib
 import re
 import unittest
+from tests import wftext  # noqa: E402
 
 import yaml
 
@@ -105,7 +106,7 @@ class NotionWriters(unittest.TestCase):
         self.assertEqual(sorted(set(router.OWNERS) - owned), [], "an OWNERS region has no writer row: " + HOW_TO)
 
     def test_each_job_and_stage_is_real(self):
-        jobs = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())["jobs"]
+        jobs = yaml.safe_load(wftext.logical("domains"))["jobs"]
         jobs["capacity-card"] = yaml.safe_load((ROOT / ".github/workflows/capacity-card.yml").read_text())["jobs"][
             "capacitycard"
         ]  # the AI Capacity card runs in its own workflow

@@ -5,6 +5,7 @@ import pathlib
 import re
 import unittest
 from datetime import datetime, timezone
+from tests import wftext  # noqa: E402
 
 from lifeos.platform import mail as platform_mail
 from lifeos.recruiters import classify as C, identity, notion as store, qualify, stage
@@ -894,7 +895,7 @@ class ContractTests(unittest.TestCase):
                 name,
             )
         workflows = self.ROOT / ".github" / "workflows"
-        self.assertNotIn("recruiters", (workflows / "hourly.yml").read_text())
+        self.assertNotIn("recruiters", wftext.logical("hourly"))
         self.assertNotIn("schedule", (workflows / "recruiters.yml").read_text().split("jobs:")[0].replace("# ", "#"))
 
     def test_the_workflow_is_manual_dry_by_default_and_the_secrets_are_the_recruiters_pair(self):

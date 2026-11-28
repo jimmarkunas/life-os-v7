@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import gate
+from lifeos.platform import gate, jobnames
 
 TABLE = Path(__file__).with_name("due_table.json")
 CENTRAL = ZoneInfo("America/Chicago")
@@ -47,8 +47,9 @@ def last_success(runs, jobs_of, wanted):
             break
         started = _t(run.get("run_started_at") or run["created_at"])
         for job in jobs_of(run):
-            if job.get("conclusion") == "success" and job.get("name") in wanted and job["name"] not in found:
-                found[job["name"]] = started
+            name = jobnames.label(job.get("name"))
+            if job.get("conclusion") == "success" and name in wanted and name not in found:
+                found[name] = started
     return found
 
 

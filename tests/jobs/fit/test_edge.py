@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 from types import SimpleNamespace
+from tests import wftext  # noqa: E402
 
 from lifeos.jobs.fit import edge, judge
 
@@ -504,8 +505,11 @@ class Dormant(unittest.TestCase):
         workflows = [
             p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()
         ]
-        self.assertEqual(sorted(workflows), ["domains.yml", "hourly.yml"])
-        hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
+        self.assertTrue(
+            all(name == "hourly.yml" or name.startswith(("domain-", "tick-")) for name in workflows), workflows
+        )  # only the pipeline's own workflows, cut from domains and hourly
+        self.assertIn("domain-fit-cloud-backlog.yml", workflows)
+        hourly = wftext.logical("hourly")
         self.assertEqual(
             re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ env.V7_CLOUD_FIT || 'off' }}"]
         )  # off unless Jim sets the variable

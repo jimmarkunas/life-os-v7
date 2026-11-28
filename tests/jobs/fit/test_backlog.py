@@ -4,6 +4,7 @@ import json
 import threading
 import time
 from unittest import mock
+from tests import wftext  # noqa: E402
 
 from lifeos.jobs import fit_sync, publish
 from lifeos.jobs.fit import backlog, cloud, edge, stage
@@ -564,10 +565,8 @@ class FailureReachesTheRun(Batch):
         import pathlib
         import yaml
 
-        data = yaml.safe_load(
-            (pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml").read_text()
-        )
-        steps = data["jobs"]["finish"]["steps"]
+        data = yaml.safe_load(wftext.logical("hourly"))
+        steps = data["jobs"]["manual_fit"]["steps"]  # the manual stages run in their own jobs, the tick in finish
         return (
             data,
             steps,
@@ -602,13 +601,15 @@ class FailureReachesTheRun(Batch):
                 next(line for line in output.read_text().splitlines() if line.startswith("failed=")),
             )
 
-    def test_a_failed_batch_fails_the_finish_job_and_names_the_stage_while_a_clean_or_absent_batch_stays_green(self):
+    def test_a_failed_batch_fails_the_manual_fit_job_and_names_the_stage_while_a_clean_or_absent_batch_stays_green(
+        self,
+    ):
         data, steps, step, lanes = self.workflow()
         self.assertTrue(step.get("continue-on-error"))  # later stages still run after a failed batch...
         self.assertIn("python -m lifeos.run fit-cloud-backlog", step["run"])
         self.assertNotIn("|| true", step["run"])  # ...
         self.assertEqual(
-            (lanes.get("if"), data["jobs"]["finish"]["outputs"]["failed"]),
+            (lanes.get("if"), data["jobs"]["manual_fit"]["outputs"]["failed"]),
             ("${{ always() }}", "${{ steps.lanes.outputs.failed }}"),
         )
         self.assertLess(steps.index(step), steps.index(lanes))

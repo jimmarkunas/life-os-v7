@@ -6,6 +6,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from tests import wftext  # noqa: E402
 
 import yaml
 
@@ -24,7 +25,7 @@ esac
 
 
 def step():
-    steps = yaml.safe_load((ROOT / ".github/workflows/hourly.yml").read_text())["jobs"]["prep"]["steps"]
+    steps = yaml.safe_load(wftext.logical("hourly"))["jobs"]["prep"]["steps"]
     found = [s for s in steps if str(s.get("name", "")).startswith("Start the early domains run")]
     assert len(found) == 1
     return found[0]

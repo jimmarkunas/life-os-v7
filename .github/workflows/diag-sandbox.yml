@@ -1,0 +1,85 @@
+name: diag-sandbox
+on:
+  workflow_call:
+    inputs:
+      confirm:
+        type: string
+        default: ""
+      stage:
+        type: string
+        default: "scale-up-holds"
+    secrets:
+      DOPPLER_TOKEN:
+        required: false
+      LIFEOS_BWS_RUNTIME_TOKEN:
+        required: false
+permissions:
+  contents: read
+jobs:
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the exact commit (own fetch, token never stored)
+        run: |
+          auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
+          git init -q . && git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for try in 1 2 3; do git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$GITHUB_SHA" && break; [ "$try" = 3 ] && exit 1; sleep $((try * 5)); done
+          git checkout -q --detach FETCH_HEAD
+      - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "100"
+      - id: bws_sandbox
+        name: Load the Jobs Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - id: doppler_bws_sandbox
+        if: ${{ steps.bws_sandbox.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: NOTION_API_TOKEN
+          bitwarden: '{}'
+      - id: bws_runtime_config
+        continue-on-error: true
+        name: Runtime Configuration source ID from Bitwarden so the settings read uses the new source (LIFE-859; read only, an address not a secret; if it fails the step runs exactly as before)
+        uses: ./.github/actions/bws-load
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            0053654c-d504-4453-87f7-b5080113d136 > V7_RUNTIME_CONFIG_SOURCE_ID
+      - id: doppler_bws_runtime_config
+        if: ${{ steps.bws_runtime_config.outcome == 'success' }}
+        continue-on-error: true       # LIFE-981: a Doppler problem is a fixed code in the log and never fails the job; the Bitwarden values above are the ones this job uses
+        name: Doppler parity compare (LIFE-981; the same 1 name read from Doppler and compared with Bitwarden's value by hash; counts and a fixed code only; production keeps Bitwarden)
+        uses: ./.github/actions/doppler-load
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          names: V7_RUNTIME_CONFIG_SOURCE_ID
+          bitwarden: '{}'
+      - name: Notion sandbox access (read-only; codes and counts only)
+        if: ${{ inputs.stage == 'notion-sandbox-access' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          LIFEOS_NOTION_IDS: ""
+          NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.run notion-sandbox-access --limit 0
+      - name: Notion sandbox outreach proof (one synthetic sandbox page; typed confirmation; codes and counts only)
+        if: ${{ inputs.stage == 'notion-sandbox-outreach-proof' }}
+        env:
+          V7_RUNTIME_CONFIG_SOURCE_ID: ${{ steps.bws_runtime_config.outputs.V7_RUNTIME_CONFIG_SOURCE_ID }}
+          LIFEOS_NOTION_IDS: ""
+          NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN }}
+          PROOF_CONFIRM: ${{ inputs.confirm }}
+        run: python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live
+  # LIFE-88: the UI 3c REST capability probe. Its own job, so the Interview Notion token (LIFE OS Interview OS) reaches nothing else and no other value reaches it.
+  # Reads the accepted UI 3c QA preview and writes only its one probe page under the QA Interview OS parent, only with confirm = QA. Codes, block types and counts only.
