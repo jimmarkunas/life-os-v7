@@ -41,7 +41,7 @@ LIFEOS_TEST_NOW=2027-03-09 sh tools/test.sh --all
 CI runs the second date in the job `unit-tests-second-date` of `.github/workflows/pr-tests.yml` with `LIFEOS_TEST_NOW=2027-03-09` (LIFE-1100 rule):
 
 * **On a pull request** (a docs-only change skips it, LIFE-770) it runs only the date-sensitive test modules listed in `tests/second-date-tests.txt`, about 20 s of tests. `tests/contracts/test_second_date_list.py` keeps that list a superset of every test module that imports `tests.kit.clock`, reads the real clock (the allowlist below) or imports an allowlisted helper such as `tests/jobs/fakes_jobsdb.py`. Add a module to the list whenever its result can depend on today's date.
-* **On a merge to main** it runs the whole suite in four shards. The job is `continue-on-error` there: a red second date on main shows in the job but never turns the run red, because the Close release and the test gate read that run's verdict and only the required `unit-tests` job decides it. Fix a red one as a Bug.
+* **On a merge to main** it runs the whole suite as 4 parallel jobs of 4 of 16 shards (each under 60 s). The job is `continue-on-error` there: a red second date on main shows in the job but never turns the run red, because the Close release and the test gate read that run's verdict and only the required `unit-tests` job decides it. Fix a red one as a Bug.
 * It is an additional check, not the required `unit-tests` check, so branch protection is unchanged (`docs/platform/branch-protection.md`); a red pull request run names the date that broke it.
 
 ### Allowlist: test files that still read the real clock

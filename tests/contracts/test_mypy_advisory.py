@@ -52,7 +52,7 @@ class Configured(unittest.TestCase):
 class StepIsAdvisory(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        cls.job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["lint"]
 
     def step(self):
         return next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Type check advisory"))
@@ -65,17 +65,19 @@ class StepIsAdvisory(unittest.TestCase):
         self.assertIn("lifeos/platform/*.py", step["run"])
         self.assertIn("--no-incremental", step["run"])
 
-    def test_it_runs_after_the_unit_tests_so_it_cannot_delay_their_timer(self):
+    def test_it_runs_in_the_parallel_lint_job_so_it_cannot_delay_the_tests(self):
         names = [str(s.get("name", "")) for s in self.job["steps"]]
-        unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
-        self.assertGreater(next(i for i, n in enumerate(names) if n.startswith("Type check advisory")), unit)
+        self.assertFalse([n for n in names if n.startswith("Unit tests")])  # no test step in the lint job
+        self.assertTrue([n for n in names if n.startswith("Type check advisory")])
 
     def test_the_required_check_and_its_limits_are_unchanged(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())
         self.assertIn("unit-tests", workflow["jobs"])
-        unit = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Unit tests"))
-        self.assertIn("-ge 120", unit["run"])
-        self.assertIsNone(unit.get("continue-on-error"))
+        verdict = workflow["jobs"]["unit-tests"]
+        self.assertIn("lint", verdict["needs"])  # the required check waits for this job
+        self.assertEqual(verdict["if"], "${{ always() }}")
+        self.assertIn("-ge 60", verdict["steps"][0]["run"])
+        self.assertIsNone(verdict["steps"][0].get("continue-on-error"))
 
 
 def public_functions(tree):
@@ -146,18 +148,17 @@ class BlockingSet(unittest.TestCase):
             )  # the ten fully annotated modules are all blocking
 
     def test_the_blocking_step_fails_the_job_runs_exactly_the_list_and_comes_after_the_unit_tests(self):
-        job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["lint"]
         names = [str(s.get("name", "")) for s in job["steps"]]
         step = next(s for s in job["steps"] if str(s.get("name", "")).startswith("Type check blocking"))
         self.assertNotIn("continue-on-error", step)
         self.assertIn("python -m mypy --no-incremental $(cat mypy-blocking.txt)", step["run"])
         self.assertNotIn("exit 0", step["run"])
         self.assertNotIn("|| true", step["run"])
-        unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
-        self.assertGreater(names.index(step["name"]), unit)
+        self.assertFalse([n for n in names if n.startswith("Unit tests")])  # its own job, beside the tests
 
     def test_the_advisory_step_still_covers_every_changed_platform_file_and_cannot_fail(self):
-        job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["lint"]
         step = next(s for s in job["steps"] if str(s.get("name", "")).startswith("Type check advisory"))
         self.assertIs(step.get("continue-on-error"), True)
         self.assertIn("lifeos/platform/*.py", step["run"])

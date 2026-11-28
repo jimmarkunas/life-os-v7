@@ -39,7 +39,7 @@ class Configured(unittest.TestCase):
 class StepIsAdvisory(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        cls.job = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["lint"]
 
     def step(self):
         return next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Ruff advisory"))
@@ -51,18 +51,17 @@ class StepIsAdvisory(unittest.TestCase):
         self.assertTrue(step["run"].rstrip().endswith("exit 0"))
         self.assertIn("--no-cache", step["run"])
 
-    def test_the_ruff_step_runs_after_the_unit_tests_so_it_cannot_delay_their_timer(self):
+    def test_the_ruff_step_runs_in_the_parallel_lint_job_so_it_cannot_delay_the_tests(self):
         names = [str(s.get("name", "")) for s in self.job["steps"]]
-        unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
-        ruff = next(i for i, n in enumerate(names) if n.startswith("Ruff advisory"))
-        self.assertGreater(ruff, unit)
+        self.assertFalse([n for n in names if n.startswith("Unit tests")])  # no test step in the lint job
+        self.assertTrue([n for n in names if n.startswith("Ruff advisory")])
 
     def test_the_required_check_and_its_limits_are_unchanged(self):
-        self.assertIn("unit-tests", yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"])
-        unit = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Unit tests"))
-        self.assertIn("-ge 120", unit["run"])
-        self.assertIn("-ge 90", unit["run"])
-        self.assertIsNone(unit.get("continue-on-error"))
+        verdict = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())["jobs"]["unit-tests"]
+        self.assertIn("lint", verdict["needs"])  # the required check waits for the lint job
+        self.assertIn("-ge 60", verdict["steps"][0]["run"])
+        self.assertIn("-ge 45", verdict["steps"][0]["run"])
+        self.assertIsNone(verdict["steps"][0].get("continue-on-error"))
 
     def test_the_four_correctness_rules_are_a_blocking_step_and_every_other_rule_stays_advisory(self):
         """a deliberate violation of B023, B904, F811 or B017 must fail the pull request check"""
@@ -74,8 +73,7 @@ class StepIsAdvisory(unittest.TestCase):
         self.assertNotIn("exit 0", blocking["run"])
         advisory = next(s for s in self.job["steps"] if str(s.get("name", "")).startswith("Ruff advisory"))
         self.assertTrue(advisory.get("continue-on-error"))
-        unit = next(i for i, n in enumerate(names) if n.startswith("Unit tests"))
-        self.assertGreater(names.index(blocking["name"]), unit)
+        self.assertFalse([n for n in names if n.startswith("Unit tests")])  # its own job, beside the tests
 
     def test_the_four_rules_find_nothing_in_the_repository_now(self):
         import subprocess

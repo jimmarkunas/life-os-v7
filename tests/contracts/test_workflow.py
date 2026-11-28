@@ -540,7 +540,7 @@ class SuiteTimingWorkflow(unittest.TestCase):
         pr = (self.path.parent / "pr-tests.yml").read_text()
         self.assertIn('python -m tests.shard "$k" "$n"', timing)
         self.assertIn("python -m tests.shard", pr)  # the same module, the same split rule
-        self.assertIn("-ge 120", pr)  # the CI limit the report compares against
+        self.assertIn("-ge 60", pr)  # the CI limit is 60 s (this dispatch-only diagnostic keeps its own LIMIT below)
         self.assertIn(
             "LIMIT = 120", (pathlib.Path(__file__).resolve().parents[2] / "tests" / "suite_timing.py").read_text()
         )
@@ -559,24 +559,26 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         for word in ("secrets.", "bitwarden", "NOTION_", "GMAIL_", "--live"):
             self.assertNotIn(word, text)
         self.assertEqual(sorted(set(re.findall(r"LIFEOS_[A-Z_]+", text))), ["LIFEOS_TEST_NOW"])
-        self.assertEqual([j for j in doc["jobs"]], ["unit-tests", "test-index", "unit-tests-second-date"])
+        self.assertEqual(
+            [j for j in doc["jobs"]], ["pick", "tests", "lint", "unit-tests", "test-index", "unit-tests-second-date"]
+        )
 
     def test_the_second_date_job_runs_date_sensitive_tests_on_pull_requests_and_everything_on_main(self):
         """today's date changing changes no test result (a pull request runs the listed modules only)."""
-        doc = yaml.safe_load(self.path.read_text())
+        doc = yaml.safe_load(wftext.read(self.path))
         job = doc["jobs"]["unit-tests-second-date"]
         self.assertEqual(
             (job["if"], job["timeout-minutes"], job.get("needs")),
-            ("${{ github.event_name == 'pull_request' || github.event_name == 'push' }}", 5, None),
+            ("${{ github.event_name == 'pull_request' || github.event_name == 'push' }}", 5, "pick"),
         )
+        # one job on a pull request, 4 jobs of 4 of 16 shards on a merge to main (each under 60 s)
+        self.assertEqual(job["strategy"]["matrix"], {"job": "${{ fromJSON(needs.pick.outputs.sd) }}"})
         # a red second date on main must never turn the run red: the Close release and the test gate read its verdict
         self.assertEqual(job["continue-on-error"], "${{ github.event_name == 'push' }}")
         run = [s for s in job["steps"] if "env" in s and "LIFEOS_TEST_NOW" in s["env"]]
         self.assertEqual(len(run), 1)
-        self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09"})
-        self.assertIn(
-            "python -m tests.shard 1 4", run[0]["run"]
-        )  # the same shard command as unit-tests, on a merge to main
+        self.assertEqual(run[0]["env"], {"LIFEOS_TEST_NOW": "2027-03-09", "JOB": "${{ matrix.job }}"})
+        self.assertIn('python -m tests.shard "$k" 16', run[0]["run"])  # everything, on a merge to main
         self.assertIn("tests/second-date-tests.txt", run[0]["run"])  # a pull request runs the listed modules only
         self.assertNotIn("permissions", job)  # the workflow's read-only default is all it gets
         self.assertIn("unit-tests:", wftext.read(self.path))  # the required check keeps its name
@@ -584,7 +586,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_the_test_index_is_built_on_main_after_the_tests_and_only_restored_in_pull_requests(self):
         """docs/test-index.json is not committed."""
         doc = yaml.safe_load(wftext.read(self.path))
-        unit, build = doc["jobs"]["unit-tests"]["steps"], doc["jobs"]["test-index"]
+        unit, build = doc["jobs"]["pick"]["steps"], doc["jobs"]["test-index"]
         key = "test-index-v1-${{ hashFiles('tests/testindex.py', 'requirements-test.lock') }}-"
         restore = next(s for s in unit if str(s.get("uses", "")).startswith("actions/cache/restore@"))
         names = [s.get("name", "") for s in unit]
@@ -659,36 +661,58 @@ class PullRequestTestsWorkflow(unittest.TestCase):
 
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(wftext.read(self.path))
-        steps = doc["jobs"]["unit-tests"]["steps"]
-        names = [s.get("name") or s.get("uses") for s in steps]
-        self.assertEqual(names[0], "Checkout the exact commit (own fetch, token never stored)")
-        self.assertIn("./.github/actions/python", names)
-        self.assertLess(
-            names.index("./.github/actions/python"), next(i for i, n in enumerate(names) if "Unit tests" in n)
-        )
+        for job in ("pick", "tests", "lint"):
+            names = [s.get("name") or s.get("uses") for s in doc["jobs"][job]["steps"]]
+            self.assertEqual(names[0], "Checkout the exact commit (own fetch, token never stored)", job)
+            self.assertIn("./.github/actions/python", names, job)
+        steps = doc["jobs"]["pick"]["steps"]
         base = next(s for s in steps if s.get("name", "").startswith("Fetch the merge group's base"))
         self.assertEqual(
             base["if"], "${{ github.event_name == 'merge_group' }}"
         )  # the queue's group holds up to five PRs
-        trailer = next(s for s in steps if s.get("name", "").startswith("Agent trailer"))
+        trailer = next(s for s in doc["jobs"]["lint"]["steps"] if s.get("name", "").startswith("Agent trailer"))
         self.assertEqual(trailer["if"], "${{ github.event_name == 'pull_request' }}")
         self.assertEqual(trailer["run"], "python tools/agent_trailer_check.py")
-        run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
-        for k in (1, 2, 3, 4):
-            self.assertIn(f"python -m tests.shard {k} 4 > shard-{k}.log", run)
-        self.assertNotIn("python -m tests.shard 1 2", run)
+        # the matrix: 8 jobs of 4 inner shards of a 32-way split, a 60 s gate per job and a warning at 45 s
+        matrix = doc["jobs"]["tests"]
+        self.assertEqual(matrix["strategy"]["matrix"], {"job": [1, 2, 3, 4, 5, 6, 7, 8]})
+        self.assertEqual(matrix["if"], "${{ needs.pick.outputs.full == 'true' }}")
+        run = next(s["run"] for s in matrix["steps"] if "Unit tests" in s.get("name", ""))
+        self.assertIn('python -m tests.shard "$k" 32', run)
+        self.assertIn("for j in 1 2 3 4", run)
         self.assertNotIn("unittest discover", run)
-        self.assertRegex(run, r'-ge 120 \]; then .*exit 1')
+        self.assertRegex(run, r'-ge 60 \]; then .*exit 1')
         self.assertIn("TIME GATE ONLY: every test passed", run)
-        self.assertRegex(run, r'-ge 90 \]; then echo "::warning::')
+        self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
+        small = next(
+            s for s in doc["jobs"]["pick"]["steps"] if s.get("name", "").startswith("Unit tests of a selected")
+        )
+        self.assertEqual(small["if"], "${{ steps.pick.outputs.full != 'true' }}")
+        self.assertRegex(small["run"], r'-ge 60 \]; then .*exit 1')
 
-    def test_it_also_runs_the_concord_room_plugin_tests_after_the_python_suite_with_no_secret_or_install(self):
+    def test_the_required_check_is_the_last_job_waits_for_all_the_others_and_gates_the_whole_run(self):
         doc = yaml.safe_load(wftext.read(self.path))
-        steps = doc["jobs"]["unit-tests"]["steps"]
+        verdict = doc["jobs"]["unit-tests"]  # the name branch protection requires
+        self.assertEqual(verdict["needs"], ["pick", "tests", "lint"])
+        self.assertEqual(verdict["if"], "${{ always() }}")  # it reports even when a needed job failed or was skipped
+        self.assertNotIn("permissions", verdict)
+        run = verdict["steps"][0]["run"]
+        self.assertIn('[ "$PICK" = "success" ] || bad=1', run)
+        self.assertIn('[ "$LINT" = "success" ] || bad=1', run)
+        self.assertIn('[ "$TESTS" = "success" ] || bad=1', run)  # a FULL pick needs every matrix job green
+        self.assertIn('[ "$TESTS" = "skipped" ] || bad=1', run)  # a small selection ran inside `pick`
+        self.assertRegex(run, r'-ge 60 \]; then .*exit 1')
+        self.assertIn("TIME GATE ONLY: every test passed", run)
+        self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
+        for job in ("tests", "lint"):
+            self.assertNotIn("unit-tests", str(doc["jobs"][job].get("needs", "")))
+        self.assertEqual(doc["jobs"]["test-index"]["needs"], "unit-tests")  # after the verdict, as before
+
+    def test_it_also_runs_the_concord_room_plugin_tests_in_the_lint_job_with_no_secret_or_install(self):
+        doc = yaml.safe_load(wftext.read(self.path))
+        steps = doc["jobs"]["lint"]["steps"]
         names = [s.get("name", "") for s in steps]
-        python_suite = next(i for i, n in enumerate(names) if "Unit tests" in n)
         room = next(i for i, n in enumerate(names) if "Concord Room plugin tests" in n)
-        self.assertGreater(room, python_suite)
         self.assertEqual(steps[room]["run"], "node --test tools/orca-concord-room/test/worker.test.mjs")
         self.assertEqual(steps[room - 1]["uses"], "./.github/actions/node")
         self.assertTrue(
