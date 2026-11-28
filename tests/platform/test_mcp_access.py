@@ -332,7 +332,8 @@ TODOIST_TOOLS = (
     "todoist_task_update",
     "todoist_tasks",
 )
-TODOIST_CLIENTS = (  # seven named clients only: not Duet, Muse, Codex (recall and discovery only) or the alert and capture clients
+TODOIST_READS = ("todoist_tasks", "todoist_projects", "todoist_comments")
+TODOIST_CLIENTS = (  # eight named clients only (Codex added by Jim, Nov 28 2026): not Duet, Muse or the alert and capture clients
     "claude-chat",
     "chatgpt-chat",
     "claude-code-mac",
@@ -340,6 +341,7 @@ TODOIST_CLIENTS = (  # seven named clients only: not Duet, Muse, Codex (recall a
     "oracle-claude-code",
     "openclaw",
     "hermes-librarian",
+    "codex",
 )
 
 
@@ -440,8 +442,8 @@ class SeededGrants(unittest.TestCase):
         )
         self.assertEqual({g.tenant for g in writes if g.tool == "send_to_jim"}, {"personal"})
         self.assertEqual(
-            len(writes), 22 + 8 * 3 + 7 * 6
-        )  # three memory writes for each of eight clients; six Todoist writes for each of seven
+            len(writes), 22 + 8 * 3 + 8 * 6
+        )  # three memory writes for each of eight clients; six Todoist writes for each of eight
         self.assertEqual(
             sorted(c["principal"] for c in CATALOG["capabilities"] if c["tool"] == "send_to_jim"),
             sorted(
@@ -469,13 +471,14 @@ class SeededGrants(unittest.TestCase):
             ("denied_catalog_unknown_capability", [], "catalog_unknown_capability"),
         )
 
-    def test_codex_holds_personal_recall_and_discovery_only_expiring_within_ninety_days(self):
-        """Jim, Nov 27 2026: verified Codex, Personal recall only, up to 90 days; no store, ask, publish or Bytalos."""
+    def test_codex_holds_personal_recall_discovery_and_todoist_only_expiring_within_ninety_days(self):
+        """Jim, Nov 27 2026: verified Codex, Personal recall only, up to 90 days; no store, ask, publish or Bytalos. Nov 28 2026: the nine Todoist operations added."""
         access = M.load()
         mine = [g for g in access.grants if g.principal.startswith("codex")]
         self.assertEqual(
             {(g.principal, g.tenant, g.tool, g.actions) for g in mine},
-            {("codex", "personal", "buzz_capabilities", ("read",)), ("codex", "personal", "memory_recall", ("read",))},
+            {("codex", "personal", "buzz_capabilities", ("read",)), ("codex", "personal", "memory_recall", ("read",))}
+            | {("codex", "personal", op, ("read",) if op in TODOIST_READS else ("write",)) for op in TODOIST_TOOLS},
         )
         self.assertEqual({g.expires.date().isoformat() for g in mine}, {"2027-02-25"})
         row = [c for c in access.credentials if c["id"] == "codex"][0]

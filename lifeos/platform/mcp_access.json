@@ -2565,6 +2565,132 @@
    "credential_ref": "todoist-access-token",
    "expires": "2027-02-22",
    "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_tasks",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_tasks",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_projects",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_projects",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_comments",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comments",
+   "purpose": "todoist-read",
+   "actions": [
+    "read"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_task_create",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_create",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_task_update",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_update",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_task_move",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_move",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_task_complete",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_complete",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_task_reopen",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_task_reopen",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
+  },
+  {
+   "id": "g-codex-personal-todoist_comment_add",
+   "principal": "codex",
+   "tenant": "personal",
+   "account": "todoist-primary",
+   "tool": "todoist_comment_add",
+   "purpose": "todoist-write",
+   "actions": [
+    "write"
+   ],
+   "credential_ref": "todoist-access-token",
+   "expires": "2027-02-25",
+   "revoked": false
   }
  ],
  "credentials": [
