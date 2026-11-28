@@ -36,16 +36,12 @@ on:
         value: ${{ jobs.manual_acquire.outputs.failed }}
 permissions:
   contents: read
-  actions: read
 env:
   NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
   V7_FIT_GATE: ""
   HIRING_PIPELINE_PAGE_ID: ""
 jobs:
   manual_acquire:
-    permissions:
-      contents: read
-      actions: read
     outputs:
       failed: ${{ steps.lanes.outputs.failed }}
     runs-on: ubuntu-24.04

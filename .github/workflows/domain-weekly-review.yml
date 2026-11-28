@@ -15,14 +15,10 @@ on:
         required: false
 permissions:
   contents: read
-  actions: read
 env:
   STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
 jobs:
   weekly_review:
-    permissions:
-      contents: read
-      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

@@ -18,14 +18,10 @@ on:
         required: false
 permissions:
   contents: read
-  id-token: write
 env:
   STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
 jobs:
   hiring:
-    permissions:
-      contents: read
-      id-token: write
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
