@@ -30,13 +30,12 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 - **Rate limits:** Never poll or loop on rate-limited APIs (GitHub, Notion REST): use git for repo state, batch single calls.
 - **Format:** run `ruff format lifeos tools` before you commit; CI runs `ruff format --check` on both.
-- **Tests:** `sh tools/preflight.sh` before every push (quick gate: contract tests, scanners and tests mirroring your changed files; never the whole suite (CI does), so fix once if red; `sh tools/automerge.sh <pr>` exits 4 without its PASS for HEAD); `sh tools/preflight.sh --all` or `sh tools/test.sh --all` for everything; one file `python -m unittest <module>`; setup `sh tools/setup-dev.sh`. Tickets on the same files may share one PR (LIFE-762).
-- **Jira connector:** the Atlassian connector only; Rovo connectors are retired. Its tool names depend on the surface: `mcp__claude_ai_Atlassian_MCP__*` on claude.ai, `mcp__<connector id>__*` (for example `getJiraIssue`, `transitionJiraIssue`) in the Claude desktop app, which `.claude/settings.json` lists as `mcp__Atlassian_MCP__*` for Claude Code CLI. Read the tools your session actually loaded; do not guess a spelling.
-- **Jira reads and searches:** always pass `fields` (docs/platform/agent-jira-settings.md). **Receipts:** docs/platform/receipt-template.md.
-- **New tickets (LIFE-741):** Create every ticket under an epic (bugs under LIFE-615); Component and Fix Version are filled for you, set them only to override.
+- **Tests:** locally run only `sh scripts/test-local` (quick gate; CI runs the full suite; never a command over 3 minutes); `sh tools/automerge.sh <pr>` exits 4 without its PASS for HEAD; one file `python -m unittest <module>`; setup `sh tools/setup-dev.sh`. Tickets on the same files may share one PR.
+- **Jira connector:** the Atlassian MCP connector only (AGENTS.md names it); read the tool names your session actually loaded, `.claude/settings.json` lists the Claude Code CLI ones. Pass `fields` on reads (docs/platform/agent-jira-settings.md); receipts: docs/platform/receipt-template.md.
+- **New tickets:** Create every ticket under an epic (bugs under LIFE-615); Component and Fix Version are filled for you, set them only to override.
 - `git add` new files BEFORE running the suite (the privacy test checks staged files only).
 - **GitHub from a session** (GraphQL blocked: `gh pr create`/`gh pr ready` fail): (R=repos/jimmarkunas/life-os-v7) open a PR with `gh api $R/pulls --input pr.json`; draft to ready with `gh api -X POST $R/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT $R/pulls/N/merge -f merge_method=squash`.
-- **Updating your own pushed branch (LIFE-663):** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (lease on the fetched tip, current `life/*` branch only); else plain `git push`. Force, delete, `+refspec` pushes and `git branch -d/-D` stay denied.
+- **Updating your own pushed branch:** after a rebase or amend of your `life/...` branch run `sh tools/push_life_branch.sh` (lease on the fetched tip, current `life/*` branch only); else plain `git push`. Force, delete, `+refspec` pushes and `git branch -d/-D` stay denied.
 - **After a squash merge** the Stop hook's "unpushed commits" warning is stale (they are in main): `git fetch origin main && git checkout -B main origin/main`. Real on an unmerged branch.
 - **Jira workflows** cannot be edited through the Atlassian connection: use the Jira admin page once; do not retry via the API. Jira search lags after a write: read the issue by key.
 
