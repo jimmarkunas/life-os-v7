@@ -61,7 +61,7 @@ class Plan(unittest.TestCase):
                 splitsel.main([str(path)])
             rows = json.loads(out.getvalue().split("=", 1)[1])["include"]
             jobs, groups = [r["job"] for r in rows], [r["group"] for r in rows]
-            self.assertEqual(sorted(" ".join(groups).split()), ["tests.workflows.test_workflow", "tests.edge.test_x"])
+            self.assertEqual(sorted(" ".join(groups).split()), ["tests.edge.test_x", "tests.workflows.test_workflow"])
             self.assertEqual(len(jobs), len(groups))
 
     def test_the_real_contracts_selection_fits_the_cap(self):
