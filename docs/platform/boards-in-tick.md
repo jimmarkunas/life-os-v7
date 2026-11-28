@@ -12,6 +12,10 @@ One crawler owns the employer boards at a time. The `BOARDS_IN_TICK` switch (`li
 
 The same reader as a window (`lifeos.sources.web.boards.run`): boards already read once, due ones only, oldest due first; the same cap (1,800), 4 workers, the 3-answers-of-429 stop per ATS, the held store connection, the six-hour hot-board refresh. A 4-minute soft deadline inside the 5-minute step budget keeps the receipt; what is left is first in the next hourly pass.
 
+## When the tick waits for it (Jim, Nov 28 2026)
+
+`boards-tick` starts with the run, in its own thread, and is waited for just before `enrich`, not where the resolver group ends. `audit-ready` and `publish` may therefore start while it is still reading: it can move excluded jobs back to READY and update title and location, so a row it changes late in the tick is published by `drain-publish` later in the same tick instead of by `publish`. Its new rows are NEW and only `enrich` reads them, so `enrich` and every later stage still start after it ends. The stage order in the plan is unchanged; only the point where `boards-tick` is waited for moved (`until` on its step).
+
 ## Flip and rollback
 
 - Flip: a reviewed PR changing `"state"` of `BOARDS_IN_TICK` to `on`, after three clean natural ticks of the shipped step observed (see LIFE-905). Flipped Nov 23, 2026, 11:23 AM CT, after ten clean no-op ticks.
