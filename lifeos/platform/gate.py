@@ -63,6 +63,7 @@ CONFLICT_RULE = "rule: any write conflict moves the Daily Report writers to the 
 
 SCHEDULED_WORKFLOWS = {"safety.yml": 1, "watchdog.yml": 3}
 SCHEDULED_COVERED = {
+    "hourly.yml": "its scheduled runs are ticks: pipeline_failing, pipeline_stalled and run_failed already page for them",
     "v3-pages.yml": "its stages are continue-on-error and only warn (LIFE-730), so the run does not go red from a stage; no second alert",
 }
 SCHEDULED_OWN_ALERT = {"safety.yml": "Phone alert"}
