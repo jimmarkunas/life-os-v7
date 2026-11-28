@@ -27,34 +27,47 @@ FRI = datetime(2026, 11, 27, 22, 5, tzinfo=CT)
 class Notion:
     """Blocks, pages and Weekly Reviews rows in memory."""
 
-    def __init__(self, fresh=True, cards=6, dup=False):
+    def __init__(self, fresh=True, missing=(), dup=False):
         self.blocks, self.rows, self.writes, self.ids = {}, [], [], itertools.count(100)
         self.add(REPORT, "page", None)
-        self.add(CARD, "callout", REPORT, "Calendar (11/24 · 1:20 PM CT)")
         self.add(HUB, "page", None)
         self.report_edited = "2026-11-24T19:20:00.000Z" if fresh else "2026-11-23T01:00:00.000Z"
-        self.add_header(cards)
+        # the Daily Report as it is now: the Command Center header, then cards in columns; no source-card line
         self.card(
-            "JIRA Execution",
-            "JIRA Execution (11/24 · 1:25 PM CT)",
-            ["JFM Sprint 22 · 16 Overdue/Blocked · 8 Today · 87 This Week · 1 Done"],
-            fresh,
+            "ChatGPT · Daily Command Center", "ChatGPT · Daily Command Center · Tue 11/24 · 1:20 PM CT", [], fresh
         )
-        self.card(
-            "Calendar",
-            "Calendar (11/24 · 1:20 PM CT)",
-            ["Next · 2:00 PM–3:00 PM — A", "2:30 PM–3:30 PM — B", "5:00 PM–5:30 PM — C"],
-            fresh,
-        )
-        self.card("Mail Alerts", "Mail Alerts (11/24 · 1:20 PM CT)", ["No alerts"], fresh)
-        self.card("📈 Hiring Pipeline", "📈 Hiring Pipeline (11/24 · 1:20 PM CT)", ["Status"], fresh)
-        self.card(
-            "🤝 Recruiter Outreach",
-            "🤝 Recruiter Outreach (11/24 · 1:20 PM CT)",
-            ["Header", "Row one", "Row two"],
-            fresh,
-            table=True,
-        )
+        cols = self.add(f"{next(self.ids):032x}", "column_list", REPORT)
+        left = self.add(f"{next(self.ids):032x}", "column", cols)
+        right = self.add(f"{next(self.ids):032x}", "column", cols)
+        stamp = "(11/24 · 1:20 PM CT)"
+        for name, heading, lines, where in (
+            (
+                "Calendar",
+                f"Calendar {stamp}",
+                ["Next · 2:00 PM–3:00 PM — A", "2:30 PM–3:30 PM — B", "5:00 PM–5:30 PM — C"],
+                left,
+            ),
+            (
+                "JIRA Execution",
+                "JIRA Execution (11/24 · 1:25 PM CT)",
+                ["JFM Sprint 22 · 16 Overdue/Blocked · 8 Today · 87 This Week · 1 Done"],
+                right,
+            ),
+            ("Bills: This Week", f"Bills: This Week {stamp}", ["7 bills due"], left),
+            ("Mail Alerts", f"Mail Alerts {stamp}", ["No alerts"], left),
+            ("Amazon Orders", f"Amazon Orders {stamp}", ["2 in transit"], left),
+            ("Hiring Pipeline", "Hiring Pipeline", ["Status"], REPORT),
+        ):
+            if name not in missing:
+                self.card(name, heading, lines, fresh, parent=where, bid=CARD if name == "JIRA Execution" else None)
+        if "Recruiter Outreach" not in missing:
+            # a callout whose own first line is the name, then the count line; no heading and no emoji
+            self.add(
+                f"{next(self.ids):032x}",
+                "callout",
+                REPORT,
+                "Recruiter Outreach\n2 need action · 1 overdue · All recruiter records",
+            )
         if dup:
             self.rows.append(self.row("2026-11-20", "Healthy", False))
             self.rows.append(self.row("2026-11-20", "Healthy", False))
@@ -65,7 +78,13 @@ class Notion:
             "type": kind,
             "has_children": False,
             "kids": [],
-            "parent": {"type": "page_id", "page_id": parent} if parent else {},
+            "parent": (
+                {"type": "page_id", "page_id": parent}
+                if parent and self.blocks[parent]["type"] == "page"
+                else {"type": "block_id", "block_id": parent}
+                if parent
+                else {}
+            ),
             kind: {"rich_text": rich_text(text)},
         }
         if parent:
@@ -73,19 +92,10 @@ class Notion:
             self.blocks[parent]["has_children"] = True
         return bid
 
-    def add_header(self, cards):
-        self.add(f"{next(self.ids):032x}", "paragraph", REPORT, f"{cards} of 6 source cards current")
-
-    def card(self, name, heading, lines, fresh, table=False):
+    def card(self, name, heading, lines, fresh, parent=REPORT, bid=None):
         if not fresh:
             heading = heading.replace("(11/24 · 1:", "(11/20 · 1:")
-        if table:
-            self.add(f"{next(self.ids):032x}", "heading_3", REPORT, heading)
-            tbl = self.add(f"{next(self.ids):032x}", "table", REPORT)
-            for line in lines:
-                self.add(f"{next(self.ids):032x}", "table_row", tbl, line)
-            return
-        box = self.add(f"{next(self.ids):032x}", "callout", REPORT)
+        box = self.add(bid or f"{next(self.ids):032x}", "callout", parent)
         self.add(f"{next(self.ids):032x}", "heading_3", box, heading)
         for line in lines:
             self.add(f"{next(self.ids):032x}", "paragraph", box, line)
@@ -266,22 +276,26 @@ class Run(unittest.TestCase):
         self.assertEqual(again["weeks"], [])
         self.assertEqual(len([r for r in n.rows if r["properties"]["Week Ending"]["date"]["start"] == "2026-11-20"]), 1)
 
-    def test_the_page_body_has_the_eight_sections_in_the_required_order_and_open_decisions_is_the_queue_length(self):
+    def test_the_page_body_is_the_callout_the_decision_queue_and_the_drive_hygiene_note_and_open_decisions_is_the_queue_length(
+        self,
+    ):
         n = Notion()
         go(n, drive=drive_ok)
         row = n.rows[-1]
         heads = [b["heading_2"]["rich_text"][0]["text"]["content"] for b in row["blocks"] if b["type"] == "heading_2"]
+        self.assertEqual(heads, ["Decision Queue", "Drive hygiene"])
+        self.assertEqual(row["blocks"][0]["type"], "callout")
         self.assertEqual(
-            heads,
+            list(row["properties"]),
             [
-                "Executive Summary",
-                "Jira Execution & Sprint Health",
-                "Calendar & Commitments",
-                "Recruiters, Applications & Waiting-On",
-                "Notion & Drive Hygiene",
-                "Automation Health",
-                "Decision Queue",
-                "Next Week Focus",
+                "Review",
+                "Week Ending",
+                "Week Start",
+                "Generated At",
+                "Status",
+                "Source Health",
+                "Open Decisions",
+                "Current",
             ],
         )
         todos = [b for b in row["blocks"] if b["type"] == "to_do"]
@@ -313,7 +327,7 @@ class Run(unittest.TestCase):
         self.assertIn("Drive: Degraded (DRIVE_ROUTE_NOT_CONNECTED)", text)
 
     def test_a_stale_report_a_failed_github_read_and_a_missing_card_each_degrade_only_their_lane(self):
-        n = Notion(fresh=False, cards=4)
+        n = Notion(fresh=False, missing=("Amazon Orders",))
         out = go(n, drive=drive_ok, opener=runs(ok=False))
         self.assertEqual(
             set(out["weeks"][0]["degraded"]), {"Jira", "Calendar", "Gmail and Outlook", "Notion", "Automation"}
@@ -364,6 +378,83 @@ class Run(unittest.TestCase):
             all(w[1].startswith("/pages/") or w[1].startswith("/blocks/") for w in n.writes if w[0] == "PATCH")
         )
         self.assertEqual(sum(1 for w in n.writes if w[0] == "create"), 1)
+
+
+class LiveShape(unittest.TestCase):
+    """The Nov 27 inputs replayed: the Daily Report as it was on Sat Nov 28, 3:04 AM CT, on a synthetic page."""
+
+    NOW = datetime(2026, 11, 28, 3, 4, tzinfo=CT)
+
+    def page(self, **kwargs):
+        n = Notion(**kwargs)
+        for block in n.blocks.values():
+            for kind in ("heading_3", "paragraph", "callout"):
+                part = block.get(kind)
+                if part and part["rich_text"]:
+                    text = part["rich_text"][0]["text"]["content"]
+                    part["rich_text"] = rich_text(
+                        text.replace("11/24 · 1:20 PM", "11/28 · 3:01 AM").replace("11/24 · 1:25 PM", "11/28 · 3:01 AM")
+                    )
+        n.report_edited = "2026-11-28T09:03:00.000Z"
+        return n
+
+    def test_with_every_card_present_the_row_is_healthy_and_holds_only_the_three_parts(self):
+        n = self.page()
+        out = go(n, now=datetime(2026, 11, 28, 3, 4, tzinfo=CT), drive=drive_ok)
+        self.assertEqual(out["weeks"][0]["degraded"], [])
+        row = n.rows[-1]
+        self.assertEqual(row["properties"]["Source Health"], {"select": {"name": "Healthy"}})
+        kinds = [b["type"] for b in row["blocks"]]
+        self.assertEqual(kinds[0], "callout")
+        self.assertEqual({k for k in kinds if k.startswith("heading_2")}, {"heading_2"})
+        self.assertNotIn("Recruiter", " ".join(out["weeks"][0]["reasons"].values()))
+        todos = [b for b in row["blocks"] if b["type"] == "to_do"]
+        self.assertEqual(row["properties"]["Open Decisions"], {"number": len(todos)})
+        self.assertIn(
+            "2 Recruiter Outreach rows", " ".join(b["to_do"]["rich_text"][0]["text"]["content"] for b in todos)
+        )
+
+    def test_the_recruiter_and_hiring_cards_are_found_without_their_old_emoji_and_by_the_callout_first_line(self):
+        n = self.page()
+        regions = wl.read_regions(n, REPORT)
+        self.assertEqual(regions["🤝 Recruiter Outreach"][0], "Recruiter Outreach")
+        self.assertEqual(regions["📈 Hiring Pipeline"][0], "Hiring Pipeline")
+        lane = wl.mail(regions, self.NOW)
+        self.assertEqual((lane.health, lane.items[0][0]), ("Healthy", "Waiting On"))
+        legacy = {
+            "Mail Alerts": ("Mail Alerts (11/28 · 3:01 AM CT)", []),
+            "📈 Hiring Pipeline": ("📈 Hiring Pipeline (11/28 · 3:01 AM CT)", []),
+            "🤝 Recruiter Outreach": (
+                "🤝 Recruiter Outreach (11/28 · 3:01 AM CT)",
+                [{"type": "table_row", "table_row": {}}] * 3,
+            ),
+        }
+        self.assertEqual(wl.mail(legacy, self.NOW).items[0][1].split(" ")[0], "2")
+
+    def test_a_missing_card_degrades_gmail_and_outlook_with_card_missing(self):
+        for gone in ("Hiring Pipeline", "Recruiter Outreach", "Mail Alerts"):
+            n = self.page(missing=(gone,))
+            out = go(n, now=self.NOW, drive=drive_ok)
+            self.assertEqual(out["weeks"][0]["reasons"]["Gmail and Outlook"], "CARD_MISSING", gone)
+
+    def test_the_source_cards_are_counted_from_their_headings_and_a_report_with_none_is_degraded_with_its_code(self):
+        n = self.page(missing=("Amazon Orders",))
+        out = go(n, now=self.NOW, drive=drive_ok)
+        self.assertEqual(out["weeks"][0]["reasons"]["Notion"], "SOURCE_CARDS_NOT_CURRENT")
+        text = " ".join(
+            b["to_do"]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b["type"] == "to_do"
+        )
+        self.assertIn("Only 4 of 5 Daily Report source cards", text)
+        none = self.page(missing=("Calendar", "JIRA Execution", "Bills: This Week", "Mail Alerts", "Amazon Orders"))
+        lane = wl.notion_hygiene(wl.read_regions(none, REPORT), True, self.NOW, self.NOW)
+        self.assertEqual((lane.health, lane.reason), ("Degraded", "SOURCE_CARD_LINE_MISSING"))
+
+    def test_a_second_run_in_the_same_week_makes_nothing_new(self):
+        n = self.page()
+        go(n, now=self.NOW, drive=drive_ok)
+        again = go(n, now=datetime(2026, 11, 28, 4, 4, tzinfo=CT), drive=drive_ok)
+        self.assertEqual(again["weeks"], [])
+        self.assertEqual(len([r for r in n.rows if r["properties"]["Week Ending"]["date"]["start"] == "2026-11-27"]), 1)
 
 
 class Lanes(unittest.TestCase):

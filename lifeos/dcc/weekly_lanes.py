@@ -1,13 +1,17 @@
 """The read-only lanes of the Weekly LIFE OS Review and the rules that turn them into a Decision Queue.
 
 A lane never raises: a failed read is a Degraded Lane with a fixed code. Jira, Calendar, Mail and Notion read the V7
-cards on the Daily Report, Automation reads GitHub runs, Drive uses the `drive` reader. Counts and codes only."""
+cards on the Daily Report, Automation reads GitHub runs, Drive uses the `drive` reader. Counts and codes only.
+
+A card is found by the name its heading, or the first line of its callout, begins with, ignoring a leading emoji: the
+Recruiter Outreach and Hiring Pipeline cards lost their emoji when they became live views."""
 
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
+from lifeos.dcc import card as dcc_card
 from lifeos.platform import ct_stamp, router
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.notion_text import block_text
@@ -15,7 +19,17 @@ from lifeos.platform.notion_text import block_text
 JIRA_FRESH, CARD_FRESH = timedelta(minutes=30), timedelta(hours=3)  # max card age
 HEADING_TIME = re.compile(r"\((STALE · last accepted )?(\d{1,2})/(\d{1,2}) · (\d{1,2}):(\d{2}) ([AP]M) CT\)")
 RANGE = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M)\s*[–-]\s*(\d{1,2}):(\d{2}) ([AP]M)")
-SOURCE_CARDS = re.compile(r"(\d+) of (\d+) source cards current")
+NEED_ACTION = re.compile(r"(\d+) need action")
+LEADING_SYMBOLS = re.compile(r"^[^\w]+")
+# The Daily Report cards the Command Center reads (dcc.card.AREAS): "N of M source cards current" is counted from
+# their headings now that the Command Center no longer writes that line.
+SOURCE_AREAS = (
+    ("Calendar", router.CALENDAR_REGION),
+    ("Jira", router.JIRA_REGION),
+    ("Bills", router.BILLS_REGION),
+    ("Mail Alerts", router.MAIL_ALERTS_REGION),
+    ("Amazon", router.AMAZON_REGION),
+)
 GROUPS = (
     "Carry Forward",
     "Reprioritize",
@@ -80,18 +94,31 @@ def _flat(nodes):
         yield from _flat(sub)
 
 
+def _bare(text):
+    return LEADING_SYMBOLS.sub("", (text or "").strip())
+
+
+def _named(text, name):
+    return _bare(text).startswith(_bare(name))
+
+
 def _regions_in(nodes, names, found):
     for i, (block, sub) in enumerate(nodes):
         kind = block.get("type", "")
         if kind == "callout":
             head = next((block_text(b).strip() for b, _ in sub if b.get("type", "").startswith("heading")), "")
+            own = block_text(block).strip().split("\n")[0]
             for name in names:
-                if head.startswith(name) and name not in found:
+                if name in found:
+                    continue
+                if head and _named(head, name):
                     found[name] = (head, list(_flat(sub)))
+                elif not head and own and _named(own, name):
+                    found[name] = (own, [block, *_flat(sub)])  # the callout's own text carries the card's lines
         elif kind.startswith("heading"):
             text = block_text(block).strip()
             for name in names:
-                if text.startswith(name) and name not in found:
+                if _named(text, name) and name not in found:
                     end = next(
                         (j for j in range(i + 1, len(nodes)) if nodes[j][0].get("type", "").startswith("heading")),
                         len(nodes),
@@ -101,19 +128,19 @@ def _regions_in(nodes, names, found):
 
 
 def read_regions(client, page_id):
-    """Returns ({region name: (heading, [blocks under it])}, leading page texts)."""
+    """Returns {region name: (heading, [blocks under it])} for the Daily Report cards the lanes read."""
     names = (
         router.JIRA_REGION,
         router.CALENDAR_REGION,
+        router.BILLS_REGION,
+        router.AMAZON_REGION,
         router.MAIL_ALERTS_REGION,
         router.RECRUITER_OUTREACH_REGION,
         router.HIRING_REGION,
     )
-    nodes = _tree(client, page_id)
     found = {}
-    _regions_in(nodes, names, found)
-    header = [t for t in (block_text(b).strip() for b in _flat(nodes[:6])) if t][:120]
-    return found, header
+    _regions_in(_tree(client, page_id), names, found)
+    return found
 
 
 def heading_time(head, now):
@@ -219,7 +246,10 @@ def mail(regions, now):
         if stale or (when is not None and now - when > CARD_FRESH):
             _down(lane, "CARD_STALE")
         if name == router.RECRUITER_OUTREACH_REGION:
-            rows = max(0, sum(1 for b in got[1] if b.get("type") == "table_row") - 1)
+            counted = next((int(m[1]) for t in _texts(got[1]) if (m := NEED_ACTION.search(t))), None)
+            rows = (
+                counted if counted is not None else max(0, sum(1 for b in got[1] if b.get("type") == "table_row") - 1)
+            )
     lane.lines.append(
         "Recruiter, Mail Alerts and Hiring Pipeline cards read; open recruiter rows are listed on the Daily Report."
     )
@@ -233,20 +263,26 @@ def mail(regions, now):
     return lane
 
 
-def notion_hygiene(header, hub_readable, report_edited, now):
+def notion_hygiene(regions, hub_readable, report_edited, now):
+    """Counts the Daily Report source cards whose heading time is current; none found means the report is unreadable."""
     lane = Lane("Notion")
-    text = " ".join(header[:120])
-    m = SOURCE_CARDS.search(text)
-    if not m:
+    seen = [(label, regions.get(region)) for label, region in SOURCE_AREAS if regions.get(region)]
+    if not seen:
         _down(lane, "SOURCE_CARD_LINE_MISSING")
     else:
-        lane.lines.append(f"{m[1]} of {m[2]} Daily Report source cards current.")
-        if m[1] != m[2]:
+        current = 0
+        for label, got in seen:
+            when, stale = heading_time(got[0], now)
+            if when is not None and not stale and now - when <= timedelta(minutes=dcc_card.fresh_minutes(label)):
+                current += 1
+        total = len(SOURCE_AREAS)
+        lane.lines.append(f"{current} of {total} Daily Report source cards current.")
+        if current != total:
             _down(lane, "SOURCE_CARDS_NOT_CURRENT")
             lane.items.append(
                 (
                     "System Maintenance",
-                    f"Only {m[1]} of {m[2]} Daily Report source cards were current: find the card that stopped updating.",
+                    f"Only {current} of {total} Daily Report source cards were current: find the card that stopped updating.",
                 )
             )
     if not hub_readable:

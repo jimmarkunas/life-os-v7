@@ -97,15 +97,21 @@ def _block(kind, content, **extra):
 
 
 def body(friday, lanes, queue, now, kind):
+    """The page: the callout line, the Decision Queue and the Drive hygiene note. Every lane is still read; Source
+    Health and the callout name the Degraded ones."""
     start, end = friday - timedelta(days=6), friday
-    plan = (friday + timedelta(days=1), friday + timedelta(days=7))
     by = {lane.name: lane for lane in lanes}
     degraded = [lane for lane in lanes if lane.health != "Healthy"]
     blocks = [
         _block(
             "callout",
-            f"One weekly cross-system review of execution, commitments, inbound, files and LIFE OS health. Review window {short(start)} to {short(end)}; planning window {short(plan[0])} to {short(plan[1])}. "
-            f"Generated {wl.when_text(now)} by V7 from read-only sources; a synthesis and decision surface, not a task manager.",
+            f"Weekly review for {short(start)} to {short(end)}: the Decision Queue and the Drive hygiene note. "
+            f"Generated {wl.when_text(now)} by V7 from read-only sources. "
+            + (
+                "Source Health Degraded: " + ", ".join(f"{lane.name} ({lane.reason})" for lane in degraded) + "."
+                if degraded
+                else "Source Health Healthy: all six sources read cleanly."
+            ),
             icon={"type": "emoji", "emoji": "🔄"},
             color="blue_background",
         )
@@ -119,39 +125,6 @@ def body(friday, lanes, queue, now, kind):
                 color="gray_background",
             )
         )
-    blocks.append(_block("heading_2", "Executive Summary"))
-    blocks.append(
-        _block(
-            "bulleted_list_item",
-            (
-                "All six source lanes read cleanly."
-                if not degraded
-                else f"{len(degraded)} of 6 source lanes are Degraded: "
-                + ", ".join(f"{lane.name} ({lane.reason})" for lane in degraded)
-                + "."
-            ),
-        )
-    )
-    blocks.append(_block("bulleted_list_item", f"{len(queue)} decisions are waiting for Jim in the Decision Queue."))
-    for title, names in (
-        ("Jira Execution & Sprint Health", ("Jira",)),
-        ("Calendar & Commitments", ("Calendar",)),
-        ("Recruiters, Applications & Waiting-On", ("Gmail and Outlook",)),
-        ("Notion & Drive Hygiene", ("Notion", "Drive")),
-        ("Automation Health", ("Automation",)),
-    ):
-        blocks.append(_block("heading_2", title))
-        for name in names:
-            lane = by[name]
-            blocks.append(
-                _block(
-                    "paragraph",
-                    f"{lane.name}: {lane.health}"
-                    + (f" ({lane.reason})" if lane.reason else "")
-                    + (f" · source written {lane.at}" if lane.at else ""),
-                )
-            )
-            blocks.extend(_block("bulleted_list_item", line) for line in lane.lines)
     blocks.append(_block("heading_2", "Decision Queue"))
     if not queue:
         blocks.append(_block("paragraph", "No decisions are waiting."))
@@ -160,19 +133,17 @@ def body(friday, lanes, queue, now, kind):
         if items:
             blocks.append(_block("heading_3", group))
             blocks.extend(_block("to_do", text, checked=False) for text in items)
-    blocks.append(_block("heading_2", "Next Week Focus"))
-    top = [g for g in wl.GROUPS if any(item[0] == g for item in queue)][:3]
+    drive = by["Drive"]
+    blocks.append(_block("heading_2", "Drive hygiene"))
     blocks.append(
         _block(
             "paragraph",
-            (
-                "Work the Decision Queue first: " + ", ".join(top) + "."
-                if top
-                else "Nothing is waiting on a decision; keep the fixed-time commitments."
-            )
-            + " This page proposes nothing in Jira, Calendar or mail; Reviewed and Applied are Jim's.",
+            f"{drive.name}: {drive.health}"
+            + (f" ({drive.reason})" if drive.reason else "")
+            + (f" · source written {drive.at}" if drive.at else ""),
         )
     )
+    blocks.extend(_block("bulleted_list_item", line) for line in drive.lines)
     return blocks
 
 
@@ -223,7 +194,7 @@ def _row_date(row):
 def collect(client, environ, friday, now, drive_read, opener=None):
     try:
         page = weekly_archive._page_of(client, weekly_archive._clean(environ.get("JIRA_CARD_BLOCK_ID")))
-        regions, header = wl.read_regions(client, page)
+        regions = wl.read_regions(client, page)
         report = client.call("GET", f"/pages/{quote(page, safe='')}")
         edited = datetime.fromisoformat(report["last_edited_time"].replace("Z", "+00:00")).astimezone(TZ)
         hub = bool(
@@ -232,7 +203,7 @@ def collect(client, environ, friday, now, drive_read, opener=None):
             ).get("id")
         )
     except (NotionError, KeyError, ValueError):
-        regions, header, edited, hub = {}, [], None, False
+        regions, edited, hub = {}, None, False
     runs = github_runs(environ, friday, opener)
     parsed = (
         None
@@ -243,7 +214,7 @@ def collect(client, environ, friday, now, drive_read, opener=None):
         wl.jira(regions, now),
         wl.calendar(regions, now),
         wl.mail(regions, now),
-        wl.notion_hygiene(header, hub, edited, now),
+        wl.notion_hygiene(regions, hub, edited, now),
         wl.automation(parsed, now),
         wl.drive(drive_read),
     ]
