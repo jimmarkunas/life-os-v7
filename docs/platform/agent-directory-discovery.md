@@ -20,12 +20,12 @@ Words: `manual-only`, `configured-untested`, `not-reachable`, `routable-verified
 | Group (rows) | Status | Why |
 |---|---|---|
 | Claude and ChatGPT surfaces (8): web, Mac app, Cowork, VS Code on Mac | manual-only | Human UIs; no verified programmatic route |
-| Hermes profiles (6): main, claude-hermes, developer, librarian, research, writer | configured-untested | Repo config only (`docs/hermes-files.md`, allowlists); live contact route unverified |
+| Hermes profiles (4): main, claude-hermes, librarian, writer (developer merged into claude-hermes and research into librarian, Jim, Nov 27 2026; their two rows say Retired) | configured-untested | Repo config (`docs/hermes-files.md`, allowlists); the gateway serves these four and live memory_recall passed for main and librarian; no programmatic contact route |
 | Orca/Concord adapters (2): claude-code, codex | configured-untested | `tools/orca-concord-room` README describes live `concord who`; not queried here |
 | Buzz members (5 named + 1 unidentified) | not-reachable | Screenshot evidence, truncated npub tails only; membership and reachability unverified |
 | Buzz personas (2): Council Auditor, Challenger | manual-only | A persona is not an addressable agent; member identity unresolved |
 
-Routable today: **none**. Unavailable/manual: all 24.
+Routable today: **none**. Unavailable/manual: all 22 active rows (2 more are Retired).
 
 ## C. Scope item 4: live discovery is NOT done; exact read-only steps and approvals
 
