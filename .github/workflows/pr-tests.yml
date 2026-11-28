@@ -41,9 +41,6 @@ jobs:
         run: |
           auth=$(printf 'x-access-token:%s' '${{ github.token }}' | base64 | tr -d '\n'); echo "::add-mask::$auth"
           git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --no-tags --depth=1 origin "$BASE_SHA"
-      - uses: ./.github/actions/python   # LIFE-1100: test-lock installs the test lock too (PyYAML for the workflow contract tests) and caches the whole environment
-        with:
-          test-lock: "true"
       - name: Restore the newest test index main built (LIFE-644; a pull request only reads it, never writes it; no cache, a missing file, an unreadable one or one older than 7 days all mean FULL)
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
@@ -57,7 +54,7 @@ jobs:
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
-            python -m tests.testindex select --base "${BASE_SHA:-HEAD^1}" > selected.txt || { echo FULL > selected.txt; echo "selector failed: fail-open to everything (LIFE-770 counts these)" | tee -a "$GITHUB_STEP_SUMMARY"; }     # any trouble picking means everything
+            python3 -m tests.testindex select --base "${BASE_SHA:-HEAD^1}" > selected.txt || { echo FULL > selected.txt; echo "selector failed: fail-open to everything (LIFE-770 counts these)" | tee -a "$GITHUB_STEP_SUMMARY"; }     # any trouble picking means everything
           else
             echo FULL > selected.txt
           fi
@@ -69,6 +66,10 @@ jobs:
             echo "full=false" >> "$GITHUB_OUTPUT"
             echo "tests picked: $(wc -l < selected.txt) targets" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+      - uses: ./.github/actions/python   # LIFE-1100: only the small path needs the environment (the selector above is standard library, so a FULL pick fans out 3 s sooner)
+        if: ${{ steps.pick.outputs.full != 'true' }}
+        with:
+          test-lock: "true"
       - name: Unit tests of a selected run (the small path, the picked targets in four parallel processes in THIS job; a FULL pick skips this step and fans out to the `tests` jobs; warn at 45 s, fail at 60 s)
         if: ${{ steps.pick.outputs.full != 'true' }}
         run: |

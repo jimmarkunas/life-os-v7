@@ -61,7 +61,7 @@ if [ $USER_MODE = yes ]; then
     is-enabled) if on old-enabled; then echo enabled; else echo disabled; exit 1; fi ;;
     show) case "$prop" in MainPID) if [ "$unit" = openclaw-gateway.service ]; then echo 900; elif on old-active; then echo 4242; else echo 0; fi ;; *) echo value ;; esac ;;
     stop) [ -e "$P/old-wont-stop" ] || set_off old-active
-          if [ -e "$P/interrupt-after-old-stop" ]; then kill -TERM "$(ps -o ppid= -p "$PPID" | tr -d ' ')"; sleep 20; fi ;;
+          if [ -e "$P/interrupt-after-old-stop" ]; then kill -TERM "$(ps -o ppid= -p "$PPID" | tr -d ' ')"; sleep 3; fi ;;
     start) set_on old-active; proc 4242 "$(id -u)" ;;
     enable) set_on old-enabled ;;
     disable) set_off old-enabled ;;
@@ -97,7 +97,7 @@ case "$verb" in
     if [ ! -e "$P/no-socket" ]; then mkdir -p "$P/run/lifeos-wa"; [ -S "$SOCK.away" ] && mv "$SOCK.away" "$SOCK"; fi
     [ -e "$P/bad-socket-mode" ] && [ -S "$SOCK" ] && chmod 666 "$SOCK"
     [ -S "$SOCK" ] && [ ! -e "$P/bad-socket-mode" ] && chmod 660 "$SOCK"
-    if [ -e "$P/interrupt" ]; then kill -TERM "$(ps -o ppid= -p "$PPID" | tr -d ' ')"; sleep 20; fi ;;
+    if [ -e "$P/interrupt" ]; then kill -TERM "$(ps -o ppid= -p "$PPID" | tr -d ' ')"; sleep 3; fi ;;
   stop)
     case "$unit" in
       lifeos-wa-attention.service|lifeos-wa-attention.socket)
