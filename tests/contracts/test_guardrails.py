@@ -381,9 +381,9 @@ class DecisionIndexTests(unittest.TestCase):
         from pathlib import Path
 
         docs = Path(__file__).resolve().parents[2] / "docs"
-        heads = [
-            line[3:].strip() for line in (docs / "DECISIONS.md").read_text().splitlines() if line.startswith("## D")
-        ]
+        from lifeos.sources.devtools import decisions
+
+        heads = [line[3:].strip() for line in decisions.log_text(docs).splitlines() if line.startswith("## D")]
         index = (docs / "DECISIONS_INDEX.md").read_text()
         missing = [h for h in heads if "- " + h not in index]
         self.assertEqual(missing, [])
@@ -397,7 +397,7 @@ class DecisionNumberTests(unittest.TestCase):
         from lifeos.sources.devtools import decisions
 
         docs = Path(__file__).resolve().parents[2] / "docs"
-        self.assertEqual(decisions.duplicates((docs / "DECISIONS.md").read_text()), {})
+        self.assertEqual(decisions.duplicates(decisions.log_text(docs)), {})
         self.assertEqual(decisions.duplicates((docs / "DECISIONS_INDEX.md").read_text(), decisions.INDEX_ENTRY), {})
 
     def test_the_check_itself_catches_a_planted_duplicate(self):

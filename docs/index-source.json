@@ -45,6 +45,17 @@
     "- [LIMITS.md](LIMITS.md): provider limits canon, mirrored by `lifeos/platform/limits.py`. Current.",
     "- [SETUP.md](SETUP.md): one-time setup of secrets and variables. Current.",
     "- [templates/ticket.md](templates/ticket.md): the ticket template agents and Claude chat use. Current.",
+    "- [archive/DECISIONS-D001-D107.md](archive/DECISIONS-D001-D107.md): older decisions, unchanged and still canon; `decisions show D<n>` prints any one. Current.",
+    "- [archive/DECISIONS-D108-D173.md](archive/DECISIONS-D108-D173.md): older decisions, unchanged and still canon; `decisions show D<n>` prints any one. Current.",
+    "- [archive/DECISIONS-D174-D213.md](archive/DECISIONS-D174-D213.md): older decisions, unchanged and still canon; `decisions show D<n>` prints any one. Current.",
+    "- [archive/DECISIONS-D214-D248.md](archive/DECISIONS-D214-D248.md): older decisions, unchanged and still canon; `decisions show D<n>` prints any one. Current.",
+    "- [production-contract/01-overrides.md](production-contract/01-overrides.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
+    "- [production-contract/02-platform.md](production-contract/02-platform.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
+    "- [production-contract/03-mail.md](production-contract/03-mail.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
+    "- [production-contract/04-lanes.md](production-contract/04-lanes.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
+    "- [production-contract/05-jira.md](production-contract/05-jira.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
+    "- [production-contract/06-job-engine.md](production-contract/06-job-engine.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
+    "- [production-contract/07-reports.md](production-contract/07-reports.md): a part of the Production Contract, text moved unchanged from the old single file; the index is life-os-production-contract.md. Current.",
     "- [archive/development-policy-2026-11-20.md](archive/development-policy-2026-11-20.md): the 11-part policy before Nov 21, 2026; no authority. Historical."
    ]
   },

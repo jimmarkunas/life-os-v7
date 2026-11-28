@@ -122,3 +122,20 @@ class Show(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(decisions.main(["show", "D99999"]), 1)
         self.assertEqual(decisions.main(["show", "nonsense"]), 2)
+
+
+class ArchivedDecisions(Remote):
+    """Older entries live in docs/archive/DECISIONS-*.md; claim, show and duplicates still see them."""
+
+    def test_claim_counts_the_archive_and_show_and_duplicates_read_it(self):
+        seed = self.clone("seed2")
+        os.makedirs(os.path.join(seed, "docs", "archive"))
+        old = Path(seed, "docs", "archive", "DECISIONS-D001-D009.md")
+        old.write_text("# Old\n\n## D9 — Old nine\nx\n\n## D3 — Third again\nx\n")
+        git("add", "docs/archive/DECISIONS-D001-D009.md", cwd=seed)
+        git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "archive", cwd=seed)
+        git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        self.assertEqual(decisions.claim(cwd=self.clone("b")), 10)
+        text = decisions.log_text(Path(seed, "docs"))
+        self.assertIn("## D9 — Old nine", decisions.section(text, 9))
+        self.assertEqual(sorted(decisions.duplicates(text)), [3])
