@@ -123,6 +123,9 @@ class Trims(unittest.TestCase):
         self.assertIn("workflows/profile-sync.yml/dispatches", prep)
         self.assertIn('"$(date -u +%H)" = 11', prep)  # the 11:xx UTC tick, 5 to 6 AM Central
         self.assertIn("-ge 72000", prep)  # and not twice inside 20 hours
+        self.assertIn(
+            "profile-sync.yml/runs?event=workflow_dispatch", prep
+        )  # the skipped runs the old trigger left are not its last run
 
 
 if __name__ == "__main__":

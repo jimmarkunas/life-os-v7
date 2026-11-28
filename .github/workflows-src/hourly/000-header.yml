@@ -1,6 +1,10 @@
 name: hourly
 run-name: ${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}  # the gate counts only "tick" runs, so a manual run never blocks the next tick
 on:
+  schedule:
+    - cron: "7 * * * *"  # three triggers an hour: GitHub drops and delays scheduled runs, so the gate (lifeos.platform.gate)
+    - cron: "27 * * * *"  # keeps the effective cadence at about one run per hour and a dropped slot is covered by the next
+    - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
       interview_probe:

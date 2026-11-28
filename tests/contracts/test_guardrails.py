@@ -240,8 +240,8 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
             if re.search(r"^\s*schedule:", p.read_text(), re.M)
         ]
         self.assertEqual(
-            sorted(scheduled), ["safety.yml", "v3-pages.yml", "watchdog.yml"]
-        )  # the watchdog only raises an alert; hourly has no cron (the Oracle ticker starts every tick)
+            sorted(scheduled), ["hourly.yml", "safety.yml", "v3-pages.yml", "watchdog.yml"]
+        )  # the watchdog only raises an alert
         safety = (ROOT / ".github/workflows/safety.yml").read_text()
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)
