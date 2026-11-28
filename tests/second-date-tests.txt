@@ -1,0 +1,40 @@
+# LIFE-1100: the test modules the pull request run of `unit-tests-second-date` runs with the test clock on a second date
+# (LIFEOS_TEST_NOW=2027-03-09). The full suite on that date runs on every merge to main. One repo path per line; keep it
+# a superset of what tests/contracts/test_second_date_list.py requires (modules that import tests.kit.clock, read the
+# real clock, or import a helper that does). Add a module here whenever its result can depend on today's date.
+tests/amazon/test_retention_seen.py
+tests/edge/test_close_auto_sim.py
+tests/edge/ticker/test_ticker.py
+tests/imessage/test_alerts.py
+tests/imessage/test_relay.py
+tests/interview/test_adopt.py
+tests/interview/test_confirm.py
+tests/interview/test_create.py
+tests/interview/test_create_ledger.py
+tests/interview/test_meeting.py
+tests/interview/test_prep.py
+tests/interview/test_repair.py
+tests/jira/test_readiness_mcp.py
+tests/jobs/fit/test_cloud.py
+tests/jobs/test_alerts.py
+tests/jobs/test_daily.py
+tests/jobs/test_enrich.py
+tests/jobs/test_fit_sync.py
+tests/jobs/test_hold.py
+tests/jobs/test_ledger_claim.py
+tests/jobs/test_newsletter_golden_path.py
+tests/jobs/test_private_report.py
+tests/jobs/test_publish.py
+tests/jobs/test_readback.py
+tests/jobs/test_us_remote_golden_path.py
+tests/platform/test_frozen_clock.py
+tests/sources/newsletters/test_cardtrace.py
+tests/sources/newsletters/test_ingest.py
+tests/sources/test_interview_evidence.py
+tests/sources/test_linkedin_search.py
+tests/sources/test_scale_up_register.py
+tests/sources/web/test_boards.py
+tests/sources/web/test_conditional.py
+tests/sources/web/test_quiet_boards.py
+tests/sources/web/test_web.py
+tests/test_testindex.py
