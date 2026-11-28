@@ -20,8 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      jobs: ${{ steps.plan.outputs.jobs }}
-      groups: ${{ steps.plan.outputs.groups }}
+      matrix: ${{ steps.plan.outputs.matrix }}
       t0: ${{ steps.start.outputs.t0 }}
       sd: ${{ steps.start.outputs.sd }}
     steps:
@@ -76,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: ${{ fromJSON(needs.pick.outputs.jobs) }}
+        include: ${{ fromJSON(needs.pick.outputs.matrix).include }}
     steps:
       - name: Checkout the exact commit (own fetch, token never stored)
         run: |
@@ -93,7 +92,7 @@ jobs:
       - name: Unit tests (a FULL pick runs shards 4i-3 to 4i of 32, a selection its group of targets, in four processes; warn at 45 s, fail at 60 s)
         env:
           JOB: ${{ matrix.job }}
-          GROUP: ${{ fromJSON(needs.pick.outputs.groups)[matrix.job - 1] }}
+          GROUP: ${{ matrix.group }}
         run: |
           status=0
           if [ -n "$GROUP" ]; then

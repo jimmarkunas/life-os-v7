@@ -51,12 +51,16 @@ class Plan(unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 self.assertEqual(splitsel.main([str(path)]), 0)
             lines = out.getvalue().splitlines()
-            self.assertEqual(lines, ["jobs=[1, 2, 3, 4, 5, 6, 7, 8]", "groups=[]"])
+            rows = json.loads(lines[0].split("=", 1)[1])["include"]
+            self.assertEqual(len(lines), 1)
+            self.assertEqual([r["job"] for r in rows], list(range(1, 9)))
+            self.assertEqual({r["group"] for r in rows}, {""})
             path.write_text("tests.contracts.test_workflow\ntests.edge.test_x\n")
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 splitsel.main([str(path)])
-            jobs, groups = (json.loads(line.split("=", 1)[1]) for line in out.getvalue().splitlines())
+            rows = json.loads(out.getvalue().split("=", 1)[1])["include"]
+            jobs, groups = [r["job"] for r in rows], [r["group"] for r in rows]
             self.assertEqual(sorted(" ".join(groups).split()), ["tests.contracts.test_workflow", "tests.edge.test_x"])
             self.assertEqual(len(jobs), len(groups))
 

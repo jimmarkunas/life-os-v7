@@ -677,7 +677,9 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         # the matrix: 8 jobs of 4 inner shards of a 32-way split, a 60 s gate per job and a warning at 45 s
         matrix = doc["jobs"]["tests"]
         # a FULL pick is 8 jobs of shards, a selected run 1 to 4 jobs planned by tests/splitsel.py
-        self.assertEqual(matrix["strategy"]["matrix"], {"job": "${{ fromJSON(needs.pick.outputs.jobs) }}"})
+        self.assertEqual(
+            matrix["strategy"]["matrix"], {"include": "${{ fromJSON(needs.pick.outputs.matrix).include }}"}
+        )
         self.assertNotIn("if", matrix)  # the verdict job needs every test job to succeed, always
         plan = next(s for s in doc["jobs"]["pick"]["steps"] if s.get("id") == "plan")
         self.assertIn("python3 -m tests.splitsel selected.txt", plan["run"])

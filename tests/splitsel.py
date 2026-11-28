@@ -1,6 +1,6 @@
-"""Size the test jobs of a pull request run: `python -m tests.splitsel selected.txt` prints the two GitHub output lines
-`jobs=[...]` (the matrix of the `tests` job) and `groups=[...]` (one space-separated target list per job; empty for a FULL
-pick, whose jobs run shards of tests.shard instead).
+"""Size the test jobs of a pull request run: `python -m tests.splitsel selected.txt` prints the GitHub output line
+`matrix={"include": [{"job": n, "group": "targets"}, ...]}` for the `tests` job (the group is empty for a FULL pick,
+whose jobs run shards of tests.shard instead).
 
 A selected run (the contracts plus the tests a change can affect) goes to as few jobs as keep each under PER_JOB CI
 seconds of tests, at most MAX_JOBS, split by the measured seconds in tests/shard-weights.json.
@@ -51,8 +51,8 @@ def main(argv=None):
         if line.strip() and not line.startswith("FULL because ")
     ]
     jobs, groups = plan(targets, shard.load_weights())
-    print("jobs=" + json.dumps(jobs))
-    print("groups=" + json.dumps(groups))
+    rows = [{"job": job, "group": groups[i] if groups else ""} for i, job in enumerate(jobs)]
+    print("matrix=" + json.dumps({"include": rows}))
     return 0
 
 

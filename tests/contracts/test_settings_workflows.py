@@ -244,8 +244,7 @@ KNOWN_OUTPUTS = {
     "late_reason",
     "t0",
     "sd",
-    "jobs",
-    "groups",
+    "matrix",
 }
 SECRET_NAME = re.compile(r"(_TOKEN|_KEY|_SECRET|_PASSWORD|_PRIVATE_KEY)$")
 
