@@ -32,5 +32,4 @@ jobs:
       - name: Inventory, validate and (live only) delete old completed runs; receipt on the run summary
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
-        run: python3 tools/run_cleanup.py $([ "$DRY_RUN" = "true" ] && echo "" || echo --live)
+        run: python3 tools/run_cleanup.py ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '' || '--live' }}

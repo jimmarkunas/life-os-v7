@@ -468,6 +468,14 @@
    "slowest_seconds": 404,
    "target": 20
   },
+  "run-cleanup.yml::cleanup": {
+   "basis": "new in LIFE-1117: at most 600 calls, one delete a second, so about 10 minutes at the limit; not measured yet",
+   "current": 15,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 15
+  },
   "safety.yml::safety": {
    "basis": "twice the slowest run (44 s) rounds to 20 min, not below the current 20: unchanged",
    "current": 20,

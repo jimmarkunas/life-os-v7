@@ -1,4 +1,4 @@
-"""LIFE-1117: the run cleanup keeps what must stay, deletes oldest first, and stops where the rules say"""
+"""The run cleanup keeps what must stay, deletes oldest first, and stops where the rules say"""
 
 import io
 import json
