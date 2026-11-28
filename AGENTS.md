@@ -4,7 +4,7 @@ The [Development Policy](docs/life-os-development-policy.md) is the rule set. Co
 
 ## The job
 
-Jim starts every run; no scheduler, timer or loop. One exception: an orchestrator dispatch for a released ticket may start that agent's session. Once started, run end to end:
+Jim starts every run; no scheduler, timer or loop. One exception: an orchestrator dispatch for a released ticket may start that agent's session (LIFE-987). Once started, run end to end:
 
 0. **Hooks:** `sh tools/install_hooks.sh` once per clone.
 1. **Pick** the ticket Jim named, else the top `Agent Go` leaf by Priority, then Rank. Skip In Progress tickets and ones with an unfinished `Blocks` predecessor. Agent Go is Jim's approval for everything in the ticket: never re-ask.
@@ -25,7 +25,7 @@ Epics go `Scoping → Ready → In Progress → Done`; every child carries one l
 
 - Stops for Jim: wider workflow `permissions`, a new or moved credential (secrets manager only; GitHub holds just its bootstrap token), deleting GitHub data, spend over budget.
 - Buzz MCP: adding or changing an operation must never touch the tool names, descriptions or schemas of `buzz_capabilities`, `buzz_read` or `buzz_publish`; if it would, stop and ask Jim (docs/buzz-remote-mcp-deploy.md).
-- Buzz: post with `buzz_publish`, `community: "pilot"` (team channel `life-os-main`; ids in `buzz_capabilities`). Hosted `life-os` is read-only (LIFE-927), so `write_disabled` there is expected.
+- Buzz: post with `buzz_publish`, `community: "pilot"` (team channel `life-os-main`; ids in `buzz_capabilities`). Hosted `life-os` is read-only, so `write_disabled` there is expected.
 - Public repo: no personal data or secrets, ever (docs/PRIVACY.md).
 - Notion views: A Notion view Jim has arranged by hand is canon. Agents never change a view's columns, order, sort or filter unless a ticket names that view and the change.
 - Jira connector: the Atlassian MCP connector only, under the tool names your session shows (Claude: `mcp__claude_ai_Atlassian_MCP__*`; Codex: the Atlassian connector's own tool names). No other Jira route; Rovo connectors are retired. Pass `fields` on reads.
