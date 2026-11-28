@@ -73,6 +73,7 @@
     "- [platform/bitwarden-layout.md](platform/bitwarden-layout.md): the three-project Bitwarden layout. Current.",
     "- [platform/boards-in-tick.md](platform/boards-in-tick.md): the `BOARDS_IN_TICK` switch and employer boards in the hourly tick. Current.",
     "- [platform/branch-protection.md](platform/branch-protection.md): what GitHub enforces on `main`. Current.",
+    "- [platform/graph-index-ontology.md](platform/graph-index-ontology.md): what the derived Aura graph may hold, and the checkpoint a reader must check. Current.",
     "- [platform/capability-catalog.md](platform/capability-catalog.md): capability catalog and agent identity contract. Current.",
     "- [platform/ci-cost.md](platform/ci-cost.md): PR CI cost and escapes measured Nov 16 2026. Historical measurement.",
     "- [platform/codebase-value-audit.md](platform/codebase-value-audit.md): read-only codebase value audit. Historical.",
