@@ -38,3 +38,4 @@ tests/sources/web/test_conditional.py
 tests/sources/web/test_quiet_boards.py
 tests/sources/web/test_web.py
 tests/test_testindex.py
+tests/workflows/test_workflow.py
