@@ -66,6 +66,13 @@
    "retrieval": "Before running any test locally and when opening a PR"
   },
   {
+   "path": "docs/policy/integrated-delivery.md",
+   "authority": "Canonical: policy section 7 detail (LIFE-1102)",
+   "purpose": "Experimental package, one approval, integrated proof, conditional promotion, GO and NO-GO",
+   "owner": "Jim (change by reviewed PR; Q04)",
+   "retrieval": "When scoping or building POC or experimental work"
+  },
+  {
    "path": "docs/notion-query-conservation-policy.md",
    "authority": "Canonical: how agents and runs read Notion cheaply, and the per-query approval for metered reads",
    "purpose": "Query precedence, the SQL and rows approval gate, DEGRADED on quota failure",

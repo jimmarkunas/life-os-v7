@@ -12,6 +12,7 @@ Every markdown file under `docs/`, grouped by area, with what it is for and whet
 - [policy/writing-tickets.md](policy/writing-tickets.md): two ticket-writing paragraphs from policy section 7, moved unchanged. Current.
 - [policy/agent-coordination.md](policy/agent-coordination.md): agent trailers, one Production Contract editor, the paths line. Current.
 - [policy/local-tests.md](policy/local-tests.md): local tests only via scripts/test-local, the Local tests and Time receipt lines. Current.
+- [policy/integrated-delivery.md](policy/integrated-delivery.md): experiments as one package (POCs, integrated proof, conditional promotion); GO, RETRY, NO-GO and BLOCKED. Current.
 - [notion-query-conservation-policy.md](notion-query-conservation-policy.md): how agents and runs read Notion cheaply; metered queries need Jim's yes per query. Current.
 - [life-os-production-contract.md](life-os-production-contract.md): the Production Contract, authority for schedules and runtime; canonical here since Nov 27 2026 (v2.15.19, moved unchanged from the retired system's repository). Current.
 - [agent-reference.md](agent-reference.md): code map, commands and epic delivery rules that AGENTS.md points to. Current.

@@ -110,14 +110,17 @@ class OneFilePolicy(unittest.TestCase):
             self.assertIn(label, POLICY)
         self.assertNotIn("LOS idea", POLICY)
 
-    def test_every_epic_proves_feasibility_before_any_build_ticket_runs(self):
-        self.assertIn("**Feasibility first, new Epics only:**", POLICY)
+    def test_an_experiment_is_one_package_and_research_only_requests_keep_research_and_verdict(self):
+        self.assertIn("**New Epics and experiments (Jim, Nov 27, 2026):**", POLICY_FILE)
+        self.assertIn("one package Task and PR", POLICY_FILE)
+        self.assertIn("research-only requests keep those", POLICY_FILE)
+        self.assertNotIn("Build tickets wait for the verdict.", POLICY)
+        detail = (ROOT / "docs" / "policy" / "integrated-delivery.md").read_text()
+        for kept in ("Scope once, approve once", "Agent Go on a package approves the envelope", "NO-GO", "BLOCKED"):
+            self.assertIn(kept, detail)
         self.assertIn("`research`", POLICY)
-        self.assertIn("GO / NO-GO comment", POLICY)
-        self.assertIn("A change inside an existing Epic goes straight to a build ticket.", POLICY)
         self.assertIn("**Close a `research` ticket:** no PR, so no closeout script.", POLICY)
         self.assertIn("only then MCP rows or SQL queries, which count as metered", POLICY)
-        self.assertIn("Build tickets wait for the verdict.", POLICY)
 
     def test_runs_do_not_stop_midway_for_pre_approvable_steps(self):
         self.assertIn("**Standing approvals (Jim, Nov 22, 2026):**", POLICY)

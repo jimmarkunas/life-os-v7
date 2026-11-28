@@ -12,6 +12,8 @@ ChatGPT reviews every child of an Epic against this list, then records one comme
 6. Not in scope, and who verifies.
 7. Source authority named: one canonical owner per Notion requirement.
 
+8. For experimental work, one `package` Task with every package section (policy section 7), not separate research and verdict tickets; each protected act names its target and budget.
+
 ## Each child must not have
 
 - Plan-shaped or gate-filled text (a placeholder that only satisfies a check).
