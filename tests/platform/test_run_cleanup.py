@@ -160,6 +160,19 @@ class DryRun(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(deleted(github), [1])
 
+    def test_dry_run_flag_beats_live(self):
+        github, out = Github([make(1, 5)]), io.StringIO()
+        env = {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r"}
+        code = rc.main(["--live", "--dry-run"], env, github, NOW, lambda s: None, out)
+        self.assertEqual(code, 0)
+        self.assertEqual(deleted(github), [])
+
+    def test_workflow_passes_an_explicit_dry_run_flag_never_an_empty_string(self):
+        """An empty string is false in a workflow expression, so `x && '' || '--live'` always ran live."""
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/run-cleanup.yml").read_text()
+        self.assertIn("inputs.dry_run) && '--dry-run' || '--live' }}", text)
+        self.assertNotIn("&& ''", text)
+
     def test_main_without_token_stops(self):
         self.assertEqual(rc.main([], {}, None, NOW, lambda s: None, io.StringIO()), 2)
 
