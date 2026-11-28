@@ -180,8 +180,21 @@ def run(modules, jobs):
     return status
 
 
+def run_list(path, jobs):
+    """Run the targets listed in a file (the selector's output, one dotted module or test id per line) in parallel
+    processes: PR CI uses this for a selected run, whose fixed cost is the contracts.
+    """
+    targets = [line.strip() for line in pathlib.Path(path).read_text().splitlines() if line.strip()]
+    if not targets or targets[0] == testindex.FULL:
+        print("run-list: a FULL or empty list is not run here", file=sys.stderr)
+        return 2
+    return run(targets, jobs)
+
+
 def main(argv=None):
     argv = list(argv if argv is not None else sys.argv[1:])
+    if argv[:1] == ["run-list"] and len(argv) >= 2:
+        return run_list(argv[1], int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else 4)
     if not argv or argv[0] not in ("select", "run") or "--base" not in argv:
         print("usage: python -m tests.quickselect select|run --base BASE [--jobs N]", file=sys.stderr)
         return 2

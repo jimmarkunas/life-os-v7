@@ -82,7 +82,7 @@ jobs:
             echo "shard seconds: 1=$(cat shard-1.sec) 2=$(cat shard-2.sec) 3=$(cat shard-3.sec) 4=$(cat shard-4.sec)" | tee -a "$GITHUB_STEP_SUMMARY"
             for k in 1 2 3 4; do if [ "$(cat shard-$k.sec)" -ge 100 ]; then echo "::warning::Shard $k took $(cat shard-$k.sec) s; the shard guard level is 100 s and the gate is 120 s (LIFE-963): rebalance tests/shard-weights.json (python -m tests.shard --from-logs) or fix the slow module before it reaches 120"; fi; done
           else
-            python -m unittest $(cat selected.txt) > shard-1.log 2>&1 || status=$?
+            python -m tests.quickselect run-list selected.txt --jobs 4 > shard-1.log 2>&1 || status=$?     # a selected run: its targets in four parallel processes (the contracts alone are about 50 s on one)
             cat shard-1.log
           fi
           elapsed=$(( $(date +%s) - start ))
