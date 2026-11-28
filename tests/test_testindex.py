@@ -397,47 +397,45 @@ class SelectCommand(unittest.TestCase):
             self.assertEqual(ti.main(["select", "--base", "HEAD^1"]), 0)
         return out.getvalue().split("\n")[:-1]
 
-    def test_no_index_an_old_one_or_a_damaged_one_prints_full(self):
+    def test_no_index_or_an_old_one_selects_by_the_import_graph_and_a_damaged_one_prints_full(self):
         fresh_now = clock.now()
         idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
-        self.assertNotEqual(self.run_select(idx)[0], "FULL")  # control: a fresh, sound index gives a subset
-        self.assertEqual(self.run_select(None)[0], "FULL")
-        self.assertEqual(
-            self.run_select(
-                {**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-            )[0],
-            "FULL",
-        )
+        old = {**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        keys_missing = {"schema": 1, "generated_at": idx["generated_at"]}
+        for loaded in (idx, None, old):  # the import graph alone still places a lifeos/ change
+            picked = self.run_select(loaded)
+            self.assertNotEqual(picked[0], "FULL", loaded)
+            self.assertIn("tests.sources.web.test_boards", picked)
+            self.assertIn("tests.contracts.test_privacy", picked)
+        for loaded in (None, old):  # a path nothing places is FULL with or without an index
+            self.assertEqual(self.run_select(loaded, changed=("scripts/x.py",))[0], "FULL")
         self.assertEqual(
             self.run_select(index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now))[0], "FULL"
-        )  # a number outside the test list
-        self.assertEqual(self.run_select({"schema": 1, "generated_at": idx["generated_at"]})[0], "FULL")  # keys missing
+        )  # a number outside the test list: the index lies, fail open
+        self.assertEqual(self.run_select(keys_missing)[0], "FULL")  # a damaged index fails open too
 
     def test_full_says_why_on_the_lines_after_the_first(self):
         fresh_now = clock.now()
         idx = index({"sources/web/boards.py": [0]}, tests=("tests.sources.web.test_boards.B.test_one",), made=fresh_now)
-        self.assertEqual(
-            self.run_select(None), ["FULL", "FULL because test index: the test index is missing or unreadable"]
-        )
-        old = {**idx, "generated_at": (fresh_now - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-        self.assertIn("8 days old", self.run_select(old)[1])
-        broken = self.run_select({"schema": 1, "generated_at": idx["generated_at"]})
-        self.assertEqual(broken, ["FULL", "FULL because selector error: KeyError"])
+        liar = index({"sources/web/boards.py": [99]}, tests=("tests.x.A.t",), made=fresh_now)
+        self.assertEqual(self.run_select(liar), ["FULL", "FULL because selector error: IndexError"])
         workflow = self.run_select(idx, changed=(".github/workflows/pr-tests.yml", "tests/kit/db.py"))
         self.assertEqual(workflow[0], "FULL")
         self.assertIn("FULL because .github/workflows/pr-tests.yml: under .github/ (run-everything prefix)", workflow)
         self.assertIn("FULL because tests/kit/db.py: under tests/kit/ (run-everything prefix)", workflow)
+        self.assertEqual(
+            self.run_select(None, changed=("scripts/x.py",)),
+            ["FULL", "FULL because scripts/x.py: a path outside lifeos/, tests/, docs/ and tools/"],
+        )
 
     def test_a_platform_change_in_a_pull_request_uses_the_import_graph_not_everything(self):
         fresh_now = clock.now()
         idx = index({}, tests=("tests.platform.test_settings.S.test_one",), made=fresh_now)
-        picked = self.run_select(idx, changed=("lifeos/platform/settings.py",))
-        self.assertNotEqual(picked[0], "FULL")
-        self.assertIn("tests.platform.test_settings", picked)
-        self.assertIn("tests.contracts.test_privacy", picked)
-        self.assertEqual(
-            self.run_select(None, changed=("lifeos/platform/settings.py",))[0], "FULL"
-        )  # no index: fail open
+        for loaded in (idx, None):  # with a fresh index and without one
+            picked = self.run_select(loaded, changed=("lifeos/platform/settings.py",))
+            self.assertNotEqual(picked[0], "FULL")
+            self.assertIn("tests.platform.test_settings", picked)
+            self.assertIn("tests.contracts.test_privacy", picked)
 
     def test_an_index_that_lies_about_a_file_still_runs_the_tests_named_after_it(self):
         idx = index({"jobs/a.py": [2]})  # says only a sources test covers jobs/a.py
