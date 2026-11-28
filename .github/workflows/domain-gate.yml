@@ -73,6 +73,7 @@ on:
         value: ${{ jobs.gate.outputs.tick }}
 permissions:
   contents: read
+  actions: read
 env:
   STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
 jobs:

@@ -15,6 +15,7 @@ on:
         required: false
 permissions:
   contents: read
+  id-token: write
 env:
   STAGE_TIMING_FILE: /tmp/stage-timing-domains.jsonl
 jobs:

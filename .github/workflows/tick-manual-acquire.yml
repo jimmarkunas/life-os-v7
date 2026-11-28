@@ -36,6 +36,7 @@ on:
         value: ${{ jobs.manual_acquire.outputs.failed }}
 permissions:
   contents: read
+  actions: read
 env:
   NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
   V7_FIT_GATE: ""
