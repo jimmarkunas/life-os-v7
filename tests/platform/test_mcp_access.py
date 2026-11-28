@@ -471,6 +471,15 @@ class SeededGrants(unittest.TestCase):
             ("denied_catalog_unknown_capability", [], "catalog_unknown_capability"),
         )
 
+    def test_every_client_with_a_todoist_grant_has_the_todoist_policy_level(self):
+        """A grant alone is not enough: the access policy must also give the client the todoist service (found live, Nov 28 2026, for Codex)."""
+        raw = json.loads(M.FILE.read_text())
+        keys = {c["id"]: c["policy_key"] for c in raw["clients"]}
+        granted = {g["principal"] for g in raw["grants"] if g["tool"] in TODOIST_TOOLS}
+        self.assertEqual(granted, set(TODOIST_CLIENTS))
+        for principal in granted:
+            self.assertEqual(raw["policy"]["agents"][keys[principal]].get("todoist"), "write", principal)
+
     def test_codex_holds_personal_recall_discovery_and_todoist_only_expiring_within_ninety_days(self):
         """Jim, Nov 27 2026: verified Codex, Personal recall only, up to 90 days; no store, ask, publish or Bytalos. Nov 28 2026: the nine Todoist operations added."""
         access = M.load()
