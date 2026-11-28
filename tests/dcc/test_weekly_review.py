@@ -441,7 +441,9 @@ class LiveShape(unittest.TestCase):
                         text = part["rich_text"][0]["text"]["content"]
                         part["rich_text"] = rich_text(text.replace("16 Overdue/Blocked", line))
             go(n, now=self.NOW, drive=drive_ok)
-            todos = " ".join(b["to_do"]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b["type"] == "to_do")
+            todos = " ".join(
+                b["to_do"]["rich_text"][0]["text"]["content"] for b in n.rows[-1]["blocks"] if b["type"] == "to_do"
+            )
             self.assertIn(f"{total} Jira items are Overdue or Blocked", todos)
 
     def test_a_missing_card_degrades_gmail_and_outlook_with_card_missing(self):
