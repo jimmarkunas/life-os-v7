@@ -44,6 +44,10 @@ REPO_WIDE = (
     "tests.jira.test_jira",
 )
 IGNORED_PREFIXES = ("docs/", "tools/")  # docs and tools run the contracts and the tests that name the file
+TARGETED_PREFIXES = (
+    "deploy/",
+    "hermes/",
+)  # run the contracts, the tests that name the file and the tests under tests/<top directory>/
 DATA_SUFFIXES = (
     ".md",
     ".json",
@@ -240,6 +244,9 @@ def _targets_for(path, index, reaching, root, why=None):
         elif suffix in DATA_SUFFIXES:
             found |= data_readers(path, root) | _mirror(rel, package, stem, root, True)
         return found or full("a lifeos/ file no test, mirror or import reaches")
+    if path.startswith(TARGETED_PREFIXES):
+        mirrored = {m for m in module_set(root) if m.startswith("tests." + path.split("/")[0] + ".")}
+        return data_readers(path, root) | mirrored
     return full("a path outside lifeos/, tests/, docs/ and tools/")
 
 

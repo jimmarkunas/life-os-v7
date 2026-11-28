@@ -293,6 +293,24 @@ class TenChanges(unittest.TestCase):
         self.assertIn(ROW_TOOL, picked)  # the test that names the file runs
         self.assertEqual(ti.select(["docs/PRIVACY.md"], self.idx, self.root), ti.FULL)
 
+    def test_deploy_and_hermes_paths_run_the_contracts_and_named_tests_while_the_repo_wide_paths_stay_full(self):
+        for path in (
+            "deploy/buzz-mcp/release-manifest.txt",
+            "hermes/connector-allowlists.txt",
+            "hermes/plugins/p/__init__.py",
+        ):
+            for picked in (ti.select([path], self.idx, self.root), ti.select([path], None, self.root, reach)):
+                self.assertNotEqual(picked, ti.FULL, path)
+                self.assertLessEqual(set(CONTRACTS), set(picked), path)
+        for path in (
+            ".github/workflows/pr-tests.yml",
+            "requirements-test.lock",
+            "tests/kit/db.py",
+            "tests/shard.py",
+            "pyproject.toml",
+        ):
+            self.assertEqual(ti.select([path], self.idx, self.root), ti.FULL, path)
+
     def test_a_full_names_the_path_and_the_rule_for_each_cause(self):
         cases = {
             "pyproject.toml": "a repo-wide file",
