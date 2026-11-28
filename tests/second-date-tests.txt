@@ -38,4 +38,7 @@ tests/sources/web/test_conditional.py
 tests/sources/web/test_quiet_boards.py
 tests/sources/web/test_web.py
 tests/test_testindex.py
+tests/um/test_um_retrieval_final.py
+tests/um/test_um_retrieval_live.py
 tests/workflows/test_workflow.py
+tests/workflows/test_workflow_gate.py

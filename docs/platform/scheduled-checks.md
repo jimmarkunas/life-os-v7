@@ -59,3 +59,6 @@ Each one is here because the **production code under test** reads the real clock
 - `tests/sources/newsletters/test_cardtrace.py` — ingest cards are aged against the real clock.
 - `tests/sources/newsletters/test_ingest.py` — ingest and tombstones are aged against the real clock.
 - `tests/testindex.py` — the test-index tool, not a test: takes `now` as a parameter and defaults to the real clock; the test of it (`tests/test_testindex.py`) uses the fixture.
+- `tests/um/test_um_retrieval_final.py` — builds a fabricated gate token whose `exp` is `time.time()` plus a lifetime; the gate under test checks it against the real clock.
+- `tests/um/test_um_retrieval_live.py` — same fabricated token, `exp` set against `time.time()`; the live gate under test reads the real clock.
+- `tests/workflows/test_workflow_gate.py` — sets a saved Jira read's file mtime relative to now; the gate under test compares it with the real clock.
