@@ -41,6 +41,15 @@
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-stalled $([ "$LIVE" = "true" ] && echo --live)
+      - id: jdecisions
+        continue-on-error: true
+        name: Decisions for Jim (one Agent Inbox item a day, from 6 AM CT)
+        if: ${{ needs.gate.outputs.due_jira == 'true' }}
+        env:
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run jira-decisions $([ "$LIVE" = "true" ] && echo --live)
       - id: jfill
         continue-on-error: true
         name: Parent, Component and Fix Version fill

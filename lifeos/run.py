@@ -100,6 +100,7 @@ STAGES = {
     "jira-fill": lazy("lifeos.jira.fill_defaults"),
     "followup": lazy("lifeos.inbox.followup_stage"),
     "jira-stalled": lazy("lifeos.jira.stalled"),
+    "jira-decisions": lazy("lifeos.jira.waiting_on_jim"),
     "inbox-schema-apply": lazy(
         "lifeos.inbox.apply_schema", "apply_stage"
     ),  # creates the Action Inbox tables once, only when SCHEMA_CONFIRM is APPLY
