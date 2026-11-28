@@ -1,6 +1,13 @@
 ACTIONS_ID_TOKEN_REQUEST_TOKEN workflow_only:workflow GitHub Actions' own bearer for the job's OIDC token request; present only when the job has id-token: write, never set by us, never logged
 ACTIONS_ID_TOKEN_REQUEST_URL workflow_only:workflow Where GitHub Actions issues the job's OIDC token; its presence selects the keyless Google calendar sign-in
 BASE_SHA workflow_only:workflow The merge queue group's base commit, set by pr-tests.yml from the merge_group event so the test selector diffs the whole group
+T0_PICK workflow_only:workflow Start time (epoch seconds) of the pick job, for the whole-run 60 s time gate of pr-tests.yml (LIFE-1100)
+T0_LINT workflow_only:workflow Start time (epoch seconds) of the lint job, for the whole-run 60 s time gate of pr-tests.yml (LIFE-1100)
+TESTS workflow_only:workflow Result of the parallel test jobs, read by the verdict job of pr-tests.yml (LIFE-1100)
+PICK workflow_only:workflow Result of the pick job, read by the verdict job of pr-tests.yml (LIFE-1100)
+LINT workflow_only:workflow Result of the lint job, read by the verdict job of pr-tests.yml (LIFE-1100)
+JOB workflow_only:workflow Which of the 8 parallel test jobs this is (1 to 8); it runs shards 4n-3 to 4n of 32 (LIFE-1100)
+FULL workflow_only:workflow Whether the pick job chose the whole suite (true) or a small selection it ran itself (false); read by the verdict job of pr-tests.yml (LIFE-1100)
 ALERTS_ENABLED flag Alert switch read from a repository variable (alerts enabled)
 ALERTS_MUTED_UNTIL input Alert switch read from a repository variable (alerts muted until)
 ALERT_SETTINGS input Alert switch read from a repository variable (alert settings)

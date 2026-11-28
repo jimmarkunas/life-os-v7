@@ -242,6 +242,8 @@ KNOWN_OUTPUTS = {
     "slot",
     "slot_ct",
     "late_reason",
+    "full",
+    "t0",
 }
 SECRET_NAME = re.compile(r"(_TOKEN|_KEY|_SECRET|_PASSWORD|_PRIVATE_KEY)$")
 

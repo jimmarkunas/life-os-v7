@@ -396,6 +396,22 @@
    "slowest_seconds": 227,
    "target": 20
   },
+  "pr-tests.yml::lint": {
+   "basis": "new job (LIFE-1100): ruff, mypy and the Node tests, each under 5 s; 5-minute floor; no run measured yet",
+   "current": 5,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 5
+  },
+  "pr-tests.yml::pick": {
+   "basis": "new job (LIFE-1100): chooses the tests and runs a small selection; 5-minute floor; no run measured yet",
+   "current": 5,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 5
+  },
   "pr-tests.yml::test-index": {
    "basis": "twice the slowest run (305 s) rounded up to whole minutes, 5-minute floor",
    "current": 11,
@@ -404,8 +420,16 @@
    "slowest_seconds": 305,
    "target": 11
   },
+  "pr-tests.yml::tests": {
+   "basis": "new job (LIFE-1100): one of 8 parallel test jobs of 4 shards each, 60 s time gate; 5-minute floor; no run measured yet",
+   "current": 5,
+   "median_seconds": null,
+   "runs_measured": 0,
+   "slowest_seconds": null,
+   "target": 5
+  },
   "pr-tests.yml::unit-tests": {
-   "basis": "twice the slowest run (136 s) rounded up to whole minutes, 5-minute floor",
+   "basis": "verdict job since LIFE-1100 (needs pick, tests, lint; 60 s time gate); 5-minute floor; the measured columns are the old single job",
    "current": 5,
    "median_seconds": 105,
    "runs_measured": 99,
